@@ -4,6 +4,7 @@ import { createRun, currentNode, reachableNodes, chooseNode, type RunState } fro
 import { RunLoop, REST } from "./runloop";
 import { getNode } from "./overworld";
 import { cooldownRemaining, SCOUT } from "./overworld-actions";
+import { computeUpkeep } from "./upkeep";
 import { FATIGUE } from "./fatigue";
 
 function roster(): Unit[] {
@@ -63,6 +64,91 @@ describe("runloop — rest node recovery (D23)", () => {
     loop.playCurrentNode();
     expect(currentNode(run).kind).toBe("rest");
     expect(last(run.history)?.winner).toBeUndefined();
+  });
+});
+
+describe("runloop — the two-tier recovery economy (D47)", () => {
+  /** Position a run on the first non-start rest node found. */
+  function onRestNode(run: RunState): void {
+    const rest = run.map.order.map((id) => getNode(run.map, id)).find((n) => n.kind === "rest" && n.layer > 0)!;
+    run.mapNodeId = rest.id;
+    run.path.push(rest.id);
+  }
+
+  it("in-place rest heals a wounded party (≥1) and costs a night's rations", () => {
+    const run = newRun("inplace-heal");
+    const loop = new RunLoop(run);
+    const rook = run.party.find((u) => u.id === "Rook")!;
+    rook.hp = 4;
+    const goldBefore = run.camp.gold;
+
+    const res = loop.inPlaceRest();
+    expect(res.applied).toBe(true);
+    expect(res.hpHealed).toBeGreaterThanOrEqual(1); // the floor (D47)
+    expect(rook.hp).toBeGreaterThan(4);
+    expect(res.goldSpent).toBeGreaterThan(0);
+    expect(run.camp.gold).toBeLessThan(goldBefore); // a night's rations paid
+  });
+
+  it("in-place rest refuses at full health — no empty drain (D47)", () => {
+    const run = newRun("inplace-full");
+    const loop = new RunLoop(run);
+    for (const u of run.party) u.hp = u.maxHp; // already topped up
+    const goldBefore = run.camp.gold;
+
+    const res = loop.inPlaceRest();
+    expect(res.applied).toBe(false);
+    expect(res.goldSpent).toBe(0);
+    expect(run.camp.gold).toBe(goldBefore); // nothing spent
+  });
+
+  it("in-place rest is a full node-step — it ticks ability cooldowns (D47)", () => {
+    const run = newRun("inplace-tick");
+    const loop = new RunLoop(run);
+    run.party.find((u) => u.id === "Rook")!.hp = 4;
+    run.overworld.cooldowns["scout"] = 3;
+    const nightBefore = run.night;
+
+    loop.inPlaceRest();
+    expect(cooldownRemaining(run.overworld, "scout")).toBe(2); // the spine ticked
+    expect(run.night).toBe(nightBefore + 1); // a night passed
+  });
+
+  it("repeated in-place rests drain the purse and stop when broke (D47)", () => {
+    const run = newRun("inplace-drain");
+    const loop = new RunLoop(run);
+    const rook = run.party.find((u) => u.id === "Rook")!;
+    // Keep someone wounded so "full health" never short-circuits the refusal.
+    let rests = 0;
+    for (let i = 0; i < 200; i++) {
+      rook.hp = 1; // re-wound each loop so only gold can stop us
+      const res = loop.inPlaceRest();
+      if (!res.applied) break;
+      rests++;
+    }
+    expect(rests).toBeGreaterThan(0);
+    // It stopped because the purse can't cover another night's rations.
+    expect(run.camp.gold).toBeLessThan(computeUpkeep(run.party).total);
+  });
+
+  it("the rest node is the premium tier: large heal + fatigue restore + debt clear (D47)", () => {
+    const run = newRun("rest-premium");
+    onRestNode(run);
+    const loop = new RunLoop(run);
+    // Accrue worn-gear debt + fatigue, wound a fighter.
+    run.camp.gearWear = 3;
+    run.camp.skippedUpkeep = ["repairs"];
+    const rook = run.party.find((u) => u.id === "Rook")!;
+    rook.hp = 4;
+    for (const u of run.party) u.fatigue = FATIGUE.exhausted;
+
+    const res = loop.restNode();
+    expect(res.debtCleared).toBe(3);
+    expect(run.camp.gearWear).toBe(0); // cleared in one swipe
+    expect(run.camp.skippedUpkeep).toEqual([]); // the skip selection resets too
+    expect(res.fatigueRestored.length).toBeGreaterThan(0);
+    for (const u of run.party) expect(u.fatigue).toBe(0);
+    expect(rook.hp).toBeGreaterThan(4);
   });
 });
 
@@ -128,8 +214,17 @@ describe("runloop — the unified camp at every node (D35)", () => {
     loop.autoBattle();
     loop.resolve();
     expect(run.history.length).toBe(before + 1);
-    // The node-step ticked the cooldown the scout armed.
-    if (ahead) expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown - 1);
+    // Resolving the fight does NOT tick the spine — the node-step fires at
+    // *departure* now (D46), so the scout's cooldown is still full here…
+    if (ahead) {
+      expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown);
+      // …and Break Camp (choosing the next edge) is what ticks it down.
+      const next = reachableNodes(run)[0];
+      if (next) {
+        chooseNode(run, next.id);
+        expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown - 1);
+      }
+    }
   });
 
   it("an overworld action works at a rest node, and committing restores fatigue", () => {
@@ -162,10 +257,11 @@ describe("runloop — the unified camp at every node (D35)", () => {
     const route = loop.autoTraverse();
     expect(loop.isTerminal()).toBe(true);
     expect(route.length).toBeGreaterThan(1);
-    // The spine ticks once per node-step (recordNight). A losing terminal battle
-    // ends the run without a node-step, so it doesn't tick — count the rest.
-    const losses = run.history.filter((h) => h.winner === "enemy").length;
-    const ticks = run.history.length - losses;
-    expect(cooldownRemaining(run.overworld, "scout")).toBe(99 - ticks);
+    // The spine ticks once per node-step, and a node-step is now a *departure*
+    // (breakCamp, fired from chooseNode) — D46. So the tick count is the number of
+    // edges walked = path length minus the start node (which is never departed-from
+    // by a prior step, but every other visited node was arrived at by a choose).
+    const steps = run.path.length - 1;
+    expect(cooldownRemaining(run.overworld, "scout")).toBe(99 - steps);
   });
 });

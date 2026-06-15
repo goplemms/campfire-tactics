@@ -180,14 +180,31 @@ export function reachableNodes(run: RunState): MapNode[] {
 }
 
 /**
- * Commit to a reachable node: move the run's position there and extend the path.
- * Throws if `id` is not a forward choice from the current node. Returns the node
- * (the orchestrator then plays it — a combat fight or a rest recovery).
+ * **Break Camp** — the node-step tick at *departure* (D46). Decrements every
+ * ability cooldown ({@link tickCooldowns}) and accrues the Banker's purse interest
+ * ({@link accruePurseInterest}). The overworld clock's tick fires **here, when the
+ * caravan leaves a finished node** — not at the event seam — so one night's action
+ * allowance is timed across the whole visit (Make Camp → event → Survey → Break
+ * Camp), exactly once per node-step. Called from {@link chooseNode} (the routing
+ * departure) and from a repeatable in-place rest (each rest is its own node-step,
+ * D47). A pure **purse** faucet — it never touches the guild treasury (D34).
+ */
+export function breakCamp(run: RunState): void {
+  tickCooldowns(run.overworld);
+  accruePurseInterest(run.overworld, run.camp);
+}
+
+/**
+ * Commit to a reachable node: **Break Camp** (the node-step tick at departure,
+ * D46), then move the run's position there and extend the path. Throws if `id` is
+ * not a forward choice from the current node. Returns the node (the orchestrator
+ * then plays it — a combat fight or a rest recovery).
  */
 export function chooseNode(run: RunState, id: string): MapNode {
   if (!reachableNodes(run).some((n) => n.id === id)) {
     throw new Error(`run: "${id}" is not reachable from "${run.mapNodeId}"`);
   }
+  breakCamp(run); // depart the current node — the overworld clock ticks here (D46)
   run.mapNodeId = id;
   run.path.push(id);
   return currentNode(run);
@@ -244,17 +261,15 @@ export function isRunComplete(run: RunState): boolean {
  * **final** one and the player won, flags the run **complete** (D23). Returns the
  * run's terminal state (`over` from a wipe, or `complete`).
  *
- * The node-step is also the **overworld clock's tick** (D35): every node played —
- * combat *or* rest — advances the caravan one step, so all overworld cooldowns
- * decrement here ({@link tickCooldowns}).
+ * This is the **End the Night** reconciliation seam (D46): it records the night
+ * and re-evaluates the run terminal. The overworld clock's **tick** (cooldown
+ * decrement + purse interest) no longer fires here — it moved to *departure*
+ * ({@link breakCamp}, fired from {@link chooseNode}), so one night's allowance is
+ * timed across the whole node visit rather than at the event seam.
  */
 export function recordNight(run: RunState, record: Omit<EncounterRecord, "night">): boolean {
   run.history.push({ ...record, night: run.night });
   run.night += 1;
-  tickCooldowns(run.overworld);
-  // The Banker's purse interest is a per-node-step faucet (M10, D30/D34) — purse
-  // only, never the treasury.
-  accruePurseInterest(run.overworld, run.camp);
   run.over = run.over || isRunOver(run);
   if (!run.over && record.winner !== "enemy" && isFinalRunNode(run)) {
     run.complete = true;

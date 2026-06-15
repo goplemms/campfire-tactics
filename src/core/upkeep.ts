@@ -78,20 +78,52 @@ export function computeUpkeep(party: readonly Unit[]): UpkeepBill {
 /** The result of paying (or underfunding) Upkeep. */
 export interface UpkeepResult {
   paid: number;
+  /**
+   * Lines left unfunded because the purse **couldn't afford** them — the *breach*
+   * (D15). The soft gate (D45) warns on these. Distinct from {@link skipped}.
+   */
   underfunded: UpkeepLine["id"][];
+  /**
+   * Lines the player **voluntarily** unticked (D45) — a deliberate shortfall to
+   * free gold for a riskier play. Their consequence still applies, but the gate
+   * keys off *intent*, so a voluntary skip never nags.
+   */
+  skipped: UpkeepLine["id"][];
   /** Net morale change applied (<= 0). */
   moraleDelta: number;
-  /** True if Repairs were skipped → gear condition slips (−defense/−crit, D15). */
+  /** True if Repairs went unfunded (skipped *or* breached) → gear condition slips (D15). */
   gearWorn: boolean;
+}
+
+/** Options for {@link payUpkeep}. */
+export interface PayUpkeepOptions {
+  /**
+   * Line ids the player **voluntarily** skips (D45) — they could afford them but
+   * chose not to, to free the gold. Defaults to the camp's persisted
+   * {@link "./camp".Camp.skippedUpkeep} selection. A skipped line is **not** paid,
+   * applies its morale/gear consequence, and is reported as {@link
+   * UpkeepResult.skipped} (intent) rather than {@link UpkeepResult.underfunded}.
+   */
+  skip?: readonly UpkeepLine["id"][];
 }
 
 /**
  * Pay Upkeep from the camp's gold (D15). Funds as many lines as gold allows
- * (Food first — skipping it guts morale); any unfunded line breaches: deduct its
- * morale hit and, for Repairs, flag worn gear. Returns what was paid/skipped.
+ * (Food first — skipping it guts morale); a line is left unfunded either because
+ * the player **voluntarily skipped** it (D45 — an intentional shortfall) or because
+ * the purse **can't afford** it (the breach). Both deduct the line's morale hit and,
+ * for Repairs, slip gear condition — accruing the camp's compounding
+ * {@link "./camp".Camp.gearWear} debt the rest node later clears (D47). The two are
+ * reported separately so the soft gate can key off **intent** (D45): a voluntary
+ * skip never nags; a can't-afford breach does. Returns what was paid/skipped.
  */
-export function payUpkeep(camp: Camp, party: readonly Unit[]): UpkeepResult {
+export function payUpkeep(
+  camp: Camp,
+  party: readonly Unit[],
+  opts: PayUpkeepOptions = {},
+): UpkeepResult {
   const bill = computeUpkeep(party);
+  const skipSet = new Set(opts.skip ?? camp.skippedUpkeep);
   // Food before Repairs: skipping food is the harsher breach, so fund it first.
   const ordered = [...bill.lines].sort((a, b) =>
     a.id === "food" ? -1 : b.id === "food" ? 1 : 0,
@@ -99,20 +131,51 @@ export function payUpkeep(camp: Camp, party: readonly Unit[]): UpkeepResult {
   let paid = 0;
   let moraleDelta = 0;
   const underfunded: UpkeepLine["id"][] = [];
+  const skipped: UpkeepLine["id"][] = [];
   let gearWorn = false;
   for (const line of ordered) {
-    if (camp.gold >= line.cost) {
+    if (skipSet.has(line.id)) {
+      // Voluntary skip (D45): free the gold, take the consequence, flag the intent.
+      skipped.push(line.id);
+      moraleDelta += line.moraleHit;
+      if (line.id === "repairs") gearWorn = true;
+    } else if (camp.gold >= line.cost) {
       camp.gold -= line.cost;
       paid += line.cost;
     } else {
+      // Can't-afford breach (D15): the same consequence, but reported as a breach.
       underfunded.push(line.id);
       moraleDelta += line.moraleHit;
       if (line.id === "repairs") gearWorn = true;
     }
   }
   camp.morale += moraleDelta;
-  return { paid, underfunded, moraleDelta, gearWorn };
+  // Worn gear compounds as a debt the premium rest node clears (D45/D47).
+  if (gearWorn) camp.gearWear += 1;
+  return { paid, underfunded, skipped, moraleDelta, gearWorn };
 }
+
+// --- The two-tier recovery economy (D47) ------------------------------------
+
+/**
+ * Tuning for the **in-place rest** — the lesser, repeatable recovery tier (D47):
+ * a costed camp lever available at any finished node. All data (a numbers pass
+ * later); the rest **node**'s premium magnitudes live on {@link "./runloop".REST}.
+ */
+export const RECOVERY = {
+  /**
+   * Healing chunks one in-place rest funds — a **small** heal (vs. the rest node's
+   * larger payload). Rate-capped on top by the night's banked RP (`rpPerNight`):
+   * one night banks only so much, so healing is rate-limited regardless of wealth.
+   */
+  inPlaceChunks: 1,
+  /**
+   * The guaranteed **floor**: a paid in-place rest on a wounded party always
+   * restores at least this much HP (D47) — so it never reads "paid rations, healed
+   * 0" like a gold-draining bug, even when the RP rate rounds down to no chunk.
+   */
+  inPlaceFloorHp: 1,
+} as const;
 
 // --- Rest-Point recovery (D9) -----------------------------------------------
 

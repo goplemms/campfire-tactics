@@ -1,8 +1,11 @@
 import Phaser from "phaser";
-import { FONT } from "../theme";
+import { COLOR, FONT, INK } from "../theme";
+import { roleColor } from "../roles";
+import { CombatView } from "../combat-view";
+import { addVignette } from "../vignette";
 import {
-  gridToScreen,
-  screenToGrid,
+  planMove,
+  planAttack,
   findPath,
   occupiedGrid,
   isAdjacent,
@@ -81,13 +84,16 @@ export class BattleScene extends Phaser.Scene {
   private gridGfx?: Phaser.GameObjects.Graphics;
   private safeZoneGfx?: Phaser.GameObjects.Graphics;
   private highlight!: Phaser.GameObjects.Graphics;
+  /** Move-range / attack / valid-target preview, painted on the player's turn. */
+  private preview!: Phaser.GameObjects.Graphics;
+  /** The danger-zone overlay (toggle with T) and whether it's on. */
+  private threatGfx!: Phaser.GameObjects.Graphics;
+  private showThreat = false;
   private boardObjects: Phaser.GameObjects.GameObject[] = [];
-  private views = new Map<
-    string,
-    { container: Phaser.GameObjects.Container; body: Phaser.GameObjects.Arc; hp: Phaser.GameObjects.Text }
-  >();
   private originX = 0;
   private originY = 0;
+  /** Shared board geometry + grid/tile drawing (the seam shared with DemoScene). */
+  private view!: CombatView;
 
   // Persistent HUD.
   private titleText!: Phaser.GameObjects.Text;
@@ -137,16 +143,24 @@ export class BattleScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.view = new CombatView(this);
+    this.view.reduceMotion = !!(window as Window & { __SHOT__?: boolean }).__SHOT__;
+    // The campfire glow — a warm vignette over the board, beneath the tokens/HUD.
+    addVignette(this);
     // Persistent UI.
-    this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: "#e8eefc", fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
-    this.campText = this.add.text(this.scale.width / 2, 40, "", { color: "#cdd7ee", fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
-    this.intelText = this.add.text(this.scale.width / 2, 60, "", { color: "#d6c98a", fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
-    this.orderText = this.add.text(12, 12, "", { color: "#cdd7ee", fontSize: FONT.label, lineSpacing: 3 }).setDepth(10);
+    this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
+    this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
+    this.intelText = this.add.text(this.scale.width / 2, 60, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
+    this.orderText = this.add.text(10, 68, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
     this.hintPanel = new HintPanel(this);
+    this.threatGfx = this.add.graphics().setDepth(0.36);
+    this.preview = this.add.graphics().setDepth(0.4);
     this.highlight = this.add.graphics().setDepth(0.5);
-    this.primary = this.makeTextButton(this.scale.width / 2, this.scale.height - 26, 200, 34, "", 0x2f6b46, 0x57b07a, () => this.onPrimary());
+    this.primary = this.makeTextButton(this.scale.width / 2, this.scale.height - 26, 200, 34, "", COLOR.successDeep, COLOR.success, () => this.onPrimary());
     this.primary.setDepth(12);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
+    // T toggles the danger-zone overlay (every tile an enemy could hit this turn).
+    this.input.keyboard?.on("keydown-T", () => { this.showThreat = !this.showThreat; this.drawPreview(); });
 
     this.startCombatNode();
   }
@@ -194,14 +208,17 @@ export class BattleScene extends Phaser.Scene {
   private rebuildBoard(): void {
     for (const o of this.boardObjects) o.destroy();
     this.boardObjects = [];
-    this.views.clear();
+    this.view.clearUnits();
     this.gridGfx?.destroy();
     this.safeZoneGfx?.destroy();
     this.safeZoneGfx = undefined;
     this.highlight.clear();
+    this.view.clearPreview(this.preview);
+    this.threatGfx.clear();
 
     this.originX = this.scale.width / 2;
     this.originY = this.scale.height / 2 - (this.grid.rows * TILE_HEIGHT) / 2 + 4;
+    this.view.setOrigin(this.originX, this.originY);
 
     this.drawGrid();
     this.spawnUnits();
@@ -291,7 +308,7 @@ export class BattleScene extends Phaser.Scene {
         const { x, y } = this.tileToWorld({ col, row });
         const halfW = TILE_WIDTH / 2;
         const halfH = TILE_HEIGHT / 2;
-        this.safeZoneGfx.fillStyle(0x2f6b46, 0.28);
+        this.safeZoneGfx.fillStyle(COLOR.successDeep, 0.28);
         this.safeZoneGfx.beginPath();
         this.safeZoneGfx.moveTo(x, y - halfH);
         this.safeZoneGfx.lineTo(x + halfW, y);
@@ -390,7 +407,7 @@ export class BattleScene extends Phaser.Scene {
     }
     removeItem(this.run.inventory, "trap-kit", 1);
     const { x, y } = this.tileToWorld(tile);
-    const marker = this.add.text(x, y - TILE_HEIGHT / 2, "✸", { color: "#ff9d5c", fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
+    const marker = this.add.text(x, y - TILE_HEIGHT / 2, "✸", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
     this.boardObjects.push(marker);
     this.placedTraps.push({ pos: { ...tile }, damage: this.trapDamage, marker, sprung: false });
     this.refreshCampText();
@@ -430,10 +447,23 @@ export class BattleScene extends Phaser.Scene {
       const t = this.placedTraps.find((t) => !t.sprung && t.pos.col === tile.col && t.pos.row === tile.row);
       if (t) {
         t.sprung = true;
-        t.marker.setText("✺").setColor("#7a8190");
+        t.marker.setText("✺").setColor(INK.disabled);
         this.tweens.add({ targets: t.marker, scale: 1.8, duration: 140, yoyo: true });
       }
     });
+    // Floating combat text + impact scaling ride the rules' damage/heal bus, so
+    // they cover every source (attacks, traps, charged skills) — parity with the demo.
+    this.battle.bus.on("unitDamaged", ({ unit, amount, source }) => {
+      this.view.noteDamage(unit.id, amount);
+      this.view.floatDamage(unit, amount);
+      this.view.logDamage(unit, amount, source);
+    });
+    this.battle.bus.on("unitHealed", ({ unit, amount, source }) => {
+      if (amount > 0) this.view.floatText(unit, `+${amount}`, INK.success);
+      this.view.logHeal(unit, amount, source);
+    });
+    this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit));
+    this.battle.bus.on("turnStart", ({ unit }) => this.view.logTurn(unit));
 
     // beginBattle: Chef heal + morale-warmed initiative seed (D8).
     const healed = this.loop.beginBattle();
@@ -464,6 +494,7 @@ export class BattleScene extends Phaser.Scene {
       this.waitingFor = actor;
       this.setHint(`${actor.name}'s turn — move, attack, or use a skill.`);
       this.showSkillButtons(actor);
+      this.drawPreview();
     }
   }
 
@@ -503,8 +534,8 @@ export class BattleScene extends Phaser.Scene {
     if (!res.applied) return this.setHint(`Can't bribe: ${res.reason}`);
     // Turncoat: flip the enemy to the player's side for the rest of the fight.
     (foe as unknown as { side: Side }).side = "player";
-    const view = this.views.get(foe.id);
-    view?.body.setFillStyle(0xffcf6b).setStrokeStyle(2, 0x6b4a1c);
+    const view = this.view.views.get(foe.id);
+    view?.body.setFillStyle(COLOR.ally).setStrokeStyle(2, COLOR.allyEdge);
     if (res.outcome?.permanent) this.pendingRecruits.push(foe);
     this.waitingFor = null;
     this.busy = true;
@@ -520,6 +551,7 @@ export class BattleScene extends Phaser.Scene {
     if (skill.target === "self") return this.commitSkill(actor, skill, actor);
     this.armedSkill = skill;
     this.setHint(`${skill.name}: click a valid target (or click ${actor.name} to cancel).`);
+    this.drawPreview();
   }
 
   private commitSkill(actor: Unit, skill: SkillDef, target: Unit): void {
@@ -603,6 +635,7 @@ export class BattleScene extends Phaser.Scene {
       if (clicked === actor) {
         this.armedSkill = null;
         this.setHint(`${actor.name}'s turn — move, attack, or use a skill.`);
+        this.drawPreview();
         return;
       }
       if (clicked && isValidSkillTarget(this.armedSkill, actor, clicked)) this.commitSkill(actor, this.armedSkill, clicked);
@@ -647,20 +680,15 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private playerAttackOrApproach(actor: Unit, foe: Unit): void {
-    if (isAdjacent(actor.pos, foe.pos)) return this.commitPlayer(actor, [], foe);
-    const nav = occupiedGrid(this.grid, this.battle.units, [actor, foe]);
-    const path = findPath(nav, actor.pos, foe.pos);
-    if (!path || path.length < 2) return this.setHint("No path to that foe.");
-    const approach = path.slice(1, -1).slice(0, actor.moveRange);
-    const dest = approach.length > 0 ? approach[approach.length - 1] : actor.pos;
-    this.commitPlayer(actor, approach, isAdjacent(dest, foe.pos) ? foe : null);
+    const plan = planAttack(actor, foe, this.battle.units, this.grid);
+    if (!plan) return this.setHint("No path to that foe.");
+    this.commitPlayer(actor, plan.path, plan.attackTarget);
   }
 
   private playerMove(actor: Unit, tile: GridCoord): void {
-    const nav = occupiedGrid(this.grid, this.battle.units, [actor]);
-    const path = findPath(nav, actor.pos, tile);
-    if (!path || path.length < 2) return this.setHint("Can't move there.");
-    this.commitPlayer(actor, path.slice(1).slice(0, actor.moveRange), null);
+    const path = planMove(actor, tile, this.battle.units, this.grid);
+    if (!path) return this.setHint("Can't move there.");
+    this.commitPlayer(actor, path, null);
   }
 
   private commitPlayer(actor: Unit, path: GridCoord[], target: Unit | null): void {
@@ -683,6 +711,7 @@ export class BattleScene extends Phaser.Scene {
     this.resolveTheftDeaths();
     this.refreshHud();
     this.highlightTile(null);
+    this.view.clearPreview(this.preview);
     if (this.battle.outcome().over) return this.finishBattle();
     this.setHint("Press Advance Clock for the next turn.");
   }
@@ -757,98 +786,56 @@ export class BattleScene extends Phaser.Scene {
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
     this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, 0x11141b, 0.92).setStrokeStyle(2, good ? 0x57b07a : 0xb05757).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 28, title, { color: good ? "#9ff0bf" : "#f0a0a0", fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy + 14, body, { color: "#cdd7ee", fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(21),
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.92).setStrokeStyle(2, good ? COLOR.success : COLOR.danger).setDepth(20),
+      this.add.text(cx, cy - h / 2 + 28, title, { color: good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
+      this.add.text(cx, cy + 14, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(21),
     );
   }
 
   // --- Drawing helpers -------------------------------------------------------
 
   private tileToWorld(coord: GridCoord): { x: number; y: number } {
-    const { x, y } = gridToScreen(coord);
-    return { x: this.originX + x, y: this.originY + y };
+    return this.view.tileToWorld(coord);
   }
 
   private worldToTile(px: number, py: number): GridCoord {
-    const frac = screenToGrid({ x: px - this.originX, y: py - this.originY });
-    return { col: Math.round(frac.col), row: Math.round(frac.row) };
+    return this.view.worldToTile(px, py);
   }
 
   private drawGrid(): void {
     const g = this.add.graphics();
     this.gridGfx = g;
-    for (let row = 0; row < this.grid.rows; row++) {
-      for (let col = 0; col < this.grid.cols; col++) {
-        const { x, y } = this.tileToWorld({ col, row });
-        const walkable = this.grid.isWalkable({ col, row });
-        const fill = !walkable ? 0x55304a : (col + row) % 2 === 0 ? 0x2a3550 : 0x222b40;
-        this.drawDiamond(g, x, y, fill);
-      }
-    }
-  }
-
-  private drawDiamond(g: Phaser.GameObjects.Graphics, cx: number, cy: number, fill: number): void {
-    const halfW = TILE_WIDTH / 2;
-    const halfH = TILE_HEIGHT / 2;
-    g.fillStyle(fill, 1);
-    g.lineStyle(1, 0x3d4b6e, 1);
-    g.beginPath();
-    g.moveTo(cx, cy - halfH);
-    g.lineTo(cx + halfW, cy);
-    g.lineTo(cx, cy + halfH);
-    g.lineTo(cx - halfW, cy);
-    g.closePath();
-    g.fillPath();
-    g.strokePath();
+    this.view.drawGrid(g, this.grid);
   }
 
   private spawnUnits(): void {
     for (const unit of this.battle.units) {
-      const color = unit.side === "player" ? 0xffcf6b : 0xe06b6b;
-      const stroke = unit.side === "player" ? 0x6b4a1c : 0x6b1c1c;
-      const body = this.add.circle(0, -TILE_HEIGHT / 2, 11, color).setStrokeStyle(2, stroke);
-      const label = this.add.text(0, -TILE_HEIGHT / 2 - 26, unit.name, { color: "#e8eefc", fontSize: FONT.caption }).setOrigin(0.5);
-      const hp = this.add.text(0, -TILE_HEIGHT / 2 - 13, "", { color: "#bfe8c0", fontSize: FONT.caption }).setOrigin(0.5);
-      const container = this.add.container(0, 0, [body, label, hp]).setDepth(1);
-      this.views.set(unit.id, { container, body, hp });
-      this.boardObjects.push(container);
+      this.view.spawnUnit(unit);
       if (unit.captured) this.tintCaptured(unit, true);
-      this.placeView(unit);
     }
-    this.refreshHp();
+    this.view.refreshUnits();
   }
 
   private tintCaptured(unit: Unit, captured: boolean): void {
-    const view = this.views.get(unit.id);
+    const view = this.view.views.get(unit.id);
     if (!view) return;
-    view.body.setFillStyle(captured ? 0x9a6bd0 : 0xffcf6b);
-    view.body.setStrokeStyle(2, captured ? 0x4a2c6b : 0x6b4a1c);
+    view.body.setFillStyle(captured ? COLOR.captive : COLOR.ally);
+    view.body.setStrokeStyle(3, captured ? COLOR.captiveEdge : roleColor(unit, COLOR.allyEdge));
   }
 
   private placeView(unit: Unit): void {
-    const view = this.views.get(unit.id);
-    if (!view) return;
-    const { x, y } = this.tileToWorld(unit.pos);
-    view.container.setPosition(x, y);
+    this.view.placeView(unit);
   }
 
   private refreshHp(): void {
-    for (const unit of this.battle.units) {
-      const view = this.views.get(unit.id);
-      if (!view) continue;
-      view.hp.setText(`${Math.max(0, unit.hp)}/${unit.maxHp}`);
-      view.container.setAlpha(unit.alive ? 1 : 0.25);
-    }
+    this.view.refreshUnits();
   }
 
   private refreshHud(): void {
-    const order = [...this.battle.units]
-      .filter((u) => u.alive && !u.captured)
-      .sort((a, b) => b.ct - a.ct)
-      .map((u) => `${u.side === "player" ? "●" : "○"} ${u.name}  CT ${Math.round(u.ct)}`)
-      .join("\n");
-    this.orderText.setText(`CT order\n${order}`);
+    // The shared visual initiative rail (CombatView): chips sorted by charge time,
+    // the acting unit lit, each carrying side/role, HP and the CT readout.
+    this.orderText.setText("Turn order");
+    this.view.drawInitiative(this.battle.units, 8, 84, (u) => this.battle.clock.isCharging(u));
     this.refreshHp();
   }
 
@@ -880,20 +867,21 @@ export class BattleScene extends Phaser.Scene {
     this.hintPanel.setResting(text);
   }
 
+  /** Paint the active player unit's move/attack (or armed-skill target) preview. */
+  private drawPreview(): void {
+    const actor = this.waitingFor;
+    if (!actor || this.busy || this.over || this.phase !== "battle") {
+      this.view.clearPreview(this.preview);
+      this.threatGfx.clear();
+      return;
+    }
+    if (this.showThreat) this.view.drawThreatZone(this.threatGfx, this.battle.units, this.grid, "player");
+    else this.threatGfx.clear();
+    this.view.drawPreview(this.preview, actor, this.battle.units, this.grid, this.armedSkill ?? undefined);
+  }
+
   private highlightTile(coord: GridCoord | null): void {
-    this.highlight.clear();
-    if (!coord) return;
-    const { x, y } = this.tileToWorld(coord);
-    const halfW = TILE_WIDTH / 2;
-    const halfH = TILE_HEIGHT / 2;
-    this.highlight.lineStyle(3, 0x7fe0a0, 1);
-    this.highlight.beginPath();
-    this.highlight.moveTo(x, y - halfH);
-    this.highlight.lineTo(x + halfW, y);
-    this.highlight.lineTo(x, y + halfH);
-    this.highlight.lineTo(x - halfW, y);
-    this.highlight.closePath();
-    this.highlight.strokePath();
+    this.view.highlightTile(this.highlight, coord);
   }
 
   // --- Buttons ---------------------------------------------------------------
@@ -928,33 +916,21 @@ export class BattleScene extends Phaser.Scene {
     const gap = Math.min(150, 720 / specs.length);
     const startX = this.scale.width / 2 - ((specs.length - 1) * gap) / 2;
     specs.forEach((spec, i) => {
-      this.actionButtons.push(this.makeTextButton(startX + i * gap, y, gap - 12, 30, spec.text, 0x394063, 0x6f7bb0, spec.onClick, spec.description));
+      this.actionButtons.push(this.makeTextButton(startX + i * gap, y, gap - 12, 30, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
     });
   }
 
   // --- Animation -------------------------------------------------------------
 
   private animateMove(unit: Unit, path: readonly GridCoord[], done: () => void): void {
-    const view = this.views.get(unit.id);
-    if (!view || path.length === 0) return done();
-    const targets = path.map((c) => this.tileToWorld(c));
-    this.tweens.chain({ targets: view.container, tweens: targets.map((p) => ({ x: p.x, y: p.y, duration: 150, ease: "Linear" })), onComplete: done });
+    this.view.animateMove(unit, path, done, 150);
   }
 
   private flashAttack(attacker: Unit, target: Unit): void {
-    const av = this.views.get(attacker.id);
-    const tv = this.views.get(target.id);
-    if (av) {
-      const home = this.tileToWorld(attacker.pos);
-      const toward = this.tileToWorld(target.pos);
-      this.tweens.add({ targets: av.container, x: home.x + (toward.x - home.x) * 0.3, y: home.y + (toward.y - home.y) * 0.3, duration: 90, yoyo: true, ease: "Quad.easeOut" });
-    }
-    if (tv) this.tweens.add({ targets: tv.container, alpha: 0.4, duration: 70, yoyo: true });
+    this.view.flashHit(attacker, target);
   }
 
   private flashHeal(unit: Unit): void {
-    const view = this.views.get(unit.id);
-    if (!view) return;
-    this.tweens.add({ targets: view.container, scale: 1.25, duration: 130, yoyo: true, ease: "Quad.easeOut" });
+    this.view.flashHeal(unit);
   }
 }

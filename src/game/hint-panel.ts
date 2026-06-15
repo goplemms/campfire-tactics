@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { FONT } from "./theme";
+import { COLOR, FONT, INK } from "./theme";
 
 const Events = Phaser.Input.Events;
 
@@ -68,12 +68,12 @@ export class HintPanel extends Phaser.GameObjects.Container {
     this.hasKeys = keys.length > 0;
     this.baseLabel = this.hasKeys ? "Tips & Keys" : "Tips";
 
-    this.bodyBg = scene.add.rectangle(0, 0, W, 10, 0x161b29, 0.96).setStrokeStyle(1, 0x44557e).setOrigin(0, 0);
-    this.tipText = scene.add.text(10, 0, "", { color: "#aebbd6", fontSize: FONT.caption, align: "left", lineSpacing: 3, wordWrap: { width: W - 20 } }).setOrigin(0, 0);
-    this.keysText = scene.add.text(10, 0, keys, { color: "#6f7c98", fontSize: FONT.micro, wordWrap: { width: W - 20 } }).setOrigin(0, 0);
-    this.headerBg = scene.add.rectangle(0, 0, W, HintPanel.HEADER_H, 0x232b40, 0.96).setStrokeStyle(1, 0x44557e).setOrigin(0, 0);
-    this.headerLabel = scene.add.text(0, 0, this.baseLabel, { color: "#cdd9f2", fontSize: FONT.caption }).setOrigin(0, 0.5);
-    this.chevron = scene.add.text(0, 0, "▸", { color: "#8fa0c8", fontSize: FONT.caption }).setOrigin(1, 0.5);
+    this.bodyBg = scene.add.rectangle(0, 0, W, 10, COLOR.surface, 0.96).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0);
+    this.tipText = scene.add.text(10, 0, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption, align: "left", lineSpacing: 3, wordWrap: { width: W - 20 } }).setOrigin(0, 0);
+    this.keysText = scene.add.text(10, 0, keys, { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.micro, wordWrap: { width: W - 20 } }).setOrigin(0, 0);
+    this.headerBg = scene.add.rectangle(0, 0, W, HintPanel.HEADER_H, COLOR.surfaceAlt, 0.96).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0);
+    this.headerLabel = scene.add.text(0, 0, this.baseLabel, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5);
+    this.chevron = scene.add.text(0, 0, "▸", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5);
 
     this.add([this.bodyBg, this.tipText, this.keysText, this.headerBg, this.headerLabel, this.chevron]);
     this.setDepth(15);
@@ -172,7 +172,7 @@ export class HintPanel extends Phaser.GameObjects.Container {
   private apply(expanded: boolean): void {
     this.isOpen = expanded;
     this.chevron.setText(expanded ? "▾" : this.bottom ? "▴" : "▸");
-    this.headerBg.setStrokeStyle(1, this.pinned ? 0x7f9bd6 : 0x44557e);
+    this.headerBg.setStrokeStyle(1, this.pinned ? COLOR.info : COLOR.borderSoft);
 
     const W = HintPanel.W;
     const hH = HintPanel.HEADER_H;

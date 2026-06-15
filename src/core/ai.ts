@@ -17,7 +17,7 @@
  * the same planner can fast-forward either side headlessly.
  */
 
-import type { Unit } from "./units";
+import type { Unit, Side } from "./units";
 import type { GridCoord } from "./iso";
 import type { SkillDef } from "./skills";
 import { TileGrid } from "./grid";
@@ -291,4 +291,64 @@ export function planEnemyTurn(
   }
 
   return bestPlan;
+}
+
+/** What an enemy intends to do to a player next turn (telegraphing). */
+export interface EnemyIntent {
+  /** The enemy whose turn this forecasts. */
+  unit: Unit;
+  /** Where it would move to act from (its current tile if it strikes in place). */
+  destination: GridCoord;
+  /** The foe it would act on. */
+  target: Unit;
+  /** A non-basic ability it would use instead of a strike (e.g. a snare). */
+  ability?: SkillDef;
+  /** Damage it would deal from `destination` — 0 for a non-damaging ability. */
+  damage: number;
+  /** True if that strike would drop the target. */
+  lethal: boolean;
+}
+
+/**
+ * **Telegraph** an enemy's next turn: run its planner (read-only) and, when it
+ * would act on a foe, report who, from where, and how hard — so the player can
+ * read incoming threats before committing their own turn. Fog-respecting (the
+ * planner only targets *seen* foes). Returns `null` when the enemy would merely
+ * advance / has no target. Pure: the underlying planner restores any scratch
+ * state it touches.
+ */
+export function forecastEnemyAction(unit: Unit, units: readonly Unit[], grid: TileGrid, opts: AIOptions = {}): EnemyIntent | null {
+  const plan = planEnemyTurn(unit, units, grid, opts);
+  if (!plan.target) return null;
+  const damage = plan.ability ? 0 : damageFrom(unit, plan.destination, plan.target, units);
+  return { unit, destination: plan.destination, target: plan.target, ability: plan.ability, damage, lethal: damage >= plan.target.hp };
+}
+
+/**
+ * The **danger zone** for `victimSide`: every tile a unit of that side could be
+ * attacked on this turn — the union, over all living enemies, of the tiles each
+ * can strike from any tile it can reach (its move reach grown by its attack
+ * range). Stand outside this set and no enemy can hit you this turn. Pure; used
+ * by the render's threat-range overlay.
+ */
+export function threatenedTiles(units: readonly Unit[], grid: TileGrid, victimSide: Side): GridCoord[] {
+  const enemies = units.filter((u) => u.alive && !u.captured && u.side !== victimSide);
+  const seen = new Set<string>();
+  const out: GridCoord[] = [];
+  for (const e of enemies) {
+    for (const d of reachableTiles(e, units, grid)) {
+      for (let dc = -e.attackRange; dc <= e.attackRange; dc++) {
+        const rr = e.attackRange - Math.abs(dc);
+        for (let dr = -rr; dr <= rr; dr++) {
+          const t = { col: d.tile.col + dc, row: d.tile.row + dr };
+          const key = `${t.col},${t.row}`;
+          if (grid.inBounds(t) && !seen.has(key)) {
+            seen.add(key);
+            out.push(t);
+          }
+        }
+      }
+    }
+  }
+  return out;
 }

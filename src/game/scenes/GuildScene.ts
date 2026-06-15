@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { FONT } from "../theme";
+import { COLOR, FONT, INK } from "../theme";
 import {
   createGuild,
   dispatch,
@@ -144,7 +144,7 @@ export class GuildScene extends Phaser.Scene {
     // The two pools + Influence (D34): the persistent TREASURY (vault), the
     // walled-off INFLUENCE currency, the roster, and the free armory. The run
     // PURSE lives on each caravan (shown in Assembly / surfaced on a return).
-    this.text(W / 2, 14, `Guild Hall — Treasury ${this.guild.treasury}g  ·  Influence ${this.guild.influence}  ·  Roster ${this.guild.roster.length}  ·  Armory ${availableGear(this.guild).length} free`, "#e8eefc", 17, 0.5);
+    this.text(W / 2, 14, `Guild Hall — Treasury ${this.guild.treasury}g  ·  Influence ${this.guild.influence}  ·  Roster ${this.guild.roster.length}  ·  Armory ${availableGear(this.guild).length} free`, INK.primary, FONT.title, 0.5);
 
     this.drawBoard(20, 44);
     this.drawAssembly(280, 44);
@@ -157,7 +157,7 @@ export class GuildScene extends Phaser.Scene {
 
   /** The quest board (never empty, D26). Click a quest to target the dispatch. */
   private drawBoard(x: number, y: number): void {
-    this.text(x, y, "Quest Board", "#d6c98a", 14, 0);
+    this.text(x, y, "Quest Board", INK.gold, FONT.body, 0);
     let yy = y + 24;
     for (const q of this.guild.board) {
       const selected = q.id === this.selectedQuestId;
@@ -174,21 +174,21 @@ export class GuildScene extends Phaser.Scene {
   private drawAssembly(x: number, y: number): void {
     const caravan = this.selectedCaravan();
     if (!caravan) {
-      this.text(x, y, "Assembly", "#9ff0bf", 14, 0);
-      this.text(x, y + 26, "No caravan selected.", "#9fb0d0", 12, 0);
+      this.text(x, y, "Assembly", INK.success, FONT.body, 0);
+      this.text(x, y + 26, "No caravan selected.", INK.muted, FONT.label, 0);
       return;
     }
     const vessel = getVessel(caravan.vesselId);
     const dispatched = caravan.dispatched;
-    this.text(x, y, `Assembly — ${vessel.label}`, "#9ff0bf", 14, 0);
-    this.text(x, y + 20, `slots ${caravan.party.length}/${caravanCapacity(caravan)}  ·  storage ${caravan.storageCap}  ·  purse ${caravan.purse}g${dispatched ? "  ·  DISPATCHED" : ""}`, "#cdd7ee", 12, 0);
+    this.text(x, y, `Assembly — ${vessel.label}`, INK.success, FONT.body, 0);
+    this.text(x, y + 20, `slots ${caravan.party.length}/${caravanCapacity(caravan)}  ·  storage ${caravan.storageCap}  ·  purse ${caravan.purse}g${dispatched ? "  ·  DISPATCHED" : ""}`, INK.secondary, FONT.label, 0);
 
     let yy = y + 44;
     // Aboard party (uniform slots) — click to remove (if not dispatched).
-    this.text(x, yy, "Aboard:", "#cdd7ee", 12, 0);
+    this.text(x, yy, "Aboard:", INK.secondary, FONT.label, 0);
     yy += 20;
     if (caravan.party.length === 0) {
-      this.text(x + 6, yy, "(empty — add from the pool →)", "#6b7488", 12, 0);
+      this.text(x + 6, yy, "(empty — add from the pool →)", INK.disabled, FONT.label, 0);
       yy += 22;
     }
     for (const u of caravan.party) {
@@ -202,10 +202,10 @@ export class GuildScene extends Phaser.Scene {
 
     // Locked gear — click to unlock.
     yy += 6;
-    this.text(x, yy, "Locked gear:", "#cdd7ee", 12, 0);
+    this.text(x, yy, "Locked gear:", INK.secondary, FONT.label, 0);
     yy += 20;
     if (caravan.gear.length === 0) {
-      this.text(x + 6, yy, "(none)", "#6b7488", 12, 0);
+      this.text(x + 6, yy, "(none)", INK.disabled, FONT.label, 0);
       yy += 22;
     }
     for (const g of caravan.gear) {
@@ -221,11 +221,11 @@ export class GuildScene extends Phaser.Scene {
 
     // Purse slider (treasury → purse), in steps of 20.
     yy += 6;
-    this.text(x, yy, "Purse (from treasury):", "#cdd7ee", 12, 0);
+    this.text(x, yy, "Purse (from treasury):", INK.secondary, FONT.label, 0);
     yy += 22;
     this.smallButton(x, yy, 34, "−20", () => this.adjustPurse(caravan, -20));
     this.smallButton(x + 40, yy, 34, "+20", () => this.adjustPurse(caravan, +20));
-    this.text(x + 86, yy + 2, `${caravan.purse}g`, "#dbe5fb", 13, 0);
+    this.text(x + 86, yy + 2, `${caravan.purse}g`, INK.bright, FONT.body, 0);
 
     // Dispatch.
     yy += 38;
@@ -243,10 +243,10 @@ export class GuildScene extends Phaser.Scene {
   /** The available roster pool + armory + the rebuild valve. */
   private drawPool(x: number, y: number): void {
     const caravan = this.selectedCaravan();
-    this.text(x, y, "Roster Pool", "#d6c98a", 14, 0);
+    this.text(x, y, "Roster Pool", INK.gold, FONT.body, 0);
     let yy = y + 24;
     const pool = availableRoster(this.guild);
-    if (pool.length === 0) this.text(x + 6, yy, "(all committed)", "#6b7488", 12, 0);
+    if (pool.length === 0) this.text(x + 6, yy, "(all committed)", INK.disabled, FONT.label, 0);
     for (const u of pool) {
       const refusal = caravan ? memberRefusal(caravan, u, this.others(caravan)) : "No caravan.";
       this.listButton(x, yy, 220, `${u.name} (${u.jobId}) Lv${u.level}`, false, () => {
@@ -259,10 +259,10 @@ export class GuildScene extends Phaser.Scene {
     }
 
     yy += 10;
-    this.text(x, yy, "Armory", "#d6c98a", 14, 0);
+    this.text(x, yy, "Armory", INK.gold, FONT.body, 0);
     yy += 24;
     const gear = availableGear(this.guild);
-    if (gear.length === 0) this.text(x + 6, yy, "(all locked out)", "#6b7488", 12, 0);
+    if (gear.length === 0) this.text(x + 6, yy, "(all locked out)", INK.disabled, FONT.label, 0);
     for (const g of gear) {
       this.listButton(x, yy, 220, g, false, () => {
         if (!caravan) return this.setHint("Select an assembling caravan first.");
@@ -288,7 +288,7 @@ export class GuildScene extends Phaser.Scene {
 
     // The refreshing mercenary pool (D33): several rolled recruits, gold-hired.
     yy += 40;
-    this.text(x, yy, "Recruits (refreshing pool)", "#d6c98a", 14, 0);
+    this.text(x, yy, "Recruits (refreshing pool)", INK.gold, FONT.body, 0);
     yy += 24;
     const poolMercs = mercPool(this.guild);
     const canAffordMerc = this.guild.treasury >= GUILD.mercCost;
@@ -314,7 +314,7 @@ export class GuildScene extends Phaser.Scene {
 
   /** The stable — every caravan with its status; Play an in-flight one (serial, D26). */
   private drawStable(x: number, y: number): void {
-    this.text(x, y, "The Stable", "#d6c98a", 14, 0);
+    this.text(x, y, "The Stable", INK.gold, FONT.body, 0);
     let xx = x;
     for (const c of this.guild.caravans) {
       const gr = runFor(this.guild, c.id);
@@ -322,16 +322,16 @@ export class GuildScene extends Phaser.Scene {
       const status = gr ? "IN FLIGHT" : c.party.length ? "assembling" : "empty";
       const selected = c.id === this.selectedCaravanId;
       const lines = `${vessel.label}\n[${status}]  ${c.party.length}/${caravanCapacity(c)} crew`;
-      const box = this.add.rectangle(xx, y + 24, 240, 70, selected ? 0x26314a : 0x1b2030, 1).setStrokeStyle(2, selected ? 0x7fe0a0 : 0x3d4b6e).setOrigin(0, 0).setDepth(1).setInteractive({ useHandCursor: true });
+      const box = this.add.rectangle(xx, y + 24, 240, 70, selected ? COLOR.surfaceAlt : COLOR.surfaceRaised, 1).setStrokeStyle(2, selected ? COLOR.accent : COLOR.border).setOrigin(0, 0).setDepth(1).setInteractive({ useHandCursor: true });
       box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => {
         this.selectedCaravanId = c.id;
         this.render();
       });
       this.ui.push(box);
-      this.ui.push(this.add.text(xx + 10, y + 32, lines, { color: "#dbe5fb", fontSize: FONT.label, lineSpacing: 4 }).setDepth(2));
+      this.ui.push(this.add.text(xx + 10, y + 32, lines, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 4 }).setDepth(2));
 
       if (gr) {
-        this.smallButton(xx + 150, y + 60, 76, "▶ Play", () => this.play(c.id), 24, 0x2f6b46, 0x57b07a);
+        this.smallButton(xx + 150, y + 60, 76, "▶ Play", () => this.play(c.id), 24, COLOR.successDeep, COLOR.success);
       }
       xx += 256;
     }
@@ -358,13 +358,13 @@ export class GuildScene extends Phaser.Scene {
     const w = 560;
     const h = 40 + lines.length * 20;
     const cy = this.scale.height / 2 - 40;
-    this.ui.push(this.add.rectangle(cx, cy, w, h, 0x11141b, 0.97).setStrokeStyle(2, wiped ? 0xb05757 : 0x57b07a).setDepth(30));
-    this.ui.push(this.add.text(cx, cy - h / 2 + 18, wiped ? "Caravan Lost" : "Caravan Home", { color: wiped ? "#f0a0a0" : "#9ff0bf", fontSize: FONT.title }).setOrigin(0.5).setDepth(31));
-    this.ui.push(this.add.text(cx, cy + 6, lines.join("\n"), { color: "#cdd7ee", fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(31));
+    this.ui.push(this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, wiped ? COLOR.danger : COLOR.success).setDepth(30));
+    this.ui.push(this.add.text(cx, cy - h / 2 + 18, wiped ? "Caravan Lost" : "Caravan Home", { color: wiped ? INK.danger : INK.success, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(31));
+    this.ui.push(this.add.text(cx, cy + 6, lines.join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(31));
     this.smallButton(cx - 50, cy + h / 2 - 4, 100, "Dismiss", () => {
       this.banner = undefined;
       this.render();
-    }, 26, 0x2f6b46, 0x57b07a, 0.5);
+    }, 26, COLOR.successDeep, COLOR.success, 0.5);
   }
 
   // --- Actions --------------------------------------------------------------
@@ -400,38 +400,38 @@ export class GuildScene extends Phaser.Scene {
 
   // --- Small UI helpers -----------------------------------------------------
 
-  private text(x: number, y: number, s: string, color: string, size: number, originX: number): void {
-    this.ui.push(this.add.text(x, y, s, { color, fontSize: `${size}px` }).setOrigin(originX, 0).setDepth(10));
+  private text(x: number, y: number, s: string, color: string, size: string, originX: number): void {
+    this.ui.push(this.add.text(x, y, s, { color, fontFamily: FONT.family, fontSize: size }).setOrigin(originX, 0).setDepth(10));
   }
 
   private listButton(x: number, y: number, w: number, label: string, selected: boolean, onClick: () => void): void {
-    const bg = this.add.rectangle(x, y, w, 24, selected ? 0x2f5d44 : 0x1b2030, 1).setStrokeStyle(1, selected ? 0x7fe0a0 : 0x3d4b6e).setOrigin(0, 0).setDepth(1).setInteractive({ useHandCursor: true });
+    const bg = this.add.rectangle(x, y, w, 24, selected ? COLOR.successDeep : COLOR.surfaceRaised, 1).setStrokeStyle(1, selected ? COLOR.accent : COLOR.border).setOrigin(0, 0).setDepth(1).setInteractive({ useHandCursor: true });
     bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => bg.setFillStyle(selected ? 0x387051 : 0x26314a));
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => bg.setFillStyle(selected ? 0x2f5d44 : 0x1b2030));
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => bg.setFillStyle(selected ? COLOR.successDeep : COLOR.surfaceAlt));
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => bg.setFillStyle(selected ? COLOR.successDeep : COLOR.surfaceRaised));
     this.ui.push(bg);
-    const text = this.add.text(x + 8, y + 4, label, { color: "#dbe5fb", fontSize: FONT.label }).setDepth(2);
+    const text = this.add.text(x + 8, y + 4, label, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setDepth(2);
     fitText(text, w - 16);
     this.ui.push(text);
   }
 
   private wideButton(x: number, y: number, w: number, label: string, enabled: boolean, onClick: () => void): void {
-    const bg = this.add.rectangle(x, y, w, 30, enabled ? 0x2f6b46 : 0x242a38, 1).setStrokeStyle(2, enabled ? 0x57b07a : 0x3a4254).setOrigin(0, 0).setDepth(1);
+    const bg = this.add.rectangle(x, y, w, 30, enabled ? COLOR.successDeep : COLOR.surfaceRaised, 1).setStrokeStyle(2, enabled ? COLOR.success : COLOR.border).setOrigin(0, 0).setDepth(1);
     if (enabled) {
       bg.setInteractive({ useHandCursor: true });
       bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
     }
     this.ui.push(bg);
-    const text = this.add.text(x + w / 2, y + 15, label, { color: enabled ? "#eafff0" : "#6b7488", fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
+    const text = this.add.text(x + w / 2, y + 15, label, { color: enabled ? INK.onSuccess : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
     fitText(text, w - 12);
     this.ui.push(text);
   }
 
-  private smallButton(x: number, y: number, w: number, label: string, onClick: () => void, h = 22, fill = 0x26314a, stroke = 0x4a5d86, originX = 0): void {
+  private smallButton(x: number, y: number, w: number, label: string, onClick: () => void, h = 22, fill: number = COLOR.surfaceAlt, stroke: number = COLOR.borderSoft, originX = 0): void {
     const bg = this.add.rectangle(x, y, w, h, fill, 1).setStrokeStyle(1, stroke).setOrigin(originX, 0.5).setDepth(2).setInteractive({ useHandCursor: true });
     bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
     this.ui.push(bg);
-    const text = this.add.text(x + (originX === 0 ? w / 2 : 0), y, label, { color: "#eafff0", fontSize: FONT.label }).setOrigin(0.5).setDepth(3);
+    const text = this.add.text(x + (originX === 0 ? w / 2 : 0), y, label, { color: INK.onSuccess, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(3);
     fitText(text, w - 12);
     this.ui.push(text);
   }

@@ -1,20 +1,15 @@
 import Phaser from "phaser";
-import { FONT } from "../theme";
+import { COLOR, FONT, INK } from "../theme";
 import {
-  gridToScreen,
-  screenToGrid,
+  planMove,
+  planAttack,
   findPath,
   occupiedGrid,
-  manhattan,
-  reachableTiles,
-  TILE_WIDTH,
   TILE_HEIGHT,
   DemoRunner,
   unlockedSkills,
   isValidSkillTarget,
-  inAttackRange,
   effectiveMove,
-  isImmobilized,
   computeFlankBonus,
   safeDepth,
   captureUnit,
@@ -26,7 +21,6 @@ import {
   type Rng,
   jobLevelOf,
   canSee,
-  statusVisual,
   countOf,
   addItem,
   slotsUsed,
@@ -39,15 +33,9 @@ import {
 } from "../../core";
 import { Button, ButtonColumn } from "../button";
 import { HintPanel } from "../hint-panel";
-import { roleColor } from "../roles";
+import { CombatView } from "../combat-view";
+import { addVignette } from "../vignette";
 import { dropNet as dropNetCage } from "../deploy-fx";
-
-/** Short token glyph for a unit: initials of a two-word name, else the first two letters. */
-function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/);
-  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
-  return (name[0]?.toUpperCase() ?? "") + (name[1]?.toLowerCase() ?? "");
-}
 
 /**
  * Standalone **demo mode** (D44): plays *The Hollow Mill* end to end, bypassing
@@ -63,6 +51,8 @@ export class DemoScene extends Phaser.Scene {
 
   private originX = 0;
   private originY = 0;
+  /** Shared board geometry + grid/tile drawing (the seam shared with BattleScene). */
+  private view!: CombatView;
   /**
    * The right-hand vertical command panel sizes itself to its labels: short sets
    * (Dash / Defend) stay snug at {@link panelMinW}, while a long label (a kit name
@@ -77,38 +67,19 @@ export class DemoScene extends Phaser.Scene {
   private highlight!: Phaser.GameObjects.Graphics;
   /** Move-range / attack / valid-target preview, painted on the player's turn. */
   private preview!: Phaser.GameObjects.Graphics;
+  /** The danger-zone overlay (toggle with T) and whether it's on. */
+  private threatGfx!: Phaser.GameObjects.Graphics;
+  private showThreat = false;
   /** A bobbing chevron over the unit currently taking its turn. */
   private activeMarker!: Phaser.GameObjects.Triangle;
   private boardObjects: Phaser.GameObjects.GameObject[] = [];
-  /** Self-destroying floating-combat-text objects, tracked so a scene change can sweep them. */
-  private floaters = new Set<Phaser.GameObjects.Text>();
   /** Bus unsubscribers for the active encounter (floating combat text). */
   private busUnsubs: (() => void)[] = [];
-  private views = new Map<
-    string,
-    {
-      container: Phaser.GameObjects.Container;
-      body: Phaser.GameObjects.Arc;
-      /** Floating "Name  hp/max" plate — shown only for the active or hovered unit. */
-      label: Phaser.GameObjects.Text;
-      hp: Phaser.GameObjects.Text;
-      badges: Phaser.GameObjects.Text;
-      hpBarFill: Phaser.GameObjects.Rectangle;
-      hpBarW: number;
-    }
-  >();
-  /** Units we've already played the death animation for (reset each encounter). */
-  private deadSeen = new Set<string>();
-  /** The unit whose turn it is, and the one under the cursor — both get a nameplate. */
-  private activeUnitId: string | null = null;
-  private hoveredUnitId: string | null = null;
 
   private titleText!: Phaser.GameObjects.Text;
   private subText!: Phaser.GameObjects.Text;
+  /** Header label above the shared initiative rail (the rail itself lives in CombatView). */
   private orderText!: Phaser.GameObjects.Text;
-  private orderBg!: Phaser.GameObjects.Rectangle;
-  /** One reusable Text per turn-order row (Phaser Text can't colour lines individually). */
-  private orderLines: Phaser.GameObjects.Text[] = [];
   private timerText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
   private lastHint = "";
@@ -140,24 +111,28 @@ export class DemoScene extends Phaser.Scene {
 
   create(): void {
     this.runner = new DemoRunner();
-    this.titleText = this.add.text(this.scale.width / 2, 14, "", { color: "#e8eefc", fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
-    this.subText = this.add.text(this.scale.width / 2, 38, "", { color: "#cdd7ee", fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
-    // A faint backing groups the turn-order readout; sized to the text each refresh.
-    this.orderBg = this.add.rectangle(4, 64, 10, 10, 0x141925, 0.55).setStrokeStyle(1, 0x3d4b6e).setOrigin(0, 0).setDepth(9).setVisible(false);
-    this.orderText = this.add.text(10, 70, "", { color: "#cdd7ee", fontSize: FONT.caption, lineSpacing: 3 }).setDepth(10);
-    this.timerText = this.add.text(this.scale.width / 2, 58, "", { color: "#f0b06a", fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
+    this.view = new CombatView(this);
+    this.view.reduceMotion = this.reduceMotion;
+    // The campfire glow — a warm vignette over the board, beneath the tokens/HUD.
+    addVignette(this);
+    this.titleText = this.add.text(this.scale.width / 2, 14, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
+    this.subText = this.add.text(this.scale.width / 2, 38, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
+    // Header above the shared initiative rail (drawn by CombatView in refreshHud).
+    this.orderText = this.add.text(10, 68, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
+    this.timerText = this.add.text(this.scale.width / 2, 58, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
     // A collapsible top-right card consolidates contextual tips and the command
     // keys in one consistent place (hover to peek, click to pin).
-    this.hintPanel = new HintPanel(this, { keys: "Space / Enter = advance · 1–9 = abilities" });
+    this.hintPanel = new HintPanel(this, { keys: "Space / Enter = advance · 1–9 = abilities · T = danger zone" });
+    this.threatGfx = this.add.graphics().setDepth(0.36);
     this.preview = this.add.graphics().setDepth(0.4);
     this.highlight = this.add.graphics().setDepth(0.5);
     // A downward chevron that hovers over the acting unit (the active-unit cue).
     this.activeMarker = this.add
-      .triangle(0, 0, -8, -10, 8, -10, 0, 2, 0xffe06a)
-      .setStrokeStyle(1.5, 0x7a5a10)
+      .triangle(0, 0, -8, -10, 8, -10, 0, 2, COLOR.ally)
+      .setStrokeStyle(1.5, COLOR.allyEdge)
       .setDepth(2)
       .setVisible(false);
-    this.primary = new Button(this, this.scale.width / 2, this.scale.height - 26, { text: "", w: 220, h: 32, fill: 0x2f6b46, stroke: 0x57b07a, onClick: () => this.onPrimary() });
+    this.primary = new Button(this, this.scale.width / 2, this.scale.height - 26, { text: "", w: 220, h: 32, fill: COLOR.successDeep, stroke: COLOR.success, onClick: () => this.onPrimary() });
     this.add.existing(this.primary).setDepth(12);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
     this.setupKeyboard();
@@ -173,6 +148,12 @@ export class DemoScene extends Phaser.Scene {
     kb.on("keydown", (e: KeyboardEvent) => {
       if (e.code === "Space" || e.code === "Enter") {
         if (this.primary.visible) this.onPrimary();
+        return;
+      }
+      if (e.code === "KeyT") {
+        // Toggle the danger-zone overlay (every tile an enemy could hit this turn).
+        this.showThreat = !this.showThreat;
+        this.drawPreview();
         return;
       }
       const n = Number(e.key);
@@ -278,12 +259,19 @@ export class DemoScene extends Phaser.Scene {
     // Floating combat text rides the same bus the rules already emit on — so
     // damage/heal pop-ups cover every source (attacks, cleave, charged skills).
     this.busUnsubs.push(
-      this.battle.bus.on("unitDamaged", ({ unit, amount }) => {
-        if (amount > 0) this.floatText(unit, `-${amount}`, "#ff9a9a");
+      this.battle.bus.on("unitDamaged", ({ unit, amount, source }) => {
+        // Note the blow so flashHit can scale the impact to it, then pop a
+        // magnitude-emphasised damage number and narrate it in the log.
+        this.view.noteDamage(unit.id, amount);
+        this.view.floatDamage(unit, amount);
+        this.view.logDamage(unit, amount, source);
       }),
-      this.battle.bus.on("unitHealed", ({ unit, amount }) => {
-        if (amount > 0) this.floatText(unit, `+${amount}`, "#9ff0bf");
+      this.battle.bus.on("unitHealed", ({ unit, amount, source }) => {
+        if (amount > 0) this.floatText(unit, `+${amount}`, INK.success);
+        this.view.logHeal(unit, amount, source);
       }),
+      this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit)),
+      this.battle.bus.on("turnStart", ({ unit }) => this.view.logTurn(unit)),
     );
     this.ended = false;
     this.busy = false;
@@ -333,12 +321,12 @@ export class DemoScene extends Phaser.Scene {
 
   /** Tint the safe-depth tiles (silent deployment) for the chosen unit. */
   private drawDeployZone(unit: Unit | null): void {
-    this.preview.clear();
+    this.view.clearPreview(this.preview);
     if (!unit) return;
     const maxCol = safeDepth(unit);
     for (let row = 0; row < this.battle.grid.rows; row++) {
       for (let col = 0; col <= maxCol && col < this.battle.grid.cols; col++) {
-        if (this.battle.grid.isWalkable({ col, row })) this.fillTile(this.preview, { col, row }, 0x2f6b46, 0.22);
+        if (this.battle.grid.isWalkable({ col, row })) this.fillTile(this.preview, { col, row }, COLOR.successDeep, 0.22);
       }
     }
   }
@@ -385,7 +373,7 @@ export class DemoScene extends Phaser.Scene {
 
   /** Animate a spotted unit bolting for cover along the resolver's planned path. */
   private playRetreat(unit: Unit, outcome: DeployOutcome): void {
-    this.floatText(unit, "SPOTTED!", "#ffd86b", -22);
+    this.floatText(unit, "SPOTTED!", INK.gold, -22);
     if (outcome.retreatPath.length === 0) return this.refreshDeploy(); // nowhere to fall back
     this.setHint(`${unit.name} was spotted — bolting for cover!`);
     this.walkRetreat(unit, outcome.retreatPath, outcome.capturedAt, 0);
@@ -412,7 +400,7 @@ export class DemoScene extends Phaser.Scene {
   private netCapture(unit: Unit): void {
     captureUnit(unit);
     this.dropNet(unit);
-    this.floatText(unit, "NETTED!", "#ff9d5c", -22);
+    this.floatText(unit, "NETTED!", INK.ember, -22);
     unit.pos = { col: this.battle.grid.cols - 1, row: this.battle.grid.rows - 1 };
     this.placeView(unit);
     this.refreshHp();
@@ -432,7 +420,7 @@ export class DemoScene extends Phaser.Scene {
   private startBattle(): void {
     this.deploying = false;
     this.deployActor = null;
-    this.preview.clear();
+    this.view.clearPreview(this.preview);
     this.clearButtons();
     this.setActiveUnit(null);
     this.highlightTile(null);
@@ -537,7 +525,7 @@ export class DemoScene extends Phaser.Scene {
       const out = this.battle.useHeal(actor, skill, target, this.pendingHerb, this.runner.inventory);
       this.pendingHerb = null;
       verb = out.cleansed ? `cleanses ${out.cleansed}` : out.healed ? `heals ${out.healed}` : "no herb";
-      if (out.cleansed) this.floatText(target, `cleanse ${out.cleansed}`, "#9fe0e0");
+      if (out.cleansed) this.floatText(target, `cleanse ${out.cleansed}`, INK.cyan);
       this.flash(actor, target);
     } else if (skill.effect.kind === "cleave") {
       const dir = { col: Math.sign(target.pos.col - actor.pos.col) || 1, row: target.pos.col === actor.pos.col ? Math.sign(target.pos.row - actor.pos.row) : 0 };
@@ -579,20 +567,15 @@ export class DemoScene extends Phaser.Scene {
   }
 
   private playerAttack(actor: Unit, foe: Unit): void {
-    if (inAttackRange(actor, foe)) return this.commitMove(actor, [], foe);
-    const nav = occupiedGrid(this.battle.grid, this.battle.units, [actor, foe]);
-    const path = findPath(nav, actor.pos, foe.pos);
-    if (!path || path.length < 2) return this.setHint("No path to that foe.");
-    const approach = path.slice(1, -1).slice(0, effectiveMove(actor));
-    const dest = approach.length > 0 ? approach[approach.length - 1] : actor.pos;
-    this.commitMove(actor, approach, manhattan(dest, foe.pos) <= actor.attackRange ? foe : null);
+    const plan = planAttack(actor, foe, this.battle.units, this.battle.grid);
+    if (!plan) return this.setHint("No path to that foe.");
+    this.commitMove(actor, plan.path, plan.attackTarget);
   }
 
   private playerMove(actor: Unit, tile: GridCoord): void {
-    const nav = occupiedGrid(this.battle.grid, this.battle.units, [actor]);
-    const path = findPath(nav, actor.pos, tile);
-    if (!path || path.length < 2) return this.setHint("Can't move there.");
-    this.commitMove(actor, path.slice(1).slice(0, effectiveMove(actor)), null);
+    const path = planMove(actor, tile, this.battle.units, this.battle.grid);
+    if (!path) return this.setHint("Can't move there.");
+    this.commitMove(actor, path, null);
   }
 
   private commitMove(actor: Unit, path: GridCoord[], target: Unit | null): void {
@@ -607,7 +590,7 @@ export class DemoScene extends Phaser.Scene {
       // exactly when the +bonus actually lands.
       const flanked = computeFlankBonus(actor, target, this.battle.units) > 0;
       this.battle.attack(actor, target);
-      if (flanked) this.floatText(target, "FLANK!", "#ffd86b", -14);
+      if (flanked) this.floatText(target, "FLANK!", INK.gold, -14);
     }
     this.battle.endTurn(actor, { moved: path.length > 0, acted: target !== null });
     this.animateMove(actor, path, () => {
@@ -700,8 +683,7 @@ export class DemoScene extends Phaser.Scene {
     this.subText.setText("");
     this.timerText.setText("");
     this.orderText.setText("");
-    this.orderLines.forEach((t) => t.setVisible(false));
-    this.orderBg.setVisible(false);
+    this.view.hideInitiative();
   }
 
   private showEnd(): void {
@@ -732,6 +714,7 @@ export class DemoScene extends Phaser.Scene {
     // far-right tiles never hide behind the action buttons.
     this.originX = (this.scale.width - this.panelMaxW - 24) / 2;
     this.originY = this.scale.height / 2 - (grid.rows * TILE_HEIGHT) / 2 + 10;
+    this.view.setOrigin(this.originX, this.originY);
     this.drawGrid();
     for (const unit of this.battle.units) this.spawnUnit(unit);
     this.refreshHp();
@@ -740,142 +723,40 @@ export class DemoScene extends Phaser.Scene {
   private clearBoard(): void {
     for (const u of this.busUnsubs) u();
     this.busUnsubs = [];
-    for (const f of this.floaters) f.destroy();
-    this.floaters.clear();
+    this.view.clearUnits();
     for (const o of this.boardObjects) o.destroy();
     this.boardObjects = [];
-    this.views.clear();
-    this.deadSeen.clear();
     this.deploying = false;
     this.deployActor = null;
-    this.activeUnitId = null;
-    this.hoveredUnitId = null;
-    this.orderBg.setVisible(false);
-    this.orderLines.forEach((t) => t.setVisible(false));
     this.gridGfx?.destroy();
     this.gridGfx = undefined;
     this.highlight.clear();
-    this.preview.clear();
+    this.view.clearPreview(this.preview);
+    this.threatGfx?.clear();
     this.setActiveMarker(null);
   }
 
   private drawGrid(): void {
     const g = this.add.graphics();
     this.gridGfx = g;
-    const grid = this.battle.grid;
-    for (let row = 0; row < grid.rows; row++) {
-      for (let col = 0; col < grid.cols; col++) {
-        const { x, y } = this.tileToWorld({ col, row });
-        const walkable = grid.isWalkable({ col, row });
-        const fill = !walkable ? 0x55304a : (col + row) % 2 === 0 ? 0x2a3550 : 0x222b40;
-        this.drawDiamond(g, x, y, fill);
-      }
-    }
-  }
-
-  private drawDiamond(g: Phaser.GameObjects.Graphics, cx: number, cy: number, fill: number): void {
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
-    g.fillStyle(fill, 1);
-    g.lineStyle(1, 0x3d4b6e, 1);
-    g.beginPath();
-    g.moveTo(cx, cy - hh);
-    g.lineTo(cx + hw, cy);
-    g.lineTo(cx, cy + hh);
-    g.lineTo(cx - hw, cy);
-    g.closePath();
-    g.fillPath();
-    g.strokePath();
+    this.view.drawGrid(g, this.battle.grid);
   }
 
   private spawnUnit(unit: Unit): void {
-    const color = unit.side === "player" ? 0xffcf6b : 0xe06b6b;
-    const stroke = unit.side === "player" ? 0x6b4a1c : 0x6b1c1c;
-    const cy = -TILE_HEIGHT / 2;
-    // Side-coloured fill (friend/foe), role-coloured ring (class) — so the board
-    // reads at a glance: "my gold token with the cyan ring is the medic".
-    const body = this.add.circle(0, cy, 12, color).setStrokeStyle(3, roleColor(unit, stroke));
-    // Identity lives *inside* the token (initials), so the board reads at a glance
-    // without a floating label over every unit.
-    const initials = this.add.text(0, cy, initialsOf(unit.name), { color: "#1b1f2a", fontSize: FONT.micro, fontStyle: "bold" }).setOrigin(0.5);
-    // The full "Name  hp/max" plate is created hidden and only revealed for the
-    // active or hovered unit (see refreshNameplate) — that's what keeps spawn
-    // clusters from collapsing into a pile of overlapping text.
-    const label = this.add.text(0, cy - 36, unit.name, { color: "#e8eefc", fontSize: FONT.nameplate }).setOrigin(0.5).setVisible(false);
-    const hp = this.add.text(0, cy - 24, "", { color: "#bfe8c0", fontSize: FONT.nameplate }).setOrigin(0.5).setVisible(false);
-    const badges = this.add.text(0, cy + 10, "", { color: "#ffe6a0", fontSize: FONT.nameplate }).setOrigin(0.5);
-    // An at-a-glance HP bar capping the token (sat just above it, not behind it,
-    // so it actually reads); fill width + tint track the fraction.
-    const hpBarW = 26;
-    const hpBarH = 6;
-    const hpBarY = cy - 14;
-    const hpBarBg = this.add.rectangle(0, hpBarY, hpBarW, hpBarH, 0x101521).setStrokeStyle(1, 0x000000, 0.6);
-    const hpBarFill = this.add.rectangle(-hpBarW / 2, hpBarY, hpBarW, hpBarH, 0x57b07a).setOrigin(0, 0.5);
-    const container = this.add.container(0, 0, [hpBarBg, hpBarFill, body, initials, label, hp, badges]).setDepth(1);
-    this.views.set(unit.id, { container, body, label, hp, badges, hpBarFill, hpBarW });
-    // Hovering a token reveals its nameplate (the other half of "active/hover only").
-    body.setInteractive({ useHandCursor: false });
-    body.on("pointerover", () => { this.hoveredUnitId = unit.id; this.refreshNameplate(unit.id); });
-    body.on("pointerout", () => { if (this.hoveredUnitId === unit.id) this.hoveredUnitId = null; this.refreshNameplate(unit.id); });
-    this.boardObjects.push(container);
-    this.placeView(unit);
-  }
-
-  /** Show a unit's floating nameplate iff it's the active or hovered (and visible) unit. */
-  private refreshNameplate(unitId: string): void {
-    const view = this.views.get(unitId);
-    if (!view) return;
-    const unit = this.battle.units.find((u) => u.id === unitId);
-    const show = !!unit && unit.alive && !unit.hidden && (unitId === this.activeUnitId || unitId === this.hoveredUnitId);
-    view.label.setVisible(show);
-    view.hp.setVisible(show);
+    this.view.spawnUnit(unit);
   }
 
   /** Mark the unit taking its turn; its nameplate stays up until the turn ends. */
   private setActiveUnit(unit: Unit | null): void {
-    const prev = this.activeUnitId;
-    this.activeUnitId = unit?.id ?? null;
-    if (prev && prev !== this.activeUnitId) this.refreshNameplate(prev);
-    if (this.activeUnitId) this.refreshNameplate(this.activeUnitId);
-    // A quick scale-pop when a unit takes the turn — a clearer hand-off than the
-    // chevron alone. End state is unchanged (yoyo), so captures are unaffected.
-    if (unit && prev !== this.activeUnitId && !this.reduceMotion) {
-      const view = this.views.get(unit.id);
-      if (view) this.tweens.add({ targets: view.container, scaleX: 1.18, scaleY: 1.18, duration: 130, yoyo: true, ease: "Quad.Out" });
-    }
+    this.view.setActiveUnit(unit);
   }
 
   private placeView(unit: Unit): void {
-    const view = this.views.get(unit.id);
-    if (!view) return;
-    const { x, y } = this.tileToWorld(unit.pos);
-    view.container.setPosition(x, y);
+    this.view.placeView(unit);
   }
 
   private refreshHp(): void {
-    for (const unit of this.battle.units) {
-      const view = this.views.get(unit.id);
-      if (!view) continue;
-      view.hp.setText(`${Math.max(0, unit.hp)}/${unit.maxHp}`);
-      // HP bar: width by fraction, tint green→amber→red as it drops.
-      const frac = unit.maxHp > 0 ? Math.max(0, unit.hp) / unit.maxHp : 0;
-      view.hpBarFill.width = Math.max(0, view.hpBarW * frac);
-      view.hpBarFill.setFillStyle(frac > 0.5 ? 0x57b07a : frac > 0.25 ? 0xd8b24a : 0xc8504a);
-      view.hpBarFill.setVisible(unit.alive);
-      // Status trackers (D41): one glyph per active status, tinted by the registry.
-      const badges = unit.statuses.map((s) => statusVisual(s.id).glyph).join("");
-      view.badges.setText(badges);
-      if (unit.statuses.length > 0) view.badges.setColor(`#${statusVisual(unit.statuses[0].id).tint.toString(16).padStart(6, "0")}`);
-      view.container.setAlpha(!unit.alive ? 0.2 : unit.captured ? 0.4 : unit.hidden ? 0.35 : 1);
-      // Death pop: the first time a unit reads as dead, collapse its token so the
-      // kill registers (it then rests as the faded "downed" marker). The fade above
-      // is the capture-safe end state; the shrink is the juice, skipped under reduceMotion.
-      if (!unit.alive && !this.deadSeen.has(unit.id)) {
-        this.deadSeen.add(unit.id);
-        view.hpBarFill.setVisible(false);
-        if (!this.reduceMotion) this.tweens.add({ targets: view.container, scaleX: 0.72, scaleY: 0.72, duration: 260, ease: "Quad.Out" });
-      }
-    }
+    this.view.refreshUnits();
   }
 
   private refreshHud(): void {
@@ -884,20 +765,11 @@ export class DemoScene extends Phaser.Scene {
     const allies = live.filter((u) => u.side === "player").length;
     const foes = live.filter((u) => u.side === "enemy").length;
     this.subText.setText(`Allies ${allies}  ·  Foes ${foes}`);
-    // Turn-order readout. One tinted row per unit: faction reads at a glance from
-    // colour (warm = ally, cool = foe), a "▸" flags whoever is acting, and fallen
-    // units trail dimmed at the bottom so casualties stay trackable.
-    this.orderText.setText("CT order");
-    const rowOf = (u: Unit, dead: boolean) => ({
-      text: `${u.id === this.activeUnitId ? "▸" : " "} ${u.side === "player" ? "●" : "○"} ${u.name}${
-        dead ? "  ✕" : `  CT${Math.round(u.ct)}${this.battle.clock.isCharging(u) ? " ⏳" : ""}`
-      }`,
-      color: u.side === "player" ? "#ecd6a3" : "#e6a39b",
-      alpha: dead ? 0.4 : 1,
-    });
-    const rows = live.sort((a, b) => b.ct - a.ct).map((u) => rowOf(u, false));
-    const dead = this.battle.units.filter((u) => !u.alive && !u.captured && !u.hidden).map((u) => rowOf(u, true));
-    this.renderOrderRows([...rows, ...dead]);
+    // The visual initiative rail (shared CombatView): one chip per unit sorted by
+    // charge time, the acting unit lit, fallen trailing dimmed. Replaces the old
+    // monospace "CT order" list — `orderText` is now just its header.
+    this.orderText.setText("Turn order");
+    this.view.drawInitiative(this.battle.units, 8, 86, (u) => this.battle.clock.isCharging(u));
     this.refreshHp();
     // The bridge-cut timer (D43): a visible race readout.
     const prog = this.battle.clock.scheduledProgress(`objective:${this.staged?.encounter.id}:bridge-cut`);
@@ -909,55 +781,20 @@ export class DemoScene extends Phaser.Scene {
     }
   }
 
-  /** Draw the turn-order rows into a reusable Text pool and size the backing to fit. */
-  private renderOrderRows(rows: { text: string; color: string; alpha: number }[]): void {
-    const x = 14;
-    const y0 = 90;
-    const step = 15;
-    let maxW = this.orderText.width;
-    rows.forEach((r, i) => {
-      let t = this.orderLines[i];
-      if (!t) {
-        t = this.add.text(x, 0, "", { fontSize: FONT.caption }).setDepth(10);
-        this.orderLines[i] = t;
-      }
-      t.setPosition(x, y0 + i * step).setText(r.text).setColor(r.color).setAlpha(r.alpha).setVisible(true);
-      maxW = Math.max(maxW, t.width);
-    });
-    for (let i = rows.length; i < this.orderLines.length; i++) this.orderLines[i].setVisible(false);
-    this.orderBg.setSize(maxW + 18, y0 + rows.length * step - 64).setVisible(true);
-  }
-
   // --- Geometry --------------------------------------------------------------
 
   private tileToWorld(coord: GridCoord): { x: number; y: number } {
-    const { x, y } = gridToScreen(coord);
-    return { x: this.originX + x, y: this.originY + y };
+    return this.view.tileToWorld(coord);
   }
 
   private worldToTile(px: number, py: number): GridCoord {
-    const frac = screenToGrid({ x: px - this.originX, y: py - this.originY });
-    return { col: Math.round(frac.col), row: Math.round(frac.row) };
+    return this.view.worldToTile(px, py);
   }
 
   private highlightTile(coord: GridCoord | null): void {
-    this.highlight.clear();
+    this.view.highlightTile(this.highlight, coord);
     this.setActiveMarker(coord);
-    if (!coord) {
-      this.preview.clear();
-      return;
-    }
-    const { x, y } = this.tileToWorld(coord);
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
-    this.highlight.lineStyle(3, 0x7fe0a0, 1);
-    this.highlight.beginPath();
-    this.highlight.moveTo(x, y - hh);
-    this.highlight.lineTo(x + hw, y);
-    this.highlight.lineTo(x, y + hh);
-    this.highlight.lineTo(x - hw, y);
-    this.highlight.closePath();
-    this.highlight.strokePath();
+    if (!coord) this.view.clearPreview(this.preview);
   }
 
   /** Hover the bobbing active-unit chevron over a tile (or hide it on null). */
@@ -980,7 +817,7 @@ export class DemoScene extends Phaser.Scene {
    * meaningful under reduceMotion, which suppresses the perpetual chevron bob.)
    */
   isSettled(): boolean {
-    return !this.busy && this.floaters.size === 0 && this.tweens.getTweens().length === 0;
+    return !this.busy && this.view.floaters.size === 0 && this.tweens.getTweens().length === 0;
   }
 
   /**
@@ -989,115 +826,34 @@ export class DemoScene extends Phaser.Scene {
    * **reachable** move tiles and outline the **foes in reach** this turn.
    */
   private drawPreview(): void {
-    this.preview.clear();
     const actor = this.waitingFor;
-    if (!actor || this.busy || this.ended) return;
-    const g = this.preview;
-    if (this.armed) {
-      for (const u of this.battle.units) {
-        if (!u.alive || u.hidden || !isValidSkillTarget(this.armed, actor, u)) continue;
-        const ally = u.side === actor.side;
-        this.fillTile(g, u.pos, ally ? 0x57b07a : 0xc85a5a, 0.22, ally ? 0x8fe0b0 : 0xe89090);
-      }
+    if (!actor || this.busy || this.ended) {
+      this.view.clearPreview(this.preview);
+      this.threatGfx.clear();
       return;
     }
-    const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
-    const reach = reachableTiles(actor, this.battle.units, this.battle.grid, budget);
-    for (const r of reach) {
-      if (r.tile.col === actor.pos.col && r.tile.row === actor.pos.row) continue;
-      this.fillTile(g, r.tile, 0x3a7bd5, 0.18);
-    }
-    for (const foe of this.battle.units) {
-      if (!foe.alive || foe.hidden || foe.side === actor.side) continue;
-      if (reach.some((r) => manhattan(r.tile, foe.pos) <= actor.attackRange)) {
-        this.outlineTile(g, foe.pos, 0xe07b7b);
-      }
-    }
+    if (this.showThreat) this.view.drawThreatZone(this.threatGfx, this.battle.units, this.battle.grid, "player");
+    else this.threatGfx.clear();
+    this.view.drawPreview(this.preview, actor, this.battle.units, this.battle.grid, this.armed ?? undefined);
   }
 
   private fillTile(g: Phaser.GameObjects.Graphics, coord: GridCoord, fill: number, alpha: number, line?: number): void {
-    const { x, y } = this.tileToWorld(coord);
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
-    g.fillStyle(fill, alpha);
-    g.beginPath();
-    g.moveTo(x, y - hh);
-    g.lineTo(x + hw, y);
-    g.lineTo(x, y + hh);
-    g.lineTo(x - hw, y);
-    g.closePath();
-    g.fillPath();
-    if (line !== undefined) {
-      g.lineStyle(2, line, 0.9);
-      g.strokePath();
-    }
-  }
-
-  private outlineTile(g: Phaser.GameObjects.Graphics, coord: GridCoord, color: number): void {
-    const { x, y } = this.tileToWorld(coord);
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
-    g.lineStyle(2.5, color, 0.95);
-    g.beginPath();
-    g.moveTo(x, y - hh);
-    g.lineTo(x + hw, y);
-    g.lineTo(x, y + hh);
-    g.lineTo(x - hw, y);
-    g.closePath();
-    g.strokePath();
+    this.view.fillTile(g, coord, fill, alpha, line);
   }
 
   /** A short-lived combat-text pop-up that drifts up off a unit and fades. */
   private floatText(unit: Unit, text: string, color: string, dy = 0): void {
-    if (!this.views.has(unit.id)) return;
-    const { x, y } = this.tileToWorld(unit.pos);
-    const t = this.add
-      .text(x, y - TILE_HEIGHT / 2 - 18 + dy, text, { color, fontSize: FONT.body, fontStyle: "bold" })
-      .setOrigin(0.5)
-      .setDepth(30);
-    this.floaters.add(t);
-    this.tweens.add({
-      targets: t,
-      y: t.y - 26,
-      alpha: 0,
-      duration: 760,
-      ease: "Cubic.Out",
-      onComplete: () => {
-        this.floaters.delete(t);
-        t.destroy();
-      },
-    });
+    this.view.floatText(unit, text, color, dy);
   }
 
   // --- Animation -------------------------------------------------------------
 
   private animateMove(unit: Unit, path: readonly GridCoord[], done: () => void): void {
-    const view = this.views.get(unit.id);
-    if (!view || path.length === 0) {
-      this.placeView(unit);
-      return done();
-    }
-    const targets = path.map((c) => this.tileToWorld(c));
-    this.tweens.chain({ targets: view.container, tweens: targets.map((p) => ({ x: p.x, y: p.y, duration: 130, ease: "Linear" })), onComplete: done });
+    this.view.animateMove(unit, path, done);
   }
 
   private flash(attacker: Unit, target: Unit): void {
-    const av = this.views.get(attacker.id);
-    const tv = this.views.get(target.id);
-    if (av && attacker !== target) {
-      const home = this.tileToWorld(attacker.pos);
-      const toward = this.tileToWorld(target.pos);
-      this.tweens.add({ targets: av.container, x: home.x + (toward.x - home.x) * 0.3, y: home.y + (toward.y - home.y) * 0.3, duration: 90, yoyo: true });
-    }
-    if (tv) {
-      // Punchier impact: a white flash on the struck token + a short camera shake,
-      // on top of the alpha blink. The body colour is restored once the blink settles.
-      const base = target.side === "player" ? 0xffcf6b : 0xe06b6b;
-      tv.body.setFillStyle(0xffffff);
-      this.tweens.add({ targets: tv.container, alpha: 0.4, duration: 70, yoyo: true, onComplete: () => this.refreshHp() });
-      this.time.delayedCall(95, () => tv.body.setFillStyle(base));
-      if (!this.reduceMotion) this.cameras.main.shake(70, 0.0035);
-    }
+    this.view.flashHit(attacker, target);
   }
 
   // --- UI primitives ---------------------------------------------------------
@@ -1149,9 +905,9 @@ export class DemoScene extends Phaser.Scene {
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
     this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, 0x11141b, 0.94).setStrokeStyle(2, good ? 0x57b07a : 0xb05757).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 26, title, { color: good ? "#9ff0bf" : "#f0a0a0", fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy + 12, body, { color: "#cdd7ee", fontSize: FONT.label, align: "center", lineSpacing: 4, wordWrap: { width: w - 40 } }).setOrigin(0.5).setDepth(21),
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.94).setStrokeStyle(2, good ? COLOR.success : COLOR.danger).setDepth(20),
+      this.add.text(cx, cy - h / 2 + 26, title, { color: good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
+      this.add.text(cx, cy + 12, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, align: "center", lineSpacing: 4, wordWrap: { width: w - 40 } }).setOrigin(0.5).setDepth(21),
     );
   }
 }

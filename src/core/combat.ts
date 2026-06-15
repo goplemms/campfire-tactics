@@ -137,6 +137,24 @@ export function computeFlankBonus(
 }
 
 /**
+ * True if `unit` is currently **exposed to a melee flank** — the victim's-eye view
+ * of {@link computeFlankBonus} (D36): no same-side ally adjacent to shelter it
+ * (formation breaks the flank), plus an adjacent *melee* foe that would earn the
+ * bonus — either backed by a second adjacent foe (the standard gang-up) or a
+ * solo-flanker (the Scout). Positional and instantaneous, so the render recomputes
+ * it each frame rather than storing it as a status; ranged foes never flank.
+ */
+export function isFlanked(unit: Unit, units: readonly Unit[]): boolean {
+  if (adjacentBodies(unit, units, unit.side) > 0) return false; // sheltered by formation
+  const enemySide: Side = unit.side === "player" ? "enemy" : "player";
+  const adjFoes = units.filter((u) => u.alive && !u.captured && u.side === enemySide && isAdjacent(u.pos, unit.pos));
+  const meleeFoes = adjFoes.filter((f) => f.attackRange <= 1);
+  if (meleeFoes.length === 0) return false; // only a melee attacker can flank
+  if (adjFoes.length >= 2) return true; // ganged: the melee foe + a second body
+  return meleeFoes.some((f) => Boolean(f.passives[PASSIVE.flankSolo])); // lone solo-flanker
+}
+
+/**
  * Damage a basic attack would deal. Base is `max(1, atk − def)`, then the
  * positional + status modifiers stack into the attack power before the floor:
  * **flanking** (melee, when `units` is given, D36), the **Mark Prey** ramp and

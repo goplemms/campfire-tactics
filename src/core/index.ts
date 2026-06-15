@@ -6,6 +6,7 @@ export * from "./generation";
 export * from "./iso";
 export * from "./grid";
 export * from "./pathfinding";
+export * from "./planning";
 export * from "./units";
 export * from "./status";
 export * from "./events";

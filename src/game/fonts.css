@@ -1,0 +1,23 @@
+/*
+ * Bundled UI typeface. Phaser bakes whatever font is resolved *at Text-creation
+ * time* into a canvas texture, so the face must be loaded before the first scene
+ * draws — main.ts awaits `document.fonts.ready` before booting the game.
+ *
+ * Courier Prime: a warm, well-drawn typewriter monospace (a "field journal by
+ * firelight" feel) that keeps the column alignment the turn rail and HP readouts
+ * rely on.
+ */
+@font-face {
+  font-family: "Courier Prime";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("../assets/fonts/CourierPrime-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Courier Prime";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("../assets/fonts/CourierPrime-Bold.ttf") format("truetype");
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planEnemyTurn, reachableTiles } from "./ai";
+import { planEnemyTurn, reachableTiles, forecastEnemyAction, threatenedTiles } from "./ai";
 import { TileGrid } from "./grid";
 import { isAdjacent } from "./combat";
 import { applyStatus, immobilized } from "./status";
@@ -110,5 +110,56 @@ describe("reachableTiles (shared by the AI + the render-side move preview)", () 
     const reach = reachableTiles(u, [u], grid);
     expect(reach.length).toBe(1);
     expect(reach[0].tile).toEqual({ col: 2, row: 2 });
+  });
+});
+
+describe("forecastEnemyAction", () => {
+  it("telegraphs who an enemy will strike, from where, and for how much", () => {
+    const grid = new TileGrid(8, 1);
+    const enemy = at("e", "enemy", 0, 0); // atk 5
+    const player = at("p", "player", 4, 0); // def 0, hp 10
+    const intent = forecastEnemyAction(enemy, [enemy, player], grid);
+    expect(intent?.target).toBe(player);
+    expect(intent?.destination).toEqual({ col: 3, row: 0 }); // closes to adjacency
+    expect(intent?.damage).toBe(5);
+    expect(intent?.lethal).toBe(false);
+  });
+
+  it("flags a lethal incoming strike", () => {
+    const grid = new TileGrid(8, 1);
+    const enemy = at("e", "enemy", 3, 0);
+    const player = createUnit({ id: "p", side: "player", pos: { col: 4, row: 0 }, speed: 10, maxHp: 4, attack: 5, defense: 0, moveRange: 3, sightRadius: 6 });
+    expect(forecastEnemyAction(enemy, [enemy, player], grid)?.lethal).toBe(true);
+  });
+
+  it("returns null when the enemy would only advance (no target in reach)", () => {
+    const grid = new TileGrid(12, 1);
+    const enemy = at("e", "enemy", 0, 0, 2); // move 2 — can't reach
+    const player = at("p", "player", 10, 0);
+    expect(forecastEnemyAction(enemy, [enemy, player], grid)).toBeNull();
+  });
+
+  it("does not permanently move the enemy", () => {
+    const grid = new TileGrid(8, 1);
+    const enemy = at("e", "enemy", 0, 0);
+    const player = at("p", "player", 4, 0);
+    forecastEnemyAction(enemy, [enemy, player], grid);
+    expect(enemy.pos).toEqual({ col: 0, row: 0 });
+  });
+});
+
+describe("threatenedTiles", () => {
+  it("marks every tile a pinned melee enemy could strike", () => {
+    const grid = new TileGrid(8, 3);
+    const enemy = at("e", "enemy", 3, 0, 0); // moveRange 0 → strikes from its own tile only
+    const keys = new Set(threatenedTiles([enemy], grid, "player").map((t) => `${t.col},${t.row}`));
+    // the diamond within attack range 1 of (3,0), clipped to the board
+    expect([...keys].sort()).toEqual(["2,0", "3,0", "3,1", "4,0"]);
+  });
+
+  it("is empty when the victim side has no enemies", () => {
+    const grid = new TileGrid(8, 3);
+    const ally = at("a", "player", 3, 0, 0);
+    expect(threatenedTiles([ally], grid, "player")).toEqual([]);
   });
 });

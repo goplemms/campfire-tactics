@@ -85,6 +85,10 @@ const STEPS = [
   // --- The guild hall (boots on the base URL, no #demo) -----------------------
   { name: "11-guild", goto: "", minMs: 500 },                  // hall: card pinned open (feedback visible)
   { name: "11b-guild-collapsed", minMs: 600, eval: togglePin("GuildScene") }, // unpin → collapses to a bottom-right chip
+  // --- The real mission scene (#battle: a headless boot into a deterministic run) ---
+  { name: "12-battle-deploy", goto: "battle", minMs: 900 },    // genuine BattleScene: the deployment board
+  { name: "13-battle-start", minMs: 500, eval: battleStart() }, // Start Battle → the battle phase
+  { name: "14-battle-preview", minMs: 700, eval: battleToPlayerTurn() }, // advance to a player turn → move/attack preview
 ];
 
 // Each helper returns a *plain function* puppeteer serializes and runs in the page
@@ -112,6 +116,19 @@ function gotoBeat(i) {
  *  (in live play the prior beat's panel is torn down on the click that advanced it). */
 function stageEncounter(i, reveal) {
   return new Function(`const s=window.game.scene.getScene("DemoScene");const r=s.runner;r.outcome=undefined;r.beatIndex=${i};r.ambushRevealed=${reveal};s.startEncounter();s.clearButtons();`);
+}
+/** Leave deployment and enter the battle phase (the real BattleScene). */
+function battleStart() {
+  return new Function(`const s=window.game.scene.getScene("BattleScene"); if(s.phase==="deployment") s.onPrimary();`);
+}
+/** Start the battle and advance the clock until a player unit's turn so the
+ *  move/attack preview is painted (forcing past any enemy turn's busy gate). */
+function battleToPlayerTurn() {
+  return new Function(
+    `const s=window.game.scene.getScene("BattleScene");` +
+      `if(s.phase==="deployment") s.onPrimary();` +
+      `for(let i=0;i<16 && !s.waitingFor;i++){ s.busy=false; s.over=false; s.onAdvance(); }`,
+  );
 }
 /** Reset to a pristine party, auto-play the whole quest, then show the end screen. */
 function autoPlayToEnd() {
@@ -221,7 +238,11 @@ async function main() {
     // Tell the scene we're capturing, so it freezes perpetual motion (the
     // chevron bob) — set before any page script runs.
     await page.evaluateOnNewDocument(() => { window.__SHOT__ = true; });
-    await page.goto(`${url}#demo`, { waitUntil: "networkidle0", timeout: 30000 });
+    // "load" (not networkidle0): Vite's HMR WebSocket holds the connection open,
+    // so the page can never reach network-idle — the same reason the re-navigations
+    // below use "load". Readiness/determinism comes from the canvas-selector wait
+    // plus the per-step waitForSettled gate, not from network quiescence.
+    await page.goto(`${url}#demo`, { waitUntil: "load", timeout: 30000 });
     let canvas = await page.waitForSelector("canvas", { timeout: 15000 });
 
     for (const step of STEPS) {
@@ -232,6 +253,9 @@ async function main() {
         // from ever going network-idle on a re-navigation. The settle gate below
         // still makes the frame deterministic.
         await page.goto(step.goto ? `${url}#${step.goto}` : url, { waitUntil: "load", timeout: 30000 });
+        // A hash-only change (e.g. → #battle) is a same-document navigation, so the
+        // page wouldn't reload and config.ts wouldn't re-read the hash. Force it.
+        if (step.goto) await page.reload({ waitUntil: "load", timeout: 30000 });
         canvas = await page.waitForSelector("canvas", { timeout: 15000 });
       }
       if (step.eval) await page.evaluate(step.eval);

@@ -4,6 +4,7 @@ import {
   resolveAttack,
   battleOutcome,
   isAdjacent,
+  isFlanked,
 } from "./combat";
 import { EventBus } from "./events";
 import { createUnit, type Side, type Unit } from "./units";
@@ -97,5 +98,36 @@ describe("combat", () => {
     expect(isAdjacent({ col: 1, row: 1 }, { col: 1, row: 2 })).toBe(true);
     expect(isAdjacent({ col: 1, row: 1 }, { col: 2, row: 2 })).toBe(false);
     expect(isAdjacent({ col: 1, row: 1 }, { col: 1, row: 1 })).toBe(false);
+  });
+});
+
+describe("isFlanked", () => {
+  const victim = (col: number) => unit("v", "player", { pos: { col, row: 0 } });
+  const foe = (id: string, col: number, over: Partial<Unit> = {}) => unit(id, "enemy", { pos: { col, row: 0 }, attackRange: 1, ...over });
+
+  it("is flanked when ganged by two melee foes with no ally adjacent", () => {
+    const v = victim(1);
+    expect(isFlanked(v, [v, foe("a", 0), foe("b", 2)])).toBe(true);
+  });
+
+  it("is sheltered (not flanked) with an ally adjacent", () => {
+    const v = victim(1);
+    const ally = unit("c", "player", { pos: { col: 1, row: 1 } }); // adjacent above the victim
+    expect(isFlanked(v, [v, foe("a", 0), foe("b", 2), ally])).toBe(false);
+  });
+
+  it("is not flanked by a single ordinary foe", () => {
+    const v = victim(1);
+    expect(isFlanked(v, [v, foe("a", 0)])).toBe(false);
+  });
+
+  it("is flanked by a lone solo-flanker (Scout)", () => {
+    const v = victim(1);
+    expect(isFlanked(v, [v, foe("a", 0, { passives: { flankSolo: 1 } })])).toBe(true);
+  });
+
+  it("is not flanked when both adjacent foes are ranged", () => {
+    const v = victim(1);
+    expect(isFlanked(v, [v, foe("a", 0, { attackRange: 2 }), foe("b", 2, { attackRange: 2 })])).toBe(false);
   });
 });

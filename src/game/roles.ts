@@ -1,4 +1,5 @@
 import type { Unit } from "../core";
+import { ROLE } from "./theme";
 
 /**
  * Per-role accent colours for board tokens. The token *fill* stays side-coloured
@@ -9,23 +10,23 @@ import type { Unit } from "../core";
  * Allies key off their job; foes (which rarely carry a job) key off their name.
  */
 const JOB_COLORS: Record<string, number> = {
-  soldier: 0x6f9bd6,
-  "heavy-knight": 0x6f9bd6, // steel — frontline / tank
-  hunter: 0xe0b24a, //         amber — ranged marker
-  scout: 0x6fd69b, //          green — mobility / recon
-  medic: 0x8fe0d0, //          cyan  — sustain
-  chef: 0xe0903a, //           orange — support
-  merchant: 0xd6c24a, //       gold  — economy
-  survivalist: 0x9bd66f, //    leaf  — traps
-  "snare-trapper": 0x4fb0a0, // teal  — debuffer
+  soldier: ROLE.soldier,
+  "heavy-knight": ROLE.soldier, // steel — frontline / tank
+  hunter: ROLE.hunter, //         amber — ranged marker
+  scout: ROLE.scout, //          green — mobility / recon
+  medic: ROLE.medic, //          cyan  — sustain
+  chef: ROLE.chef, //           orange — support
+  merchant: ROLE.merchant, //       gold  — economy
+  survivalist: ROLE.survivalist, //    leaf  — traps
+  "snare-trapper": ROLE.trapper, // teal  — debuffer
 };
 
 const FOE_COLORS: { match: RegExp; color: number }[] = [
-  { match: /captain|boss/i, color: 0xf0c060 }, // bright — the leader
-  { match: /bowman|archer/i, color: 0xe0b24a }, // amber — ranged
-  { match: /cutthroat|thief|assassin/i, color: 0xc07fd0 }, // violet — skirmisher
-  { match: /trapper|snare/i, color: 0x4fb0a0 }, // teal — debuffer
-  { match: /sapper/i, color: 0xe0843a }, // orange — objective threat
+  { match: /captain|boss/i, color: ROLE.captain }, // bright — the leader
+  { match: /bowman|archer/i, color: ROLE.hunter }, // amber — ranged
+  { match: /cutthroat|thief|assassin/i, color: ROLE.skirmisher }, // violet — skirmisher
+  { match: /trapper|snare/i, color: ROLE.trapper }, // teal — debuffer
+  { match: /sapper/i, color: ROLE.sapper }, // orange — objective threat
 ];
 
 /**

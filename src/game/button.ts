@@ -1,8 +1,12 @@
 import Phaser from "phaser";
-import { FONT } from "./theme";
+import { COLOR, FONT, INK } from "./theme";
 import { fitText } from "./ui";
 
 const Events = Phaser.Input.Events;
+
+/** Hover grows the button a touch; a press dips it — small but lively feedback. */
+const HOVER_SCALE = 1.05;
+const PRESS_SCALE = 0.95;
 
 /** Anything that can receive hint text — a plain Phaser.Text bar or the richer
  *  HintPanel. Kept minimal so buttons stay decoupled from how a scene shows hints. */
@@ -56,22 +60,41 @@ export class Button extends Phaser.GameObjects.Container {
   readonly bg: Phaser.GameObjects.Rectangle;
   readonly label: Phaser.GameObjects.Text;
   private readonly pad: number;
+  /** Animate hover/press juice — off under the screenshot harness for stable frames. */
+  private readonly animate: boolean;
+  private hovered = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number, o: ButtonOptions) {
     super(scene, x, y);
     this.pad = o.pad ?? 10;
+    this.animate = !(typeof window !== "undefined" && (window as Window & { __SHOT__?: boolean }).__SHOT__);
     this.bg = scene.add.rectangle(0, 0, o.w, o.h, o.fill).setStrokeStyle(o.strokeWidth ?? 2, o.stroke);
-    this.label = scene.add.text(0, 0, o.text, { color: o.color ?? "#eafff0", fontSize: o.fontSize ?? FONT.body }).setOrigin(0.5);
+    this.label = scene.add.text(0, 0, o.text, { color: o.color ?? INK.onSuccess, fontFamily: FONT.family, fontSize: o.fontSize ?? FONT.body }).setOrigin(0.5);
     this.add([this.bg, this.label]);
     fitText(this.label, o.w - this.pad);
 
     this.bg.setInteractive({ useHandCursor: true });
-    this.bg.on(Events.GAMEOBJECT_POINTER_DOWN, o.onClick);
-    if (o.hover !== false) {
-      const lit = Phaser.Display.Color.IntegerToColor(o.fill).brighten(18).color;
-      this.bg.on(Events.GAMEOBJECT_POINTER_OVER, () => this.bg.setFillStyle(lit));
-      this.bg.on(Events.GAMEOBJECT_POINTER_OUT, () => this.bg.setFillStyle(o.fill));
-    }
+    const lit = Phaser.Display.Color.IntegerToColor(o.fill).brighten(18).color;
+    const brighten = o.hover !== false;
+    // Click fires on press-down, with a quick dip so the tap registers; hover grows
+    // and brightens. POINTER_OUT also undoes a press in case the pointer drags off.
+    this.bg.on(Events.GAMEOBJECT_POINTER_DOWN, () => {
+      if (this.animate) this.setScale(PRESS_SCALE);
+      o.onClick();
+    });
+    this.bg.on(Events.GAMEOBJECT_POINTER_UP, () => {
+      if (this.animate) this.scaleTo(this.hovered ? HOVER_SCALE : 1);
+    });
+    this.bg.on(Events.GAMEOBJECT_POINTER_OVER, () => {
+      this.hovered = true;
+      if (brighten) this.bg.setFillStyle(lit);
+      if (this.animate) this.scaleTo(HOVER_SCALE);
+    });
+    this.bg.on(Events.GAMEOBJECT_POINTER_OUT, () => {
+      this.hovered = false;
+      if (brighten) this.bg.setFillStyle(o.fill);
+      if (this.animate) this.scaleTo(1);
+    });
     if (o.hint) {
       const { bar, description, idle } = o.hint;
       if (description) {
@@ -86,6 +109,12 @@ export class Button extends Phaser.GameObjects.Container {
     this.label.setText(text);
     fitText(this.label, this.bg.width - this.pad);
     return this;
+  }
+
+  /** Tween to a target scale, cancelling any scale tween already in flight. */
+  private scaleTo(s: number): void {
+    this.scene.tweens.killTweensOf(this);
+    this.scene.tweens.add({ targets: this, scaleX: s, scaleY: s, duration: 90, ease: "Quad.Out" });
   }
 }
 
@@ -147,8 +176,8 @@ export class ButtonColumn extends Phaser.GameObjects.Container {
     const bgH = (o.specs.length - 1) * step + h + padY * 2;
     this.add(
       scene.add
-        .rectangle(cx, o.centerY, w + padX * 2, bgH, o.panelFill ?? 0x141925, o.panelAlpha ?? 0.6)
-        .setStrokeStyle(1, o.panelStroke ?? 0x3d4b6e),
+        .rectangle(cx, o.centerY, w + padX * 2, bgH, o.panelFill ?? COLOR.surface, o.panelAlpha ?? 0.6)
+        .setStrokeStyle(1, o.panelStroke ?? COLOR.border),
     );
     o.specs.forEach((spec, i) => {
       this.add(
@@ -156,8 +185,8 @@ export class ButtonColumn extends Phaser.GameObjects.Container {
           text: labels[i],
           w,
           h,
-          fill: o.buttonFill ?? 0x394063,
-          stroke: o.buttonStroke ?? 0x6f7bb0,
+          fill: o.buttonFill ?? COLOR.btnFill,
+          stroke: o.buttonStroke ?? COLOR.btnStroke,
           fontSize,
           onClick: spec.onClick,
           hint: o.hintBar ? { bar: o.hintBar, description: spec.description, idle: o.idleHint ?? (() => "") } : undefined,
@@ -176,7 +205,7 @@ export class ButtonColumn extends Phaser.GameObjects.Container {
  * up a throwaway, measures, and disposes it.
  */
 export function probeWidth(scene: Phaser.Scene, text: string, fontSize: string): number {
-  const probe = scene.add.text(0, 0, text, { fontSize }).setVisible(false);
+  const probe = scene.add.text(0, 0, text, { fontFamily: FONT.family, fontSize }).setVisible(false);
   const w = probe.width;
   probe.destroy();
   return w;

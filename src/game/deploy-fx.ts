@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { COLOR } from "./theme";
 
 /**
  * A capture-net dropping onto a unit's tile — a crosshatched cage centred on the
@@ -13,7 +14,7 @@ import Phaser from "phaser";
 export function dropNet(scene: Phaser.Scene, x: number, y: number, reduceMotion = false): Phaser.GameObjects.Graphics {
   const r = 15;
   const g = scene.add.graphics().setDepth(28);
-  g.lineStyle(2, 0xe6d8b0, 0.95);
+  g.lineStyle(2, COLOR.net, 0.95);
   g.strokeRect(x - r, y - r, r * 2, r * 2);
   g.lineBetween(x - r, y - r, x + r, y + r);
   g.lineBetween(x + r, y - r, x - r, y + r);

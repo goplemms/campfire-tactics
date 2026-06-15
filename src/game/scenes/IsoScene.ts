@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { FONT } from "../theme";
+import { COLOR, FONT, INK } from "../theme";
 import {
   gridToScreen,
   screenToGrid,
@@ -60,7 +60,7 @@ export class IsoScene extends Phaser.Scene {
         this.scale.width / 2,
         this.scale.height - 24,
         "Click a tile — the unit walks there, routing around walls.",
-        { color: "#9fb0d0", fontSize: FONT.body },
+        { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body },
       )
       .setOrigin(0.5);
   }
@@ -86,10 +86,10 @@ export class IsoScene extends Phaser.Scene {
         // Blocked tiles read as raised stone; walkable tiles use a subtle
         // checker so the diamonds are legible as a grid.
         const fill = !walkable
-          ? 0x55304a
+          ? COLOR.tileBlocked
           : (col + row) % 2 === 0
-            ? 0x2a3550
-            : 0x222b40;
+            ? COLOR.tileLight
+            : COLOR.tileDark;
         this.drawTile(g, x, y, fill);
       }
     }
@@ -105,7 +105,7 @@ export class IsoScene extends Phaser.Scene {
     const halfW = TILE_WIDTH / 2;
     const halfH = TILE_HEIGHT / 2;
     g.fillStyle(fill, 1);
-    g.lineStyle(1, 0x3d4b6e, 1);
+    g.lineStyle(1, COLOR.border, 1);
     g.beginPath();
     g.moveTo(cx, cy - halfH);
     g.lineTo(cx + halfW, cy);
@@ -120,8 +120,8 @@ export class IsoScene extends Phaser.Scene {
   private spawnUnit(): void {
     // A small token that sits a little above the tile centre so it reads as
     // standing on the diamond rather than embedded in it.
-    const body = this.add.circle(0, -TILE_HEIGHT / 2, 10, 0xffcf6b);
-    body.setStrokeStyle(2, 0x6b4a1c);
+    const body = this.add.circle(0, -TILE_HEIGHT / 2, 10, COLOR.ally);
+    body.setStrokeStyle(2, COLOR.allyEdge);
     this.unit = this.add.container(0, 0, [body]);
     this.unit.setDepth(1);
     this.placeUnit(this.unitCoord);

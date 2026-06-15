@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { FONT } from "../theme";
+import { COLOR, FONT, INK } from "../theme";
 import {
   RunLoop,
   previewNode,
@@ -118,9 +118,9 @@ export class OverworldScene extends Phaser.Scene {
       return;
     }
 
-    this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: "#e8eefc", fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
-    this.campText = this.add.text(this.scale.width / 2, 40, "", { color: "#cdd7ee", fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
-    this.previewText = this.add.text(this.scale.width / 2, this.scale.height - 96, "", { color: "#d6c98a", fontSize: FONT.body, align: "center", wordWrap: { width: 720 } }).setOrigin(0.5).setDepth(10);
+    this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
+    this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
+    this.previewText = this.add.text(this.scale.width / 2, this.scale.height - 96, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body, align: "center", wordWrap: { width: 720 } }).setOrigin(0.5).setDepth(10);
     this.hintPanel = new HintPanel(this);
 
     this.refreshCampText();
@@ -171,7 +171,7 @@ export class OverworldScene extends Phaser.Scene {
       for (const e of map.nodes[id].edges) {
         const to = this.nodePos.get(e)!;
         const live = this.run.mapNodeId === id; // edges out of the current node
-        this.graph.lineStyle(live ? 3 : 1.5, live ? 0x7fe0a0 : 0x3d4b6e, live ? 0.9 : 0.5);
+        this.graph.lineStyle(live ? 3 : 1.5, live ? COLOR.accent : COLOR.border, live ? 0.9 : 0.5);
         this.graph.lineBetween(from.x, from.y, to.x, to.y);
       }
     }
@@ -193,11 +193,11 @@ export class OverworldScene extends Phaser.Scene {
   /** Glyph + tint for an event node, keyed by which event it runs (M11). */
   private eventVisual(node: MapNode): { glyph: string; color: number } {
     switch (eventForNode(this.run.seed, node).kind as EventKind) {
-      case "shop": return { glyph: "⚖", color: 0xc9a24a };
-      case "recruiter": return { glyph: "✚", color: 0x4aa6c9 };
-      case "story": return { glyph: "?", color: 0xb06fc0 };
+      case "shop": return { glyph: "⚖", color: COLOR.gold };
+      case "recruiter": return { glyph: "✚", color: COLOR.info };
+      case "story": return { glyph: "?", color: COLOR.captive };
       case "thief":
-      default: return { glyph: "$", color: 0x8a6fc0 };
+      default: return { glyph: "$", color: COLOR.captive };
     }
   }
 
@@ -205,7 +205,7 @@ export class OverworldScene extends Phaser.Scene {
     const isFinal = node.layer === this.run.map.layers - 1;
     const event = node.kind === "event" ? this.eventVisual(node) : undefined;
     const baseColor =
-      node.kind === "rest" ? 0x57b07a : event ? event.color : isFinal ? 0xd6b24a : 0xc6584f;
+      node.kind === "rest" ? COLOR.success : event ? event.color : isFinal ? COLOR.gold : COLOR.danger;
     const radius = isFinal ? 20 : 15;
 
     let alpha = 0.32;
@@ -214,18 +214,18 @@ export class OverworldScene extends Phaser.Scene {
     else if (state.visited) alpha = 0.6;
 
     const circle = this.add.circle(pos.x, pos.y, radius, baseColor, alpha).setDepth(1);
-    if (state.current) circle.setStrokeStyle(3, 0xffffff, 1);
-    else if (state.reachable) circle.setStrokeStyle(3, 0x7fe0a0, 1);
-    else circle.setStrokeStyle(1, 0x222b40, 0.8);
+    if (state.current) circle.setStrokeStyle(3, COLOR.white, 1);
+    else if (state.reachable) circle.setStrokeStyle(3, COLOR.accent, 1);
+    else circle.setStrokeStyle(1, COLOR.tileDark, 0.8);
     this.nodeObjects.push(circle);
 
     // Kind glyph (event nodes carry a per-event glyph, M11).
     const glyph = node.kind === "rest" ? "❄" : event ? event.glyph : isFinal ? "★" : "⚔";
-    const label = this.add.text(pos.x, pos.y, glyph, { color: "#11141b", fontSize: isFinal ? FONT.heading : FONT.body }).setOrigin(0.5).setDepth(2);
+    const label = this.add.text(pos.x, pos.y, glyph, { color: INK.onLight, fontSize: isFinal ? FONT.heading : FONT.body }).setOrigin(0.5).setDepth(2);
     this.nodeObjects.push(label);
 
     if (state.visited) {
-      const tick = this.add.text(pos.x + radius - 2, pos.y - radius + 2, "✓", { color: "#9ff0bf", fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
+      const tick = this.add.text(pos.x + radius - 2, pos.y - radius + 2, "✓", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
       this.nodeObjects.push(tick);
     }
 
@@ -301,7 +301,7 @@ export class OverworldScene extends Phaser.Scene {
 
     // --- Overworld actions (the new economy, D35) ---
     this.campObjects.push(
-      this.add.text(colX - 10, top - 6, "Overworld Actions", { color: "#9ff0bf", fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+      this.add.text(colX - 10, top - 6, "Overworld Actions", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
     );
     let y = top + 22;
 
@@ -325,7 +325,7 @@ export class OverworldScene extends Phaser.Scene {
 
     // --- Camp / meta actions (the folded-in Meta phase + provisioning) ---
     this.campObjects.push(
-      this.add.text(colX - 10, y, "Camp", { color: "#d6c98a", fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+      this.add.text(colX - 10, y, "Camp", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
     );
     y += 22;
     for (const u of this.run.party) {
@@ -341,7 +341,7 @@ export class OverworldScene extends Phaser.Scene {
 
     // --- The gold economy verbs (M10, D30/D34): purse-scoped, never the treasury ---
     this.campObjects.push(
-      this.add.text(colX - 10, y, "Economy (Merchant / Banker / Noble)", { color: "#e0b552", fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+      this.add.text(colX - 10, y, "Economy (Merchant / Banker / Noble)", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
     );
     y += 22;
     // Merchant ACCESS — buy supply into storage from the PURSE, node-tier price.
@@ -362,8 +362,8 @@ export class OverworldScene extends Phaser.Scene {
     // --- Fatigue meter (per-character, banded — à la the morale readout) ---
     const meterX = cx + 60;
     this.campObjects.push(
-      this.add.text(meterX, top - 6, "Fatigue", { color: "#cdd7ee", fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
-      this.add.text(meterX, top + 18, this.fatigueMeter(), { color: "#cdd7ee", fontSize: FONT.body, lineSpacing: 6 }).setOrigin(0, 0).setDepth(11),
+      this.add.text(meterX, top - 6, "Fatigue", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+      this.add.text(meterX, top + 18, this.fatigueMeter(), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, lineSpacing: 6 }).setOrigin(0, 0).setDepth(11),
     );
     const meterBottom = top + 18 + this.run.party.filter((u) => u.alive).length * 21 + 8;
 
@@ -374,14 +374,14 @@ export class OverworldScene extends Phaser.Scene {
       : node.kind === "event"
         ? "Commit — Approach the Event"
         : "Commit — Make Camp (Rest)";
-    const commit = this.makeTextButton(cx, contentBottom + 26, 240, 34, commitLabel, 0x2f6b46, 0x57b07a, () => this.commit());
+    const commit = this.makeTextButton(cx, contentBottom + 26, 240, 34, commitLabel, COLOR.successDeep, COLOR.success, () => this.commit());
     this.campObjects.push(commit);
 
     // Backdrop sized to the actual content (added last; its low depth keeps it behind).
     const panelTop = top - 22;
     const panelBottom = contentBottom + 50;
     this.campObjects.push(
-      this.add.rectangle(cx, (panelTop + panelBottom) / 2, panelW, panelBottom - panelTop, 0x141925, 0.96).setStrokeStyle(2, 0x3d4b6e).setDepth(8),
+      this.add.rectangle(cx, (panelTop + panelBottom) / 2, panelW, panelBottom - panelTop, COLOR.surface, 0.96).setStrokeStyle(2, COLOR.border).setDepth(8),
     );
   }
 
@@ -513,9 +513,9 @@ export class OverworldScene extends Phaser.Scene {
 
   /** A camp button that greys out (non-interactive) when disabled, with a reason on hover. */
   private campButton(x: number, y: number, w: number, h: number, text: string, enabled: boolean, onClick: () => void, description: string): void {
-    const fill = enabled ? 0x26314a : 0x1b2030;
-    const bg = this.add.rectangle(x, y, w, h, fill).setStrokeStyle(1, enabled ? 0x4a5d86 : 0x2a3142).setOrigin(0, 0.5).setDepth(10);
-    const label = this.add.text(x + 8, y, text, { color: enabled ? "#dbe5fb" : "#6b7488", fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
+    const fill = enabled ? COLOR.surfaceAlt : COLOR.surfaceRaised;
+    const bg = this.add.rectangle(x, y, w, h, fill).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.surfaceAlt).setOrigin(0, 0.5).setDepth(10);
+    const label = this.add.text(x + 8, y, text, { color: enabled ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
     fitText(label, w - 16);
     if (enabled) {
       bg.setInteractive({ useHandCursor: true });
@@ -626,16 +626,16 @@ export class OverworldScene extends Phaser.Scene {
     for (const o of this.overlay) o.destroy();
     this.overlay = [];
     this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, 0x11141b, 0.96).setStrokeStyle(2, 0x6f86c0).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 24, title, { color: "#cdd7ee", fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy - h / 2 + 58, `${body}\nPurse ${this.run.camp.gold}g`, { color: "#aab6d6", fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(21),
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.info).setDepth(20),
+      this.add.text(cx, cy - h / 2 + 24, title, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
+      this.add.text(cx, cy - h / 2 + 58, `${body}\nPurse ${this.run.camp.gold}g`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(21),
     );
 
     let y = cy - h / 2 + 110;
     for (const choice of choices) {
       const enabled = choice.available;
-      const fill = enabled ? 0x2f4a6b : 0x232a3a;
-      const stroke = enabled ? 0x6f9bd0 : 0x3a4252;
+      const fill = enabled ? COLOR.btnFill : COLOR.surfaceRaised;
+      const stroke = enabled ? COLOR.info : COLOR.border;
       const btn = this.makeTextButton(cx, y, 360, 30, choice.label, fill, stroke, () => {
         if (!enabled) return;
         this.onEventChoice(choice);
@@ -647,7 +647,7 @@ export class OverworldScene extends Phaser.Scene {
 
     // A shop is a multi-buy surface — add an explicit Leave that records the step.
     if (def.kind === "shop") {
-      const leave = this.makeTextButton(cx, y, 360, 30, "Leave the market", 0x2f6b46, 0x57b07a, () => {
+      const leave = this.makeTextButton(cx, y, 360, 30, "Leave the market", COLOR.successDeep, COLOR.success, () => {
         for (const o of this.overlay) o.destroy();
         this.overlay = [];
         this.finishEvent(-this.spentAtShop);
@@ -778,12 +778,12 @@ export class OverworldScene extends Phaser.Scene {
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2 - 20;
     this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, 0x11141b, 0.94).setStrokeStyle(2, good ? 0x57b07a : 0xb05757).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 26, title, { color: good ? "#9ff0bf" : "#f0a0a0", fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy + 6, body, { color: "#cdd7ee", fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(21),
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.94).setStrokeStyle(2, good ? COLOR.success : COLOR.danger).setDepth(20),
+      this.add.text(cx, cy - h / 2 + 26, title, { color: good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
+      this.add.text(cx, cy + 6, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(21),
     );
     if (onContinue) {
-      const btn = this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", 0x2f6b46, 0x57b07a, () => {
+      const btn = this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
         for (const o of this.overlay) o.destroy();
         this.overlay = [];
         onContinue();

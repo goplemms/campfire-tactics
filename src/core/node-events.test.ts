@@ -21,6 +21,8 @@ import {
   STORIES,
   getStory,
   NODE_EVENTS,
+  tollFee,
+  nodeFee,
   type EventKind,
 } from "./node-events";
 
@@ -322,6 +324,41 @@ describe("node-events — the thief event still skims, blunted by the Banker (D3
     const stolenOpen = resolveEvent(open, NODE).stolen ?? 0;
     const stolenGuarded = resolveEvent(guarded, NODE).stolen ?? 0;
     expect(stolenGuarded).toBeLessThan(stolenOpen);
+  });
+});
+
+// --- The toll: a visible, known fee (D48) -----------------------------------
+
+describe("node-events — the toll is a visible, known fee (D48)", () => {
+  it("tollFee is deterministic per node + seed (knowable in advance)", () => {
+    expect(tollFee("toll-seed", NODE)).toBe(tollFee("toll-seed", NODE));
+    expect(tollFee("toll-seed", NODE)).toBeGreaterThanOrEqual(NODE_EVENTS.tollMin);
+    expect(tollFee("toll-seed", NODE)).toBeLessThanOrEqual(NODE_EVENTS.tollMax);
+  });
+
+  it("nodeFee reports the fee for a toll node and 0 otherwise", () => {
+    const tollSeed = seedFor("toll");
+    expect(nodeFee(tollSeed, NODE)).toBe(tollFee(tollSeed, NODE));
+    // A non-toll event node carries no visible fee.
+    const thiefSeed = seedFor("thief");
+    expect(nodeFee(thiefSeed, NODE)).toBe(0);
+    // A non-event node never carries a fee.
+    expect(nodeFee(tollSeed, { ...NODE, kind: "combat" })).toBe(0);
+  });
+
+  it("resolving a toll pays the known fee from the purse (never negative)", () => {
+    const seed = seedFor("toll");
+    const fee = tollFee(seed, NODE);
+    const run = newRun(seed, fee + 50);
+    const out = resolveEvent(run, NODE);
+    expect(out.kind).toBe("toll");
+    expect(out.goldDelta).toBe(-fee);
+    expect(run.camp.gold).toBe(50);
+
+    // Broke: the toll takes what it can, never driving the purse negative.
+    const poor = newRun(seed, 3);
+    resolveEvent(poor, NODE);
+    expect(poor.camp.gold).toBe(0);
   });
 });
 

@@ -511,11 +511,26 @@ rather than scattering.
       **reconciliation** (closing balance + the gate) rides the existing **`recordNight`
       seam** — the "a night passed" boundary where `tickCooldowns` / `accruePurseInterest`
       already fire — i.e. on returning to choose the next edge. One seam, no new clock.
+  - **Q17f — Voluntary underfunding: the ledger as an *input* (extends D15).** Let the
+    player **untick a line they could afford** to free its gold for a riskier play — the
+    headline case: **skip Food (−morale) to buy a powerful morale buff** that nets the day
+    *positive* morale. This is just **D15's "(the choice)" made literal** — `payUpkeep`
+    already underfunds lines + applies the morale hit / worn-gear, but only as a *broke-only
+    fallback*; this exposes it as a deliberate toggle. Riders: (1) **the forecast must show
+    the net** so the gamble is informed (the D45 forecast doing double duty); (2) **the soft
+    gate keys off intent** — don't nag a *voluntary* skip (you meant it), only a can't-afford
+    one; (3) **food vs repairs are different risks** — Food = immediate recoverable morale,
+    **Repairs = compounding gear-condition debt** paid on the field (surface distinctly); (4)
+    **tuning watch** — give the skip real teeth (bite the D8 morale floor / compound on
+    repeats) or skip-Food is free arbitrage and the D15 upkeep sink stops biting. *Promoted
+    to D45 as an extension; classified an **adjustment**, not a pivot (it sharpens D15/D45,
+    supersedes nothing).*
   - **Cost / what to build:** a ledger **projection** over `run` (categorize purse
     in/out + a forecast over `reachableFrom`); a camp **panel** with collapse/expand and the
     always-available button; the **soft night-end gate** on the advance (the conditional
-    hard-stop); the **jump-to-market** shortcut reusing existing verbs. Mostly UI +
-    aggregation — no new economy rules.
+    hard-stop, intent-aware per Q17f); **voluntary-skip** plumbing in `payUpkeep` (pass
+    skipped line ids vs. deriving from affordability); the **jump-to-market** shortcut reusing
+    existing verbs. Mostly UI + aggregation — the one model touch is the voluntary-skip seam.
 
 ## Suggested next threads to harden (when ready)
 1. **Time model for parallel adventures** (the fork that reshapes existing code).

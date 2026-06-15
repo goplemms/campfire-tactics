@@ -1045,9 +1045,31 @@ trail of reasoning stays intact.
     ledger's closing balance + the gate) fires at the **`recordNight` seam** — the existing
     "a night passed" boundary where `tickCooldowns`/`accruePurseInterest` already run — i.e.
     on returning to choose the next edge. One seam, no new clock.
+  - **Voluntary underfunding — the ledger is an *input*, not just a readout (extends D15).**
+    The player may **untick a budget line they could afford** (skip Food / Repairs) to free
+    its gold for a riskier play — e.g. skip Food (−morale) to buy a powerful morale buff that
+    nets the day **positive** morale. This promotes D15's parenthetical *"underfund a line
+    (the choice)"* — today a broke-only fallback in `payUpkeep` — into a deliberate toggle on
+    the ledger. The skip's existing consequences stand: Food = morale hit (immediate,
+    recoverable); **Repairs = worn gear** (a *compounding combat-condition debt* paid later
+    on the field — surfaced distinctly, "you'll fight at a penalty," not an undifferentiated
+    untick). **Two riders:**
+    - **The forecast carries its weight here:** the net (`−food morale + buff morale`) must be
+      legible *before* committing — this is the D45 forecast doing double duty, so the gamble
+      is informed, not blind.
+    - **The soft gate keys off *intent*, not the funded bit:** a **voluntarily** unticked line
+      is an intentional shortfall — the gate must **not** nag about it (you meant it), while
+      still nagging about a line you genuinely **can't** afford. (`payUpkeep` gains a way to
+      pass voluntarily-skipped line ids, vs. deriving `underfunded` purely from affordability.)
+    - **Tuning watch (keep it a gamble, not arbitrage):** if a skipped line's only cost is a
+      flat morale hit a buff easily beats, skip-Food becomes a no-brainer and **Upkeep (the
+      central D15 sink) stops biting.** Give the skip real teeth — e.g. it bites the D8
+      asymmetric morale **floor**, or repeated skips compound — so the margin you're spending
+      is genuinely a risk.
 - **Rejected:** a mandatory full-screen modal every night (the agony version — D35/D16); a
   treasury-inclusive ledger on the overworld (breaks the D34 pool wall); receipt-only with
-  no forecast (leaves the D28 routing question still unanswered).
+  no forecast (leaves the D28 routing question still unanswered); a voluntary untick with **no
+  morale/gear teeth** (free gold — guts the D15 upkeep sink).
 - **Spec:** to write up in
   [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md) (the ledger
   as the routing readout) on the next doc pass.

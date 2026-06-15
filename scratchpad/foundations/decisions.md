@@ -1163,3 +1163,68 @@ trail of reasoning stays intact.
   [`docs/design/systems/logistics.md`](../../docs/design/systems/logistics.md) on the next
   doc pass.
 - **Superseded by:** —
+
+## D48 — The route forecast (intel-banded runway: fog · burn · fogged loot · floor-warning)
+
+- **Status:** Decided (design pass, 2026-06-15) · is the load-bearing half of **D45** (the
+  ledger forecast); extends **D10/D24** (intel), **D28** (gold = routing currency), **D46**
+  (the Survey beat)
+- **Context:** D45 named a *"forecast"* — *"this route + a rest at the end → purse at the
+  bottom"* — but left **what it computes** fuzzy. Grounding it in the data exposed the
+  governing fact: **cost is knowable, income is fogged.** Upkeep (`computeUpkeep`) is exact;
+  loot (`def.reward.gold`) is only ever seen **banded by intel tier** (`rewardHint`). So a
+  forecast can't be a precise number without leaking what the intel system hides — which
+  *defines* its shape rather than limiting it.
+- **Decision — four pillars:**
+  - **Reach = overworld fog, scaled by intel (the new system).** Intel governs not just a
+    node's *contents* but **whether you can see the route at all.** Visibility is
+    `baseReach + tier × bandStep` steps forward; **base ≈ half the map** (fog is a
+    *deep-planning* tool, not an early wall), each band extends it, and the numbers tune to
+    **effectively infinite** (the safe fallback = full visibility). Two guardrails: the
+    **immediately-reachable nodes are ALWAYS visible** (never stuck — the map-invariant
+    spirit), and it's a **pure projection** (the map is known internally; fog is a visibility
+    mask = a BFS cut at the reach limit; determinism intact, headless-testable). **Consequence
+    (intended):** the nearest-rest / runway is now **intel-gated too** — seeing the *third*
+    rest ahead is what intel buys. This is a small new system: a `visibleNodes(run)` reach
+    projection + a fog pass in `OverworldScene.drawMap` (which today draws everything); the
+    forecast operates over the **visible** set. This is the "depth vs. reach" split: the
+    existing tier ladder is **depth** (types→count→positions, D10); this adds **reach**
+    (distance) as the second axis.
+  - **Burn = upkeep + visible node fees (the deterministic backbone).** The per-step cost is
+    **upkeep** — *that is* the travel cost (no separate universal travel line; D28's lore
+    satisfied without a new mechanic). On top, *special* nodes carry a **visible, known fee**
+    (toll / town tax / gate fee), modelled as an **event-node kind reusing M11** — a
+    "thief that tells you the price up front and doesn't sneak." Fees are **known in advance**
+    (within reach) and **avoidable by routing** (pay only if you path through), giving the map
+    its cheaper-longer vs. fee-gated-shortcut texture. So the forecast's cost side =
+    `upkeep × steps + visible fees on the path` — fully deterministic within reach.
+  - **Loot = fogged range, tightened by intel.** Income is shown as the **intel-banded
+    range** (tier 0 = unknown, 1 = band, 2 = ~approx, 3 = exact), never beyond the player's
+    tier (no fog-leak). Rest nodes earn nothing (cost-only → exact); events skim/cost.
+  - **Warning = against the floor; display the range; intel clears warnings.** The D45 soft
+    gate evaluates on the **pessimistic** (low-band) loot — so it **never reassures on gold
+    you might not get** (false confidence is the one failure mode); the panel still shows the
+    **full range** (the upside is visible). Fits the codebase's **asymmetric-floor / "never
+    kick a player when down"** ethos (D8/D11/D35): cautious warning, reality usually better.
+    **Intel pays off twice** — a tighter band **raises the known floor**, so **scouting a node
+    can clear its warning** (a risky-looking route becomes safe once you learn the reward is
+    high). Intel doesn't just reveal; it *relaxes* warnings.
+  - **Horizon:** one committed step (banded loot) + the **runway to the nearest *visible*
+    rest** (BFS over visible kinds). Not a whole-map projection — deep nodes are fog, branches
+    combinatorial, and the decision served is "which edge next."
+- **Shape (the seam to build):** a pure `core` projection — `projectForecast(run) →
+  { visibleNodes, runway: { burnPerStep, nearestRestSteps, purseAtRest }, perEdge:
+  [{ nodeId, costKnown, lootBand, purseAfter: {floor, ceiling}, warn }] }` — reusing
+  `computeUpkeep` + `rewardHint` + the visibility BFS. The `previewNode` pattern, one tier up.
+- **Rejected:** a precise-number forecast (leaks fogged loot); a whole-map projection (fog +
+  branch noise); a fully fog-free map (the kinds-always-visible model — overridden here by the
+  reach fog, deliberately, to make intel load-bearing for *planning*); warning on the
+  mid/optimistic band (false confidence — the failure mode).
+- **Open / deferred:** the **reach numbers** (base, bandStep) — tuning; whether **Scout
+  extends reach** or only depth (lean: reach from the passive Intelligence floor + Seer; Scout
+  deepens a node); the **fee event-kind data shape** (cost / pay-or-fight choice — folds into
+  the deferred event batch, D23/D30).
+- **Spec:** [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md)
+  (forecast + overworld fog) + [`docs/design/systems/intel.md`](../../docs/design/systems/intel.md)
+  (the reach axis) on the next doc pass.
+- **Superseded by:** —

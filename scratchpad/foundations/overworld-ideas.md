@@ -462,12 +462,12 @@ rather than scattering.
 
 ## Round 3 — resolved (design session, 2026-06-15)
 
-> **Status: GRADUATED (2026-06-15).** Q17–Q19 below are promoted to formal decisions
-> **D45** (the overworld economic ledger), **D46** (the node lifecycle / phase contract) and
-> **D47** (the two-tier recovery economy) in [`decisions.md`](decisions.md). Kept here as the
-> reasoning trail. **Deferred:** the spec write-ups in
-> [`overworld.md`](../../docs/design/systems/overworld.md) (next doc pass) and the concrete
-> forecast model (which reachable-node costs it sums).
+> **Status: GRADUATED (2026-06-15).** Q17–Q20 below are promoted to formal decisions
+> **D45** (the overworld economic ledger), **D46** (the node lifecycle / phase contract),
+> **D47** (the two-tier recovery economy) and **D48** (the route forecast + overworld fog) in
+> [`decisions.md`](decisions.md). Kept here as the reasoning trail. **Deferred:** the spec
+> write-ups in [`overworld.md`](../../docs/design/systems/overworld.md) (next doc pass), the
+> reach-fog numbers, and the fee event-kind data shape.
 
 - **Q17 — An overworld economic ledger: the readout the routing pillar (D28) always
   implied.** The map is an *economic* routing problem ("can I afford this route + a rest?",
@@ -560,6 +560,36 @@ rather than scattering.
   looks like a bug); **refuses when already full** (no empty drain). Lives or dies on **gold
   scarcity** (D30/D34) — a known balance burden, accepted. Big reuse story: built on
   `payUpkeep` + `rpPerNight` + `triageHeal` — almost no new core.
+
+- **Q20 — The route forecast (→ D48).** D45 named a forecast but left *what it computes*
+  fuzzy; grounding it in the data settled the shape. Governing fact: **cost is knowable,
+  income is fogged** (upkeep exact; loot only ever banded by intel tier). Worked through
+  call-by-call into four pillars:
+  - **Reach = overworld fog scaled by intel (new).** Intel governs whether you see the route
+    at all: `baseReach + tier × bandStep`, **base ≈ half the map** (deep-planning tool, not an
+    early wall), tunable to effectively infinite (the fallback). Immediate choices **always
+    visible**; pure visibility mask (BFS cut), determinism intact. Adds the **reach** axis
+    alongside the existing **depth** axis (D10 tiers). *Consequence (intended): the
+    nearest-rest/runway becomes intel-gated too — seeing the third rest ahead is what intel
+    buys.* (Earlier the runway was called "fog-free" via always-visible kinds; the reach fog
+    deliberately overrides that to make intel load-bearing for planning.)
+  - **Burn = upkeep + visible node fees.** Upkeep **is** the travel cost (no separate line —
+    D28 satisfied). Special nodes carry a **visible, known fee** (toll / town tax / gate fee)
+    — a "thief that tells you the price up front," reusing the M11 event system —
+    **avoidable by routing**. The deterministic cost backbone = `upkeep × steps + visible
+    fees`.
+  - **Loot = fogged range, tightened by intel** (never beyond the player's tier — no
+    fog-leak).
+  - **Warning = against the floor; show the range; intel clears warnings.** The gate evaluates
+    on the **pessimistic** band (never false-reassures), the panel shows the full range; a
+    tighter intel band **raises the known floor**, so **scouting can clear a warning** — intel
+    *relaxes* warnings, not just reveals. Fits the asymmetric-floor ethos (D8/D11/D35).
+  - **Horizon:** one banded step + runway to the nearest *visible* rest (not whole-map).
+  - **Seam:** a pure `projectForecast(run)` over the visible set, reusing `computeUpkeep` +
+    `rewardHint` + the visibility BFS — the `previewNode` pattern one tier up.
+  - **Open:** reach numbers (base/bandStep); does **Scout** extend reach or only depth (lean:
+    reach from passive Int + Seer, Scout deepens); the **fee event-kind** data shape
+    (cost / pay-or-fight — folds into the deferred event batch).
 
 ## Suggested next threads to harden (when ready)
 1. **Time model for parallel adventures** (the fork that reshapes existing code).

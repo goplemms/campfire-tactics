@@ -462,9 +462,10 @@ rather than scattering.
 
 ## Round 3 — resolved (design session, 2026-06-15)
 
-> **Status: GRADUATED (2026-06-15).** Q17 below is promoted to formal decision **D45**
-> (the overworld economic ledger) in [`decisions.md`](decisions.md). Kept here as the
-> reasoning trail. **Deferred:** the spec write-up in
+> **Status: GRADUATED (2026-06-15).** Q17–Q19 below are promoted to formal decisions
+> **D45** (the overworld economic ledger), **D46** (the node lifecycle / phase contract) and
+> **D47** (the two-tier recovery economy) in [`decisions.md`](decisions.md). Kept here as the
+> reasoning trail. **Deferred:** the spec write-ups in
 > [`overworld.md`](../../docs/design/systems/overworld.md) (next doc pass) and the concrete
 > forecast model (which reachable-node costs it sums).
 
@@ -531,6 +532,34 @@ rather than scattering.
     hard-stop, intent-aware per Q17f); **voluntary-skip** plumbing in `payUpkeep` (pass
     skipped line ids vs. deriving from affordability); the **jump-to-market** shortcut reusing
     existing verbs. Mostly UI + aggregation — the one model touch is the voluntary-skip seam.
+
+- **Q18 — The node lifecycle / phase contract (→ D46).** The per-node sequence was never
+  pinned, and "rest" kept colliding with itself. Resolved to **one node = one node-step**
+  with a kind-agnostic shape: **Make Camp** (pre-event prep; ledger *reconcile*) → **End the
+  Night** (gate; the node's event fires by kind — combat = Deploy→Battle→Resolve, rest =
+  recovery payload, event = choice) → **Survey** (new *post-event* beat: now-informed intel /
+  in-place rest / ledger *forecast*; light & mostly optional) → **Break Camp** (depart; the
+  **`recordNight` tick fires here, at departure**, so one night's allowance is timed across
+  the visit). Terminology: *End the Night* = prep→event, *Break Camp* = depart→next (the word
+  fits departure); never "rest" for a gate. **Where rest fits:** the "rest or push on" choice
+  lives on the **map (routing to a rest node)**, not a camp toggle — the only in-camp recovery
+  is Q19's in-place rest. *The forecast wants post-event numbers → it belongs in Survey, after
+  the fight.*
+
+- **Q19 — The two-tier recovery economy (→ D47).** Promotes the parked *"rest-in-place costing
+  rations"* idea without dissolving rest nodes. **In-place rest** (repeatable camp action, the
+  Survey beat): pay a night's rations → bank RP (support classes boost it via `rpPerNight` —
+  the class-boost is already in code) → small `triageHeal`; repeatable until the purse taps
+  out. **Each rest is a full node-step → it ticks cooldowns + accrues interest** — the player
+  *chose* to buy HP **and** cooldown progress with a night's rations (a fun lever, not a leak).
+  **Two caps:** gold (afford another night?) + the per-night **RP rate** (rate-limits healing
+  regardless of wealth → keeps the rest node faster). **Rest node = premium:** large/full heal
+  **+ full fatigue restore (stays rest-node-only, D35) + clears accumulated debts in one
+  swipe** (hunger / under-maintenance / worn gear from D45 underfunding) instead of buying
+  something high-quality. **Heal floors at ≥1** on a wounded party (never "paid, healed 0" =
+  looks like a bug); **refuses when already full** (no empty drain). Lives or dies on **gold
+  scarcity** (D30/D34) — a known balance burden, accepted. Big reuse story: built on
+  `payUpkeep` + `rpPerNight` + `triageHeal` — almost no new core.
 
 ## Suggested next threads to harden (when ready)
 1. **Time model for parallel adventures** (the fork that reshapes existing code).

@@ -1074,3 +1074,92 @@ trail of reasoning stays intact.
   [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md) (the ledger
   as the routing readout) on the next doc pass.
 - **Superseded by:** —
+
+## D46 — The node lifecycle / phase contract (the seam D35/D45/D47 all attach to)
+
+- **Status:** Decided (design pass, 2026-06-15) · extends **D3** (phase pipeline), **D23**
+  (node kinds), **D35** (camp at every node), **D45** (ledger)
+- **Context:** D35 unified the camp, D45 added the ledger — but the **per-node sequence** was
+  never pinned as one contract: *when* the night passes, *where* intel/economy actions sit
+  relative to the event, where the ledger's two roles land, and **how rest fits** (a
+  recurring source of confusion — see D47). Without a contract we risked parallel vocabulary
+  and a per-node agony of surfaces (the D35/D16 anti-pattern).
+- **Decision:**
+  - **One node = one node-step.** The whole visit (prep → event → plan → depart) is a
+    **single tick** of the overworld clock (D35) — not two.
+  - **The kind-agnostic sequence:**
+    1. **Arrive / Make Camp** — *pre-event* prep: provision for the day's event (heal, gear,
+       buffs, pay upkeep). Ledger role here = **reconcile** (what tonight cost; can I still
+       afford the event).
+    2. **End the Night** — the gate; the night passes and the node's **event** fires *by
+       kind*: **combat** = Deployment→Battle→Resolution (D3); **rest** = the premium recovery
+       payload (D47); **event** = the choice resolves (D4/M11). Rest is the *event*, parallel
+       to combat — **not** a pre-gate action.
+    3. **Survey** (*post-event* beat, **new**) — now-informed: fund the scout for intel on
+       the reachable nodes, last economy moves, **in-place rest** (D47), and read the ledger
+       **forecast**. Deliberately **light / mostly optional** — soft-gated like D45, never a
+       mandatory second panel.
+    4. **Break Camp / depart** — choose the next edge and travel. **The node-step tick
+       (`recordNight` → cooldown decrement + interest accrual) fires HERE, at departure** —
+       so a single night's action allowance is *timed across the whole visit*, not duplicated
+       mid-node. (Implementation consequence: move the tick off the payload to departure.)
+  - **Terminology:** **"End the Night"** = the prep→event gate; **"Break Camp"** =
+    depart→next-node (the word fits the *departure*). **Never** reuse "rest" for either gate —
+    rest is a node kind + a recovery payload (D23/D47).
+  - **Where rest fits (the clarification, so future-us doesn't lose it):** the "rest or push
+    on" choice lives on the **map (routing)** — you rest by *routing to a rest node* — **not**
+    as a camp toggle. Moving it into camp would dissolve the rest node's identity and revive
+    the *dodge-every-fight, rest-is-free* failure mode the supply economy exists to kill. The
+    one in-camp recovery action is D47's **in-place rest** (a costed lever in the Survey
+    beat), distinct from the rest **node** (the premium tier).
+  - **Two ledger touchpoints (D45):** **reconcile** at Make Camp, **forecast** at
+    Survey/selection — the post-event numbers are the real ones, so the routing forecast
+    belongs *after* the fight.
+- **Rejected:** straight-to-map after Resolution (no informed post-combat intel beat — the
+  D45 forecast would run on stale numbers); mandatory full panels at *both* ends (agony,
+  D35/D16); "rest" as a gate name (collides with the node kind, D23); ticking the node-step
+  at the payload (would split one night's allowance across the event seam).
+- **Spec:** [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md)
+  (the node lifecycle) on the next doc pass.
+- **Superseded by:** —
+
+## D47 — The two-tier recovery economy (in-place rest vs. the rest node)
+
+- **Status:** Decided (design pass, 2026-06-15) · adjusts **D9** (RP recovery), extends
+  **D15** (rations gate), reshapes **D23** (rest node) / **D35** (fatigue restore)
+- **Context:** D23 made rest a node *kind* and D35 made the rest node "the only [fatigue]
+  restore," but recovery was otherwise all-or-nothing and purely **geographic**. We want a
+  **costed, player-driven** recovery lever (the parked *"rest-in-place costing rations"*
+  idea) **without** dissolving the rest node's identity or the D28 routing tension.
+- **Decision:** **Two tiers, both built on existing machinery** (`payUpkeep` + `rpPerNight` +
+  `triageHeal` — almost no new core):
+  - **In-place rest — a repeatable camp action** (any *finished* node, the D46 **Survey**
+    beat). Pay **a night's rations** (upkeep) → bank RP, **boosted by support classes** via
+    `rpPerNight` (*that is* the class-boost — already in code) → heal a **small** amount
+    (`triageHeal`). **Repeatable** until the purse can't afford another night.
+  - **Each rest is a full node-step — and that's a feature.** It **ticks cooldowns and
+    accrues interest** (D35): a deliberate lever — *spend a night's rations to buy HP **and**
+    cooldown progress.* The player's call, a fun trade, **not** a leak.
+  - **Two caps by design:** **gold** (can you afford another rations night?) **and** the
+    **per-night RP rate** (one night banks only so much, so healing is **rate-limited
+    regardless of wealth**) — the RP cap is what stops "rich = instant full heal" and keeps
+    the rest node faster/better.
+  - **Rest node = the premium tier:** a **large/full heal** in one stop, **plus** what
+    in-place rest does *not* do — **full fatigue restore** (D35's guardrail stays
+    rest-node-only) **and clearing accumulated debts in one swipe** (hunger /
+    under-maintenance / worn gear from voluntary underfunding, D45) rather than needing a
+    high-quality purchase. The payoff for **routing** there (D28).
+  - **Heal floors at 1 (anti-confusion):** a paid in-place rest on a **wounded** party always
+    restores **≥1 HP**, so the player never reads "paid rations, healed 0" as a gold-draining
+    bug. If the party is **already full**, the action is **unavailable** (refuses without
+    spending) — no empty drain.
+  - **Balance stance:** this is a new **HP sink on gold**; it stays honest **only if gold is
+    kept scarce** (D30/D34) — accepted as a deliberate balance burden worth the tuning time.
+- **Rejected:** in-place rest that fully clears fatigue (guts D35's over-extension stake); a
+  gold→HP pump with **no RP-rate cap** (rich = free full heal → rest nodes pointless);
+  healing 0 when affordable-but-rate-capped (reads as a bug); rest as a camp toggle instead
+  of node-routing (D46 — dissolves the rest node).
+- **Spec:** [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md) +
+  [`docs/design/systems/logistics.md`](../../docs/design/systems/logistics.md) on the next
+  doc pass.
+- **Superseded by:** —

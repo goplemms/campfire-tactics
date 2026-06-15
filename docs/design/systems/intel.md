@@ -1,7 +1,8 @@
 # System — Intel (pre-battle knowledge)
 
 > Referenced by: [Pre-deployment](../01-pre-deployment.md) (provisioning),
-> [Deployment](../02-deployment.md), [Stats](stats.md). Decision: **D10**.
+> [Deployment](../02-deployment.md), [Stats](stats.md), [The overworld](overworld.md).
+> Decisions: **D10**, **D24** (the node preview), **D48** (the reach axis / overworld fog).
 
 ## Description
 
@@ -53,6 +54,25 @@ that proves the lane. It hooks the **Meta/Pre-deployment** phase.
 
 That reagent-vs-skill split is a deliberate risk/economy axis: pay for certainty,
 or gamble on a gifted reader.
+
+### Two axes: depth & reach (D48)
+
+Intel has **two independent axes**. The tier ladder above is the first:
+
+- **Depth** — *how much* you know about a single node (types → numbers → positions). Per-node,
+  earned via the three lanes.
+- **Reach** — *how far ahead* you can see **at all**, on the overworld. Intel drives an
+  **overworld fog**: you see the route out to `baseReach + tier × bandStep` steps forward,
+  with **base ≈ half the map** and each band extending it (tunable to effectively infinite).
+  The **immediately-reachable nodes are always visible** (you can never be unable to choose);
+  beyond your reach the map is fogged. This makes intel load-bearing for **planning the route**
+  — the economic [forecast](overworld.md#the-route-forecast--overworld-fog-d48) (D48), where
+  the nearest rest and the burn to reach it become things intel *reveals* — not just for
+  sizing the next fight. A Seer who sees two fights ahead is reading **reach**; a Seer who
+  reads an ambush's exact positions is reading **depth**.
+
+> **Determinism.** The map is fully known internally; fog is a **pure visibility mask** (a
+> BFS cut at the reach limit) — no live RNG, fully replayable for a seed.
 
 > **Naming note.** "Intelligence" here means *intel-gathering*, which may collide
 > with a future magic-power stat. Treat the name as provisional (candidates:

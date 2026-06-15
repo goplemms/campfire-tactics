@@ -460,6 +460,63 @@ rather than scattering.
     **fatigue** meter with an asymmetric-floor curve + rest restoration; wiring vancian/
     gold as per-ability costs.
 
+## Round 3 — resolved (design session, 2026-06-15)
+
+> **Status: GRADUATED (2026-06-15).** Q17 below is promoted to formal decision **D45**
+> (the overworld economic ledger) in [`decisions.md`](decisions.md). Kept here as the
+> reasoning trail. **Deferred:** the spec write-up in
+> [`overworld.md`](../../docs/design/systems/overworld.md) (next doc pass) and the concrete
+> forecast model (which reachable-node costs it sums).
+
+- **Q17 — An overworld economic ledger: the readout the routing pillar (D28) always
+  implied.** The map is an *economic* routing problem ("can I afford this route + a rest?",
+  D28) with gold kept scarce on purpose (D30/D34) — but the budget that *is* the decision
+  was invisible. Resolved into a **projection, progressively disclosed, with a soft
+  night-end gate**.
+  - **Q17a — Scope: purse, not treasury.** A ledger on the **overworld camp** (D35) reports
+    the **run purse** flow only — loot in; upkeep / field-buys / bribes / theft out; the
+    Banker's interest/debt/protection. The **treasury** stays the guild hall's concern
+    (the D34 pool wall), and **Influence is shown but never summed into gold** (it can't pay
+    Upkeep — D34). It's a **pure projection of existing state** — the `previewNode` / camp-
+    readout pattern, no new model: `computeUpkeep()` already returns `{lines, total}`, loot
+    credits return `{credited, debtRepaid}`, Banker state is on `run.overworld`, and
+    `refreshCampText` already renders the one-line version this promotes to a panel.
+  - **Q17b — Broad categories, expand for crunch.** Default = a few category totals
+    (Upkeep / Loot / Field spend / Banker / balance); expand to the line items
+    (`UpkeepBill.lines`, individual loot/spend events). Crunch is opt-in so the default
+    stays a glance — the "show me just the broad strokes, let me dig if I want" ask.
+  - **Q17c — Receipt *and* forecast; the forecast is the point.** A backward receipt is
+    table stakes; the load-bearing feature is the **forward projection** — *"this route +
+    a rest at the end → here's your purse at the bottom"* — reading the reachable nodes'
+    rest/upkeep costs. That's what makes the ledger the **D28 routing decision surface**
+    rather than a receipt. (Receipt ships first; forecast is the reason to build it.)
+  - **Q17d — Jump-to-market when available.** A button straight into the Merchant/shop
+    verbs **when usable** (town/rest node · Merchant present · off cooldown), reusing the
+    `available`-gated event-choice + `merchantBuy` paths — so the player can size a buy
+    against the budget *before* committing (the "get a sense of my budget before we buy"
+    ask).
+  - **Q17e — Two forks, resolved (the careful bit):**
+    - **Fork 1 — how hard to force it?** A mandatory full-screen modal every single night
+      is exactly the **agonized spreadsheet** D35/D16 designed against — by layer 5 it's a
+      click-through chore. **Resolved:** the ledger is **always one glance away**, the
+      advance shows the bottom-line delta inline, and it **hard-gates a forced look only
+      when warranted** — projected shortfall, can't-afford-the-rest-at-route's-end,
+      outstanding debt, or an underfunded upkeep line. Happy path = one click. Same
+      **asymmetric-floor** instinct as fatigue/morale/overdraw (D7/D8/D11/D35): the forced
+      choice surfaces only when you're genuinely pushing your luck.
+    - **Fork 2 — "End the Night" vs the existing Commit.** "The night ends" describes a
+      **rest/event/travel** advance cleanly, but a **combat** commit *begins a fight* (the
+      night erupts, it doesn't end). **Resolved:** at a combat node the ledger is a
+      **pre-commit glance** ("Commit — Begin Mission" stays); the formal night-end
+      **reconciliation** (closing balance + the gate) rides the existing **`recordNight`
+      seam** — the "a night passed" boundary where `tickCooldowns` / `accruePurseInterest`
+      already fire — i.e. on returning to choose the next edge. One seam, no new clock.
+  - **Cost / what to build:** a ledger **projection** over `run` (categorize purse
+    in/out + a forecast over `reachableFrom`); a camp **panel** with collapse/expand and the
+    always-available button; the **soft night-end gate** on the advance (the conditional
+    hard-stop); the **jump-to-market** shortcut reusing existing verbs. Mostly UI +
+    aggregation — no new economy rules.
+
 ## Suggested next threads to harden (when ready)
 1. **Time model for parallel adventures** (the fork that reshapes existing code).
 2. **The gold faucet/sink economy** as explicit loops (so Banker/Noble/thief get

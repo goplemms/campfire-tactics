@@ -996,3 +996,59 @@ trail of reasoning stays intact.
   first hand-crafted-content shape (fills gap #4). It is the **proof before finalizing**.
 - **Spec:** [`M12-kickoff.md`](M12-kickoff.md) → Demo quest.
 - **Superseded by:** —
+
+## D45 — The overworld economic ledger (the readout the routing pillar implied)
+
+- **Status:** Decided (design pass, 2026-06-15) · extends **D28** (gold = routing currency),
+  **D34** (two pools), **D35** (camp at every node)
+- **Context:** The overworld is specced as an **economic routing problem** — *"can I afford
+  this route **and** a rest at the end of it?"* (D28) — but no UI answers it. The player gets
+  a one-line camp strip (`refreshCampText`: purse · morale · storage · kits · RP · debt ·
+  Influence) and is left to infer the budget. Gold is the universal solvent (D28) and kept
+  **scarce** by the faucet/sink discipline (D30/D34), so the budget *is* the decision — yet
+  it's invisible and un-projected. The trap: any **"must-clear every night" panel** becomes
+  the *agonized spreadsheet* D35/D16 explicitly designed against.
+- **Decision:**
+  - **A purse-scoped ledger surfaced on the overworld camp (D35), not the guild hall.**
+    It reports the **run purse** flow only — loot in, upkeep/field-buys/bribes/theft out,
+    Banker interest/debt/protection — consistent with the two-pool wall (D34). The
+    **treasury** is the hall's concern; **Influence** is *shown but never summed into gold*
+    (it can't pay Upkeep — D34). The ledger is **a pure projection of existing state** (the
+    `previewNode`/camp-readout pattern): `computeUpkeep()` already yields `{lines, total}`,
+    loot credits return `{credited, debtRepaid}`, Banker state lives on `run.overworld`.
+  - **Progressive disclosure — broad categories, expand for crunch.** Default view = a
+    handful of category totals (Upkeep, Loot, Field spend, Banker, balance); expand a
+    category to its line items (e.g. `UpkeepBill.lines` → Food/Repairs). The crunch is
+    opt-in, so the default stays a glance.
+  - **Receipt *and* forecast — the forecast is the point.** A backward receipt is table
+    stakes; the load-bearing feature is the **forward projection** — *"take this route +
+    rest at the end → here's your purse at the bottom,"* reading the reachable nodes' rest/
+    upkeep costs. This is what turns the ledger from bookkeeping into the **D28 routing
+    decision surface**. (Receipt ships first; forecast is the reason to build it.)
+  - **Jump-to-market when available.** A button into the Merchant/shop verbs *when they're
+    actually usable* (town/rest node · Merchant present · off cooldown), reusing the
+    existing `available`-gated event-choice + `merchantBuy` paths — so the player can size a
+    buy against the budget before committing.
+  - **"End the Night" = the node-advance, and the ledger gate rides it — softly (fork 1).**
+    A new framing for leaving the current camp toward the next node. The ledger is **always
+    one glance away** (a button on the camp), and the advance shows the bottom-line delta
+    inline. It **hard-gates with a forced look only when something warrants it** — a
+    projected shortfall, can't-afford-the-rest-at-route's-end, outstanding **debt**, or an
+    **underfunded upkeep line**. In the happy path you advance with one click. This keeps
+    the "no sleepwalking into a broke caravan" safety **without** the per-night chore D35/D16
+    rejected — the forced choice surfaces only when you're actually pushing your luck (the
+    same asymmetric-floor instinct as fatigue/morale/overdraw).
+  - **Combat-node wrinkle — resolved (fork 2).** "The night ends" cleanly describes a
+    **rest/event/travel** advance, but a **combat** commit *begins a fight* — the night
+    doesn't end, it erupts. So: at a combat node the ledger is a **pre-commit glance**
+    ("Commit — Begin Mission" stays), and the formal night-end **reconciliation** (the
+    ledger's closing balance + the gate) fires at the **`recordNight` seam** — the existing
+    "a night passed" boundary where `tickCooldowns`/`accruePurseInterest` already run — i.e.
+    on returning to choose the next edge. One seam, no new clock.
+- **Rejected:** a mandatory full-screen modal every night (the agony version — D35/D16); a
+  treasury-inclusive ledger on the overworld (breaks the D34 pool wall); receipt-only with
+  no forecast (leaves the D28 routing question still unanswered).
+- **Spec:** to write up in
+  [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md) (the ledger
+  as the routing readout) on the next doc pass.
+- **Superseded by:** —

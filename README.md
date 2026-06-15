@@ -4,17 +4,23 @@ An **isometric roguelike tactics game** — in the lineage of *Fire Emblem* and
 *Final Fantasy Tactics* — with a twist: the parts of the game that matter most
 happen **around** the battles, not just on the grid.
 
-## The hook: non-combat jobs
+## The hook: it's an expedition
 
-Alongside the usual combat classes, your party fills **non-combat jobs** that
-reshape a run:
+You're responsible for getting a fragile band through a dangerous journey, and the
+game's character is **preparation under uncertainty**. The unifying verb across
+every system is *commit scarce resources against uncertainty before the fight, then
+live with it* — **combat is the test of your preparation, not the game itself.**
+Preparation runs on three axes (material **logistics**, **spatial** deployment,
+**informational** intel/vision), bound by a human-stakes layer (morale, mortality,
+the named cast).
+
+One vivid expression of that identity: alongside the usual combat classes, your
+party fills **non-combat jobs**, each acting in a *different* part of the game —
+which is what drives the phase architecture below:
 
 - **Chef** — raises party morale and provides between-battle healing.
 - **Survivalist** — sets traps on the map *before* an encounter begins.
 - **Merchant** — increases storage size and generates gold.
-
-Each job deliberately acts in a *different* part of the game, which drives the
-architecture below.
 
 ## Tech & platform strategy
 
@@ -71,6 +77,12 @@ planning workflow. The flow:
 
 ## Status
 
-Project **scaffolded**; no game code yet. Next milestone is **M1 — Walking
-skeleton** (Vite + Phaser + TypeScript with the core/render split). See
-[`plan.md`](scratchpad/foundations/plan.md).
+Milestones **M1–M12 are landed** — the full phase pipeline, the seeded branching
+**overworld**, the persistent **guild/caravan** tier, the two-pool **economy** +
+recruitment, data-driven **event nodes**, and a four-class **combat slice** proven
+end-to-end by a playable demo quest (*The Hollow Mill*). Notable design-only
+holdouts: **Vancian magic** (a typed stub, not wired) and **full line-of-sight**
+vision (radius only so far). See
+[`scratchpad/foundations/PROGRESS.md`](scratchpad/foundations/PROGRESS.md) for the
+authoritative milestone-by-milestone status and [`plan.md`](scratchpad/foundations/plan.md)
+for the roadmap.

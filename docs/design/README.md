@@ -4,23 +4,37 @@ This folder is the **living vision** for the game's systems. It is intentionally
 separate from the build plan in [`scratchpad/foundations/`](../../scratchpad/foundations/),
 which tracks *milestones and status*; these docs track *what the game is*.
 
-> Architectural calls that back these docs are logged as decisions **D1–D35** in
+> Architectural calls that back these docs are logged as decisions **D1–D46** in
 > [`scratchpad/foundations/decisions.md`](../../scratchpad/foundations/decisions.md).
 
 ## Identity
 
 An isometric roguelike tactics game in the lineage of *Final Fantasy Tactics* and
 *Fire Emblem*, with one deliberate twist: **the parts that matter most happen
-around the battle, not just on the grid.** Combat is the genre standard done
-well; the game's character is its **logistics** — provisioning, preparation, and
-the gambles you take before a single blow is struck. The target player is someone
-who enjoys *crunch*: legible systems with deep, interacting decisions.
+around the battle, not just on the grid.** The game is an **expedition** — you are
+responsible for getting a fragile band through a dangerous journey, and its
+character is **preparation under uncertainty**: the unifying verb across every
+system is *commit scarce resources against uncertainty before the fight, then live
+with it.* **Combat is the test of your preparation, not the game itself.** (D45)
+
+That preparation runs on **three axes** — **material** (logistics: provisioning,
+storage, the economy), **spatial** (deployment: where you commit it on the map),
+and **informational** (intel & vision: how much fog you buy down) — all bound by a
+**human-stakes** layer (morale, mortality, the named cast). Combat is where they
+all converge and pay off. The target player is someone who enjoys *crunch*: legible
+systems with deep, interacting decisions.
 
 ## Conventions
 
 - **Banding.** Many number systems are expressed as discrete **bands / breakpoints**
   rather than smooth curves (intel tiers, morale tiers, Awareness allowance, …).
   Bands are legible to the player and give us clean, isolated knobs to tune balance.
+- **Interactions earn their screen-time (D45).** An interaction earns a screen only when it
+  poses a *live choice*; everything else is a **default with a ledger** — auto-pay Upkeep
+  when flush, auto-triage the most-wounded, auto-rebuy the standard loadout, surfacing each
+  only at a real fork. This is what keeps the expedition's recurring per-node camp beats
+  (Upkeep, intel, provisioning, recovery) from hardening into a checklist; it is the UI-layer
+  expression of *gold-as-solvent* (below).
 - **Wide logistics, micro at the unit.** Resource/logistics decisions live at the
   **party/macro** level (shared pools, provisioning); the turn-to-turn
   micro-management lives at **unit control** (positioning, action economy, placement,
@@ -154,7 +168,11 @@ reference them rather than re-explain:
 
 ## Status
 
-These docs describe the intended design; they will evolve. Nothing here is built
-yet beyond the M1–M2 walking skeleton — see
+These docs describe the intended design; they will evolve. **Most of this is now
+built** — milestones **M1–M12** have landed (the full phase pipeline, the seeded
+overworld, the guild/caravan tier, the two-pool economy, event nodes, and a
+four-class combat slice proven by a playable demo quest, *The Hollow Mill*). The
+notable design-only holdouts are **Vancian magic** (D17 — a typed stub in code, not
+wired) and **full line-of-sight** for vision (D18 — radius only so far). See
 [`scratchpad/foundations/PROGRESS.md`](../../scratchpad/foundations/PROGRESS.md)
-for what is actually implemented.
+for the authoritative, milestone-by-milestone status.

@@ -19,15 +19,16 @@ so they don't overlap.
 
 - **Combat:** drives the [CT clock](action-economy.md). Higher Speed → `CT` fills
   faster → more frequent turns and faster-landing charged effects.
-- **Deployment:** **throughput** — how many placements a unit can fit in the setup
-  window before it closes.
+- **Deployment:** **range & throughput** — how far a unit can venture *and still get
+  home*, and how many placements it can fit.
 - **Initiative seed:** a side's starting CT seed is computed from its **deployed,
   non-captured** units' Speed.
 
 #### Awareness
 
-- **Deployment:** **safety** — a longer **safe period** and **gentler retreat odds**
-  (D11). The high-Awareness unit preps deep without getting captured.
+- **Deployment:** **safety** — a **deeper safe depth** and a **quieter footprint**
+  past it (less noise, gentler capture odds) (D46). The high-Awareness unit preps deep
+  without getting spotted.
 - **Combat:** **ping** — a sense radius (ignores line-of-sight) that reveals enemy
   **presence/location without identity** (the **Pinged** state, see
   [vision](vision.md), D18). High Awareness = harder to ambush.

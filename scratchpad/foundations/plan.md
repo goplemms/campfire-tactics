@@ -2,13 +2,20 @@
 
 > **Design vision** for the systems these milestones build lives in
 > [`docs/design/`](../../docs/design/) (game flow + per-phase/subsystem docs).
-> Architectural calls are logged in [`decisions.md`](decisions.md) (D1–D7).
+> Architectural calls are logged in [`decisions.md`](decisions.md) (D1–D46).
 
 ## Goal (north star)
 
-A web-playable isometric roguelike tactics game whose identity is its
-**non-combat jobs** — chef, survivalist, merchant — built on a pure-logic core
-that can later wrap to Steam and mobile without a rewrite.
+A web-playable isometric roguelike tactics game whose identity is the
+**expedition** — *preparation under uncertainty*: you commit scarce resources
+(material, spatial, informational) against an unknown fight, then live with it, and
+combat is the **test** of that preparation. The signature **non-combat jobs** (chef,
+survivalist, merchant, …) are one vivid expression of that identity. Built on a
+pure-logic core that can later wrap to Steam and mobile without a rewrite.
+
+> **Framing note (D45):** the identity language was refined from "non-combat jobs"
+> → "logistics" → "the expedition." This is a framing refinement only — it
+> supersedes no decision and the milestones below are unchanged.
 
 ## Non-scope
 

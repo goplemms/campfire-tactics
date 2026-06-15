@@ -226,7 +226,10 @@ trail of reasoning stays intact.
   at design stage from the session play-trace). The banded/transparent/spatial
   *spirit* is unchanged.
 - **Spec:** [`docs/design/02-deployment.md`](../../docs/design/02-deployment.md).
-- **Superseded by:** —
+- **Superseded by:** **D46** — the timed safe-period/buzzer→retreat model is retired; the
+  shipped **spatial stealth-alert** model (noise-by-depth → immediate spot roll → per-tile
+  retreat capture) is canon. The banded/transparent/spatial *spirit* and the
+  Awareness/Speed roles carry over unchanged.
 
 ## D12 — Enemy-prep symmetry + unified in-combat capture
 
@@ -995,4 +998,62 @@ trail of reasoning stays intact.
   **authoring substrate** (`AuthoredEncounter` / `AuthoredQuest` + a demo runner) — the
   first hand-crafted-content shape (fills gap #4). It is the **proof before finalizing**.
 - **Spec:** [`M12-kickoff.md`](M12-kickoff.md) → Demo quest.
+- **Superseded by:** —
+
+## D45 — Identity reframe: the expedition; interactions earn their screen-time
+
+- **Status:** Decided (design discussion, 2026-06-15)
+- **Context:** The pitch has drifted across three framings — **"non-combat jobs"** (the
+  M1 north-star, still live in [`README.md`](../../README.md) and
+  [`plan.md`](plan.md)), **"logistics"** (the [design README](../../docs/design/README.md)
+  identity), and the systems themselves. "Logistics" names one pillar (material/supply)
+  accurately but is a **cold, spreadsheet-flavored word** that undersells the **spatial**
+  (deployment), **informational** (intel/vision), and **human** (morale / the named cast)
+  layers. A design review also located the real **work-vs-fun** risk: not any single
+  system, but the **aggregate** of recurring per-node camp interactions hardening into a
+  checklist.
+- **Decision:**
+  - **Identity = the expedition / preparation under uncertainty.** The unifying verb
+    across every system: *commit scarce resources against uncertainty before the fight,
+    then live with it.* **Combat is the test of preparation, not the game.** Logistics
+    stays **one of three prep axes** — **material** (logistics/economy), **spatial**
+    (deployment), **informational** (intel/vision) — all bound by a **human-stakes** layer
+    (morale / mortality / the named cast) and converging on combat. This is a **framing
+    refinement only**: it supersedes no decision, adds no milestone, and changes nothing
+    built (neither a pivot nor an adjustment in the D-sense — the systems already embody
+    it).
+  - **New convention — interactions earn their screen-time.** An interaction earns a
+    screen only when it poses a **live choice**; everything else is a **default with a
+    ledger** (auto-pay Upkeep when flush, auto-triage the most-wounded, auto-rebuy the
+    standard loadout — surface each only at a real fork). This is the implementation
+    discipline that keeps the expedition's recurring camp beats from curdling into
+    busywork; it operationalizes **D15** ("gold is the solvent for chores") at the **UI**
+    layer.
+- **Parked for the balance pass** (tuning outputs, not open design questions): how often
+  **Upkeep** underfunding goes live, and whether **intel tiers** are worth buying — both
+  are pure economy-tightness outputs, unjudgeable until the gold numbers settle.
+- **Spec:** [`docs/design/README.md`](../../docs/design/README.md) (Identity, Conventions).
+- **Superseded by:** —
+
+## D46 — Deployment model: the spatial stealth-alert is canon (settles D11)
+
+- **Status:** Decided (2026-06-15) · supersedes **D11**'s timed-buzzer model
+- **Context:** D11 specified a **temporal** model — a safe period, then a *"buzzer,"* then
+  an auto-retreat race with a per-step capture roll (proximity↓ vs. time↑) — noted there as
+  *"refined, never built."* The shipped code ([`deployment.ts`](../../src/core/deployment.ts),
+  since M5b/**D21**) instead runs a **spatial, per-action stealth model**, and a design-
+  staleness review (2026-06-15) confirmed [`02-deployment.md`](../../docs/design/02-deployment.md)
+  still led with the **unbuilt** buzzer model.
+- **Decision:** **The shipped spatial stealth-alert model is canon.** Each **noisy** deploy
+  action (one taken *past* a unit's Awareness-banded **safe depth**) raises a **shared,
+  party-wide camp-alert meter** by depth; a **spot roll** fires **immediately** against the
+  meter; on a spot the unit **bolts for cover** along a retreat path with a **per-tile
+  capture roll** that scales with how deep it was caught (**capped**, and the party's **last
+  un-captured fighter is never netted**); a survived spotting **settles** the meter back
+  down. There is **no timed safe-period / buzzer phase.** Awareness = deeper safe depth +
+  quieter; Speed = range + throughput; morale widens safe depth / lowers exposure — all
+  unchanged. The capture→rescue stakes (D7/D9/D21) and initiative-seed link are unchanged.
+  `02-deployment.md` updated to match; the buzzer model is **retired**.
+- **Spec:** [`docs/design/02-deployment.md`](../../docs/design/02-deployment.md),
+  [`src/core/deployment.ts`](../../src/core/deployment.ts).
 - **Superseded by:** —

@@ -29,11 +29,11 @@ warband of **Fliers** (enemy).
 
 | Beat | Exercises |
 |---|---|
-| Place **grounding runes** | Runes = Vancian castings (reagent cost + deploy peril) ✅ (D4/D11/D17) |
+| Place **grounding runes** | Runes = Vancian castings (reagent cost + deploy peril) ✅ (D4/D46/D17) |
 | Arrange deployed members; ranging out to place | Deployment positioning ✅ (D7) |
-| **Safe period closes** → the **Mage auto-retreats**, fails a step roll partway home → **captured**, repositioned into the **enemy safe zone** | Retreat-gamble capture (proximity↓ vs time↑) ✅ (D11), captured state ✅ (D7) |
-| The **Rogue makes it back** in time | Same retreat model ✅ (D11) |
-| **Begin combat** (no prep left); a beat to review comp with the Mage down (−1, off the initiative seed) | Phase transition; initiative seed ✅ (D7/D11) |
+| The **Mage ranges deep** past safe depth → a **noisy** placement spikes the camp-alert meter → **spotted**, bolts for cover, fails a capture roll partway home → **captured**, repositioned into the **enemy safe zone** | Spatial stealth-alert capture (noise-by-depth → spot roll → per-tile retreat roll) ✅ (D46), captured state ✅ (D7) |
+| The **Rogue stays shallow / quiet** and makes it back | Same stealth model ✅ (D46) |
+| **Begin combat** (no prep left); a beat to review comp with the Mage down (−1, off the initiative seed) | Phase transition; initiative seed ✅ (D7/D46) |
 
 ## 3 · Combat (the iso grid, CT clock)
 

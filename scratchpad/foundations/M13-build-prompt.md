@@ -19,8 +19,10 @@ written into the system specs) — do not re-litigate it; build it. Read these f
 3. [`overworld-ideas.md`](overworld-ideas.md) → **Q17–Q20** (the reasoning trail, if you want
    the "why").
 
-Develop on branch `claude/<your-branch>` off `main`. Repo is at **end-of-M12** (M1–M12 shipped
-& green; **325 tests**). Add an **M13** row to [`plan.md`](plan.md) as part of this work.
+**Continue on branch `claude/jolly-volta-euogwo`** — the D45–D48 design + specs live here and
+are **not yet on `main`**, so build on this branch to inherit them (do **not** branch off
+`main`). Repo is at **end-of-M12** (M1–M12 shipped & green; **325 tests**). Add an **M13** row
+to [`plan.md`](plan.md) as part of this work.
 
 ## Goal
 

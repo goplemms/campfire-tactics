@@ -3,8 +3,8 @@
  *
  * The M12 demo quest, **rebuilt as an authored expedition** so it plays inside the
  * real M13 routing economy through `OverworldScene → BattleScene` (M14). Where the
- * retired {@link "./demo-quest".DemoRunner} walked a linear beat list in its own
- * renderer, the Hollow Mill is now a hand-built {@link "./overworld".OverworldMap}
+ * retired demo runner walked a linear beat list in its own renderer, the Hollow
+ * Mill is now a hand-built {@link "./overworld".OverworldMap}
  * (a camp → three fights → a rest), `authoredId` on its combat nodes, a catalog of
  * {@link AuthoredEncounter}s, and a starting bundle — configured exactly like a
  * future campaign quest (D26) would be.

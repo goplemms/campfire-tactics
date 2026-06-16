@@ -6,9 +6,9 @@ import { BattleBootScene, OverworldBootScene, ExpeditionBootScene, HollowMillBoo
 import { COLOR } from "./theme";
 
 // Standalone **Hollow Mill** mode (M14/D44/D52): `#demo` boots the authored
-// expedition straight into the real OverworldScene → BattleScene path (no more
-// DemoScene). Otherwise the guild hall boots first (M9) → dispatches a caravan to
-// the OverworldScene → hands combat nodes to the BattleScene → returns to the hall.
+// expedition straight into the real OverworldScene → BattleScene path. Otherwise
+// the guild hall boots first (M9) → dispatches a caravan to the OverworldScene →
+// hands combat nodes to the BattleScene → returns to the hall on a terminal.
 const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
 const isDemo = hash === "demo";
 // `#battle` (D-debug): boot straight into the real BattleScene via a headless boot

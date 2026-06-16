@@ -103,7 +103,7 @@ export class BattleScene extends Phaser.Scene {
   private boardObjects: Phaser.GameObjects.GameObject[] = [];
   private originX = 0;
   private originY = 0;
-  /** Shared board geometry + grid/tile drawing (the seam shared with DemoScene). */
+  /** Shared board geometry + grid/tile drawing (the converged combat presentation). */
   private view!: CombatView;
 
   // Persistent HUD.

@@ -91,13 +91,13 @@ export interface UnitView {
 
 /**
  * The shared **combat presentation** layer — the board geometry, the isometric
- * grid, the tile overlays, *and* the unit tokens — that both
- * {@link "./scenes/DemoScene"} (the standalone demo) and
- * {@link "./scenes/BattleScene"} (the real mission loop) render the same way.
+ * grid, the tile overlays, *and* the unit tokens — that
+ * {@link "./scenes/BattleScene"} (the one mission loop, authored + procedural)
+ * renders through.
  *
- * Both scenes drive the *same* core `Battle`, but each grew its own copy of this
- * drawing code; the demo (a polish spike) pulled ahead and the mission scene fell
- * behind. This is the seam that re-unites them: a scene owns its `Battle`,
+ * The board + token drawing lives here (not in the scene) so a board tweak — or a
+ * future feel/telegraphing pass — is written once. This is the seam: a scene owns
+ * its `Battle`,
  * orchestration and HUD, and delegates the board + token pixels here, so a board
  * tweak — or a future feel/telegraphing pass — is written once and shows up in
  * both. It owns the unit token objects (and sweeps them on {@link clearUnits});

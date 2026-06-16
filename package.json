@@ -10,8 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "shots": "node scripts/screenshot.mjs",
-    "balance": "vitest run src/core/demo-balance.test.ts"
+    "shots": "node scripts/shots-overworld.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

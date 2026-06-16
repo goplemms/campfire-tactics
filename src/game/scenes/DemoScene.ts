@@ -6,7 +6,6 @@ import {
   findPath,
   occupiedGrid,
   TILE_HEIGHT,
-  DemoRunner,
   unlockedSkills,
   isValidSkillTarget,
   effectiveMove,
@@ -28,9 +27,10 @@ import {
   type Unit,
   type GridCoord,
   type SkillDef,
-  type DemoStagedEncounter,
   type EncounterResult,
 } from "../../core";
+// The retiring demo path (M14 Phase 4) — imported directly, not via the barrel.
+import { DemoRunner, type DemoStagedEncounter } from "../../core/demo-quest";
 import { Button, ButtonColumn } from "../button";
 import { HintPanel } from "../hint-panel";
 import { CombatView } from "../combat-view";

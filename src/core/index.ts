@@ -47,4 +47,7 @@ export * from "./objectives";
 export * from "./authored";
 export * from "./staging";
 export * from "./expedition";
-export * from "./demo-quest";
+export * from "./hollow-mill";
+// Note: `demo-quest` (the retiring DemoRunner path, M14 Phase 4) is intentionally
+// NOT re-exported — its E1/E3/THE_HOLLOW_MILL names now belong to `hollow-mill`.
+// Its remaining consumer (DemoScene) imports it directly until both are deleted.

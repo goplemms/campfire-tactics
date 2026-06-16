@@ -2,14 +2,13 @@ import Phaser from "phaser";
 import { GuildScene } from "./scenes/GuildScene";
 import { OverworldScene } from "./scenes/OverworldScene";
 import { BattleScene } from "./scenes/BattleScene";
-import { DemoScene } from "./scenes/DemoScene";
-import { BattleBootScene, OverworldBootScene, ExpeditionBootScene } from "./debug-battle";
+import { BattleBootScene, OverworldBootScene, ExpeditionBootScene, HollowMillBootScene } from "./debug-battle";
 import { COLOR } from "./theme";
 
-// Standalone **demo mode** (M12/D44): `#demo` (or the run-bar button) boots
-// straight into *The Hollow Mill*, bypassing the guild/overworld. Otherwise the
-// guild hall boots first (M9) → dispatches a caravan to the OverworldScene →
-// hands combat nodes to the BattleScene → returns to the hall on a terminal.
+// Standalone **Hollow Mill** mode (M14/D44/D52): `#demo` boots the authored
+// expedition straight into the real OverworldScene → BattleScene path (no more
+// DemoScene). Otherwise the guild hall boots first (M9) → dispatches a caravan to
+// the OverworldScene → hands combat nodes to the BattleScene → returns to the hall.
 const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
 const isDemo = hash === "demo";
 // `#battle` (D-debug): boot straight into the real BattleScene via a headless boot
@@ -33,12 +32,12 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   height: 600,
   backgroundColor: COLOR.bg,
   scene: isExpedition
-    ? [ExpeditionBootScene, GuildScene, OverworldScene, BattleScene, DemoScene]
+    ? [ExpeditionBootScene, GuildScene, OverworldScene, BattleScene]
     : isOverworld
-      ? [OverworldBootScene, GuildScene, OverworldScene, BattleScene, DemoScene]
+      ? [OverworldBootScene, GuildScene, OverworldScene, BattleScene]
       : isBattle
-        ? [BattleBootScene, GuildScene, OverworldScene, BattleScene, DemoScene]
+        ? [BattleBootScene, GuildScene, OverworldScene, BattleScene]
         : isDemo
-          ? [DemoScene, GuildScene, OverworldScene, BattleScene]
-          : [GuildScene, OverworldScene, BattleScene, DemoScene],
+          ? [HollowMillBootScene, GuildScene, OverworldScene, BattleScene]
+          : [GuildScene, OverworldScene, BattleScene],
 };

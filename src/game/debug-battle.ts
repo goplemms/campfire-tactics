@@ -8,6 +8,8 @@ import {
   dispatch,
   runFor,
   RunLoop,
+  createRunFromExpedition,
+  THE_HOLLOW_MILL,
   type Unit,
   type MapNode,
 } from "../core";
@@ -164,5 +166,30 @@ export class ExpeditionBootScene extends Phaser.Scene {
 
   create(): void {
     this.scene.start("OverworldScene", buildExpeditionDemo());
+  }
+}
+
+/**
+ * Build **The Hollow Mill** (M14) — the authored set-piece quest, now a first-class
+ * {@link "../core".AuthoredExpedition} booted straight into the real
+ * {@link "./scenes/OverworldScene"}. `createRunFromExpedition` inflates the bundle
+ * (party, purse, supplies) onto the hand-built map, and the run plays the M12 demo
+ * arc *inside* the M13 routing economy — provision at the start camp, E1, a rest,
+ * E2's hidden-until-scouted ambush, and E3's closing-gate holdout — with no guild
+ * (a standalone showcase, so a terminal shows the end screen in place).
+ */
+export function buildHollowMill(): RunHandoff {
+  const run = createRunFromExpedition(THE_HOLLOW_MILL);
+  return { run, loop: new RunLoop(run), demoIntro: true };
+}
+
+/** A headless boot scene for `#demo`: hands the Hollow Mill expedition to the OverworldScene. */
+export class HollowMillBootScene extends Phaser.Scene {
+  constructor() {
+    super("HollowMillBootScene");
+  }
+
+  create(): void {
+    this.scene.start("OverworldScene", buildHollowMill());
   }
 }

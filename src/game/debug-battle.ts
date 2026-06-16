@@ -79,3 +79,34 @@ export class BattleBootScene extends Phaser.Scene {
     this.scene.start("BattleScene", buildDebugBattle());
   }
 }
+
+/**
+ * A debug run parked at the **overworld start** (`#overworld`) — the same assembled
+ * caravan as {@link buildDebugBattle}, but handed to the {@link
+ * "./scenes/OverworldScene"} at its start node (not parked on a combat). Lets the
+ * screenshot harness (and a developer) see the M13 overworld economic layer — the
+ * fog (D48), Make Camp / Survey lifecycle (D46), the ledger (D45) and in-place rest
+ * (D47) — without walking the whole guild→dispatch flow. A purse is loaded so the
+ * ledger/forecast have numbers to show.
+ */
+export function buildDebugOverworld(): RunHandoff {
+  const handoff = buildDebugBattle();
+  // Reset to the start node (buildDebugBattle parks on a combat node) and stock the
+  // purse so the ledger/forecast read meaningfully.
+  const run = handoff.run;
+  run.mapNodeId = run.map.startId;
+  run.path = [run.map.startId];
+  run.camp.gold = 180;
+  return handoff;
+}
+
+/** A headless boot scene for `#overworld`: hands a fresh run to the OverworldScene. */
+export class OverworldBootScene extends Phaser.Scene {
+  constructor() {
+    super("OverworldBootScene");
+  }
+
+  create(): void {
+    this.scene.start("OverworldScene", buildDebugOverworld());
+  }
+}

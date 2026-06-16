@@ -7,7 +7,9 @@
 > **D25–D27** (the guild/caravan layer that wraps this), **D28** (gold as the routing
 > currency), **D29** (the overworld as a hook surface), **D30** (the gold economy),
 > **D33** (recruitment vectors), **D34** (run purse), **D35** (the overworld action
-> economy: camp at every node + cooldown spine + loose fatigue).
+> economy: camp at every node + cooldown spine + loose fatigue), **D45** (the economic
+> ledger), **D46** (the node lifecycle / phase contract), **D47** (the two-tier recovery
+> economy), **D48** (the route forecast + overworld fog).
 
 ## Description
 
@@ -74,7 +76,7 @@ the loop:
 | Kind | What happens |
 |---|---|
 | **combat** | A fight. Reuses `generation.ts` for the encounter and runs the full **Camp → Deployment → Battle → Resolution** flow. Difficulty scales with **map depth** (the node's layer is the encounter index). |
-| **rest** | **No fight.** A night of [Upkeep](logistics.md) plus a recovery bonus: extra [Rest Points](mortality-recovery.md), auto-triage of the most-wounded, and a small [morale](morale.md) uptick. The between-battle camp beat as a *node*. |
+| **rest** | **No fight.** A night of [Upkeep](logistics.md) plus a recovery bonus: extra [Rest Points](mortality-recovery.md), auto-triage of the most-wounded, and a small [morale](morale.md) uptick. The between-battle camp beat as a *node*. **(D47:** the **premium** recovery tier — a large/full heal that also restores fatigue and clears accumulated Upkeep debt in one swipe; the lesser, repeatable **in-place rest** is available at *any* node. See [the two-tier recovery economy](#the-two-tier-recovery-economy-d47).) |
 
 > **Updated by D35.** The Meta phase no longer lives on a separate screen: the overworld
 > is rendered as **one unified camp surface shown at every node** (below). The old
@@ -171,6 +173,115 @@ combat CT clock** (D5), one tier up.
   agony. **Overworld-only** — no bleed into combat readiness.
 - **Per-ability costs.** **Vancian charges** ([magic](magic.md)) and **purse gold** (D34)
   ride on top as costs *specific* abilities name — not the global pace.
+
+## The node lifecycle — the phase contract (D46)
+
+Every node, whatever its kind, runs **one contract**, so the camp (D35), the ledger (D45)
+and the forecast (D48) all attach to the same seam. **One node = one node-step** (one tick of
+the overworld clock).
+
+```
+Arrive → MAKE CAMP ─ "End the Night" → [node event by kind] → SURVEY ─ "Break Camp" → next node
+         (provision)                    combat: Deploy→Battle→Resolve  (plan/heal)   (depart;
+         ledger: reconcile              rest:   recover (D47)          ledger:        the tick
+                                        event:  resolve the choice     forecast       fires HERE)
+```
+
+1. **Make Camp** — *pre-event* prep: heal, buy gear, buffs, pay Upkeep. The ledger here
+   **reconciles** (what tonight cost; can I still afford the event).
+2. **End the Night** — the gate; the night passes and the node's **event fires by kind**:
+   **combat** = the D3 Deployment→Battle→Resolution pipeline; **rest** = the recovery payload
+   (D47); **event** = the choice resolves. Rest is the *event*, parallel to combat — **never**
+   a pre-gate action.
+3. **Survey** (*post-event*) — now-informed: scout intel, **in-place rest** (D47), read the
+   ledger **forecast**. Deliberately **light & mostly optional** (soft-gated, never a
+   mandatory second panel).
+4. **Break Camp** — choose the next edge and depart. **The node-step tick fires here, at
+   departure** (cooldowns decrement, interest accrues) — so one night's action allowance is
+   *timed across the whole visit*, not split mid-node.
+
+**Terminology:** *"End the Night"* = the prep→event gate; *"Break Camp"* = depart→next-node
+(the word fits the departure). Never reuse "rest" for a gate — rest is a node kind (D23) + a
+recovery payload (D47). **Where rest fits:** the *"rest or push on"* choice lives on the
+**map (routing to a rest node)**, not as a camp toggle — moving it into camp would dissolve
+the rest node and revive the *dodge-every-fight* failure mode. The one in-camp recovery
+action is D47's **in-place rest**.
+
+## The economic ledger (D45)
+
+The overworld is an **economic routing problem** (D28), but the budget that *is* the decision
+was invisible. The **ledger** is the readout — a **pure projection** of run state (the
+`previewNode` pattern), **purse-scoped** (the treasury is the guild hall's concern; Influence
+is shown but **never summed into gold**, D34).
+
+- **Broad totals → expand for crunch.** Default = a few category totals (Upkeep / Loot /
+  Field spend / Banker / balance); expand a category to its line items (the Upkeep bill's
+  Food/Repairs, individual loot/spend events).
+- **Two roles, two touchpoints (D46):** **reconcile** at Make Camp; **forecast** at
+  Survey/selection — the post-event numbers are the real ones.
+- **Jump to market** when usable (town/rest node · Merchant present · off cooldown) — size a
+  buy against the budget before committing.
+- **A soft, intent-aware gate** on Break Camp: always one glance away, the bottom-line delta
+  shown inline, **hard-stopping only when warranted** (a projected shortfall, can't-afford-
+  the-rest, outstanding debt, an underfunded line) — never a per-night chore (the D35/D16
+  anti-agony stance).
+- **Voluntary underfunding — the ledger as an *input* (extends D15).** Untick a line you
+  *could* afford to free its gold for a riskier play (skip Food's morale hit to buy a buff
+  that nets the day positive). The gate keys off **intent** — it won't nag a deliberate skip,
+  only a can't-afford one. **Food** = a recoverable morale gamble; **Repairs** = a compounding
+  gear-condition debt (surfaced distinctly). Tuned so the skip keeps real teeth, else the D15
+  Upkeep sink slackens.
+
+## The two-tier recovery economy (D47)
+
+Recovery is a **gold spend**, in **two tiers**, built almost entirely on existing machinery
+(`payUpkeep` + `rpPerNight` + `triageHeal`):
+
+| Tier | Where | What it does |
+|---|---|---|
+| **In-place rest** | any *finished* node (the Survey beat) | Pay **a night's rations** (Upkeep) → bank RP (support classes boost it via `rpPerNight` — the class-boost is already in the model) → a **small** heal. **Repeatable** until the purse can't afford another night. **Each rest is a full node-step** — it **ticks cooldowns + accrues interest** (a deliberate lever: buy HP *and* cooldown progress). |
+| **Rest node** | routed-to on the map (D23) | The **premium**: a **large/full** heal in one stop, **+ full fatigue restore** (D35's guardrail stays rest-node-only) **+ clears accumulated debt in one swipe** (hunger / worn gear from voluntary underfunding). The payoff for *routing* there. |
+
+**Two caps by design:** **gold** (can you afford another rations night?) and the per-night
+**RP rate** (one night banks only so much → healing is rate-limited regardless of wealth →
+the rest node stays faster/better). **Heal floors at ≥1** on a wounded party (a paid rest
+never reads "healed 0" like a bug); it **refuses when already full** (no empty drain). The
+whole tier lives or dies on **gold scarcity** (D30/D34) — an accepted balance burden.
+
+## The route forecast & overworld fog (D48)
+
+The ledger's forecast — *"this route + a rest at the end → purse at the bottom"* — is governed
+by one fact: **cost is knowable, income is fogged.** Upkeep is exact; loot is only ever seen
+**banded by intel tier** (D10/D24). Four pillars:
+
+- **Reach = overworld fog scaled by intel.** Intel governs whether you see the route *at
+  all*: visibility = `baseReach + tier × bandStep` steps forward, **base ≈ half the map** (a
+  deep-planning tool, not an early wall), tunable to effectively infinite. The
+  **immediately-reachable nodes are always visible** (never stuck — the map-invariant spirit);
+  a **pure visibility mask** (a BFS cut at the reach limit, determinism intact). This is the
+  **reach** axis — the second intel axis alongside **depth** (see [intel](intel.md), D48).
+  *Consequence (intended): the nearest-rest / runway is intel-gated too — seeing the third
+  rest ahead is what intel buys.*
+- **Burn = upkeep + visible node fees.** Upkeep **is** the travel cost (no separate universal
+  travel line — D28 satisfied without a new mechanic). On top, *special* nodes carry a
+  **visible, known fee** (toll / town tax / gate fee), modelled as an event-node kind
+  (reusing the M11 registry) — "a thief that tells you the price up front." Fees are **known
+  in advance** (within reach) and **avoidable by routing**. The deterministic cost backbone =
+  `upkeep × steps + visible fees on the path`.
+- **Loot = fogged range**, never revealed beyond the player's intel tier (no fog-leak); rest
+  nodes earn nothing (cost-only), events skim/cost.
+- **Warning = against the floor; show the range; intel clears warnings.** The soft gate
+  evaluates on the **pessimistic** (low-band) loot — it **never reassures on gold you might
+  not get** (false confidence is the one failure mode); the panel still shows the full range.
+  A tighter intel band **raises the known floor**, so **scouting a node can clear its
+  warning** — intel *relaxes* warnings, not just reveals (the asymmetric-floor ethos,
+  D8/D11/D35).
+
+**Horizon:** one committed step (banded loot) + the runway to the nearest *visible* rest — not
+a whole-map projection (deep nodes are fog, branches combinatorial; the decision served is
+"which edge next"). The seam is a pure `projectForecast(run)` over the **visible** set,
+reusing `computeUpkeep` + `rewardHint` + the visibility BFS — the `previewNode` pattern one
+tier up.
 
 ## The gold economy: faucets, sinks & theft (D30)
 

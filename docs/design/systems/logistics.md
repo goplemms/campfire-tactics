@@ -4,7 +4,8 @@
 > [Deployment](../02-deployment.md), [Resolution](../04-resolution.md),
 > [The overworld](overworld.md), [The guild & caravans](guild.md).
 > Decisions: **D6**, **D14** (slotted storage), **D15** (Upkeep), **D28** (gold as the
-> routing currency), **D30** (the gold economy), **D34** (two pools + Influence). This is
+> routing currency), **D30** (the gold economy), **D34** (two pools + Influence), **D47**
+> (recovery as a gold spend), **D48** (the route forecast reads the burn). This is
 > the game's **headline pillar**.
 
 ## Description
@@ -125,6 +126,23 @@ Because gold must stay **scarce** or Upkeep stops biting, the economy classes ea
 
 **Influence** is a purpose-bound currency (= the Noble's whole economy), deliberately
 **walled off from gold** — it retires a gold faucet rather than adding one.
+
+#### Recovery is a spend; the forecast reads the burn (D47, D48)
+
+On the overworld, **recovery itself becomes a gold spend** (D47). An **in-place rest** at any
+finished node pays a night's Upkeep to bank Rest Points and heal a little — **repeatable**
+until the purse taps out (each rest is a full node-step, so it also ticks ability cooldowns).
+A **rest node** is the premium full heal that additionally **clears accumulated Upkeep debt**
+(hunger / worn gear) in one swipe. So Upkeep is no longer just a per-night chore — it is the
+**per-step burn rate** the route [forecast](overworld.md#the-route-forecast--overworld-fog-d48)
+(D48) projects against.
+
+That forecast's cost backbone is **deterministic**: `upkeep × steps + visible node fees`,
+where *special* nodes may carry a **visible, known fee** (toll / town tax / gate fee) you can
+see while planning and **route around** — distinct from the fogged thief skim. **Upkeep is the
+travel cost** — there is no separate travel line. Fogged **loot** is the upside layered on
+top, and the affordability **warning plans against the pessimistic loot floor** (so it never
+falsely reassures), tightening as intel reveals more.
 
 The **active theft vector** (D30) is the sink-side risk that gives the Banker teeth:
 **thief/bandit event nodes** skim the **purse** on the overworld, and a

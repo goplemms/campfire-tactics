@@ -72,6 +72,52 @@ describe("upkeep — the gold figure (D15)", () => {
     const res = payUpkeep(camp, party);
     expect(res.underfunded).toEqual(["repairs"]);
     expect(res.gearWorn).toBe(true);
+    expect(res.skipped).toEqual([]);
+    expect(camp.gearWear).toBe(1); // worn-gear debt compounds (D45/D47)
+  });
+});
+
+describe("upkeep — voluntary underfunding: the ledger as an input (D45)", () => {
+  it("a voluntary skip frees its gold but still applies the consequence", () => {
+    const party = [member("a"), member("b")];
+    const bill = computeUpkeep(party);
+    const camp = createCamp({ gold: 100, morale: 0 }); // could afford everything
+    const res = payUpkeep(camp, party, { skip: ["food"] });
+
+    // The Food gold is freed (only Repairs paid) — that's the point of the skip.
+    const repairs = bill.lines.find((l) => l.id === "repairs")!.cost;
+    expect(camp.gold).toBe(100 - repairs);
+    // It's reported as an *intentional* skip, not a can't-afford breach…
+    expect(res.skipped).toEqual(["food"]);
+    expect(res.underfunded).toEqual([]);
+    // …but the morale consequence still lands (the skip keeps teeth, D45).
+    expect(res.moraleDelta).toBeLessThan(0);
+    expect(camp.morale).toBeLessThan(0);
+  });
+
+  it("voluntarily skipping repairs compounds the worn-gear debt", () => {
+    const party = [member("a")];
+    const camp = createCamp({ gold: 100 });
+    payUpkeep(camp, party, { skip: ["repairs"] });
+    expect(camp.gearWear).toBe(1);
+    payUpkeep(camp, party, { skip: ["repairs"] });
+    expect(camp.gearWear).toBe(2); // compounds — the rest node clears it (D47)
+  });
+
+  it("a can't-afford skip still breaches (intent vs affordability)", () => {
+    const party = [member("a"), member("b")];
+    const camp = createCamp({ gold: 0 }); // can't afford anything
+    const res = payUpkeep(camp, party); // no voluntary skips
+    // Genuinely unaffordable lines are breaches, not voluntary skips.
+    expect(res.underfunded.length).toBeGreaterThan(0);
+    expect(res.skipped).toEqual([]);
+  });
+
+  it("defaults the skip set to the camp's persisted selection (D45 seam)", () => {
+    const party = [member("a"), member("b")];
+    const camp = createCamp({ gold: 100, skippedUpkeep: ["food"] });
+    const res = payUpkeep(camp, party); // no explicit skip → reads camp.skippedUpkeep
+    expect(res.skipped).toEqual(["food"]);
   });
 });
 

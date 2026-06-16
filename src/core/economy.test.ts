@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
-import { createRun, recordNight, currentNode, type RunState } from "./run";
+import { createRun, breakCamp, type RunState } from "./run";
 import {
   createGuild,
   dispatch,
@@ -120,8 +120,7 @@ describe("economy — the treasury has NO passive faucet (D34)", () => {
 
     // Play several node-steps; loot lands in the purse, not the vault.
     for (let i = 0; i < 4; i++) {
-      const node = currentNode(gr.run);
-      recordNight(gr.run, { nodeId: node.id, layer: node.layer, kind: node.kind, goldEarned: 0, fallen: [] });
+      breakCamp(gr.run); // the node-step tick at departure (D46)
     }
     expect(g.treasury).toBe(treasuryAfterDispatch);
   });
@@ -136,8 +135,7 @@ describe("economy — the treasury has NO passive faucet (D34)", () => {
 
     gr.run.overworld.interestPerStep = 10; // Banker engaged
     const purseBefore = gr.run.camp.gold;
-    const node = currentNode(gr.run);
-    recordNight(gr.run, { nodeId: node.id, layer: node.layer, kind: node.kind, goldEarned: 0, fallen: [] });
+    breakCamp(gr.run); // the node-step tick at departure (D46) accrues interest
 
     expect(gr.run.camp.gold).toBe(purseBefore + 10); // purse grew
     expect(g.treasury).toBe(treasuryAfterDispatch); // treasury did not

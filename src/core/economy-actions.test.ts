@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
-import { createRun, recordNight, currentNode, type RunState } from "./run";
+import { createRun, breakCamp, type RunState } from "./run";
 import { createGuild, type Guild } from "./guild";
 import { createCaravan } from "./caravan";
 import {
@@ -78,8 +78,7 @@ describe("economy-actions — Banker TIME-SHIFT + SECURE (purse only) (D30/D34)"
     expect(run.overworld.interestPerStep).toBe(perStep);
 
     const purseBefore = run.camp.gold;
-    const node = currentNode(run);
-    recordNight(run, { nodeId: node.id, layer: node.layer, kind: node.kind, goldEarned: 0, fallen: [] });
+    breakCamp(run); // the node-step tick at departure (D46) accrues interest
     expect(run.camp.gold).toBe(purseBefore + perStep);
   });
 

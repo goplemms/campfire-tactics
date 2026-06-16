@@ -29,10 +29,18 @@ import {
   // M11 — the data-driven event-node registry (D4/D23)
   eventForNode,
   storyForNode,
+  // M13 — the overworld economic layer (D45/D46/D47/D48)
+  currentNode,
+  visibleNodes,
+  projectForecast,
+  buildLedger,
+  nightEndGate,
+  computeUpkeep,
   type RunState,
   type MapNode,
   type NodePreview,
   type RestResult,
+  type InPlaceRestResult,
   type EventOutcome,
   type EventChoice,
   type EventKind,
@@ -41,6 +49,9 @@ import {
   type ActionResult,
   type SkillDef,
   type Guild,
+  type Ledger,
+  type RouteForecast,
+  type UpkeepLine,
 } from "../../core";
 import { fitText } from "../ui";
 import { Button } from "../button";
@@ -129,7 +140,25 @@ export class OverworldScene extends Phaser.Scene {
     if (this.loop.isOver()) return this.runEnd();
     if (this.loop.isComplete()) return this.runComplete();
 
+    // Returning from a resolved node (e.g. back from a combat BattleScene) lands on
+    // the **Survey** beat (D46) — the now-informed post-event planning surface —
+    // before the map. A fresh run sits at the un-played start node → straight to map.
+    if (this.justResolvedCurrentNode()) return this.showSurvey();
+
     this.drawMap();
+  }
+
+  /** True if the current node has just been played (its event is in history) — Survey time (D46). */
+  private justResolvedCurrentNode(): boolean {
+    const last = this.run.history[this.run.history.length - 1];
+    return !!last && last.nodeId === this.run.mapNodeId;
+  }
+
+  /** After a node's event resolves: a terminal screen, or the Survey beat (D46). */
+  private afterNode(): void {
+    if (this.loop.isOver()) return this.runEnd();
+    if (this.loop.isComplete()) return this.runComplete();
+    this.showSurvey();
   }
 
   // --- Map drawing ----------------------------------------------------------
@@ -143,6 +172,9 @@ export class OverworldScene extends Phaser.Scene {
     const map = this.run.map;
     const reachableIds = new Set(this.loop.reachable().map((n) => n.id));
     const onPath = new Set(this.run.path);
+    // Overworld fog (D48): only nodes within intel reach are drawn in full; the
+    // rest are silhouettes. Immediate choices are always visible (never stuck).
+    const visibleIds = new Set(visibleNodes(this.run).map((n) => n.id));
 
     this.titleText.setText(`Overworld — Night ${this.run.night + 1} · choose your next move`);
 
@@ -164,11 +196,12 @@ export class OverworldScene extends Phaser.Scene {
       });
     }
 
-    // Edges underneath the nodes.
+    // Edges underneath the nodes — only between visible endpoints (fog, D48).
     this.graph = this.add.graphics().setDepth(0);
     for (const id of map.order) {
       const from = this.nodePos.get(id)!;
       for (const e of map.nodes[id].edges) {
+        if (!visibleIds.has(id) || !visibleIds.has(e)) continue; // hide fogged edges
         const to = this.nodePos.get(e)!;
         const live = this.run.mapNodeId === id; // edges out of the current node
         this.graph.lineStyle(live ? 3 : 1.5, live ? COLOR.accent : COLOR.border, live ? 0.9 : 0.5);
@@ -183,10 +216,11 @@ export class OverworldScene extends Phaser.Scene {
       const reachable = reachableIds.has(id);
       const current = this.run.mapNodeId === id;
       const visited = onPath.has(id) && !current;
-      this.drawNode(node, pos, { reachable, current, visited });
+      if (!visibleIds.has(id)) this.drawFogged(pos);
+      else this.drawNode(node, pos, { reachable, current, visited });
     }
 
-    this.setHint("Click a node to preview it; click again to commit. ⚔ combat · ❄ rest · events: $ thief · ⚖ shop · ✚ recruiter · ? story.");
+    this.setHint("Click a node to preview it; click again to commit. Deeper nodes are fogged — raise intel to see farther. ⚔ combat · ❄ rest · events: $ thief · ⚖ shop · ✚ recruiter · ? story · ⛩ toll.");
     this.previewText.setText("");
   }
 
@@ -196,9 +230,18 @@ export class OverworldScene extends Phaser.Scene {
       case "shop": return { glyph: "⚖", color: COLOR.gold };
       case "recruiter": return { glyph: "✚", color: COLOR.info };
       case "story": return { glyph: "?", color: COLOR.captive };
+      case "toll": return { glyph: "⛩", color: COLOR.gold };
       case "thief":
       default: return { glyph: "$", color: COLOR.captive };
     }
+  }
+
+  /** A fogged node (D48): a dim silhouette with no contents — out of intel reach. */
+  private drawFogged(pos: { x: number; y: number }): void {
+    const circle = this.add.circle(pos.x, pos.y, 13, COLOR.tileDark, 0.5).setDepth(1);
+    circle.setStrokeStyle(1, COLOR.border, 0.4);
+    const label = this.add.text(pos.x, pos.y, "?", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(2);
+    this.nodeObjects.push(circle, label);
   }
 
   private drawNode(node: MapNode, pos: { x: number; y: number }, state: { reachable: boolean; current: boolean; visited: boolean }): void {
@@ -290,8 +333,8 @@ export class OverworldScene extends Phaser.Scene {
       : node.kind === "event"
         ? `Event — ${this.loop.eventDef().name}`
         : "Rest";
-    this.titleText.setText(`Camp — Night ${this.run.night + 1} · ${kindLabel}`);
-    this.setHint("Take overworld actions (cooldown- and fatigue-gated), then commit. Cooldowns tick as you advance.");
+    this.titleText.setText(`Make Camp — Night ${this.run.night + 1} · ${kindLabel}`);
+    this.setHint("Make Camp: provision, pay Upkeep, read the ledger — then End the Night to face the node. Cooldowns tick when you Break Camp.");
 
     const cx = this.scale.width / 2;
     const panelW = 720;
@@ -367,14 +410,19 @@ export class OverworldScene extends Phaser.Scene {
     );
     const meterBottom = top + 18 + this.run.party.filter((u) => u.alive).length * 21 + 8;
 
-    // --- Commit — placed below all content so it never collides with buttons ---
-    const contentBottom = Math.max(leftBottom, meterBottom);
+    // --- Ledger glance (D45): always one click away, on the camp ---
+    this.campButton(cx + 60, leftBottom + 8, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger (D45): purse-scoped totals you can expand to line items, plus the route forecast (D48).");
+
+    // --- End the Night — the prep→event gate (D46); placed below all content ---
+    const contentBottom = Math.max(leftBottom + 8, meterBottom);
+    // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
+    // Mission" (D45 fork 2); rest/event "End the Night" into their payload.
     const commitLabel = isCombat
-      ? "Commit — Begin Mission"
+      ? "End the Night — Begin Mission"
       : node.kind === "event"
-        ? "Commit — Approach the Event"
-        : "Commit — Make Camp (Rest)";
-    const commit = this.makeTextButton(cx, contentBottom + 26, 240, 34, commitLabel, COLOR.successDeep, COLOR.success, () => this.commit());
+        ? "End the Night — Approach the Event"
+        : "End the Night — Rest";
+    const commit = this.makeTextButton(cx, contentBottom + 26, 260, 34, commitLabel, COLOR.successDeep, COLOR.success, () => this.commit());
     this.campObjects.push(commit);
 
     // Backdrop sized to the actual content (added last; its low depth keeps it behind).
@@ -559,13 +607,11 @@ export class OverworldScene extends Phaser.Scene {
     }
   }
 
-  /** Leave the event, record the node-step, and route to the map/terminal. */
+  /** Leave the event, record the node-step, and route to the Survey beat/terminal (D46). */
   private finishEvent(netGold: number): void {
     this.loop.recordEventNight(netGold);
     this.refreshCampText();
-    if (this.loop.isOver()) return this.runEnd();
-    if (this.loop.isComplete()) return this.runComplete();
-    this.drawMap();
+    this.afterNode();
   }
 
   // Thief — no choice; resolve the skim (auto path) and report it (D30).
@@ -583,11 +629,7 @@ export class OverworldScene extends Phaser.Scene {
       lines.push("The road was clear — the purse is intact.");
     }
     lines.push(`Purse now ${this.run.camp.gold}g.`);
-    this.showOverlay(res.def.name, lines.join("\n"), stolen === 0, 520, 200, () => {
-      if (this.loop.isOver()) return this.runEnd();
-      if (this.loop.isComplete()) return this.runComplete();
-      this.drawMap();
-    });
+    this.showOverlay(res.def.name, lines.join("\n"), stolen === 0, 520, 200, () => this.afterNode());
   }
 
   // Shop — buy supplies into storage from the purse (Merchant verb reused, D30/D34).
@@ -678,11 +720,7 @@ export class OverworldScene extends Phaser.Scene {
     this.loop.recordEventNight(out.goldDelta);
     this.refreshCampText();
     const good = out.goldDelta >= 0 && out.moraleDelta >= 0;
-    this.showOverlay(def.name, lines.join("\n"), good, 520, 200, () => {
-      if (this.loop.isOver()) return this.runEnd();
-      if (this.loop.isComplete()) return this.runComplete();
-      this.drawMap();
-    });
+    this.showOverlay(def.name, lines.join("\n"), good, 520, 200, () => this.afterNode());
   }
 
   // --- Rest node (D23) -------------------------------------------------------
@@ -702,13 +740,200 @@ export class OverworldScene extends Phaser.Scene {
     else lines.push("No one needed triage — the party rested easy.");
     if (res.fatigueRestored.length) lines.push(`Fatigue restored: ${res.fatigueRestored.join(", ")} back to Rested.`);
     else lines.push("Everyone was already rested.");
+    // The premium tier clears accumulated worn-gear debt in one swipe (D47).
+    if (res.debtCleared > 0) lines.push(`Cleared ${res.debtCleared} worn-gear debt — gear refit.`);
     if (res.dyingLost.length) lines.push(`Lost to wounds: ${res.dyingLost.join(", ")}.`);
 
-    this.showOverlay("Rest", lines.join("\n"), true, 520, 200, () => {
-      if (this.loop.isOver()) return this.runEnd();
-      if (this.loop.isComplete()) return this.runComplete();
-      this.drawMap();
-    });
+    this.showOverlay("Rest", lines.join("\n"), true, 520, 220, () => this.afterNode());
+  }
+
+  // --- The Survey beat (post-event planning, D46) ----------------------------
+
+  /**
+   * The **Survey** beat (D46) — the now-informed, post-event planning surface: read
+   * the route {@link "../../core".projectForecast | forecast} (D48), take a costed
+   * **in-place rest** (D47, repeatable), scout ahead, glance the ledger — then
+   * **Break Camp** (the soft gate) back to the map. Deliberately light & optional.
+   */
+  private showSurvey(): void {
+    this.clearMap();
+    this.clearCamp();
+    for (const o of this.overlay) o.destroy();
+    this.overlay = [];
+    this.campNode = currentNode(this.run);
+    this.refreshCampText();
+
+    this.titleText.setText(`Survey — Night ${this.run.night} · plan your route`);
+    this.setHint("Survey (D46): read the forecast, rest in place (a night's rations, repeatable), scout ahead — then Break Camp to the map.");
+
+    const cx = this.scale.width / 2;
+    const panelW = 760;
+    const top = 92;
+    const colX = cx - panelW / 2 + 30;
+    const rowH = 30;
+
+    const forecast = projectForecast(this.run);
+    this.campObjects.push(
+      this.add.text(colX - 10, top - 6, "Route forecast (D48)", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+      this.add.text(colX - 10, top + 18, this.forecastSummary(forecast), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 5, wordWrap: { width: panelW - 60 } }).setOrigin(0, 0).setDepth(11),
+    );
+    let y = top + 26 + (forecast.perEdge.length + 1) * 18 + 14;
+
+    // In-place rest (D47): a repeatable, costed heal — greys at full / when broke.
+    const rest = this.inPlaceRestReadout();
+    this.campButton(colX, y, 360, 24, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail);
+    y += rowH;
+
+    // Scout a reachable node — raises its intel, tightening the forecast (D48).
+    const scout = getAbility("scout")!;
+    for (const target of this.loop.reachable()) {
+      const actor = this.scoutActor();
+      const refusal = this.refusal(scout, actor);
+      this.campButton(colX, y, 360, 24, `Scout → ${target.id} (${this.costReadout(scout, actor)})`, !refusal, () => { this.loop.overworldAction(actor, "scout", { targetNodeId: target.id }); this.showSurvey(); }, refusal ?? scout.description);
+      y += rowH;
+    }
+
+    this.campButton(colX, y, 360, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.showSurvey()), "The economic ledger (D45): purse-scoped totals, expandable to lines, plus the forecast.");
+    y += rowH + 6;
+
+    const breakBtn = this.makeTextButton(cx, y + 12, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
+    this.campObjects.push(breakBtn);
+
+    const panelTop = top - 22;
+    const panelBottom = y + 40;
+    this.campObjects.push(
+      this.add.rectangle(cx, (panelTop + panelBottom) / 2, panelW, panelBottom - panelTop, COLOR.surface, 0.96).setStrokeStyle(2, COLOR.border).setDepth(8),
+    );
+  }
+
+  /** A compact text readout of the route forecast (D48) — burn, runway, per-edge. */
+  private forecastSummary(f: RouteForecast): string {
+    const r = f.runway;
+    const lines: string[] = [];
+    const rest = r.nearestRestSteps === undefined ? "fogged (raise intel)" : `${r.nearestRestSteps} step(s), purse ~${r.purseAtRest}g there`;
+    lines.push(`Burn ${r.burnPerStep}g/step   ·   nearest rest: ${rest}`);
+    for (const e of f.perEdge) {
+      const loot = e.lootBand.label ?? (e.lootBand.floor > 0 ? `≥${e.lootBand.floor}g` : "unknown");
+      const ceil = e.purseAfter.ceiling === undefined ? "…" : `${e.purseAfter.ceiling}g`;
+      lines.push(`${e.warn ? "⚠ " : "  "}${e.nodeId} (${e.kind}): cost ${e.costKnown}g · loot ${loot} → purse ${e.purseAfter.floor}…${ceil}`);
+    }
+    return lines.join("\n");
+  }
+
+  /** The in-place-rest button's label/availability (cost/heal, greys at full/broke). */
+  private inPlaceRestReadout(): { label: string; detail: string; enabled: boolean } {
+    const bill = computeUpkeep(this.run.party);
+    const wounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
+    const affordable = this.run.camp.gold >= bill.total;
+    const enabled = wounded && affordable;
+    const label = !wounded ? "party at full HP" : !affordable ? `need ${bill.total}g (broke)` : `pay ${bill.total}g · heal a little (+RP)`;
+    return {
+      label,
+      detail: "In-place rest (D47): pay a night's rations to bank RP + a small heal (floors at ≥1). Repeatable; each rest is a node-step (ticks cooldowns). Greys at full HP / when broke.",
+      enabled,
+    };
+  }
+
+  private doInPlaceRest(): void {
+    const res: InPlaceRestResult = this.loop.inPlaceRest();
+    this.refreshCampText();
+    if (res.applied) this.setHint(`Rested in place: −${res.goldSpent}g rations, +${res.hpHealed} HP, +${res.rpAdded} RP. Cooldowns ticked (a node-step passed).`);
+    else this.setHint(`Can't rest: ${res.reason}`);
+    if (this.loop.isOver()) return this.runEnd();
+    this.showSurvey();
+  }
+
+  /** Break Camp → the soft, intent-aware gate (D45) → the map. */
+  private breakCampToMap(): void {
+    const gate = nightEndGate(this.run);
+    if (!gate.warn) return this.toMap();
+    // Hard-stop with a forced look only when warranted; never a per-night chore.
+    for (const o of this.overlay) o.destroy();
+    this.overlay = [];
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2 - 10;
+    const w = 560;
+    const h = 150 + gate.reasons.length * 18;
+    this.overlay.push(
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.danger).setDepth(24),
+      this.add.text(cx, cy - h / 2 + 24, "Before you break camp…", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
+      this.add.text(cx, cy - h / 2 + 56, gate.reasons.map((r) => `• ${r}`).join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "left", lineSpacing: 5, wordWrap: { width: w - 60 } }).setOrigin(0.5, 0).setDepth(25),
+    );
+    const stay = this.makeTextButton(cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showSurvey());
+    const go = this.makeTextButton(cx + 110, cy + h / 2 - 22, 180, 30, "Break Camp anyway", COLOR.danger, COLOR.danger, () => this.toMap());
+    this.overlay.push(stay, go);
+  }
+
+  /** Leave the Survey for the map (the gate already cleared). */
+  private toMap(): void {
+    this.clearCamp();
+    for (const o of this.overlay) o.destroy();
+    this.overlay = [];
+    this.campNode = undefined;
+    this.drawMap();
+  }
+
+  // --- The economic ledger panel (D45) ---------------------------------------
+
+  /**
+   * The ledger panel (D45): purse-scoped category totals expanded to their line
+   * items, the embedded forecast, Influence shown but walled off, **voluntary-skip**
+   * toggles (free a line's gold for a riskier play, intent-aware), and a
+   * **jump-to-market** when usable. Every number flows through {@link buildLedger}.
+   */
+  private showLedgerPanel(onClose: () => void): void {
+    for (const o of this.overlay) o.destroy();
+    this.overlay = [];
+    const node = this.campNode ?? currentNode(this.run);
+    const merchantReady = node.kind === "rest" && this.run.party.some((u) => u.alive && u.jobId === "merchant") && cooldownRemaining(this.run.overworld, "market") === 0;
+    const ledger: Ledger = buildLedger(this.run, { influence: this.guild?.influence ?? 0, marketReady: merchantReady });
+
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2 - 10;
+    const w = 660;
+
+    const body: string[] = [];
+    body.push(`Balance (run purse): ${ledger.balance}g     ·     Influence: ${ledger.influence}  (separate — never pays Upkeep)`);
+    body.push("");
+    for (const cat of ledger.categories) {
+      const tag = cat.projected ? "  (projected)" : "";
+      body.push(`${cat.label}${tag}:  ${cat.total >= 0 ? "+" : ""}${cat.total}g`);
+      for (const l of cat.lines) body.push(`     ${l.label}: ${l.amount >= 0 ? "+" : ""}${l.amount}g${l.note ? `  (${l.note})` : ""}`);
+    }
+    body.push("");
+    body.push("Forecast (D48):");
+    body.push(this.forecastSummary(ledger.forecast));
+
+    const h = Math.min(this.scale.height - 30, 170 + body.length * 14);
+    this.overlay.push(
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.gold).setDepth(24),
+      this.add.text(cx, cy - h / 2 + 20, "Ledger (D45)", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
+      this.add.text(cx - w / 2 + 24, cy - h / 2 + 42, body.join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: w - 48 } }).setOrigin(0, 0).setDepth(25),
+    );
+
+    // Action row: voluntary-skip toggles (D45), jump-to-market, close.
+    const by = cy + h / 2 - 22;
+    const skip = new Set(this.run.camp.skippedUpkeep);
+    const foodBtn = this.makeTextButton(cx - w / 2 + 90, by, 160, 28, skip.has("food") ? "Food: SKIPPED" : "Skip Food", skip.has("food") ? COLOR.danger : COLOR.surfaceRaised, COLOR.border, () => this.toggleSkip("food", onClose));
+    const repairBtn = this.makeTextButton(cx - w / 2 + 260, by, 170, 28, skip.has("repairs") ? "Repairs: SKIPPED" : "Skip Repairs", skip.has("repairs") ? COLOR.danger : COLOR.surfaceRaised, COLOR.border, () => this.toggleSkip("repairs", onClose));
+    this.overlay.push(foodBtn, repairBtn);
+    if (ledger.marketReady) {
+      const market = this.makeTextButton(cx + w / 2 - 250, by, 150, 28, "Jump to Market", COLOR.btnFill, COLOR.gold, () => { this.merchantBuyKit(); this.showLedgerPanel(onClose); });
+      this.overlay.push(market);
+    }
+    const close = this.makeTextButton(cx + w / 2 - 70, by, 110, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => { for (const o of this.overlay) o.destroy(); this.overlay = []; onClose(); });
+    this.overlay.push(close);
+  }
+
+  /** Toggle a voluntary Upkeep skip (D45) — frees the line's gold; the gate won't nag. */
+  private toggleSkip(id: UpkeepLine["id"], onClose: () => void): void {
+    const set = new Set(this.run.camp.skippedUpkeep);
+    if (set.has(id)) set.delete(id);
+    else set.add(id);
+    this.run.camp.skippedUpkeep = [...set] as ("food" | "repairs")[];
+    this.refreshCampText();
+    this.setHint(set.has(id) ? `Voluntarily skipping ${id} — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
+    this.showLedgerPanel(onClose);
   }
 
   // --- Terminal screens ------------------------------------------------------

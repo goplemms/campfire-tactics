@@ -460,6 +460,137 @@ rather than scattering.
     **fatigue** meter with an asymmetric-floor curve + rest restoration; wiring vancian/
     gold as per-ability costs.
 
+## Round 3 — resolved (design session, 2026-06-15)
+
+> **Status: GRADUATED (2026-06-15).** Q17–Q20 below are promoted to formal decisions
+> **D45** (the overworld economic ledger), **D46** (the node lifecycle / phase contract),
+> **D47** (the two-tier recovery economy) and **D48** (the route forecast + overworld fog) in
+> [`decisions.md`](decisions.md). Kept here as the reasoning trail. **Deferred:** the spec
+> write-ups in [`overworld.md`](../../docs/design/systems/overworld.md) (next doc pass), the
+> reach-fog numbers, and the fee event-kind data shape.
+
+- **Q17 — An overworld economic ledger: the readout the routing pillar (D28) always
+  implied.** The map is an *economic* routing problem ("can I afford this route + a rest?",
+  D28) with gold kept scarce on purpose (D30/D34) — but the budget that *is* the decision
+  was invisible. Resolved into a **projection, progressively disclosed, with a soft
+  night-end gate**.
+  - **Q17a — Scope: purse, not treasury.** A ledger on the **overworld camp** (D35) reports
+    the **run purse** flow only — loot in; upkeep / field-buys / bribes / theft out; the
+    Banker's interest/debt/protection. The **treasury** stays the guild hall's concern
+    (the D34 pool wall), and **Influence is shown but never summed into gold** (it can't pay
+    Upkeep — D34). It's a **pure projection of existing state** — the `previewNode` / camp-
+    readout pattern, no new model: `computeUpkeep()` already returns `{lines, total}`, loot
+    credits return `{credited, debtRepaid}`, Banker state is on `run.overworld`, and
+    `refreshCampText` already renders the one-line version this promotes to a panel.
+  - **Q17b — Broad categories, expand for crunch.** Default = a few category totals
+    (Upkeep / Loot / Field spend / Banker / balance); expand to the line items
+    (`UpkeepBill.lines`, individual loot/spend events). Crunch is opt-in so the default
+    stays a glance — the "show me just the broad strokes, let me dig if I want" ask.
+  - **Q17c — Receipt *and* forecast; the forecast is the point.** A backward receipt is
+    table stakes; the load-bearing feature is the **forward projection** — *"this route +
+    a rest at the end → here's your purse at the bottom"* — reading the reachable nodes'
+    rest/upkeep costs. That's what makes the ledger the **D28 routing decision surface**
+    rather than a receipt. (Receipt ships first; forecast is the reason to build it.)
+  - **Q17d — Jump-to-market when available.** A button straight into the Merchant/shop
+    verbs **when usable** (town/rest node · Merchant present · off cooldown), reusing the
+    `available`-gated event-choice + `merchantBuy` paths — so the player can size a buy
+    against the budget *before* committing (the "get a sense of my budget before we buy"
+    ask).
+  - **Q17e — Two forks, resolved (the careful bit):**
+    - **Fork 1 — how hard to force it?** A mandatory full-screen modal every single night
+      is exactly the **agonized spreadsheet** D35/D16 designed against — by layer 5 it's a
+      click-through chore. **Resolved:** the ledger is **always one glance away**, the
+      advance shows the bottom-line delta inline, and it **hard-gates a forced look only
+      when warranted** — projected shortfall, can't-afford-the-rest-at-route's-end,
+      outstanding debt, or an underfunded upkeep line. Happy path = one click. Same
+      **asymmetric-floor** instinct as fatigue/morale/overdraw (D7/D8/D11/D35): the forced
+      choice surfaces only when you're genuinely pushing your luck.
+    - **Fork 2 — "End the Night" vs the existing Commit.** "The night ends" describes a
+      **rest/event/travel** advance cleanly, but a **combat** commit *begins a fight* (the
+      night erupts, it doesn't end). **Resolved:** at a combat node the ledger is a
+      **pre-commit glance** ("Commit — Begin Mission" stays); the formal night-end
+      **reconciliation** (closing balance + the gate) rides the existing **`recordNight`
+      seam** — the "a night passed" boundary where `tickCooldowns` / `accruePurseInterest`
+      already fire — i.e. on returning to choose the next edge. One seam, no new clock.
+  - **Q17f — Voluntary underfunding: the ledger as an *input* (extends D15).** Let the
+    player **untick a line they could afford** to free its gold for a riskier play — the
+    headline case: **skip Food (−morale) to buy a powerful morale buff** that nets the day
+    *positive* morale. This is just **D15's "(the choice)" made literal** — `payUpkeep`
+    already underfunds lines + applies the morale hit / worn-gear, but only as a *broke-only
+    fallback*; this exposes it as a deliberate toggle. Riders: (1) **the forecast must show
+    the net** so the gamble is informed (the D45 forecast doing double duty); (2) **the soft
+    gate keys off intent** — don't nag a *voluntary* skip (you meant it), only a can't-afford
+    one; (3) **food vs repairs are different risks** — Food = immediate recoverable morale,
+    **Repairs = compounding gear-condition debt** paid on the field (surface distinctly); (4)
+    **tuning watch** — give the skip real teeth (bite the D8 morale floor / compound on
+    repeats) or skip-Food is free arbitrage and the D15 upkeep sink stops biting. *Promoted
+    to D45 as an extension; classified an **adjustment**, not a pivot (it sharpens D15/D45,
+    supersedes nothing).*
+  - **Cost / what to build:** a ledger **projection** over `run` (categorize purse
+    in/out + a forecast over `reachableFrom`); a camp **panel** with collapse/expand and the
+    always-available button; the **soft night-end gate** on the advance (the conditional
+    hard-stop, intent-aware per Q17f); **voluntary-skip** plumbing in `payUpkeep` (pass
+    skipped line ids vs. deriving from affordability); the **jump-to-market** shortcut reusing
+    existing verbs. Mostly UI + aggregation — the one model touch is the voluntary-skip seam.
+
+- **Q18 — The node lifecycle / phase contract (→ D46).** The per-node sequence was never
+  pinned, and "rest" kept colliding with itself. Resolved to **one node = one node-step**
+  with a kind-agnostic shape: **Make Camp** (pre-event prep; ledger *reconcile*) → **End the
+  Night** (gate; the node's event fires by kind — combat = Deploy→Battle→Resolve, rest =
+  recovery payload, event = choice) → **Survey** (new *post-event* beat: now-informed intel /
+  in-place rest / ledger *forecast*; light & mostly optional) → **Break Camp** (depart; the
+  **`recordNight` tick fires here, at departure**, so one night's allowance is timed across
+  the visit). Terminology: *End the Night* = prep→event, *Break Camp* = depart→next (the word
+  fits departure); never "rest" for a gate. **Where rest fits:** the "rest or push on" choice
+  lives on the **map (routing to a rest node)**, not a camp toggle — the only in-camp recovery
+  is Q19's in-place rest. *The forecast wants post-event numbers → it belongs in Survey, after
+  the fight.*
+
+- **Q19 — The two-tier recovery economy (→ D47).** Promotes the parked *"rest-in-place costing
+  rations"* idea without dissolving rest nodes. **In-place rest** (repeatable camp action, the
+  Survey beat): pay a night's rations → bank RP (support classes boost it via `rpPerNight` —
+  the class-boost is already in code) → small `triageHeal`; repeatable until the purse taps
+  out. **Each rest is a full node-step → it ticks cooldowns + accrues interest** — the player
+  *chose* to buy HP **and** cooldown progress with a night's rations (a fun lever, not a leak).
+  **Two caps:** gold (afford another night?) + the per-night **RP rate** (rate-limits healing
+  regardless of wealth → keeps the rest node faster). **Rest node = premium:** large/full heal
+  **+ full fatigue restore (stays rest-node-only, D35) + clears accumulated debts in one
+  swipe** (hunger / under-maintenance / worn gear from D45 underfunding) instead of buying
+  something high-quality. **Heal floors at ≥1** on a wounded party (never "paid, healed 0" =
+  looks like a bug); **refuses when already full** (no empty drain). Lives or dies on **gold
+  scarcity** (D30/D34) — a known balance burden, accepted. Big reuse story: built on
+  `payUpkeep` + `rpPerNight` + `triageHeal` — almost no new core.
+
+- **Q20 — The route forecast (→ D48).** D45 named a forecast but left *what it computes*
+  fuzzy; grounding it in the data settled the shape. Governing fact: **cost is knowable,
+  income is fogged** (upkeep exact; loot only ever banded by intel tier). Worked through
+  call-by-call into four pillars:
+  - **Reach = overworld fog scaled by intel (new).** Intel governs whether you see the route
+    at all: `baseReach + tier × bandStep`, **base ≈ half the map** (deep-planning tool, not an
+    early wall), tunable to effectively infinite (the fallback). Immediate choices **always
+    visible**; pure visibility mask (BFS cut), determinism intact. Adds the **reach** axis
+    alongside the existing **depth** axis (D10 tiers). *Consequence (intended): the
+    nearest-rest/runway becomes intel-gated too — seeing the third rest ahead is what intel
+    buys.* (Earlier the runway was called "fog-free" via always-visible kinds; the reach fog
+    deliberately overrides that to make intel load-bearing for planning.)
+  - **Burn = upkeep + visible node fees.** Upkeep **is** the travel cost (no separate line —
+    D28 satisfied). Special nodes carry a **visible, known fee** (toll / town tax / gate fee)
+    — a "thief that tells you the price up front," reusing the M11 event system —
+    **avoidable by routing**. The deterministic cost backbone = `upkeep × steps + visible
+    fees`.
+  - **Loot = fogged range, tightened by intel** (never beyond the player's tier — no
+    fog-leak).
+  - **Warning = against the floor; show the range; intel clears warnings.** The gate evaluates
+    on the **pessimistic** band (never false-reassures), the panel shows the full range; a
+    tighter intel band **raises the known floor**, so **scouting can clear a warning** — intel
+    *relaxes* warnings, not just reveals. Fits the asymmetric-floor ethos (D8/D11/D35).
+  - **Horizon:** one banded step + runway to the nearest *visible* rest (not whole-map).
+  - **Seam:** a pure `projectForecast(run)` over the visible set, reusing `computeUpkeep` +
+    `rewardHint` + the visibility BFS — the `previewNode` pattern one tier up.
+  - **Open:** reach numbers (base/bandStep); does **Scout** extend reach or only depth (lean:
+    reach from passive Int + Seer, Scout deepens); the **fee event-kind** data shape
+    (cost / pay-or-fight — folds into the deferred event batch).
+
 ## Suggested next threads to harden (when ready)
 1. **Time model for parallel adventures** (the fork that reshapes existing code).
 2. **The gold faucet/sink economy** as explicit loops (so Banker/Noble/thief get

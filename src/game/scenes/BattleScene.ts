@@ -200,7 +200,9 @@ export class BattleScene extends Phaser.Scene {
     const upkeepNote =
       camp.upkeep.underfunded.length > 0
         ? `Underfunded ${camp.upkeep.underfunded.join(" + ")} — morale took a hit.`
-        : `Upkeep paid (${camp.upkeep.paid}g).`;
+        : camp.upkeep.skipped.length > 0
+          ? `Skipped ${camp.upkeep.skipped.join(" + ")} on purpose (gold freed; ${camp.upkeep.paid}g paid).`
+          : `Upkeep paid (${camp.upkeep.paid}g).`;
     this.enterDeploy();
     this.setHint(`${upkeepNote} +${camp.rpAdded} RP banked. Deploy your party, then Start Battle.`);
   }

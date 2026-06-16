@@ -3,7 +3,7 @@ import { GuildScene } from "./scenes/GuildScene";
 import { OverworldScene } from "./scenes/OverworldScene";
 import { BattleScene } from "./scenes/BattleScene";
 import { DemoScene } from "./scenes/DemoScene";
-import { BattleBootScene } from "./debug-battle";
+import { BattleBootScene, OverworldBootScene } from "./debug-battle";
 import { COLOR } from "./theme";
 
 // Standalone **demo mode** (M12/D44): `#demo` (or the run-bar button) boots
@@ -16,6 +16,10 @@ const isDemo = hash === "demo";
 // scene that builds a deterministic run — so the mission combat is visible to the
 // screenshot harness (and a dev) without walking the whole guild→overworld flow.
 const isBattle = hash === "battle";
+// `#overworld` (D-debug, M13): boot straight into the OverworldScene at a run's
+// start node — so the M13 economic layer (fog/ledger/forecast/recovery/lifecycle)
+// is visible to the screenshot harness (and a dev) without the guild→dispatch walk.
+const isOverworld = hash === "overworld";
 
 /** Phaser game configuration for the web build. */
 export const gameConfig: Phaser.Types.Core.GameConfig = {
@@ -24,9 +28,11 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   width: 800,
   height: 600,
   backgroundColor: COLOR.bg,
-  scene: isBattle
-    ? [BattleBootScene, GuildScene, OverworldScene, BattleScene, DemoScene]
-    : isDemo
-      ? [DemoScene, GuildScene, OverworldScene, BattleScene]
-      : [GuildScene, OverworldScene, BattleScene, DemoScene],
+  scene: isOverworld
+    ? [OverworldBootScene, GuildScene, OverworldScene, BattleScene, DemoScene]
+    : isBattle
+      ? [BattleBootScene, GuildScene, OverworldScene, BattleScene, DemoScene]
+      : isDemo
+        ? [DemoScene, GuildScene, OverworldScene, BattleScene]
+        : [GuildScene, OverworldScene, BattleScene, DemoScene],
 };

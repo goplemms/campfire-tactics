@@ -24,6 +24,23 @@ export interface Camp {
   morale: number;
   /** HP the Chef has banked to heal each unit at the next battle's start. */
   pendingHeal: number;
+  /**
+   * The player's **voluntary** Upkeep-skip selection (D45) — the line ids the
+   * player deliberately unticked on the ledger to free their gold for a riskier
+   * play. Read by {@link "./upkeep".payUpkeep} (which lines to skip, vs deriving
+   * `underfunded` purely from affordability) and the {@link "./ledger".nightEndGate}
+   * (intent: a deliberate skip never nags, a can't-afford breach does). The
+   * voluntary-skip seam's new state — the only state the ledger *adds* (D45).
+   */
+  skippedUpkeep: ("food" | "repairs")[];
+  /**
+   * Accumulated **worn-gear debt** (D45/D47) — a *compounding* combat-condition
+   * debt from each skipped/breached **Repairs** line, paid later on the field. The
+   * **rest node** clears it in one swipe (the premium tier, D47); in-place rest does
+   * not. (Hunger from skipped Food is an *immediate, recoverable* morale hit, not
+   * tracked here — only Repairs compounds, D45.)
+   */
+  gearWear: number;
 }
 
 /** A fresh camp with sensible starting values. */
@@ -33,6 +50,8 @@ export function createCamp(init: Partial<Camp> = {}): Camp {
     storageCap: init.storageCap ?? 6,
     morale: init.morale ?? 0,
     pendingHeal: init.pendingHeal ?? 0,
+    skippedUpkeep: init.skippedUpkeep ?? [],
+    gearWear: init.gearWear ?? 0,
   };
 }
 

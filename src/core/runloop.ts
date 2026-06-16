@@ -29,6 +29,7 @@ import {
   recordNight,
   reachableNodes,
   chooseNode,
+  breakCamp,
 } from "./run";
 import type { MapNode } from "./overworld";
 import { moraleModifiers } from "./morale";
@@ -38,7 +39,7 @@ import { freeCaptive } from "./deployment";
 import { recoverMaterials } from "./resolution";
 import { addItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
-import { rpPerNight, payUpkeep, triageHeal, type UpkeepResult } from "./upkeep";
+import { rpPerNight, payUpkeep, triageHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, type IntelReport, type IntelTier } from "./intel";
 import { planEnemyTurn } from "./ai";
 import { restoreFatigue } from "./fatigue";
@@ -82,8 +83,26 @@ export interface RestResult {
   moraleGained: number;
   /** Units whose overworld fatigue was restored to Rested (D35 — rest's second job). */
   fatigueRestored: string[];
+  /** Accumulated worn-gear debt the premium rest cleared in one swipe (D47). */
+  debtCleared: number;
   dyingLost: string[];
   over: boolean;
+}
+
+/** What an {@link RunLoop.inPlaceRest} produced (D47 — the lesser, repeatable tier). */
+export interface InPlaceRestResult {
+  /** False if the rest was refused (party already full, or can't afford a night). */
+  applied: boolean;
+  /** When refused: why (render-facing). */
+  reason?: string;
+  /** Gold paid for the night's upkeep (0 when refused). */
+  goldSpent: number;
+  /** Rest Points banked this night — the per-night rate cap. */
+  rpAdded: number;
+  /** Units healed and the HP each gained. */
+  healed: { unitId: string; hp: number }[];
+  /** Total HP restored — ≥1 on an applied rest (the floor, D47); 0 only on a refusal. */
+  hpHealed: number;
 }
 
 /**
@@ -176,7 +195,9 @@ export class RunLoop {
    */
   restNode(): RestResult {
     const policy = runDifficulty(this.run);
-    const upkeep = payUpkeep(this.run.camp, this.run.party);
+    // The premium tier pays a full night (no voluntary skips) — it clears debt, it
+    // doesn't add to it (D47).
+    const upkeep = payUpkeep(this.run.camp, this.run.party, { skip: [] });
     const rpAdded = rpPerNight(this.run.party) + REST.chunks * policy.rpPerChunk;
     this.run.rp += rpAdded;
 
@@ -205,6 +226,12 @@ export class RunLoop {
 
     this.run.camp.morale += REST.moraleGain;
 
+    // Premium tier (D47): clear accumulated Upkeep debt (hunger / worn gear from
+    // voluntary underfunding) in one swipe — what in-place rest does *not* do.
+    const debtCleared = this.run.camp.gearWear;
+    this.run.camp.gearWear = 0;
+    this.run.camp.skippedUpkeep = [];
+
     const lost = tickDyingClocks(this.run.party);
     for (const u of lost) removeFromRoster(this.run, u);
     const node = currentNode(this.run);
@@ -215,7 +242,74 @@ export class RunLoop {
       goldEarned: 0,
       fallen: lost.map((u) => u.id),
     });
-    return { upkeep, rpAdded, healed, moraleGained: REST.moraleGain, fatigueRestored, dyingLost: lost.map((u) => u.id), over };
+    return { upkeep, rpAdded, healed, moraleGained: REST.moraleGain, fatigueRestored, debtCleared, dyingLost: lost.map((u) => u.id), over };
+  }
+
+  /**
+   * **In-place rest** (D47) — the lesser, repeatable recovery tier: a costed lever
+   * at any *finished* node (the D46 Survey beat). Pays a night's Upkeep → banks the
+   * night's Rest Points (support classes boost it via `rpPerNight` — *that is* the
+   * class boost, already in the model) → a **small** triage heal of the
+   * most-wounded, **floored at ≥1** so a paid rest never reads "healed 0" like a
+   * bug. **Each rest is a full node-step**: it Breaks Camp (ticks cooldowns +
+   * accrues interest, D35) and a night passes — a deliberate lever: *buy HP **and**
+   * cooldown progress for a night's rations.*
+   *
+   * Two caps by design: **gold** (refuses, spending nothing, when the purse can't
+   * afford another night) and the **per-night RP rate** (one night banks only so
+   * much → rate-limited regardless of wealth → the rest node stays faster/better).
+   * **Refuses** at full HP (no empty drain). Unlike the rest node, it does **not**
+   * restore fatigue or clear worn-gear debt — those stay rest-node-only (D47).
+   */
+  inPlaceRest(): InPlaceRestResult {
+    const policy = runDifficulty(this.run);
+    const refuse = (reason: string): InPlaceRestResult => ({
+      applied: false, reason, goldSpent: 0, rpAdded: 0, healed: [], hpHealed: 0,
+    });
+
+    // Refuse at full health (no empty drain, D47) — only wounded fighters count.
+    const wounded = combatRoster(this.run)
+      .filter((u) => u.hp < u.maxHp)
+      .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+    if (wounded.length === 0) return refuse("The party is already at full health.");
+
+    // Gold cap (D47): refuse if the purse can't cover a full night's rations — no
+    // breach, no morale teeth; the in-place rest only proceeds when fully funded.
+    const bill = computeUpkeep(this.run.party);
+    if (this.run.camp.gold < bill.total) {
+      return refuse(`Not enough gold for a night's rations (${bill.total}g).`);
+    }
+
+    const upkeep = payUpkeep(this.run.camp, this.run.party, { skip: [] });
+    const rpAdded = rpPerNight(this.run.party);
+    this.run.rp += rpAdded;
+
+    // Small heal: triage the single most-wounded down the pool, capped at a small
+    // number of chunks (rate-limited by the night's RP), then floor it at ≥1.
+    const healed: { unitId: string; hp: number }[] = [];
+    let hpHealed = 0;
+    const target = wounded[0];
+    const budget = Math.min(this.run.rp, RECOVERY.inPlaceChunks * policy.rpPerChunk);
+    if (budget >= policy.rpPerChunk) {
+      const res = triageHeal(target, budget, policy);
+      if (res.rpSpent > 0) {
+        this.run.rp -= res.rpSpent;
+        hpHealed = res.hpHealed;
+      }
+    }
+    // Floor (D47): a paid rest on a wounded party always restores ≥1 HP.
+    if (hpHealed < RECOVERY.inPlaceFloorHp) {
+      const before = target.hp;
+      target.hp = Math.min(target.maxHp, target.hp + RECOVERY.inPlaceFloorHp);
+      hpHealed += target.hp - before;
+    }
+    if (hpHealed > 0) healed.push({ unitId: target.id, hp: hpHealed });
+
+    // Each rest is a full node-step (D47): Break Camp ticks the spine + accrues
+    // interest, and a night passes — but the run stays at this node (repeatable).
+    breakCamp(this.run);
+    this.run.night += 1;
+    return { applied: true, goldSpent: upkeep.paid, rpAdded, healed, hpHealed };
   }
 
   // --- Event node (the data-driven registry, no battle, M11) ----------------

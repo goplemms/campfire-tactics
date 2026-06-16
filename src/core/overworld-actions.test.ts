@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
-import { createRun, reachableNodes, recordNight, currentNode, type RunState } from "./run";
+import { createRun, reachableNodes, breakCamp, type RunState } from "./run";
 import {
   getAbility,
   takeOverworldAction,
@@ -78,17 +78,16 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
     expect(cooldownRemaining(eco, "scout")).toBe(0);
   });
 
-  it("advancing a node (recordNight) ticks the spine — combat and rest both count", () => {
+  it("departing a node (breakCamp) ticks the spine — the node-step fires at departure (D46)", () => {
     const run = newRun("cd-node-tick");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
     takeOverworldAction(run, actor, "scout", { targetNodeId: target.id });
     expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown);
 
-    // Play through nodes — recordNight is the node-step that ticks cooldowns.
+    // Break Camp is the node-step that ticks cooldowns — at departure, not the event.
     for (let i = 0; i < SCOUT.cost.cooldown; i++) {
-      const node = currentNode(run);
-      recordNight(run, { nodeId: node.id, layer: node.layer, kind: node.kind, goldEarned: 0, fallen: [] });
+      breakCamp(run);
     }
     expect(cooldownRemaining(run.overworld, "scout")).toBe(0);
   });

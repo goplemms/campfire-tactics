@@ -43,16 +43,46 @@ import { rollMercenary } from "./guild";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
 import { thiefEventSkim } from "./theft";
 
-/** An event kind (M11). New kinds are new records on {@link EVENTS} (D4). */
-export type EventKind = "thief" | "shop" | "recruiter" | "story";
+/**
+ * An event kind (M11; **toll** added M13/D48). New kinds are new records on
+ * {@link EVENTS} (D4). The **toll** is the forecast's visible node fee — "a thief
+ * that tells you the price up front and doesn't sneak" — a *known*, deterministic
+ * cost you see while planning and **route around** (vs. the fogged thief skim).
+ */
+export type EventKind = "thief" | "shop" | "recruiter" | "story" | "toll";
 
-/** Node-event tuning — all data, a numbers pass later (D23/D30/D33). */
+/** Node-event tuning — all data, a numbers pass later (D23/D30/D33/D48). */
 export const NODE_EVENTS = {
   /** How many distinct supplies a shop offers at once (seeded from the registry). */
   shopStockSize: 2,
   /** Purse cost to hire a recruiter's rolled body (D33). */
   recruiterHireCost: 40,
+  /** The toll fee range (D48) — deterministic per node, tuning deferred. */
+  tollMin: 10,
+  tollMax: 30,
 } as const;
+
+/**
+ * A toll node's **deterministic, visible** fee (M13, D48): a stable per-node gold
+ * cost rolled from `streamFor(seed, "event:<id>:toll")`, so the route
+ * [forecast](overworld.md) can read it **in advance** (the cost is knowable; only
+ * loot is fogged) and the player can **route around** it. Stable for a seed (D22).
+ */
+export function tollFee(seed: string | number, node: MapNode): number {
+  const rng = streamFor(seed, `event:${node.id}:toll`);
+  return rng.range(NODE_EVENTS.tollMin, NODE_EVENTS.tollMax);
+}
+
+/**
+ * The **visible node fee** on a node's path (M13, D48): the {@link tollFee} when the
+ * node's deterministic event is a **toll**, else 0. Upkeep is the travel cost; this
+ * is the only *extra*, known cost the forecast layers on (deterministic within
+ * reach). Pure projection — reads the seed-built event pick, mutates nothing.
+ */
+export function nodeFee(seed: string | number, node: MapNode): number {
+  if (node.kind !== "event") return 0;
+  return eventForNode(seed, node).kind === "toll" ? tollFee(seed, node) : 0;
+}
 
 /**
  * The structured outcome an event resolution produces — the render reads it and the
@@ -390,6 +420,26 @@ export const EVENTS: readonly EventDef[] = [
       const rng = streamFor(run.seed, `event:${node.id}:story:auto`);
       const choice = rng.pick(story.choices);
       return applyStoryChoice(run, node, story, choice.id);
+    },
+  },
+  {
+    id: "toll",
+    kind: "toll",
+    name: "Tollgate",
+    teaser: "A tollgate — a known fee to pass (see the forecast). Route around it to save.",
+    weight: 2,
+    autoResolve(run, node) {
+      // A known, announced fee (D48): pay it from the purse to pass. Never drives
+      // the purse negative; the pay-or-fight-the-guards choice is deferred (D23/D30).
+      const fee = tollFee(run.seed, node);
+      const paid = Math.min(run.camp.gold, fee);
+      run.camp.gold -= paid;
+      const out = emptyOutcome("toll");
+      out.goldDelta = -paid;
+      out.summary = paid >= fee
+        ? `Paid the ${fee}g toll to pass.`
+        : `Scraped together ${paid}g of the ${fee}g toll to pass.`;
+      return out;
     },
   },
 ];

@@ -65,6 +65,8 @@ export interface RunHandoff {
   guild?: Guild;
   /** The caravan whose run this is — the hall resolves it on a terminal (D27). */
   caravanId?: string;
+  /** Show the one-time Expedition-demo intro overlay before the map (M13 demo). */
+  demoIntro?: boolean;
 }
 
 /**
@@ -90,6 +92,8 @@ export class OverworldScene extends Phaser.Scene {
   private loop!: RunLoop;
   private guild?: Guild;
   private caravanId?: string;
+  /** One-shot Expedition-demo intro flag (cleared after it shows once). */
+  private demoIntro = false;
 
   private graph?: Phaser.GameObjects.Graphics;
   private nodePos = new Map<string, { x: number; y: number }>();
@@ -115,6 +119,7 @@ export class OverworldScene extends Phaser.Scene {
     this.loop = data?.loop as RunLoop;
     this.guild = data?.guild;
     this.caravanId = data?.caravanId;
+    this.demoIntro = data?.demoIntro ?? false;
   }
 
   create(): void {
@@ -145,7 +150,29 @@ export class OverworldScene extends Phaser.Scene {
     // before the map. A fresh run sits at the un-played start node → straight to map.
     if (this.justResolvedCurrentNode()) return this.showSurvey();
 
+    // The Expedition demo (M13) opens with a one-time orientation card.
+    if (this.demoIntro) {
+      this.demoIntro = false;
+      this.drawMap();
+      return this.showExpeditionIntro();
+    }
+
     this.drawMap();
+  }
+
+  /** A one-time orientation card for the Expedition demo (M13). */
+  private showExpeditionIntro(): void {
+    const body = [
+      "An expedition is an economic routing problem: can you afford this route",
+      "AND a rest at the end of it?",
+      "",
+      "• The map is FOGGED — deeper nodes hide until intel reaches them.",
+      "• Pick a node to Make Camp, then End the Night to face it (a fight, a rest, an event).",
+      "• After it resolves you SURVEY: read the forecast, rest in place, scout — then Break Camp.",
+      "• Open the LEDGER any time: cross a line off to skip it and free its gold (you'll pay for it).",
+      "• Watch the purse — tolls are known, loot is fogged; route to a rest node to recover in full.",
+    ].join("\n");
+    this.showOverlay("The Long Road Home — an Expedition", body, true, 620, 250, () => this.setHint("Hover a node to preview it; click to Make Camp. Deeper nodes are fogged until intel reaches them."));
   }
 
   /** True if the current node has just been played (its event is in history) — Survey time (D46). */

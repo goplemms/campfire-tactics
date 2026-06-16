@@ -21,6 +21,7 @@ import { getEnemyTemplate, type EncounterReward } from "./generation";
 import { isImmobilized } from "./status";
 import { applyDamage } from "./combat";
 import { CTClock } from "./clock";
+import type { ObjectiveSpec } from "./objectives";
 
 /** A hand-placed enemy in an authored encounter. */
 export interface EnemyPlacement {
@@ -40,8 +41,14 @@ export interface EnemyPlacement {
   role?: "sapper" | "captain";
 }
 
-/** A timed objective on an encounter (D43) — the demo's bridge-cut. */
-export interface ObjectiveSpec {
+/**
+ * A timed objective on an encounter (D43) — the demo's bridge-cut.
+ *
+ * **Retiring (D50):** generalized into the `closing-gate` {@link ObjectiveSpec}
+ * kind. Kept only for the legacy {@link DemoRunner} path until M14 Phase 4 deletes
+ * the demo; new content lists {@link AuthoredEncounter.objectives} instead.
+ */
+export interface BridgeCutObjective {
   kind: "bridge-cut";
   /** Gauge fill per tick; the cut completes when it reaches 100 (≈ N turns). */
   speed: number;
@@ -62,7 +69,15 @@ export interface AuthoredEncounter {
   reward: EncounterReward;
   /** XP each surviving deployed unit earns on a win (tunes the rest-beat level). */
   xp?: number;
-  objective?: ObjectiveSpec;
+  /**
+   * The encounter's objectives (D50) — the converged, multi-objective model the
+   * staging seam arms. A closing-gate goes here; the default elimination goal is
+   * injected when none lists an explicit goal. (The legacy single `objective`
+   * below is the retiring demo path.)
+   */
+  objectives?: ObjectiveSpec[];
+  /** Legacy demo objective (D43) — retiring with {@link DemoRunner} in Phase 4. */
+  objective?: BridgeCutObjective;
 }
 
 /** Build the fixed {@link TileGrid} for an authored encounter. */
@@ -90,6 +105,7 @@ export function buildAuthoredEnemies(enc: AuthoredEncounter): Unit[] {
       attackRange: tpl.attackRange,
       jobId: tpl.jobId,
       thief: tpl.thief,
+      role: p.role,
       ...p.overrides,
     });
     u.hidden = p.hidden ?? false;

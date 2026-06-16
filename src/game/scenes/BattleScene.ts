@@ -30,6 +30,7 @@ import {
   moraleModifiers,
   // M6 — the run loop
   currentEncounter,
+  isAuthoredEncounter,
   computeUpkeep,
   // M10 — theft (D30) + mid-combat bribe → recruitment (D33)
   thiefSteal,
@@ -871,7 +872,8 @@ export class BattleScene extends Phaser.Scene {
     if (r.count !== undefined) parts.push(`count: ${r.count}`);
     if (r.grantsVision) parts.push("starting vision");
     const def = currentEncounter(this.run);
-    this.intelText.setText(`${parts.join("  ·  ")}   (${def.type})`);
+    const shape = isAuthoredEncounter(def) ? "authored" : def.type;
+    this.intelText.setText(`${parts.join("  ·  ")}   (${shape})`);
   }
 
   private setHint(text: string): void {

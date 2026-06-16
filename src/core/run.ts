@@ -23,12 +23,16 @@
  */
 
 import { Rng, type RngState } from "./rng";
-import type { Unit } from "./units";
+import { createUnit, type Unit } from "./units";
 import { createInventory, type Inventory } from "./inventory";
 import { createCamp, type Camp } from "./camp";
 import { getDifficulty, type DifficultyPolicy } from "./mortality";
 import { isCombatant } from "./jobs";
+import { accrueDeployedXp } from "./leveling";
 import { type EncounterDef } from "./generation";
+import type { EncounterResult } from "./authored";
+import type { EncounterSource } from "./staging";
+import { getExpedition, type AuthoredExpedition } from "./expedition";
 import {
   generateOverworld,
   getNode,
@@ -57,6 +61,12 @@ export interface EncounterRecord {
   /** Combat only: the encounter shape (open-field/fortified). */
   type?: EncounterDef["type"];
   winner?: "player" | "enemy";
+  /**
+   * The graded combat outcome (D50/D51): `win | objective-failure | wipe`. The
+   * end-screen reads the final node's record to tell *complete* (won the prize)
+   * from *returned alive without it* (objective-failure) from *lost* (wipe).
+   */
+  result?: EncounterResult;
   goldEarned: number;
   fallen: string[];
   night: number;
@@ -68,8 +78,14 @@ export interface RunState {
   seed: string | number;
   /** The threaded master RNG (all run-time randomness flows through it). */
   rng: Rng;
-  /** The seed-derived overworld map the run navigates (D22). */
+  /** The overworld map the run navigates — seed-derived, or hand-built (D22/D52). */
   map: OverworldMap;
+  /**
+   * The authored expedition this run is playing (D52), if any. Carries the catalog
+   * key so a snapshot rebuilds the (un-generated) hand-built map; unset for a
+   * procedural run. `runEncounter` reads it to resolve `authoredId` nodes.
+   */
+  expeditionId?: string;
   /** The current node id (starts at the map's start node). */
   mapNodeId: string;
   /** The route taken so far, oldest → current (starts `[startId]`). */
@@ -105,16 +121,21 @@ export interface CreateRunOptions {
   storageCap?: number;
   morale?: number;
   inventory?: Record<string, number>;
+  /** A hand-built map (D52); when omitted the map is generated from the seed. */
+  map?: OverworldMap;
+  /** The authored expedition id this run plays (D52), if any. */
+  expeditionId?: string;
 }
 
 /** Create a fresh run from a seed. */
 export function createRun(seed: string | number, opts: CreateRunOptions): RunState {
   const storageCap = opts.storageCap ?? 6;
-  const map = generateOverworld(seed);
+  const map = opts.map ?? generateOverworld(seed);
   return {
     seed,
     rng: new Rng(seed),
     map,
+    expeditionId: opts.expeditionId,
     mapNodeId: map.startId,
     path: [map.startId],
     party: opts.party,
@@ -156,6 +177,27 @@ export function createRunFromCaravan(
   });
 }
 
+/**
+ * Boot a run from an {@link AuthoredExpedition} (D52) — the authored entry point.
+ * Inflates the expedition's bundle (party specs, purse, supplies, storage cap)
+ * onto the **hand-built** map and tags the run with the expedition id so
+ * `runEncounter` resolves `authoredId` nodes and a snapshot can rebuild the map.
+ * Everything downstream — routing, forecast, intel, graded resolution — is the
+ * normal overworld path (D49). Pass an already-registered expedition.
+ */
+export function createRunFromExpedition(exp: AuthoredExpedition): RunState {
+  return createRun(exp.seed, {
+    party: exp.bundle.party.map(createUnit),
+    storageCap: exp.bundle.storageCap,
+    inventory: { ...exp.bundle.supplies },
+    gold: exp.bundle.purse,
+    difficultyId: exp.bundle.difficultyId,
+    morale: exp.bundle.morale,
+    map: exp.map,
+    expeditionId: exp.id,
+  });
+}
+
 /** The difficulty policy this run consults (D9). */
 export function runDifficulty(run: RunState): DifficultyPolicy {
   return getDifficulty(run.difficultyId);
@@ -192,6 +234,9 @@ export function reachableNodes(run: RunState): MapNode[] {
 export function breakCamp(run: RunState): void {
   tickCooldowns(run.overworld);
   accruePurseInterest(run.overworld, run.camp);
+  // The deployed trickle (D53): every deployed character earns a passive bump per
+  // node-step on the road (benched roster lives on the guild, never passed here).
+  accrueDeployedXp(run.party);
 }
 
 /**
@@ -211,12 +256,23 @@ export function chooseNode(run: RunState, id: string): MapNode {
 }
 
 /**
- * Generate the current node's encounter — deterministically from `seed` + the
- * node id (its layer is the difficulty index), so it's identical on replay
- * regardless of other draws or the path taken to get here.
+ * Resolve a node's encounter **run-scoped** (D49) — the single funnel for the
+ * current encounter, forecast, intel and previews. An `authoredId` node bound to
+ * the run's expedition catalog returns its fixed {@link AuthoredEncounter};
+ * everything else generates procedurally (deterministic by seed + node id), so
+ * replay is exact regardless of the path taken.
  */
-export function currentEncounter(run: RunState): EncounterDef {
-  return nodeEncounter(run.seed, currentNode(run));
+export function runEncounter(run: RunState, node: MapNode): EncounterSource {
+  if (node.authoredId && run.expeditionId) {
+    const enc = getExpedition(run.expeditionId)?.encounters[node.authoredId];
+    if (enc) return enc;
+  }
+  return nodeEncounter(run.seed, node);
+}
+
+/** The current node's encounter (run-scoped resolver, D49). */
+export function currentEncounter(run: RunState): EncounterSource {
+  return runEncounter(run, currentNode(run));
 }
 
 /** Roster units that are alive and not captured (incl. camp-only crew). */
@@ -271,8 +327,15 @@ export function recordNight(run: RunState, record: Omit<EncounterRecord, "night"
   run.history.push({ ...record, night: run.night });
   run.night += 1;
   run.over = run.over || isRunOver(run);
-  if (!run.over && record.winner !== "enemy" && isFinalRunNode(run)) {
-    run.complete = true;
+  // Graded final terminal (D51): clearing the final node = **complete** only when
+  // all required objectives were **met** (a `win`); a graded combat record carries
+  // its `result`, a non-combat record (rest/event) falls back to "not lost". Any
+  // non-win resolution of the final node still **ends** the run (caravan returns
+  // alive without the prize, or a wipe) — there's no node forward.
+  if (isFinalRunNode(run)) {
+    const won = record.result ? record.result === "win" : record.winner !== "enemy";
+    if (!run.over && won) run.complete = true;
+    else if (!won) run.over = true;
   }
   return run.over || run.complete;
 }
@@ -281,6 +344,11 @@ export function recordNight(run: RunState, record: Omit<EncounterRecord, "night"
 export interface RunSnapshot {
   seed: string | number;
   rngState: RngState;
+  /**
+   * The authored expedition id (D52), if any — a seed alone can't reproduce a
+   * **hand-built** map, so the snapshot rebuilds it from the catalog by this id.
+   */
+  expeditionId?: string;
   /** The current node (the position to resume / regenerate from). */
   mapNodeId: string;
   /** The route taken so far — replays the same map + choices exactly. */
@@ -299,6 +367,7 @@ export function snapshotRun(run: RunState): RunSnapshot {
   return {
     seed: run.seed,
     rngState: run.rng.state(),
+    expeditionId: run.expeditionId,
     mapNodeId: run.mapNodeId,
     path: [...run.path],
     night: run.night,

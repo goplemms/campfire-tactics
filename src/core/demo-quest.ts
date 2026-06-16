@@ -179,7 +179,7 @@ export const THE_HOLLOW_MILL: AuthoredQuest = {
 // --- The runner -------------------------------------------------------------
 
 /** A staged encounter ready to play (the render drives it; tests auto-resolve). */
-export interface StagedEncounter {
+export interface DemoStagedEncounter {
   battle: Battle;
   objective: ObjectiveState;
   encounter: AuthoredEncounter;
@@ -271,7 +271,7 @@ export class DemoRunner {
   }
 
   /** Stage an encounter beat: build the board with the persistent party. */
-  stageEncounter(beat: EncounterBeat): StagedEncounter {
+  stageEncounter(beat: EncounterBeat): DemoStagedEncounter {
     const enc = beat.encounter;
     const grid = buildAuthoredGrid(enc);
     for (const u of this.party) this.freshen(u);
@@ -290,7 +290,7 @@ export class DemoRunner {
    * Headlessly auto-play a staged encounter (both sides via the scoring AI) and
    * return the graded result (D43). Stops the moment the objective is lost.
    */
-  autoResolveEncounter(staged: StagedEncounter, maxTurns = 2000, sink?: EncounterReport[]): EncounterResult {
+  autoResolveEncounter(staged: DemoStagedEncounter, maxTurns = 2000, sink?: EncounterReport[]): EncounterResult {
     const { battle, objective } = staged;
     // Balance telemetry, sampled each step (cheap; pushed to `sink` if given).
     const party = battle.units.filter((u) => u.side === "player");
@@ -352,7 +352,7 @@ export class DemoRunner {
    * failure the party retreats alive (downed members recovered to 1 HP); a wipe
    * is terminal.
    */
-  resolveEncounter(staged: StagedEncounter, result: EncounterResult): void {
+  resolveEncounter(staged: DemoStagedEncounter, result: EncounterResult): void {
     const enc = staged.encounter;
     if (result === "wipe") {
       this.outcome = "wipe";

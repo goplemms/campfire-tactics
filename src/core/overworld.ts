@@ -44,6 +44,13 @@ export interface MapNode {
   kind: NodeKind;
   /** Forward edges — ids of reachable nodes in `layer + 1` (sorted, de-duped). */
   edges: string[];
+  /**
+   * Binds a hand-authored encounter to this node (D49/D52): when set, the
+   * run-scoped resolver ({@link "./run".runEncounter}) returns the expedition
+   * catalog's {@link "./authored".AuthoredEncounter} for this id instead of
+   * generating one. Unset ⇒ the node generates procedurally (the default).
+   */
+  authoredId?: string;
 }
 
 /** A fully-generated, deterministic run map. */

@@ -111,6 +111,12 @@ export interface UnitSpec extends UnitStats {
    * field + the Defend action; the auto-execution turn-loop is a later pass.
    */
   standingOrder?: string;
+  /**
+   * **Objective role** (D50) — a tag an objective binds to (e.g. the closing-gate
+   * driver: `"sapper"`). Authored content sets it; objectives address the unit by
+   * this tag or its id, so a generator can emit objectives without hand-wiring.
+   */
+  role?: string;
 }
 
 /**
@@ -161,6 +167,8 @@ export interface Unit extends UnitStats {
   thief: boolean;
   /** Reserved standing order (D41), e.g. `"defend"`; undefined = manual control. */
   standingOrder?: string;
+  /** Objective role tag (D50), e.g. the closing-gate `"sapper"`; objectives bind to it. */
+  role?: string;
   /** Authored ambush body hidden until scouted (D44); a render/fog flag. */
   hidden?: boolean;
   /**
@@ -212,6 +220,7 @@ export function createUnit(spec: UnitSpec): Unit {
     authored: spec.authored ?? false,
     thief: spec.thief ?? false,
     standingOrder: spec.standingOrder,
+    role: spec.role,
     hidden: false,
     captured: false,
     speed: spec.speed,

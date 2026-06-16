@@ -28,7 +28,7 @@ import {
   type Unit,
   type GridCoord,
   type SkillDef,
-  type StagedEncounter,
+  type DemoStagedEncounter,
   type EncounterResult,
 } from "../../core";
 import { Button, ButtonColumn } from "../button";
@@ -47,7 +47,7 @@ import { dropNet as dropNetCage } from "../deploy-fx";
  */
 export class DemoScene extends Phaser.Scene {
   private runner!: DemoRunner;
-  private staged?: StagedEncounter;
+  private staged?: DemoStagedEncounter;
 
   private originX = 0;
   private originY = 0;

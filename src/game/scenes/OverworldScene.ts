@@ -162,17 +162,35 @@ export class OverworldScene extends Phaser.Scene {
 
   /** A one-time orientation card for the Expedition demo (M13). */
   private showExpeditionIntro(): void {
-    const body = [
-      "An expedition is an economic routing problem: can you afford this route",
-      "AND a rest at the end of it?",
-      "",
-      "• The map is FOGGED — deeper nodes hide until intel reaches them.",
-      "• Pick a node to Make Camp, then End the Night to face it (a fight, a rest, an event).",
-      "• After it resolves you SURVEY: read the forecast, rest in place, scout — then Break Camp.",
-      "• Open the LEDGER any time: cross a line off to skip it and free its gold (you'll pay for it).",
-      "• Watch the purse — tolls are known, loot is fogged; route to a rest node to recover in full.",
-    ].join("\n");
-    this.showOverlay("The Long Road Home — an Expedition", body, true, 620, 250, () => this.setHint("Hover a node to preview it; click to Make Camp. Deeper nodes are fogged until intel reaches them."));
+    for (const o of this.overlay) o.destroy();
+    this.overlay = [];
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2 - 10;
+    const w = 680;
+    const padX = 34;
+    const intro = "An expedition is an economic routing problem: can you afford the route and a rest at its end?";
+    const bullets = [
+      "The map is fogged — deeper nodes hide until your intel reaches them.",
+      "Pick a node to Make Camp, then End the Night to face it (fight · rest · event).",
+      "After it resolves, Survey: read the forecast, rest in place, scout — then Break Camp.",
+      "Open the Ledger anytime: cross a line off to skip it and free its gold.",
+      "Tolls are known, loot is fogged — route to a rest node to fully recover.",
+    ];
+    const body = intro + "\n\n" + bullets.map((b) => `•  ${b}`).join("\n");
+    const h = 264;
+    const left = cx - w / 2 + padX;
+    this.overlay.push(
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.success).setDepth(20),
+      this.add.text(cx, cy - h / 2 + 24, "The Long Road Home — an Expedition", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
+      this.add.text(left, cy - h / 2 + 52, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, align: "left", lineSpacing: 5, wordWrap: { width: w - 2 * padX } }).setOrigin(0, 0).setDepth(21),
+    );
+    this.overlay.push(
+      this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
+        for (const o of this.overlay) o.destroy();
+        this.overlay = [];
+        this.setHint("Hover a node to preview it; click to Make Camp. Deeper nodes are fogged until intel reaches them.");
+      }).setDepth(22),
+    );
   }
 
   /** True if the current node has just been played (its event is in history) — Survey time (D46). */
@@ -1013,7 +1031,7 @@ export class OverworldScene extends Phaser.Scene {
     );
     y += 16;
     this.overlay.push(
-      this.add.text(leftX, y, forecastLines.join("\n"), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3 }).setOrigin(0, 0).setDepth(25),
+      this.add.text(leftX, y, forecastLines.join("\n"), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25),
     );
 
     // Buttons (depth 26 — above the sheet).
@@ -1109,7 +1127,7 @@ export class OverworldScene extends Phaser.Scene {
     this.overlay.push(
       this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.94).setStrokeStyle(2, good ? COLOR.success : COLOR.danger).setDepth(20),
       this.add.text(cx, cy - h / 2 + 26, title, { color: good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy + 6, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(21),
+      this.add.text(cx, cy + 6, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 48 } }).setOrigin(0.5).setDepth(21),
     );
     if (onContinue) {
       const btn = this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {

@@ -42,6 +42,8 @@ const STEPS = [
   { name: "02-make-camp", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);`) },
   { name: "03-ledger", eval: wrap(`s.showLedgerPanel(()=>{});`) },
   { name: "04-ledger-skip-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
+  { name: "04b-ledger-skip-both", eval: wrap(`s.toggleSkip("repairs",()=>{});`) },
+  { name: "04c-ledger-restore-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
   { name: "05-survey", eval: wrap(`for(const o of s.overlay)o.destroy();s.overlay=[];s.showSurvey();`) },
   { name: "06-after-inplace-rest", eval: wrap(`s.run.party.forEach(u=>{u.hp=Math.max(1,Math.floor(u.maxHp*0.4));});s.doInPlaceRest();`) },
   { name: "07-break-camp-gate", eval: wrap(`s.run.camp.gold=0;s.run.overworld.debt=30;s.breakCampToMap();`) },

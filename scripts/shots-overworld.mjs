@@ -22,7 +22,7 @@ import path from "node:path";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CFT_VERSION = process.env.CFT_VERSION ?? "131.0.6778.204";
 const CFT_HOST = process.env.CFT_HOST ?? "https://storage.googleapis.com/chrome-for-testing-public";
-const OUT_DIR = path.resolve(ROOT, process.env.SHOTS_OUT ?? "screenshots/m13");
+const OUT_DIR = path.resolve(ROOT, process.env.SHOTS_OUT ?? `screenshots/m13/${process.env.BOOT_HASH ?? "overworld"}`);
 const CACHE_DIR = path.resolve(ROOT, ".cache", "chrome");
 const PORT = Number(process.env.SHOTS_PORT ?? 5191);
 
@@ -36,16 +36,35 @@ const exists = (p) => access(p).then(() => true, () => false);
 
 // Each step runs a plain function in the page against the live OverworldScene.
 const S = `window.game.scene.getScene("OverworldScene")`;
+const BOOT = process.env.BOOT_HASH ?? "overworld";
 const wrap = (body) => `(()=>{const s=${S};${body}})()`;
-const STEPS = [
-  { name: "01-map-fog", minMs: 700, eval: `void 0;` }, // initial: the map with fog
-  { name: "02-make-camp", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);`) },
-  { name: "03-ledger", eval: wrap(`s.showLedgerPanel(()=>{});`) },
-  { name: "04-ledger-skip-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
-  { name: "05-survey", eval: wrap(`for(const o of s.overlay)o.destroy();s.overlay=[];s.showSurvey();`) },
-  { name: "06-after-inplace-rest", eval: wrap(`s.run.party.forEach(u=>{u.hp=Math.max(1,Math.floor(u.maxHp*0.4));});s.doInPlaceRest();`) },
-  { name: "07-break-camp-gate", eval: wrap(`s.run.camp.gold=0;s.run.overworld.debt=30;s.breakCampToMap();`) },
-];
+const clearOverlay = `for(const o of s.overlay)o.destroy();s.overlay=[];`;
+const BS = `window.game.scene.getScene("BattleScene")`;
+const STEPS = BOOT === "battle"
+  ? [
+      { name: "01-deploy", minMs: 900, eval: `void 0;` }, // the enlarged deployment board
+      { name: "02-battle", minMs: 700, eval: `(()=>{const s=${BS};if(s.phase==="deployment")s.onPrimary();for(let i=0;i<16&&!s.waitingFor;i++){s.busy=false;s.over=false;s.onAdvance();}})()` },
+    ]
+  : BOOT === "expedition"
+  ? [
+      { name: "01-intro", minMs: 700, eval: `void 0;` }, // the orientation card over the map
+      { name: "02-map-fog", eval: wrap(clearOverlay) }, // dismiss the card → the curated map + fog
+      { name: "03-preview", eval: wrap(`s.showPreview(s.loop.reachable()[0]);`) },
+      { name: "04-make-camp", eval: wrap(`s.enterCamp(s.loop.reachable().find(n=>n.kind==='combat')||s.loop.reachable()[0]);`) },
+      { name: "05-ledger", eval: wrap(`s.showLedgerPanel(()=>{});`) },
+      { name: "06-survey", eval: wrap(`${clearOverlay}s.showSurvey();`) },
+    ]
+  : [
+      { name: "01-map-fog", minMs: 700, eval: `void 0;` }, // initial: the map with fog
+      { name: "02-make-camp", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);`) },
+      { name: "03-ledger", eval: wrap(`s.showLedgerPanel(()=>{});`) },
+      { name: "04-ledger-skip-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
+      { name: "04b-ledger-skip-both", eval: wrap(`s.toggleSkip("repairs",()=>{});`) },
+      { name: "04c-ledger-restore-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
+      { name: "05-survey", eval: wrap(`${clearOverlay}s.showSurvey();`) },
+      { name: "06-after-inplace-rest", eval: wrap(`s.run.party.forEach(u=>{u.hp=Math.max(1,Math.floor(u.maxHp*0.4));});s.doInPlaceRest();`) },
+      { name: "07-break-camp-gate", eval: wrap(`s.run.camp.gold=0;s.run.overworld.debt=30;s.breakCampToMap();`) },
+    ];
 
 async function ensureChrome() {
   if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
@@ -91,7 +110,7 @@ async function main() {
     page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
     page.on("console", (m) => m.type() === "error" && problems.push(`console: ${m.text()}`));
 
-    await page.goto(`${url}#overworld`, { waitUntil: "load", timeout: 30000 });
+    await page.goto(`${url}#${BOOT}`, { waitUntil: "load", timeout: 30000 });
     const canvas = await page.waitForSelector("canvas", { timeout: 15000 });
 
     for (const step of STEPS) {

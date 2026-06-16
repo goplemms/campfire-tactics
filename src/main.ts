@@ -13,6 +13,15 @@ if (demoBtn) {
   };
 }
 
+// The run-bar "Expedition" button (M13): boot the curated overworld expedition demo.
+const expeditionBtn = document.getElementById("expeditionbtn") as HTMLButtonElement | null;
+if (expeditionBtn) {
+  expeditionBtn.onclick = () => {
+    window.location.hash = "expedition";
+    window.location.reload();
+  };
+}
+
 /**
  * Boot the Phaser game into #app — the only file that owns a live engine
  * instance; everything testable lives under `core/`.

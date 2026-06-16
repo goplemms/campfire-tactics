@@ -107,6 +107,14 @@ export class CombatView {
   /** Board origin in screen space — the world offset added to every tile. */
   originX = 0;
   originY = 0;
+  /**
+   * Uniform board zoom (default 1). Scales tile spacing, the diamonds, and the unit
+   * tokens (each token is a container) together, so a scene can enlarge the whole
+   * combat field — tiles *and* the details that ride on them (HP bars, nameplates,
+   * status pips) — for legibility, with no effect on game logic or the shared `iso`
+   * constants. Set it before {@link setOrigin}/{@link drawGrid}/{@link spawnUnit}.
+   */
+  boardScale = 1;
 
   /** Every spawned unit's token, keyed by unit id. */
   readonly views = new Map<string, UnitView>();
@@ -144,15 +152,23 @@ export class CombatView {
     this.originY = y;
   }
 
+  /** Half a tile's width/height at the current board zoom (for scene-side geometry). */
+  halfW(): number {
+    return (TILE_WIDTH / 2) * this.boardScale;
+  }
+  halfH(): number {
+    return (TILE_HEIGHT / 2) * this.boardScale;
+  }
+
   /** Tile coordinate → board-world pixel (the diamond's centre). */
   tileToWorld(coord: GridCoord): { x: number; y: number } {
     const { x, y } = gridToScreen(coord);
-    return { x: this.originX + x, y: this.originY + y };
+    return { x: this.originX + x * this.boardScale, y: this.originY + y * this.boardScale };
   }
 
   /** Board-world pixel → nearest tile coordinate. */
   worldToTile(px: number, py: number): GridCoord {
-    const frac = screenToGrid({ x: px - this.originX, y: py - this.originY });
+    const frac = screenToGrid({ x: (px - this.originX) / this.boardScale, y: (py - this.originY) / this.boardScale });
     return { col: Math.round(frac.col), row: Math.round(frac.row) };
   }
 
@@ -446,8 +462,8 @@ export class CombatView {
 
   /** Trace a tile-sized diamond path centred at `(cx, cy)` (caller fills/strokes it). */
   private diamondPath(g: Phaser.GameObjects.Graphics, cx: number, cy: number): void {
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
+    const hw = (TILE_WIDTH / 2) * this.boardScale;
+    const hh = (TILE_HEIGHT / 2) * this.boardScale;
     g.beginPath();
     g.moveTo(cx, cy - hh);
     g.lineTo(cx + hw, cy);
@@ -484,7 +500,7 @@ export class CombatView {
     const hpBarBg = s.add.rectangle(0, hpBarY, hpBarW, hpBarH, COLOR.bg).setStrokeStyle(1, COLOR.black, 0.6);
     const hpBarFill = s.add.rectangle(-hpBarW / 2, hpBarY, hpBarW, hpBarH, COLOR.success).setOrigin(0, 0.5);
     const shadow = s.add.ellipse(0, -2, 24, 9, COLOR.black, 0.28);
-    const container = s.add.container(0, 0, [shadow, hpBarBg, hpBarFill, body, initials, label, hp, ...statusPips]).setDepth(1);
+    const container = s.add.container(0, 0, [shadow, hpBarBg, hpBarFill, body, initials, label, hp, ...statusPips]).setDepth(1).setScale(this.boardScale);
     const view: UnitView = { unit, container, body, label, hp, statusPips, hpBarFill, hpBarW };
     this.views.set(unit.id, view);
     // Hovering a token reveals its nameplate (the other half of "active/hover only").
@@ -522,7 +538,7 @@ export class CombatView {
     // chevron alone. End state is unchanged (yoyo), so captures are unaffected.
     if (unit && prev !== this.activeUnitId && !this.reduceMotion) {
       const view = this.views.get(unit.id);
-      if (view) this.scene.tweens.add({ targets: view.container, scaleX: 1.18, scaleY: 1.18, duration: 130, yoyo: true, ease: "Quad.Out" });
+      if (view) this.scene.tweens.add({ targets: view.container, scaleX: this.boardScale * 1.18, scaleY: this.boardScale * 1.18, duration: 130, yoyo: true, ease: "Quad.Out" });
     }
   }
 
@@ -546,7 +562,7 @@ export class CombatView {
       if (!unit.alive && !this.deadSeen.has(unit.id)) {
         this.deadSeen.add(unit.id);
         view.hpBarFill.setVisible(false);
-        if (!this.reduceMotion) this.scene.tweens.add({ targets: view.container, scaleX: 0.72, scaleY: 0.72, duration: 260, ease: "Quad.Out" });
+        if (!this.reduceMotion) this.scene.tweens.add({ targets: view.container, scaleX: this.boardScale * 0.72, scaleY: this.boardScale * 0.72, duration: 260, ease: "Quad.Out" });
       }
     }
   }

@@ -65,6 +65,8 @@ export interface RunHandoff {
   guild?: Guild;
   /** The caravan whose run this is — the hall resolves it on a terminal (D27). */
   caravanId?: string;
+  /** Show the one-time Expedition-demo intro overlay before the map (M13 demo). */
+  demoIntro?: boolean;
 }
 
 /**
@@ -90,6 +92,8 @@ export class OverworldScene extends Phaser.Scene {
   private loop!: RunLoop;
   private guild?: Guild;
   private caravanId?: string;
+  /** One-shot Expedition-demo intro flag (cleared after it shows once). */
+  private demoIntro = false;
 
   private graph?: Phaser.GameObjects.Graphics;
   private nodePos = new Map<string, { x: number; y: number }>();
@@ -115,6 +119,7 @@ export class OverworldScene extends Phaser.Scene {
     this.loop = data?.loop as RunLoop;
     this.guild = data?.guild;
     this.caravanId = data?.caravanId;
+    this.demoIntro = data?.demoIntro ?? false;
   }
 
   create(): void {
@@ -145,7 +150,47 @@ export class OverworldScene extends Phaser.Scene {
     // before the map. A fresh run sits at the un-played start node → straight to map.
     if (this.justResolvedCurrentNode()) return this.showSurvey();
 
+    // The Expedition demo (M13) opens with a one-time orientation card.
+    if (this.demoIntro) {
+      this.demoIntro = false;
+      this.drawMap();
+      return this.showExpeditionIntro();
+    }
+
     this.drawMap();
+  }
+
+  /** A one-time orientation card for the Expedition demo (M13). */
+  private showExpeditionIntro(): void {
+    for (const o of this.overlay) o.destroy();
+    this.overlay = [];
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2 - 10;
+    const w = 680;
+    const padX = 34;
+    const intro = "An expedition is an economic routing problem: can you afford the route and a rest at its end?";
+    const bullets = [
+      "The map is fogged — deeper nodes hide until your intel reaches them.",
+      "Pick a node to Make Camp, then End the Night to face it (fight · rest · event).",
+      "After it resolves, Survey: read the forecast, rest in place, scout — then Break Camp.",
+      "Open the Ledger anytime: cross a line off to skip it and free its gold.",
+      "Tolls are known, loot is fogged — route to a rest node to fully recover.",
+    ];
+    const body = intro + "\n\n" + bullets.map((b) => `•  ${b}`).join("\n");
+    const h = 264;
+    const left = cx - w / 2 + padX;
+    this.overlay.push(
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.success).setDepth(20),
+      this.add.text(cx, cy - h / 2 + 24, "The Long Road Home — an Expedition", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
+      this.add.text(left, cy - h / 2 + 52, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, align: "left", lineSpacing: 5, wordWrap: { width: w - 2 * padX } }).setOrigin(0, 0).setDepth(21),
+    );
+    this.overlay.push(
+      this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
+        for (const o of this.overlay) o.destroy();
+        this.overlay = [];
+        this.setHint("Hover a node to preview it; click to Make Camp. Deeper nodes are fogged until intel reaches them.");
+      }).setDepth(22),
+    );
   }
 
   /** True if the current node has just been played (its event is in history) — Survey time (D46). */
@@ -859,8 +904,8 @@ export class OverworldScene extends Phaser.Scene {
       this.add.text(cx, cy - h / 2 + 24, "Before you break camp…", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
       this.add.text(cx, cy - h / 2 + 56, gate.reasons.map((r) => `• ${r}`).join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "left", lineSpacing: 5, wordWrap: { width: w - 60 } }).setOrigin(0.5, 0).setDepth(25),
     );
-    const stay = this.makeTextButton(cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showSurvey());
-    const go = this.makeTextButton(cx + 110, cy + h / 2 - 22, 180, 30, "Break Camp anyway", COLOR.danger, COLOR.danger, () => this.toMap());
+    const stay = this.makeTextButton(cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showSurvey()).setDepth(26);
+    const go = this.makeTextButton(cx + 110, cy + h / 2 - 22, 180, 30, "Break Camp anyway", COLOR.danger, COLOR.danger, () => this.toMap()).setDepth(26);
     this.overlay.push(stay, go);
   }
 
@@ -876,10 +921,13 @@ export class OverworldScene extends Phaser.Scene {
   // --- The economic ledger panel (D45) ---------------------------------------
 
   /**
-   * The ledger panel (D45): purse-scoped category totals expanded to their line
-   * items, the embedded forecast, Influence shown but walled off, **voluntary-skip**
-   * toggles (free a line's gold for a riskier play, intent-aware), and a
-   * **jump-to-market** when usable. Every number flows through {@link buildLedger}.
+   * The ledger panel (D45), styled as **ledger paper**: ruled rows, descriptions
+   * left, a right-hand **amount column**, the embedded forecast, Influence shown but
+   * walled off (D34), and a **jump-to-market** when usable. The **Upkeep** rows are
+   * **clickable** — click one to *cross it off the ledger* (a voluntary skip, D45):
+   * the line strikes through, its amount disappears (the gold is freed), and the
+   * intent-aware gate won't nag it. Click again to restore it. Every number flows
+   * through {@link buildLedger}.
    */
   private showLedgerPanel(onClose: () => void): void {
     for (const o of this.overlay) o.destroy();
@@ -889,50 +937,124 @@ export class OverworldScene extends Phaser.Scene {
     const ledger: Ledger = buildLedger(this.run, { influence: this.guild?.influence ?? 0, marketReady: merchantReady });
 
     const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2 - 10;
-    const w = 660;
+    const w = 620;
+    const pad = 30;
+    const leftX = cx - w / 2 + pad;
+    const rightX = cx + w / 2 - pad;
+    const colX = rightX - 86; // the amount-column rule (a classic ledger column)
+    const rowH = 22;
 
-    const body: string[] = [];
-    body.push(`Balance (run purse): ${ledger.balance}g     ·     Influence: ${ledger.influence}  (separate — never pays Upkeep)`);
-    body.push("");
-    for (const cat of ledger.categories) {
-      const tag = cat.projected ? "  (projected)" : "";
-      body.push(`${cat.label}${tag}:  ${cat.total >= 0 ? "+" : ""}${cat.total}g`);
-      for (const l of cat.lines) body.push(`     ${l.label}: ${l.amount >= 0 ? "+" : ""}${l.amount}g${l.note ? `  (${l.note})` : ""}`);
-    }
-    body.push("");
-    body.push("Forecast (D48):");
-    body.push(this.forecastSummary(ledger.forecast));
+    // Size the sheet to its content (header + rows + forecast + buttons).
+    const rowsCount = ledger.categories.reduce((n, c) => n + 1 + c.lines.length, 0);
+    const forecastLines = this.forecastSummary(ledger.forecast).split("\n");
+    const headH = 64;
+    const forecastH = 18 + forecastLines.length * 14 + 12;
+    const btnH = 46;
+    const h = Math.min(this.scale.height - 16, headH + rowsCount * rowH + forecastH + btnH + 20);
+    const cy = this.scale.height / 2;
+    const top = cy - h / 2;
 
-    const h = Math.min(this.scale.height - 30, 170 + body.length * 14);
+    // Depths: sheet 23 · ruling/hit 24 · text 25 · buttons 26.
+    const g = this.add.graphics().setDepth(24);
     this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.gold).setDepth(24),
-      this.add.text(cx, cy - h / 2 + 20, "Ledger (D45)", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
-      this.add.text(cx - w / 2 + 24, cy - h / 2 + 42, body.join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: w - 48 } }).setOrigin(0, 0).setDepth(25),
+      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
+      g,
+      this.add.text(cx, top + 16, "Ledger", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
+      this.add.text(leftX, top + 40, `Balance  ${ledger.balance}g`, { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(rightX, top + 40, `Influence ${ledger.influence} · never pays Upkeep`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+    );
+    // Double rule under the header (ledger feel).
+    g.lineStyle(1, COLOR.borderSoft, 0.9);
+    g.lineBetween(leftX, top + 54, rightX, top + 54);
+    g.lineBetween(leftX, top + 56, rightX, top + 56);
+
+    let y = top + 56 + 18;
+    const rowsTop = y - rowH / 2;
+    for (const cat of ledger.categories) {
+      // Category header row (label + running total, both in gold).
+      const tag = cat.projected ? "  (projected)" : "";
+      this.overlay.push(
+        this.add.text(leftX, y, `${cat.label}${tag}`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
+        this.add.text(rightX, y, this.signed(cat.total), { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
+      );
+      g.lineStyle(1, COLOR.border, 0.5);
+      g.lineBetween(leftX, y + rowH / 2, rightX, y + rowH / 2);
+      y += rowH;
+
+      for (const l of cat.lines) {
+        const skipped = l.note === "voluntarily skipped";
+        const interactive = cat.id === "upkeep"; // only Upkeep lines are skippable
+        const labelInk = skipped ? INK.disabled : interactive ? INK.bright : INK.secondary;
+        this.overlay.push(
+          this.add.text(leftX + 18, y, l.label, { color: labelInk, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
+        );
+        // The amount on the right — gone when the line is crossed off (D45).
+        this.overlay.push(
+          skipped
+            ? this.add.text(rightX, y, "— skipped —", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25)
+            : this.add.text(rightX, y, this.signed(l.amount), { color: l.amount < 0 ? INK.danger : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+        );
+        // Strike the row through when crossed off.
+        if (skipped) {
+          g.lineStyle(1.5, COLOR.danger, 0.85);
+          g.lineBetween(leftX + 12, y, rightX, y);
+        }
+        // Faint per-entry rule (ledger paper).
+        g.lineStyle(1, COLOR.border, 0.28);
+        g.lineBetween(leftX + 12, y + rowH / 2, rightX, y + rowH / 2);
+
+        // Upkeep rows are clickable: cross off (skip) / restore. The hit rect sits
+        // below the text (depth 24) so its hover wash reads behind the ink.
+        if (interactive) {
+          const lineId = l.id.replace("upkeep:", "") as UpkeepLine["id"];
+          const hit = this.add.rectangle(cx, y, w - 2 * pad + 12, rowH, COLOR.surfaceAlt, 0).setDepth(24).setInteractive({ useHandCursor: true });
+          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {
+            hit.setFillStyle(COLOR.surfaceAlt, 0.35);
+            this.setHint(skipped ? `Click to restore ${l.label} to the ledger (fund it again).` : `Click to cross ${l.label} off the ledger — frees its gold; you'll take the consequence and the gate won't nag.`);
+          });
+          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => hit.setFillStyle(COLOR.surfaceAlt, 0));
+          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.toggleSkip(lineId, onClose));
+          this.overlay.push(hit);
+        }
+        y += rowH;
+      }
+    }
+
+    // The vertical amount-column rule down the rows region.
+    g.lineStyle(1, COLOR.borderSoft, 0.45);
+    g.lineBetween(colX, rowsTop, colX, y - rowH / 2);
+
+    // Forecast footer.
+    y += 8;
+    this.overlay.push(
+      this.add.text(leftX, y, "Forecast (D48)", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
+    );
+    y += 16;
+    this.overlay.push(
+      this.add.text(leftX, y, forecastLines.join("\n"), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25),
     );
 
-    // Action row: voluntary-skip toggles (D45), jump-to-market, close.
-    const by = cy + h / 2 - 22;
-    const skip = new Set(this.run.camp.skippedUpkeep);
-    const foodBtn = this.makeTextButton(cx - w / 2 + 90, by, 160, 28, skip.has("food") ? "Food: SKIPPED" : "Skip Food", skip.has("food") ? COLOR.danger : COLOR.surfaceRaised, COLOR.border, () => this.toggleSkip("food", onClose));
-    const repairBtn = this.makeTextButton(cx - w / 2 + 260, by, 170, 28, skip.has("repairs") ? "Repairs: SKIPPED" : "Skip Repairs", skip.has("repairs") ? COLOR.danger : COLOR.surfaceRaised, COLOR.border, () => this.toggleSkip("repairs", onClose));
-    this.overlay.push(foodBtn, repairBtn);
+    // Buttons (depth 26 — above the sheet).
+    const by = top + h - 22;
     if (ledger.marketReady) {
-      const market = this.makeTextButton(cx + w / 2 - 250, by, 150, 28, "Jump to Market", COLOR.btnFill, COLOR.gold, () => { this.merchantBuyKit(); this.showLedgerPanel(onClose); });
-      this.overlay.push(market);
+      this.overlay.push(this.makeTextButton(leftX + 90, by, 170, 28, "Jump to Market", COLOR.btnFill, COLOR.gold, () => { this.merchantBuyKit(); this.showLedgerPanel(onClose); }).setDepth(26));
     }
-    const close = this.makeTextButton(cx + w / 2 - 70, by, 110, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => { for (const o of this.overlay) o.destroy(); this.overlay = []; onClose(); });
-    this.overlay.push(close);
+    this.overlay.push(this.makeTextButton(rightX - 60, by, 110, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => { for (const o of this.overlay) o.destroy(); this.overlay = []; onClose(); }).setDepth(26));
   }
 
-  /** Toggle a voluntary Upkeep skip (D45) — frees the line's gold; the gate won't nag. */
+  /** A signed gold figure for the ledger (`+5g` / `-5g`). */
+  private signed(n: number): string {
+    return `${n >= 0 ? "+" : ""}${n}g`;
+  }
+
+  /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. */
   private toggleSkip(id: UpkeepLine["id"], onClose: () => void): void {
     const set = new Set(this.run.camp.skippedUpkeep);
     if (set.has(id)) set.delete(id);
     else set.add(id);
     this.run.camp.skippedUpkeep = [...set] as ("food" | "repairs")[];
     this.refreshCampText();
-    this.setHint(set.has(id) ? `Voluntarily skipping ${id} — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
+    this.setHint(set.has(id) ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
     this.showLedgerPanel(onClose);
   }
 
@@ -1005,7 +1127,7 @@ export class OverworldScene extends Phaser.Scene {
     this.overlay.push(
       this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.94).setStrokeStyle(2, good ? COLOR.success : COLOR.danger).setDepth(20),
       this.add.text(cx, cy - h / 2 + 26, title, { color: good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy + 6, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(21),
+      this.add.text(cx, cy + 6, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 48 } }).setOrigin(0.5).setDepth(21),
     );
     if (onContinue) {
       const btn = this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {

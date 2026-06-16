@@ -10,7 +10,6 @@ import {
   occupiedGrid,
   isAdjacent,
   TileGrid,
-  TILE_WIDTH,
   TILE_HEIGHT,
   Battle,
   unitSkills,
@@ -57,6 +56,13 @@ import type { RunHandoff } from "./OverworldScene";
 import { Button } from "../button";
 import { HintPanel } from "../hint-panel";
 import { dropNet as dropNetCage } from "../deploy-fx";
+
+/**
+ * Board zoom for the real combat field (D-UX): enlarge tiles + tokens so details
+ * (HP bars, nameplates, status pips) stand out — the procedural 8×6 board is
+ * centred full-width and has the room. Applied via {@link CombatView.boardScale}.
+ */
+const BOARD_SCALE = 1.4;
 
 /**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
@@ -144,6 +150,10 @@ export class BattleScene extends Phaser.Scene {
 
   create(): void {
     this.view = new CombatView(this);
+    // Enlarge the combat field for legibility (D-UX): bigger tiles + tokens (HP
+    // bars, nameplates, status pips) so details stand out, especially in testing.
+    // The procedural board is 8×6 and centred full-width, so it has room to grow.
+    this.view.boardScale = BOARD_SCALE;
     this.view.reduceMotion = !!(window as Window & { __SHOT__?: boolean }).__SHOT__;
     // The campfire glow — a warm vignette over the board, beneath the tokens/HUD.
     addVignette(this);
@@ -219,7 +229,7 @@ export class BattleScene extends Phaser.Scene {
     this.threatGfx.clear();
 
     this.originX = this.scale.width / 2;
-    this.originY = this.scale.height / 2 - (this.grid.rows * TILE_HEIGHT) / 2 + 4;
+    this.originY = this.scale.height / 2 - (this.grid.rows * TILE_HEIGHT * BOARD_SCALE) / 2 + 4;
     this.view.setOrigin(this.originX, this.originY);
 
     this.drawGrid();
@@ -308,8 +318,8 @@ export class BattleScene extends Phaser.Scene {
       for (let col = 0; col <= maxCol && col < this.grid.cols; col++) {
         if (!this.grid.isWalkable({ col, row })) continue;
         const { x, y } = this.tileToWorld({ col, row });
-        const halfW = TILE_WIDTH / 2;
-        const halfH = TILE_HEIGHT / 2;
+        const halfW = this.view.halfW();
+        const halfH = this.view.halfH();
         this.safeZoneGfx.fillStyle(COLOR.successDeep, 0.28);
         this.safeZoneGfx.beginPath();
         this.safeZoneGfx.moveTo(x, y - halfH);
@@ -392,7 +402,7 @@ export class BattleScene extends Phaser.Scene {
   /** Drop the capture-net cage on a unit's tile (shared deploy FX). */
   private dropNet(unit: Unit): void {
     const { x, y } = this.tileToWorld(unit.pos);
-    this.boardObjects.push(dropNetCage(this, x, y - TILE_HEIGHT / 2));
+    this.boardObjects.push(dropNetCage(this, x, y - this.view.halfH()));
   }
 
   private placeTrap(): void {
@@ -409,7 +419,7 @@ export class BattleScene extends Phaser.Scene {
     }
     removeItem(this.run.inventory, "trap-kit", 1);
     const { x, y } = this.tileToWorld(tile);
-    const marker = this.add.text(x, y - TILE_HEIGHT / 2, "✸", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
+    const marker = this.add.text(x, y - this.view.halfH(), "✸", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
     this.boardObjects.push(marker);
     this.placedTraps.push({ pos: { ...tile }, damage: this.trapDamage, marker, sprung: false });
     this.refreshCampText();

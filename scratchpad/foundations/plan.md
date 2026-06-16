@@ -360,6 +360,55 @@ exercise in the browser.
   clean; `core/` free of Phaser/DOM **and** `Math.random`.
 - See [`M12-kickoff.md`](M12-kickoff.md) and [`decisions.md`](decisions.md) (D36–D44).
 
+### M13 — The overworld economic layer (ledger · lifecycle · two-tier recovery · forecast/fog) — *done (in-browser gate confirmed 2026-06-16; D45–D48; 398 tests green)*
+
+- *Adjustment (not a pivot): the north star is unchanged; M13 makes the overworld's
+  **economic routing** (D28) legible and playable — the four read-models (ledger, forecast,
+  fog) are **pure projections** over existing run state, reusing `computeUpkeep` /
+  `rpPerNight` / `triageHeal` / `rewardHint` / `reachableFrom`. New state lives only at the
+  two named seams (the voluntary-skip selection + worn-gear debt; node-fee data is derived,
+  not stored).* Full design: decisions **D45–D48**; build prompt
+  [`M13-build-prompt.md`](M13-build-prompt.md).
+- **Structural refactor (D46):** the node-step tick (`tickCooldowns` +
+  `accruePurseInterest`) moved out of `recordNight` (now the *End the Night* reconciliation)
+  into `breakCamp`, fired at **departure** from `chooseNode` — one night's allowance timed
+  across the whole visit. `autoTraverse` + its tests stay green.
+- **Recovery economy (core, D47/D45):** `payUpkeep` accepts **voluntarily-skipped** line
+  ids (defaulting to the camp's persisted selection) and reports skip (intent) vs. underfunded
+  (breach) separately, accruing compounding `gearWear` debt; **in-place rest**
+  (`RunLoop.inPlaceRest`) pays a night's rations for a small floored-at-≥1 heal, repeatable,
+  each a full node-step; the **rest node** becomes the premium tier (large heal + fatigue
+  restore + debt clear in one swipe).
+- **Fog + forecast (core, D48):** `visibleNodes` — a pure forward-BFS reach mask scaled by
+  intel (base ≈ half the map, immediate choices always shown); a **toll** event kind — a
+  visible, deterministic node fee (`nodeFee`) routed around; `projectForecast` — cost
+  (`upkeep × steps + visible fees`) vs. **fogged** intel-banded loot (`lootBandFor`), a
+  purse-after floor/ceiling, a **floor-based warning that clears as intel raises the floor**,
+  and the runway to the nearest visible rest.
+- **Ledger + gate (core, D45):** `buildLedger` — purse-scoped Opening/Loot/Field/Upkeep/Banker
+  categories (totals + expandable lines) embedding the forecast, Influence shown but never
+  summed into gold; `nightEndGate` — the intent-aware soft gate (warns on debt / a
+  *non-voluntary* breach / a projected shortfall; silent on a deliberate skip).
+- **render (`OverworldScene`, D45/D46/D47/D48):** a **fog pass** in `drawMap` (deep nodes
+  silhouetted, widen with intel); the **Make Camp → End the Night → Survey → Break Camp**
+  lifecycle (the new post-event Survey beat: forecast readout, in-place **Rest**, scout,
+  ledger glance); the **ledger panel** (totals + lines + forecast + voluntary-skip toggles +
+  jump-to-market); the **soft gate** on Break Camp. A `#overworld` debug boot +
+  `scripts/shots-overworld.mjs` make the layer visible to the screenshot harness.
+- **User-testable gate:** `npm run dev` (or `#overworld`) → at a node open the **ledger**
+  (broad totals, expand to lines), see the **fog** hide deep nodes and **widen with intel**,
+  read the **forecast** on a reachable edge (a banded purse-after with a floor-based warning
+  that **clears after you scout**), **in-place rest** to heal (repeatable, costs rations,
+  ticks cooldowns), **voluntarily skip Food** to free gold and watch the gate *not* nag,
+  **Break Camp** for one node-step (cooldowns tick at departure), and route to a **rest node**
+  for the premium full heal + debt clear. `npm test` green (recovery + voluntary skip,
+  fog/forecast banding + floor-warning, ledger categories + intent-aware gate); `npm run
+  build` clean; `core/` free of Phaser/DOM **and** `Math.random`.
+- See [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md),
+  [`intel.md`](../../docs/design/systems/intel.md),
+  [`logistics.md`](../../docs/design/systems/logistics.md) and
+  [`decisions.md`](decisions.md) (D45–D48).
+
 ## Notes
 
 - Pivot = revise Goal + supersede affected decisions (see decisions.md).

@@ -22,7 +22,7 @@ import path from "node:path";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CFT_VERSION = process.env.CFT_VERSION ?? "131.0.6778.204";
 const CFT_HOST = process.env.CFT_HOST ?? "https://storage.googleapis.com/chrome-for-testing-public";
-const OUT_DIR = path.resolve(ROOT, process.env.SHOTS_OUT ?? (process.env.BOOT_HASH === "expedition" ? "screenshots/m13/expedition" : "screenshots/m13"));
+const OUT_DIR = path.resolve(ROOT, process.env.SHOTS_OUT ?? `screenshots/m13/${process.env.BOOT_HASH ?? "overworld"}`);
 const CACHE_DIR = path.resolve(ROOT, ".cache", "chrome");
 const PORT = Number(process.env.SHOTS_PORT ?? 5191);
 
@@ -39,7 +39,13 @@ const S = `window.game.scene.getScene("OverworldScene")`;
 const BOOT = process.env.BOOT_HASH ?? "overworld";
 const wrap = (body) => `(()=>{const s=${S};${body}})()`;
 const clearOverlay = `for(const o of s.overlay)o.destroy();s.overlay=[];`;
-const STEPS = BOOT === "expedition"
+const BS = `window.game.scene.getScene("BattleScene")`;
+const STEPS = BOOT === "battle"
+  ? [
+      { name: "01-deploy", minMs: 900, eval: `void 0;` }, // the enlarged deployment board
+      { name: "02-battle", minMs: 700, eval: `(()=>{const s=${BS};if(s.phase==="deployment")s.onPrimary();for(let i=0;i<16&&!s.waitingFor;i++){s.busy=false;s.over=false;s.onAdvance();}})()` },
+    ]
+  : BOOT === "expedition"
   ? [
       { name: "01-intro", minMs: 700, eval: `void 0;` }, // the orientation card over the map
       { name: "02-map-fog", eval: wrap(clearOverlay) }, // dismiss the card → the curated map + fog

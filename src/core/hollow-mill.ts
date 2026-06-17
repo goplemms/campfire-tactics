@@ -53,13 +53,12 @@ export const HOLLOW_MILL_PARTY: UnitSpec[] = [
   // Vale is the party's eyes (D10): a high Intelligence floors intel at tier 2 —
   // the deploy edge is live, and a single Scout on E2 reaches tier 3 to blow its
   // hidden ambush. Without this the intel teeth would be unreachable on the short map.
-  member("vale", "Vale", "scout", { intelligence: 7 }),
+  // Vale the Scout is the party's field-craft specialist (Survivalist subsumed):
+  // high Intelligence/Awareness, plants and disarms snares, and her snares set up
+  // Rook the Hunter's Deadeye. No dedicated trapper needed.
+  member("vale", "Vale", "scout", { intelligence: 7, awareness: 4 }),
   member("sela", "Sela", "medic"),
   member("pip", "Pip", "chef", { standingOrder: "defend", maxHp: 22, attack: 5, defense: 2, moveRange: 3, speed: 8 }),
-  // Bram the trapper (the Survivalist): reads the enemy's snares — the only one who
-  // can disarm a spotted trap to harvest its kit, which then feeds his own Set Trap.
-  // High awareness so he reliably spots the trap-field's concealed traps.
-  member("bram", "Bram", "survivalist", { awareness: 4 }),
 ];
 
 // --- The three fights (re-homed from the demo, on the D50 objectives) --------
@@ -72,7 +71,7 @@ export const E1_SKIRMISH: AuthoredEncounter = {
   rows: 6,
   blocked: [{ col: 4, row: 1 }, { col: 4, row: 4 }],
   playerSpawns: [
-    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 }, { col: 1, row: 3 },
+    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
   enemies: [
     { templateId: "bandit-thug", pos: { col: 6, row: 2 } },
@@ -89,8 +88,9 @@ export const E1_SKIRMISH: AuthoredEncounter = {
  * The Sapper's Snares — the trap-field set-piece (D12). A sapper has seeded the
  * approach with concealed traps; the party must cross them to reach the bandits.
  * Spot them with Awareness (or eat the damage), and let Bram the Survivalist
- * disarm the spotted ones to harvest their kits — which then feed his Set Trap at
- * the chokepoint (E2) and the holdout (E3). The "why set traps" made felt.
+ * disarm the spotted ones to harvest their kits — which then feed her own snares at
+ * the chokepoint (E2) and the holdout (E3), each Immobilizing prey for Rook's
+ * Deadeye. The "why set traps" made felt.
  */
 export const TRAP_FIELD: AuthoredEncounter = {
   id: "snares-trapfield",
@@ -99,7 +99,7 @@ export const TRAP_FIELD: AuthoredEncounter = {
   rows: 6,
   blocked: [{ col: 4, row: 0 }, { col: 4, row: 5 }],
   playerSpawns: [
-    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 }, { col: 1, row: 3 },
+    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
   enemies: [
     { templateId: "sapper", pos: { col: 8, row: 2 }, id: "field-sapper" }, // the trapper who laid them
@@ -131,7 +131,7 @@ export const E2_AMBUSH: AuthoredEncounter = {
     { col: 4, row: 0 }, { col: 4, row: 1 }, { col: 4, row: 4 }, { col: 4, row: 5 },
   ],
   playerSpawns: [
-    { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 3 }, { col: 0, row: 1 }, { col: 1, row: 4 },
+    { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 3 }, { col: 0, row: 1 },
   ],
   enemies: [
     { templateId: "bandit-thug", pos: { col: 6, row: 2 } },
@@ -153,7 +153,7 @@ export const E3_HOLDOUT: AuthoredEncounter = {
   rows: 5,
   blocked: [{ col: 4, row: 0 }, { col: 4, row: 4 }],
   playerSpawns: [
-    { col: 0, row: 2 }, { col: 0, row: 1 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 1 }, { col: 1, row: 3 },
+    { col: 0, row: 2 }, { col: 0, row: 1 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 1 },
   ],
   enemies: [
     { templateId: "bandit-captain", pos: { col: 8, row: 2 }, role: "captain", id: "captain" },

@@ -69,6 +69,7 @@ import {
   type Unit,
   type Side,
   type SkillDef,
+  type StatusInstance,
   type TheftAttempt,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
@@ -138,6 +139,8 @@ export class BattleScene extends Phaser.Scene {
   private deployRng!: Rng;
   private placedTraps: { pos: GridCoord; damage: number; marker: Phaser.GameObjects.Text; sprung: boolean }[] = [];
   private trapDamage = 12;
+  /** The debuff the party's snare inflicts on a spring (Immobilize) — enables Deadeye. */
+  private trapStatus?: StatusInstance;
   // D12 — concealed enemy traps: a seeded spot-roll stream + per-trap board markers.
   private spotRng!: Rng;
   private trapMarkers = new Map<string, Phaser.GameObjects.Text>();
@@ -278,7 +281,10 @@ export class BattleScene extends Phaser.Scene {
     const trapSkill = this.run.party
       .flatMap((u) => unitSkills(u, "deployment"))
       .find((s) => s.effect.kind === "placeTrap");
-    if (trapSkill && trapSkill.effect.kind === "placeTrap") this.trapDamage = trapSkill.effect.damage;
+    if (trapSkill && trapSkill.effect.kind === "placeTrap") {
+      this.trapDamage = trapSkill.effect.damage;
+      this.trapStatus = trapSkill.effect.status; // a snare's Immobilize → sets up Deadeye
+    }
     this.selectDeployActor(this.battle.units.find((u) => u.side === "player") ?? null);
     this.setPrimary("Start Battle");
   }
@@ -509,7 +515,7 @@ export class BattleScene extends Phaser.Scene {
     this.safeZoneGfx?.clear();
     this.highlightTile(null);
 
-    this.placedTraps.forEach((t, i) => this.battle.entities.register(makeTrap(`trap-${i}`, t.pos, "player", t.damage)));
+    this.placedTraps.forEach((t, i) => this.battle.entities.register(makeTrap(`trap-${i}`, t.pos, "player", t.damage, { status: this.trapStatus })));
     this.battle.bus.on("unitEnterTile", ({ unit, tile }) => {
       if (unit.side !== "enemy") return;
       const t = this.placedTraps.find((t) => !t.sprung && t.pos.col === tile.col && t.pos.row === tile.row);

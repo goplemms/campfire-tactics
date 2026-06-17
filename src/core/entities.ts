@@ -14,6 +14,7 @@ import type { Unit, Side } from "./units";
 import type { GridCoord } from "./iso";
 import type { EventBus } from "./events";
 import { applyDamage } from "./combat";
+import { applyStatus, type StatusInstance } from "./status";
 
 /** Context handed to an entity's tile callbacks. */
 export interface EntityEnterContext {
@@ -113,7 +114,7 @@ export function makeTrap(
   pos: GridCoord,
   owner: Side,
   damage: number,
-  opts: { materialId?: string; recoverable?: boolean } = {},
+  opts: { materialId?: string; recoverable?: boolean; status?: StatusInstance } = {},
 ): RecoverableEntity {
   const trap: RecoverableEntity = {
     id,
@@ -126,6 +127,9 @@ export function makeTrap(
       if (trap.sprung || unit.side === owner) return;
       trap.sprung = true;
       applyDamage(unit, damage, bus);
+      // A snare trap also debuffs (Immobilize) — which is what enables the Hunter's
+      // Deadeye on the now-afflicted prey (the trapper↔Hunter synergy).
+      if (opts.status) applyStatus(unit, { ...opts.status });
     },
   };
   return trap;

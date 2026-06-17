@@ -113,10 +113,16 @@ export interface MoraleEffect {
   /** HP healed to each unit at the start of the next battle. */
   partyHeal: number;
 }
-/** Deployment: the Survivalist places a trap dealing `damage` when sprung. */
+/** Deployment: a trap-layer places a trap dealing `damage` when sprung. */
 export interface PlaceTrapEffect {
   kind: "placeTrap";
   damage: number;
+  /**
+   * An optional debuff the sprung trap inflicts (a snare → Immobilize). A debuffed
+   * foe is what the Hunter's Deadeye punishes — so a trap-layer *sets up* the
+   * Hunter's enhanced damage (the trapper↔Hunter synergy).
+   */
+  status?: StatusInstance;
 }
 
 /** The declarative effect a skill applies when it resolves. */

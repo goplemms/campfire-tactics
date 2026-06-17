@@ -55,7 +55,7 @@ describe("The Hollow Mill — the framework's first AuthoredExpedition (D52)", (
 
   it("boots with the bundle (party, purse, supplies)", () => {
     const run = createRunFromExpedition(THE_HOLLOW_MILL);
-    expect(run.party).toHaveLength(6); // + Bram the Survivalist (the trap-field lever)
+    expect(run.party).toHaveLength(5); // Vale the Scout is the trapper (Survivalist subsumed)
     expect(run.camp.gold).toBe(120);
     expect(run.expeditionId).toBe("hollow-mill");
   });

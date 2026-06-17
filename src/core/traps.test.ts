@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit, type Side } from "./units";
 import { EventBus } from "./events";
-import { EntityRegistry, makeConcealedTrap, isConcealedTrap } from "./entities";
+import { EntityRegistry, makeConcealedTrap, makeTrap, isConcealedTrap } from "./entities";
 import { recoverMaterials } from "./resolution";
 import { createInventory, countOf } from "./inventory";
+import { immobilized, isDebuffed } from "./status";
 import { Rng } from "./rng";
 import {
   spotChance,
@@ -108,7 +109,7 @@ describe("disarming — Survivalist-only, harvests the kit (the lever payoff)", 
     const trap = makeConcealedTrap("t", { col: 1, row: 1 }, "enemy", 12, 4);
     trap.revealed = true;
     r.register(trap);
-    const surv = unit("v", "player", { pos: { col: 1, row: 2 }, jobId: "survivalist" });
+    const surv = unit("v", "player", { pos: { col: 1, row: 2 }, jobId: "scout" }); // the Scout is the trapper now
     const inv = createInventory(10);
 
     expect(canDisarm(surv)).toBe(true);
@@ -132,14 +133,33 @@ describe("disarming — Survivalist-only, harvests the kit (the lever payoff)", 
     expect(canDisarm(soldier)).toBe(false);
     expect(disarmTrap(r, "spotted", soldier, inv).ok).toBe(false);
 
-    const surv = unit("v", "player", { pos: { col: 1, row: 2 }, jobId: "survivalist" });
+    const surv = unit("v", "player", { pos: { col: 1, row: 2 }, jobId: "scout" });
     // Not yet spotted → refused.
     expect(disarmTrap(r, "unseen", surv, inv).ok).toBe(false);
-    // Adjacent + spotted + trained → would work; move the survivalist away → refused.
+    // Adjacent + spotted + trained → would work; move the trapper away → refused.
     surv.pos = { col: 8, row: 8 };
     expect(disarmTrap(r, "spotted", surv, inv).ok).toBe(false);
     // Nothing harvested across the refusals.
     expect(countOf(inv, "trap-kit")).toBe(0);
     expect(r.all()).toHaveLength(2);
+  });
+});
+
+describe("trapper↔Hunter synergy — a snare debuffs prey for Deadeye", () => {
+  it("the Scout carries the trap skill (Survivalist subsumed), so it can plant + disarm", () => {
+    expect(canDisarm(unit("s", "player", { jobId: "scout" }))).toBe(true);
+    // A plain soldier still can't.
+    expect(canDisarm(unit("g", "player", { jobId: "soldier" }))).toBe(false);
+  });
+
+  it("a player snare Immobilizes the enemy it springs on — a debuff that enables Deadeye", () => {
+    const bus = new EventBus();
+    const r = new EntityRegistry(bus);
+    r.register(makeTrap("snare", { col: 2, row: 2 }, "player", 8, { status: immobilized(2) }));
+    const foe = unit("f", "enemy", { pos: { col: 2, row: 2 }, maxHp: 20 });
+
+    bus.emit("unitEnterTile", { unit: foe, tile: { col: 2, row: 2 } });
+    expect(foe.hp).toBe(12); // 20 - 8 damage
+    expect(isDebuffed(foe)).toBe(true); // …and now Deadeye-eligible (the Hunter's +dmg)
   });
 });

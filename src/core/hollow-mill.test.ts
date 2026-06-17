@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { THE_HOLLOW_MILL, E1_SKIRMISH, E2_AMBUSH, E3_HOLDOUT } from "./hollow-mill";
+import { THE_HOLLOW_MILL, E1_SKIRMISH, TRAP_FIELD, E2_AMBUSH, E3_HOLDOUT } from "./hollow-mill";
+import { stageEncounter } from "./staging";
+import { isConcealedTrap } from "./entities";
+import { canDisarm } from "./traps";
 import { validateExpedition } from "./expedition";
 import { createRunFromExpedition } from "./run";
 import { RunLoop } from "./runloop";
@@ -52,7 +55,7 @@ describe("The Hollow Mill — the framework's first AuthoredExpedition (D52)", (
 
   it("boots with the bundle (party, purse, supplies)", () => {
     const run = createRunFromExpedition(THE_HOLLOW_MILL);
-    expect(run.party).toHaveLength(5);
+    expect(run.party).toHaveLength(6); // + Bram the Survivalist (the trap-field lever)
     expect(run.camp.gold).toBe(120);
     expect(run.expeditionId).toBe("hollow-mill");
   });
@@ -122,6 +125,20 @@ describe("The Hollow Mill — the framework's first AuthoredExpedition (D52)", (
     expect(a.run.path).toEqual(b.run.path);
     expect(a.run.complete).toBe(b.run.complete);
     expect(a.run.over).toBe(b.run.over);
+  });
+
+  it("the trap-field node stages concealed enemy traps the party can disarm (D12)", () => {
+    const run = createRunFromExpedition(THE_HOLLOW_MILL);
+    // The snares node sits on the main path (before the rest), bound to the trap field.
+    const snares = THE_HOLLOW_MILL.map.nodes["snares"];
+    expect(snares.kind).toBe("combat");
+    expect(snares.authoredId).toBe(TRAP_FIELD.id);
+    // Staging pre-registers the concealed traps as hidden enemy-owned bodies.
+    const traps = stageEncounter(TRAP_FIELD, run.party).battle.entities.all().filter(isConcealedTrap);
+    expect(traps).toHaveLength(5);
+    expect(traps.every((t) => t.owner === "enemy" && !t.revealed && !t.sprung)).toBe(true);
+    // …and the party fields a trap-trained unit (Bram) to harvest them.
+    expect(run.party.some(canDisarm)).toBe(true);
   });
 
   it("the party floors intel at tier 2 — the intel teeth are reachable in the demo (D10)", () => {

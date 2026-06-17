@@ -56,6 +56,10 @@ export const HOLLOW_MILL_PARTY: UnitSpec[] = [
   member("vale", "Vale", "scout", { intelligence: 7 }),
   member("sela", "Sela", "medic"),
   member("pip", "Pip", "chef", { standingOrder: "defend", maxHp: 22, attack: 5, defense: 2, moveRange: 3, speed: 8 }),
+  // Bram the trapper (the Survivalist): reads the enemy's snares — the only one who
+  // can disarm a spotted trap to harvest its kit, which then feeds his own Set Trap.
+  // High awareness so he reliably spots the trap-field's concealed traps.
+  member("bram", "Bram", "survivalist", { awareness: 4 }),
 ];
 
 // --- The three fights (re-homed from the demo, on the D50 objectives) --------
@@ -68,7 +72,7 @@ export const E1_SKIRMISH: AuthoredEncounter = {
   rows: 6,
   blocked: [{ col: 4, row: 1 }, { col: 4, row: 4 }],
   playerSpawns: [
-    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
+    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 }, { col: 1, row: 3 },
   ],
   enemies: [
     { templateId: "bandit-thug", pos: { col: 6, row: 2 } },
@@ -79,6 +83,41 @@ export const E1_SKIRMISH: AuthoredEncounter = {
   // The XP award is tuned so every survivor's primary job reaches L2 after E1 — the
   // 2nd-active unlock the rest beat used to grant (authoring, not a mechanics change).
   reward: { gold: 60, materials: [{ id: "salve", count: 1 }], xp: 100 },
+};
+
+/**
+ * The Sapper's Snares — the trap-field set-piece (D12). A sapper has seeded the
+ * approach with concealed traps; the party must cross them to reach the bandits.
+ * Spot them with Awareness (or eat the damage), and let Bram the Survivalist
+ * disarm the spotted ones to harvest their kits — which then feed his Set Trap at
+ * the chokepoint (E2) and the holdout (E3). The "why set traps" made felt.
+ */
+export const TRAP_FIELD: AuthoredEncounter = {
+  id: "snares-trapfield",
+  name: "The Sapper's Snares",
+  cols: 9,
+  rows: 6,
+  blocked: [{ col: 4, row: 0 }, { col: 4, row: 5 }],
+  playerSpawns: [
+    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 }, { col: 1, row: 3 },
+  ],
+  enemies: [
+    { templateId: "sapper", pos: { col: 8, row: 2 }, id: "field-sapper" }, // the trapper who laid them
+    { templateId: "bandit-thug", pos: { col: 7, row: 1 } },
+    { templateId: "bandit-thug", pos: { col: 7, row: 4 } },
+    { templateId: "bandit-bowman", pos: { col: 8, row: 4 } },
+  ],
+  // Concealed across the mid-field the party must cross — a spread of easy and
+  // well-hidden ones so Awareness (and a Search) genuinely matter.
+  traps: [
+    { pos: { col: 3, row: 1 }, concealment: 3 },
+    { pos: { col: 4, row: 2 }, concealment: 4 },
+    { pos: { col: 4, row: 3 }, concealment: 5 },
+    { pos: { col: 5, row: 1 }, concealment: 4 },
+    { pos: { col: 5, row: 4 }, concealment: 6 },
+  ],
+  // Modest purse + two visible kits; the real prize is the kits Bram harvests.
+  reward: { gold: 70, materials: [{ id: "trap-kit", count: 2 }], xp: 60 },
 };
 
 /** E2 — Ambush at the chokepoint: a sluice-bridge funnel, a snare debuffer, a hidden pair. */
@@ -92,7 +131,7 @@ export const E2_AMBUSH: AuthoredEncounter = {
     { col: 4, row: 0 }, { col: 4, row: 1 }, { col: 4, row: 4 }, { col: 4, row: 5 },
   ],
   playerSpawns: [
-    { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 3 }, { col: 0, row: 1 },
+    { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 3 }, { col: 0, row: 1 }, { col: 1, row: 4 },
   ],
   enemies: [
     { templateId: "bandit-thug", pos: { col: 6, row: 2 } },
@@ -114,7 +153,7 @@ export const E3_HOLDOUT: AuthoredEncounter = {
   rows: 5,
   blocked: [{ col: 4, row: 0 }, { col: 4, row: 4 }],
   playerSpawns: [
-    { col: 0, row: 2 }, { col: 0, row: 1 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 1 },
+    { col: 0, row: 2 }, { col: 0, row: 1 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 1 }, { col: 1, row: 3 },
   ],
   enemies: [
     { templateId: "bandit-captain", pos: { col: 8, row: 2 }, role: "captain", id: "captain" },
@@ -144,22 +183,23 @@ function node(id: string, layer: number, kind: MapNode["kind"], edges: string[],
   return { id, layer, index: 0, kind, edges, authoredId };
 }
 
-/** camp → E1 → rest → E2 → E3(final). A linear authored arc on the real overworld. */
+/** camp → E1 → snares → rest → E2 → E3(final). A linear authored arc on the real overworld. */
 function hollowMillMap(): OverworldMap {
   const nodes: Record<string, MapNode> = {
     start: node("start", 0, "rest", ["e1"]), // the provisioning camp
-    e1: node("e1", 1, "combat", ["rest"], E1_SKIRMISH.id),
-    rest: node("rest", 2, "rest", ["e2"]), // the grain-loft rest (recover + the level-up shows)
-    e2: node("e2", 3, "combat", ["e3"], E2_AMBUSH.id),
-    e3: node("e3", 4, "combat", [], E3_HOLDOUT.id), // the final holdout (closing-gate)
+    e1: node("e1", 1, "combat", ["snares"], E1_SKIRMISH.id),
+    snares: node("snares", 2, "combat", ["rest"], TRAP_FIELD.id), // the trap-field (harvest kits here)
+    rest: node("rest", 3, "rest", ["e2"]), // the grain-loft rest (recover + the level-up shows)
+    e2: node("e2", 4, "combat", ["e3"], E2_AMBUSH.id),
+    e3: node("e3", 5, "combat", [], E3_HOLDOUT.id), // the final holdout (closing-gate)
   };
   return {
     seed: "hollow-mill",
-    layers: 5,
+    layers: 6,
     nodes,
     startId: "start",
     finalIds: ["e3"],
-    order: ["start", "e1", "rest", "e2", "e3"],
+    order: ["start", "e1", "snares", "rest", "e2", "e3"],
   };
 }
 
@@ -171,6 +211,7 @@ export const THE_HOLLOW_MILL: AuthoredExpedition = registerExpedition({
   map: hollowMillMap(),
   encounters: {
     [E1_SKIRMISH.id]: E1_SKIRMISH,
+    [TRAP_FIELD.id]: TRAP_FIELD,
     [E2_AMBUSH.id]: E2_AMBUSH,
     [E3_HOLDOUT.id]: E3_HOLDOUT,
   },

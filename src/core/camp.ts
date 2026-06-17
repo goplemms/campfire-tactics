@@ -13,6 +13,7 @@
 import type { Unit } from "./units";
 import type { EventBus } from "./events";
 import type { SkillDef } from "./skills";
+import { grantAbilityUseXp } from "./leveling";
 
 /** Mutable camp / meta state. */
 export interface Camp {
@@ -92,6 +93,20 @@ export function applyCampSkill(skill: SkillDef, camp: Camp): CampOutcome {
       return { morale: effect.morale, bankedHeal: effect.partyHeal };
   }
   throw new Error(`applyCampSkill: "${effect.kind}" is not a camp effect`);
+}
+
+/**
+ * Use a camp job skill **as its owner** (D32/D53): apply the effect *and* grant
+ * the actor ability-use XP, so a job levels from its own signature work — the
+ * Chef from cooking, the Merchant from trading. (Previously camp actions applied
+ * their effect but granted no XP, so a non-combat job only levelled by overworld
+ * scouting — its identity disconnected from its growth.) Returns the camp outcome
+ * plus the character levels the use granted.
+ */
+export function useCampJobSkill(unit: Unit, skill: SkillDef, camp: Camp): CampOutcome & { levels: number } {
+  const outcome = applyCampSkill(skill, camp);
+  const levels = grantAbilityUseXp(unit);
+  return { ...outcome, levels };
 }
 
 /**

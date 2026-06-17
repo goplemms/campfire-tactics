@@ -30,6 +30,8 @@ import {
   // M5 — camp / morale
   moraleTier,
   moraleModifiers,
+  // D32/D53 — the survivalist levels from laying traps (its signature deploy action)
+  grantAbilityUseXp,
   // M6 — the run loop
   currentEncounter,
   isAuthoredEncounter,
@@ -436,8 +438,12 @@ export class BattleScene extends Phaser.Scene {
     const marker = this.add.text(x, y - this.view.halfH(), "✸", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
     this.boardObjects.push(marker);
     this.placedTraps.push({ pos: { ...tile }, damage: this.trapDamage, marker, sprung: false });
+    // The signature deploy action levels its owner now (D32/D53).
+    const levels = grantAbilityUseXp(actor);
     this.refreshCampText();
-    this.setHint("Trap placed. A deep one is noisy — range back or Start Battle.");
+    this.setHint(levels > 0
+      ? `Trap placed — ${actor.name} reached L${actor.level}! Range back or Start Battle.`
+      : "Trap placed. A deep one is noisy — range back or Start Battle.");
     // A trap laid past the safe zone is a noisy action too, so it rolls a spot.
     this.resolveDeploy(actor);
   }

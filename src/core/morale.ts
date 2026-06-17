@@ -44,24 +44,30 @@ const NEUTRAL: MoraleModifiers = {
 
 /**
  * The morale modifier table (D8 asymmetry). High/Inspired *add* bonuses; Low only
- * applies a marginal initiative penalty (and simply lacks the High bonuses).
+ * applies a marginal penalty (and simply lacks the High bonuses).
+ *
+ * The magnitudes were raised from D8's deliberately-shallow first pass: at ±3–8%
+ * the bundle sat below player perception (a tester couldn't feel keeping spirits
+ * up), so morale read as decorative. These values make a High/Inspired party
+ * *visibly* hit harder, find more gold, and hold formation — a felt reward for
+ * the Chef's work — while the Low penalty stays gentle (the asymmetry is intact).
  */
 const TABLE: Record<MoraleTier, MoraleModifiers> = {
-  Low: { ...NEUTRAL, initiativeBonus: -3 },
+  Low: { ...NEUTRAL, initiativeBonus: -4, critBonus: -0.04 },
   Neutral: NEUTRAL,
   High: {
     safeDepthBonus: 1,
-    initiativeBonus: 4,
-    exposureMultiplier: 0.9,
-    critBonus: 0.05,
-    goldFindBonus: 0.05,
+    initiativeBonus: 6,
+    exposureMultiplier: 0.8,
+    critBonus: 0.1,
+    goldFindBonus: 0.12,
   },
   Inspired: {
-    safeDepthBonus: 1,
-    initiativeBonus: 6,
-    exposureMultiplier: 0.85,
-    critBonus: 0.08,
-    goldFindBonus: 0.1,
+    safeDepthBonus: 2,
+    initiativeBonus: 9,
+    exposureMultiplier: 0.7,
+    critBonus: 0.18,
+    goldFindBonus: 0.25,
   },
 };
 

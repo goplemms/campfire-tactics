@@ -60,6 +60,12 @@ export interface StageOptions {
   deploymentPenalty?: number;
   /** Override the player spawn tiles (else authored uses its own; procedural auto-edges). */
   playerSpawns?: GridCoord[];
+  /**
+   * Reveal hidden ambush bodies (D10/D44): when the run scouted the node to full
+   * positional intel, the hidden-until-scouted enemies start the fight **visible**
+   * — the ambush is blown, no surprise. Authored sources only.
+   */
+  revealHidden?: boolean;
 }
 
 /** Reset a unit's combat-scoped transient state for a fresh encounter. */
@@ -124,6 +130,8 @@ export function stageEncounter(
   if (isAuthoredEncounter(source)) {
     grid = buildAuthoredGrid(source);
     enemies = buildAuthoredEnemies(source);
+    // Scouted-to-full intel blows the ambush: hidden bodies start visible (D10).
+    if (opts.revealHidden) for (const e of enemies) e.hidden = false;
     placeParty(players, opts.playerSpawns ?? source.playerSpawns);
     objectiveSpecs = withDefaultGoal(source.objectives);
   } else {

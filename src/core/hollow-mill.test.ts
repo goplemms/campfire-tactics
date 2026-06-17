@@ -4,6 +4,8 @@ import { validateExpedition } from "./expedition";
 import { createRunFromExpedition } from "./run";
 import { RunLoop } from "./runloop";
 import { jobLevelOf } from "./leveling";
+import { intelFloor } from "./intel";
+import { createUnit } from "./units";
 
 function freshLoop(): RunLoop {
   return new RunLoop(createRunFromExpedition(THE_HOLLOW_MILL));
@@ -120,5 +122,12 @@ describe("The Hollow Mill — the framework's first AuthoredExpedition (D52)", (
     expect(a.run.path).toEqual(b.run.path);
     expect(a.run.complete).toBe(b.run.complete);
     expect(a.run.over).toBe(b.run.over);
+  });
+
+  it("the party floors intel at tier 2 — the intel teeth are reachable in the demo (D10)", () => {
+    // The deploy edge is live by default at tier ≥ 2, and one Scout on E2 reaches
+    // tier 3 to reveal its hidden ambush. Guards the lever from going latent again.
+    const party = THE_HOLLOW_MILL.bundle.party.map(createUnit);
+    expect(intelFloor(party)).toBeGreaterThanOrEqual(2);
   });
 });

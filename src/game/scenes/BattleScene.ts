@@ -44,12 +44,17 @@ import {
   thiefEscapes,
   previewNode,
   scoutedTier,
+  // D10 — the intel deploy edge: scouted ground deploys safer
+  intelFloor,
+  clampTier,
+  intelDeployBonus,
   bribeEnemy,
   bribeCost,
   recruitToRoster,
   type RunState,
   type RunLoop,
   type IntelReport,
+  type IntelTier,
   type DeployAlert,
   type DeployOutcome,
   type Rng,
@@ -270,6 +275,25 @@ export class BattleScene extends Phaser.Scene {
     return moraleModifiers(moraleTier(this.run.camp.morale));
   }
 
+  /** The node's effective intel tier (passive floor + scouting), for the deploy edge (D10). */
+  private intelTier(): IntelTier {
+    return clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, this.run.mapNodeId));
+  }
+
+  /**
+   * Deploy modifiers = morale (D8) folded with the intel edge (D10): scouted
+   * ground widens the safe depth and lowers exposure, on top of the morale bundle.
+   */
+  private deployMods() {
+    const m = this.moraleMods();
+    const intel = intelDeployBonus(this.intelTier());
+    return {
+      ...m,
+      safeDepthBonus: m.safeDepthBonus + intel.safeDepthBonus,
+      exposureMultiplier: m.exposureMultiplier * intel.exposureMultiplier,
+    };
+  }
+
   private selectDeployActor(unit: Unit | null): void {
     this.deployActor = unit;
     this.highlightTile(unit ? unit.pos : null);
@@ -315,7 +339,7 @@ export class BattleScene extends Phaser.Scene {
       this.titleText.setText("Deployment");
       return;
     }
-    const mods = this.moraleMods();
+    const mods = this.deployMods();
     const past = Math.max(0, this.depthOf(actor.pos) - safeDepth(actor, mods.safeDepthBonus));
     const kits = countOf(this.run.inventory, "trap-kit");
     const tag = actor.captured ? " — CAPTURED" : past > 0 ? ` — ${past} past safe` : " — in cover";
@@ -329,7 +353,7 @@ export class BattleScene extends Phaser.Scene {
     }
     this.safeZoneGfx.clear();
     if (!unit) return;
-    const maxCol = safeDepth(unit, this.moraleMods().safeDepthBonus);
+    const maxCol = safeDepth(unit, this.deployMods().safeDepthBonus);
     for (let row = 0; row < this.grid.rows; row++) {
       for (let col = 0; col <= maxCol && col < this.grid.cols; col++) {
         if (!this.grid.isWalkable({ col, row })) continue;
@@ -369,7 +393,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Resolve a noisy deploy action (move or deep trap) via the shared core model. */
   private resolveDeploy(actor: Unit): void {
-    const outcome = resolveDeployAction(this.deployAlert, actor, this.grid, this.battle.units, this.deployRng, this.moraleMods().safeDepthBonus);
+    const outcome = resolveDeployAction(this.deployAlert, actor, this.grid, this.battle.units, this.deployRng, this.deployMods().safeDepthBonus);
     if (outcome.spotted) this.playRetreat(actor, outcome);
     else {
       this.refreshDeployStatus();

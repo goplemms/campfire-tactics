@@ -7,13 +7,30 @@ import {
   scout,
   seerDivine,
   readEncounter,
+  intelDeployBonus,
   clampTier,
   MAX_TIER,
   previewNode,
   rewardBand,
 } from "./intel";
+import type { AuthoredEncounter } from "./authored";
 import { createRun } from "./run";
 import { getNode } from "./overworld";
+
+const AMBUSH: AuthoredEncounter = {
+  id: "amb",
+  name: "Ambush",
+  cols: 8,
+  rows: 6,
+  blocked: [],
+  playerSpawns: [{ col: 0, row: 0 }],
+  enemies: [
+    { templateId: "bandit-thug", pos: { col: 6, row: 2 } },
+    { templateId: "bandit-cutthroat", pos: { col: 6, row: 4 }, hidden: true },
+  ],
+  reward: { gold: 50, materials: [] },
+  objectives: [],
+};
 
 function member(id: string, intelligence = 0): Unit {
   return createUnit({
@@ -145,5 +162,25 @@ describe("intel — node preview for the overworld (D24)", () => {
     expect(rewardBand(10)).toBe("modest");
     expect(rewardBand(100)).toBe("good");
     expect(rewardBand(200)).toBe("rich");
+  });
+});
+
+describe("intel teeth — scouting reveals the ambush and buys a deploy edge (D10)", () => {
+  it("a hidden ambush body is read only at full positional intel (tier 3)", () => {
+    // Up to tier 2 the hidden cutthroat is unread — only the visible thug counts.
+    expect(readEncounter(AMBUSH, 1).types).toHaveLength(1);
+    expect(readEncounter(AMBUSH, 2).count).toBe(1);
+    expect(readEncounter(AMBUSH, 2).positions).toBeUndefined();
+    // Tier 3: the scout spotted the trap — both kinds read, both positioned.
+    expect(readEncounter(AMBUSH, MAX_TIER).types).toHaveLength(2);
+    expect(readEncounter(AMBUSH, MAX_TIER).count).toBe(2);
+    expect(readEncounter(AMBUSH, MAX_TIER).positions).toHaveLength(2);
+  });
+
+  it("intelDeployBonus scales the deploy edge with the tier earned", () => {
+    expect(intelDeployBonus(0)).toEqual({ safeDepthBonus: 0, exposureMultiplier: 1 });
+    expect(intelDeployBonus(2).safeDepthBonus).toBeGreaterThan(intelDeployBonus(0).safeDepthBonus);
+    expect(intelDeployBonus(3).safeDepthBonus).toBeGreaterThan(intelDeployBonus(2).safeDepthBonus);
+    expect(intelDeployBonus(3).exposureMultiplier).toBeLessThan(intelDeployBonus(1).exposureMultiplier);
   });
 });

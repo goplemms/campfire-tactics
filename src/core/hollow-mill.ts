@@ -50,7 +50,10 @@ function member(id: string, name: string, jobId: string, extra: Partial<UnitSpec
 export const HOLLOW_MILL_PARTY: UnitSpec[] = [
   member("edrin", "Edrin", "heavy-knight", { isLord: true }),
   member("rook", "Rook", "hunter"),
-  member("vale", "Vale", "scout"),
+  // Vale is the party's eyes (D10): a high Intelligence floors intel at tier 2 —
+  // the deploy edge is live, and a single Scout on E2 reaches tier 3 to blow its
+  // hidden ambush. Without this the intel teeth would be unreachable on the short map.
+  member("vale", "Vale", "scout", { intelligence: 7 }),
   member("sela", "Sela", "medic"),
   member("pip", "Pip", "chef", { standingOrder: "defend", maxHp: 22, attack: 5, defense: 2, moveRange: 3, speed: 8 }),
 ];

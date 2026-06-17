@@ -50,10 +50,10 @@ import { recoverMaterials } from "./resolution";
 import { addItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
 import { rpPerNight, payUpkeep, triageHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
-import { intelFloor, readEncounter, type IntelReport, type IntelTier } from "./intel";
+import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
 import { planEnemyTurn } from "./ai";
 import { restoreFatigue } from "./fatigue";
-import { takeOverworldAction, type ActionOpts, type ActionResult } from "./overworld-actions";
+import { takeOverworldAction, scoutedTier, type ActionOpts, type ActionResult } from "./overworld-actions";
 import { gainRunGold } from "./economy";
 import {
   type PlaytestLog,
@@ -446,7 +446,11 @@ export class RunLoop {
   startEncounter(deploymentPenalty = 0): Battle {
     const source = currentEncounter(this.run);
     const players = combatRoster(this.run);
-    const staged = stageEncounter(source, players, { deploymentPenalty });
+    // Scouting the node to full positional intel (tier 3) blows any hidden ambush
+    // — the bodies stage visible instead of springing a surprise (D10 reveal).
+    const node = currentNode(this.run);
+    const tier = clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, node.id));
+    const staged = stageEncounter(source, players, { deploymentPenalty, revealHidden: tier >= MAX_TIER });
     this.source = source;
     this.staged = staged;
     this.combatants = players;

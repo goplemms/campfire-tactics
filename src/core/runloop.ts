@@ -56,6 +56,14 @@ import { restoreFatigue } from "./fatigue";
 import { takeOverworldAction, type ActionOpts, type ActionResult } from "./overworld-actions";
 import { gainRunGold } from "./economy";
 import {
+  type PlaytestLog,
+  recordCamp,
+  recordEncounter,
+  recordRestNode,
+  recordInPlaceRest,
+  recordEventNode,
+} from "./playtest-log";
+import {
   eventForNode,
   resolveEvent,
   eventChoices,
@@ -156,6 +164,12 @@ export class RunLoop {
   combatants: Unit[] = [];
   /** Combat XP tallied on the battle bus, committed at {@link resolve} (D53). */
   private xpTally?: CombatXpTally;
+  /**
+   * An optional playtest telemetry sink (the logistics-integrity instrument).
+   * When set, the loop snapshots the lever state at each camp/encounter/rest
+   * seam into a reviewable timeline. Unset by default — zero behaviour change.
+   */
+  log?: PlaytestLog;
 
   constructor(run: RunState) {
     this.run = run;
@@ -260,7 +274,9 @@ export class RunLoop {
       goldEarned: 0,
       fallen: lost.map((u) => u.id),
     });
-    return { upkeep, rpAdded, healed, moraleGained: REST.moraleGain, fatigueRestored, debtCleared, dyingLost: lost.map((u) => u.id), over };
+    const result: RestResult = { upkeep, rpAdded, healed, moraleGained: REST.moraleGain, fatigueRestored, debtCleared, dyingLost: lost.map((u) => u.id), over };
+    recordRestNode(this.log, this.run, result);
+    return result;
   }
 
   /**
@@ -327,7 +343,9 @@ export class RunLoop {
     // interest, and a night passes — but the run stays at this node (repeatable).
     breakCamp(this.run);
     this.run.night += 1;
-    return { applied: true, goldSpent: upkeep.paid, rpAdded, healed, hpHealed };
+    const result: InPlaceRestResult = { applied: true, goldSpent: upkeep.paid, rpAdded, healed, hpHealed };
+    recordInPlaceRest(this.log, this.run, result);
+    return result;
   }
 
   // --- Event node (the data-driven registry, no battle, M11) ----------------
@@ -350,7 +368,9 @@ export class RunLoop {
     const def = eventForNode(this.run.seed, node);
     const outcome = resolveEvent(this.run, node);
     const over = this.recordEventNight(outcome.goldDelta);
-    return { def, outcome, over };
+    const result: EventResolution = { def, outcome, over };
+    recordEventNode(this.log, this.run, result);
+    return result;
   }
 
   /** The interactive options for the current event node (M11) — render-facing. */
@@ -399,7 +419,9 @@ export class RunLoop {
     const dyingLost = lost.map((u) => u.id);
     for (const u of lost) removeFromRoster(this.run, u);
     this.run.over = isRunOver(this.run);
-    return { upkeep, rpAdded, dyingLost };
+    const result: CampResult = { upkeep, rpAdded, dyingLost };
+    recordCamp(this.log, this.run, result);
+    return result;
   }
 
   // --- Intel (D10) ----------------------------------------------------------
@@ -548,7 +570,9 @@ export class RunLoop {
     this.combatants = [];
     this.xpTally = undefined;
 
-    return { winner, result, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, levels, over };
+    const out: ResolveResult = { winner, result, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, levels, over };
+    recordEncounter(this.log, this.run, out);
+    return out;
   }
 
   // --- Headless auto-play (tests / fast-forward) ----------------------------

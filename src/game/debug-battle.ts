@@ -9,11 +9,13 @@ import {
   runFor,
   RunLoop,
   createRunFromExpedition,
+  createPlaytestLog,
   THE_HOLLOW_MILL,
   type Unit,
   type MapNode,
 } from "../core";
 import type { RunHandoff } from "./scenes/OverworldScene";
+import { installPlaytestLogUI } from "./playtest-log-ui";
 
 /** The shared demo/debug starting party (the authored cast the Guild hall seeds). */
 function demoRoster(): Unit[] {
@@ -155,7 +157,11 @@ export function buildExpeditionDemo(): RunHandoff {
   // Demo-scoped purse: modest so routing/budget decisions actually bite. (A global
   // gold-scarcity numbers pass is still deferred — D30/D34.)
   gr.run.camp.gold = 110;
-  return { run: gr.run, loop: new RunLoop(gr.run), guild, caravanId: caravan.id, demoIntro: true };
+  const loop = new RunLoop(gr.run);
+  // Instrument the showcase for playtesting (same lever telemetry as the Hollow Mill).
+  loop.log = createPlaytestLog(gr.run, EXPEDITION_SEED);
+  installPlaytestLogUI(loop.log);
+  return { run: gr.run, loop, guild, caravanId: caravan.id, demoIntro: true };
 }
 
 /** A headless boot scene for `#expedition`: hands the curated demo run to the OverworldScene. */
@@ -180,7 +186,12 @@ export class ExpeditionBootScene extends Phaser.Scene {
  */
 export function buildHollowMill(): RunHandoff {
   const run = createRunFromExpedition(THE_HOLLOW_MILL);
-  return { run, loop: new RunLoop(run), demoIntro: true };
+  const loop = new RunLoop(run);
+  // Instrument the showcase run for playtesting: the loop snapshots every
+  // logistics lever, and the export button hands the timeline back (D-playtest).
+  loop.log = createPlaytestLog(run, THE_HOLLOW_MILL.id);
+  installPlaytestLogUI(loop.log);
+  return { run, loop, demoIntro: true };
 }
 
 /** A headless boot scene for `#demo`: hands the Hollow Mill expedition to the OverworldScene. */

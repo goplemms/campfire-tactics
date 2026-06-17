@@ -36,6 +36,7 @@ export * from "./ledger";
 export * from "./leveling";
 export * from "./run";
 export * from "./runloop";
+export * from "./playtest-log";
 export * from "./caravan";
 export * from "./guild";
 export * from "./economy";

@@ -558,7 +558,7 @@ export class BattleScene extends Phaser.Scene {
     this.setPrimary("Advance Clock");
     const bound = this.battle.units.find((u) => u.captured && u.side === "player");
     const trapHint = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0
-      ? "Traps are seeded ahead — watch for ⚠, and let a trapper disarm them. "
+      ? "Traps are seeded ahead — watch for ▲, and let a trapper disarm them. "
       : "";
     this.setHint((healed > 0 ? `Chef's stew restored ${healed} HP. ` : "Battle begins. ") + trapHint + (bound ? `${bound.name} is bound — rescue or win to free her. ` : "") + "Press Advance Clock.");
   }
@@ -648,7 +648,7 @@ export class BattleScene extends Phaser.Scene {
     const found = revealTrapsNear(actor, this.battle.entities, this.spotRng, { search });
     if (found.length > 0) {
       this.redrawTrapMarkers();
-      this.setHint(`${actor.name} spots ${found.length} hidden trap${found.length > 1 ? "s" : ""}! (⚠)`);
+      this.setHint(`${actor.name} spots ${found.length} hidden trap${found.length > 1 ? "s" : ""}! (▲)`);
     }
   }
 
@@ -701,11 +701,12 @@ export class BattleScene extends Phaser.Scene {
       let m = this.trapMarkers.get(t.id);
       if (!m) {
         const { x, y } = this.tileToWorld(t.pos);
-        m = this.add.text(x, y - this.view.halfH(), "⚠", { color: "#e06b6b", fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.75);
+        // ▲ (Geometric Shapes) renders in the monospace UI font; ⚠ does not.
+        m = this.add.text(x, y - this.view.halfH(), "▲", { color: "#e06b6b", fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.85);
         this.boardObjects.push(m);
         this.trapMarkers.set(t.id, m);
       }
-      m.setText(t.sprung ? "✕" : "⚠").setColor(t.sprung ? INK.disabled : "#e06b6b");
+      m.setText(t.sprung ? "✕" : "▲").setColor(t.sprung ? INK.disabled : "#e06b6b");
     }
     // Drop markers for disarmed traps (no longer registered).
     for (const [id, m] of this.trapMarkers) {

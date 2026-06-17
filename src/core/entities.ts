@@ -135,3 +135,53 @@ export function makeTrap(
 export function isRecoverable(e: FieldEntity): e is RecoverableEntity {
   return (e as RecoverableEntity).recoverable !== undefined;
 }
+
+/**
+ * A **concealed** trap (the enemy trap-field, D12): like {@link makeTrap} it springs
+ * on the opposing side's entry, but it starts **hidden** (`revealed=false`) and
+ * carries a `concealment` rating that resists the spotter's Awareness roll. It is
+ * **not** auto-salvaged on a win (`recoverable=false`) — the only way to pocket its
+ * kit is for a trap-trained unit to *disarm* a spotted one (see `core/traps`).
+ */
+export interface ConcealedTrap extends RecoverableEntity {
+  /** Resists the Awareness spot roll — higher is harder to see (D11 awareness). */
+  concealment: number;
+  /** True once a unit has spotted it (then it can be avoided or disarmed). */
+  revealed: boolean;
+}
+
+/** Type guard for concealed traps. */
+export function isConcealedTrap(e: FieldEntity): e is ConcealedTrap {
+  return (e as ConcealedTrap).concealment !== undefined && (e as ConcealedTrap).revealed !== undefined;
+}
+
+/**
+ * Build a concealed enemy trap. Springs once on an opposing-side entry (or a D19
+ * push) for `damage`, whether or not it was spotted — spotting only lets the
+ * player avoid or disarm it. Harvested only via a deliberate disarm, never
+ * auto-recovered (`recoverable=false`).
+ */
+export function makeConcealedTrap(
+  id: string,
+  pos: GridCoord,
+  owner: Side,
+  damage: number,
+  concealment: number,
+): ConcealedTrap {
+  const trap: ConcealedTrap = {
+    id,
+    pos: { col: pos.col, row: pos.row },
+    owner,
+    materialId: "trap-kit",
+    recoverable: false,
+    sprung: false,
+    concealment,
+    revealed: false,
+    onUnitEnterTile: ({ unit, bus }) => {
+      if (trap.sprung || unit.side === owner) return;
+      trap.sprung = true;
+      applyDamage(unit, damage, bus);
+    },
+  };
+  return trap;
+}

@@ -19,6 +19,7 @@ import type { GridCoord } from "./iso";
 import type { Unit } from "./units";
 import { TileGrid } from "./grid";
 import { Battle } from "./turn";
+import { makeConcealedTrap } from "./entities";
 import { buildGrid, buildEnemies, type EncounterDef } from "./generation";
 import {
   buildAuthoredGrid,
@@ -143,6 +144,18 @@ export function stageEncounter(
   }
 
   const battle = new Battle(grid, [...players, ...enemies]);
+
+  // Pre-place the authored concealed enemy traps (the trap-field lever, D12): they
+  // ride the same entity registry the player's Set Trap uses, so movement springs
+  // them and the Survivalist can disarm them — no special case in the loop (D4).
+  if (isAuthoredEncounter(source) && source.traps) {
+    source.traps.forEach((t) =>
+      battle.entities.register(
+        makeConcealedTrap(t.id ?? `enemy-trap@${t.pos.col},${t.pos.row}`, t.pos, "enemy", t.damage ?? 12, t.concealment ?? 4),
+      ),
+    );
+  }
+
   const objectives = armObjectives(battle.clock, battle.units, objectiveSpecs);
   return { battle, objectives, source };
 }

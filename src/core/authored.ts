@@ -42,6 +42,17 @@ export interface EnemyPlacement {
   role?: "sapper" | "captain";
 }
 
+/** A hand-placed, concealed enemy trap in an authored encounter (the trap-field lever). */
+export interface AuthoredTrap {
+  /** Optional explicit id (defaults to `trap@col,row`). */
+  id?: string;
+  pos: GridCoord;
+  /** Damage on a spring (defaults to the trap-kit's 12). */
+  damage?: number;
+  /** How hard it is to spot — higher resists the Awareness roll (defaults to 4). */
+  concealment?: number;
+}
+
 /** A fixed, hand-authored encounter (D44). */
 export interface AuthoredEncounter {
   id: string;
@@ -52,6 +63,8 @@ export interface AuthoredEncounter {
   /** Where the party deploys (home edge). */
   playerSpawns: GridCoord[];
   enemies: EnemyPlacement[];
+  /** Concealed enemy traps pre-placed on the field (spot to avoid, Survivalist to harvest). */
+  traps?: AuthoredTrap[];
   reward: EncounterReward;
   /**
    * The encounter's objectives (D50) — the converged, multi-objective model the

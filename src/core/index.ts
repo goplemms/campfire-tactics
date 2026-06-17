@@ -47,5 +47,6 @@ export * from "./node-events";
 export * from "./objectives";
 export * from "./authored";
 export * from "./staging";
+export * from "./traps";
 export * from "./expedition";
 export * from "./hollow-mill";

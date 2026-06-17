@@ -409,6 +409,48 @@ exercise in the browser.
   [`logistics.md`](../../docs/design/systems/logistics.md) and
   [`decisions.md`](decisions.md) (D45–D48).
 
+### M14 — Authored set-pieces on the expedition frame (D49–D53) — *building (branch `claude/jolly-volta-euogwo`)*
+
+- *Adjustment (not a pivot): the north star is unchanged; M14 **converges the two combat
+  stacks**. The authored (DemoScene) and procedural (BattleScene) stacks merge so a hand-built
+  encounter binds to an overworld node (`authoredId` + a run-scoped catalog), is staged through
+  one core `stageEncounter`, and is resolved through one `encounterOutcome` (multi-objective,
+  required/optional). It is built as a **general `AuthoredExpedition` framework**, not a demo
+  patch; the Hollow Mill becomes its first instance.* Full design: decisions **D49–D53**; build
+  prompt [`path2-M14-build-prompt.md`](path2-M14-build-prompt.md).
+- **Core seams (D49/D50/D52):** `authoredId?` on `MapNode`; one run-scoped `runEncounter(run,
+  node)` resolver (catalog `AuthoredEncounter` else `generateEncounter`) behind
+  `currentEncounter`/`forecast.nodeLoot`/intel/`previewNode`; `stageEncounter(source, roster,
+  opts) → { battle, objectives }` (the union producer); `objectives: ObjectiveSpec[]` with
+  `required` + `met|failed|pending`; the `closing-gate` + `eliminate-all` archetypes;
+  `encounterOutcome(staged) → win|objective-failure|wipe`; `AuthoredExpedition` +
+  `createRunFromExpedition` + a `reachableFrom`-based connectivity validator.
+- **Graded failure + leveling in the loop (D51/D53):** `resolve()` branches on
+  `encounterOutcome` (win = reward incl. XP + D9 mortality + recordNight; objective-failure =
+  forfeit + D9 mortality + captives→rescue + continue/record-as-played; wipe = over);
+  `recordNight`'s `complete` requires required-objectives-met; `xp?` folds into
+  `EncounterReward`; a core combat-XP accumulator on `battle.bus` (kill-credit + survived-hit)
+  commits at `resolve()` to survivors via `routeCombatXp`, with `accrueDeployedXp` at the
+  node-step and `grantAbilityUseXp` on support/overworld ability use.
+- **Renderer convergence (`BattleScene`, D50):** a generic objective gauge in `refreshHud`; a
+  `encounterOutcome` failure poll on `onAdvance`/`afterTurn`; a 3-way terminal in
+  `finishBattle`; hidden/scouting reveal; the medic herb/med-heal flow; level-up feedback in
+  the resolution overlay; authored `playerSpawns` seed the deploy layout. `DemoScene` retires.
+- **The Hollow Mill as an `AuthoredExpedition` (D52):** a hand-built map `start (camp) → E1 →
+  rest → E2 (hidden-until-scouted ambush) → E3 (closing-gate)`, the `E1/E2/E3` records re-homed
+  into `encounters`, the `DEMO_PARTY` bundle; a launcher boots `createRunFromExpedition` into
+  `OverworldScene`. The deserter cross-node gate is **deferred**.
+- **Retirement + gate (the done-gate):** delete `DemoScene`, `DemoRunner`, the
+  `AuthoredQuest`/`QuestBeat`/`ProvisionBeat`/`RestBeat`/`EncounterBeat`/`StoryOutcome`
+  machinery, and the old `#demo` boot.
+- **User-testable gate:** launch the Hollow Mill expedition → it plays through the real
+  overworld/BattleScene (provision at the start camp, E1, a rest, E2 with a hidden-until-
+  scouted ambush, E3 with the closing-gate gauge + 3-way graded terminal), units level from
+  combat + the objective, the forecast bands the authored rewards. No DemoScene anywhere.
+  `npm test` green (staging/outcome/graded-failure/expedition-boot/leveling); `npm run build`
+  clean; `core/` free of Phaser/DOM and `Math.random`.
+- See [`decisions.md`](decisions.md) (D49–D53) and the M14 build prompt.
+
 ## Notes
 
 - Pivot = revise Goal + supersede affected decisions (see decisions.md).

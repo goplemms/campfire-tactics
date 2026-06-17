@@ -22,7 +22,7 @@ import type Phaser from "phaser";
  *
  * Resets scale/text first, so it's safe to call again whenever the label changes
  * (e.g. the primary button). Callers that want a guaranteed clean fit should size
- * their container to the content (see `DemoScene.layoutButtons`) so the snug and
+ * their container to the content (the action-row layout) so the snug and
  * over-budget paths rarely trigger at all.
  *
  * @param label    the text object drawn on the button

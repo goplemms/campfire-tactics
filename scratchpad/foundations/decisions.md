@@ -1228,3 +1228,128 @@ trail of reasoning stays intact.
   (forecast + overworld fog) + [`docs/design/systems/intel.md`](../../docs/design/systems/intel.md)
   (the reach axis) on the next doc pass.
 - **Superseded by:** —
+
+## D49 — Authored set-pieces on the expedition frame (the node→authored seam)
+
+- **Status:** Decided (design pass, 2026-06-16) · realizes **D44** (authored substrate) on
+  the **D22/D23** overworld frame; the M14 framing decision
+- **Context:** Two combat stacks run in parallel. Authored fights (the Hollow Mill, D44) play
+  in their own renderer (`DemoScene`) over a linear `AuthoredQuest` beat list; the expedition
+  (D22/D23) wraps the routing economy (D45–D48) around *procedural* fights in `BattleScene`.
+  An authored encounter cannot sit in the real economy, and the demo is a patch beside the
+  game rather than content inside it. D44 promised an authoring **substrate**, not a side mode.
+- **Decision:** An authored encounter **binds to a map node** via an optional **`authoredId`
+  on `MapNode`**, and encounter resolution becomes **run-scoped**: `currentEncounter`,
+  `forecast.nodeLoot`, intel and `previewNode` all funnel through **one resolver**
+  (`runEncounter(run, node)`) that returns the run catalog's `AuthoredEncounter` when
+  `node.authoredId` hits, else falls back to `generateEncounter` (the single `nodeEncounter`
+  funnel is preserved — no second path leaks into the loop). Authored vs procedural is **data
+  resolved by a shared interpreter** (D4), not a branch in the loop or the renderer. Scope is
+  a **framework milestone**: the general substrate + a general objective seam now, with
+  objective *kinds* growing from content later. **Deferred:** cross-node narrative state (run
+  flags / mini-events) and the D26 campaign-content build.
+- **Spec:** [`path2-M14-build-prompt.md`](path2-M14-build-prompt.md) — Goal + Phase 1.1.
+- **Superseded by:** —
+
+## D50 — Encounter staging seam + multi-objective graded resolution
+
+- **Status:** Decided (design pass, 2026-06-16) · extends **D43** (graded failure), builds on
+  **D49**; the one-renderer-written-once convergence
+- **Context:** Authored and procedural encounters are different shapes
+  (`AuthoredEncounter` vs `EncounterDef`) staged by different code (`DemoRunner.stageEncounter`
+  vs `RunLoop.startEncounter`), and the timed objective (D43's bridge-cut) is a single hard-
+  coded archetype with a single `ObjectiveSpec`. The renderer would have to special-case the
+  source and the objective — exactly the data-not-branches violation (D4) M14 forbids.
+- **Decision:**
+  - **One staging seam.** `nodeEncounter`/`runEncounter` return the union
+    `EncounterDef | AuthoredEncounter` (the two producers stay separate); one core
+    **`stageEncounter(source, roster, opts) → { battle, objectives }`** is what the renderer
+    and the loop consume **uniformly** — the enemy-representation difference (specs vs
+    placements) is hidden behind staging. Player-placement is a policy switch: authored honors
+    explicit `playerSpawns`; procedural keeps the auto-edge `placePlayers`.
+  - **Objectives are a list.** `objectives: ObjectiveSpec[]`, each **`required | optional`**,
+    each resolving **`met | failed | pending`**, **tag-bound** (driver/span addressed by role
+    or coordinate) so a generator can emit them later.
+  - **One outcome function.** `encounterOutcome(staged) → win | objective-failure | wipe`:
+    **wipe** if no combat-capable player remains; else **objective-failure** if any *required*
+    objective failed; else **win** when all *required* objectives are met.
+  - **M14 ships two kinds.** `eliminate-all` — a required **goal**, **met** when
+    `Battle.outcome().winner === "player"` (a thin delegate over the unchanged primitive),
+    **default-injected** when an encounter lists no explicit goal. `closing-gate` — a required
+    **constraint** generalizing the bridge-cut: a timed gauge sweeping a coordinate span,
+    **failed** when the gauge completes, **fizzling** when its tagged driver is killed or
+    immobilized.
+  - **Deferred:** optional-objective bonuses; explicit win-conditions that *override*
+    elimination (end the fight while enemies stand); generated objectives/templates.
+- **Spec:** [`path2-M14-build-prompt.md`](path2-M14-build-prompt.md) — Phase 1.2–1.4, Phase 2.
+- **Superseded by:** —
+
+## D51 — Graded failure on the overworld (extends D43)
+
+- **Status:** Decided (design pass, 2026-06-16) · extends **D43**, consumes **D50**'s
+  `encounterOutcome`, applies the **D9** mortality policy
+- **Context:** D43 settled that an objective failure ≠ a wipe in principle, but the run loop
+  (`RunLoop.resolve`) is still binary: a non-win battle ends the run and `recordNight` flags
+  `complete` on any final-node survival. The graded third state has nowhere to land in the
+  real economy.
+- **Decision:** `resolve()` branches on `encounterOutcome` (D50). **Objective-failure** is
+  survivable: the party **retreats alive**, downed units resolve per the **D9 mortality
+  policy** (the *same* path a win runs — not auto-permadeath), the **reward (including XP) is
+  forfeited**, and still-captured allies become **rescue quests** (the non-win path). On an
+  **interior** node the run **continues** — the node counts as played, route forward as if
+  cleared. On the **final** node there are three end-states: **win = complete (the prize)**,
+  **objective-failure = the caravan returns alive without the prize** (distinct from complete
+  *and* from wipe), **wipe = lost**. Fix: `recordNight`'s `complete` flag requires **all
+  *required* objectives met** — not merely "survived the final fight". The end-screen grade
+  reads the final node's history record. A test pins all three terminals.
+- **Spec:** [`path2-M14-build-prompt.md`](path2-M14-build-prompt.md) — Phase 1.5, Phase 2.
+- **Superseded by:** —
+
+## D52 — The `AuthoredExpedition` substrate
+
+- **Status:** Decided (design pass, 2026-06-16) · realizes **D44**'s substrate promise on the
+  **D22** map + the **D25/D26** caravan-bundle entry; **retires** the `AuthoredQuest`/beat
+  machinery
+- **Context:** D44 shipped the authored substrate as a **linear quest** (`AuthoredQuest` +
+  `ProvisionBeat`/`RestBeat`/`EncounterBeat` walked by `DemoRunner`) — a frame parallel to the
+  overworld, not on it. With D49 binding authored encounters to nodes, the authoring unit
+  should be a **whole expedition on the real map**, configured the way a future campaign quest
+  would be (D26).
+- **Decision:** A first-class core type **`AuthoredExpedition`** —
+  `{ id, name, seed, map (a hand-built OverworldMap with authoredId on its combat nodes),
+  encounters: Record<id, AuthoredEncounter>, bundle: { party, purse, supplies, storageCap,
+  morale, difficultyId } }` — booted via **`createRunFromExpedition(expedition)`** into the
+  **normal overworld path** (the same `RunState` a procedural run produces). Authored
+  expeditions live in a **catalog keyed by id**; the run carries the catalog ref so a
+  **snapshot rebuilds the authored map from `expeditionId`** (a seed alone can't — the map is
+  hand-built, not generated). A small **validator reuses `reachableFrom`** to enforce the
+  D22 connectivity invariants (no orphans, no dead ends, start reaches the final layer) on
+  hand-built maps. Maps inherit the authored↔template↔procedural spectrum; **skeleton-fill is
+  deferred**. Authored fights are **fixed/hand-tuned** (no `node.layer` difficulty scaling) but
+  still respect the global **`difficultyId`** (the D9 mortality policy) — content fixed, stakes
+  scale. The Hollow Mill is rebuilt as the framework's **first** `AuthoredExpedition`.
+- **Spec:** [`path2-M14-build-prompt.md`](path2-M14-build-prompt.md) — Phase 1.1, Phase 3.
+- **Superseded by:** —
+
+## D53 — Leveling wired into the run loop (realizes the D32/D39 split)
+
+- **Status:** Decided (design pass, 2026-06-16) · realizes **D32/D39** (the leveling split);
+  the leveling helpers exist but **none were wired into the run loop**
+- **Context:** `leveling.ts` has `routeCombatXp`, `accrueDeployedXp`, `grantAbilityUseXp`,
+  `unlockedSkills` — the whole D32/D39 split — but the only caller was the retired
+  `DemoRunner` (a flat per-beat award). M13 procedural runs never level; the Hollow Mill's
+  L1→L2 unlock was a beat-machine artifact, not a run-loop mechanic.
+- **Decision:** **Combat units earn combat XP from combat events.** A core accumulator
+  subscribes to `battle.bus`: a **defeat** (`unitDefeated`) credits the kill to its `source`;
+  **surviving a hit** (`unitDamaged` with the struck defender at `hp > 0`) is a smaller bump to
+  that defender. XP is **tallied during the battle and committed at `resolve()`** via
+  `routeCombatXp` **to units that survive resolution** — no mid-battle level-ups — **plus** the
+  objective **`reward.xp`** on a **win** (`xp` folds into `EncounterReward`). Non-combat units
+  keep their path: **`accrueDeployedXp`** at the node-step (the `breakCamp`/`recordNight` area)
+  and **`grantAbilityUseXp`** on support/overworld ability use. Combat-event XP is
+  **universal** — M13 procedural runs now level too. Ship **conservative defaults**; hand-tune
+  only the **Hollow Mill** curve so its L1→L2 unlock still lands after E1. **No XP on
+  objective-failure or wipe** (XP is part of the forfeited reward, D51). A **procedural
+  leveling-balance pass is deferred** (it rides the parked gold-scarcity tuning).
+- **Spec:** [`path2-M14-build-prompt.md`](path2-M14-build-prompt.md) — Phase 1.6, Phase 3.
+- **Superseded by:** —

@@ -1080,6 +1080,22 @@ export class OverworldScene extends Phaser.Scene {
     const won = this.run.history.filter((h) => h.winner === "player").length;
     const last = this.run.history[this.run.history.length - 1];
     const toHall = !!this.guild;
+    // Graded terminal (D51): a final objective-failure is the caravan **returning
+    // alive without the prize** — distinct from a wipe (the party is intact).
+    const returnedAlive = last?.result === "objective-failure";
+    if (returnedAlive) {
+      const lines = [
+        "The objective was lost — the caravan turns for home, alive but empty-handed.",
+        "",
+        `Survived ${this.run.night} night(s), won ${won} encounter(s).`,
+        "",
+        toHall ? "Return to the guild hall — the people and gear come home; the prize does not." : `Seed:  ${this.run.seed}`,
+      ];
+      this.titleText.setText("Returned Without the Prize");
+      this.showOverlay("Returned Without the Prize", lines.join("\n"), false, 560, 250, toHall ? () => this.returnToHall() : undefined);
+      this.setHint(toHall ? "Objective failed — return to the hall; the caravan survives, the prize is forfeit." : "Objective failed — the caravan returns alive.");
+      return;
+    }
     const lines = [
       last && last.winner === "enemy" ? "The caravan was overwhelmed." : "The caravan is lost.",
       "",

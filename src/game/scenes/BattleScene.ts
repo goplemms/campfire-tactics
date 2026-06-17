@@ -13,8 +13,10 @@ import {
   TILE_HEIGHT,
   Battle,
   unitSkills,
+  unlockedSkills,
   isValidSkillTarget,
   makeTrap,
+  canSee,
   // M5b/D11 — deployment: the shared stealth-alert model
   removeItem,
   countOf,
@@ -30,6 +32,9 @@ import {
   moraleModifiers,
   // M6 — the run loop
   currentEncounter,
+  isAuthoredEncounter,
+  encounterOutcome,
+  jobLevelOf,
   computeUpkeep,
   // M10 — theft (D30) + mid-combat bribe → recruitment (D33)
   thiefSteal,
@@ -98,13 +103,14 @@ export class BattleScene extends Phaser.Scene {
   private boardObjects: Phaser.GameObjects.GameObject[] = [];
   private originX = 0;
   private originY = 0;
-  /** Shared board geometry + grid/tile drawing (the seam shared with DemoScene). */
+  /** Shared board geometry + grid/tile drawing (the converged combat presentation). */
   private view!: CombatView;
 
   // Persistent HUD.
   private titleText!: Phaser.GameObjects.Text;
   private campText!: Phaser.GameObjects.Text;
   private intelText!: Phaser.GameObjects.Text;
+  private objectiveText!: Phaser.GameObjects.Text;
   private orderText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
   private lastHint = "";
@@ -123,6 +129,10 @@ export class BattleScene extends Phaser.Scene {
   // Battle interaction.
   private waitingFor: Unit | null = null;
   private armedSkill: SkillDef | null = null;
+  /** A herb picked for the medic's med-heal, pending a target (D44 flow). */
+  private pendingHerb: string | null = null;
+  /** Primary-job levels at battle start — diffed for the level-up readout (D53). */
+  private preBattleJobLevels = new Map<string, number>();
   private busy = false;
   private over = false;
 
@@ -162,6 +172,8 @@ export class BattleScene extends Phaser.Scene {
     this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
     this.intelText = this.add.text(this.scale.width / 2, 60, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
     this.orderText = this.add.text(10, 68, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
+    // Objective banner — a generic readout (label + gauge) under the intel line.
+    this.objectiveText = this.add.text(this.scale.width / 2, 76, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
     this.hintPanel = new HintPanel(this);
     this.threatGfx = this.add.graphics().setDepth(0.36);
     this.preview = this.add.graphics().setDepth(0.4);
@@ -201,6 +213,8 @@ export class BattleScene extends Phaser.Scene {
     this.armedSkill = null;
     this.deployActor = null;
     this.placedTraps = [];
+    this.pendingHerb = null;
+    this.objectiveText.setText("");
     this.rebuildBoard();
 
     // Intel read (D10), then straight into Deployment.
@@ -477,6 +491,9 @@ export class BattleScene extends Phaser.Scene {
     this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit));
     this.battle.bus.on("turnStart", ({ unit }) => this.view.logTurn(unit));
 
+    // Snapshot primary-job levels so resolution can read out who leveled up (D53).
+    this.preBattleJobLevels = new Map(this.battle.units.filter((u) => u.side === "player").map((u) => [u.id, jobLevelOf(u, u.primaryJob)]));
+
     // beginBattle: Chef heal + morale-warmed initiative seed (D8).
     const healed = this.loop.beginBattle();
     this.refreshCampText();
@@ -496,10 +513,21 @@ export class BattleScene extends Phaser.Scene {
 
   private onAdvance(): void {
     if (this.over || this.busy || this.waitingFor) return;
+    if (this.encounterDecided()) return this.finishBattle();
     const actor = this.battle.nextActor();
     if (!actor) return this.finishBattle();
+    // The clock tick inside nextActor may have closed a gate (D50) — re-poll.
+    if (this.encounterDecided()) return this.finishBattle();
+    this.revealScouted();
     this.highlightTile(actor.pos);
     this.refreshHud();
+    // A hidden ambush body lies in wait — it doesn't act until the party scouts it
+    // into view (D42/D44 fog); it just passes its turn.
+    if (actor.hidden) {
+      this.battle.endTurn(actor, {});
+      this.setHint("Something stirs in ambush ahead… scout it out.");
+      return;
+    }
     if (actor.side === "enemy") {
       this.runEnemyTurn(actor);
     } else {
@@ -511,7 +539,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showSkillButtons(actor: Unit): void {
-    const skills = unitSkills(actor, "battle");
+    // Level-gated actives (D39): a 2nd active unlocks as the job levels — so combat
+    // growth shows up here, in every fight (the converged renderer).
+    const skills = unlockedSkills(actor, "battle");
     const specs = skills.map((skill) => ({ text: skill.name, description: `${skill.name} — ${skill.description}`, onClick: () => this.onSkillButton(actor, skill) }));
     // The Noble's mid-combat BRIBE (D30/D33): spend guild Influence to sway an enemy.
     if (this.guild && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
@@ -560,6 +590,25 @@ export class BattleScene extends Phaser.Scene {
 
   private onSkillButton(actor: Unit, skill: SkillDef): void {
     if (this.busy || this.waitingFor !== actor) return;
+    // Medic med-heal (D44): pick a herb from the carried stash, then a target ally.
+    // Makes the medic work in **every** fight, not just the demo.
+    if (skill.effect.kind === "med-heal") {
+      const herbs = ["salve", "stimulant", "antidote"].filter((h) => countOf(this.run.inventory, h) > 0);
+      if (herbs.length === 0) return this.setHint("No herbs carried — provision some at camp.");
+      this.layoutActionRow(
+        herbs.map((h) => ({
+          text: `${h} (${countOf(this.run.inventory, h)})`,
+          description: `Heal with ${h}.`,
+          onClick: () => {
+            this.pendingHerb = h;
+            this.armedSkill = skill;
+            this.setHint(`Heal (${h}): click a wounded ally (or click ${actor.name} to cancel).`);
+            this.drawPreview();
+          },
+        })),
+      );
+      return;
+    }
     if (skill.target === "self") return this.commitSkill(actor, skill, actor);
     this.armedSkill = skill;
     this.setHint(`${skill.name}: click a valid target (or click ${actor.name} to cancel).`);
@@ -567,15 +616,25 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private commitSkill(actor: Unit, skill: SkillDef, target: Unit): void {
+    const herb = this.pendingHerb;
     this.armedSkill = null;
+    this.pendingHerb = null;
     this.waitingFor = null;
     this.busy = true;
     this.clearActionButtons();
     this.highlightTile(null);
-    const outcome = this.battle.useSkill(actor, skill, target);
-    if (skill.target === "self") this.flashHeal(target);
-    else this.flashAttack(actor, target);
-    const verb = outcome.healed ? `heals ${outcome.healed}` : outcome.damage ? `hits for ${outcome.damage}` : outcome.status ? `applies ${outcome.status}` : "acts";
+    let verb: string;
+    if (skill.effect.kind === "med-heal" && herb) {
+      // Spend the chosen herb on the target (D44 medic flow).
+      const out = this.battle.useHeal(actor, skill, target, herb, this.run.inventory);
+      verb = out.cleansed ? `cleanses ${out.cleansed}` : out.healed ? `heals ${out.healed}` : "no herb";
+      this.flashHeal(target);
+    } else {
+      const outcome = this.battle.useSkill(actor, skill, target);
+      if (skill.target === "self") this.flashHeal(target);
+      else this.flashAttack(actor, target);
+      verb = outcome.healed ? `heals ${outcome.healed}` : outcome.damage ? `hits for ${outcome.damage}` : outcome.status ? `applies ${outcome.status}` : "acts";
+    }
     this.afterTurn();
     if (!this.over) this.setHint(`${actor.name} used ${skill.name} — ${verb}. Advance Clock.`);
   }
@@ -724,7 +783,8 @@ export class BattleScene extends Phaser.Scene {
     this.refreshHud();
     this.highlightTile(null);
     this.view.clearPreview(this.preview);
-    if (this.battle.outcome().over) return this.finishBattle();
+    // Graded poll (D50/D51): the fight can end on an objective even with foes alive.
+    if (this.encounterDecided()) return this.finishBattle();
     this.setHint("Press Advance Clock for the next turn.");
   }
 
@@ -758,29 +818,48 @@ export class BattleScene extends Phaser.Scene {
 
     this.refreshCampText();
     this.refreshHp();
+    this.refreshObjectiveText();
     // Re-tint any freed allies.
     for (const u of this.run.party) if (!u.captured) this.tintCaptured(u, false);
 
-    const won = res.winner === "player";
-    const title = res.winner === undefined ? "Draw" : won ? "Victory!" : "Defeat";
+    // Three-way graded terminal (D50/D51): win / objective-failure / wipe — each a
+    // distinct overlay, all routed through the single loop.resolve() above.
+    const won = res.result === "win";
+    const title = won ? "Victory!" : res.result === "objective-failure" ? "Objective Failed — Retreat" : "Defeat";
+    const good = won;
     const lines: string[] = [];
     if (won) {
       lines.push(`+${res.goldEarned} gold.`);
       if (res.rescued.length) lines.push(`Auto-rescued ${res.rescued.join(", ")} (won the field).`);
       lines.push(res.recovered.length ? `Recovered ${res.recovered.length} unsprung trap kit(s).` : "No unsprung materials.");
-      if (res.downed.length) lines.push(`Downed: ${res.downed.map((d) => `${d.unitId} (${d.resolution})`).join(", ")}.`);
-      if (res.permadeaths.length) lines.push(`Lost forever: ${res.permadeaths.join(", ")}.`);
-      if (this.loop.isComplete()) lines.push("The final mission is cleared — the run is complete!");
+    } else if (res.result === "objective-failure") {
+      lines.push("The objective was lost — the party retreats alive, the prize forfeited.");
     } else {
       lines.push("The party was overwhelmed.");
     }
+    // Casualties apply on either survivable outcome (D51).
+    if (res.result !== "wipe") {
+      if (res.downed.length) lines.push(`Downed: ${res.downed.map((d) => `${d.unitId} (${d.resolution})`).join(", ")}.`);
+      if (res.permadeaths.length) lines.push(`Lost forever: ${res.permadeaths.join(", ")}.`);
+    }
+    // Level-up feedback (D53): who reached a new job level, with their new actives.
+    for (const u of this.battle.units) {
+      if (u.side !== "player") continue;
+      const was = this.preBattleJobLevels.get(u.id) ?? jobLevelOf(u, u.primaryJob);
+      const now = jobLevelOf(u, u.primaryJob);
+      if (now > was) {
+        const actives = unlockedSkills(u, "battle").map((s) => s.name).join(", ");
+        lines.push(`${u.name} reached job L${now} — actives: ${actives || "—"}.`);
+      }
+    }
+    if (won && this.loop.isComplete()) lines.push("The final mission is cleared — the run is complete!");
     // Theft + recruitment outcomes (M10).
     if (this.goldStolen > 0) {
       lines.push(`Thieves skimmed ${this.goldStolen}g — recovered ${this.goldRecovered}g${goldEscaped > 0 ? `, ${goldEscaped}g escaped` : ""}.`);
     }
     if (recruited.length) lines.push(`Swayed to the guild (permanent): ${recruited.join(", ")}.`);
 
-    this.showOverlay(title, lines.join("\n"), won);
+    this.showOverlay(title, lines.join("\n"), good, 480, 200);
     this.setHint(`Resolution — ${lines.join("  ")}`);
     // On any terminal (wipe / loss / run-complete) the overworld shows the end
     // screen; otherwise the player returns to the map to pick the next node.
@@ -849,6 +928,47 @@ export class BattleScene extends Phaser.Scene {
     this.orderText.setText("Turn order");
     this.view.drawInitiative(this.battle.units, 8, 84, (u) => this.battle.clock.isCharging(u));
     this.refreshHp();
+    this.refreshObjectiveText();
+  }
+
+  /**
+   * The objective banner (D50) — generic over the staged objectives, so any
+   * board/objective feature shows up in *every* fight that has it (the scene never
+   * names a specific kind). For each non-trivial objective it shows the authored
+   * label and, for a timed one, its gauge fill; the default elimination goal is
+   * left implicit (the field readout already conveys it).
+   */
+  private refreshObjectiveText(): void {
+    const objs = this.loop.staged?.objectives ?? [];
+    const parts: string[] = [];
+    for (const o of objs) {
+      if (o.spec.kind === "eliminate-all") continue; // implicit — clear the field
+      const status = o.status();
+      const prog = o.progress();
+      if (status === "failed") parts.push(`✗ ${o.spec.label} — failed`);
+      else if (status === "met") parts.push(`✓ ${o.spec.label} — secured`);
+      else if (prog !== undefined) parts.push(`⚠ ${o.spec.label} — ${Math.round(prog * 100)}%`);
+      else parts.push(`• ${o.spec.label}`);
+    }
+    this.objectiveText.setText(parts.join("    "));
+  }
+
+  /** True once the staged encounter has reached a graded terminal (D50/D51). */
+  private encounterDecided(): boolean {
+    return !this.loop.staged || encounterOutcome(this.loop.staged) !== undefined;
+  }
+
+  /** Reveal hidden ambush bodies the party can now see (the scouting payoff, D44). */
+  private revealScouted(): void {
+    let revealed = false;
+    for (const u of this.battle.units) {
+      if (u.hidden && u.alive && canSee(this.battle.units, "player", u.pos)) {
+        u.hidden = false;
+        revealed = true;
+        this.setHint(`Ambush revealed — ${u.name} springs from cover!`);
+      }
+    }
+    if (revealed) this.refreshHp(); // refreshUnits re-reads hidden → un-fades the token
   }
 
   private refreshCampText(): void {
@@ -871,7 +991,8 @@ export class BattleScene extends Phaser.Scene {
     if (r.count !== undefined) parts.push(`count: ${r.count}`);
     if (r.grantsVision) parts.push("starting vision");
     const def = currentEncounter(this.run);
-    this.intelText.setText(`${parts.join("  ·  ")}   (${def.type})`);
+    const shape = isAuthoredEncounter(def) ? "authored" : def.type;
+    this.intelText.setText(`${parts.join("  ·  ")}   (${shape})`);
   }
 
   private setHint(text: string): void {

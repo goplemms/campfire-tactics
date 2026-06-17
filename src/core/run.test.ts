@@ -16,6 +16,7 @@ import {
   type RunState,
 } from "./run";
 import { generateOverworld, getNode } from "./overworld";
+import { isAuthoredEncounter } from "./staging";
 import { RunLoop } from "./runloop";
 import { takeOverworldAction, cooldownRemaining, SCOUT } from "./overworld-actions";
 
@@ -76,6 +77,7 @@ describe("run — map position (D22)", () => {
     const run = newRun("follow");
     toFirstCombat(run);
     const enc = currentEncounter(run);
+    if (isAuthoredEncounter(enc)) throw new Error("expected a procedural encounter");
     expect(enc.index).toBe(currentNode(run).layer);
     // Same node ⇒ identical encounter on a fresh run with the same seed.
     const run2 = newRun("follow");

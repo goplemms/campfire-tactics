@@ -22,10 +22,11 @@
 
 import type { Unit } from "./units";
 import type { Rng } from "./rng";
-import type { EncounterDef, EncounterType } from "./generation";
-import { getNode, nodeEncounter, type NodeKind } from "./overworld";
+import { getEnemyTemplate, type EncounterType } from "./generation";
+import { getNode, type NodeKind } from "./overworld";
 import { eventForNode } from "./node-events";
-import type { RunState } from "./run";
+import { runEncounter, type RunState } from "./run";
+import { isAuthoredEncounter, type EncounterSource } from "./staging";
 
 /** Banded intel tier (D10). 0 = nothing known. */
 export type IntelTier = 0 | 1 | 2 | 3;
@@ -96,21 +97,24 @@ export function seerDivine(tier: IntelTier, rng: Rng, masterRank = false): Intel
  * the tier rises. Tier 3 sets `grantsVision`. Pure projection of the (already
  * deterministic) encounter — adds no randomness.
  */
-export function readEncounter(def: EncounterDef, tier: IntelTier): IntelReport {
+export function readEncounter(def: EncounterSource, tier: IntelTier): IntelReport {
+  // Normalize either source's enemies to `{ name, col, row }` (D49) — authored
+  // placements read their template's name; a hidden ambush body stays unread until
+  // it's revealed in the fight (the hidden-until-scouted seam).
+  const enemies = isAuthoredEncounter(def)
+    ? def.enemies
+        .filter((p) => !p.hidden)
+        .map((p) => ({
+          name: getEnemyTemplate(p.templateId)?.name ?? p.templateId,
+          col: p.pos.col,
+          row: p.pos.row,
+        }))
+    : def.enemies.map((e) => ({ name: e.name ?? e.id, col: e.pos.col, row: e.pos.row }));
+
   const report: IntelReport = { tier, grantsVision: tier >= MAX_TIER };
-  if (tier >= 1) {
-    report.types = [...new Set(def.enemies.map((e) => e.name ?? e.id))];
-  }
-  if (tier >= 2) {
-    report.count = def.enemies.length;
-  }
-  if (tier >= 3) {
-    report.positions = def.enemies.map((e) => ({
-      name: e.name ?? e.id,
-      col: e.pos.col,
-      row: e.pos.row,
-    }));
-  }
+  if (tier >= 1) report.types = [...new Set(enemies.map((e) => e.name))];
+  if (tier >= 2) report.count = enemies.length;
+  if (tier >= 3) report.positions = enemies;
   return report;
 }
 
@@ -180,8 +184,9 @@ export function previewNode(run: RunState, nodeId: string, extraTier = 0): NodeP
     preview.eventHint = eventForNode(run.seed, node).teaser;
     return preview;
   }
-  const def = nodeEncounter(run.seed, node);
-  preview.encounterType = def.type;
+  const def = runEncounter(run, node);
+  // An authored encounter has no procedural shape (D49); leave the type unshown.
+  preview.encounterType = isAuthoredEncounter(def) ? undefined : def.type;
   const tier = clampTier(intelFloor(run.party) + extraTier);
   preview.intel = readEncounter(def, tier);
   preview.rewardHint = rewardHint(def.reward.gold, tier);

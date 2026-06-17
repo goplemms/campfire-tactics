@@ -1,14 +1,18 @@
 /**
- * The authored-content substrate (D44) — hand-crafted, **deterministic** quests.
+ * The authored-content substrate (D44/D52) — hand-crafted, **deterministic**
+ * encounters.
  *
  * Everything procedural in the game derives from a seed ({@link "./generation"});
- * this module is the opposite: a designer hand-populates a fixed map, enemy
- * roster, placements, rewards and beats. No RNG — building an authored encounter
- * twice yields identical units. It reuses the existing `Encounter`/`TileGrid`/
- * `Unit` structures so the camp→deploy→battle→resolution pipeline runs unchanged.
+ * this module is the opposite: a designer hand-populates a fixed grid, enemy
+ * roster, placements, rewards and objectives. No RNG — building an authored
+ * encounter twice yields identical units. It reuses the existing `TileGrid`/`Unit`
+ * structures so the deploy→battle→resolution pipeline runs unchanged, and its
+ * objectives ride the converged {@link "./objectives"} model. An authored
+ * encounter binds to an overworld node and is staged through {@link
+ * "./staging".stageEncounter}, exactly like a procedural one.
  *
- * Also defines **graded failure** (D43): an encounter resolves to `win`,
- * `objective-failure` (survivable — the party retreats alive), or `wipe`.
+ * Graded failure (D43): an encounter resolves to `win`, `objective-failure`
+ * (survivable — the party retreats alive), or `wipe` ({@link EncounterResult}).
  *
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
@@ -18,9 +22,7 @@ import type { Unit, UnitSpec } from "./units";
 import { createUnit } from "./units";
 import { TileGrid } from "./grid";
 import { getEnemyTemplate, type EncounterReward } from "./generation";
-import { isImmobilized } from "./status";
-import { applyDamage } from "./combat";
-import { CTClock } from "./clock";
+import type { ObjectiveSpec } from "./objectives";
 
 /** A hand-placed enemy in an authored encounter. */
 export interface EnemyPlacement {
@@ -36,17 +38,8 @@ export interface EnemyPlacement {
    * core fields it normally; the flag rides through for the scene to respect.
    */
   hidden?: boolean;
-  /** Objective role (D43): the Sapper drives the bridge-cut timer. */
+  /** Objective role tag (D50): the closing-gate binds its driver to the Sapper. */
   role?: "sapper" | "captain";
-}
-
-/** A timed objective on an encounter (D43) — the demo's bridge-cut. */
-export interface ObjectiveSpec {
-  kind: "bridge-cut";
-  /** Gauge fill per tick; the cut completes when it reaches 100 (≈ N turns). */
-  speed: number;
-  /** Tiles swept (their occupants downed) when the cut completes. */
-  span?: GridCoord[];
 }
 
 /** A fixed, hand-authored encounter (D44). */
@@ -60,9 +53,12 @@ export interface AuthoredEncounter {
   playerSpawns: GridCoord[];
   enemies: EnemyPlacement[];
   reward: EncounterReward;
-  /** XP each surviving deployed unit earns on a win (tunes the rest-beat level). */
-  xp?: number;
-  objective?: ObjectiveSpec;
+  /**
+   * The encounter's objectives (D50) — the converged, multi-objective model the
+   * staging seam arms. A closing-gate goes here; the default elimination goal is
+   * injected when none lists an explicit goal.
+   */
+  objectives?: ObjectiveSpec[];
 }
 
 /** Build the fixed {@link TileGrid} for an authored encounter. */
@@ -90,6 +86,7 @@ export function buildAuthoredEnemies(enc: AuthoredEncounter): Unit[] {
       attackRange: tpl.attackRange,
       jobId: tpl.jobId,
       thief: tpl.thief,
+      role: p.role,
       ...p.overrides,
     });
     u.hidden = p.hidden ?? false;
@@ -105,110 +102,5 @@ export function placeParty(party: readonly Unit[], spawns: readonly GridCoord[])
   });
 }
 
-/** Live state of a timed objective (D43). */
-export interface ObjectiveState {
-  /** True once the cut completed (the objective was lost). */
-  failed: boolean;
-  /** The Sapper driving it — killed or Immobilized to fizzle the cut. */
-  sapper?: Unit;
-}
-
-/**
- * Arm the encounter's timed objective on a battle's clock (D43): schedule the
- * bridge-cut as a {@link "./clock".ScheduledEffect}. Its **fizzle** fires when
- * the Sapper dies **or** is Immobilized (kill/snare it to stop the cut); if it
- * resolves, the span's occupants are swept (downed) and `state.failed` is set.
- * Returns the live state to poll. No objective → a state that never fails.
- */
-export function armObjective(
-  clock: CTClock,
-  enc: AuthoredEncounter,
-  units: readonly Unit[],
-): ObjectiveState {
-  const state: ObjectiveState = { failed: false };
-  if (!enc.objective) return state;
-  const idOf = (p: EnemyPlacement) => p.id ?? `${p.templateId}@${p.pos.col},${p.pos.row}`;
-  const sapper = units.find(
-    (u) => enc.enemies.find((p) => idOf(p) === u.id)?.role === "sapper",
-  );
-  state.sapper = sapper;
-  const span = enc.objective.span ?? [];
-  const onSpan = (u: Unit) => span.some((t) => t.col === u.pos.col && t.row === u.pos.row);
-  clock.schedule({
-    id: `objective:${enc.id}:bridge-cut`,
-    speed: enc.objective.speed,
-    // Kill OR Immobilize the Sapper to fizzle the cut (D43).
-    fizzleWhen: () => !!sapper && (!sapper.alive || isImmobilized(sapper)),
-    run: () => {
-      state.failed = true;
-      // The span collapses: its occupants are swept → downed (not auto-dead;
-      // the runner resolves them per D9 — a survivable retreat, not a wipe).
-      for (const u of units) {
-        if (u.alive && onSpan(u)) applyDamage(u, u.hp);
-      }
-    },
-  });
-  return state;
-}
-
-/** The graded outcome of an authored encounter (D43). */
+/** The graded outcome of an encounter (D43): win, survivable failure, or wipe. */
 export type EncounterResult = "win" | "objective-failure" | "wipe";
-
-// --- Quest beats (D44) ------------------------------------------------------
-
-/** A material drop a story choice can grant. */
-export interface ItemGrant {
-  id: string;
-  count: number;
-}
-
-/** The mechanical result of a story choice (deterministic). */
-export interface StoryOutcome {
-  summary: string;
-  gold?: number;
-  items?: ItemGrant[];
-  /** Pre-reveal E2's hidden ambush (the "spare the deserter" branch). */
-  revealAmbush?: boolean;
-}
-
-/** Beat 1 — Provision: load herbs under the cap with a little gold (D44). */
-export interface ProvisionBeat {
-  kind: "provision";
-  storageCap: number;
-  gold: number;
-  /** Material ids on offer (the three herbs). */
-  offer: string[];
-  /** A banded intel preview of the next encounter. */
-  intel?: string;
-}
-
-/** An encounter beat — a fixed authored fight. */
-export interface EncounterBeat {
-  kind: "encounter";
-  encounter: AuthoredEncounter;
-}
-
-/** A rest beat — recover, level up, and make a story choice (D44). */
-export interface RestBeat {
-  kind: "rest";
-  /** XP each surviving member earns here (tuned so E1's award reaches L2). */
-  xp: number;
-  choice?: {
-    prompt: string;
-    spareLabel: string;
-    pressLabel: string;
-    spare: StoryOutcome;
-    press: StoryOutcome;
-  };
-}
-
-/** One beat of an authored quest. */
-export type QuestBeat = ProvisionBeat | EncounterBeat | RestBeat;
-
-/** A hand-authored quest (D44): a starting party + an ordered list of beats. */
-export interface AuthoredQuest {
-  id: string;
-  name: string;
-  party: UnitSpec[];
-  beats: QuestBeat[];
-}

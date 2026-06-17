@@ -90,6 +90,12 @@ export interface MaterialDrop {
 export interface EncounterReward {
   gold: number;
   materials: MaterialDrop[];
+  /**
+   * Objective XP awarded to surviving combatants on a **win** (D53) — folded into
+   * the reward so it's forfeited with everything else on objective-failure/wipe.
+   * Optional: procedural encounters omit it (combat-event XP still accrues).
+   */
+  xp?: number;
 }
 
 /** The reward material table (D4 ethos: drops are data). */

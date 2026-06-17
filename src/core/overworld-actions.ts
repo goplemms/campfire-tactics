@@ -35,6 +35,7 @@ import { spendFatigue, fatiguePenalty } from "./fatigue";
 import { reachableFrom } from "./overworld";
 import { applyCampSkill, type Camp } from "./camp";
 import { getJob } from "./jobs";
+import { grantAbilityUseXp } from "./leveling";
 
 /**
  * The per-ability **cost menu** an overworld ability declares (D29). `cooldown`
@@ -272,6 +273,10 @@ export function takeOverworldAction(
   if (fatigueCost > 0) unit.fatigue = spendFatigue(unit.fatigue, fatigueCost);
   if (goldCost > 0) run.camp.gold -= goldCost;
   if (ability.cost.cooldown > 0) eco.cooldowns[abilityId] = ability.cost.cooldown;
+
+  // Use-leveling (D53): a successful overworld ability use bumps its user — the
+  // non-combat growth path (Scout/Survey/etc.), paired with the deployed trickle.
+  grantAbilityUseXp(unit);
 
   return {
     applied: true,

@@ -26,11 +26,10 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { RunState } from "./run";
+import { runEncounter, type RunState } from "./run";
 import {
   reachableFrom,
   getNode,
-  nodeEncounter,
   type MapNode,
 } from "./overworld";
 import { computeUpkeep } from "./upkeep";
@@ -117,7 +116,7 @@ function nodeTier(run: RunState, node: MapNode): IntelTier {
 /** A node's fogged loot band: combat = banded reward, rest = nothing, event = unknown. */
 function nodeLoot(run: RunState, node: MapNode): LootBand {
   if (node.kind === "combat") {
-    const def = nodeEncounter(run.seed, node);
+    const def = runEncounter(run, node);
     return lootBandFor(def.reward.gold, nodeTier(run, node));
   }
   if (node.kind === "rest") return { floor: 0, ceiling: 0, label: "—" }; // cost-only

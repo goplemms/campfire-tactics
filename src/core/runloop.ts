@@ -14,10 +14,7 @@
  */
 
 import type { Unit } from "./units";
-import type { GridCoord } from "./iso";
-import { TileGrid } from "./grid";
 import { Battle } from "./turn";
-import { buildGrid, buildEnemies, type EncounterDef } from "./generation";
 import {
   type RunState,
   runDifficulty,
@@ -31,6 +28,19 @@ import {
   chooseNode,
   breakCamp,
 } from "./run";
+import {
+  stageEncounter,
+  encounterOutcome,
+  isAuthoredEncounter,
+  type StagedEncounter,
+  type EncounterSource,
+} from "./staging";
+import type { EncounterResult } from "./authored";
+import {
+  trackCombatXp,
+  commitCombatXp,
+  type CombatXpTally,
+} from "./leveling";
 import type { MapNode } from "./overworld";
 import { moraleModifiers } from "./morale";
 import { moraleTier } from "./camp";
@@ -58,12 +68,16 @@ import {
 /** What a resolved encounter produced (for the render/run-end screen). */
 export interface ResolveResult {
   winner?: "player" | "enemy";
+  /** The graded outcome (D50/D51) — the renderer's 3-way terminal reads this. */
+  result: EncounterResult;
   goldEarned: number;
   recovered: string[];
   rescued: string[];
   downed: DownedOutcome[];
   permadeaths: string[];
   rescueQuests: RescueQuest[];
+  /** Per-unit level gains from combat XP + the objective reward (D53) — feedback. */
+  levels: Record<string, { charLevels: number; jobLevels: number }>;
   over: boolean;
 }
 
@@ -132,12 +146,16 @@ export const REST = {
 /** The run-loop orchestrator. */
 export class RunLoop {
   readonly run: RunState;
-  /** The encounter currently being played (set by {@link startEncounter}). */
-  encounter?: EncounterDef;
+  /** The encounter source currently being played (set by {@link startEncounter}). */
+  source?: EncounterSource;
+  /** The staged encounter (battle + armed objectives) for the current node. */
+  staged?: StagedEncounter;
   /** The live battle for the current encounter. */
   battle?: Battle;
   /** Player combatants placed for the current encounter. */
   combatants: Unit[] = [];
+  /** Combat XP tallied on the battle bus, committed at {@link resolve} (D53). */
+  private xpTally?: CombatXpTally;
 
   constructor(run: RunState) {
     this.run = run;
@@ -388,7 +406,7 @@ export class RunLoop {
 
   /** The current encounter's intel report at the party's floor tier (D10). */
   intel(extraTier = 0): IntelReport {
-    const def = this.encounter ?? currentEncounter(this.run);
+    const def = this.source ?? currentEncounter(this.run);
     const tier = Math.min(3, intelFloor(this.run.party) + extraTier) as IntelTier;
     return readEncounter(def, tier);
   }
@@ -396,53 +414,23 @@ export class RunLoop {
   // --- Battle setup ---------------------------------------------------------
 
   /**
-   * Generate and stage the current encounter: build the grid, inflate enemies,
-   * place the active roster on the home (left) edge, and create the {@link Battle}
-   * the render drives. `deploymentPenalty` shrinks the player's usable home
-   * columns (the D9 rescue "ambush-in-reverse" modifier).
+   * Stage the current node's encounter through the **converged seam** (D50): one
+   * {@link stageEncounter} turns either a procedural or authored source into the
+   * `{ battle, objectives }` shape, places the active roster (authored spawns or
+   * the auto home edge), arms its objectives, and wires the combat-XP accumulator
+   * (D53). `deploymentPenalty` shrinks the procedural home columns (the D9 rescue
+   * "ambush-in-reverse" modifier).
    */
   startEncounter(deploymentPenalty = 0): Battle {
-    const def = currentEncounter(this.run);
-    this.encounter = def;
-    const grid = buildGrid(def);
-    const enemies = buildEnemies(def);
+    const source = currentEncounter(this.run);
     const players = combatRoster(this.run);
-    this.placePlayers(players, grid, def, deploymentPenalty);
+    const staged = stageEncounter(source, players, { deploymentPenalty });
+    this.source = source;
+    this.staged = staged;
     this.combatants = players;
-    this.battle = new Battle(grid, [...players, ...enemies]);
-    return this.battle;
-  }
-
-  /** Position player combatants on the left edge, resetting combat-scoped state. */
-  private placePlayers(
-    players: Unit[],
-    grid: TileGrid,
-    def: EncounterDef,
-    deploymentPenalty: number,
-  ): void {
-    // The rescue modifier pushes the home edge inward (fewer columns to set up).
-    const homeCols = Math.max(1, 2 - Math.min(1, deploymentPenalty));
-    const taken = new Set<string>();
-    for (const block of def.blocked) taken.add(`${block.col},${block.row}`);
-    players.forEach((u, i) => {
-      let pos: GridCoord = { col: i % homeCols, row: i % def.rows };
-      for (let row = 0; row < def.rows; row++) {
-        for (let col = 0; col < homeCols; col++) {
-          const key = `${col},${row}`;
-          if (!taken.has(key) && grid.isWalkable({ col, row })) {
-            pos = { col, row };
-            taken.add(key);
-            row = def.rows;
-            break;
-          }
-        }
-      }
-      taken.add(`${pos.col},${pos.row}`);
-      u.pos = pos;
-      u.ct = 0;
-      u.statuses = [];
-      u.captured = false;
-    });
+    this.battle = staged.battle;
+    this.xpTally = trackCombatXp(staged.battle.bus); // subscribe before any turns (D53)
+    return staged.battle;
   }
 
   /**
@@ -460,38 +448,52 @@ export class RunLoop {
   // --- Resolution (D13/D21/D9) ----------------------------------------------
 
   /**
-   * Resolve the finished battle: award gold (morale gold-find bonus, D8) and
-   * material drops on a win, recover unsprung materials (D13), auto-rescue still-
-   * captured allies (D21), apply the mortality policy to downed units (D9) with
-   * permadeath removal, turn any non-win captives into rescue quests, then
-   * advance the run. Returns a full summary for the render/run-end screen.
+   * Resolve the finished encounter on the **graded** outcome (D50/D51). One
+   * {@link encounterOutcome} classifies it: **win** (all required objectives met) →
+   * reward gold (morale gold-find, D8) + material drops + recover unsprung
+   * materials (D13) + commit combat XP and the objective reward.xp to survivors
+   * (D53); **objective-failure** (a required objective lost) → **no reward** but the
+   * party retreats alive; **wipe** → the run-ending loss. On **either survivable**
+   * outcome (win *or* objective-failure) downed units resolve per the D9 mortality
+   * policy (the same retreat-alive path, not auto-permadeath); a wipe has no camp to
+   * recover in. Captives auto-rescue on a win, else become rescue quests (D21).
+   * Records the graded result so the final-node terminal grades correctly (D51).
    */
   resolve(): ResolveResult {
-    if (!this.battle || !this.encounter) throw new Error("RunLoop.resolve: no battle");
+    if (!this.battle || !this.staged || !this.source) throw new Error("RunLoop.resolve: no battle");
     const battle = this.battle;
-    const def = this.encounter;
+    const source = this.source;
     const policy = runDifficulty(this.run);
-    const outcome = battle.outcome();
-    const winner = outcome.winner;
-    const won = winner === "player";
+    const result = encounterOutcome(this.staged) ?? "wipe";
+    const won = result === "win";
+    const survivable = result !== "wipe"; // win or objective-failure: the party retreats alive
 
-    // Rewards + material recovery (win only).
+    // Rewards + material recovery + XP — **win only** (forfeited otherwise, D51/D53).
     let goldEarned = 0;
     const recovered: string[] = [];
+    let levels: Record<string, { charLevels: number; jobLevels: number }> = {};
     if (won) {
       const mods = moraleModifiers(moraleTier(this.run.camp.morale));
-      goldEarned = Math.round(def.reward.gold * (1 + mods.goldFindBonus));
+      goldEarned = Math.round(source.reward.gold * (1 + mods.goldFindBonus));
       // Loot routes to the PURSE (D34), auto-repaying any Banker debt first (D30).
       gainRunGold(this.run, goldEarned);
-      for (const drop of def.reward.materials) {
+      for (const drop of source.reward.materials) {
         // Add drops up to the storage cap; overflow is simply lost (D6).
         for (let i = 0; i < drop.count; i++) addItem(this.run.inventory, drop.id);
       }
-      const rec = recoverMaterials(battle.entities.all(), winner, this.run.inventory);
+      const rec = recoverMaterials(battle.entities.all(), "player", this.run.inventory);
       recovered.push(...rec.recovered);
+
+      // Combat-event XP (D53): commit the bus tally + the objective reward.xp to the
+      // survivors of resolution — no mid-battle level-ups, none on a non-win.
+      const survivors = this.combatants.filter((u) => u.alive && !u.captured);
+      const tally: CombatXpTally = { ...(this.xpTally ?? {}) };
+      const objXp = source.reward.xp ?? 0;
+      if (objXp > 0) for (const u of survivors) tally[u.id] = (tally[u.id] ?? 0) + objXp;
+      levels = commitCombatXp(tally, survivors);
     }
 
-    // Auto-rescue still-captured allies on a win (D21).
+    // Auto-rescue still-captured allies on a win (D21); else a rescue follow-up.
     const rescued: string[] = [];
     const rescueQuests: RescueQuest[] = [];
     for (const u of this.combatants) {
@@ -504,13 +506,12 @@ export class RunLoop {
       }
     }
 
-    // Mortality (D9): on a **win**, resolve every downed player combatant per the
-    // difficulty policy (Easy full-heal … Hardest permadeath) — the run continues.
-    // A **lost** battle is the run-ending wipe itself (the party went down), so the
-    // per-unit recovery policy doesn't apply — there's no camp to recover in.
+    // Mortality (D9): on a **survivable** outcome (win OR objective-failure), resolve
+    // every downed player combatant per the difficulty policy — the same retreat path
+    // (D51). A **wipe** is the run-ending loss; there's no camp to recover in.
     const downed: DownedOutcome[] = [];
     const permadeaths: string[] = [];
-    if (won) {
+    if (survivable) {
       for (const u of this.combatants) {
         if (u.alive || u.captured) continue;
         const res = resolveDowned(policy, u);
@@ -522,42 +523,32 @@ export class RunLoop {
       }
     }
 
-    // Record the node outcome + advance the night. A win checks the run-complete
-    // (final-node) terminal; a loss ends the run here (the party's own wipe).
+    // Record the graded node outcome + advance the night/terminal (D51). recordNight
+    // sets the run terminal: a win at the final node = complete; any other final-node
+    // resolution ends the run (returned-alive without the prize, or a wipe).
     const node = currentNode(this.run);
-    let over: boolean;
-    if (won) {
-      recordNight(this.run, {
-        nodeId: node.id,
-        layer: node.layer,
-        kind: node.kind,
-        type: def.type,
-        winner,
-        goldEarned,
-        fallen: [...permadeaths],
-      });
-      over = this.run.over || this.run.complete;
-    } else {
-      this.run.history.push({
-        nodeId: node.id,
-        layer: node.layer,
-        kind: node.kind,
-        type: def.type,
-        winner,
-        goldEarned: 0,
-        fallen: this.combatants.filter((u) => !u.alive).map((u) => u.id),
-        night: this.run.night,
-      });
-      this.run.night += 1;
-      this.run.over = true;
-      over = true;
-    }
+    const winner: "player" | "enemy" = result === "wipe" ? "enemy" : "player";
+    const fallen = result === "wipe"
+      ? this.combatants.filter((u) => !u.alive).map((u) => u.id)
+      : [...permadeaths];
+    const over = recordNight(this.run, {
+      nodeId: node.id,
+      layer: node.layer,
+      kind: node.kind,
+      type: isAuthoredEncounter(source) ? undefined : source.type,
+      winner,
+      result,
+      goldEarned,
+      fallen,
+    });
 
     this.battle = undefined;
-    this.encounter = undefined;
+    this.source = undefined;
+    this.staged = undefined;
     this.combatants = [];
+    this.xpTally = undefined;
 
-    return { winner, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, over };
+    return { winner, result, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, levels, over };
   }
 
   // --- Headless auto-play (tests / fast-forward) ----------------------------
@@ -615,9 +606,13 @@ export class RunLoop {
   autoBattle(maxTurns = 1000): "player" | "enemy" | undefined {
     if (!this.battle) throw new Error("RunLoop.autoBattle: no staged battle");
     const battle = this.battle;
+    // Stop the moment the encounter is **decided** (D50) — a closing-gate can fail
+    // the fight while enemies still stand, so poll the graded outcome, not just the
+    // elimination primitive. resolve() reads the same classifier for the grade.
+    const decided = () =>
+      this.staged ? encounterOutcome(this.staged) !== undefined : battle.outcome().over;
     for (let i = 0; i < maxTurns; i++) {
-      const o = battle.outcome();
-      if (o.over) return o.winner;
+      if (decided()) return battle.outcome().winner;
       const actor = battle.nextActor();
       if (!actor) break;
       const plan = planEnemyTurn(actor, battle.units, battle.grid, {

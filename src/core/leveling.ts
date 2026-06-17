@@ -18,6 +18,7 @@
 import type { Unit, UnitStats } from "./units";
 import { getJob, unitSkills } from "./jobs";
 import type { SkillDef, Phase } from "./skills";
+import type { EventBus } from "./events";
 
 /** Leveling tuning — all data, a numbers pass later (D32/D39). */
 export const LEVELING = {
@@ -29,6 +30,10 @@ export const LEVELING = {
   deployedTrickle: 5,
   /** Bonus XP for a successful non-combat ability use (the use-leveling hook). */
   abilityUseBonus: 10,
+  /** Combat XP credited to the attacker for a defeat (kill credit, D53). */
+  killXp: 25,
+  /** Combat XP a unit earns for surviving a hit (the smaller defender bump, D53). */
+  survivedHitXp: 4,
   /** Secondary held jobs earn XP at this fraction of the primary's rate (D39). */
   secondaryRate: 0.25,
   /** Additive ability magnitude per primary-job level above 1 (D39 scaling). */
@@ -113,6 +118,55 @@ export function grantXp(unit: Unit, amount: number): number {
 /** Combat XP — the as-today path for combat jobs. Returns levels gained. */
 export function grantCombatXp(unit: Unit, amount: number): number {
   return grantXp(unit, amount);
+}
+
+// --- Combat-event XP accumulator (D53) --------------------------------------
+
+/** A running tally of combat XP earned during a battle, keyed by unit id. */
+export type CombatXpTally = Record<string, number>;
+
+/**
+ * Subscribe a combat-XP accumulator to a battle's bus (D53). It tallies — it does
+ * **not** apply: a **defeat** credits the kill to the lethal `source`; **surviving
+ * a hit** (the struck defender still standing after the blow) earns the smaller
+ * bump. Self-/friendly-fire never scores. Commit the tally at resolution with
+ * {@link commitCombatXp} (no mid-battle level-ups). Returns the live tally object.
+ */
+export function trackCombatXp(bus: EventBus, amounts = LEVELING): CombatXpTally {
+  const tally: CombatXpTally = {};
+  const add = (id: string, n: number) => {
+    tally[id] = (tally[id] ?? 0) + n;
+  };
+  bus.on("unitDefeated", ({ source }) => {
+    if (source) add(source.id, amounts.killXp);
+  });
+  bus.on("unitDamaged", ({ unit, amount, source }) => {
+    // Surviving an enemy's hit bumps the struck defender (hp > 0 after the blow).
+    if (amount > 0 && unit.hp > 0 && source && source.side !== unit.side) {
+      add(unit.id, amounts.survivedHitXp);
+    }
+  });
+  return tally;
+}
+
+/**
+ * Commit a {@link CombatXpTally} to the units that survived resolution (D53) via
+ * {@link routeCombatXp} — character + job axes. Only units present in `survivors`
+ * receive their tally (downed/removed units forfeit it). Returns the per-unit
+ * level gains for the resolution feedback.
+ */
+export function commitCombatXp(
+  tally: CombatXpTally,
+  survivors: readonly Unit[],
+): Record<string, { charLevels: number; jobLevels: number }> {
+  const gained: Record<string, { charLevels: number; jobLevels: number }> = {};
+  for (const u of survivors) {
+    const amount = tally[u.id] ?? 0;
+    if (amount <= 0) continue;
+    const g = routeCombatXp(u, amount);
+    if (g.charLevels > 0 || g.jobLevels > 0) gained[u.id] = g;
+  }
+  return gained;
 }
 
 /**

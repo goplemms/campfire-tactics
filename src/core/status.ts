@@ -44,6 +44,8 @@ export const STATUS_TUNING = {
   tarpitSpeed: 1,
   /** Hastened: bonus effective speed (the Medic stimulant rider). */
   hastenBonus: 6,
+  /** Swift: default bonus move tiles (the Scout/Hunter reposition). */
+  swiftMove: 2,
 } as const;
 
 /** Apply (or refresh) a status on a unit. A same-id status is replaced. */
@@ -152,7 +154,7 @@ export function guarded(
 }
 
 /** Swift — a transient +move buff read by {@link "./combat".effectiveMove}. */
-export function swift(duration = 1, amount = 2): StatusInstance {
+export function swift(duration = 1, amount: number = STATUS_TUNING.swiftMove): StatusInstance {
   return { id: SWIFT, name: "Swift", duration, kind: "buff", data: { amount } };
 }
 

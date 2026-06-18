@@ -42,8 +42,12 @@ export const AI = {
   lethalBonus: 400,
   /** Target priority: prefer a frailer max-HP body. */
   squishyWeight: 1,
+  /** Reference max-HP the squishy bonus measures frailty below (the "frail" line). */
+  squishyRefHp: 40,
   /** Target priority: prefer an already-wounded body. */
   lowHpWeight: 2,
+  /** Reference current-HP the wounded bonus measures damage below (the "hurt" line). */
+  woundedRefHp: 30,
   /** Target priority: an Exposed/debuffed target is worth finishing. */
   debuffedBonus: 30,
   /** Value of landing a debuff ability (the snare). */
@@ -190,8 +194,8 @@ function damageFrom(unit: Unit, from: GridCoord, foe: Unit, units: readonly Unit
 
 /** Target-priority bonus: frailer + more wounded + already-debuffed bodies. */
 function priority(foe: Unit): number {
-  let p = AI.squishyWeight * Math.max(0, 40 - foe.maxHp);
-  p += AI.lowHpWeight * Math.max(0, 30 - foe.hp);
+  let p = AI.squishyWeight * Math.max(0, AI.squishyRefHp - foe.maxHp);
+  p += AI.lowHpWeight * Math.max(0, AI.woundedRefHp - foe.hp);
   if (hasStatus(foe, EXPOSED) || isDebuffed(foe)) p += AI.debuffedBonus;
   return p;
 }

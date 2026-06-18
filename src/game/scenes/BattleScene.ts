@@ -80,6 +80,7 @@ import {
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
 import { Button } from "../button";
+import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
 import { dropNet as dropNetCage } from "../deploy-fx";
 import { ICON } from "../icons";
@@ -199,7 +200,7 @@ export class BattleScene extends Phaser.Scene {
     // bars, nameplates, status pips) so details stand out, especially in testing.
     // The procedural board is 8×6 and centred full-width, so it has room to grow.
     this.view.boardScale = BOARD_SCALE;
-    this.view.reduceMotion = !!(window as Window & { __SHOT__?: boolean }).__SHOT__;
+    this.view.reduceMotion = isScreenshotMode();
     // The campfire glow — a warm vignette over the board, beneath the tokens/HUD.
     addVignette(this);
     // Persistent UI.
@@ -233,8 +234,7 @@ export class BattleScene extends Phaser.Scene {
    * wipes the party, return straight to the overworld's run-end.
    */
   private startCombatNode(): void {
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
 
     // Between-battle bookkeeping: pay Upkeep, bank RP, tick dying clocks (D9/D15).
     const camp = this.loop.camp();
@@ -268,8 +268,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private rebuildBoard(): void {
-    for (const o of this.boardObjects) o.destroy();
-    this.boardObjects = [];
+    clearLayer(this.boardObjects);
     this.view.clearUnits();
     this.gridGfx?.destroy();
     this.safeZoneGfx?.destroy();
@@ -974,8 +973,7 @@ export class BattleScene extends Phaser.Scene {
   /** Toggle the Legend & Keys panel (L) — a quick reference for tokens + shortcuts. */
   private toggleLegend(): void {
     if (this.legend.length > 0) {
-      for (const o of this.legend) o.destroy();
-      this.legend = [];
+      clearLayer(this.legend);
       return;
     }
     const cx = this.scale.width / 2;
@@ -1272,8 +1270,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showOverlay(title: string, body: string, good: boolean, w = 480, h = 170): void {
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
     this.overlay.push(
@@ -1438,8 +1435,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private clearActionButtons(): void {
-    for (const obj of this.actionButtons) obj.destroy();
-    this.actionButtons = [];
+    clearLayer(this.actionButtons);
   }
 
   private layoutActionRow(specs: { text: string; description?: string; onClick: () => void }[]): void {

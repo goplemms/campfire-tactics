@@ -67,8 +67,28 @@ function ellipsize(label: Phaser.GameObjects.Text, maxWidth: number): void {
   }
 }
 
+/**
+ * Destroy every object in a scene layer array and empty it **in place** — the
+ * teardown every scene repeats before re-drawing an overlay/panel/board. Emptied in
+ * place (not reassigned) so the field keeps its identity and later `.push`es land on
+ * the same array.
+ */
+export function clearLayer(objs: Phaser.GameObjects.GameObject[]): void {
+  for (const o of objs) o.destroy();
+  objs.length = 0;
+}
+
 /** True under the Vite dev server / tests, false in the production build. */
 function isDev(): boolean {
   // `import.meta.env` is Vite-injected; guard so this is safe if ever run outside it.
   return typeof import.meta !== "undefined" && Boolean(import.meta.env?.DEV);
+}
+
+/**
+ * True when the screenshot harness is driving headless captures — it sets
+ * `window.__SHOT__` before boot so motion/animation can be stilled for stable
+ * shots. The one place that flag is read, so the cast lives here, not in scenes.
+ */
+export function isScreenshotMode(): boolean {
+  return typeof window !== "undefined" && Boolean((window as Window & { __SHOT__?: boolean }).__SHOT__);
 }

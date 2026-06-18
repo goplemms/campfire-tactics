@@ -53,7 +53,7 @@ import {
   type RouteForecast,
   type UpkeepLine,
 } from "../../core";
-import { fitText } from "../ui";
+import { fitText, clearLayer } from "../ui";
 import { Button } from "../button";
 import { HintPanel } from "../hint-panel";
 import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
@@ -166,8 +166,7 @@ export class OverworldScene extends Phaser.Scene {
 
   /** A one-time orientation card for the Expedition demo (M13). */
   private showExpeditionIntro(): void {
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2 - 10;
     const w = 680;
@@ -190,8 +189,7 @@ export class OverworldScene extends Phaser.Scene {
     );
     this.overlay.push(
       this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
-        for (const o of this.overlay) o.destroy();
-        this.overlay = [];
+        clearLayer(this.overlay);
         this.setHint("Hover a node to preview it; click to Make Camp. Deeper nodes are fogged until intel reaches them.");
       }).setDepth(22),
     );
@@ -213,8 +211,7 @@ export class OverworldScene extends Phaser.Scene {
   // --- Map drawing ----------------------------------------------------------
 
   private drawMap(interactive = true): void {
-    for (const o of this.nodeObjects) o.destroy();
-    this.nodeObjects = [];
+    clearLayer(this.nodeObjects);
     this.graph?.destroy();
     this.nodePos.clear();
 
@@ -377,8 +374,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private clearMap(): void {
-    for (const o of this.nodeObjects) o.destroy();
-    this.nodeObjects = [];
+    clearLayer(this.nodeObjects);
     this.graph?.destroy();
     this.graph = undefined;
     this.previewText.setText("");
@@ -391,8 +387,7 @@ export class OverworldScene extends Phaser.Scene {
    */
   private reviewMap(returnTo: () => void): void {
     this.clearCamp();
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     this.drawMap(false); // non-interactive: hover-preview only, no node commit
     this.titleText.setText(`Route Map — Night ${this.run.night + 1} · reviewing`);
     this.setHint("Reviewing the route — hover a node to preview it. Click Back to return.");
@@ -684,8 +679,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private clearCamp(): void {
-    for (const o of this.campObjects) o.destroy();
-    this.campObjects = [];
+    clearLayer(this.campObjects);
   }
 
   /** Leave the camp and play the node (D35): combat hands off; rest recovers here. */
@@ -775,8 +769,7 @@ export class OverworldScene extends Phaser.Scene {
     const w = 560;
     const h = 130 + (choices.length + (def.kind === "shop" ? 1 : 0)) * 40;
 
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     this.overlay.push(
       this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.info).setDepth(20),
       this.add.text(cx, cy - h / 2 + 24, title, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
@@ -800,8 +793,7 @@ export class OverworldScene extends Phaser.Scene {
     // A shop is a multi-buy surface — add an explicit Leave that records the step.
     if (def.kind === "shop") {
       const leave = this.makeTextButton(cx, y, 360, 30, "Leave the market", COLOR.successDeep, COLOR.success, () => {
-        for (const o of this.overlay) o.destroy();
-        this.overlay = [];
+        clearLayer(this.overlay);
         this.finishEvent(-this.spentAtShop);
       });
       this.overlay.push(leave.bg, leave.label);
@@ -823,8 +815,7 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     // Recruiter / story: a terminal pick — record the step and report the outcome.
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     const lines = [out.summary, "", `Purse now ${this.run.camp.gold}g.`];
     if (out.recruited) lines.push(`${out.recruited.name} now rides with the caravan.`);
     this.loop.recordEventNight(out.goldDelta);
@@ -868,8 +859,7 @@ export class OverworldScene extends Phaser.Scene {
   private showSurvey(): void {
     this.clearMap();
     this.clearCamp();
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     this.campNode = currentNode(this.run);
     this.refreshCampText();
 
@@ -960,8 +950,7 @@ export class OverworldScene extends Phaser.Scene {
     const gate = nightEndGate(this.run);
     if (!gate.warn) return this.toMap();
     // Hard-stop with a forced look only when warranted; never a per-night chore.
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2 - 10;
     const w = 560;
@@ -979,8 +968,7 @@ export class OverworldScene extends Phaser.Scene {
   /** Leave the Survey for the map (the gate already cleared). */
   private toMap(): void {
     this.clearCamp();
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     this.campNode = undefined;
     this.drawMap();
   }
@@ -997,8 +985,7 @@ export class OverworldScene extends Phaser.Scene {
    * through {@link buildLedger}.
    */
   private showLedgerPanel(onClose: () => void): void {
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     const node = this.campNode ?? currentNode(this.run);
     const merchantReady = node.kind === "rest" && this.run.party.some((u) => u.alive && u.jobId === "merchant") && cooldownRemaining(this.run.overworld, "market") === 0;
     const ledger: Ledger = buildLedger(this.run, { influence: this.guild?.influence ?? 0, marketReady: merchantReady });
@@ -1106,7 +1093,7 @@ export class OverworldScene extends Phaser.Scene {
     if (ledger.marketReady) {
       this.overlay.push(this.makeTextButton(leftX + 90, by, 170, 28, "Jump to Market", COLOR.btnFill, COLOR.gold, () => { this.merchantBuyKit(); this.showLedgerPanel(onClose); }).setDepth(26));
     }
-    this.overlay.push(this.makeTextButton(rightX - 60, by, 110, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => { for (const o of this.overlay) o.destroy(); this.overlay = []; onClose(); }).setDepth(26));
+    this.overlay.push(this.makeTextButton(rightX - 60, by, 110, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => { clearLayer(this.overlay); onClose(); }).setDepth(26));
   }
 
   /** A signed gold figure for the ledger (`+5g` / `-5g`). */
@@ -1200,8 +1187,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private showOverlay(title: string, body: string, good: boolean, w = 480, h = 200, onContinue?: () => void): void {
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2 - 20;
     this.overlay.push(
@@ -1211,8 +1197,7 @@ export class OverworldScene extends Phaser.Scene {
     );
     if (onContinue) {
       const btn = this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
-        for (const o of this.overlay) o.destroy();
-        this.overlay = [];
+        clearLayer(this.overlay);
         onContinue();
       });
       this.overlay.push(btn);

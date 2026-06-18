@@ -1,7 +1,7 @@
 # Glossary — canonical keywords for player-facing text
 
 > Referenced by: [Design Overview](README.md), [The overworld](systems/overworld.md)
-> (the node lifecycle / D46 terminology note this doc lifts and extends).
+> (the node lifecycle / *D46* terminology note this doc lifts and extends).
 > Scope: **the words the player reads** — node menus, buttons, HUD readouts, hints,
 > tooltips, event panels. Not internal identifiers (those are code's business).
 
@@ -51,7 +51,7 @@ Predictable shape makes copy scannable without reading every word:
   can't cover the purse") may keep natural sentence casing — they read as prose, not as
   labels.
 
-## Lifecycle — the node spine (D46)
+## Lifecycle — the node spine (*D46*)
 
 The one canonical sequence. These four are **fixed keywords**; never substitute.
 
@@ -88,7 +88,7 @@ The one canonical sequence. These four are **fixed keywords**; never substitute.
 
 > **`g` suffix** marks gold amounts (`120g`, `pay 8g`). **Influence is never
 > suffixed `g`** and never summed into a gold total — that separation is load-bearing
-> (D34). **"Burn"** stays flavor/forecast prose for *upkeep-per-step*; the readout
+> (*D34*). **"Burn"** stays flavor/forecast prose for *upkeep-per-step*; the readout
 > noun is **Upkeep**.
 
 ## Map & nodes
@@ -149,7 +149,7 @@ letting bare "Rest" stand alone as a clickable label*:
 | The Survey-beat recovery action | **In-place rest** | "Rest" |
 | Spending RP on the wounded | **Triage Heal** | "Rest" / "Heal" |
 
-> The design doc (D46) already bans reusing "rest" for the *gate*. This extends that
+> The design doc (*D46*) already bans reusing "rest" for the *gate*. This extends that
 > ban: bare "Rest" is **only** ever the node kind's event name; every other meaning
 > carries its qualifier.
 
@@ -166,7 +166,7 @@ Event **node names and teasers are flavor** (Layer 2) and stay evocative. Their
 | **Tollgate** | "a known fee to pass" | (auto-resolves; fee shown in Forecast) |
 | **A Choice on the Road** | story prompt + options | options are flavor; consequences are prose |
 
-## Guild hall & caravans (D25–D34)
+## Guild hall & caravans (*D25–D34*)
 
 The home tier. Plenty of vessel flavor (Stable, Dispatch, In Flight) — but the
 **people-and-pool nouns must not drift**, since the guild and a caravan both hold
@@ -187,11 +187,11 @@ characters.
 | **The Stable** | Where caravans sit (assembling / in flight / empty). | "garage"; "fleet" (in the label) |
 | **Hire** | Recruit a **Mercenary** with gold. | "Buy"; "Recruit" *as the gold verb* (Recruit is the broad concept) |
 
-**Roster tiers (D33)** — fixed keywords, never re-skinned: **Mercenary** (gold-hired,
+**Roster tiers (*D33*)** — fixed keywords, never re-skinned: **Mercenary** (gold-hired,
 expendable) · **Companion** (authored, earned not bought) · **Lord** (authored,
 campaign-critical; death = game-over).
 
-## Deployment (D7/D11 · the on-map setup phase)
+## Deployment (*D7/D11* · the on-map setup phase)
 
 The "earlier that day" placement phase — distinct from the guild's **Dispatch** and
 the overworld's **camp**. Flavor lives in the spotted/netted prose; the meters and
@@ -209,7 +209,7 @@ buttons are Layer 1.
 > *netted* / *bolting for cover* (Layer 2); the **status word** on the HUD is
 > **Captured** and the region word is **Cover** (Layer 1).
 
-## Combat (D5 · the CT clock)
+## Combat (*D5* · the CT clock)
 
 The isometric battle. The clock vocabulary is fixed canon — players learn it once and
 read it everywhere.
@@ -232,7 +232,7 @@ read it everywhere.
 New statuses follow the pattern (a single capitalized adjective/noun); check this list
 before coining one so two effects never share a word.
 
-**Vision ladder (D18):** the canonical tiers are **Hidden → Pinged → Seen** (with
+**Vision ladder (*D18*):** the canonical tiers are **Hidden → Pinged → Seen** (with
 **ghost markers** for spotted-then-lost foes, and an **ambush bonus** for breaking from
 Hidden). These are **design canon**; in-battle *prose* may stay evocative ("stirs in
 ambush," "springs from cover") — but any **tier label or legend key** uses the ladder

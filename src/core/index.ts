@@ -35,6 +35,7 @@ export * from "./forecast";
 export * from "./ledger";
 export * from "./leveling";
 export * from "./dossier";
+export * from "./manifest";
 export * from "./run";
 export * from "./runloop";
 export * from "./playtest-log";

@@ -82,6 +82,7 @@ import type { RunHandoff } from "./OverworldScene";
 import { Button } from "../button";
 import { HintPanel } from "../hint-panel";
 import { dropNet as dropNetCage } from "../deploy-fx";
+import { ICON } from "../icons";
 
 /**
  * Board zoom for the real combat field (D-UX): enlarge tiles + tokens so details
@@ -500,7 +501,7 @@ export class BattleScene extends Phaser.Scene {
     }
     removeItem(this.run.inventory, "trap-kit", 1);
     const { x, y } = this.tileToWorld(tile);
-    const marker = this.add.text(x, y - this.view.halfH(), "✸", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
+    const marker = this.add.text(x, y - this.view.halfH(), ICON.trapMine.glyph, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
     this.boardObjects.push(marker);
     this.placedTraps.push({ pos: { ...tile }, damage: this.trapDamage, marker, sprung: false });
     // The signature deploy action levels its owner now (D32/D53).
@@ -544,7 +545,7 @@ export class BattleScene extends Phaser.Scene {
       const t = this.placedTraps.find((t) => !t.sprung && t.pos.col === tile.col && t.pos.row === tile.row);
       if (t) {
         t.sprung = true;
-        t.marker.setText("✺").setColor(INK.disabled);
+        t.marker.setText(ICON.trapSprung.glyph).setColor(INK.disabled);
         this.tweens.add({ targets: t.marker, scale: 1.8, duration: 140, yoyo: true });
       }
     });
@@ -581,7 +582,7 @@ export class BattleScene extends Phaser.Scene {
     this.setPrimary("Advance Clock");
     const bound = this.battle.units.find((u) => u.captured && u.side === "player");
     const trapHint = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0
-      ? "Traps are seeded ahead — watch for ▲, and let a trapper disarm them. "
+      ? `Traps are seeded ahead — watch for ${ICON.trapArmed.glyph}, and let a trapper disarm them. `
       : "";
     this.setHint((healed > 0 ? `Chef's stew restored ${healed} HP. ` : "Battle begins. ") + trapHint + (bound ? `${bound.name} is bound — rescue or win to free her. ` : "") + "Press Advance Clock.");
   }
@@ -720,7 +721,7 @@ export class BattleScene extends Phaser.Scene {
     const found = revealTrapsNear(actor, this.battle.entities, this.spotRng, { search });
     if (found.length > 0) {
       this.redrawTrapMarkers();
-      this.setHint(`${actor.name} spots ${found.length} hidden trap${found.length > 1 ? "s" : ""}! (▲)`);
+      this.setHint(`${actor.name} spots ${found.length} hidden trap${found.length > 1 ? "s" : ""}! (${ICON.trapArmed.glyph})`);
     }
   }
 
@@ -763,8 +764,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Sync the board markers to the concealed traps: a ⚠ on each revealed armed trap,
-   * a faded ✕ once sprung, and nothing for disarmed (removed) ones.
+   * Sync the board markers to the concealed traps: a {@link ICON.trapArmed} on each
+   * revealed armed trap, a faded {@link ICON.trapSprung} once sprung, and nothing for
+   * disarmed (removed) ones.
    */
   private redrawTrapMarkers(): void {
     const traps = this.battle.entities.all().filter(isConcealedTrap);
@@ -773,12 +775,12 @@ export class BattleScene extends Phaser.Scene {
       let m = this.trapMarkers.get(t.id);
       if (!m) {
         const { x, y } = this.tileToWorld(t.pos);
-        // ▲ (Geometric Shapes) renders in the monospace UI font; ⚠ does not.
-        m = this.add.text(x, y - this.view.halfH(), "▲", { color: "#e06b6b", fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.85);
+        // Glyphs come from the icon registry (D59) — all verified to render in the UI font.
+        m = this.add.text(x, y - this.view.halfH(), ICON.trapArmed.glyph, { color: "#e06b6b", fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.85);
         this.boardObjects.push(m);
         this.trapMarkers.set(t.id, m);
       }
-      m.setText(t.sprung ? "✕" : "▲").setColor(t.sprung ? INK.disabled : "#e06b6b");
+      m.setText(t.sprung ? ICON.trapSprung.glyph : ICON.trapArmed.glyph).setColor(t.sprung ? INK.disabled : "#e06b6b");
     }
     // Drop markers for disarmed traps (no longer registered).
     for (const [id, m] of this.trapMarkers) {
@@ -799,7 +801,7 @@ export class BattleScene extends Phaser.Scene {
       }
     }
     if (this.trapMarkers.size > 0 || sprang) this.redrawTrapMarkers();
-    if (sprang) this.setHint("💥 A hidden trap sprang!");
+    if (sprang) this.setHint(`${ICON.trapSprung.glyph} A hidden trap sprang!`);
   }
 
   /** The current combat node's banded preview (D24) — leverage for the Noble's bribe. */
@@ -983,14 +985,14 @@ export class BattleScene extends Phaser.Scene {
     const body = [
       "TOKENS",
       "  ● green — your party     ● red — enemy     ● grey — captured/bound",
-      "  ✸ your trap     ▲ spotted enemy trap     ✕ sprung trap",
+      `  ${ICON.trapMine.glyph} your trap     ${ICON.trapArmed.glyph} spotted enemy trap     ${ICON.trapSprung.glyph} sprung trap`,
       "",
       "TILES",
       "  green wash — safe deploy depth     blue wash — move range",
       "  gold outline — flank tile     red outline — strike target (red = lethal)",
       "  red wash — danger zone (toggle with T)",
       "",
-      "TURN ORDER rail (top-left): who acts next · ⏳ charging",
+      `TURN ORDER rail (top-left): who acts next · ${ICON.charging.glyph} charging`,
       "",
       "A TURN: click a tile to move, then attack / use a skill / Wait.",
       "  The move is undoable until you act — rethink freely.",
@@ -1344,8 +1346,8 @@ export class BattleScene extends Phaser.Scene {
       const status = o.status();
       const prog = o.progress();
       if (status === "failed") parts.push(`✗ ${o.spec.label} — failed`);
-      else if (status === "met") parts.push(`✓ ${o.spec.label} — secured`);
-      else if (prog !== undefined) parts.push(`⚠ ${o.spec.label} — ${Math.round(prog * 100)}%`);
+      else if (status === "met") parts.push(`${ICON.check.glyph} ${o.spec.label} — secured`);
+      else if (prog !== undefined) parts.push(`${ICON.warn.glyph} ${o.spec.label} — ${Math.round(prog * 100)}%`);
       else parts.push(`• ${o.spec.label}`);
     }
     this.objectiveText.setText(parts.join("    "));

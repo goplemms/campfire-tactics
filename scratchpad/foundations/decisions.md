@@ -1535,10 +1535,14 @@ trail of reasoning stays intact.
   - **`placeIcon()`** is the **atlas swap point**: v1 returns a Text glyph; give an entry a
     `frame` and teach `placeIcon` to prefer an atlas Image and call sites (board markers)
     don't change. The overworld node markers already route through it.
-  - **Migrated:** the whole overworld map (node glyphs, event icons, legend, fogged marker,
-    visited tick, the camp Advanced ▸/▾ toggle). **Follow-up:** the combat-view glyphs
-    (charging `◷`, lethal `†`, flank `‡`, trap markers, the 💥 hint) — registry entries exist;
-    the migration is mechanical.
+  - **Migrated — overworld:** node glyphs, event icons, legend, fogged marker, visited tick,
+    the camp Advanced ▸/▾ toggle.
+  - **Migrated — combat:** flank pip (`⚔`→`‡`), lethal (`☠`→`†`), charging (`⏳`→`◷`), the
+    trap markers (player `✸`, armed `▲`, sprung `✕`), the trap-sprang hint (`💥` dropped), the
+    objective-progress mark (`⚠`→`!`), and the L-legend block. The whole render layer now reads
+    one registry. **Core status glyphs stay in `core/status.ts`** (plain ASCII `I/S/X/H/G/F/M`)
+    — the core/render split means the game-side registry can't reach them, and they're safe.
 - **Spec:** `src/game/icons.ts` (`ICON`, `IconKey`, `legendLine`, `placeIcon`),
-  `src/game/scenes/OverworldScene.ts` (`eventVisual`/`drawNode`/`drawFogged`/`drawMapLegend`).
+  `src/game/scenes/OverworldScene.ts`, `src/game/combat-view.ts`,
+  `src/game/scenes/BattleScene.ts`.
 - **Superseded by:** —

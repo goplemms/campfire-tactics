@@ -58,6 +58,7 @@ export const ICON = {
   expand: { glyph: "▸", label: "expand" },
   collapse: { glyph: "▾", label: "collapse" },
   check: { glyph: "✓", label: "done", color: INK.success },
+  warn: { glyph: "!", label: "in progress", color: INK.ember },
 } as const satisfies Record<string, IconSpec>;
 
 export type IconKey = keyof typeof ICON;

@@ -24,6 +24,7 @@ import {
 } from "../core";
 import { COLOR, FONT, INK, WEIGHT } from "./theme";
 import { roleColor } from "./roles";
+import { ICON } from "./icons";
 
 /** A numeric `0xRRGGBB` colour as a Phaser/CSS `#rrggbb` string (for Text fills). */
 function hex(n: number): string {
@@ -31,7 +32,7 @@ function hex(n: number): string {
 }
 
 /** The flank pseudo-status — computed from board position, shown in the status vocabulary. */
-const FLANK_PIP = { glyph: "⚔", color: INK.danger, label: "Flanked" } as const;
+const FLANK_PIP = { glyph: ICON.flank.glyph, color: INK.danger, label: "Flanked" } as const;
 
 /** One status badge as glyph + (finite) duration + colour — the data a pip renders. */
 interface StatusPip {
@@ -276,8 +277,8 @@ export class CombatView {
       // A thin, semi-transparent threat line tipped with a chevron at the mark.
       g.lineStyle(1.5, COLOR.threat, 0.5);
       g.lineBetween(from.x, from.y - TILE_HEIGHT / 2, to.x, to.y - TILE_HEIGHT / 2);
-      // Incoming-damage tag over the threatened ally: "↘N" (skull if it would drop them).
-      const tag = intent.ability && intent.damage === 0 ? "snare" : `↘${intent.damage}${intent.lethal ? "☠" : ""}`;
+      // Incoming-damage tag over the threatened ally: "→N" (lethal mark if it would drop them).
+      const tag = intent.ability && intent.damage === 0 ? "snare" : `→${intent.damage}${intent.lethal ? ICON.lethal.glyph : ""}`;
       const label = this.scene.add
         .text(to.x, to.y - TILE_HEIGHT / 2 - 18, tag, { color: intent.lethal ? "#ff7a3a" : INK.danger, fontFamily: FONT.family, fontSize: FONT.nameplate, fontStyle: WEIGHT.bold })
         .setOrigin(0.5)
@@ -297,7 +298,7 @@ export class CombatView {
   /** Float an attack-forecast badge above a foe (best-case damage / flank / lethal). */
   private drawForecast(foe: Unit, f: { damage: number; lethal: boolean; flank: boolean }): void {
     const { x, y } = this.tileToWorld(foe.pos);
-    const text = `${f.flank ? "⚔" : ""}${f.damage}${f.lethal ? "☠" : ""}`;
+    const text = `${f.flank ? ICON.flank.glyph : ""}${f.damage}${f.lethal ? ICON.lethal.glyph : ""}`;
     const color = f.lethal ? "#ff7a3a" : f.flank ? INK.gold : INK.ember;
     const label = this.scene.add
       .text(x, y - TILE_HEIGHT / 2 - 30, text, { color, fontFamily: FONT.family, fontSize: FONT.caption, fontStyle: WEIGHT.bold })
@@ -360,7 +361,7 @@ export class CombatView {
       chip.bg.setPosition(x, top).setFillStyle(active ? COLOR.surfaceAlt : COLOR.surface, active ? 0.95 : 0.55).setStrokeStyle(active ? 1.5 : 1, active ? COLOR.accent : COLOR.border).setAlpha(r.dead ? 0.4 : 1).setVisible(true);
       chip.dot.setPosition(x + 13, mid).setFillStyle(sideFill).setStrokeStyle(2, roleColor(r.u, sideEdge)).setVisible(true);
       chip.name.setPosition(x + 24, mid - 4).setText(shortName(r.u.name)).setColor(r.dead ? INK.disabled : active ? INK.primary : INK.secondary).setVisible(true);
-      chip.ct.setPosition(x + CombatView.CHIP_W - 7, mid - 4).setText(r.dead ? "✕" : `${Math.round(r.u.ct)}${isCharging(r.u) ? "⏳" : ""}`).setColor(r.dead ? INK.disabled : active ? INK.ember : INK.muted).setVisible(true);
+      chip.ct.setPosition(x + CombatView.CHIP_W - 7, mid - 4).setText(r.dead ? "✕" : `${Math.round(r.u.ct)}${isCharging(r.u) ? ICON.charging.glyph : ""}`).setColor(r.dead ? INK.disabled : active ? INK.ember : INK.muted).setVisible(true);
       const frac = r.u.maxHp > 0 ? Math.max(0, r.u.hp) / r.u.maxHp : 0;
       const hpW = 88;
       chip.hpBg.setPosition(x + 24, mid + 6).setSize(hpW, 3).setVisible(!r.dead);

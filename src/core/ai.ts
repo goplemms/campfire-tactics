@@ -80,14 +80,18 @@ export interface AIOptions {
 }
 
 /**
- * A copy of `grid` with every unit's tile blocked, except those in `allow`.
- * Lets A* route between units without walking through them (the render still uses
- * it for player movement / rescue / approach).
+ * A copy of `grid` with unit tiles blocked, except those in `allow`. Lets A* route
+ * between units without walking through them (the render uses it for player
+ * movement / rescue / approach). When `passAllyOf` is given, **living, un-captured
+ * units of that side are passable** — A* may route *through* a friendly body (a
+ * unit still can't *stop* on an occupied tile; callers trim the destination). This
+ * is the "move through your own ranks" rule (D55): bodies no longer box a unit in.
  */
 export function occupiedGrid(
   grid: TileGrid,
   units: readonly Unit[],
   allow: readonly Unit[] = [],
+  passAllyOf?: Side,
 ): TileGrid {
   const blocked: GridCoord[] = [];
   for (let row = 0; row < grid.rows; row++) {
@@ -96,7 +100,9 @@ export function occupiedGrid(
     }
   }
   for (const u of units) {
-    if (u.alive && !allow.includes(u)) blocked.push({ col: u.pos.col, row: u.pos.row });
+    if (!u.alive || allow.includes(u)) continue;
+    if (passAllyOf && u.side === passAllyOf && !u.captured) continue; // a friendly body — pass through
+    blocked.push({ col: u.pos.col, row: u.pos.row });
   }
   return new TileGrid(grid.cols, grid.rows, blocked);
 }
@@ -128,9 +134,12 @@ function ringTilesAgainst(unit: Unit, units: readonly Unit[]): Set<string> {
 /**
  * Cost-limited flood (Dijkstra) of the tiles `unit` can reach this turn within
  * its move budget, treating tarpit-ring tiles as high-cost. Includes the start
- * tile (cost 0). Other living units block tiles. The render layer reuses this to
- * tint the move-range preview (pass `budget = effectiveMove(unit)` so the preview
- * accounts for a Swift buff; the AI uses the default base `moveRange`).
+ * tile (cost 0). **Friendly bodies are passable** — the flood routes *through* a
+ * living ally but never *stops* on an occupied tile (D55: bodies no longer box a
+ * unit in); enemy and captured bodies still block the lane outright. The render
+ * layer reuses this to tint the move-range preview (pass `budget =
+ * effectiveMove(unit)` so the preview accounts for a Swift buff; the AI uses the
+ * default base `moveRange`).
  */
 export function reachableTiles(
   unit: Unit,
@@ -138,9 +147,13 @@ export function reachableTiles(
   grid: TileGrid,
   budget: number = isImmobilized(unit) ? 0 : unit.moveRange,
 ): Reach[] {
-  const occupied = new Set(
-    units.filter((u) => u.alive && u !== unit).map((u) => tileKey(u.pos)),
+  const others = units.filter((u) => u.alive && u !== unit);
+  // Enemies (and any captured body) block the lane; living allies are passable.
+  const blocking = new Set(
+    others.filter((u) => u.side !== unit.side || u.captured).map((u) => tileKey(u.pos)),
   );
+  // Any body — friend or foe — makes a tile an invalid place to *stop*.
+  const occupied = new Set(others.map((u) => tileKey(u.pos)));
   const ring = ringTilesAgainst(unit, units);
   const best = new Map<string, Reach>();
   const start: Reach = { tile: unit.pos, cost: 0, path: [] };
@@ -152,7 +165,7 @@ export function reachableTiles(
     if (cur.cost > (best.get(tileKey(cur.tile))?.cost ?? Infinity)) continue;
     for (const nb of grid.walkableNeighbors(cur.tile)) {
       const k = tileKey(nb);
-      if (occupied.has(k)) continue;
+      if (blocking.has(k)) continue; // an enemy/captured body — can't pass
       const next = cur.cost + (ring.has(k) ? AI.ringCost : 1);
       if (next > budget) continue;
       if (next < (best.get(k)?.cost ?? Infinity)) {
@@ -162,7 +175,8 @@ export function reachableTiles(
       }
     }
   }
-  return [...best.values()];
+  // A friendly tile can be crossed but not landed on — drop occupied stops.
+  return [...best.values()].filter((r) => !occupied.has(tileKey(r.tile)));
 }
 
 /** Damage `unit` would deal to `foe` **if it stood at `from`** (flank-aware). */

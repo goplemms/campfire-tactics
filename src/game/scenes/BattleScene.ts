@@ -8,6 +8,10 @@ import {
   planAttack,
   findPath,
   occupiedGrid,
+  reachableTiles,
+  forecastAttack,
+  effectiveMove,
+  isImmobilized,
   isAdjacent,
   TileGrid,
   TILE_HEIGHT,
@@ -132,6 +136,8 @@ export class BattleScene extends Phaser.Scene {
   private primary!: Button;
   private actionButtons: Phaser.GameObjects.GameObject[] = [];
   private overlay: Phaser.GameObjects.GameObject[] = [];
+  /** The toggleable Legend & Keys panel (L) — empty when hidden. */
+  private legend: Phaser.GameObjects.GameObject[] = [];
 
   // Deployment state (D11): a shared camp-alert meter + a seeded roll stream.
   private deployActor: Unit | null = null;
@@ -201,8 +207,9 @@ export class BattleScene extends Phaser.Scene {
     this.primary = this.makeTextButton(this.scale.width / 2, this.scale.height - 26, 200, 34, "", COLOR.successDeep, COLOR.success, () => this.onPrimary());
     this.primary.setDepth(12);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
-    // T toggles the danger-zone overlay (every tile an enemy could hit this turn).
-    this.input.keyboard?.on("keydown-T", () => { this.showThreat = !this.showThreat; this.drawPreview(); });
+    // Keyboard shortcuts (D55 QoL): one handler routes every key — see onKey / the
+    // Legend (L) for the full list. The harness sets __SHOT__ for headless captures.
+    this.input.keyboard?.on("keydown", (e: KeyboardEvent) => this.onKey(e));
 
     this.startCombatNode();
   }
@@ -393,13 +400,21 @@ export class BattleScene extends Phaser.Scene {
   private deployMove(tile: GridCoord): void {
     const actor = this.deployActor;
     if (!actor || actor.captured || this.busy) return;
-    const nav = occupiedGrid(this.grid, this.battle.units, [actor]);
+    const nav = occupiedGrid(this.grid, this.battle.units, [actor], actor.side); // route through friendly bodies (D55)
     const path = findPath(nav, actor.pos, tile);
     if (!path || path.length < 2) {
       this.setHint("Can't move there.");
       return;
     }
-    const steps = path.slice(1).slice(0, actor.moveRange);
+    // Clamp to the move budget, then back off any trailing tile a friendly body
+    // sits on — you can cross an ally but not stop on one (D55).
+    const occupied = new Set(this.battle.units.filter((u) => u.alive && u !== actor).map((u) => `${u.pos.col},${u.pos.row}`));
+    let steps = path.slice(1).slice(0, actor.moveRange);
+    while (steps.length > 0 && occupied.has(`${steps[steps.length - 1].col},${steps[steps.length - 1].row}`)) steps = steps.slice(0, -1);
+    if (steps.length === 0) {
+      this.setHint("Can't stop there — an ally holds the only tile in reach.");
+      return;
+    }
     actor.pos = { ...steps[steps.length - 1] };
     this.busy = true;
     this.animateMove(actor, steps, () => {
@@ -592,10 +607,50 @@ export class BattleScene extends Phaser.Scene {
       this.waitingFor = actor;
       // The active unit looks around — an Awareness roll may spot nearby traps (D12).
       this.spotTrapsForActor(actor);
-      this.setHint(`${actor.name}'s turn — move, attack, or use a skill.`);
       this.showSkillButtons(actor);
       this.drawPreview();
+      // Auto-pass a unit with nothing it can do (D55): no move, no strike, no verb —
+      // so a boxed-in or fully-spent unit never stalls the clock waiting on a click.
+      if (this.noActionsAvailable(actor)) {
+        this.setHint(`${actor.name} has no available action — turn passed. Advance Clock.`);
+        this.waitUnit(actor);
+        return;
+      }
+      this.setHint(`${actor.name}'s turn — move, attack, use a skill, or Wait (W).`);
     }
+  }
+
+  /**
+   * True when `actor` has no legal action this turn (D55): can't reach a tile,
+   * can't strike any foe, has no battle skill, and no Search/Disarm/Bribe/rescue
+   * verb. The auto-pass backstop reads this so a surrounded unit can't deadlock.
+   */
+  private noActionsAvailable(actor: Unit): boolean {
+    const units = this.battle.units;
+    const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+    if (reachableTiles(actor, units, this.grid, budget).some((r) => r.tile.col !== actor.pos.col || r.tile.row !== actor.pos.row)) return false;
+    if (units.some((u) => u.alive && !u.captured && u.side !== actor.side && forecastAttack(actor, u, units, this.grid))) return false;
+    if (units.some((u) => u.captured && u.side === actor.side && u !== actor && isAdjacent(actor.pos, u.pos))) return false;
+    if (unlockedSkills(actor, "battle").length > 0) return false;
+    if (hiddenTraps(this.battle.entities).length > 0) return false; // Search is available
+    if (this.adjacentRevealedTrap(actor) && canDisarm(actor)) return false;
+    if (this.guild && units.some((u) => u.side === "enemy" && u.alive)) return false; // Bribe
+    return true;
+  }
+
+  /** Pass the active unit's turn without acting (the Wait verb + auto-pass backstop). */
+  private waitUnit(actor: Unit): void {
+    if (this.busy || this.waitingFor !== actor) return;
+    this.waitingFor = null;
+    this.armedSkill = null;
+    this.pendingHerb = null;
+    this.bribeArmed = false;
+    this.busy = true;
+    this.clearActionButtons();
+    this.highlightTile(null);
+    this.battle.endTurn(actor, {}); // no move, no act — spends the least CT
+    this.afterTurn();
+    if (!this.over) this.setHint(`${actor.name} waits. Advance Clock.`);
   }
 
   private showSkillButtons(actor: Unit): void {
@@ -637,6 +692,9 @@ export class BattleScene extends Phaser.Scene {
         onClick: () => this.doDisarm(actor, adjTrap.id),
       });
     }
+    // Always offer a Wait (W): end the turn without acting — the universal backstop
+    // so a boxed-in unit is never stuck (D55).
+    specs.push({ text: "Wait (W)", description: "End this unit's turn without acting (spends the least time on the clock).", onClick: () => this.waitUnit(actor) });
     this.layoutActionRow(specs);
   }
 
@@ -841,6 +899,85 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  // --- Keyboard + legend (D55 QoL) -------------------------------------------
+
+  /**
+   * The single keyboard router. Global keys (Legend, danger zone, cancel, the
+   * primary/Advance action) work in any phase; the rest are scoped to whose turn
+   * it is. Number keys 1–9 trigger the active unit's battle skills in listed order.
+   */
+  private onKey(e: KeyboardEvent): void {
+    const k = e.key;
+    if (k === "l" || k === "L") return this.toggleLegend();
+    if (this.legend.length > 0 && k === "Escape") return this.toggleLegend();
+    if (k === "t" || k === "T") { this.showThreat = !this.showThreat; this.drawPreview(); return; }
+    if (k === " " || k === "Enter") { e.preventDefault(); this.onPrimary(); return; }
+    if (k === "Escape") return this.cancelArmed();
+
+    if (this.phase === "deployment") {
+      if (k === "Tab") { e.preventDefault(); this.cycleDeployActor(); }
+      return;
+    }
+    if (this.phase !== "battle" || this.busy || this.over) return;
+    const actor = this.waitingFor;
+    if (!actor) return;
+    if (k === "w" || k === "W") return this.waitUnit(actor);
+    if (k >= "1" && k <= "9") {
+      const skills = unlockedSkills(actor, "battle");
+      const idx = Number(k) - 1;
+      if (idx < skills.length) this.onSkillButton(actor, skills[idx]);
+    }
+  }
+
+  /** Esc — back out of an armed skill / herb pick / bribe without spending the turn. */
+  private cancelArmed(): void {
+    if (!this.armedSkill && !this.bribeArmed && !this.pendingHerb) return;
+    const actor = this.waitingFor;
+    this.armedSkill = null;
+    this.bribeArmed = false;
+    this.pendingHerb = null;
+    if (actor) {
+      this.showSkillButtons(actor);
+      this.setHint(`${actor.name}'s turn — move, attack, use a skill, or Wait (W).`);
+    }
+    this.drawPreview();
+  }
+
+  /** Toggle the Legend & Keys panel (L) — a quick reference for tokens + shortcuts. */
+  private toggleLegend(): void {
+    if (this.legend.length > 0) {
+      for (const o of this.legend) o.destroy();
+      this.legend = [];
+      return;
+    }
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+    const w = 520;
+    const h = 320;
+    const body = [
+      "TOKENS",
+      "  ● green — your party     ● red — enemy     ● grey — captured/bound",
+      "  ✸ your trap     ▲ spotted enemy trap     ✕ sprung trap",
+      "",
+      "TILES",
+      "  green wash — safe deploy depth     blue wash — move range",
+      "  gold outline — flank tile     red outline — strike target (red = lethal)",
+      "  red wash — danger zone (toggle with T)",
+      "",
+      "TURN ORDER rail (top-left): who acts next · ⏳ charging",
+      "",
+      "KEYS",
+      "  Space/Enter — Advance Clock / confirm      W — Wait (pass turn)",
+      "  1–9 — use the active unit's skills          Esc — cancel a targeted skill",
+      "  T — danger zone        L — this legend       Tab — next unit (deploy)",
+    ].join("\n");
+    this.legend.push(
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.btnStroke).setDepth(30),
+      this.add.text(cx, cy - h / 2 + 20, "Legend & Keys  (L to close)", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(31),
+      this.add.text(cx - w / 2 + 22, cy - h / 2 + 44, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption, lineSpacing: 3 }).setOrigin(0, 0).setDepth(31),
+    );
+  }
+
   private onPointerDown(pointer: Phaser.Input.Pointer): void {
     const tile = this.worldToTile(pointer.worldX, pointer.worldY);
     if (!this.grid || !this.grid.inBounds(tile)) return;
@@ -888,10 +1025,12 @@ export class BattleScene extends Phaser.Scene {
 
   private playerRescueOrApproach(actor: Unit, captive: Unit): void {
     if (isAdjacent(actor.pos, captive.pos)) return this.commitRescue(actor, [], captive);
-    const nav = occupiedGrid(this.grid, this.battle.units, [actor, captive]);
+    const nav = occupiedGrid(this.grid, this.battle.units, [actor, captive], actor.side); // route through friendly bodies (D55)
     const path = findPath(nav, actor.pos, captive.pos);
     if (!path || path.length < 2) return this.setHint("No path to your captured ally.");
-    const approach = path.slice(1, -1).slice(0, actor.moveRange);
+    const occupied = new Set(this.battle.units.filter((u) => u.alive && u !== actor && u !== captive).map((u) => `${u.pos.col},${u.pos.row}`));
+    let approach = path.slice(1, -1).slice(0, actor.moveRange);
+    while (approach.length > 0 && occupied.has(`${approach[approach.length - 1].col},${approach[approach.length - 1].row}`)) approach = approach.slice(0, -1);
     const dest = approach.length > 0 ? approach[approach.length - 1] : actor.pos;
     this.commitRescue(actor, approach, isAdjacent(dest, captive.pos) ? captive : null);
   }

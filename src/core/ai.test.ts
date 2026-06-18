@@ -90,14 +90,22 @@ describe("reachableTiles (shared by the AI + the render-side move preview)", () 
     expect(reach.length).toBe(13);
   });
 
-  it("routes around other units (they block tiles) and honors the budget override", () => {
+  it("routes *through* a friendly body (can't stop on it) but is blocked by a foe (D55)", () => {
     const grid = new TileGrid(7, 1);
     const u = at("u", "player", 0, 0, 5);
-    const wall = at("w", "player", 2, 0); // a friendly body blocks col 2
-    const base = keys(reachableTiles(u, [u, wall], grid));
+    const ally = at("a", "player", 2, 0); // a friendly body — passable, not a valid stop
+    const base = keys(reachableTiles(u, [u, ally], grid));
     expect(base.has("1,0")).toBe(true);
-    expect(base.has("2,0")).toBe(false); // occupied
-    expect(base.has("3,0")).toBe(false); // unreachable past the block on a 1-row map
+    expect(base.has("2,0")).toBe(false); // occupied — can't stop here
+    expect(base.has("3,0")).toBe(true); // passed *through* the ally to reach the far side
+    expect(base.has("5,0")).toBe(true); // 5 tiles out, crossing the ally
+
+    // An enemy body still blocks the lane outright.
+    const foe = at("f", "enemy", 2, 0);
+    const walled = keys(reachableTiles(u, [u, foe], grid));
+    expect(walled.has("1,0")).toBe(true);
+    expect(walled.has("3,0")).toBe(false); // can't pass through a foe
+
     // A Swift-style budget override only widens what the default flood would reach.
     const wide = keys(reachableTiles(u, [u], grid, 6));
     expect(wide.has("6,0")).toBe(true);

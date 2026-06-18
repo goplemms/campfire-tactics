@@ -1378,3 +1378,34 @@ trail of reasoning stays intact.
 - **Spec:** `src/core/traps.ts`, `entities.makeConcealedTrap`/`makeTrap` (status), `jobs` (Scout
   `set-snare`), `hollow-mill` (*The Sapper's Snares*).
 - **Superseded by:** —
+
+## D55 — Playtest QoL: move-through-allies, no-action auto-pass, keyboard + legend
+
+- **Status:** Decided (2026-06-18) · pre-playtest quality-of-life pass; touches the
+  **D42** movement/AI seam (`reachableTiles`/`occupiedGrid`) and the `BattleScene`
+  interaction layer
+- **Context:** A first hands-on pass surfaced a hard stall: a player unit ringed by
+  bodies had **zero reachable tiles**, and the battle had **no way to pass a turn**, so
+  the clock deadlocked (`onAdvance` early-returns while a unit is "waiting"). Bodies
+  hard-blocked movement, there was a single keyboard shortcut (`T`), and nothing
+  explained the board's vocabulary to a new tester.
+- **Decision:** Four moves, all aimed at letting a playtest feel the *game* and not the
+  friction.
+  - **Move through your own ranks:** `reachableTiles` and the `occupiedGrid`-backed
+    `planMove`/`planAttack` (plus deploy/rescue) now route **through living, un-captured
+    allies** — a unit can cross a friendly body but never *stop* on an occupied tile
+    (callers trim a budget-clamped path back to the last free tile). **Enemy and captured
+    bodies still block the lane** (zone-of-control preserved). Symmetric: the AI and the
+    danger-zone read it too.
+  - **No-action auto-pass + Wait:** every player turn offers an explicit **Wait (W)**
+    verb, and a unit with *no* legal action (no reachable tile, no strikeable foe, no
+    skill/Search/Disarm/Bribe/rescue) **auto-passes** — the universal backstop so the
+    clock can never stall.
+  - **Keyboard:** one `keydown` router — **Space/Enter** = Advance/confirm, **W** = Wait,
+    **1–9** = the active unit's skills, **Esc** = cancel a targeted skill/bribe, **T** =
+    danger zone, **L** = legend, **Tab** = next unit (deploy).
+  - **Legend (L):** a toggleable Tokens / Tiles / Turn-order / Keys reference panel.
+- **Spec:** `src/core/ai.ts` (`reachableTiles`, `occupiedGrid` `passAllyOf`),
+  `src/core/planning.ts` (`stoppablePrefix`), `src/game/scenes/BattleScene.ts`
+  (`onKey`, `waitUnit`, `noActionsAvailable`, `toggleLegend`).
+- **Superseded by:** —

@@ -18,6 +18,19 @@ describe("planMove", () => {
     const actor = at("a", "player", 2, 0);
     expect(planMove(actor, { col: 2, row: 0 }, [actor], new TileGrid(8, 1))).toBeNull();
   });
+
+  it("routes *through* a friendly body, stopping on the first free tile beyond it (D55)", () => {
+    const actor = at("a", "player", 0, 0, 3);
+    const ally = at("b", "player", 1, 0); // a friendly body in the lane
+    const path = planMove(actor, { col: 4, row: 0 }, [actor, ally], new TileGrid(8, 1));
+    expect(path).toEqual([{ col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }]);
+  });
+
+  it("returns null when the only reachable step lands on a friendly body (can't stop there)", () => {
+    const actor = at("a", "player", 0, 0, 1); // move 1
+    const ally = at("b", "player", 1, 0); // directly blocking the single step
+    expect(planMove(actor, { col: 2, row: 0 }, [actor, ally], new TileGrid(8, 1))).toBeNull();
+  });
 });
 
 describe("planAttack", () => {
@@ -45,6 +58,14 @@ describe("planAttack", () => {
     const foe = at("f", "enemy", 5, 0);
     const plan = planAttack(actor, foe, [actor, foe], new TileGrid(8, 1));
     expect(plan).toEqual({ path: [{ col: 1, row: 0 }], attackTarget: null });
+  });
+
+  it("closes *through* a friendly body to reach and strike the foe (D55)", () => {
+    const actor = at("a", "player", 0, 0, 3, 1);
+    const ally = at("b", "player", 1, 0); // a friendly body between actor and foe
+    const foe = at("f", "enemy", 4, 0);
+    const plan = planAttack(actor, foe, [actor, ally, foe], new TileGrid(8, 1));
+    expect(plan).toEqual({ path: [{ col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }], attackTarget: foe });
   });
 });
 

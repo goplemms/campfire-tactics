@@ -103,6 +103,9 @@ export class OverworldScene extends Phaser.Scene {
   // The unified overworld camp (D35): objects + the node currently camped at.
   private campObjects: Phaser.GameObjects.GameObject[] = [];
   private campNode?: MapNode;
+  /** Camp progressive disclosure (D58): the optional Banker/Noble/Market economy is
+   *  collapsed by default so the everyday camp reads as a few obvious actions. */
+  private campAdvanced = false;
 
   private titleText!: Phaser.GameObjects.Text;
   private campText!: Phaser.GameObjects.Text;
@@ -363,6 +366,7 @@ export class OverworldScene extends Phaser.Scene {
     this.clearMap();
     this.loop.choose(node.id);
     this.campNode = node;
+    this.campAdvanced = false; // every camp opens with the economy tucked away (D58)
     this.renderCamp();
   }
 
@@ -379,7 +383,7 @@ export class OverworldScene extends Phaser.Scene {
         ? `Event — ${this.loop.eventDef().name}`
         : "Rest";
     this.titleText.setText(`Make Camp — Night ${this.run.night + 1} · ${kindLabel}`);
-    this.setHint("Make Camp: provision, pay Upkeep, read the ledger — then End the Night to face the node. Cooldowns tick when you Break Camp.");
+    this.setHint("Make Camp: provision, heal, glance the ledger — then End the Night. The Banker/Noble economy lives under ‘Advanced’; safe to ignore early.");
 
     const cx = this.scale.width / 2;
     const panelW = 720;
@@ -387,65 +391,56 @@ export class OverworldScene extends Phaser.Scene {
     const colX = cx - panelW / 2 + 30;
     const rowH = 30;
 
-    // --- Overworld actions (the new economy, D35) ---
+    // --- Camp: the signature non-combat job actions + everyday provisioning ---
     this.campObjects.push(
-      this.add.text(colX - 10, top - 6, "Overworld Actions", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+      this.add.text(colX - 10, top - 6, "Camp", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
     );
     let y = top + 22;
-
-    // Scout — one button per reachable node ahead (the chosen target, D24/D35).
-    const scout = getAbility("scout")!;
-    const ahead = this.loop.reachable();
-    for (const target of ahead) {
-      const actor = this.scoutActor();
-      const label = `Scout → ${target.id} (${target.kind})  ·  ${this.costReadout(scout, actor)}`;
-      const refusal = this.refusal(scout, actor);
-      this.campButton(colX, y, 360, 24, label, !refusal, () => this.doOverworldAction(actor, "scout", { targetNodeId: target.id }), refusal ?? scout.description);
-      y += rowH;
-    }
-
-    // Market — the Merchant's ACCESS verb (D30) as an overworld action.
-    const market = getAbility("market")!;
-    const marketActor = this.marketActor();
-    const mRefusal = this.refusal(market, marketActor);
-    this.campButton(colX, y, 360, 24, `${marketActor.name}: Market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? market.description);
-    y += rowH + 8;
-
-    // --- Camp / meta actions (the folded-in Meta phase + provisioning) ---
-    this.campObjects.push(
-      this.add.text(colX - 10, y, "Camp", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
-    );
-    y += 22;
     for (const u of this.run.party) {
       for (const skill of unitSkills(u, "meta")) {
         this.campButton(colX, y, 360, 24, `${u.name}: ${skill.name}`, true, () => this.useCampSkill(u, skill), `${skill.name} — ${skill.description}`);
         y += rowH;
       }
     }
-    this.campButton(colX, y, 360, 24, "Load Trap Kit (15g)", true, () => this.provisionTrapKit(), "Buy a Trap Kit into storage (1 slot) for the Survivalist.");
+    // One trap-kit buy (D58): Merchant-priced if one rides along, else the flat rate.
+    const kitPrice = this.trapKitPrice(node);
+    this.campButton(colX, y, 360, 24, `Buy Trap Kit (${kitPrice}g)`, true, () => this.buyTrapKit(), "Buy a Trap Kit into storage (1 slot) for the Scout/Survivalist. Cheaper at a town/rest node, or with a Merchant in the party.");
     y += rowH;
     this.campButton(colX, y, 360, 24, "Triage Heal", true, () => this.triage(), "Spend Rest Points to heal the most-wounded fighter one chunk (D9).");
     y += rowH + 8;
 
-    // --- The gold economy verbs (M10, D30/D34): purse-scoped, never the treasury ---
-    this.campObjects.push(
-      this.add.text(colX - 10, y, "Economy (Merchant / Banker / Noble)", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
-    );
-    y += 22;
-    // Merchant ACCESS — buy supply into storage from the PURSE, node-tier price.
-    const buyPrice = node.kind === "rest" ? ECONOMY.merchant.townPrice : ECONOMY.merchant.wildPrice;
-    this.campButton(colX, y, 360, 24, `Merchant: Buy Trap Kit (${buyPrice}g purse, ${node.kind === "rest" ? "town" : "wild"})`, true, () => this.merchantBuyKit(), "Merchant ACCESS (D30): spend run-gold to buy a Trap Kit into storage — cheaper at a town/rest node.");
+    // --- Advanced ▸ : the optional gold economy, collapsed by default (D58) ---
+    this.campButton(colX, y, 360, 24, `${this.campAdvanced ? "▾" : "▸"}  Advanced — Banker · Noble · Market`, true, () => { this.campAdvanced = !this.campAdvanced; this.renderCamp(); }, "Optional economy verbs: interest, borrowing, theft protection, influence, and the market. Safe to leave alone while you learn the loop.");
     y += rowH;
-    // Banker TIME-SHIFT + SECURE — purse interest, buy-on-debt, theft protection.
-    this.campButton(colX, y, 360, 24, "Banker: Engage Purse Interest", true, () => this.bankerInterest(), "Banker TIME-SHIFT (D30): the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
-    y += rowH;
-    this.campButton(colX, y, 360, 24, "Banker: Buy-on-Debt (+40g now)", true, () => this.bankerBorrow40(), "Banker (D30): overspend now; auto-repaid from incoming run gold.");
-    y += rowH;
-    this.campButton(colX, y, 360, 24, `Banker: Theft Protection (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker SECURE (D30): blunt a thief's skim — battle thief and event node alike.");
-    y += rowH;
-    // Noble INFLUENCE — political income → Influence (a walled-off currency).
-    this.campButton(colX, y, 360, 24, "Noble: Collect Political Income", !!this.guild, () => this.nobleIncome(), "Noble INFLUENCE (D30/D34): earn Influence — a separate currency that can never pay Upkeep. Bribe enemies mid-battle.");
-    const leftBottom = y + 16;
+    if (this.campAdvanced) {
+      const subX = colX + 16;
+      const subW = 344;
+      const market = getAbility("market")!;
+      const marketActor = this.marketActor();
+      const mRefusal = this.refusal(market, marketActor);
+      this.campButton(subX, y, subW, 24, `Shop the market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? "Merchant ACCESS (D30): open the market to buy supply into storage from the purse.");
+      y += rowH;
+      this.campButton(subX, y, subW, 24, "Invest the purse", true, () => this.bankerInterest(), "Banker (D30): the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
+      y += rowH;
+      this.campButton(subX, y, subW, 24, "Borrow 40g", true, () => this.bankerBorrow40(), "Banker (D30): overspend now; auto-repaid from incoming run gold.");
+      y += rowH;
+      this.campButton(subX, y, subW, 24, `Guard the purse (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker (D30): blunt a thief's skim — battle thief and event node alike.");
+      y += rowH;
+      this.campButton(subX, y, subW, 24, "Gather influence", !!this.guild, () => this.nobleIncome(), "Noble (D30/D34): earn Influence — a separate currency that can never pay Upkeep. Bribe enemies mid-battle.");
+      y += rowH;
+      // The Banker's purse-state, moved off the always-on HUD line into context (D58).
+      const eco = this.run.overworld;
+      const bank: string[] = [];
+      if (eco.interestPerStep > 0) bank.push(`interest +${eco.interestPerStep}g/step`);
+      if (eco.debt > 0) bank.push(`debt ${eco.debt}g`);
+      if (eco.protection > 0) bank.push(`protection ${Math.round(eco.protection * 100)}%`);
+      if (this.guild) bank.push(`Influence ${this.guild.influence}`);
+      if (bank.length) {
+        this.campObjects.push(this.add.text(subX, y, bank.join("   ·   "), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11));
+        y += rowH;
+      }
+    }
+    const leftBottom = y + 8;
 
     // --- Fatigue meter (per-character, banded — à la the morale readout) ---
     const meterX = cx + 60;
@@ -545,6 +540,23 @@ export class OverworldScene extends Phaser.Scene {
     if (out.bankedHeal) parts.push(`banked +${out.bankedHeal} HP/unit`);
     if (out.levels > 0) parts.push(`${actor.name} reached L${actor.level}!`);
     this.setHint(`${skill.name}: ${parts.join(", ")}.`);
+  }
+
+  /** Whether a Merchant rides along — they price (and route) the trap-kit buy. */
+  private hasMerchant(): boolean {
+    return this.run.party.some((u) => u.alive && u.jobId === "merchant");
+  }
+
+  /** The trap-kit price shown on the single Buy button (D58): Merchant tier, else flat. */
+  private trapKitPrice(node: MapNode): number {
+    if (this.hasMerchant()) return node.kind === "rest" ? ECONOMY.merchant.townPrice : ECONOMY.merchant.wildPrice;
+    return 15;
+  }
+
+  /** The one trap-kit buy (D58): the Merchant ACCESS price/route if present, else flat. */
+  private buyTrapKit(): void {
+    if (this.hasMerchant()) this.merchantBuyKit();
+    else this.provisionTrapKit();
   }
 
   private provisionTrapKit(): void {
@@ -1119,17 +1131,14 @@ export class OverworldScene extends Phaser.Scene {
 
   private refreshCampText(): void {
     const tier = moraleTier(this.run.camp.morale);
-    const eco = this.run.overworld;
-    // The PURSE is camp.gold (D34); surface the Banker's purse-scoped state too.
-    const bank: string[] = [];
-    if (eco.interestPerStep > 0) bank.push(`int +${eco.interestPerStep}/step`);
-    if (eco.debt > 0) bank.push(`debt ${eco.debt}g`);
-    if (eco.protection > 0) bank.push(`protect ${Math.round(eco.protection * 100)}%`);
-    const bankStr = bank.length ? `  ·  ${bank.join(" · ")}` : "";
-    const influenceStr = this.guild ? `  ·  Influence ${this.guild.influence}` : "";
+    // The always-on line is the four decision-relevant groups only (D58): Purse,
+    // Morale, Storage/Kits, RP/Upkeep. The Banker's purse-state + Influence moved
+    // into the camp's Advanced panel / ledger, where they're actionable.
+    const upkeep = computeUpkeep(this.run.party).total;
     this.campText.setText(
       `Purse ${this.run.camp.gold}g  ·  Morale ${tier} (${this.run.camp.morale})  ·  ` +
-        `Storage ${slotsUsed(this.run.inventory)}/${this.run.inventory.storageCap}  ·  Kits ${countOf(this.run.inventory, "trap-kit")}  ·  RP ${this.run.rp}${bankStr}${influenceStr}`,
+        `Storage ${slotsUsed(this.run.inventory)}/${this.run.inventory.storageCap} (Kits ${countOf(this.run.inventory, "trap-kit")})  ·  ` +
+        `RP ${this.run.rp}  ·  Upkeep ${upkeep}g/night`,
     );
   }
 

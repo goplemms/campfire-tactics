@@ -1479,3 +1479,30 @@ trail of reasoning stays intact.
   (`runEnemyTurn(unit, policy)`), `src/core/runloop.ts` (`policy` field + `autoBattle`),
   `src/core/sim.ts` (`SimOptions.policy`).
 - **Superseded by:** —
+
+## D58 — Decluttering the overworld camp (tier + collapse)
+
+- **Status:** Decided (2026-06-18) · UX/legibility pass on the **D35** unified camp; pure
+  presentation — the loop, actions and rules are untouched
+- **Context:** First-look feedback: the Make Camp screen is dense and opaque to a newcomer.
+  It stacked **~13–15 buttons** in three equal-weight sections (Overworld Actions / Camp /
+  Economy), had **two trap-kit buys**, surfaced **Scout on both camp and Survey**, leaked
+  class-verb jargon into labels ("Engage Purse Interest", "Buy-on-Debt", "Collect Political
+  Income"), and crammed **9 stats** onto the always-on HUD line.
+- **Decision:** Tier the screen by what a player actually decides, hiding depth (not cutting
+  it). Pure `OverworldScene` presentation.
+  - **Primary, always visible:** the signature job meta-skills (Chef/Merchant — *the hook*),
+    a single **Buy Trap Kit** (Merchant-priced if one rides along, else flat — kills the
+    duplicate), **Triage Heal**, the **Ledger**, and the prominent **End the Night** CTA.
+  - **Advanced ▸ (collapsed by default):** the optional gold economy — Market, Banker
+    (invest / borrow / guard), Noble (gather influence) — behind one toggle, with the
+    Banker's purse-state (interest/debt/protection) + Influence shown *there*, in context.
+  - **De-jargoned labels:** plain verbs ("Invest the purse", "Borrow 40g", "Guard the
+    purse", "Gather influence", "Shop the market"); the class + mechanic live in the hover.
+  - **Trimmed HUD line** to the four decision-relevant groups: **Purse · Morale · Storage
+    (Kits) · RP · Upkeep/night**.
+  - **Scout** removed from the pre-mission camp (you've already chosen the node) — it stays
+    on the **Survey** beat where planning-ahead belongs.
+- **Spec:** `src/game/scenes/OverworldScene.ts` (`renderCamp` tiering + `campAdvanced`
+  toggle, `trapKitPrice`/`buyTrapKit`, `refreshCampText`).
+- **Superseded by:** —

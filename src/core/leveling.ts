@@ -15,7 +15,7 @@
  * Pure logic: no Phaser, no DOM, no `Math.random` (leveling is deterministic).
  */
 
-import type { Unit, UnitStats } from "./units";
+import { primaryJobOf, type Unit, type UnitStats } from "./units";
 import { getJob, unitSkills } from "./jobs";
 import type { SkillDef, Phase } from "./skills";
 import type { EventBus } from "./events";
@@ -218,7 +218,7 @@ export function abilityScaleBonus(unit: Unit): number {
  * gates here — locked at job-L1, unlocked at L2 (the rest-beat payoff).
  */
 export function unlockedSkills(unit: Unit, phase?: Phase): SkillDef[] {
-  const lvl = jobLevelOf(unit, unit.primaryJob ?? unit.jobId);
+  const lvl = jobLevelOf(unit, primaryJobOf(unit));
   return unitSkills(unit, phase).filter((s) => (s.unlockLevel ?? 1) <= lvl);
 }
 
@@ -234,7 +234,7 @@ export function routeCombatXp(
 ): { charLevels: number; jobLevels: number } {
   const charLevels = grantXp(unit, amount);
   let jobLevels = 0;
-  const primary = unit.primaryJob ?? unit.jobId;
+  const primary = primaryJobOf(unit);
   if (primary) jobLevels += grantJobXp(unit, primary, amount);
   for (const j of unit.heldJobs) {
     if (j !== primary) grantJobXp(unit, j, Math.floor(amount * LEVELING.secondaryRate));

@@ -13,7 +13,7 @@
  * a wipe and replay a seed.
  */
 
-import type { Unit } from "./units";
+import { healUnit, woundedBySeverity, type Unit } from "./units";
 import { Battle } from "./turn";
 import {
   type RunState,
@@ -251,9 +251,7 @@ export class RunLoop {
 
     // Auto-triage: heal the worst-off fighters first, spending the RP pool down.
     const healed: { unitId: string; hp: number }[] = [];
-    const wounded = combatRoster(this.run)
-      .filter((u) => u.hp < u.maxHp)
-      .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+    const wounded = woundedBySeverity(combatRoster(this.run));
     for (const u of wounded) {
       if (this.run.rp < policy.rpPerChunk) break;
       const res = triageHeal(u, this.run.rp, policy);
@@ -309,9 +307,7 @@ export class RunLoop {
     });
 
     // Refuse at full health (no empty drain, D47) — only wounded fighters count.
-    const wounded = combatRoster(this.run)
-      .filter((u) => u.hp < u.maxHp)
-      .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+    const wounded = woundedBySeverity(combatRoster(this.run));
     if (wounded.length === 0) return refuse("The party is already at full health.");
 
     // Gold cap (D47): refuse if the purse can't cover a full night's rations — no
@@ -340,9 +336,7 @@ export class RunLoop {
     }
     // Floor (D47): a paid rest on a wounded party always restores ≥1 HP.
     if (hpHealed < RECOVERY.inPlaceFloorHp) {
-      const before = target.hp;
-      target.hp = Math.min(target.maxHp, target.hp + RECOVERY.inPlaceFloorHp);
-      hpHealed += target.hp - before;
+      hpHealed += healUnit(target, RECOVERY.inPlaceFloorHp);
     }
     if (hpHealed > 0) healed.push({ unitId: target.id, hp: hpHealed });
 
@@ -503,58 +497,15 @@ export class RunLoop {
 
     // Rewards + material recovery + XP — **win only** (forfeited otherwise, D51/D53).
     let goldEarned = 0;
-    const recovered: string[] = [];
-    let levels: Record<string, { charLevels: number; jobLevels: number }> = {};
-    if (won) {
-      const mods = moraleModifiers(moraleTier(this.run.camp.morale));
-      goldEarned = Math.round(source.reward.gold * (1 + mods.goldFindBonus));
-      // Loot routes to the PURSE (D34), auto-repaying any Banker debt first (D30).
-      gainRunGold(this.run, goldEarned);
-      for (const drop of source.reward.materials) {
-        // Add drops up to the storage cap; overflow is simply lost (D6).
-        for (let i = 0; i < drop.count; i++) addItem(this.run.inventory, drop.id);
-      }
-      const rec = recoverMaterials(battle.entities.all(), "player", this.run.inventory);
-      recovered.push(...rec.recovered);
+    let recovered: string[] = [];
+    let levels: ResolveResult["levels"] = {};
+    if (won) ({ goldEarned, recovered, levels } = this.applyRewards(source, battle));
 
-      // Combat-event XP (D53): commit the bus tally + the objective reward.xp to the
-      // survivors of resolution — no mid-battle level-ups, none on a non-win.
-      const survivors = this.combatants.filter((u) => u.alive && !u.captured);
-      const tally: CombatXpTally = { ...(this.xpTally ?? {}) };
-      const objXp = source.reward.xp ?? 0;
-      if (objXp > 0) for (const u of survivors) tally[u.id] = (tally[u.id] ?? 0) + objXp;
-      levels = commitCombatXp(tally, survivors);
-    }
+    // Captives: auto-rescued on a win, else turned into rescue follow-ups (D21).
+    const { rescued, rescueQuests } = this.resolveRescues(won, policy);
 
-    // Auto-rescue still-captured allies on a win (D21); else a rescue follow-up.
-    const rescued: string[] = [];
-    const rescueQuests: RescueQuest[] = [];
-    for (const u of this.combatants) {
-      if (!u.captured) continue;
-      if (won) {
-        freeCaptive(u);
-        rescued.push(u.id);
-      } else {
-        rescueQuests.push(resolveCaptured(policy, u)); // a follow-up quest, not death
-      }
-    }
-
-    // Mortality (D9): on a **survivable** outcome (win OR objective-failure), resolve
-    // every downed player combatant per the difficulty policy — the same retreat path
-    // (D51). A **wipe** is the run-ending loss; there's no camp to recover in.
-    const downed: DownedOutcome[] = [];
-    const permadeaths: string[] = [];
-    if (survivable) {
-      for (const u of this.combatants) {
-        if (u.alive || u.captured) continue;
-        const res = resolveDowned(policy, u);
-        downed.push(res);
-        if (res.permadeath) {
-          removeFromRoster(this.run, u);
-          permadeaths.push(u.id);
-        }
-      }
-    }
+    // Mortality (D9): downed player combatants resolve on a survivable outcome (D51).
+    const { downed, permadeaths } = this.resolveMortalities(survivable, policy);
 
     // Record the graded node outcome + advance the night/terminal (D51). recordNight
     // sets the run terminal: a win at the final node = complete; any other final-node
@@ -584,6 +535,84 @@ export class RunLoop {
     const out: ResolveResult = { winner, result, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, levels, over };
     recordEncounter(this.log, this.run, out);
     return out;
+  }
+
+  /**
+   * The **win payout** (D8/D13/D53): reward gold (morale gold-find) routed to the
+   * purse, material drops under the storage cap, recovered unsprung materials, and
+   * the combat-event tally + objective `reward.xp` committed to resolution's
+   * survivors. Mutates the run; returns the feedback slice. Win-only (D51/D53).
+   */
+  private applyRewards(
+    source: EncounterSource,
+    battle: Battle,
+  ): Pick<ResolveResult, "goldEarned" | "recovered" | "levels"> {
+    const mods = moraleModifiers(moraleTier(this.run.camp.morale));
+    const goldEarned = Math.round(source.reward.gold * (1 + mods.goldFindBonus));
+    // Loot routes to the PURSE (D34), auto-repaying any Banker debt first (D30).
+    gainRunGold(this.run, goldEarned);
+    for (const drop of source.reward.materials) {
+      // Add drops up to the storage cap; overflow is simply lost (D6).
+      for (let i = 0; i < drop.count; i++) addItem(this.run.inventory, drop.id);
+    }
+    const recovered = recoverMaterials(battle.entities.all(), "player", this.run.inventory).recovered;
+
+    // Combat-event XP (D53): commit the bus tally + the objective reward.xp to the
+    // survivors of resolution — no mid-battle level-ups, none on a non-win.
+    const survivors = this.combatants.filter((u) => u.alive && !u.captured);
+    const tally: CombatXpTally = { ...(this.xpTally ?? {}) };
+    const objXp = source.reward.xp ?? 0;
+    if (objXp > 0) for (const u of survivors) tally[u.id] = (tally[u.id] ?? 0) + objXp;
+    const levels = commitCombatXp(tally, survivors);
+    return { goldEarned, recovered, levels };
+  }
+
+  /**
+   * Resolve captives (D21): auto-freed on a win, else turned into rescue follow-up
+   * quests (not death). Mutates freed units; returns the rescue slice.
+   */
+  private resolveRescues(
+    won: boolean,
+    policy: ReturnType<typeof runDifficulty>,
+  ): Pick<ResolveResult, "rescued" | "rescueQuests"> {
+    const rescued: string[] = [];
+    const rescueQuests: RescueQuest[] = [];
+    for (const u of this.combatants) {
+      if (!u.captured) continue;
+      if (won) {
+        freeCaptive(u);
+        rescued.push(u.id);
+      } else {
+        rescueQuests.push(resolveCaptured(policy, u)); // a follow-up quest, not death
+      }
+    }
+    return { rescued, rescueQuests };
+  }
+
+  /**
+   * Mortality (D9): on a **survivable** outcome (win OR objective-failure), resolve
+   * every downed player combatant per the difficulty policy — the same retreat path
+   * (D51). A **wipe** is the run-ending loss; there's no camp to recover in, so this
+   * resolves nothing. Mutates the roster (permadeath removal); returns the slice.
+   */
+  private resolveMortalities(
+    survivable: boolean,
+    policy: ReturnType<typeof runDifficulty>,
+  ): Pick<ResolveResult, "downed" | "permadeaths"> {
+    const downed: DownedOutcome[] = [];
+    const permadeaths: string[] = [];
+    if (survivable) {
+      for (const u of this.combatants) {
+        if (u.alive || u.captured) continue;
+        const res = resolveDowned(policy, u);
+        downed.push(res);
+        if (res.permadeath) {
+          removeFromRoster(this.run, u);
+          permadeaths.push(u.id);
+        }
+      }
+    }
+    return { downed, permadeaths };
   }
 
   // --- Headless auto-play (tests / fast-forward) ----------------------------

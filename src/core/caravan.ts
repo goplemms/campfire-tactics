@@ -23,6 +23,7 @@
  */
 
 import type { Unit } from "./units";
+import { nonNegInt } from "./num";
 
 /** A vessel type — the authored tradeoff axis (D25). Pure data. */
 export interface VesselType {
@@ -206,7 +207,7 @@ export function loadSupply(caravan: Caravan, materialId: string, n = 1): void {
 
 /** Set the caravan's purse (the treasury→purse load at dispatch, D34). */
 export function loadPurse(caravan: Caravan, amount: number): void {
-  caravan.purse = Math.max(0, Math.floor(amount));
+  caravan.purse = nonNegInt(amount);
 }
 
 /** Clear a caravan back to empty/assembling (after a return or a wipe). */

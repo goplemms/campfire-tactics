@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { COLOR, FONT, INK } from "./theme";
-import { fitText } from "./ui";
+import { fitText, isScreenshotMode } from "./ui";
 
 const Events = Phaser.Input.Events;
 
@@ -67,7 +67,7 @@ export class Button extends Phaser.GameObjects.Container {
   constructor(scene: Phaser.Scene, x: number, y: number, o: ButtonOptions) {
     super(scene, x, y);
     this.pad = o.pad ?? 10;
-    this.animate = !(typeof window !== "undefined" && (window as Window & { __SHOT__?: boolean }).__SHOT__);
+    this.animate = !isScreenshotMode();
     this.bg = scene.add.rectangle(0, 0, o.w, o.h, o.fill).setStrokeStyle(o.strokeWidth ?? 2, o.stroke);
     this.label = scene.add.text(0, 0, o.text, { color: o.color ?? INK.onSuccess, fontFamily: FONT.family, fontSize: o.fontSize ?? FONT.body }).setOrigin(0.5);
     this.add([this.bg, this.label]);

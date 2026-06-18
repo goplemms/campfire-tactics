@@ -9,6 +9,8 @@
 
 import type { GridCoord } from "./iso";
 import type { StatusInstance } from "./status";
+import type { JobId } from "./jobs";
+import type { EventBus } from "./events";
 
 /** Which side a unit fights for. */
 export type Side = "player" | "enemy";
@@ -50,15 +52,15 @@ export interface UnitSpec extends UnitStats {
   /** Starting HP; defaults to `maxHp`. */
   hp?: number;
   /** Optional job id (see {@link "./jobs"}); grants the unit its skills. */
-  jobId?: string;
+  jobId?: JobId;
   /**
    * The **primary** job designation (D38); defaults to `jobId`. Sets the baseline
    * frame, XP rate, loadout, and class-gated content. Any job can be primary —
    * the combat/non-combat split is dissolved.
    */
-  primaryJob?: string;
+  primaryJob?: JobId;
   /** Jobs this unit **holds** (D38), drawing skills from all; defaults to `[jobId]`. */
-  heldJobs?: string[];
+  heldJobs?: JobId[];
   /** Per-job levels (D39); defaults to empty (created on first XP grant). */
   jobLevels?: Record<string, JobLevel>;
   /**
@@ -131,11 +133,11 @@ export interface Unit extends UnitStats {
   /** Attack reach in tiles (D40); always set on a live unit (1 = melee). */
   attackRange: number;
   /** The unit's job, if any — the data that grants its skills. */
-  readonly jobId?: string;
+  readonly jobId?: JobId;
   /** Primary-job designation (D38); defaults to `jobId`. */
-  primaryJob?: string;
+  primaryJob?: JobId;
   /** Jobs this unit holds (D38) — skills are drawn from all of them. */
-  heldJobs: string[];
+  heldJobs: JobId[];
   /** Per-job levels (D39); grows via job XP, banking permanent stat gains. */
   jobLevels: Record<string, JobLevel>;
   /** Secondary loadout slots (D38): borrowed actives beyond the primary's kit. */
@@ -236,7 +238,36 @@ export function createUnit(spec: UnitSpec): Unit {
   };
 }
 
-/** Living units on a given side. */
-export function livingUnits(units: readonly Unit[], side?: Side): Unit[] {
-  return units.filter((u) => u.alive && (side === undefined || u.side === side));
+/**
+ * A unit's effective primary job (D38): its explicit `primaryJob`, else its
+ * `jobId`. The single accessor for the `primaryJob ?? jobId` idiom that recurred
+ * across the leveling, roles, and render layers.
+ */
+export function primaryJobOf(unit: Pick<Unit, "primaryJob" | "jobId">): JobId | undefined {
+  return unit.primaryJob ?? unit.jobId;
+}
+
+/**
+ * Restore HP to a unit, clamped to its `maxHp` (the symmetric counterpart of
+ * {@link "./combat".applyDamage}). The single place healing mutates a unit, so a
+ * `unitHealed` event fires from one seam: pass a {@link EventBus} (and optionally
+ * the `source` doing the healing) to emit it. Negative `amount`s are ignored.
+ * Returns the HP actually restored.
+ */
+export function healUnit(unit: Unit, amount: number, bus?: EventBus, source?: Unit): number {
+  const before = unit.hp;
+  unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(0, amount));
+  const healed = unit.hp - before;
+  if (healed > 0) bus?.emit("unitHealed", { unit, amount: healed, source });
+  return healed;
+}
+
+/**
+ * Wounded units (`hp < maxHp`) ordered **worst-off first** (by HP fraction) — the
+ * triage order the rest/heal flows spend their budget down. Pure; does not mutate.
+ */
+export function woundedBySeverity(units: readonly Unit[]): Unit[] {
+  return units
+    .filter((u) => u.hp < u.maxHp)
+    .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
 }

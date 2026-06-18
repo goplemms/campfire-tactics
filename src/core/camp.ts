@@ -10,7 +10,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit } from "./units";
+import { healUnit, type Unit } from "./units";
 import type { EventBus } from "./events";
 import type { SkillDef } from "./skills";
 import { grantAbilityUseXp } from "./leveling";
@@ -123,11 +123,7 @@ export function applyCampToParty(
   let total = 0;
   for (const u of units) {
     if (!u.alive || u.side !== "player") continue;
-    const before = u.hp;
-    u.hp = Math.min(u.maxHp, u.hp + camp.pendingHeal);
-    const healed = u.hp - before;
-    total += healed;
-    if (healed > 0) bus?.emit("unitHealed", { unit: u, amount: healed });
+    total += healUnit(u, camp.pendingHeal, bus);
   }
   camp.pendingHeal = 0;
   return total;

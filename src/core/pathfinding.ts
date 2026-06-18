@@ -7,17 +7,12 @@
  * for orthogonal movement, so A* returns a shortest path.
  */
 
-import type { GridCoord } from "./iso";
+import { tileKey, type GridCoord } from "./iso";
 import type { TileGrid } from "./grid";
 
 /** Manhattan distance — the admissible heuristic for 4-connected movement. */
 function manhattan(a: GridCoord, b: GridCoord): number {
   return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
-}
-
-/** Stable string key for a tile, for use in maps/sets. */
-function key(c: GridCoord): string {
-  return `${c.col},${c.row}`;
 }
 
 /**
@@ -39,7 +34,7 @@ export function findPath(
     return [start];
   }
 
-  const startKey = key(start);
+  const startKey = tileKey(start);
   const openSet = new Map<string, GridCoord>([[startKey, start]]);
   const cameFrom = new Map<string, GridCoord>();
   const gScore = new Map<string, number>([[startKey, 0]]);
@@ -69,7 +64,7 @@ export function findPath(
     const currentG = gScore.get(currentKey) ?? Infinity;
 
     for (const neighbor of grid.walkableNeighbors(current)) {
-      const neighborKey = key(neighbor);
+      const neighborKey = tileKey(neighbor);
       const tentativeG = currentG + 1;
       if (tentativeG < (gScore.get(neighborKey) ?? Infinity)) {
         cameFrom.set(neighborKey, current);
@@ -92,11 +87,11 @@ function reconstruct(
 ): GridCoord[] {
   const path: GridCoord[] = [goal];
   let current = goal;
-  let prev = cameFrom.get(key(current));
+  let prev = cameFrom.get(tileKey(current));
   while (prev) {
     path.unshift(prev);
     current = prev;
-    prev = cameFrom.get(key(current));
+    prev = cameFrom.get(tileKey(current));
   }
   return path;
 }

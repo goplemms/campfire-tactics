@@ -8,6 +8,7 @@ import {
   MEDIC,
   DEFEND,
   JOBS,
+  type JobId,
 } from "./jobs";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
@@ -19,7 +20,7 @@ import { makeTrap } from "./entities";
 import { createInventory, addItem, countOf } from "./inventory";
 import { MEDIC as _MEDIC } from "./jobs";
 
-function at(id: string, side: Side, col: number, row: number, jobId?: string, o: Partial<Unit> = {}): Unit {
+function at(id: string, side: Side, col: number, row: number, jobId?: JobId, o: Partial<Unit> = {}): Unit {
   const u = {
     ...createUnit({
       id,

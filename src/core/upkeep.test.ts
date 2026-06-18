@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
+import type { JobId } from "./jobs";
 import { createCamp } from "./camp";
 import { DIFFICULTIES } from "./mortality";
 import {
@@ -13,7 +14,7 @@ import {
   UPKEEP,
 } from "./upkeep";
 
-function member(id: string, jobId?: string): Unit {
+function member(id: string, jobId?: JobId): Unit {
   return createUnit({
     id,
     side: "player",

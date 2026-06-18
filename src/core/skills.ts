@@ -10,7 +10,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit } from "./units";
+import { healUnit, type Unit } from "./units";
 import type { EventBus } from "./events";
 import type { StatusInstance } from "./status";
 import { resolveAttack, manhattan, PASSIVE } from "./combat";
@@ -140,15 +140,6 @@ export type SkillEffect =
   | MoraleEffect
   | PlaceTrapEffect;
 
-/** Effect kinds resolved against a unit in the Battle phase. */
-export type BattleEffectKind =
-  | "damage"
-  | "heal"
-  | "status"
-  | "channel"
-  | "triage-heal"
-  | "cleanse";
-
 /**
  * Optional ability cost beyond the Act (D37). The combat economy is **time**:
  * `charge` commits now and resolves later on the clock; `cooldown` is a sparing
@@ -249,10 +240,7 @@ export function applyHeal(
   amount: number,
   bus?: EventBus,
 ): SkillOutcome {
-  const before = target.hp;
-  target.hp = Math.min(target.maxHp, target.hp + Math.max(0, amount));
-  const healed = target.hp - before;
-  bus?.emit("unitHealed", { unit: target, amount: healed, source: caster });
+  const healed = healUnit(target, amount, bus, caster);
   return { healed };
 }
 

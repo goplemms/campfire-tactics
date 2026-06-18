@@ -6,6 +6,7 @@ import { addVignette } from "../vignette";
 import {
   planMove,
   planAttack,
+  type ResolveResult,
   findPath,
   occupiedGrid,
   reachableTiles,
@@ -20,9 +21,11 @@ import {
   Battle,
   unitSkills,
   unlockedSkills,
+  DEFEND,
   isValidSkillTarget,
   makeTrap,
   canSee,
+  chebyshev,
   // M5b/D11 — deployment: the shared stealth-alert model
   removeItem,
   countOf,
@@ -80,6 +83,7 @@ import {
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
 import { Button } from "../button";
+import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
 import { dropNet as dropNetCage } from "../deploy-fx";
 import { ICON } from "../icons";
@@ -199,7 +203,7 @@ export class BattleScene extends Phaser.Scene {
     // bars, nameplates, status pips) so details stand out, especially in testing.
     // The procedural board is 8×6 and centred full-width, so it has room to grow.
     this.view.boardScale = BOARD_SCALE;
-    this.view.reduceMotion = !!(window as Window & { __SHOT__?: boolean }).__SHOT__;
+    this.view.reduceMotion = isScreenshotMode();
     // The campfire glow — a warm vignette over the board, beneath the tokens/HUD.
     addVignette(this);
     // Persistent UI.
@@ -233,8 +237,7 @@ export class BattleScene extends Phaser.Scene {
    * wipes the party, return straight to the overworld's run-end.
    */
   private startCombatNode(): void {
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
 
     // Between-battle bookkeeping: pay Upkeep, bank RP, tick dying clocks (D9/D15).
     const camp = this.loop.camp();
@@ -268,8 +271,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private rebuildBoard(): void {
-    for (const o of this.boardObjects) o.destroy();
-    this.boardObjects = [];
+    clearLayer(this.boardObjects);
     this.view.clearUnits();
     this.gridGfx?.destroy();
     this.safeZoneGfx?.destroy();
@@ -707,6 +709,9 @@ export class BattleScene extends Phaser.Scene {
         onClick: () => this.doDisarm(actor, adjTrap.id),
       });
     }
+    // The universal Defend (D41): every unit can brace until its next turn — the
+    // always-available defensive verb, even for a unit with no job actives.
+    specs.push({ text: "Defend (D)", description: `${DEFEND.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, DEFEND) });
     // Always offer a Wait (W): end the turn without acting — the universal backstop
     // so a boxed-in unit is never stuck (D55).
     specs.push({ text: "Wait (W)", description: "End this unit's turn without acting (spends the least time on the clock).", onClick: () => this.waitUnit(actor) });
@@ -730,7 +735,7 @@ export class BattleScene extends Phaser.Scene {
     return this.battle.entities
       .all()
       .filter(isConcealedTrap)
-      .find((t) => t.revealed && !t.sprung && Math.max(Math.abs(t.pos.col - actor.pos.col), Math.abs(t.pos.row - actor.pos.row)) <= 1);
+      .find((t) => t.revealed && !t.sprung && chebyshev(t.pos, actor.pos) <= 1);
   }
 
   /** Spend the turn on a deliberate Search — a wider radius and a better spot roll. */
@@ -944,6 +949,7 @@ export class BattleScene extends Phaser.Scene {
     const actor = this.waitingFor;
     if (!actor) return;
     if (k === "w" || k === "W") return this.waitUnit(actor);
+    if (k === "d" || k === "D") return this.onSkillButton(actor, DEFEND);
     if (k >= "1" && k <= "9") {
       const skills = unlockedSkills(actor, "battle");
       const idx = Number(k) - 1;
@@ -974,8 +980,7 @@ export class BattleScene extends Phaser.Scene {
   /** Toggle the Legend & Keys panel (L) — a quick reference for tokens + shortcuts. */
   private toggleLegend(): void {
     if (this.legend.length > 0) {
-      for (const o of this.legend) o.destroy();
-      this.legend = [];
+      clearLayer(this.legend);
       return;
     }
     const cx = this.scale.width / 2;
@@ -1197,24 +1202,9 @@ export class BattleScene extends Phaser.Scene {
     this.highlightTile(null);
     this.clearActionButtons();
 
-    // Any thief still standing at the bell got away with its skim (D13/D21).
-    let goldEscaped = 0;
-    for (const [id, attempt] of this.theftAttempts) {
-      if (attempt.resolved) continue;
-      const thief = this.battle.units.find((u) => u.id === id);
-      if (thief && thief.alive) goldEscaped += thiefEscapes(attempt);
-    }
-
+    const goldEscaped = this.tallyEscapedThieves();
     const res = this.loop.resolve();
-
-    // Mid-combat bribe → recruitment (D33): permanent (authored) turncoats join the
-    // guild roster after the battle; generics were temporary (just fought it out).
-    const recruited: string[] = [];
-    if (this.guild) {
-      for (const u of this.pendingRecruits) {
-        if (recruitToRoster(this.guild, u)) recruited.push(u.name);
-      }
-    }
+    const recruited = this.commitPendingRecruits();
 
     this.refreshCampText();
     this.refreshHp();
@@ -1222,11 +1212,52 @@ export class BattleScene extends Phaser.Scene {
     // Re-tint any freed allies.
     for (const u of this.run.party) if (!u.captured) this.tintCaptured(u, false);
 
-    // Three-way graded terminal (D50/D51): win / objective-failure / wipe — each a
-    // distinct overlay, all routed through the single loop.resolve() above.
+    const { title, good, lines } = this.buildResolutionSummary(res, goldEscaped, recruited);
+    this.showOverlay(title, lines.join("\n"), good, 480, 200);
+    this.setHint(`Resolution — ${lines.join("  ")}`);
+    // On any terminal (wipe / loss / run-complete) the overworld shows the end
+    // screen; otherwise the player returns to the map to pick the next node.
+    this.setPrimary(res.over ? (this.loop.isComplete() ? "See Results" : "Run Over") : "Return to Map");
+  }
+
+  /** Gold carried off by any thief still standing at the bell (D13/D21). */
+  private tallyEscapedThieves(): number {
+    let goldEscaped = 0;
+    for (const [id, attempt] of this.theftAttempts) {
+      if (attempt.resolved) continue;
+      const thief = this.battle.units.find((u) => u.id === id);
+      if (thief && thief.alive) goldEscaped += thiefEscapes(attempt);
+    }
+    return goldEscaped;
+  }
+
+  /**
+   * Mid-combat bribe → recruitment (D33): permanent (authored) turncoats join the
+   * guild roster after the battle; generics were temporary (just fought it out).
+   * Returns the names that joined.
+   */
+  private commitPendingRecruits(): string[] {
+    const recruited: string[] = [];
+    if (this.guild) {
+      for (const u of this.pendingRecruits) {
+        if (recruitToRoster(this.guild, u)) recruited.push(u.name);
+      }
+    }
+    return recruited;
+  }
+
+  /**
+   * Build the three-way graded terminal (D50/D51) — win / objective-failure / wipe —
+   * as a title, tone, and the body lines (rewards, casualties, level-ups, theft +
+   * recruitment outcomes). Pure assembly off the resolved result; shows nothing.
+   */
+  private buildResolutionSummary(
+    res: ResolveResult,
+    goldEscaped: number,
+    recruited: string[],
+  ): { title: string; good: boolean; lines: string[] } {
     const won = res.result === "win";
     const title = won ? "Victory!" : res.result === "objective-failure" ? "Objective Failed — Retreat" : "Defeat";
-    const good = won;
     const lines: string[] = [];
     if (won) {
       lines.push(`+${res.goldEarned} gold.`);
@@ -1258,12 +1289,7 @@ export class BattleScene extends Phaser.Scene {
       lines.push(`Thieves skimmed ${this.goldStolen}g — recovered ${this.goldRecovered}g${goldEscaped > 0 ? `, ${goldEscaped}g escaped` : ""}.`);
     }
     if (recruited.length) lines.push(`Swayed to the guild (permanent): ${recruited.join(", ")}.`);
-
-    this.showOverlay(title, lines.join("\n"), good, 480, 200);
-    this.setHint(`Resolution — ${lines.join("  ")}`);
-    // On any terminal (wipe / loss / run-complete) the overworld shows the end
-    // screen; otherwise the player returns to the map to pick the next node.
-    this.setPrimary(res.over ? (this.loop.isComplete() ? "See Results" : "Run Over") : "Return to Map");
+    return { title, good: won, lines };
   }
 
   /** Hand the run back to the overworld so the player can pick the next node. */
@@ -1272,8 +1298,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showOverlay(title: string, body: string, good: boolean, w = 480, h = 170): void {
-    for (const o of this.overlay) o.destroy();
-    this.overlay = [];
+    clearLayer(this.overlay);
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
     this.overlay.push(
@@ -1438,8 +1463,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private clearActionButtons(): void {
-    for (const obj of this.actionButtons) obj.destroy();
-    this.actionButtons = [];
+    clearLayer(this.actionButtons);
   }
 
   private layoutActionRow(specs: { text: string; description?: string; onClick: () => void }[]): void {

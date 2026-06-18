@@ -20,9 +20,8 @@
  *   {@link "./fatigue".spendFatigue | fatigue} on the **acting character** — the
  *   loose over-extension stake, not the pace. An over-extended actor pays a gentle
  *   surcharge and, when exhausted, can't push the most-demanding actions.
- * - **Per-ability costs (D34/D30, magic).** `gold` (the single existing run pool —
- *   the two-pool purse split is M10) and a `vancian` **typed stub** ride on top so
- *   M10/magic can fill them in without a reshape.
+ * - **Per-ability costs (D34/D30).** `gold` (the single existing run pool — the
+ *   two-pool purse split is M10) rides on top of the cooldown spine.
  *
  * Determinism (D22): cooldowns/fatigue are plain run state — **no live RNG**.
  *
@@ -39,9 +38,8 @@ import { grantAbilityUseXp } from "./leveling";
 
 /**
  * The per-ability **cost menu** an overworld ability declares (D29). `cooldown`
- * (node-steps) is the always-present spine; `fatigue`/`gold`/`vancian` are
- * optional per-ability costs layered on top. `vancian` is a **typed stub** for
- * M10/magic — declared so the menu is complete, **not wired** to any pool yet.
+ * (node-steps) is the always-present spine; `fatigue`/`gold` are optional
+ * per-ability costs layered on top.
  */
 export interface OverworldCost {
   /** Node-steps before this ability can be used again — the spine (D35). */
@@ -50,8 +48,6 @@ export interface OverworldCost {
   fatigue?: number;
   /** Run gold spent (D34/D30 — the single existing pool; the purse split is M10). */
   gold?: number;
-  /** Vancian charges (D17 magic) — a typed stub for M10; not wired in M8. */
-  vancian?: number;
 }
 
 /** Raise a chosen reachable node's intel preview tier (leans on {@link "./intel"}). */

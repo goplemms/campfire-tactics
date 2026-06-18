@@ -59,11 +59,6 @@ export function getExpedition(id: string): AuthoredExpedition | undefined {
   return CATALOG[id];
 }
 
-/** All registered expeditions (the launcher's menu). */
-export function allExpeditions(): AuthoredExpedition[] {
-  return Object.values(CATALOG);
-}
-
 // --- Validation (reuses the D22 connectivity invariants) ---------------------
 
 /**

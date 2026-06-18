@@ -17,7 +17,7 @@
  */
 
 import type { UnitSpec } from "./units";
-import { getJob } from "./jobs";
+import { getJob, type JobId } from "./jobs";
 import type { AuthoredEncounter } from "./authored";
 import type { OverworldMap, MapNode } from "./overworld";
 import { registerExpedition, type AuthoredExpedition } from "./expedition";
@@ -25,7 +25,7 @@ import { registerExpedition, type AuthoredExpedition } from "./expedition";
 // --- The party (D44) — the cast on the combat-depth classes (D40) -----------
 
 /** Build a party member from a job's baseline frame (D39). */
-function member(id: string, name: string, jobId: string, extra: Partial<UnitSpec> = {}): UnitSpec {
+function member(id: string, name: string, jobId: JobId, extra: Partial<UnitSpec> = {}): UnitSpec {
   const base = getJob(jobId)?.baseline;
   return {
     id,

@@ -13,6 +13,16 @@ export interface GridCoord {
   readonly row: number;
 }
 
+/** Stable string key for a tile, for use in `Map`/`Set` keys. */
+export function tileKey(c: GridCoord): string {
+  return `${c.col},${c.row}`;
+}
+
+/** Chebyshev (king-move) distance between two tiles — a square radius metric. */
+export function chebyshev(a: GridCoord, b: GridCoord): number {
+  return Math.max(Math.abs(a.col - b.col), Math.abs(a.row - b.row));
+}
+
 /** A point in screen/world space, in pixels. */
 export interface ScreenPoint {
   readonly x: number;

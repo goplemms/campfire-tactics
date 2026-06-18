@@ -13,7 +13,6 @@
 
 import type { Unit, UnitStats } from "./units";
 import type { Phase, SkillDef } from "./skills";
-import type { PhaseSkillRegistry } from "./phases";
 import { PASSIVE, FLANK } from "./combat";
 import { guarded, exposed, swift, immobilized } from "./status";
 
@@ -394,32 +393,33 @@ export const DEFEND: SkillDef = {
   effect: { kind: "status", status: guarded(1) },
 };
 
-/** The job registry — the single source jobs are loaded from. */
-export const JOBS: Record<string, JobDef> = {
-  [SOLDIER.id]: SOLDIER,
-  [SURVIVALIST.id]: SURVIVALIST,
-  [CHEF.id]: CHEF,
-  [MERCHANT.id]: MERCHANT,
-  [HEAVY_KNIGHT.id]: HEAVY_KNIGHT,
-  [HUNTER.id]: HUNTER,
-  [SCOUT_JOB.id]: SCOUT_JOB,
-  [MEDIC.id]: MEDIC,
-  [SNARE_TRAPPER.id]: SNARE_TRAPPER,
-};
-
-/** Look up a job by id. */
-export function getJob(id: string | undefined): JobDef | undefined {
-  return id === undefined ? undefined : JOBS[id];
-}
+/**
+ * The job registry — the single source jobs are loaded from. Written with literal
+ * keys (not `[SOLDIER.id]`) so the keys survive into the type and {@link JobId} can
+ * derive from them; `satisfies` still type-checks every value as a {@link JobDef}.
+ */
+export const JOBS = {
+  soldier: SOLDIER,
+  survivalist: SURVIVALIST,
+  chef: CHEF,
+  merchant: MERCHANT,
+  "heavy-knight": HEAVY_KNIGHT,
+  hunter: HUNTER,
+  scout: SCOUT_JOB,
+  medic: MEDIC,
+  "snare-trapper": SNARE_TRAPPER,
+} satisfies Record<string, JobDef>;
 
 /**
- * True if a unit can take the field. The combat/non-combat split is **dissolved**
- * (D38): *any* job can field (the Chef Defends as a body; the Merchant can swing).
- * Retained as a predicate (always true for a live roster member) so callers read
- * intent; the old `noncombat` flag now only informs camp/Upkeep/RP, not fielding.
+ * Every registered job id, derived from {@link JOBS}. Type `jobId`/`primaryJob`
+ * fields against this so a typo (or an unregistered class) is a **compile error**
+ * instead of a silently job-less unit — the keystone for adding new classes safely.
  */
-export function isCombatant(_unit: Unit): boolean {
-  return true;
+export type JobId = keyof typeof JOBS;
+
+/** Look up a job by id. Accepts any string (callers handle the `undefined` miss). */
+export function getJob(id: string | undefined): JobDef | undefined {
+  return id === undefined ? undefined : JOBS[id as JobId];
 }
 
 /**
@@ -440,20 +440,4 @@ export function unitSkills(unit: Unit, phase?: Phase): SkillDef[] {
   const job = getJob(unit.jobId);
   if (!job) return [];
   return phase ? job.skills.filter((s) => s.phase === phase) : job.skills;
-}
-
-/**
- * Register every unit's job skills into a {@link PhaseSkillRegistry}, bucketed by
- * the phase each skill hooks (D3). Call once at battle setup.
- */
-export function registerParty(
-  units: readonly Unit[],
-  registry: PhaseSkillRegistry,
-): void {
-  for (const unit of units) {
-    stampPassives(unit);
-    for (const skill of unitSkills(unit)) {
-      registry.register(unit, skill);
-    }
-  }
 }

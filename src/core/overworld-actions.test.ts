@@ -31,14 +31,13 @@ function merchant(run: RunState): Unit {
 }
 
 describe("overworld-actions — registry (D29)", () => {
-  it("abilities are data with a cost menu (cooldown + optional fatigue/gold/vancian)", () => {
+  it("abilities are data with a cost menu (cooldown + optional fatigue/gold)", () => {
     expect(getAbility("scout")).toBe(SCOUT);
     expect(getAbility("market")).toBe(MARKET);
     expect(getAbility("nope")).toBeUndefined();
-    // The cooldown spine is always present; the vancian stub is left unwired.
+    // The cooldown spine is always present.
     expect(SCOUT.cost.cooldown).toBeGreaterThan(0);
     expect(MARKET.cost.cooldown).toBeGreaterThan(0);
-    expect(SCOUT.cost.vancian).toBeUndefined();
   });
 });
 

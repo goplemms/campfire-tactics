@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { JOBS, getJob, unitSkills, registerParty, SOLDIER } from "./jobs";
-import { PhaseSkillRegistry } from "./phases";
+import { JOBS, getJob, unitSkills, SOLDIER, type JobId } from "./jobs";
 import { createUnit, type Side, type Unit } from "./units";
 
 function soldier(id: string): Unit {
@@ -57,28 +56,13 @@ describe("jobs (data-driven loading)", () => {
     expect(unitSkills(jobless)).toEqual([]);
   });
 
-  it("registers a party's skills into the phase registry (D3)", () => {
-    const a = soldier("Rook");
-    const b = soldier("Vale");
-    const registry = new PhaseSkillRegistry();
-    registerParty([a, b], registry);
-
-    expect(registry.forPhase("battle").length).toBe(6); // 2 units × 3 skills
-    expect(registry.forPhase("meta").length).toBe(0);
-    expect(registry.skillsFor(a, "battle").map((s) => s.id)).toEqual([
-      "power-strike",
-      "hamstring",
-      "second-wind",
-    ]);
-  });
-
   it("ships the three signature jobs, each hooking a different phase (D3)", () => {
     expect(getJob("survivalist")!.skills[0].phase).toBe("deployment");
     expect(getJob("chef")!.skills[0].phase).toBe("meta");
     expect(getJob("merchant")!.skills[0].phase).toBe("meta");
 
-    // A mixed party registers each job's skill under its own phase.
-    const withJob = (id: string, job: string): Unit =>
+    // unitSkills filters a job's skills by the phase each one hooks.
+    const withJob = (id: string, job: JobId): Unit =>
       createUnit({
         id,
         side: "player" as Side,
@@ -91,22 +75,8 @@ describe("jobs (data-driven loading)", () => {
         moveRange: 3,
         sightRadius: 4,
       });
-    const party = [
-      withJob("Rook", "soldier"),
-      withJob("Vale", "survivalist"),
-      withJob("Pip", "chef"),
-      withJob("Coin", "merchant"),
-    ];
-    const registry = new PhaseSkillRegistry();
-    registerParty(party, registry);
-
-    expect(registry.forPhase("meta").map((h) => h.skill.id).sort()).toEqual([
-      "cook-stew",
-      "trade",
-    ]);
-    expect(registry.forPhase("deployment").map((h) => h.skill.id)).toEqual([
-      "set-trap",
-    ]);
-    expect(registry.forPhase("battle").length).toBe(3); // the soldier's 3
+    expect(unitSkills(withJob("Pip", "chef"), "meta").map((s) => s.id)).toEqual(["cook-stew"]);
+    expect(unitSkills(withJob("Vale", "survivalist"), "deployment").map((s) => s.id)).toEqual(["set-trap"]);
+    expect(unitSkills(withJob("Rook", "soldier"), "battle").length).toBe(3);
   });
 });

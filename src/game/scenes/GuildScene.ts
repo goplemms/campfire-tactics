@@ -31,7 +31,7 @@ import {
   type CaravanResolution,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
-import { fitText } from "../ui";
+import { fitText, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
 
 /** Data handed back to the hall when a caravan reaches a terminal (D27). */
@@ -137,8 +137,7 @@ export class GuildScene extends Phaser.Scene {
   // --- Rendering ------------------------------------------------------------
 
   private render(): void {
-    for (const o of this.ui) o.destroy();
-    this.ui = [];
+    clearLayer(this.ui);
 
     const W = this.scale.width;
     // The two pools + Influence (D34): the persistent TREASURY (vault), the

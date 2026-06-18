@@ -101,6 +101,14 @@ export function getDifficulty(id: string | undefined): DifficultyPolicy {
 /** Per-unit "dying" clock counter key (D9 Hard mode). */
 export const DYING_COUNTER = "dyingNights";
 
+/** Mortality tuning — the knobs the downed-unit resolutions read. */
+export const MORTALITY = {
+  /** `half-redeploy`: fraction of max HP a revived unit returns at. */
+  redeployHpFraction: 0.5,
+  /** Floor HP a revived unit can't drop below (never revive at 0). */
+  redeployHpFloor: 1,
+} as const;
+
 /** The outcome of resolving a downed unit. */
 export interface DownedOutcome {
   unitId: string;
@@ -133,7 +141,7 @@ export function resolveDowned(policy: DifficultyPolicy, unit: Unit): DownedOutco
       return { unitId: unit.id, resolution: policy.downed, survived: true, permadeath: false, hp: unit.hp };
     case "half-redeploy":
       unit.alive = true;
-      unit.hp = Math.max(1, Math.floor(unit.maxHp / 2));
+      unit.hp = Math.max(MORTALITY.redeployHpFloor, Math.floor(unit.maxHp * MORTALITY.redeployHpFraction));
       return { unitId: unit.id, resolution: policy.downed, survived: true, permadeath: false, hp: unit.hp };
     case "dying-timer":
       // Stays down (alive=false) with a night clock; the cleric is the save.

@@ -22,7 +22,6 @@ export * from "./resolution";
 export * from "./vision";
 export * from "./ai";
 export * from "./skills";
-export * from "./phases";
 export * from "./jobs";
 export * from "./turn";
 export * from "./mortality";

@@ -27,7 +27,6 @@ import { createUnit, type Unit } from "./units";
 import { createInventory, type Inventory } from "./inventory";
 import { createCamp, type Camp } from "./camp";
 import { getDifficulty, type DifficultyPolicy } from "./mortality";
-import { isCombatant } from "./jobs";
 import { accrueDeployedXp } from "./leveling";
 import { type EncounterDef } from "./generation";
 import type { EncounterResult } from "./authored";
@@ -280,9 +279,13 @@ export function activeRoster(run: RunState): Unit[] {
   return run.party.filter((u) => u.alive && !u.captured);
 }
 
-/** Active units that can actually take the field (excludes camp-only crew). */
+/**
+ * Units that can take the field. The combat/non-combat split is **dissolved**
+ * (D38) — any job can field — so this is the {@link activeRoster}; kept as a named
+ * call so the intent reads at the seams that field a roster.
+ */
 export function combatRoster(run: RunState): Unit[] {
-  return activeRoster(run).filter(isCombatant);
+  return activeRoster(run);
 }
 
 /**

@@ -11,7 +11,6 @@ import {
   recruitToRoster,
   RECRUIT,
 } from "./recruitment";
-import { isCombatant } from "./jobs";
 
 let nextId = 0;
 function fighter(name: string): Unit {
@@ -41,7 +40,7 @@ describe("recruitment — the refreshing mercenary pool (D33)", () => {
     const g = guildWith("pool");
     refreshMercPool(g);
     expect(g.mercPool.length).toBe(RECRUIT.poolSize);
-    for (const m of g.mercPool) expect(isCombatant(m)).toBe(true);
+    for (const m of g.mercPool) expect(m.jobId).toBeDefined();
   });
 
   it("the pool is deterministic for a guild seed (D22)", () => {

@@ -13,7 +13,6 @@
 
 import type { Unit, UnitStats } from "./units";
 import type { Phase, SkillDef } from "./skills";
-import type { PhaseSkillRegistry } from "./phases";
 import { PASSIVE, FLANK } from "./combat";
 import { guarded, exposed, swift, immobilized } from "./status";
 
@@ -424,16 +423,6 @@ export function getJob(id: string | undefined): JobDef | undefined {
 }
 
 /**
- * True if a unit can take the field. The combat/non-combat split is **dissolved**
- * (D38): *any* job can field (the Chef Defends as a body; the Merchant can swing).
- * Retained as a predicate (always true for a live roster member) so callers read
- * intent; the old `noncombat` flag now only informs camp/Upkeep/RP, not fielding.
- */
-export function isCombatant(_unit: Unit): boolean {
-  return true;
-}
-
-/**
  * Stamp a unit's job passives (D40) onto `unit.passives` so combat resolution
  * reads them (the Scout's solo-flank, the Hunter's Deadeye, the Medic's Triage,
  * the Heavy Knight's tarpit). Idempotent; call at battle setup.
@@ -451,20 +440,4 @@ export function unitSkills(unit: Unit, phase?: Phase): SkillDef[] {
   const job = getJob(unit.jobId);
   if (!job) return [];
   return phase ? job.skills.filter((s) => s.phase === phase) : job.skills;
-}
-
-/**
- * Register every unit's job skills into a {@link PhaseSkillRegistry}, bucketed by
- * the phase each skill hooks (D3). Call once at battle setup.
- */
-export function registerParty(
-  units: readonly Unit[],
-  registry: PhaseSkillRegistry,
-): void {
-  for (const unit of units) {
-    stampPassives(unit);
-    for (const skill of unitSkills(unit)) {
-      registry.register(unit, skill);
-    }
-  }
 }

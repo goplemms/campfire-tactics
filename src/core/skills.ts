@@ -140,15 +140,6 @@ export type SkillEffect =
   | MoraleEffect
   | PlaceTrapEffect;
 
-/** Effect kinds resolved against a unit in the Battle phase. */
-export type BattleEffectKind =
-  | "damage"
-  | "heal"
-  | "status"
-  | "channel"
-  | "triage-heal"
-  | "cleanse";
-
 /**
  * Optional ability cost beyond the Act (D37). The combat economy is **time**:
  * `charge` commits now and resolves later on the clock; `cooldown` is a sparing

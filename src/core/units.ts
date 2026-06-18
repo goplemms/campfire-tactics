@@ -247,11 +247,6 @@ export function primaryJobOf(unit: Pick<Unit, "primaryJob" | "jobId">): JobId | 
   return unit.primaryJob ?? unit.jobId;
 }
 
-/** Living units on a given side. */
-export function livingUnits(units: readonly Unit[], side?: Side): Unit[] {
-  return units.filter((u) => u.alive && (side === undefined || u.side === side));
-}
-
 /**
  * Restore HP to a unit, clamped to its `maxHp` (the symmetric counterpart of
  * {@link "./combat".applyDamage}). The single place healing mutates a unit, so a

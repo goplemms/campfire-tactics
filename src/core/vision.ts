@@ -56,10 +56,3 @@ export function canSee(
   }
   return false;
 }
-
-/** Enemy units of the given side that are currently visible to it. */
-export function visibleEnemies(units: readonly Unit[], side: Side): Unit[] {
-  return units.filter(
-    (u) => u.alive && u.side !== side && canSee(units, side, u.pos),
-  );
-}

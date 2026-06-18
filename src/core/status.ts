@@ -256,11 +256,6 @@ export function setCounter(unit: Unit, key: string, value: number): void {
   unit.counters[key] = value;
 }
 
-/** Remove a per-unit counter. */
-export function clearCounter(unit: Unit, key: string): void {
-  delete unit.counters[key];
-}
-
 /**
  * The status→visual registry (D41): the **data** the render's at-a-glance tracker
  * reads (a glyph/badge + a tint). A new status gets a tracker by adding one row

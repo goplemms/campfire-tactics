@@ -22,7 +22,6 @@ import {
   loadPurse,
 } from "./caravan";
 import { RunLoop } from "./runloop";
-import { isCombatant } from "./jobs";
 
 let nextId = 0;
 function fighter(name: string, lord = false): Unit {
@@ -242,7 +241,7 @@ describe("guild — a wipe costs people + gear + purse; the guild survives (D27)
     const merc = hireMercenary(g);
     expect(merc).not.toBeNull();
     expect(g.roster.length).toBe(1);
-    expect(isCombatant(merc!)).toBe(true); // a fightable body to rebuild with
+    expect(merc!.jobId).toBeDefined(); // a fightable body to rebuild with
   });
 
   it("a lord aboard a wiped caravan flags lordLost (no game-over built — D27 seam)", () => {

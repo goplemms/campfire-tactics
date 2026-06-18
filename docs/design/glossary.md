@@ -42,6 +42,14 @@ Predictable shape makes copy scannable without reading every word:
   `Morale High (3)`, `Fatigue Weary (2)`. Noun first, then the number or band.
 - **Cost clauses — `cd: N · fatigue: N · gold: Ng`.** Same order every time
   (cooldown → fatigue → gold), so the eye learns the slots.
+- **Capitalize the keyword (in labels & readouts).** A canonical resource/status noun
+  is **Capitalized in every persistent, scannable surface** — buttons, HUD lines,
+  status chips, panel headers, list readouts: `Guard the Purse`, `Gather Influence`,
+  `Slots 2/4 · Storage 6 · Purse 40g`, `Debt 40g · Interest +2g/step`. This visually
+  links an action to its HUD number (the `Purse 120g` you read up top is the `Purse`
+  you Guard). **Transient hint *sentences*** (refusals, confirmations like "Treasury
+  can't cover the purse") may keep natural sentence casing — they read as prose, not as
+  labels.
 
 ## Lifecycle — the node spine (D46)
 
@@ -121,7 +129,7 @@ the drift found in the current build.
 | **Market** | The Merchant's ACCESS verb: open a market to buy supply. | **"Shop"** — the button `Shop the market`, the ability `Market`, and the event `Roadside Market` are three skins of one verb. **Pick `Market`** for the verb; the *event node* may keep its flavor name (Layer 2) but its buy action reads `Market`. |
 | **Triage Heal** | Spend RP to heal the most-wounded one chunk. | "Heal" alone; "Patch"; "Mend" |
 | **In-place rest** | The repeatable Survey-beat recovery (rations → RP + small heal). | "Rest" alone (collides three ways — see below); "Camp here" |
-| **Guard the purse** | The Banker's SECURE verb: blunt a thief's skim. | **"Protect"** — the button says `Guard`, its own tooltip says `protection`/`protect`. **Pick `Guard`** for the verb; "protection" may appear in *explanatory* tooltip prose. |
+| **Guard the Purse** | The Banker's SECURE verb: blunt a thief's skim. | **"Protect"** as the *verb*. Two-part rule: **`Guard`** is the verb/button; **`Protection N%`** is the resulting status readout (the effect's magnitude). Never `Protect the purse` as an action. |
 | **Invest** | The Banker's interest verb (purse accrues interest per step). | "Save"; "Deposit" |
 | **Borrow** | The Banker's buy-on-debt verb. | "Loan"; "Advance" |
 | **Gather Influence** | The Noble's INFLUENCE verb. | "Earn rep"; "Curry favor" (in the label) |
@@ -158,6 +166,49 @@ Event **node names and teasers are flavor** (Layer 2) and stay evocative. Their
 | **Tollgate** | "a known fee to pass" | (auto-resolves; fee shown in Forecast) |
 | **A Choice on the Road** | story prompt + options | options are flavor; consequences are prose |
 
+## Guild hall & caravans (D25–D34)
+
+The home tier. Plenty of vessel flavor (Stable, Dispatch, In Flight) — but the
+**people-and-pool nouns must not drift**, since the guild and a caravan both hold
+characters.
+
+| Canonical | Means | Banned in labels |
+|---|---|---|
+| **Roster** | The guild's **whole pool** of characters. | "team"; "crew"; "stable" (that's the caravans) |
+| **Party** | The characters assigned to **one caravan**. | "crew"; "Aboard" (as the noun/count); "squad" |
+| **Slots** | Uniform party-capacity units on a caravan. | "seats"; "berths" |
+| **Caravan** | The expedition unit you assemble and dispatch. | "expedition"; "wagon" (in labels); "party" (that's its people) |
+| **Vessel** | A caravan *type* (`Scout Cart`, `Supply Train`). | id forms (`scout-cart`) in player text |
+| **Dispatch** | Commit a caravan to a quest and begin its run. | "Send"; "Launch"; "Deploy" (that's the battle phase) |
+| **Treasury** | The guild's persistent gold vault. | "bank"; "coffers" |
+| **Armory** | The guild's free (unlocked) gear store. | "stash"; "vault" |
+| **Locked gear** | Equipment committed to a caravan, unavailable elsewhere. | "reserved"; "assigned gear" |
+| **Quest Board** | The never-empty quest feed (main + side). | "missions"; "jobs board" |
+| **The Stable** | Where caravans sit (assembling / in flight / empty). | "garage"; "fleet" (in the label) |
+| **Hire** | Recruit a **Mercenary** with gold. | "Buy"; "Recruit" *as the gold verb* (Recruit is the broad concept) |
+
+**Roster tiers (D33)** — fixed keywords, never re-skinned: **Mercenary** (gold-hired,
+expendable) · **Companion** (authored, earned not bought) · **Lord** (authored,
+campaign-critical; death = game-over).
+
+## Deployment (D7/D11 · the on-map setup phase)
+
+The "earlier that day" placement phase — distinct from the guild's **Dispatch** and
+the overworld's **camp**. Flavor lives in the spotted/netted prose; the meters and
+buttons are Layer 1.
+
+| Canonical | Means | Banned in labels |
+|---|---|---|
+| **Deployment** | The on-map pre-battle placement phase. | "Setup"; "Positioning" |
+| **Trap Kit** | The consumable that places a trap on a tile. | "trap" alone *for the item*; "snare kit" |
+| **Camp alert** | The deployment exposure meter (0–100%). | "exposure"; "detection"; "heat" |
+| **Cover** | The zero-risk deploy region ("in cover" / "past safe"). | "safe zone" *and* "cover" both — pick **Cover** |
+| **Captured** | A unit netted past safe; bound in the enemy zone until rescued or the fight is won. | "netted" (as the status word — fine in the *event* prose); "bound" |
+
+> **One small split to hold:** the **event prose** may say a unit was *spotted* /
+> *netted* / *bolting for cover* (Layer 2); the **status word** on the HUD is
+> **Captured** and the region word is **Cover** (Layer 1).
+
 ## Drift status (current build → canon)
 
 The first copy pass found the live strings already mostly disciplined. State:
@@ -175,6 +226,21 @@ The first copy pass found the live strings already mostly disciplined. State:
    read-only *map* button; the planning *screen* is always titled `Survey`.
 5. **Currency suffixing** — ✅ **already compliant.** Run pool is `Purse`, amounts carry
    `g`; Influence never carries `g` and is never summed into a gold total.
+
+Guild + deployment pass:
+
+6. **Caravan-member nouns** — ✅ **fixed.** The guild scene called the same people
+   `Aboard` / `crew` / `slots`. Now: **Roster** = the guild pool, **Party** = a
+   caravan's members (`Aboard:` → `Party:`, `… crew` → `… party`), **Slots** = the
+   capacity unit.
+7. **Currency casing in labels** — ✅ **fixed.** Buttons/readouts that lower-cased a
+   named currency now capitalize it (`Gather influence` → `Gather Influence`; `Invest
+   the purse` → `Invest the Purse`; `Guard the purse` → `Guard the Purse`; the Banker
+   chip's `interest`/`debt`/`protection` → `Interest`/`Debt`/`Protection`).
+8. **Guild/deployment terms otherwise compliant** — Treasury, Influence, Storage, RP,
+   Upkeep, vessel display names (`Scout Cart` / `Supply Train`), Quest Board, Armory,
+   Dispatch, and the Deployment meters all already matched canon; only the two items
+   above needed code changes.
 
 ## Adding a term
 

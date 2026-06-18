@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { COLOR, FONT, INK } from "../theme";
+import type { DossierHandoff } from "./PartyDossierScene";
 import {
   RunLoop,
   previewNode,
@@ -10,8 +11,9 @@ import {
   getAbility,
   cooldownRemaining,
   scoutedTier,
-  fatigueTier,
   fatiguePenalty,
+  projectDossier,
+  attentionCount,
   unitSkills,
   useCampJobSkill,
   addItem,
@@ -440,21 +442,16 @@ export class OverworldScene extends Phaser.Scene {
     y = this.renderAdvancedEconomy(colX, y, rowH);
     const leftBottom = y + 8;
 
-    // --- Fatigue meter (per-character, banded — à la the morale readout) ---
-    const meterX = cx + 60;
-    this.campObjects.push(
-      this.add.text(meterX, top - 6, "Fatigue", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
-      this.add.text(meterX, top + 18, this.fatigueMeter(), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, lineSpacing: 6 }).setOrigin(0, 0).setDepth(11),
-    );
-    const meterBottom = top + 18 + this.run.party.filter((u) => u.alive).length * 21 + 8;
-
-    // --- Right column: review the route + glance the ledger (D45/D58) ---
-    const utilY = Math.max(leftBottom + 8, meterBottom);
-    this.campButton(cx + 60, utilY, 240, 24, "Review Route Map", true, () => this.reviewMap(() => this.renderCamp()), "Look at the overworld node map (read-only) — your route, what's reachable, and what's still fogged. Click Back to return to camp.");
-    this.campButton(cx + 60, utilY + 30, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger: purse-scoped totals you can expand to line items, plus the route forecast.");
+    // --- Right column: the party dossier, the route + the ledger (D45/D58) ---
+    // The per-character readout now lives in the dossier (HP, fatigue, jeopardy);
+    // the button badges when someone needs a look so the glance isn't lost.
+    const utilY = top + 8;
+    this.campButton(cx + 60, utilY, 240, 24, this.partyButtonLabel(), true, () => this.openDossier(), "Open the Party Dossier: each member's HP, fatigue, conditions and jeopardy, plus a party overview (morale, upkeep, supplies). ⚠ marks anyone hurt, dying or captured.");
+    this.campButton(cx + 60, utilY + 30, 240, 24, "Review Route Map", true, () => this.reviewMap(() => this.renderCamp()), "Look at the overworld node map (read-only) — your route, what's reachable, and what's still fogged. Click Back to return to camp.");
+    this.campButton(cx + 60, utilY + 60, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger: purse-scoped totals you can expand to line items, plus the route forecast.");
 
     // --- End the Night — the prep→event gate (D46); placed below all content ---
-    const contentBottom = Math.max(leftBottom + 8, utilY + 30);
+    const contentBottom = Math.max(leftBottom + 8, utilY + 60);
     // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
     // Mission" (D45 fork 2); rest/event "End the Night" into their payload.
     const commitLabel = isCombat
@@ -578,12 +575,22 @@ export class OverworldScene extends Phaser.Scene {
     return active.find((u) => u.jobId === "merchant") ?? active[0] ?? this.run.party[0];
   }
 
-  /** A banded per-character fatigue readout (overworld-only, never combat). */
-  private fatigueMeter(): string {
-    return this.run.party
-      .filter((u) => u.alive)
-      .map((u) => `${u.name}: ${fatigueTier(u.fatigue)} (${u.fatigue})`)
-      .join("\n");
+  /** The camp "Party" button label, badged with the count needing a look (⚠N). */
+  private partyButtonLabel(): string {
+    const n = attentionCount(projectDossier(this.run));
+    return n > 0 ? `Party  ⚠${n}` : "Party";
+  }
+
+  /**
+   * Open the party dossier (D-info-surfacing). **Page mode:** launch the dossier on
+   * top and pause this scene, so the camp panel is preserved exactly and restored on
+   * close (a clean seam for the future live-overlay mode — launch the same scene
+   * without pausing). The dossier reads the live run, so its numbers are current.
+   */
+  private openDossier(): void {
+    this.scene.launch("PartyDossier", { run: this.run, mode: "page" } as DossierHandoff);
+    this.scene.bringToTop("PartyDossier");
+    this.scene.pause();
   }
 
   private doOverworldAction(actor: Unit, abilityId: string, opts: { targetNodeId?: string } = {}): void {
@@ -911,6 +918,8 @@ export class OverworldScene extends Phaser.Scene {
       y += rowH;
     }
 
+    this.campButton(colX, y, 360, 24, this.partyButtonLabel(), true, () => this.openDossier(), "Open the Party Dossier: each member's HP, fatigue, conditions and jeopardy, plus a party overview. ⚠ marks anyone hurt, dying or captured.");
+    y += rowH;
     this.campButton(colX, y, 360, 24, "Review Route Map", true, () => this.reviewMap(() => this.showSurvey()), "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return to Survey.");
     y += rowH;
     this.campButton(colX, y, 360, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.showSurvey()), "The economic ledger: purse-scoped totals, expandable to lines, plus the forecast.");

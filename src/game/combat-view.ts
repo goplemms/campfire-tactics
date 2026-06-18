@@ -25,28 +25,17 @@ import {
 import { COLOR, FONT, INK, WEIGHT } from "./theme";
 import { roleColor } from "./roles";
 import { ICON } from "./icons";
-
-/** A numeric `0xRRGGBB` colour as a Phaser/CSS `#rrggbb` string (for Text fills). */
-function hex(n: number): string {
-  return `#${n.toString(16).padStart(6, "0")}`;
-}
+import { hpColor, statusPips, type Pip } from "./unit-readout";
 
 /** The flank pseudo-status — computed from board position, shown in the status vocabulary. */
 const FLANK_PIP = { glyph: ICON.flank.glyph, color: INK.danger, label: "Flanked" } as const;
 
-/** One status badge as glyph + (finite) duration + colour — the data a pip renders. */
-interface StatusPip {
-  text: string;
-  color: string;
-}
+/** A status badge — the shared {@link Pip} (glyph + colour) the board lays out. */
+type StatusPip = Pip;
 
 /** Build a unit's status pips: each real status (glyph + turns left), then the flank pip. */
 function statusPipsFor(unit: Unit, units: readonly Unit[]): StatusPip[] {
-  const pips: StatusPip[] = unit.statuses.map((st) => {
-    const v = statusVisual(st.id);
-    const dur = Number.isFinite(st.duration) ? `${st.duration}` : "";
-    return { text: `${v.glyph}${dur}`, color: hex(v.tint) };
-  });
+  const pips: StatusPip[] = statusPips(unit);
   if (unit.alive && !unit.captured && isFlanked(unit, units)) pips.push({ text: FLANK_PIP.glyph, color: FLANK_PIP.color });
   return pips;
 }
@@ -365,7 +354,7 @@ export class CombatView {
       const frac = r.u.maxHp > 0 ? Math.max(0, r.u.hp) / r.u.maxHp : 0;
       const hpW = 88;
       chip.hpBg.setPosition(x + 24, mid + 6).setSize(hpW, 3).setVisible(!r.dead);
-      chip.hpFill.setPosition(x + 24, mid + 6).setSize(Math.max(0, hpW * frac), 3).setFillStyle(frac > 0.5 ? COLOR.success : frac > 0.25 ? COLOR.gold : COLOR.danger).setVisible(!r.dead);
+      chip.hpFill.setPosition(x + 24, mid + 6).setSize(Math.max(0, hpW * frac), 3).setFillStyle(hpColor(frac)).setVisible(!r.dead);
       // Compact status mirror: the glyphs (+flank), tinted by severity, so you can
       // scan the rail for who's debuffed without hunting the board for the pips.
       const flanked = !r.dead && isFlanked(r.u, units);
@@ -566,7 +555,7 @@ export class CombatView {
       // HP bar: width by fraction, tint green→amber→red as it drops.
       const frac = unit.maxHp > 0 ? Math.max(0, unit.hp) / unit.maxHp : 0;
       view.hpBarFill.width = Math.max(0, view.hpBarW * frac);
-      view.hpBarFill.setFillStyle(frac > 0.5 ? COLOR.success : frac > 0.25 ? COLOR.gold : COLOR.danger);
+      view.hpBarFill.setFillStyle(hpColor(frac));
       view.hpBarFill.setVisible(unit.alive);
       // Status pips (D41 + flank, D36): one badge per status — glyph + turns left,
       // tinted per status — laid out centred under the token; the flank pip trails.

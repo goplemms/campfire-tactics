@@ -1503,6 +1503,14 @@ trail of reasoning stays intact.
     (Kits) · RP · Upkeep/night**.
   - **Scout** removed from the pre-mission camp (you've already chosen the node) — it stays
     on the **Survey** beat where planning-ahead belongs.
+  - **Map hint slimmed + a corner legend.** The always-on hint dumped a 7-glyph legend; it's
+    now action-only, with a small muted key pinned to the map's bottom-left (rendered in the
+    **default font**, like the node glyphs, so the key matches the board). Hover still
+    previews each node.
+  - **Review Route Map.** Camp/Survey hide the map; a "Review Route Map" button opens it
+    **read-only** (`drawMap(false)` — hover-previews, no commit) with a **← Back**, so you can
+    re-read your route/fog mid-camp without leaving.
 - **Spec:** `src/game/scenes/OverworldScene.ts` (`renderCamp` tiering + `campAdvanced`
-  toggle, `trapKitPrice`/`buyTrapKit`, `refreshCampText`).
+  toggle, `trapKitPrice`/`buyTrapKit`, `refreshCampText`, `drawMapLegend`, `drawMap(interactive)`
+  + `drawNode(interactive)`, `reviewMap`).
 - **Superseded by:** —

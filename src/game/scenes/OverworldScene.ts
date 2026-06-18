@@ -211,7 +211,7 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- Map drawing ----------------------------------------------------------
 
-  private drawMap(): void {
+  private drawMap(interactive = true): void {
     for (const o of this.nodeObjects) o.destroy();
     this.nodeObjects = [];
     this.graph?.destroy();
@@ -265,11 +265,29 @@ export class OverworldScene extends Phaser.Scene {
       const current = this.run.mapNodeId === id;
       const visited = onPath.has(id) && !current;
       if (!visibleIds.has(id)) this.drawFogged(pos);
-      else this.drawNode(node, pos, { reachable, current, visited });
+      else this.drawNode(node, pos, { reachable, current, visited }, interactive);
     }
 
-    this.setHint("Click a node to preview it; click again to commit. Deeper nodes are fogged — raise intel to see farther. ⚔ combat · ❄ rest · events: $ thief · ⚖ shop · ✚ recruiter · ? story · ⛩ toll.");
+    // A compact, always-on key in the corner — replaces the glyph dump that used to
+    // crowd the hint bar (D58); the hint now carries action guidance only.
+    this.drawMapLegend();
+    this.setHint("Click a node to preview it; click again to Make Camp. Deeper nodes are fogged — raise intel to see farther.");
     this.previewText.setText("");
+  }
+
+  /**
+   * A small, muted glyph key pinned to the map's bottom-left (D58) — replaces the
+   * legend that used to crowd the hint. Deliberately uses the **default font** (no
+   * `fontFamily`), exactly like the node glyphs, so the symbols match the board (the
+   * monospace UI font can't render ⚔/❄/⚖/⛩). Clears with the map.
+   */
+  private drawMapLegend(): void {
+    const key = "⚔ fight    ❄ rest    ★ goal    $ thief    ⚖ shop    ✚ recruit    ? story    ⛩ toll    ◌ fogged";
+    const legend = this.add
+      .text(20, this.scale.height - 30, key, { color: INK.muted, fontSize: FONT.caption })
+      .setOrigin(0, 0.5)
+      .setDepth(3);
+    this.nodeObjects.push(legend);
   }
 
   /** Glyph + tint for an event node, keyed by which event it runs (M11). */
@@ -292,7 +310,7 @@ export class OverworldScene extends Phaser.Scene {
     this.nodeObjects.push(circle, label);
   }
 
-  private drawNode(node: MapNode, pos: { x: number; y: number }, state: { reachable: boolean; current: boolean; visited: boolean }): void {
+  private drawNode(node: MapNode, pos: { x: number; y: number }, state: { reachable: boolean; current: boolean; visited: boolean }, interactive = true): void {
     const isFinal = node.layer === this.run.map.layers - 1;
     const event = node.kind === "event" ? this.eventVisual(node) : undefined;
     const baseColor =
@@ -321,9 +339,11 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     if (state.reachable) {
-      circle.setInteractive({ useHandCursor: true });
+      // Hover always previews; the commit click is gated so the read-only Route-map
+      // review can show the same board without letting you re-choose a node (D58).
+      circle.setInteractive({ useHandCursor: interactive });
       circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showPreview(node));
-      circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.enterCamp(node));
+      if (interactive) circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.enterCamp(node));
     }
   }
 
@@ -353,6 +373,26 @@ export class OverworldScene extends Phaser.Scene {
     this.graph?.destroy();
     this.graph = undefined;
     this.previewText.setText("");
+  }
+
+  /**
+   * A **read-only** peek at the route map from camp/Survey (D58) — those surfaces
+   * hide the map, so this brings it back to look at: hover a node to preview it,
+   * but no committing. `returnTo` rebuilds the surface you came from (camp/Survey).
+   */
+  private reviewMap(returnTo: () => void): void {
+    this.clearCamp();
+    for (const o of this.overlay) o.destroy();
+    this.overlay = [];
+    this.drawMap(false); // non-interactive: hover-preview only, no node commit
+    this.titleText.setText(`Route Map — Night ${this.run.night + 1} · reviewing`);
+    this.setHint("Reviewing the route — hover a node to preview it. Click Back to return.");
+    // Below the centred HUD line so it doesn't sit on the readouts.
+    const back = this.makeTextButton(90, 78, 150, 28, "← Back", COLOR.surfaceRaised, COLOR.border, () => {
+      this.clearMap();
+      returnTo();
+    });
+    this.nodeObjects.push(back);
   }
 
   // --- The unified overworld camp (D35) -------------------------------------
@@ -450,11 +490,13 @@ export class OverworldScene extends Phaser.Scene {
     );
     const meterBottom = top + 18 + this.run.party.filter((u) => u.alive).length * 21 + 8;
 
-    // --- Ledger glance (D45): always one click away, on the camp ---
-    this.campButton(cx + 60, leftBottom + 8, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger (D45): purse-scoped totals you can expand to line items, plus the route forecast (D48).");
+    // --- Right column: review the route + glance the ledger (D45/D58) ---
+    const utilY = Math.max(leftBottom + 8, meterBottom);
+    this.campButton(cx + 60, utilY, 240, 24, "Review Route Map", true, () => this.reviewMap(() => this.renderCamp()), "Look at the overworld node map (read-only) — your route, what's reachable, and what's still fogged. Click Back to return to camp.");
+    this.campButton(cx + 60, utilY + 30, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger (D45): purse-scoped totals you can expand to line items, plus the route forecast (D48).");
 
     // --- End the Night — the prep→event gate (D46); placed below all content ---
-    const contentBottom = Math.max(leftBottom + 8, meterBottom);
+    const contentBottom = Math.max(leftBottom + 8, utilY + 30);
     // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
     // Mission" (D45 fork 2); rest/event "End the Night" into their payload.
     const commitLabel = isCombat
@@ -852,6 +894,8 @@ export class OverworldScene extends Phaser.Scene {
       y += rowH;
     }
 
+    this.campButton(colX, y, 360, 24, "Review Route Map", true, () => this.reviewMap(() => this.showSurvey()), "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return to Survey.");
+    y += rowH;
     this.campButton(colX, y, 360, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.showSurvey()), "The economic ledger (D45): purse-scoped totals, expandable to lines, plus the forecast.");
     y += rowH + 6;
 

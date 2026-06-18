@@ -10,17 +10,7 @@
  */
 
 import type { Unit, Side } from "./units";
-import type { GridCoord } from "./iso";
-
-/** Stable string key for a tile, for use in sets. */
-export function tileKey(c: GridCoord): string {
-  return `${c.col},${c.row}`;
-}
-
-/** Chebyshev distance — a square sight radius around a unit. */
-export function chebyshev(a: GridCoord, b: GridCoord): number {
-  return Math.max(Math.abs(a.col - b.col), Math.abs(a.row - b.row));
-}
+import { tileKey, chebyshev, type GridCoord } from "./iso";
 
 /**
  * The set of tiles a side can currently see: the union of each living unit's

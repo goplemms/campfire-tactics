@@ -18,7 +18,7 @@
  */
 
 import type { Unit, Side } from "./units";
-import type { GridCoord } from "./iso";
+import { tileKey, type GridCoord } from "./iso";
 import type { SkillDef } from "./skills";
 import { TileGrid } from "./grid";
 import { findPath } from "./pathfinding";
@@ -29,7 +29,7 @@ import {
   PASSIVE,
 } from "./combat";
 import { isImmobilized, isDebuffed, hasStatus, EXPOSED } from "./status";
-import { tileKey, canSee } from "./vision";
+import { canSee } from "./vision";
 import { unitSkills } from "./jobs";
 
 /** Scoring weights — all tunable data, a numbers pass later (D42). */

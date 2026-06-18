@@ -25,6 +25,7 @@ import {
   isValidSkillTarget,
   makeTrap,
   canSee,
+  chebyshev,
   // M5b/D11 — deployment: the shared stealth-alert model
   removeItem,
   countOf,
@@ -734,7 +735,7 @@ export class BattleScene extends Phaser.Scene {
     return this.battle.entities
       .all()
       .filter(isConcealedTrap)
-      .find((t) => t.revealed && !t.sprung && Math.max(Math.abs(t.pos.col - actor.pos.col), Math.abs(t.pos.row - actor.pos.row)) <= 1);
+      .find((t) => t.revealed && !t.sprung && chebyshev(t.pos, actor.pos) <= 1);
   }
 
   /** Spend the turn on a deliberate Search — a wider radius and a better spot roll. */

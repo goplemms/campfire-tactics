@@ -15,7 +15,7 @@ import type { Unit } from "./units";
 import type { Inventory } from "./inventory";
 import { addItem } from "./inventory";
 import type { Rng } from "./rng";
-import { chebyshev } from "./vision";
+import { chebyshev } from "./iso";
 import { unitSkills } from "./jobs";
 import { EntityRegistry, isConcealedTrap, type ConcealedTrap } from "./entities";
 

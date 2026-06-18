@@ -1,11 +1,10 @@
 import type { Unit } from "./units";
-import type { GridCoord } from "./iso";
+import { tileKey, type GridCoord } from "./iso";
 import type { TileGrid } from "./grid";
 import { occupiedGrid, reachableTiles } from "./ai";
 import { findPath } from "./pathfinding";
 import { inAttackRange, effectiveMove, manhattan, computeDamage, computeFlankBonus } from "./combat";
 import { isImmobilized } from "./status";
-import { tileKey } from "./vision";
 
 /**
  * Trim a walked path back to the last tile a unit may legally *stop* on: bodies

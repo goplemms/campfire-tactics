@@ -451,7 +451,7 @@ export class OverworldScene extends Phaser.Scene {
     // --- Right column: review the route + glance the ledger (D45/D58) ---
     const utilY = Math.max(leftBottom + 8, meterBottom);
     this.campButton(cx + 60, utilY, 240, 24, "Review Route Map", true, () => this.reviewMap(() => this.renderCamp()), "Look at the overworld node map (read-only) — your route, what's reachable, and what's still fogged. Click Back to return to camp.");
-    this.campButton(cx + 60, utilY + 30, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger (D45): purse-scoped totals you can expand to line items, plus the route forecast (D48).");
+    this.campButton(cx + 60, utilY + 30, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger: purse-scoped totals you can expand to line items, plus the route forecast.");
 
     // --- End the Night — the prep→event gate (D46); placed below all content ---
     const contentBottom = Math.max(leftBottom + 8, utilY + 30);
@@ -492,7 +492,7 @@ export class OverworldScene extends Phaser.Scene {
     const kitPrice = this.trapKitPrice(node);
     this.campButton(colX, y, 360, 24, `Buy Trap Kit (${kitPrice}g)`, true, () => this.buyTrapKit(), "Buy a Trap Kit into storage (1 slot) for the Scout/Survivalist. Cheaper at a town/rest node, or with a Merchant in the party.");
     y += rowH;
-    this.campButton(colX, y, 360, 24, "Triage Heal", true, () => this.triage(), "Spend Rest Points to heal the most-wounded fighter one chunk (D9).");
+    this.campButton(colX, y, 360, 24, "Triage Heal", true, () => this.triage(), "Spend Rest Points to heal the most-wounded fighter one chunk.");
     y += rowH + 8;
     return y;
   }
@@ -512,15 +512,15 @@ export class OverworldScene extends Phaser.Scene {
       const market = getAbility("market")!;
       const marketActor = this.marketActor();
       const mRefusal = this.refusal(market, marketActor);
-      this.campButton(subX, y, subW, 24, `Market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? "Merchant ACCESS (D30): open the market to buy supply into storage from the purse.");
+      this.campButton(subX, y, subW, 24, `Market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? "Merchant ACCESS: open the market to buy supply into storage from the purse.");
       y += rowH;
-      this.campButton(subX, y, subW, 24, "Invest the Purse", true, () => this.bankerInterest(), "Banker (D30): the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
+      this.campButton(subX, y, subW, 24, "Invest the Purse", true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
       y += rowH;
-      this.campButton(subX, y, subW, 24, "Borrow 40g", true, () => this.bankerBorrow40(), "Banker (D30): overspend now; auto-repaid from incoming run gold.");
+      this.campButton(subX, y, subW, 24, "Borrow 40g", true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.");
       y += rowH;
-      this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker (D30): blunt a thief's skim — battle thief and event node alike.");
+      this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.");
       y += rowH;
-      this.campButton(subX, y, subW, 24, "Gather Influence", !!this.guild, () => this.nobleIncome(), "Noble (D30/D34): earn Influence — a separate currency that can never pay Upkeep. Bribe enemies mid-battle.");
+      this.campButton(subX, y, subW, 24, "Gather Influence", !!this.guild, () => this.nobleIncome(), "Noble: earn Influence — a separate currency that can never pay Upkeep. Bribe enemies mid-battle.");
       y += rowH;
       // The Banker's purse-state, moved off the always-on HUD line into context (D58).
       const eco = this.run.overworld;
@@ -882,7 +882,7 @@ export class OverworldScene extends Phaser.Scene {
     this.refreshCampText();
 
     this.titleText.setText(`Survey — Night ${this.run.night} · plan your route`);
-    this.setHint("Survey (D46): read the forecast, rest in place (a night's rations, repeatable), scout ahead — then Break Camp to the map.");
+    this.setHint("Survey: read the forecast, rest in place (a night's rations, repeatable), scout ahead — then Break Camp to the map.");
 
     const cx = this.scale.width / 2;
     const panelW = 760;
@@ -892,7 +892,7 @@ export class OverworldScene extends Phaser.Scene {
 
     const forecast = projectForecast(this.run);
     this.campObjects.push(
-      this.add.text(colX - 10, top - 6, "Route forecast (D48)", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+      this.add.text(colX - 10, top - 6, "Route forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
       this.add.text(colX - 10, top + 18, this.forecastSummary(forecast), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 5, wordWrap: { width: panelW - 60 } }).setOrigin(0, 0).setDepth(11),
     );
     let y = top + 26 + (forecast.perEdge.length + 1) * 18 + 14;
@@ -913,7 +913,7 @@ export class OverworldScene extends Phaser.Scene {
 
     this.campButton(colX, y, 360, 24, "Review Route Map", true, () => this.reviewMap(() => this.showSurvey()), "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return to Survey.");
     y += rowH;
-    this.campButton(colX, y, 360, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.showSurvey()), "The economic ledger (D45): purse-scoped totals, expandable to lines, plus the forecast.");
+    this.campButton(colX, y, 360, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.showSurvey()), "The economic ledger: purse-scoped totals, expandable to lines, plus the forecast.");
     y += rowH + 6;
 
     const breakBtn = this.makeTextButton(cx, y + 12, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
@@ -949,7 +949,7 @@ export class OverworldScene extends Phaser.Scene {
     const label = !wounded ? "party at full HP" : !affordable ? `need ${bill.total}g (broke)` : `pay ${bill.total}g · heal a little (+RP)`;
     return {
       label,
-      detail: "In-place rest (D47): pay a night's rations to bank RP + a small heal (floors at ≥1). Repeatable; each rest is a node-step (ticks cooldowns). Greys at full HP / when broke.",
+      detail: "In-place rest: pay a night's rations to bank RP + a small heal (floors at ≥1). Repeatable; each rest is a node-step (ticks cooldowns). Greys at full HP / when broke.",
       enabled,
     };
   }
@@ -1045,7 +1045,7 @@ export class OverworldScene extends Phaser.Scene {
     // Forecast footer.
     y += 8;
     this.overlay.push(
-      this.add.text(leftX, y, "Forecast (D48)", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(leftX, y, "Forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
     );
     y += 16;
     this.overlay.push(

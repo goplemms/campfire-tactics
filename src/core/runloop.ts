@@ -502,7 +502,10 @@ export class RunLoop {
     if (won) ({ goldEarned, recovered, levels } = this.applyRewards(source, battle));
 
     // Captives: auto-rescued on a win, else turned into rescue follow-ups (D21).
+    // Persist the follow-ups on the run so an abandoned companion is never lost
+    // from view — the Captain's Journal nags from `run.rescueQuests` (D9).
     const { rescued, rescueQuests } = this.resolveRescues(won, policy);
+    this.run.rescueQuests.push(...rescueQuests);
 
     // Mortality (D9): downed player combatants resolve on a survivable outcome (D51).
     const { downed, permadeaths } = this.resolveMortalities(survivable, policy);

@@ -14,6 +14,7 @@ import {
   fatiguePenalty,
   projectDossier,
   attentionCount,
+  captainsJournal,
   projectManifest,
   getVessel,
   unitSkills,
@@ -56,6 +57,7 @@ import {
   type Ledger,
   type RouteForecast,
   type UpkeepLine,
+  type JournalConcern,
 } from "../../core";
 import { fitText, clearLayer } from "../ui";
 import { Button } from "../button";
@@ -442,6 +444,7 @@ export class OverworldScene extends Phaser.Scene {
     // --- Camp actions + the optional Advanced economy (D58) -------------------
     let y = this.renderCampActions(node, colX, top, rowH);
     y = this.renderAdvancedEconomy(colX, y, rowH);
+    y = this.renderCaptainsJournal(colX, y + 14, panelW - 60);
     const leftBottom = y + 8;
 
     // --- Right column: the party dossier, the route + the ledger (D45/D58) ---
@@ -494,6 +497,51 @@ export class OverworldScene extends Phaser.Scene {
     this.campButton(colX, y, 360, 24, "Triage Heal", true, () => this.triage(), "Spend Rest Points to heal the most-wounded fighter one chunk.");
     y += rowH + 8;
     return y;
+  }
+
+  /**
+   * The **Captain's Journal** (D58 surfacing) — the party's own nagging state laid
+   * out as the captain's running to-do, worst-first: worn gear piling up, a fading
+   * companion, someone left captured. These are *accidental blindness*, not enemy
+   * fog (D48), so they're surfaced freely. Pure facts come from {@link captainsJournal};
+   * this only adds the Layer-2 grumble. Draws **nothing** when nothing nags
+   * (anti-agony: a glance, never a chore). Returns the `y` past it.
+   */
+  private renderCaptainsJournal(x: number, top: number, width: number): number {
+    const concerns = captainsJournal(this.run);
+    if (concerns.length === 0) return top;
+    this.campObjects.push(
+      this.add.text(x - 10, top, "Captain's Journal", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+    );
+    let y = top + 16;
+    for (const c of concerns) {
+      const line = this.add
+        .text(x - 6, y, `• ${this.journalLine(c)}`, { color: this.journalColor(c.severity), fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 4, wordWrap: { width } })
+        .setOrigin(0, 0)
+        .setDepth(11);
+      this.campObjects.push(line);
+      y += line.height + 6;
+    }
+    return y + 6;
+  }
+
+  private journalColor(severity: JournalConcern["severity"]): string {
+    return severity === "urgent" ? INK.danger : severity === "warning" ? INK.ember : INK.muted;
+  }
+
+  /** The captain's grumble for one concern — Layer-2 flavor over the canon facts. */
+  private journalLine(c: JournalConcern): string {
+    const nights = (n: number) => `${n} night${n === 1 ? "" : "s"}`;
+    switch (c.kind) {
+      case "gear-wear":
+        return `Gear's wearing thin (${c.value}) — we should make a rest node to set it right.`;
+      case "dying":
+        return `${c.subject} is fading — ${nights(c.value)} before we lose them. We need a cleric.`;
+      case "rescue":
+        return c.value > 0
+          ? `${c.subject} is still in enemy hands — ${nights(c.value)} to mount the rescue.`
+          : `${c.subject} is still in enemy hands — they're counting on a rescue.`;
+    }
   }
 
   /**
@@ -926,6 +974,8 @@ export class OverworldScene extends Phaser.Scene {
     y += rowH;
     this.campButton(colX, y, 360, 24, "Inventory", true, () => this.showInventoryPanel(() => this.showSurvey()), "Caravan inventory: party & storage limits, carried traps and herbs, the purse — and the ledger (totals + forecast) nested within.");
     y += rowH + 6;
+
+    y = this.renderCaptainsJournal(colX, y, panelW - 60);
 
     const breakBtn = this.makeTextButton(cx, y + 12, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
     this.campObjects.push(breakBtn);

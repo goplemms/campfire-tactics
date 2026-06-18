@@ -108,6 +108,10 @@ describe("run — state & permadeath", () => {
     for (const u of run.party) u.alive = false;
     expect(isRunOver(run)).toBe(true);
   });
+
+  it("starts with no outstanding rescue follow-ups (D9/D21)", () => {
+    expect(newRun("fresh").rescueQuests).toEqual([]);
+  });
 });
 
 describe("run — terminals: complete vs wipe (D23)", () => {

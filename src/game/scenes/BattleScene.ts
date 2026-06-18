@@ -21,6 +21,7 @@ import {
   Battle,
   unitSkills,
   unlockedSkills,
+  onSkillCooldown,
   DEFEND,
   isValidSkillTarget,
   makeTrap,
@@ -672,9 +673,19 @@ export class BattleScene extends Phaser.Scene {
     const specs: { text: string; description?: string; onClick: () => void }[] = [];
     // Post-move, lead with Undo so the rethink path is one click away (D55).
     if (opts.moved) specs.push({ text: "Undo Move", description: "Snap back to where this unit started its turn (Esc).", onClick: () => this.undoMove(actor) });
-    skills.forEach((skill, i) =>
-      specs.push({ text: `${i + 1}  ${skill.name}`, description: `${skill.name} — ${skill.description}  ·  key ${i + 1}`, onClick: () => this.onSkillButton(actor, skill) }),
-    );
+    skills.forEach((skill, i) => {
+      // Surface the per-skill cooldown (D37): an armed skill is *live* state that
+      // was invisible — show it's cooling and steer the click to a hint rather than
+      // letting a re-use slip through (the menu now enforces what the clock tracks).
+      const cooling = onSkillCooldown(actor, skill.id);
+      specs.push({
+        text: `${i + 1}  ${skill.name}${cooling ? "  · cooling" : ""}`,
+        description: cooling
+          ? `${skill.name} is cooling down — ready again in a turn or two.`
+          : `${skill.name} — ${skill.description}  ·  key ${i + 1}`,
+        onClick: () => (cooling ? this.setHint(`${skill.name} is still cooling down.`) : this.onSkillButton(actor, skill)),
+      });
+    });
     // The Noble's mid-combat BRIBE (D30/D33): spend guild Influence to sway an enemy.
     if (this.guild && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
       const cost = bribeCost(this.currentPreview());
@@ -836,6 +847,8 @@ export class BattleScene extends Phaser.Scene {
 
   private onSkillButton(actor: Unit, skill: SkillDef): void {
     if (this.busy || this.waitingFor !== actor) return;
+    // Respect the per-skill cooldown for the keyboard path too (D37).
+    if (onSkillCooldown(actor, skill.id)) return void this.setHint(`${skill.name} is still cooling down.`);
     // Medic med-heal (D44): pick a herb from the carried stash, then a target ally.
     // Makes the medic work in **every** fight, not just the demo.
     if (skill.effect.kind === "med-heal") {
@@ -1272,6 +1285,11 @@ export class BattleScene extends Phaser.Scene {
     if (res.result !== "wipe") {
       if (res.downed.length) lines.push(`Downed: ${res.downed.map((d) => `${d.unitId} (${d.resolution})`).join(", ")}.`);
       if (res.permadeaths.length) lines.push(`Lost forever: ${res.permadeaths.join(", ")}.`);
+    }
+    // Captives left behind become rescue follow-ups (D9/D21) — name them so the
+    // abandonment isn't silently dropped; the Captain's Journal keeps nagging after.
+    if (res.rescueQuests.length) {
+      lines.push(`Captured — needs rescue: ${res.rescueQuests.map((q) => q.unitId).join(", ")}.`);
     }
     // Level-up feedback (D53): who reached a new job level, with their new actives.
     for (const u of this.battle.units) {

@@ -12,6 +12,9 @@ import {
   flankTiles,
   forecastEnemyAction,
   threatenedTiles,
+  manhattan,
+  computeDamage,
+  computeFlankBonus,
   TILE_WIDTH,
   TILE_HEIGHT,
   type TileGrid,
@@ -220,7 +223,7 @@ export class CombatView {
    * a threat outline on every foe a move would bring into attack range. Clears `g`
    * first, so the caller just re-invokes it whenever the turn state changes.
    */
-  drawPreview(g: Phaser.GameObjects.Graphics, actor: Unit, units: readonly Unit[], grid: TileGrid, armed?: SkillDef): void {
+  drawPreview(g: Phaser.GameObjects.Graphics, actor: Unit, units: readonly Unit[], grid: TileGrid, armed?: SkillDef, moved = false): void {
     g.clear();
     this.clearForecast();
     if (armed) {
@@ -231,23 +234,27 @@ export class CombatView {
       }
       return;
     }
-    const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
-    const reach = reachableTiles(actor, units, grid, budget);
-    for (const r of reach) {
-      if (r.tile.col === actor.pos.col && r.tile.row === actor.pos.row) continue;
-      this.fillTile(g, r.tile, COLOR.reach, 0.18);
+    // After a (tentative) move the budget is spent — skip the move-range / flank
+    // washes and telegraph only the strikes available from where the unit stands.
+    if (!moved) {
+      const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+      const reach = reachableTiles(actor, units, grid, budget);
+      for (const r of reach) {
+        if (r.tile.col === actor.pos.col && r.tile.row === actor.pos.row) continue;
+        this.fillTile(g, r.tile, COLOR.reach, 0.18);
+      }
+      // Flank-tile preview: outline the reachable tiles that would set up a gang-up
+      // on an adjacent foe — "stand here to flank" (the spatial half of the forecast).
+      for (const tile of flankTiles(actor, units, grid)) {
+        this.outlineTile(g, tile, COLOR.gold);
+      }
     }
-    // Flank-tile preview: outline the reachable tiles that would set up a gang-up
-    // on an adjacent foe — "stand here to flank" (the spatial half of the forecast).
-    for (const tile of flankTiles(actor, units, grid)) {
-      this.outlineTile(g, tile, COLOR.gold);
-    }
-    // Telegraph each foe the actor could strike this turn: outline it, and float a
-    // forecast badge — the best-case damage, a flank tag, and a skull when lethal —
-    // so a player reads the consequence before committing the move.
+    // Telegraph each foe the actor could strike: outline it, and float a forecast
+    // badge — best-case damage, a flank tag, and a skull when lethal. Pre-move this
+    // scans every tile the actor could strike from; post-move it's the in-place hit.
     for (const foe of units) {
       if (!foe.alive || foe.hidden || foe.side === actor.side) continue;
-      const f = forecastAttack(actor, foe, units, grid);
+      const f = moved ? this.inPlaceForecast(actor, foe, units) : forecastAttack(actor, foe, units, grid);
       if (!f) continue;
       this.outlineTile(g, foe.pos, f.lethal ? COLOR.danger : COLOR.threat);
       this.drawForecast(foe, f);
@@ -278,6 +285,13 @@ export class CombatView {
         .setStroke("#1a0d05", 3);
       this.forecastLabels.add(label);
     }
+  }
+
+  /** The in-place strike forecast for a unit that has already moved (no further movement). */
+  private inPlaceForecast(actor: Unit, foe: Unit, units: readonly Unit[]): { damage: number; lethal: boolean; flank: boolean } | null {
+    if (manhattan(actor.pos, foe.pos) > actor.attackRange) return null;
+    const damage = computeDamage(actor, foe, actor.attack, units);
+    return { damage, lethal: damage >= foe.hp, flank: computeFlankBonus(actor, foe, units) > 0 };
   }
 
   /** Float an attack-forecast badge above a foe (best-case damage / flank / lethal). */

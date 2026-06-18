@@ -1402,10 +1402,23 @@ trail of reasoning stays intact.
     skill/Search/Disarm/Bribe/rescue) **auto-passes** — the universal backstop so the
     clock can never stall.
   - **Keyboard:** one `keydown` router — **Space/Enter** = Advance/confirm, **W** = Wait,
-    **1–9** = the active unit's skills, **Esc** = cancel a targeted skill/bribe, **T** =
-    danger zone, **L** = legend, **Tab** = next unit (deploy).
+    **1–9** = the active unit's skills, **Esc** = cancel a targeted skill/bribe *or* Undo
+    Move, **T** = danger zone, **F** = animation speed, **L** = legend, **Tab** = next
+    unit (deploy).
   - **Legend (L):** a toggleable Tokens / Tiles / Turn-order / Keys reference panel.
+- **Follow-up (same pass):** three more feel fixes.
+  - **Two-step turn + Undo:** clicking a tile is now a **tentative move** that does *not*
+    end the turn — the unit walks, then the player attacks / uses a skill / Waits, with
+    **Undo Move** (Esc) to snap back to the start tile. Clicking a foe still
+    closes-and-strikes in one go (the express lane). CT is unaffected by `moved` (only
+    `acted` costs more), so deferring the commit needs no special accounting; a move that
+    springs a trap **locks** (no take-back on damage taken). Post-move the preview drops
+    the move-range/flank washes and telegraphs only the in-place strike.
+  - **Skill-key chips:** each active button is numbered (`1 …`) to advertise its 1–9 key.
+  - **Animation-speed toggle (F):** cycles move-tween speed 1×/2×/4× for snappier pacing.
 - **Spec:** `src/core/ai.ts` (`reachableTiles`, `occupiedGrid` `passAllyOf`),
-  `src/core/planning.ts` (`stoppablePrefix`), `src/game/scenes/BattleScene.ts`
-  (`onKey`, `waitUnit`, `noActionsAvailable`, `toggleLegend`).
+  `src/core/planning.ts` (`stoppablePrefix`), `src/game/combat-view.ts`
+  (`drawPreview` `moved` + `inPlaceForecast`), `src/game/scenes/BattleScene.ts`
+  (`onKey`, `cycleSpeed`, `tentativeMove`, `undoMove`, `waitUnit`, `noActionsAvailable`,
+  `toggleLegend`).
 - **Superseded by:** —

@@ -12,6 +12,8 @@ import {
   forecastAttack,
   effectiveMove,
   isImmobilized,
+  inAttackRange,
+  refreshAuras,
   isAdjacent,
   TileGrid,
   TILE_HEIGHT,
@@ -155,6 +157,12 @@ export class BattleScene extends Phaser.Scene {
   // Battle interaction.
   private waitingFor: Unit | null = null;
   private armedSkill: SkillDef | null = null;
+  /** Two-step turn (D55): the active unit has made its (undoable) move and is now choosing an action. */
+  private moved = false;
+  /** Tile the active unit stood on before its tentative move — where Undo Move snaps it back. */
+  private preMovePos: GridCoord | null = null;
+  /** Animation speed multiplier for moves (F cycles 1×/2×/4×) — playtest pacing (D55). */
+  private turnSpeed = 1;
   /** A herb picked for the medic's med-heal, pending a target (D44 flow). */
   private pendingHerb: string | null = null;
   /** Primary-job levels at battle start — diffed for the level-up readout (D53). */
@@ -653,11 +661,17 @@ export class BattleScene extends Phaser.Scene {
     if (!this.over) this.setHint(`${actor.name} waits. Advance Clock.`);
   }
 
-  private showSkillButtons(actor: Unit): void {
+  private showSkillButtons(actor: Unit, opts: { moved?: boolean } = {}): void {
     // Level-gated actives (D39): a 2nd active unlocks as the job levels — so combat
-    // growth shows up here, in every fight (the converged renderer).
+    // growth shows up here, in every fight (the converged renderer). Each active is
+    // numbered to advertise its 1–9 keyboard shortcut (D55).
     const skills = unlockedSkills(actor, "battle");
-    const specs = skills.map((skill) => ({ text: skill.name, description: `${skill.name} — ${skill.description}`, onClick: () => this.onSkillButton(actor, skill) }));
+    const specs: { text: string; description?: string; onClick: () => void }[] = [];
+    // Post-move, lead with Undo so the rethink path is one click away (D55).
+    if (opts.moved) specs.push({ text: "Undo Move", description: "Snap back to where this unit started its turn (Esc).", onClick: () => this.undoMove(actor) });
+    skills.forEach((skill, i) =>
+      specs.push({ text: `${i + 1}  ${skill.name}`, description: `${skill.name} — ${skill.description}  ·  key ${i + 1}`, onClick: () => this.onSkillButton(actor, skill) }),
+    );
     // The Noble's mid-combat BRIBE (D30/D33): spend guild Influence to sway an enemy.
     if (this.guild && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
       const cost = bribeCost(this.currentPreview());
@@ -911,8 +925,14 @@ export class BattleScene extends Phaser.Scene {
     if (k === "l" || k === "L") return this.toggleLegend();
     if (this.legend.length > 0 && k === "Escape") return this.toggleLegend();
     if (k === "t" || k === "T") { this.showThreat = !this.showThreat; this.drawPreview(); return; }
+    if (k === "f" || k === "F") { this.cycleSpeed(); return; }
     if (k === " " || k === "Enter") { e.preventDefault(); this.onPrimary(); return; }
-    if (k === "Escape") return this.cancelArmed();
+    if (k === "Escape") {
+      // Back out of an armed target first; otherwise undo a tentative move.
+      if (this.armedSkill || this.bribeArmed || this.pendingHerb) return this.cancelArmed();
+      if (this.phase === "battle" && this.moved && this.waitingFor && !this.busy) return this.undoMove(this.waitingFor);
+      return;
+    }
 
     if (this.phase === "deployment") {
       if (k === "Tab") { e.preventDefault(); this.cycleDeployActor(); }
@@ -927,6 +947,12 @@ export class BattleScene extends Phaser.Scene {
       const idx = Number(k) - 1;
       if (idx < skills.length) this.onSkillButton(actor, skills[idx]);
     }
+  }
+
+  /** Cycle the move-animation speed 1× → 2× → 4× → 1× (faster enemy/player turns). */
+  private cycleSpeed(): void {
+    this.turnSpeed = this.turnSpeed >= 4 ? 1 : this.turnSpeed * 2;
+    this.setHint(`Animation speed: ${this.turnSpeed}× (F to cycle).`);
   }
 
   /** Esc — back out of an armed skill / herb pick / bribe without spending the turn. */
@@ -952,8 +978,8 @@ export class BattleScene extends Phaser.Scene {
     }
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
-    const w = 520;
-    const h = 320;
+    const w = 540;
+    const h = 360;
     const body = [
       "TOKENS",
       "  ● green — your party     ● red — enemy     ● grey — captured/bound",
@@ -966,10 +992,14 @@ export class BattleScene extends Phaser.Scene {
       "",
       "TURN ORDER rail (top-left): who acts next · ⏳ charging",
       "",
+      "A TURN: click a tile to move, then attack / use a skill / Wait.",
+      "  The move is undoable until you act — rethink freely.",
+      "",
       "KEYS",
       "  Space/Enter — Advance Clock / confirm      W — Wait (pass turn)",
-      "  1–9 — use the active unit's skills          Esc — cancel a targeted skill",
-      "  T — danger zone        L — this legend       Tab — next unit (deploy)",
+      "  1–9 — use the active unit's skills          Esc — cancel target / Undo Move",
+      "  T — danger zone     F — animation speed     L — this legend",
+      "  Tab — next unit (deployment)",
     ].join("\n");
     this.legend.push(
       this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.btnStroke).setDepth(30),
@@ -1025,6 +1055,7 @@ export class BattleScene extends Phaser.Scene {
 
   private playerRescueOrApproach(actor: Unit, captive: Unit): void {
     if (isAdjacent(actor.pos, captive.pos)) return this.commitRescue(actor, [], captive);
+    if (this.moved) return this.setHint(`${actor.name} has already moved — step adjacent next turn to free ${captive.name}.`);
     const nav = occupiedGrid(this.grid, this.battle.units, [actor, captive], actor.side); // route through friendly bodies (D55)
     const path = findPath(nav, actor.pos, captive.pos);
     if (!path || path.length < 2) return this.setHint("No path to your captured ally.");
@@ -1057,26 +1088,84 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private playerAttackOrApproach(actor: Unit, foe: Unit): void {
+    // Once a unit has made its (tentative) move, it can only strike in place — no
+    // second move (D55). Otherwise the click closes-and-strikes in one go.
+    if (this.moved) {
+      if (inAttackRange(actor, foe)) return this.commitPlayer(actor, [], foe);
+      return this.setHint(`${foe.name} is out of reach — Undo Move (Esc), pick a closer target, or Wait.`);
+    }
     const plan = planAttack(actor, foe, this.battle.units, this.grid);
     if (!plan) return this.setHint("No path to that foe.");
     this.commitPlayer(actor, plan.path, plan.attackTarget);
   }
 
   private playerMove(actor: Unit, tile: GridCoord): void {
+    if (this.moved) return this.setHint(`${actor.name} has already moved — attack, use a skill, Undo Move (Esc), or Wait.`);
     const path = planMove(actor, tile, this.battle.units, this.grid);
     if (!path) return this.setHint("Can't move there.");
-    this.commitPlayer(actor, path, null);
+    this.tentativeMove(actor, path);
+  }
+
+  /**
+   * Step one (D55): walk `actor` to its destination **without ending the turn**, so
+   * the player can survey the board and then attack / use a skill / Wait — or Undo.
+   * The move fires its side-effects (traps, auras) as a real move does; if it cost
+   * the unit HP (a trap sprang), the move *locks* — no take-backs on a sprung trap.
+   */
+  private tentativeMove(actor: Unit, path: GridCoord[]): void {
+    this.preMovePos = { ...actor.pos };
+    const hpBefore = actor.hp;
+    this.busy = true;
+    this.armedSkill = null;
+    this.clearActionButtons();
+    this.highlightTile(null);
+    this.battle.moveUnit(actor, path);
+    this.animateMove(actor, path, () => {
+      this.busy = false;
+      this.moved = true;
+      this.checkTrapSprings();
+      this.refreshHud();
+      if (!actor.alive || this.encounterDecided()) return this.afterTurn();
+      const locked = actor.hp < hpBefore; // a trap bit — the move stands
+      if (locked) this.preMovePos = null;
+      this.highlightTile(actor.pos);
+      this.showSkillButtons(actor, { moved: !locked });
+      this.drawPreview();
+      this.setHint(
+        locked
+          ? `${actor.name} moved — a trap bit, so the move stands. Attack, use a skill, or Wait.`
+          : `${actor.name} moved — attack, use a skill, Undo Move (Esc), or Wait (W).`,
+      );
+    });
+  }
+
+  /** Step one, reversed (D55): snap the active unit back to where it began its turn. */
+  private undoMove(actor: Unit): void {
+    if (this.busy || !this.moved || !this.preMovePos || this.waitingFor !== actor) return;
+    actor.pos = { ...this.preMovePos };
+    this.moved = false;
+    this.preMovePos = null;
+    refreshAuras(this.battle.units); // positions changed back — re-arm the tarpit ring (D40)
+    this.placeView(actor);
+    this.highlightTile(actor.pos);
+    this.refreshHud();
+    this.showSkillButtons(actor);
+    this.drawPreview();
+    this.setHint(`${actor.name}'s turn — move, attack, use a skill, or Wait (W).`);
   }
 
   private commitPlayer(actor: Unit, path: GridCoord[], target: Unit | null): void {
+    const movedThisTurn = this.moved || path.length > 0;
     this.waitingFor = null;
     this.armedSkill = null;
+    this.moved = false;
+    this.preMovePos = null;
     this.busy = true;
     this.clearActionButtons();
     this.highlightTile(null);
     if (path.length > 0) this.battle.moveUnit(actor, path);
     if (target && target.alive) this.battle.attack(actor, target);
-    this.battle.endTurn(actor, { moved: path.length > 0, acted: target !== null });
+    this.battle.endTurn(actor, { moved: movedThisTurn, acted: target !== null });
     this.animateMove(actor, path, () => {
       if (target) this.flashAttack(actor, target);
       this.afterTurn();
@@ -1085,6 +1174,8 @@ export class BattleScene extends Phaser.Scene {
 
   private afterTurn(): void {
     this.busy = false;
+    this.moved = false;
+    this.preMovePos = null;
     this.resolveTheftDeaths();
     this.checkTrapSprings(); // a move may have sprung a hidden trap — reveal + mark it
     this.refreshHud();
@@ -1317,7 +1408,7 @@ export class BattleScene extends Phaser.Scene {
     }
     if (this.showThreat) this.view.drawThreatZone(this.threatGfx, this.battle.units, this.grid, "player");
     else this.threatGfx.clear();
-    this.view.drawPreview(this.preview, actor, this.battle.units, this.grid, this.armedSkill ?? undefined);
+    this.view.drawPreview(this.preview, actor, this.battle.units, this.grid, this.armedSkill ?? undefined, this.moved);
   }
 
   private highlightTile(coord: GridCoord | null): void {
@@ -1363,7 +1454,7 @@ export class BattleScene extends Phaser.Scene {
   // --- Animation -------------------------------------------------------------
 
   private animateMove(unit: Unit, path: readonly GridCoord[], done: () => void): void {
-    this.view.animateMove(unit, path, done, 150);
+    this.view.animateMove(unit, path, done, 150 / this.turnSpeed);
   }
 
   private flashAttack(attacker: Unit, target: Unit): void {

@@ -1353,3 +1353,28 @@ trail of reasoning stays intact.
   leveling-balance pass is deferred** (it rides the parked gold-scarcity tuning).
 - **Spec:** [`path2-M14-build-prompt.md`](path2-M14-build-prompt.md) — Phase 1.6, Phase 3.
 - **Superseded by:** —
+
+## D54 — The enemy trap-field + the trapper↔Hunter synergy (Survivalist subsumed into the Scout)
+
+- **Status:** Decided (2026-06-17) · extends **D6/D7** (logistics/traps) and the **D40** class
+  kits; **supersedes** the M12-kickoff note that the Survivalist stays a first-class job "not
+  absorbed into a combat class"
+- **Context:** The Survivalist's Set Trap was dormant — only the `survivalist` job held it and
+  no demo party fielded one, so the trap lever never appeared. Separately, the Hunter's
+  **Deadeye** passive (+damage vs *debuffed* foes) had no in-party enabler, and the audit found
+  the trap mechanic had no felt "why do this."
+- **Decision:** Three moves, one loop.
+  - **Enemy trap-field (D12):** an authored encounter pre-places **concealed enemy traps**
+    (`makeConcealedTrap`, owner=enemy, `recoverable:false`) — spring on player entry, spotted via
+    an **Awareness roll** (passive each turn + an active **Search**), and harvested **only** by a
+    trap-trained unit who **disarms** a spotted one (never auto-salvaged). The Hollow Mill gains a
+    main-path node, *The Sapper's Snares*.
+  - **Subsume the Survivalist into the Scout:** the fast playmaker now plants **and** disarms
+    snares (`set-snare`, Deployment). No dedicated trapper character — Vale the Scout carries it.
+    Disarm is gated on *holding a trap skill* (`canDisarm`), not a hard-coded jobId.
+  - **Trapper↔Hunter synergy:** a snare deals damage **and Immobilizes** (a `debuff`), which is
+    exactly what the Hunter's **Deadeye** punishes. The Scout *sets up* the Hunter's enhanced
+    damage: snare the prey → Rook's Deadeye cashes it in.
+- **Spec:** `src/core/traps.ts`, `entities.makeConcealedTrap`/`makeTrap` (status), `jobs` (Scout
+  `set-snare`), `hollow-mill` (*The Sapper's Snares*).
+- **Superseded by:** —

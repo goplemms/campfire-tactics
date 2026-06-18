@@ -99,11 +99,14 @@ export function seerDivine(tier: IntelTier, rng: Rng, masterRank = false): Intel
  */
 export function readEncounter(def: EncounterSource, tier: IntelTier): IntelReport {
   // Normalize either source's enemies to `{ name, col, row }` (D49) — authored
-  // placements read their template's name; a hidden ambush body stays unread until
-  // it's revealed in the fight (the hidden-until-scouted seam).
+  // placements read their template's name. A hidden ambush body stays unread
+  // until you've scouted to **full** positional intel (tier 3): at that point you
+  // spotted the trap, so it appears in the read and is no longer a battle surprise
+  // (the mechanical reveal happens in staging — see `revealHidden`).
+  const revealAmbush = tier >= MAX_TIER;
   const enemies = isAuthoredEncounter(def)
     ? def.enemies
-        .filter((p) => !p.hidden)
+        .filter((p) => !p.hidden || revealAmbush)
         .map((p) => ({
           name: getEnemyTemplate(p.templateId)?.name ?? p.templateId,
           col: p.pos.col,
@@ -116,6 +119,19 @@ export function readEncounter(def: EncounterSource, tier: IntelTier): IntelRepor
   if (tier >= 2) report.count = enemies.length;
   if (tier >= 3) report.positions = enemies;
   return report;
+}
+
+/**
+ * The deployment edge scouting buys (D10 teeth). Knowing enemy strength and
+ * position lets you set up deeper before you're exposed — a wider safe depth and
+ * a lower exposure multiplier, scaling with the intel tier you've earned. Folds
+ * in alongside the morale deploy bonus (D8) at the placement seam.
+ */
+export function intelDeployBonus(tier: IntelTier): { safeDepthBonus: number; exposureMultiplier: number } {
+  return {
+    safeDepthBonus: tier >= 3 ? 2 : tier >= 2 ? 1 : 0,
+    exposureMultiplier: tier >= 3 ? 0.75 : tier >= 2 ? 0.85 : tier >= 1 ? 0.95 : 1,
+  };
 }
 
 // --- Node pre-selection preview (D24, the overworld) ------------------------

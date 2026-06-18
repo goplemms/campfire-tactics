@@ -30,6 +30,8 @@ import {
   // M5 — camp / morale
   moraleTier,
   moraleModifiers,
+  // D32/D53 — the survivalist levels from laying traps (its signature deploy action)
+  grantAbilityUseXp,
   // M6 — the run loop
   currentEncounter,
   isAuthoredEncounter,
@@ -42,12 +44,24 @@ import {
   thiefEscapes,
   previewNode,
   scoutedTier,
+  // D10 — the intel deploy edge: scouted ground deploys safer
+  intelFloor,
+  clampTier,
+  intelDeployBonus,
+  // D12 — the enemy trap-field: spot, search, and Survivalist disarm
+  isConcealedTrap,
+  hiddenTraps,
+  revealTrapsNear,
+  disarmTrap,
+  canDisarm,
+  type ConcealedTrap,
   bribeEnemy,
   bribeCost,
   recruitToRoster,
   type RunState,
   type RunLoop,
   type IntelReport,
+  type IntelTier,
   type DeployAlert,
   type DeployOutcome,
   type Rng,
@@ -55,6 +69,7 @@ import {
   type Unit,
   type Side,
   type SkillDef,
+  type StatusInstance,
   type TheftAttempt,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
@@ -124,6 +139,11 @@ export class BattleScene extends Phaser.Scene {
   private deployRng!: Rng;
   private placedTraps: { pos: GridCoord; damage: number; marker: Phaser.GameObjects.Text; sprung: boolean }[] = [];
   private trapDamage = 12;
+  /** The debuff the party's snare inflicts on a spring (Immobilize) — enables Deadeye. */
+  private trapStatus?: StatusInstance;
+  // D12 — concealed enemy traps: a seeded spot-roll stream + per-trap board markers.
+  private spotRng!: Rng;
+  private trapMarkers = new Map<string, Phaser.GameObjects.Text>();
   private intel?: IntelReport;
 
   // Battle interaction.
@@ -256,16 +276,40 @@ export class BattleScene extends Phaser.Scene {
     this.phase = "deployment";
     this.deployAlert = createAlert();
     this.deployRng = streamFor(this.run.seed, "deploy");
+    this.spotRng = streamFor(this.run.seed, "trap-spot");
+    this.trapMarkers.clear();
     const trapSkill = this.run.party
       .flatMap((u) => unitSkills(u, "deployment"))
       .find((s) => s.effect.kind === "placeTrap");
-    if (trapSkill && trapSkill.effect.kind === "placeTrap") this.trapDamage = trapSkill.effect.damage;
+    if (trapSkill && trapSkill.effect.kind === "placeTrap") {
+      this.trapDamage = trapSkill.effect.damage;
+      this.trapStatus = trapSkill.effect.status; // a snare's Immobilize → sets up Deadeye
+    }
     this.selectDeployActor(this.battle.units.find((u) => u.side === "player") ?? null);
     this.setPrimary("Start Battle");
   }
 
   private moraleMods() {
     return moraleModifiers(moraleTier(this.run.camp.morale));
+  }
+
+  /** The node's effective intel tier (passive floor + scouting), for the deploy edge (D10). */
+  private intelTier(): IntelTier {
+    return clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, this.run.mapNodeId));
+  }
+
+  /**
+   * Deploy modifiers = morale (D8) folded with the intel edge (D10): scouted
+   * ground widens the safe depth and lowers exposure, on top of the morale bundle.
+   */
+  private deployMods() {
+    const m = this.moraleMods();
+    const intel = intelDeployBonus(this.intelTier());
+    return {
+      ...m,
+      safeDepthBonus: m.safeDepthBonus + intel.safeDepthBonus,
+      exposureMultiplier: m.exposureMultiplier * intel.exposureMultiplier,
+    };
   }
 
   private selectDeployActor(unit: Unit | null): void {
@@ -313,7 +357,7 @@ export class BattleScene extends Phaser.Scene {
       this.titleText.setText("Deployment");
       return;
     }
-    const mods = this.moraleMods();
+    const mods = this.deployMods();
     const past = Math.max(0, this.depthOf(actor.pos) - safeDepth(actor, mods.safeDepthBonus));
     const kits = countOf(this.run.inventory, "trap-kit");
     const tag = actor.captured ? " — CAPTURED" : past > 0 ? ` — ${past} past safe` : " — in cover";
@@ -327,7 +371,7 @@ export class BattleScene extends Phaser.Scene {
     }
     this.safeZoneGfx.clear();
     if (!unit) return;
-    const maxCol = safeDepth(unit, this.moraleMods().safeDepthBonus);
+    const maxCol = safeDepth(unit, this.deployMods().safeDepthBonus);
     for (let row = 0; row < this.grid.rows; row++) {
       for (let col = 0; col <= maxCol && col < this.grid.cols; col++) {
         if (!this.grid.isWalkable({ col, row })) continue;
@@ -367,7 +411,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Resolve a noisy deploy action (move or deep trap) via the shared core model. */
   private resolveDeploy(actor: Unit): void {
-    const outcome = resolveDeployAction(this.deployAlert, actor, this.grid, this.battle.units, this.deployRng, this.moraleMods().safeDepthBonus);
+    const outcome = resolveDeployAction(this.deployAlert, actor, this.grid, this.battle.units, this.deployRng, this.deployMods().safeDepthBonus);
     if (outcome.spotted) this.playRetreat(actor, outcome);
     else {
       this.refreshDeployStatus();
@@ -436,8 +480,12 @@ export class BattleScene extends Phaser.Scene {
     const marker = this.add.text(x, y - this.view.halfH(), "✸", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
     this.boardObjects.push(marker);
     this.placedTraps.push({ pos: { ...tile }, damage: this.trapDamage, marker, sprung: false });
+    // The signature deploy action levels its owner now (D32/D53).
+    const levels = grantAbilityUseXp(actor);
     this.refreshCampText();
-    this.setHint("Trap placed. A deep one is noisy — range back or Start Battle.");
+    this.setHint(levels > 0
+      ? `Trap placed — ${actor.name} reached L${actor.level}! Range back or Start Battle.`
+      : "Trap placed. A deep one is noisy — range back or Start Battle.");
     // A trap laid past the safe zone is a noisy action too, so it rolls a spot.
     this.resolveDeploy(actor);
   }
@@ -467,7 +515,7 @@ export class BattleScene extends Phaser.Scene {
     this.safeZoneGfx?.clear();
     this.highlightTile(null);
 
-    this.placedTraps.forEach((t, i) => this.battle.entities.register(makeTrap(`trap-${i}`, t.pos, "player", t.damage)));
+    this.placedTraps.forEach((t, i) => this.battle.entities.register(makeTrap(`trap-${i}`, t.pos, "player", t.damage, { status: this.trapStatus })));
     this.battle.bus.on("unitEnterTile", ({ unit, tile }) => {
       if (unit.side !== "enemy") return;
       const t = this.placedTraps.find((t) => !t.sprung && t.pos.col === tile.col && t.pos.row === tile.row);
@@ -499,10 +547,20 @@ export class BattleScene extends Phaser.Scene {
     this.refreshCampText();
     if (healed > 0) for (const u of this.battle.units) if (u.side === "player" && u.alive) this.flashHeal(u);
 
+    // Trap-field (D12): an opening party scan from the deploy line reveals the
+    // nearest concealed traps; the rest are spotted as units advance (or Search).
+    if (hiddenTraps(this.battle.entities).length > 0) {
+      for (const u of this.battle.units) if (u.side === "player" && u.alive) revealTrapsNear(u, this.battle.entities, this.spotRng);
+      this.redrawTrapMarkers();
+    }
+
     this.refreshHud();
     this.setPrimary("Advance Clock");
     const bound = this.battle.units.find((u) => u.captured && u.side === "player");
-    this.setHint((healed > 0 ? `Chef's stew restored ${healed} HP. ` : "Battle begins. ") + (bound ? `${bound.name} is bound — rescue or win to free her. ` : "") + "Press Advance Clock.");
+    const trapHint = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0
+      ? "Traps are seeded ahead — watch for ▲, and let a trapper disarm them. "
+      : "";
+    this.setHint((healed > 0 ? `Chef's stew restored ${healed} HP. ` : "Battle begins. ") + trapHint + (bound ? `${bound.name} is bound — rescue or win to free her. ` : "") + "Press Advance Clock.");
   }
 
   private onPrimary(): void {
@@ -532,6 +590,8 @@ export class BattleScene extends Phaser.Scene {
       this.runEnemyTurn(actor);
     } else {
       this.waitingFor = actor;
+      // The active unit looks around — an Awareness roll may spot nearby traps (D12).
+      this.spotTrapsForActor(actor);
       this.setHint(`${actor.name}'s turn — move, attack, or use a skill.`);
       this.showSkillButtons(actor);
       this.drawPreview();
@@ -560,7 +620,114 @@ export class BattleScene extends Phaser.Scene {
         },
       });
     }
+    // Trap-field verbs (D12): Search to scan for hidden traps; the trapper disarms
+    // a spotted, adjacent one to pocket its kit. Only surfaced when traps are afield.
+    if (hiddenTraps(this.battle.entities).length > 0) {
+      specs.push({
+        text: "Search",
+        description: "Spend the turn scanning the ground ahead for concealed traps (a wider, better look).",
+        onClick: () => this.doSearch(actor),
+      });
+    }
+    const adjTrap = this.adjacentRevealedTrap(actor);
+    if (adjTrap && canDisarm(actor)) {
+      specs.push({
+        text: "Disarm trap",
+        description: "Disarm the adjacent spotted trap and pocket its kit (a trap-trained unit only).",
+        onClick: () => this.doDisarm(actor, adjTrap.id),
+      });
+    }
     this.layoutActionRow(specs);
+  }
+
+  // --- Trap-field: spotting, searching, disarming (D12) ----------------------
+
+  /** Roll the active unit's Awareness against nearby hidden traps; draw any spotted. */
+  private spotTrapsForActor(actor: Unit, search = false): void {
+    if (hiddenTraps(this.battle.entities).length === 0) return;
+    const found = revealTrapsNear(actor, this.battle.entities, this.spotRng, { search });
+    if (found.length > 0) {
+      this.redrawTrapMarkers();
+      this.setHint(`${actor.name} spots ${found.length} hidden trap${found.length > 1 ? "s" : ""}! (▲)`);
+    }
+  }
+
+  /** A revealed, un-sprung concealed trap adjacent to `actor` (the disarm target). */
+  private adjacentRevealedTrap(actor: Unit): ConcealedTrap | undefined {
+    return this.battle.entities
+      .all()
+      .filter(isConcealedTrap)
+      .find((t) => t.revealed && !t.sprung && Math.max(Math.abs(t.pos.col - actor.pos.col), Math.abs(t.pos.row - actor.pos.row)) <= 1);
+  }
+
+  /** Spend the turn on a deliberate Search — a wider radius and a better spot roll. */
+  private doSearch(actor: Unit): void {
+    if (this.busy || this.waitingFor !== actor) return;
+    this.spotTrapsForActor(actor, true);
+    this.waitingFor = null;
+    this.busy = true;
+    this.clearActionButtons();
+    this.highlightTile(null);
+    this.battle.endTurn(actor, { acted: true });
+    this.afterTurn();
+  }
+
+  /** Disarm a spotted adjacent trap (Survivalist), harvest its kit, end the turn. */
+  private doDisarm(actor: Unit, trapId: string): void {
+    if (this.busy || this.waitingFor !== actor) return;
+    const res = disarmTrap(this.battle.entities, trapId, actor, this.run.inventory);
+    if (!res.ok) return this.setHint(`Can't disarm: ${res.reason}`);
+    this.redrawTrapMarkers();
+    this.refreshCampText();
+    this.waitingFor = null;
+    this.busy = true;
+    this.clearActionButtons();
+    this.highlightTile(null);
+    this.battle.endTurn(actor, { acted: true });
+    this.afterTurn();
+    this.setHint(res.harvested
+      ? `${actor.name} disarms the trap and pockets a ${res.harvested}.`
+      : `${actor.name} disarms the trap (storage full — the kit is lost).`);
+  }
+
+  /**
+   * Sync the board markers to the concealed traps: a ⚠ on each revealed armed trap,
+   * a faded ✕ once sprung, and nothing for disarmed (removed) ones.
+   */
+  private redrawTrapMarkers(): void {
+    const traps = this.battle.entities.all().filter(isConcealedTrap);
+    for (const t of traps) {
+      if (!t.revealed) continue;
+      let m = this.trapMarkers.get(t.id);
+      if (!m) {
+        const { x, y } = this.tileToWorld(t.pos);
+        // ▲ (Geometric Shapes) renders in the monospace UI font; ⚠ does not.
+        m = this.add.text(x, y - this.view.halfH(), "▲", { color: "#e06b6b", fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.85);
+        this.boardObjects.push(m);
+        this.trapMarkers.set(t.id, m);
+      }
+      m.setText(t.sprung ? "✕" : "▲").setColor(t.sprung ? INK.disabled : "#e06b6b");
+    }
+    // Drop markers for disarmed traps (no longer registered).
+    for (const [id, m] of this.trapMarkers) {
+      if (!traps.some((t) => t.id === id)) {
+        m.destroy();
+        this.trapMarkers.delete(id);
+      }
+    }
+  }
+
+  /** After a move, reveal any trap that just sprang under someone and refresh markers. */
+  private checkTrapSprings(): void {
+    let sprang = false;
+    for (const t of this.battle.entities.all().filter(isConcealedTrap)) {
+      if (t.sprung && !t.revealed) {
+        t.revealed = true;
+        sprang = true;
+      }
+    }
+    if (this.trapMarkers.size > 0 || sprang) this.redrawTrapMarkers();
+    if (sprang) this.setHint("💥 A hidden trap sprang!");
   }
 
   /** The current combat node's banded preview (D24) — leverage for the Noble's bribe. */
@@ -780,6 +947,7 @@ export class BattleScene extends Phaser.Scene {
   private afterTurn(): void {
     this.busy = false;
     this.resolveTheftDeaths();
+    this.checkTrapSprings(); // a move may have sprung a hidden trap — reveal + mark it
     this.refreshHud();
     this.highlightTile(null);
     this.view.clearPreview(this.preview);

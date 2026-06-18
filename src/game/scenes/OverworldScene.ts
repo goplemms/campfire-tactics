@@ -13,7 +13,7 @@ import {
   fatigueTier,
   fatiguePenalty,
   unitSkills,
-  applyCampSkill,
+  useCampJobSkill,
   addItem,
   triageHeal,
   chunkHp,
@@ -418,7 +418,7 @@ export class OverworldScene extends Phaser.Scene {
     y += 22;
     for (const u of this.run.party) {
       for (const skill of unitSkills(u, "meta")) {
-        this.campButton(colX, y, 360, 24, `${u.name}: ${skill.name}`, true, () => this.useCampSkill(skill), `${skill.name} — ${skill.description}`);
+        this.campButton(colX, y, 360, 24, `${u.name}: ${skill.name}`, true, () => this.useCampSkill(u, skill), `${skill.name} — ${skill.description}`);
         y += rowH;
       }
     }
@@ -533,8 +533,9 @@ export class OverworldScene extends Phaser.Scene {
     this.setHint(res.applied ? `${res.detail ?? "Done."}` : `Can't: ${res.reason ?? "refused."}`);
   }
 
-  private useCampSkill(skill: SkillDef): void {
-    const out = applyCampSkill(skill, this.run.camp);
+  private useCampSkill(actor: Unit, skill: SkillDef): void {
+    // The signature action levels its owner now (D32/D53): a Chef grows from cooking.
+    const out = useCampJobSkill(actor, skill, this.run.camp);
     if (out.storage) this.run.inventory.storageCap = this.run.camp.storageCap;
     this.renderCamp();
     const parts: string[] = [];
@@ -542,6 +543,7 @@ export class OverworldScene extends Phaser.Scene {
     if (out.storage) parts.push(`+${out.storage} storage`);
     if (out.morale) parts.push(`+${out.morale} morale`);
     if (out.bankedHeal) parts.push(`banked +${out.bankedHeal} HP/unit`);
+    if (out.levels > 0) parts.push(`${actor.name} reached L${actor.level}!`);
     this.setHint(`${skill.name}: ${parts.join(", ")}.`);
   }
 

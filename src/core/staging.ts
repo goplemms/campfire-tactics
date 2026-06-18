@@ -19,6 +19,7 @@ import type { GridCoord } from "./iso";
 import type { Unit } from "./units";
 import { TileGrid } from "./grid";
 import { Battle } from "./turn";
+import { makeConcealedTrap } from "./entities";
 import { buildGrid, buildEnemies, type EncounterDef } from "./generation";
 import {
   buildAuthoredGrid,
@@ -60,6 +61,12 @@ export interface StageOptions {
   deploymentPenalty?: number;
   /** Override the player spawn tiles (else authored uses its own; procedural auto-edges). */
   playerSpawns?: GridCoord[];
+  /**
+   * Reveal hidden ambush bodies (D10/D44): when the run scouted the node to full
+   * positional intel, the hidden-until-scouted enemies start the fight **visible**
+   * — the ambush is blown, no surprise. Authored sources only.
+   */
+  revealHidden?: boolean;
 }
 
 /** Reset a unit's combat-scoped transient state for a fresh encounter. */
@@ -124,6 +131,8 @@ export function stageEncounter(
   if (isAuthoredEncounter(source)) {
     grid = buildAuthoredGrid(source);
     enemies = buildAuthoredEnemies(source);
+    // Scouted-to-full intel blows the ambush: hidden bodies start visible (D10).
+    if (opts.revealHidden) for (const e of enemies) e.hidden = false;
     placeParty(players, opts.playerSpawns ?? source.playerSpawns);
     objectiveSpecs = withDefaultGoal(source.objectives);
   } else {
@@ -135,6 +144,18 @@ export function stageEncounter(
   }
 
   const battle = new Battle(grid, [...players, ...enemies]);
+
+  // Pre-place the authored concealed enemy traps (the trap-field lever, D12): they
+  // ride the same entity registry the player's Set Trap uses, so movement springs
+  // them and the Survivalist can disarm them — no special case in the loop (D4).
+  if (isAuthoredEncounter(source) && source.traps) {
+    source.traps.forEach((t) =>
+      battle.entities.register(
+        makeConcealedTrap(t.id ?? `enemy-trap@${t.pos.col},${t.pos.row}`, t.pos, "enemy", t.damage ?? 12, t.concealment ?? 4),
+      ),
+    );
+  }
+
   const objectives = armObjectives(battle.clock, battle.units, objectiveSpecs);
   return { battle, objectives, source };
 }

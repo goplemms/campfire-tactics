@@ -61,15 +61,22 @@ const STEPS = [
   { name: "07-e1-victory", minMs: 900, eval: forceWin }, // resolution overlay — reward + level-up feedback
   { name: "08-after-e1", minMs: 900, eval: bs(`s.returnToOverworld();`) }, // back on the overworld map
 
-  { name: "09-e2-deploy", minMs: 1100, eval: navTo("e2") }, // route past the rest node to E2
-  { name: "10-e2-ambush", minMs: 900, eval: advance(10) }, // the hidden ambush bodies lie faded until scouted
-  { name: "11-e2-victory", minMs: 900, eval: forceWin },
-  { name: "12-after-e2", minMs: 900, eval: bs(`s.returnToOverworld();`) },
+  { name: "09-snares-deploy", minMs: 1100, eval: navTo("snares") }, // The Sapper's Snares — the trap-field board
+  // Advance to a player turn, then reveal every concealed trap so the ⚠ markers
+  // draw for the shot (the Search/Disarm verbs already show in the action row).
+  { name: "10-snares-spot", minMs: 1000, eval: bs(`if(s.phase==="deployment")s.onPrimary();for(let i=0;i<8&&!s.waitingFor;i++){s.busy=false;s.over=false;s.onAdvance();}for(const e of s.battle.entities.all())if(e.concealment!==undefined)e.revealed=true;s.redrawTrapMarkers();`) },
+  { name: "11-snares-victory", minMs: 900, eval: forceWin },
+  { name: "12-after-snares", minMs: 900, eval: bs(`s.returnToOverworld();`) },
 
-  { name: "13-e3-deploy", minMs: 1100, eval: navTo("e3") }, // the final holdout
-  { name: "14-e3-gate", minMs: 1100, eval: advance(14) }, // the objective banner: the bridge-cut gauge filling
-  { name: "15-e3-victory", minMs: 900, eval: forceWin }, // win = complete (the prize)
-  { name: "16-complete", minMs: 900, eval: bs(`s.returnToOverworld();`) }, // the quest-complete terminal
+  { name: "13-e2-deploy", minMs: 1100, eval: navTo("e2") }, // route past the rest node to E2
+  { name: "14-e2-ambush", minMs: 900, eval: advance(10) }, // the hidden ambush bodies lie faded until scouted
+  { name: "15-e2-victory", minMs: 900, eval: forceWin },
+  { name: "16-after-e2", minMs: 900, eval: bs(`s.returnToOverworld();`) },
+
+  { name: "17-e3-deploy", minMs: 1100, eval: navTo("e3") }, // the final holdout
+  { name: "18-e3-gate", minMs: 1100, eval: advance(14) }, // the objective banner: the bridge-cut gauge filling
+  { name: "19-e3-victory", minMs: 900, eval: forceWin }, // win = complete (the prize)
+  { name: "20-complete", minMs: 900, eval: bs(`s.returnToOverworld();`) }, // the quest-complete terminal
 ];
 
 async function ensureChrome() {

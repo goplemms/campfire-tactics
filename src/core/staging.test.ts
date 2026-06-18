@@ -68,6 +68,23 @@ describe("stageEncounter — one shape for both sources (D50)", () => {
     expect(staged.objectives.map((o) => o.spec.kind)).toEqual(["eliminate-all", "closing-gate"]);
   });
 
+  it("revealHidden blows the ambush: hidden bodies stage visible (D10)", () => {
+    const withAmbush: AuthoredEncounter = {
+      ...AUTHORED,
+      enemies: [
+        { templateId: "bandit-thug", pos: { col: 6, row: 2 } },
+        { templateId: "bandit-cutthroat", pos: { col: 6, row: 4 }, hidden: true },
+      ],
+    };
+    // Default (unscouted): the ambush body stays hidden until the fight reveals it.
+    const blind = stageEncounter(withAmbush, [player("a")]);
+    expect(blind.battle.units.some((u) => u.side === "enemy" && u.hidden)).toBe(true);
+    // Scouted to full intel: no enemy starts hidden — the surprise is gone.
+    const scouted = stageEncounter(withAmbush, [player("a")], { revealHidden: true });
+    expect(scouted.battle.units.some((u) => u.side === "enemy" && u.hidden)).toBe(false);
+    expect(scouted.battle.units.filter((u) => u.side === "enemy")).toHaveLength(2);
+  });
+
   it("resets combat-scoped transient state on the placed roster", () => {
     const u = player("a", { hp: 20 });
     u.ct = 99;

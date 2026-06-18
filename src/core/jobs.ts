@@ -272,11 +272,23 @@ export const HUNTER: JobDef = {
 export const SCOUT_JOB: JobDef = {
   id: "scout",
   name: "Scout",
-  description: "Playmaker: manufacture isolation, mark the kill, let the team eat.",
+  description: "Playmaker & field-craft: manufacture isolation, plant and disarm snares, let the team eat.",
   passives: { [PASSIVE.flankSolo]: 1, [PASSIVE.flankBonus]: FLANK.bonus + 3 },
   baseline: { speed: 14, maxHp: 24, attack: 9, defense: 2, moveRange: 5, sightRadius: 6, attackRange: 1 },
   growth: { speed: 2, moveRange: 1 },
   skills: [
+    {
+      // Field-craft (subsumes the Survivalist): the fast playmaker plants and disarms
+      // snares. A sprung snare Immobilizes its prey — setting up the Hunter's Deadeye.
+      id: "set-snare",
+      name: "Set Snare",
+      description: "Plant a snare in Deployment: 8 damage and Immobilizes the first enemy onto it (sets up Deadeye).",
+      phase: "deployment",
+      target: "camp",
+      range: 0,
+      spend: "act",
+      effect: { kind: "placeTrap", damage: 8, status: immobilized(2) },
+    },
     {
       id: "dash",
       name: "Dash",

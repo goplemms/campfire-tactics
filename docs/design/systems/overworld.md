@@ -200,9 +200,10 @@ Arrive → MAKE CAMP ─ "End the Night" → [node event by kind] → SURVEY ─
    departure** (cooldowns decrement, interest accrues) — so one night's action allowance is
    *timed across the whole visit*, not split mid-node.
 
-**Terminology:** *"End the Night"* = the prep→event gate; *"Break Camp"* = depart→next-node
-(the word fits the departure). Never reuse "rest" for a gate — rest is a node kind (D23) + a
-recovery payload (D47). **Where rest fits:** the *"rest or push on"* choice lives on the
+**Terminology** — the lifecycle keywords (*"Make Camp" / "End the Night" / "Survey" /
+"Break Camp"*) and the rule that **"rest" is never a gate** are now canon in the
+[**glossary**](../glossary.md#lifecycle--the-node-spine-d46); author labels against it.
+**Where rest fits (the design rationale):** the *"rest or push on"* choice lives on the
 **map (routing to a rest node)**, not as a camp toggle — moving it into camp would dissolve
 the rest node and revive the *dodge-every-fight* failure mode. The one in-camp recovery
 action is D47's **in-place rest**.

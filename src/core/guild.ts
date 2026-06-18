@@ -222,7 +222,7 @@ export function availableGear(guild: Guild): string[] {
 /** Why a caravan can't be dispatched to a quest right now, or `null` if it can. */
 export function dispatchRefusal(guild: Guild, caravan: Caravan, quest: Quest): string | null {
   if (caravan.dispatched) return "Caravan already dispatched.";
-  if (caravan.party.length === 0) return "Caravan has no crew aboard.";
+  if (caravan.party.length === 0) return "Caravan has no party.";
   if (!getQuest(guild, quest.id)) return "Quest is no longer on the board.";
   if (guild.treasury < caravan.purse) return "Treasury can't cover the purse.";
   return null;

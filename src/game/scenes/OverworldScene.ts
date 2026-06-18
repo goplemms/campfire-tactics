@@ -512,22 +512,22 @@ export class OverworldScene extends Phaser.Scene {
       const market = getAbility("market")!;
       const marketActor = this.marketActor();
       const mRefusal = this.refusal(market, marketActor);
-      this.campButton(subX, y, subW, 24, `Shop the market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? "Merchant ACCESS (D30): open the market to buy supply into storage from the purse.");
+      this.campButton(subX, y, subW, 24, `Market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? "Merchant ACCESS (D30): open the market to buy supply into storage from the purse.");
       y += rowH;
-      this.campButton(subX, y, subW, 24, "Invest the purse", true, () => this.bankerInterest(), "Banker (D30): the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
+      this.campButton(subX, y, subW, 24, "Invest the Purse", true, () => this.bankerInterest(), "Banker (D30): the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
       y += rowH;
       this.campButton(subX, y, subW, 24, "Borrow 40g", true, () => this.bankerBorrow40(), "Banker (D30): overspend now; auto-repaid from incoming run gold.");
       y += rowH;
-      this.campButton(subX, y, subW, 24, `Guard the purse (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker (D30): blunt a thief's skim — battle thief and event node alike.");
+      this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker (D30): blunt a thief's skim — battle thief and event node alike.");
       y += rowH;
-      this.campButton(subX, y, subW, 24, "Gather influence", !!this.guild, () => this.nobleIncome(), "Noble (D30/D34): earn Influence — a separate currency that can never pay Upkeep. Bribe enemies mid-battle.");
+      this.campButton(subX, y, subW, 24, "Gather Influence", !!this.guild, () => this.nobleIncome(), "Noble (D30/D34): earn Influence — a separate currency that can never pay Upkeep. Bribe enemies mid-battle.");
       y += rowH;
       // The Banker's purse-state, moved off the always-on HUD line into context (D58).
       const eco = this.run.overworld;
       const bank: string[] = [];
-      if (eco.interestPerStep > 0) bank.push(`interest +${eco.interestPerStep}g/step`);
-      if (eco.debt > 0) bank.push(`debt ${eco.debt}g`);
-      if (eco.protection > 0) bank.push(`protection ${Math.round(eco.protection * 100)}%`);
+      if (eco.interestPerStep > 0) bank.push(`Interest +${eco.interestPerStep}g/step`);
+      if (eco.debt > 0) bank.push(`Debt ${eco.debt}g`);
+      if (eco.protection > 0) bank.push(`Protection ${Math.round(eco.protection * 100)}%`);
       if (this.guild) bank.push(`Influence ${this.guild.influence}`);
       if (bank.length) {
         this.campObjects.push(this.add.text(subX, y, bank.join("   ·   "), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11));

@@ -40,7 +40,7 @@ export const ICON = {
   rest: { glyph: "≈", label: "rest", color: INK.success },
   goal: { glyph: "★", label: "goal", color: INK.gold },
   thief: { glyph: "$", label: "thief", color: INK.ember },
-  shop: { glyph: "¤", label: "shop", color: INK.gold },
+  shop: { glyph: "¤", label: "market", color: INK.gold },
   recruiter: { glyph: "✚", label: "recruit", color: INK.cyan },
   story: { glyph: "?", label: "story", color: INK.secondary },
   toll: { glyph: "╫", label: "toll", color: INK.gold },

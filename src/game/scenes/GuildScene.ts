@@ -112,7 +112,7 @@ export class GuildScene extends Phaser.Scene {
 
     // Persistent across renders (render() rebuilds this.ui from scratch each time).
     this.hintPanel ??= new HintPanel(this, { anchor: "bottom", startPinned: true });
-    if (!this.hint) this.hint = "Pick a quest and a caravan, add crew from the pool, then Dispatch.";
+    if (!this.hint) this.hint = "Pick a quest and a caravan, fill the party from the pool, then Dispatch.";
     this.render();
   }
 
@@ -180,11 +180,11 @@ export class GuildScene extends Phaser.Scene {
     const vessel = getVessel(caravan.vesselId);
     const dispatched = caravan.dispatched;
     this.text(x, y, `Assembly — ${vessel.label}`, INK.success, FONT.body, 0);
-    this.text(x, y + 20, `slots ${caravan.party.length}/${caravanCapacity(caravan)}  ·  storage ${caravan.storageCap}  ·  purse ${caravan.purse}g${dispatched ? "  ·  DISPATCHED" : ""}`, INK.secondary, FONT.label, 0);
+    this.text(x, y + 20, `Slots ${caravan.party.length}/${caravanCapacity(caravan)}  ·  Storage ${caravan.storageCap}  ·  Purse ${caravan.purse}g${dispatched ? "  ·  DISPATCHED" : ""}`, INK.secondary, FONT.label, 0);
 
     let yy = y + 44;
-    // Aboard party (uniform slots) — click to remove (if not dispatched).
-    this.text(x, yy, "Aboard:", INK.secondary, FONT.label, 0);
+    // The party (uniform slots) — click to remove (if not dispatched).
+    this.text(x, yy, "Party:", INK.secondary, FONT.label, 0);
     yy += 20;
     if (caravan.party.length === 0) {
       this.text(x + 6, yy, "(empty — add from the pool →)", INK.disabled, FONT.label, 0);
@@ -192,7 +192,7 @@ export class GuildScene extends Phaser.Scene {
     }
     for (const u of caravan.party) {
       this.listButton(x, yy, 240, `${u.name} (${u.jobId})${u.isLord ? " ♛" : ""}`, false, () => {
-        if (dispatched) return this.setHint("Already dispatched — can't change crew.");
+        if (dispatched) return this.setHint("Already dispatched — can't change the party.");
         unassignMember(caravan, u);
         this.render();
       });
@@ -220,7 +220,7 @@ export class GuildScene extends Phaser.Scene {
 
     // Purse slider (treasury → purse), in steps of 20.
     yy += 6;
-    this.text(x, yy, "Purse (from treasury):", INK.secondary, FONT.label, 0);
+    this.text(x, yy, "Purse (from Treasury):", INK.secondary, FONT.label, 0);
     yy += 22;
     this.smallButton(x, yy, 34, "−20", () => this.adjustPurse(caravan, -20));
     this.smallButton(x + 40, yy, 34, "+20", () => this.adjustPurse(caravan, +20));
@@ -320,7 +320,7 @@ export class GuildScene extends Phaser.Scene {
       const vessel = getVessel(c.vesselId);
       const status = gr ? "IN FLIGHT" : c.party.length ? "assembling" : "empty";
       const selected = c.id === this.selectedCaravanId;
-      const lines = `${vessel.label}\n[${status}]  ${c.party.length}/${caravanCapacity(c)} crew`;
+      const lines = `${vessel.label}\n[${status}]  ${c.party.length}/${caravanCapacity(c)} party`;
       const box = this.add.rectangle(xx, y + 24, 240, 70, selected ? COLOR.surfaceAlt : COLOR.surfaceRaised, 1).setStrokeStyle(2, selected ? COLOR.accent : COLOR.border).setOrigin(0, 0).setDepth(1).setInteractive({ useHandCursor: true });
       box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => {
         this.selectedCaravanId = c.id;

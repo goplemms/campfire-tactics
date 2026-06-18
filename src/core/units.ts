@@ -10,6 +10,7 @@
 import type { GridCoord } from "./iso";
 import type { StatusInstance } from "./status";
 import type { JobId } from "./jobs";
+import type { EventBus } from "./events";
 
 /** Which side a unit fights for. */
 export type Side = "player" | "enemy";
@@ -249,4 +250,29 @@ export function primaryJobOf(unit: Pick<Unit, "primaryJob" | "jobId">): JobId | 
 /** Living units on a given side. */
 export function livingUnits(units: readonly Unit[], side?: Side): Unit[] {
   return units.filter((u) => u.alive && (side === undefined || u.side === side));
+}
+
+/**
+ * Restore HP to a unit, clamped to its `maxHp` (the symmetric counterpart of
+ * {@link "./combat".applyDamage}). The single place healing mutates a unit, so a
+ * `unitHealed` event fires from one seam: pass a {@link EventBus} (and optionally
+ * the `source` doing the healing) to emit it. Negative `amount`s are ignored.
+ * Returns the HP actually restored.
+ */
+export function healUnit(unit: Unit, amount: number, bus?: EventBus, source?: Unit): number {
+  const before = unit.hp;
+  unit.hp = Math.min(unit.maxHp, unit.hp + Math.max(0, amount));
+  const healed = unit.hp - before;
+  if (healed > 0) bus?.emit("unitHealed", { unit, amount: healed, source });
+  return healed;
+}
+
+/**
+ * Wounded units (`hp < maxHp`) ordered **worst-off first** (by HP fraction) — the
+ * triage order the rest/heal flows spend their budget down. Pure; does not mutate.
+ */
+export function woundedBySeverity(units: readonly Unit[]): Unit[] {
+  return units
+    .filter((u) => u.hp < u.maxHp)
+    .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
 }

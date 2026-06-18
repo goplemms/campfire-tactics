@@ -30,6 +30,7 @@ import type { Guild } from "./guild";
 import type { Unit } from "./units";
 import type { NodeKind } from "./overworld";
 import type { NodePreview } from "./intel";
+import { nonNegInt } from "./num";
 import { addItem, canAdd } from "./inventory";
 import { streamFor } from "./rng";
 import { addInfluence, spendInfluence } from "./economy";
@@ -132,7 +133,7 @@ export interface BankerBorrowResult extends VerbResult {
  * + debt only — the treasury is never involved (D34).
  */
 export function bankerBorrow(run: RunState, amount: number): BankerBorrowResult {
-  const borrowed = Math.max(0, Math.floor(amount));
+  const borrowed = nonNegInt(amount);
   if (borrowed <= 0) return { applied: false, reason: "Nothing to borrow." };
   run.camp.gold += borrowed;
   run.overworld.debt += borrowed;

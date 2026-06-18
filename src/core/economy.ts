@@ -31,6 +31,7 @@
 import type { Guild } from "./guild";
 import type { RunState } from "./run";
 import type { Unit } from "./units";
+import { nonNegInt } from "./num";
 import { computeUpkeep, type UpkeepBill, type UpkeepLine } from "./upkeep";
 
 // --- The run purse: loot in, debt auto-repaid (D34/D30) ---------------------
@@ -51,7 +52,7 @@ export interface RunGoldResult {
  * purse. Returns the split.
  */
 export function gainRunGold(run: RunState, amount: number): RunGoldResult {
-  const gold = Math.max(0, Math.floor(amount));
+  const gold = nonNegInt(amount);
   const debt = run.overworld.debt;
   const debtRepaid = Math.min(debt, gold);
   run.overworld.debt = debt - debtRepaid;
@@ -69,7 +70,7 @@ export function gainRunGold(run: RunState, amount: number): RunGoldResult {
  * {@link "./guild".resolveReturn}.)
  */
 export function routePayoutToTreasury(guild: Guild, payout: number): number {
-  const gold = Math.max(0, Math.floor(payout));
+  const gold = nonNegInt(payout);
   guild.treasury += gold;
   return gold;
 }
@@ -122,7 +123,7 @@ export function payTreasuryUpkeep(guild: Guild, party: readonly Unit[] = guild.r
  * Influence is walled off from gold: it can never pay Upkeep or buy gear.
  */
 export function addInfluence(guild: Guild, amount: number): number {
-  const n = Math.max(0, Math.floor(amount));
+  const n = nonNegInt(amount);
   guild.influence += n;
   return guild.influence;
 }
@@ -138,7 +139,7 @@ export function canAffordInfluence(guild: Guild, cost: number): boolean {
  * **only** flows out through the Noble's verbs — never as Upkeep or gear.
  */
 export function spendInfluence(guild: Guild, cost: number): boolean {
-  const n = Math.max(0, Math.floor(cost));
+  const n = nonNegInt(cost);
   if (guild.influence < n) return false;
   guild.influence -= n;
   return true;

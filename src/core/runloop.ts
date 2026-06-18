@@ -13,7 +13,7 @@
  * a wipe and replay a seed.
  */
 
-import type { Unit } from "./units";
+import { healUnit, woundedBySeverity, type Unit } from "./units";
 import { Battle } from "./turn";
 import {
   type RunState,
@@ -251,9 +251,7 @@ export class RunLoop {
 
     // Auto-triage: heal the worst-off fighters first, spending the RP pool down.
     const healed: { unitId: string; hp: number }[] = [];
-    const wounded = combatRoster(this.run)
-      .filter((u) => u.hp < u.maxHp)
-      .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+    const wounded = woundedBySeverity(combatRoster(this.run));
     for (const u of wounded) {
       if (this.run.rp < policy.rpPerChunk) break;
       const res = triageHeal(u, this.run.rp, policy);
@@ -309,9 +307,7 @@ export class RunLoop {
     });
 
     // Refuse at full health (no empty drain, D47) — only wounded fighters count.
-    const wounded = combatRoster(this.run)
-      .filter((u) => u.hp < u.maxHp)
-      .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+    const wounded = woundedBySeverity(combatRoster(this.run));
     if (wounded.length === 0) return refuse("The party is already at full health.");
 
     // Gold cap (D47): refuse if the purse can't cover a full night's rations — no
@@ -340,9 +336,7 @@ export class RunLoop {
     }
     // Floor (D47): a paid rest on a wounded party always restores ≥1 HP.
     if (hpHealed < RECOVERY.inPlaceFloorHp) {
-      const before = target.hp;
-      target.hp = Math.min(target.maxHp, target.hp + RECOVERY.inPlaceFloorHp);
-      hpHealed += target.hp - before;
+      hpHealed += healUnit(target, RECOVERY.inPlaceFloorHp);
     }
     if (hpHealed > 0) healed.push({ unitId: target.id, hp: hpHealed });
 

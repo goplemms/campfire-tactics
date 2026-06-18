@@ -18,7 +18,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit } from "./units";
+import { healUnit, type Unit } from "./units";
 import type { Camp } from "./camp";
 import { getJob } from "./jobs";
 import type { DifficultyPolicy } from "./mortality";
@@ -225,9 +225,8 @@ export function triageHeal(
   const maxChunksByHp = Math.ceil(missing / perChunk);
   const chunks = Math.min(maxChunksByRp, maxChunksByHp);
   if (chunks <= 0) return { rpSpent: 0, chunks: 0, hpHealed: 0 };
-  const before = unit.hp;
-  unit.hp = Math.min(unit.maxHp, unit.hp + chunks * perChunk);
-  return { rpSpent: chunks * policy.rpPerChunk, chunks, hpHealed: unit.hp - before };
+  const hpHealed = healUnit(unit, chunks * perChunk);
+  return { rpSpent: chunks * policy.rpPerChunk, chunks, hpHealed };
 }
 
 // --- The cleric (D9 economy sink) -------------------------------------------

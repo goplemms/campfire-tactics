@@ -10,6 +10,7 @@
 import type { Unit, Side } from "./units";
 import type { GridCoord } from "./iso";
 import type { EventBus } from "./events";
+import { nonNegInt } from "./num";
 import {
   hasStatus,
   isDebuffed,
@@ -208,7 +209,7 @@ export function applyDamage(
   bus?: EventBus,
   source?: Unit,
 ): number {
-  const damage = Math.max(0, Math.floor(amount));
+  const damage = nonNegInt(amount);
   target.hp = Math.max(0, target.hp - damage);
   bus?.emit("unitDamaged", { unit: target, amount: damage, source });
   if (target.hp <= 0 && target.alive) {

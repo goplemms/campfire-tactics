@@ -158,20 +158,23 @@ Event **node names and teasers are flavor** (Layer 2) and stay evocative. Their
 | **Tollgate** | "a known fee to pass" | (auto-resolves; fee shown in Forecast) |
 | **A Choice on the Road** | story prompt + options | options are flavor; consequences are prose |
 
-## Drift to reconcile (current build → canon)
+## Drift status (current build → canon)
 
-Not action items for this doc, but the known gaps a future copy pass closes:
+The first copy pass found the live strings already mostly disciplined. State:
 
-1. **Market vs Shop vs Roadside Market** → verb is `Market` everywhere; event keeps
-   its flavor name, its buy button reads `Market`.
-2. **Guard vs Protect** → button + readouts say `Guard`; "protection" only in
-   explanatory prose.
-3. **Bare "Rest"** → always qualified (`Rest node` / `Rest Points` / `In-place rest`
-   / `Triage Heal`).
-4. **`Review Route Map` vs `Survey`** → "Review" is fine as the read-only *map*
-   button; the *screen* is always `Survey`. Don't let "Review" name the planning beat.
-5. **Currency suffixing** → run pool is `Purse`, amounts carry `g`; Influence never
-   carries `g` and never joins a gold sum.
+1. **Market vs Shop** — ✅ **fixed.** The camp button (`Shop the market` → `Market`)
+   and the node legend label (`shop` → `market`) now use the canonical verb. The
+   internal node-kind key stays `shop` (code's business); the event keeps its flavor
+   name **Roadside Market**, its buy buttons read `Buy <item>`.
+2. **Guard vs Protect** — ✅ **already compliant.** The button reads `Guard the purse`;
+   "protection" appears only in explanatory tooltip prose, as canon allows.
+3. **Bare "Rest"** — ✅ **already compliant.** Every meaning is qualified (`Rest node` /
+   `Rest Points` / `Rest in place` / `Triage Heal`); bare `Rest` survives only as the
+   rest-node event title (the sanctioned node-kind name).
+4. **`Review Route Map` vs `Survey`** — ✅ **already compliant.** "Review" names the
+   read-only *map* button; the planning *screen* is always titled `Survey`.
+5. **Currency suffixing** — ✅ **already compliant.** Run pool is `Purse`, amounts carry
+   `g`; Influence never carries `g` and is never summed into a gold total.
 
 ## Adding a term
 

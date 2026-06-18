@@ -35,6 +35,11 @@ who enjoys *crunch*: legible systems with deep, interacting decisions.
   depleting meter *is* wanted, give it a **shallow asymmetric floor** — a generous
   allowance that bites only on greed, never kicking a player when they're down. Applied
   to deployment overdraw (D7/D11), morale (D8), and overworld fatigue (D35).
+- **One word per concept, two layers of voice.** Player-facing text follows the
+  [**glossary**](glossary.md): **canonical keywords** for anything clickable or numbered
+  (buttons, HUD, tiers, tooltips), **flavor** reserved for read-only prose (teasers,
+  outcome lines, terminals). One keyword = one mechanic; the glossary is the source of
+  truth for the words and their banned synonyms.
 
 ## The loop
 

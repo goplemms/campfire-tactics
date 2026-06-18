@@ -512,7 +512,7 @@ export class OverworldScene extends Phaser.Scene {
       const market = getAbility("market")!;
       const marketActor = this.marketActor();
       const mRefusal = this.refusal(market, marketActor);
-      this.campButton(subX, y, subW, 24, `Shop the market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? "Merchant ACCESS (D30): open the market to buy supply into storage from the purse.");
+      this.campButton(subX, y, subW, 24, `Market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? "Merchant ACCESS (D30): open the market to buy supply into storage from the purse.");
       y += rowH;
       this.campButton(subX, y, subW, 24, "Invest the purse", true, () => this.bankerInterest(), "Banker (D30): the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
       y += rowH;

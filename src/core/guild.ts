@@ -34,6 +34,7 @@
 
 import { Rng, streamFor } from "./rng";
 import { createUnit, type Unit } from "./units";
+import type { JobId } from "./jobs";
 import {
   type Caravan,
   committedMemberIds,
@@ -406,7 +407,8 @@ export function hireMercenary(guild: Guild): Unit | null {
 /** Roll a randomized mercenary from a seed + index (deterministic, D33). */
 export function rollMercenary(seed: string | number, index: number): Unit {
   const rng: Rng = streamFor(seed, `merc:${index}`);
-  const jobId = rng.pick(["soldier", "survivalist"]);
+  const recruitable: JobId[] = ["soldier", "survivalist"];
+  const jobId = rng.pick(recruitable);
   const names = ["Ash", "Bran", "Cael", "Dax", "Esk", "Fen", "Garr", "Hale"];
   const name = rng.pick(names);
   return createUnit({

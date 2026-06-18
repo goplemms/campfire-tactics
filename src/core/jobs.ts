@@ -394,22 +394,33 @@ export const DEFEND: SkillDef = {
   effect: { kind: "status", status: guarded(1) },
 };
 
-/** The job registry — the single source jobs are loaded from. */
-export const JOBS: Record<string, JobDef> = {
-  [SOLDIER.id]: SOLDIER,
-  [SURVIVALIST.id]: SURVIVALIST,
-  [CHEF.id]: CHEF,
-  [MERCHANT.id]: MERCHANT,
-  [HEAVY_KNIGHT.id]: HEAVY_KNIGHT,
-  [HUNTER.id]: HUNTER,
-  [SCOUT_JOB.id]: SCOUT_JOB,
-  [MEDIC.id]: MEDIC,
-  [SNARE_TRAPPER.id]: SNARE_TRAPPER,
-};
+/**
+ * The job registry — the single source jobs are loaded from. Written with literal
+ * keys (not `[SOLDIER.id]`) so the keys survive into the type and {@link JobId} can
+ * derive from them; `satisfies` still type-checks every value as a {@link JobDef}.
+ */
+export const JOBS = {
+  soldier: SOLDIER,
+  survivalist: SURVIVALIST,
+  chef: CHEF,
+  merchant: MERCHANT,
+  "heavy-knight": HEAVY_KNIGHT,
+  hunter: HUNTER,
+  scout: SCOUT_JOB,
+  medic: MEDIC,
+  "snare-trapper": SNARE_TRAPPER,
+} satisfies Record<string, JobDef>;
 
-/** Look up a job by id. */
+/**
+ * Every registered job id, derived from {@link JOBS}. Type `jobId`/`primaryJob`
+ * fields against this so a typo (or an unregistered class) is a **compile error**
+ * instead of a silently job-less unit — the keystone for adding new classes safely.
+ */
+export type JobId = keyof typeof JOBS;
+
+/** Look up a job by id. Accepts any string (callers handle the `undefined` miss). */
 export function getJob(id: string | undefined): JobDef | undefined {
-  return id === undefined ? undefined : JOBS[id];
+  return id === undefined ? undefined : JOBS[id as JobId];
 }
 
 /**

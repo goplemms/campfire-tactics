@@ -1,4 +1,5 @@
-import type { Unit } from "../core";
+import type { Unit, JobId } from "../core";
+import { primaryJobOf } from "../core";
 import { ROLE } from "./theme";
 
 /**
@@ -9,7 +10,12 @@ import { ROLE } from "./theme";
  *
  * Allies key off their job; foes (which rarely carry a job) key off their name.
  */
-const JOB_COLORS: Record<string, number> = {
+/**
+ * Per-job token-ring colour. Typed as a **total** {@link JobId} map: adding a class
+ * to the registry without giving it a colour here is now a compile error, so the
+ * board palette can't silently fall out of sync with the job roster.
+ */
+const JOB_COLORS: Record<JobId, number> = {
   soldier: ROLE.soldier,
   "heavy-knight": ROLE.soldier, // steel — frontline / tank
   hunter: ROLE.hunter, //         amber — ranged marker
@@ -34,8 +40,8 @@ const FOE_COLORS: { match: RegExp; color: number }[] = [
  * when no role is recognised.
  */
 export function roleColor(unit: Unit, fallback: number): number {
-  const job = unit.primaryJob ?? unit.jobId;
-  if (job && job in JOB_COLORS) return JOB_COLORS[job];
+  const job = primaryJobOf(unit);
+  if (job) return JOB_COLORS[job];
   for (const f of FOE_COLORS) if (f.match.test(unit.name)) return f.color;
   return fallback;
 }

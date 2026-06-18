@@ -18,6 +18,7 @@
 import type { GridCoord } from "./iso";
 import { TileGrid } from "./grid";
 import { createUnit, type Unit, type UnitSpec } from "./units";
+import type { JobId } from "./jobs";
 import type { Rng } from "./rng";
 
 /** Encounter shape (D12): an open scrap, or a prepped/fortified position. */
@@ -45,7 +46,7 @@ export interface EnemyTemplate {
   /** Ranged reach (D40): a bowman attacks from afar without closing. Default 1. */
   attackRange?: number;
   /** Job id granting the archetype an ability (e.g. the snare-trapper's Snare). */
-  jobId?: string;
+  jobId?: JobId;
 }
 
 /** The enemy roster table (D4 ethos: enemies are data). */

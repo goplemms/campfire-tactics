@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { JOBS, getJob, unitSkills, registerParty, SOLDIER } from "./jobs";
+import { JOBS, getJob, unitSkills, registerParty, SOLDIER, type JobId } from "./jobs";
 import { PhaseSkillRegistry } from "./phases";
 import { createUnit, type Side, type Unit } from "./units";
 
@@ -78,7 +78,7 @@ describe("jobs (data-driven loading)", () => {
     expect(getJob("merchant")!.skills[0].phase).toBe("meta");
 
     // A mixed party registers each job's skill under its own phase.
-    const withJob = (id: string, job: string): Unit =>
+    const withJob = (id: string, job: JobId): Unit =>
       createUnit({
         id,
         side: "player" as Side,

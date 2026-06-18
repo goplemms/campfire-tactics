@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
+import type { JobId } from "./jobs";
 import { createRun, createRunFromExpedition } from "./run";
 import { THE_HOLLOW_MILL } from "./hollow-mill";
 import { simulateRun, batchSimulate, aggregate, formatDigest } from "./sim";
@@ -15,7 +16,7 @@ declare const process: { stdout: { write(s: string): void } };
  * roster?". A fresh set of unit objects each call (auto-play mutates them).
  */
 function starterParty(): Unit[] {
-  const mk = (id: string, jobId: string, o: Partial<Unit> = {}): Unit =>
+  const mk = (id: string, jobId: JobId, o: Partial<Unit> = {}): Unit =>
     createUnit({
       id, name: id, side: "player", pos: { col: -1, row: -1 }, jobId,
       speed: 11, maxHp: 28, attack: 9, defense: 3, moveRange: 4, sightRadius: 5,

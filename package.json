@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "shots": "node scripts/shots-overworld.mjs"
+    "shots": "node scripts/shots-overworld.mjs",
+    "shots:mill": "node scripts/shots-hollow-mill.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

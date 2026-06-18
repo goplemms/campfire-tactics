@@ -14,6 +14,8 @@ import {
   fatiguePenalty,
   projectDossier,
   attentionCount,
+  projectManifest,
+  getVessel,
   unitSkills,
   useCampJobSkill,
   addItem,
@@ -448,7 +450,7 @@ export class OverworldScene extends Phaser.Scene {
     const utilY = top + 8;
     this.campButton(cx + 60, utilY, 240, 24, this.partyButtonLabel(), true, () => this.openDossier(), "Open the Party Dossier: each member's HP, fatigue, conditions and jeopardy, plus a party overview (morale, upkeep, supplies). ⚠ marks anyone hurt, dying or captured.");
     this.campButton(cx + 60, utilY + 30, 240, 24, "Review Route Map", true, () => this.reviewMap(() => this.renderCamp()), "Look at the overworld node map (read-only) — your route, what's reachable, and what's still fogged. Click Back to return to camp.");
-    this.campButton(cx + 60, utilY + 60, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger: purse-scoped totals you can expand to line items, plus the route forecast.");
+    this.campButton(cx + 60, utilY + 60, 240, 24, "Inventory", true, () => this.showInventoryPanel(() => this.renderCamp()), "Caravan inventory: party & storage limits, carried traps and herbs (with slots), and the purse. The economic ledger (totals + forecast) lives inside it.");
 
     // --- End the Night — the prep→event gate (D46); placed below all content ---
     const contentBottom = Math.max(leftBottom + 8, utilY + 60);
@@ -922,7 +924,7 @@ export class OverworldScene extends Phaser.Scene {
     y += rowH;
     this.campButton(colX, y, 360, 24, "Review Route Map", true, () => this.reviewMap(() => this.showSurvey()), "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return to Survey.");
     y += rowH;
-    this.campButton(colX, y, 360, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.showSurvey()), "The economic ledger: purse-scoped totals, expandable to lines, plus the forecast.");
+    this.campButton(colX, y, 360, 24, "Inventory", true, () => this.showInventoryPanel(() => this.showSurvey()), "Caravan inventory: party & storage limits, carried traps and herbs, the purse — and the ledger (totals + forecast) nested within.");
     y += rowH + 6;
 
     const breakBtn = this.makeTextButton(cx, y + 12, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
@@ -1066,6 +1068,78 @@ export class OverworldScene extends Phaser.Scene {
     if (ledger.marketReady) {
       this.overlay.push(this.makeTextButton(leftX + 90, by, 170, 28, "Jump to Market", COLOR.btnFill, COLOR.gold, () => { this.merchantBuyKit(); this.showLedgerPanel(onClose); }).setDepth(26));
     }
+    this.overlay.push(this.makeTextButton(rightX - 60, by, 110, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => { clearLayer(this.overlay); onClose(); }).setDepth(26));
+  }
+
+  /** The caravan behind this run (for its vessel caps), if a guild dispatched it. */
+  private caravanInfo(): { vesselLabel?: string; partyCapacity?: number } {
+    if (!this.guild || !this.caravanId) return {};
+    const caravan = this.guild.caravans.find((c) => c.id === this.caravanId);
+    if (!caravan) return {};
+    const vessel = getVessel(caravan.vesselId);
+    return { vesselLabel: vessel.label, partyCapacity: vessel.capacity };
+  }
+
+  /**
+   * The caravan inventory panel (D-info-surfacing): the logistics hub — party &
+   * storage limits, the carried traps/herbs (count · effect · slots · recoverable),
+   * and the purse. The economic **ledger** (gold flow + forecast) nests *inside* it
+   * (a button → {@link showLedgerPanel} whose Close returns here), so item-stock and
+   * gold-flow share one entry point without conflating the two.
+   */
+  private showInventoryPanel(onClose: () => void): void {
+    clearLayer(this.overlay);
+    const m = projectManifest(this.run, this.caravanInfo());
+
+    const cx = this.scale.width / 2;
+    const w = 600;
+    const pad = 30;
+    const leftX = cx - w / 2 + pad;
+    const rightX = cx + w / 2 - pad;
+    const rowH = 22;
+
+    const itemRows = m.groups.reduce((n, g) => n + 1 + g.items.length, 0);
+    const headH = 86;
+    const btnH = 46;
+    const h = Math.min(this.scale.height - 16, headH + itemRows * rowH + btnH);
+    const cy = this.scale.height / 2;
+    const top = cy - h / 2;
+
+    // Sheet + header (depths 23 sheet · 24 rule · 25 text · 26 buttons, as the ledger).
+    const g = this.add.graphics().setDepth(24);
+    const partyStr = m.partyCapacity != null ? `Party ${m.partyCount}/${m.partyCapacity}` : `Party ${m.partyCount}`;
+    const vessel = m.vesselLabel ? `${m.vesselLabel} · ` : "";
+    this.overlay.push(
+      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.border).setDepth(23),
+      g,
+      this.add.text(cx, top + 16, "Caravan Inventory", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
+      this.add.text(leftX, top + 42, `${vessel}${partyStr}  ·  Storage ${m.storageUsed}/${m.storageCap} (free ${m.storageFree})`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(rightX, top + 42, `Purse ${m.purse}g`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
+    );
+    if (m.storageFree <= 0) {
+      this.overlay.push(this.add.text(leftX, top + 60, "⚠ Storage full — use or sell before buying.", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+    }
+    g.lineStyle(1, COLOR.borderSoft, 0.9);
+    g.lineBetween(leftX, top + 74, rightX, top + 74);
+
+    let y = top + 74 + 16;
+    for (const grp of m.groups) {
+      this.overlay.push(this.add.text(leftX, y, grp.title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+      y += rowH;
+      for (const it of grp.items) {
+        const dim = it.count <= 0;
+        const slotStr = it.slots > 0 ? `  (${it.slots} sl)` : "";
+        this.overlay.push(
+          this.add.text(leftX + 8, y, it.name, { color: dim ? INK.disabled : INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
+          this.add.text(leftX + 130, y, `${it.effect} · ${it.recoverable ? "recoverable" : "consumed"}`, { color: dim ? INK.disabled : INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25),
+          this.add.text(rightX, y, `×${it.count}${slotStr}`, { color: dim ? INK.disabled : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+        );
+        y += rowH;
+      }
+    }
+
+    const by = top + h - 22;
+    this.overlay.push(this.makeTextButton(leftX + 120, by, 230, 28, "Ledger (totals + forecast)", COLOR.btnFill, COLOR.gold, () => this.showLedgerPanel(() => this.showInventoryPanel(onClose))).setDepth(26));
     this.overlay.push(this.makeTextButton(rightX - 60, by, 110, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => { clearLayer(this.overlay); onClose(); }).setDepth(26));
   }
 

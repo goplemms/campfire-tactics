@@ -6,6 +6,7 @@ import { addVignette } from "../vignette";
 import {
   planMove,
   planAttack,
+  type ResolveResult,
   findPath,
   occupiedGrid,
   reachableTiles,
@@ -1195,24 +1196,9 @@ export class BattleScene extends Phaser.Scene {
     this.highlightTile(null);
     this.clearActionButtons();
 
-    // Any thief still standing at the bell got away with its skim (D13/D21).
-    let goldEscaped = 0;
-    for (const [id, attempt] of this.theftAttempts) {
-      if (attempt.resolved) continue;
-      const thief = this.battle.units.find((u) => u.id === id);
-      if (thief && thief.alive) goldEscaped += thiefEscapes(attempt);
-    }
-
+    const goldEscaped = this.tallyEscapedThieves();
     const res = this.loop.resolve();
-
-    // Mid-combat bribe → recruitment (D33): permanent (authored) turncoats join the
-    // guild roster after the battle; generics were temporary (just fought it out).
-    const recruited: string[] = [];
-    if (this.guild) {
-      for (const u of this.pendingRecruits) {
-        if (recruitToRoster(this.guild, u)) recruited.push(u.name);
-      }
-    }
+    const recruited = this.commitPendingRecruits();
 
     this.refreshCampText();
     this.refreshHp();
@@ -1220,11 +1206,52 @@ export class BattleScene extends Phaser.Scene {
     // Re-tint any freed allies.
     for (const u of this.run.party) if (!u.captured) this.tintCaptured(u, false);
 
-    // Three-way graded terminal (D50/D51): win / objective-failure / wipe — each a
-    // distinct overlay, all routed through the single loop.resolve() above.
+    const { title, good, lines } = this.buildResolutionSummary(res, goldEscaped, recruited);
+    this.showOverlay(title, lines.join("\n"), good, 480, 200);
+    this.setHint(`Resolution — ${lines.join("  ")}`);
+    // On any terminal (wipe / loss / run-complete) the overworld shows the end
+    // screen; otherwise the player returns to the map to pick the next node.
+    this.setPrimary(res.over ? (this.loop.isComplete() ? "See Results" : "Run Over") : "Return to Map");
+  }
+
+  /** Gold carried off by any thief still standing at the bell (D13/D21). */
+  private tallyEscapedThieves(): number {
+    let goldEscaped = 0;
+    for (const [id, attempt] of this.theftAttempts) {
+      if (attempt.resolved) continue;
+      const thief = this.battle.units.find((u) => u.id === id);
+      if (thief && thief.alive) goldEscaped += thiefEscapes(attempt);
+    }
+    return goldEscaped;
+  }
+
+  /**
+   * Mid-combat bribe → recruitment (D33): permanent (authored) turncoats join the
+   * guild roster after the battle; generics were temporary (just fought it out).
+   * Returns the names that joined.
+   */
+  private commitPendingRecruits(): string[] {
+    const recruited: string[] = [];
+    if (this.guild) {
+      for (const u of this.pendingRecruits) {
+        if (recruitToRoster(this.guild, u)) recruited.push(u.name);
+      }
+    }
+    return recruited;
+  }
+
+  /**
+   * Build the three-way graded terminal (D50/D51) — win / objective-failure / wipe —
+   * as a title, tone, and the body lines (rewards, casualties, level-ups, theft +
+   * recruitment outcomes). Pure assembly off the resolved result; shows nothing.
+   */
+  private buildResolutionSummary(
+    res: ResolveResult,
+    goldEscaped: number,
+    recruited: string[],
+  ): { title: string; good: boolean; lines: string[] } {
     const won = res.result === "win";
     const title = won ? "Victory!" : res.result === "objective-failure" ? "Objective Failed — Retreat" : "Defeat";
-    const good = won;
     const lines: string[] = [];
     if (won) {
       lines.push(`+${res.goldEarned} gold.`);
@@ -1256,12 +1283,7 @@ export class BattleScene extends Phaser.Scene {
       lines.push(`Thieves skimmed ${this.goldStolen}g — recovered ${this.goldRecovered}g${goldEscaped > 0 ? `, ${goldEscaped}g escaped` : ""}.`);
     }
     if (recruited.length) lines.push(`Swayed to the guild (permanent): ${recruited.join(", ")}.`);
-
-    this.showOverlay(title, lines.join("\n"), good, 480, 200);
-    this.setHint(`Resolution — ${lines.join("  ")}`);
-    // On any terminal (wipe / loss / run-complete) the overworld shows the end
-    // screen; otherwise the player returns to the map to pick the next node.
-    this.setPrimary(res.over ? (this.loop.isComplete() ? "See Results" : "Run Over") : "Return to Map");
+    return { title, good: won, lines };
   }
 
   /** Hand the run back to the overworld so the player can pick the next node. */

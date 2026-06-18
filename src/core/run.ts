@@ -71,7 +71,33 @@ export interface EncounterRecord {
   night: number;
 }
 
-/** The live run state — everything a run needs to advance or be replayed. */
+/**
+ * The live run state — everything a run needs to advance or be replayed.
+ *
+ * **The RunState surface.** `RunState` is plain data (so it snapshots/serializes,
+ * see {@link snapshotRun}); its behaviour is free functions spread by feature
+ * across the core, not methods. This file holds the spine — navigation
+ * ({@link currentNode}, {@link reachableNodes}, {@link chooseNode}), roster
+ * ({@link activeRoster}, {@link combatRoster}, {@link removeFromRoster}), and
+ * lifecycle ({@link recordNight}, {@link runDifficulty}, {@link isRunOver},
+ * {@link snapshotRun}) — and {@link "./runloop".RunLoop} is the stateful driver
+ * that wraps it. The rest of the surface lives with its feature:
+ *
+ * - **{@link "./economy"}** — loot into the purse ({@link "./economy".gainRunGold}).
+ * - **{@link "./economy-actions"}** — the Banker/Noble/Merchant verbs
+ *   (`bankerBorrow`, `bankerEngageInterest`, `bankerProtect`, `merchantBuy`).
+ * - **{@link "./node-events"}** — event-node resolution (`resolveEvent`,
+ *   `eventChoices`, `chooseEventOption`).
+ * - **{@link "./ledger"}** — the derived ledger + night gate (`buildLedger`,
+ *   `nightEndGate`).
+ * - **{@link "./fog"}** — map visibility (`visibleNodes`, `isNodeVisible`).
+ * - **{@link "./forecast"}** — the route forecast (`projectForecast`).
+ * - **{@link "./intel"}** — node previews (`previewNode`).
+ * - **{@link "./theft"}** — purse-skim recovery (`recoverStolen`).
+ *
+ * New run behaviour belongs in the feature module, not bolted here — keep this
+ * file the spine and update the list above so the surface stays discoverable.
+ */
 export interface RunState {
   /** The textual/numeric seed (re-enterable to reproduce the run). */
   seed: string | number;

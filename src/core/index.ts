@@ -50,3 +50,4 @@ export * from "./staging";
 export * from "./traps";
 export * from "./expedition";
 export * from "./hollow-mill";
+export * from "./sim";

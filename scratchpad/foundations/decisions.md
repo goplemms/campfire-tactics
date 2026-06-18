@@ -1422,3 +1422,36 @@ trail of reasoning stays intact.
   (`onKey`, `cycleSpeed`, `tentativeMove`, `undoMove`, `waitUnit`, `noActionsAvailable`,
   `toggleLegend`).
 - **Superseded by:** —
+
+## D56 — The headless run simulator (balance + robustness rig)
+
+- **Status:** Decided (2026-06-18) · playtesters delayed, so generate our own signal;
+  builds on the already-first-class headless seams (`RunLoop.autoTraverse`/`autoBattle`,
+  the **D-logistics** `PlaytestLog`/`summarizePlaytest`)
+- **Context:** With human testing on hold we still need two signals: **robustness** (does
+  the loop hold under thousands of seeds — the class of bug D55 just fixed) and a
+  **difficulty floor** ("if a random run always wins, something's wrong"). The engine was
+  already built for this — the only gap was a batch runner + aggregator.
+- **Decision:** A thin **`src/core/sim.ts`** layer that drives **only** the public
+  `RunLoop` seams + the `PlaytestLog`, never a parallel copy of any rule — so every future
+  encounter/job/node/objective is covered the day it lands.
+  - `simulateRun(makeRun)` mints a run, attaches a log, `autoTraverse`s to a terminal
+    (capturing throws as data), and returns a graded `RunResult` (complete/over/stall/
+    crash + end-layer + the lever summary). `batchSimulate` + `aggregate` roll N runs into
+    a `SimDigest`; `formatDigest` renders it.
+  - **`src/core/sim.test.ts`** is the **first-class guard** (runs under `npm test`/CI): a
+    fixed representative party over 80 procedural seeds + the Hollow Mill must **terminate**
+    (no soft-lock), **never throw**, and **replay deterministically**. It also prints the
+    digest (`npm run sim`, via `process.stdout.write`) and a **report-only** difficulty
+    tripwire (no CI fail yet — balance is moving).
+  - **Naive bot = the floor (honest caveat):** it plays tactically dumb and the headless
+    path skips deployment, the meta-economy and the full kit — so its completion rate is a
+    *lower bound* (high ⇒ too easy; low is inconclusive), and the **end-layer histogram** is
+    the real wall-finder. First read: ~5% procedural completion, wall at layer 6; the choice
+    levers (skip-food / capture-risk / in-place-rest) read 0% — the concrete case for the
+    next layer.
+  - **Next layer (not built):** a pluggable **meta/battle policy** so we can swap naive →
+    greedy → smart and **A/B enemy-AI variants** over identical seeds — the simulator is the
+    scoreboard for that work.
+- **Spec:** `src/core/sim.ts`, `src/core/sim.test.ts`, `npm run sim`.
+- **Superseded by:** —

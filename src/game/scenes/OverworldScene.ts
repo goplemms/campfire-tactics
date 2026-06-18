@@ -290,16 +290,23 @@ export class OverworldScene extends Phaser.Scene {
     this.nodeObjects.push(legend);
   }
 
+  /**
+   * Icon key + circle tint per event kind (M11) — a **total** map so a new event
+   * kind can't silently inherit the thief glyph: adding one to {@link EventKind}
+   * fails to compile until it has a visual here. (Colours stay render-side; the
+   * core record carries no presentation.)
+   */
+  private static readonly EVENT_VISUALS: Record<EventKind, { key: IconKey; color: number }> = {
+    thief: { key: "thief", color: COLOR.captive },
+    shop: { key: "shop", color: COLOR.gold },
+    recruiter: { key: "recruiter", color: COLOR.info },
+    story: { key: "story", color: COLOR.captive },
+    toll: { key: "toll", color: COLOR.gold },
+  };
+
   /** Icon key + circle tint for an event node, keyed by which event it runs (M11). */
   private eventVisual(node: MapNode): { key: IconKey; color: number } {
-    switch (eventForNode(this.run.seed, node).kind as EventKind) {
-      case "shop": return { key: "shop", color: COLOR.gold };
-      case "recruiter": return { key: "recruiter", color: COLOR.info };
-      case "story": return { key: "story", color: COLOR.captive };
-      case "toll": return { key: "toll", color: COLOR.gold };
-      case "thief":
-      default: return { key: "thief", color: COLOR.captive };
-    }
+    return OverworldScene.EVENT_VISUALS[eventForNode(this.run.seed, node).kind];
   }
 
   /** A fogged node (D48): a dim silhouette with no contents — out of intel reach. */

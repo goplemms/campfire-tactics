@@ -131,6 +131,17 @@ export interface EventDef {
    * story takes its seed-picked option. Mutates `run`; returns the outcome.
    */
   autoResolve(run: RunState, node: MapNode): EventOutcome;
+  /**
+   * The interactive options the render surfaces (M11). **Omitted** ⇒ the event has
+   * no choice (a thief/toll just resolves). Pure read — mutates nothing. Lives on
+   * the record so a new interactive event kind is a new record, not a new switch arm.
+   */
+  choices?(run: RunState, node: MapNode): EventChoice[];
+  /**
+   * Apply a chosen option (M11). **Omitted** ⇒ falls back to {@link autoResolve}.
+   * Mutates `run`; returns the outcome (already applied).
+   */
+  choose?(run: RunState, node: MapNode, choiceId: string): EventOutcome;
 }
 
 // --- Shop (Merchant ACCESS reused, D30) -------------------------------------
@@ -396,6 +407,23 @@ export const EVENTS: readonly EventDef[] = [
       // Headless default: buy nothing (a deterministic no-op).
       return emptyOutcome("shop", "The caravan passed the roadside market without trading.");
     },
+    choices(run, node) {
+      return shopStock(run.seed, node).map((offer) => {
+        const room = canStoreMore(run, offer.materialId);
+        const affordable = run.camp.gold >= offer.price;
+        return {
+          id: `buy:${offer.materialId}`,
+          label: `Buy ${offer.name} (${offer.price}g purse)`,
+          cost: offer.price,
+          available: affordable && room,
+          detail: !affordable ? "Not enough purse gold." : !room ? "No storage room." : "Spend purse gold into storage.",
+        };
+      });
+    },
+    choose(run, node, choiceId) {
+      if (choiceId.startsWith("buy:")) return shopBuy(run, node, choiceId.slice(4));
+      return emptyOutcome("shop", "The caravan moved on from the market.");
+    },
   },
   {
     id: "recruiter",
@@ -406,6 +434,24 @@ export const EVENTS: readonly EventDef[] = [
     autoResolve(_run, _node) {
       // Headless default: decline (a clean no-op — no party change).
       return emptyOutcome("recruiter", "The caravan passed on the sellsword's offer.");
+    },
+    choices(run, node) {
+      const offer = recruiterOffer(run.seed, node);
+      const affordable = run.camp.gold >= offer.price;
+      return [
+        {
+          id: "hire",
+          label: `Hire ${offer.unit.name} (${offer.price}g purse)`,
+          cost: offer.price,
+          available: affordable,
+          detail: affordable ? `${describeUnit(offer.unit)} — joins the run party.` : "Not enough purse gold.",
+        },
+        { id: "decline", label: "Decline", available: true, detail: "Send the sellsword on their way." },
+      ];
+    },
+    choose(run, node, choiceId) {
+      if (choiceId === "hire") return hireRecruit(run, recruiterOffer(run.seed, node));
+      return emptyOutcome("recruiter", "The caravan declined the sellsword.");
     },
   },
   {
@@ -420,6 +466,12 @@ export const EVENTS: readonly EventDef[] = [
       const rng = streamFor(run.seed, `event:${node.id}:story:auto`);
       const choice = rng.pick(story.choices);
       return applyStoryChoice(run, node, story, choice.id);
+    },
+    choices(run, node) {
+      return storyForNode(run.seed, node).choices.map((c) => ({ id: c.id, label: c.label, available: true }));
+    },
+    choose(run, node, choiceId) {
+      return applyStoryChoice(run, node, storyForNode(run.seed, node), choiceId);
     },
   },
   {
@@ -486,76 +538,24 @@ export interface EventChoice {
 }
 
 /**
- * The interactive options for the current node's event (M11) — dispatched by kind:
- * a shop lists its (re-queryable) stock, a recruiter offers Hire/Decline, a story
- * its authored options, a thief none (it resolves with no choice). Pure read — it
- * mutates nothing.
+ * The interactive options for the current node's event (M11) — delegated to the
+ * event's own {@link EventDef.choices} (a shop lists stock, a recruiter offers
+ * Hire/Decline, a story its options). An event without choices (thief/toll) yields
+ * none. Pure read — mutates nothing.
  */
 export function eventChoices(run: RunState, node: MapNode): EventChoice[] {
   const def = eventForNode(run.seed, node);
-  switch (def.kind) {
-    case "shop": {
-      return shopStock(run.seed, node).map((offer) => {
-        const room = canStoreMore(run, offer.materialId);
-        const affordable = run.camp.gold >= offer.price;
-        return {
-          id: `buy:${offer.materialId}`,
-          label: `Buy ${offer.name} (${offer.price}g purse)`,
-          cost: offer.price,
-          available: affordable && room,
-          detail: !affordable ? "Not enough purse gold." : !room ? "No storage room." : "Spend purse gold into storage.",
-        };
-      });
-    }
-    case "recruiter": {
-      const offer = recruiterOffer(run.seed, node);
-      const affordable = run.camp.gold >= offer.price;
-      return [
-        {
-          id: "hire",
-          label: `Hire ${offer.unit.name} (${offer.price}g purse)`,
-          cost: offer.price,
-          available: affordable,
-          detail: affordable ? `${describeUnit(offer.unit)} — joins the run party.` : "Not enough purse gold.",
-        },
-        { id: "decline", label: "Decline", available: true, detail: "Send the sellsword on their way." },
-      ];
-    }
-    case "story": {
-      const story = storyForNode(run.seed, node);
-      return story.choices.map((c) => ({ id: c.id, label: c.label, available: true }));
-    }
-    case "thief":
-    default:
-      return [];
-  }
+  return def.choices?.(run, node) ?? [];
 }
 
 /**
- * Apply a chosen event option to the run (M11) — dispatched by kind. Shop buys
- * reuse the Merchant verb; a recruiter Hire/Decline; a story option applies its
- * deterministic outcome; a thief (no choice) resolves the skim. Returns the
- * outcome (already applied).
+ * Apply a chosen event option to the run (M11) — delegated to the event's own
+ * {@link EventDef.choose}. An event without a `choose` (thief/toll, no choice) falls
+ * back to its {@link EventDef.autoResolve}. Returns the outcome (already applied).
  */
 export function chooseEventOption(run: RunState, node: MapNode, choiceId: string): EventOutcome {
   const def = eventForNode(run.seed, node);
-  switch (def.kind) {
-    case "shop": {
-      if (choiceId.startsWith("buy:")) return shopBuy(run, node, choiceId.slice(4));
-      return emptyOutcome("shop", "The caravan moved on from the market.");
-    }
-    case "recruiter": {
-      if (choiceId === "hire") return hireRecruit(run, recruiterOffer(run.seed, node));
-      return emptyOutcome("recruiter", "The caravan declined the sellsword.");
-    }
-    case "story": {
-      const story = storyForNode(run.seed, node);
-      return applyStoryChoice(run, node, story, choiceId);
-    }
-    case "thief":
-    default:
-      return resolveEvent(run, node);
-  }
+  return def.choose?.(run, node, choiceId) ?? def.autoResolve(run, node);
 }
 
 // --- Small local helpers ----------------------------------------------------

@@ -26,7 +26,7 @@ import {
 } from "./combat";
 import { tickStatuses } from "./status";
 import { computeVisibleTiles } from "./vision";
-import { planEnemyTurn, type AIPlan } from "./ai";
+import { PILOT_POLICY, type AIPlan, type BattlePolicy } from "./ai";
 import { stampPassives } from "./jobs";
 import {
   resolveSkill,
@@ -213,12 +213,13 @@ export class Battle {
   }
 
   /**
-   * Run a full enemy turn: plan (move + attack toward nearest enemy), execute
-   * it through the bus, and end the turn. Returns the plan for the render layer
-   * to animate.
+   * Run a full AI turn for `unit`: plan via the given {@link BattlePolicy} (the
+   * **pilot** policy by default, D56), execute it through the bus, and end the
+   * turn. Returns the plan for the render layer to animate. "Enemy" is historical —
+   * the same path drives either side headlessly (the sim passes a policy per side).
    */
-  runEnemyTurn(unit: Unit): AIPlan {
-    const plan = planEnemyTurn(unit, this.units, this.grid, {
+  runEnemyTurn(unit: Unit, policy: BattlePolicy = PILOT_POLICY): AIPlan {
+    const plan = policy.plan(unit, this.units, this.grid, {
       isCharging: (u) => this.clock.isCharging(u),
     });
     if (plan.path.length > 0) this.moveUnit(unit, plan.path);

@@ -56,6 +56,7 @@ import {
 import { fitText } from "../ui";
 import { Button } from "../button";
 import { HintPanel } from "../hint-panel";
+import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
 
 /** Data handed between the overworld and a combat node's BattleScene. */
 export interface RunHandoff {
@@ -103,6 +104,9 @@ export class OverworldScene extends Phaser.Scene {
   // The unified overworld camp (D35): objects + the node currently camped at.
   private campObjects: Phaser.GameObjects.GameObject[] = [];
   private campNode?: MapNode;
+  /** Camp progressive disclosure (D58): the optional Banker/Noble/Market economy is
+   *  collapsed by default so the everyday camp reads as a few obvious actions. */
+  private campAdvanced = false;
 
   private titleText!: Phaser.GameObjects.Text;
   private campText!: Phaser.GameObjects.Text;
@@ -208,7 +212,7 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- Map drawing ----------------------------------------------------------
 
-  private drawMap(): void {
+  private drawMap(interactive = true): void {
     for (const o of this.nodeObjects) o.destroy();
     this.nodeObjects = [];
     this.graph?.destroy();
@@ -262,22 +266,39 @@ export class OverworldScene extends Phaser.Scene {
       const current = this.run.mapNodeId === id;
       const visited = onPath.has(id) && !current;
       if (!visibleIds.has(id)) this.drawFogged(pos);
-      else this.drawNode(node, pos, { reachable, current, visited });
+      else this.drawNode(node, pos, { reachable, current, visited }, interactive);
     }
 
-    this.setHint("Click a node to preview it; click again to commit. Deeper nodes are fogged — raise intel to see farther. ⚔ combat · ❄ rest · events: $ thief · ⚖ shop · ✚ recruiter · ? story · ⛩ toll.");
+    // A compact, always-on key in the corner — replaces the glyph dump that used to
+    // crowd the hint bar (D58); the hint now carries action guidance only.
+    this.drawMapLegend();
+    this.setHint("Click a node to preview it; click again to Make Camp. Deeper nodes are fogged — raise intel to see farther.");
     this.previewText.setText("");
   }
 
-  /** Glyph + tint for an event node, keyed by which event it runs (M11). */
-  private eventVisual(node: MapNode): { glyph: string; color: number } {
+  /**
+   * A small, muted key pinned to the map's bottom-left (D58) — **generated from the
+   * {@link ICON} registry** (D59), so it can never drift from the board, and rendered
+   * in the UI font (the glyphs are verified safe there). Clears with the map.
+   */
+  private drawMapLegend(): void {
+    const key = legendLine(["combat", "rest", "goal", "thief", "shop", "recruiter", "story", "toll", "fogged"]);
+    const legend = this.add
+      .text(20, this.scale.height - 30, key, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption })
+      .setOrigin(0, 0.5)
+      .setDepth(3);
+    this.nodeObjects.push(legend);
+  }
+
+  /** Icon key + circle tint for an event node, keyed by which event it runs (M11). */
+  private eventVisual(node: MapNode): { key: IconKey; color: number } {
     switch (eventForNode(this.run.seed, node).kind as EventKind) {
-      case "shop": return { glyph: "⚖", color: COLOR.gold };
-      case "recruiter": return { glyph: "✚", color: COLOR.info };
-      case "story": return { glyph: "?", color: COLOR.captive };
-      case "toll": return { glyph: "⛩", color: COLOR.gold };
+      case "shop": return { key: "shop", color: COLOR.gold };
+      case "recruiter": return { key: "recruiter", color: COLOR.info };
+      case "story": return { key: "story", color: COLOR.captive };
+      case "toll": return { key: "toll", color: COLOR.gold };
       case "thief":
-      default: return { glyph: "$", color: COLOR.captive };
+      default: return { key: "thief", color: COLOR.captive };
     }
   }
 
@@ -285,11 +306,12 @@ export class OverworldScene extends Phaser.Scene {
   private drawFogged(pos: { x: number; y: number }): void {
     const circle = this.add.circle(pos.x, pos.y, 13, COLOR.tileDark, 0.5).setDepth(1);
     circle.setStrokeStyle(1, COLOR.border, 0.4);
-    const label = this.add.text(pos.x, pos.y, "?", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(2);
+    // ◌ (not "?", which now means a story event) — disambiguated via the registry.
+    const label = placeIcon(this, pos.x, pos.y, "fogged", { color: INK.disabled }).setDepth(2);
     this.nodeObjects.push(circle, label);
   }
 
-  private drawNode(node: MapNode, pos: { x: number; y: number }, state: { reachable: boolean; current: boolean; visited: boolean }): void {
+  private drawNode(node: MapNode, pos: { x: number; y: number }, state: { reachable: boolean; current: boolean; visited: boolean }, interactive = true): void {
     const isFinal = node.layer === this.run.map.layers - 1;
     const event = node.kind === "event" ? this.eventVisual(node) : undefined;
     const baseColor =
@@ -307,20 +329,23 @@ export class OverworldScene extends Phaser.Scene {
     else circle.setStrokeStyle(1, COLOR.tileDark, 0.8);
     this.nodeObjects.push(circle);
 
-    // Kind glyph (event nodes carry a per-event glyph, M11).
-    const glyph = node.kind === "rest" ? "❄" : event ? event.glyph : isFinal ? "★" : "⚔";
-    const label = this.add.text(pos.x, pos.y, glyph, { color: INK.onLight, fontSize: isFinal ? FONT.heading : FONT.body }).setOrigin(0.5).setDepth(2);
+    // Kind glyph, from the registry (event nodes carry a per-event icon, M11). Routed
+    // through placeIcon so a future atlas swaps in without touching this call (D59).
+    const iconKey: IconKey = node.kind === "rest" ? "rest" : event ? event.key : isFinal ? "goal" : "combat";
+    const label = placeIcon(this, pos.x, pos.y, iconKey, { color: INK.onLight, size: isFinal ? FONT.heading : FONT.body }).setDepth(2);
     this.nodeObjects.push(label);
 
     if (state.visited) {
-      const tick = this.add.text(pos.x + radius - 2, pos.y - radius + 2, "✓", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
+      const tick = this.add.text(pos.x + radius - 2, pos.y - radius + 2, ICON.check.glyph, { color: INK.success, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
       this.nodeObjects.push(tick);
     }
 
     if (state.reachable) {
-      circle.setInteractive({ useHandCursor: true });
+      // Hover always previews; the commit click is gated so the read-only Route-map
+      // review can show the same board without letting you re-choose a node (D58).
+      circle.setInteractive({ useHandCursor: interactive });
       circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showPreview(node));
-      circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.enterCamp(node));
+      if (interactive) circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.enterCamp(node));
     }
   }
 
@@ -352,6 +377,26 @@ export class OverworldScene extends Phaser.Scene {
     this.previewText.setText("");
   }
 
+  /**
+   * A **read-only** peek at the route map from camp/Survey (D58) — those surfaces
+   * hide the map, so this brings it back to look at: hover a node to preview it,
+   * but no committing. `returnTo` rebuilds the surface you came from (camp/Survey).
+   */
+  private reviewMap(returnTo: () => void): void {
+    this.clearCamp();
+    for (const o of this.overlay) o.destroy();
+    this.overlay = [];
+    this.drawMap(false); // non-interactive: hover-preview only, no node commit
+    this.titleText.setText(`Route Map — Night ${this.run.night + 1} · reviewing`);
+    this.setHint("Reviewing the route — hover a node to preview it. Click Back to return.");
+    // Below the centred HUD line so it doesn't sit on the readouts.
+    const back = this.makeTextButton(90, 78, 150, 28, "← Back", COLOR.surfaceRaised, COLOR.border, () => {
+      this.clearMap();
+      returnTo();
+    });
+    this.nodeObjects.push(back);
+  }
+
   // --- The unified overworld camp (D35) -------------------------------------
 
   /**
@@ -363,6 +408,7 @@ export class OverworldScene extends Phaser.Scene {
     this.clearMap();
     this.loop.choose(node.id);
     this.campNode = node;
+    this.campAdvanced = false; // every camp opens with the economy tucked away (D58)
     this.renderCamp();
   }
 
@@ -379,7 +425,7 @@ export class OverworldScene extends Phaser.Scene {
         ? `Event — ${this.loop.eventDef().name}`
         : "Rest";
     this.titleText.setText(`Make Camp — Night ${this.run.night + 1} · ${kindLabel}`);
-    this.setHint("Make Camp: provision, pay Upkeep, read the ledger — then End the Night to face the node. Cooldowns tick when you Break Camp.");
+    this.setHint("Make Camp: provision, heal, glance the ledger — then End the Night. The Banker/Noble economy lives under ‘Advanced’; safe to ignore early.");
 
     const cx = this.scale.width / 2;
     const panelW = 720;
@@ -387,65 +433,56 @@ export class OverworldScene extends Phaser.Scene {
     const colX = cx - panelW / 2 + 30;
     const rowH = 30;
 
-    // --- Overworld actions (the new economy, D35) ---
+    // --- Camp: the signature non-combat job actions + everyday provisioning ---
     this.campObjects.push(
-      this.add.text(colX - 10, top - 6, "Overworld Actions", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+      this.add.text(colX - 10, top - 6, "Camp", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
     );
     let y = top + 22;
-
-    // Scout — one button per reachable node ahead (the chosen target, D24/D35).
-    const scout = getAbility("scout")!;
-    const ahead = this.loop.reachable();
-    for (const target of ahead) {
-      const actor = this.scoutActor();
-      const label = `Scout → ${target.id} (${target.kind})  ·  ${this.costReadout(scout, actor)}`;
-      const refusal = this.refusal(scout, actor);
-      this.campButton(colX, y, 360, 24, label, !refusal, () => this.doOverworldAction(actor, "scout", { targetNodeId: target.id }), refusal ?? scout.description);
-      y += rowH;
-    }
-
-    // Market — the Merchant's ACCESS verb (D30) as an overworld action.
-    const market = getAbility("market")!;
-    const marketActor = this.marketActor();
-    const mRefusal = this.refusal(market, marketActor);
-    this.campButton(colX, y, 360, 24, `${marketActor.name}: Market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? market.description);
-    y += rowH + 8;
-
-    // --- Camp / meta actions (the folded-in Meta phase + provisioning) ---
-    this.campObjects.push(
-      this.add.text(colX - 10, y, "Camp", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
-    );
-    y += 22;
     for (const u of this.run.party) {
       for (const skill of unitSkills(u, "meta")) {
         this.campButton(colX, y, 360, 24, `${u.name}: ${skill.name}`, true, () => this.useCampSkill(u, skill), `${skill.name} — ${skill.description}`);
         y += rowH;
       }
     }
-    this.campButton(colX, y, 360, 24, "Load Trap Kit (15g)", true, () => this.provisionTrapKit(), "Buy a Trap Kit into storage (1 slot) for the Survivalist.");
+    // One trap-kit buy (D58): Merchant-priced if one rides along, else the flat rate.
+    const kitPrice = this.trapKitPrice(node);
+    this.campButton(colX, y, 360, 24, `Buy Trap Kit (${kitPrice}g)`, true, () => this.buyTrapKit(), "Buy a Trap Kit into storage (1 slot) for the Scout/Survivalist. Cheaper at a town/rest node, or with a Merchant in the party.");
     y += rowH;
     this.campButton(colX, y, 360, 24, "Triage Heal", true, () => this.triage(), "Spend Rest Points to heal the most-wounded fighter one chunk (D9).");
     y += rowH + 8;
 
-    // --- The gold economy verbs (M10, D30/D34): purse-scoped, never the treasury ---
-    this.campObjects.push(
-      this.add.text(colX - 10, y, "Economy (Merchant / Banker / Noble)", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
-    );
-    y += 22;
-    // Merchant ACCESS — buy supply into storage from the PURSE, node-tier price.
-    const buyPrice = node.kind === "rest" ? ECONOMY.merchant.townPrice : ECONOMY.merchant.wildPrice;
-    this.campButton(colX, y, 360, 24, `Merchant: Buy Trap Kit (${buyPrice}g purse, ${node.kind === "rest" ? "town" : "wild"})`, true, () => this.merchantBuyKit(), "Merchant ACCESS (D30): spend run-gold to buy a Trap Kit into storage — cheaper at a town/rest node.");
+    // --- Advanced ▸ : the optional gold economy, collapsed by default (D58) ---
+    this.campButton(colX, y, 360, 24, `${this.campAdvanced ? ICON.collapse.glyph : ICON.expand.glyph}  Advanced — Banker · Noble · Market`, true, () => { this.campAdvanced = !this.campAdvanced; this.renderCamp(); }, "Optional economy verbs: interest, borrowing, theft protection, influence, and the market. Safe to leave alone while you learn the loop.");
     y += rowH;
-    // Banker TIME-SHIFT + SECURE — purse interest, buy-on-debt, theft protection.
-    this.campButton(colX, y, 360, 24, "Banker: Engage Purse Interest", true, () => this.bankerInterest(), "Banker TIME-SHIFT (D30): the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
-    y += rowH;
-    this.campButton(colX, y, 360, 24, "Banker: Buy-on-Debt (+40g now)", true, () => this.bankerBorrow40(), "Banker (D30): overspend now; auto-repaid from incoming run gold.");
-    y += rowH;
-    this.campButton(colX, y, 360, 24, `Banker: Theft Protection (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker SECURE (D30): blunt a thief's skim — battle thief and event node alike.");
-    y += rowH;
-    // Noble INFLUENCE — political income → Influence (a walled-off currency).
-    this.campButton(colX, y, 360, 24, "Noble: Collect Political Income", !!this.guild, () => this.nobleIncome(), "Noble INFLUENCE (D30/D34): earn Influence — a separate currency that can never pay Upkeep. Bribe enemies mid-battle.");
-    const leftBottom = y + 16;
+    if (this.campAdvanced) {
+      const subX = colX + 16;
+      const subW = 344;
+      const market = getAbility("market")!;
+      const marketActor = this.marketActor();
+      const mRefusal = this.refusal(market, marketActor);
+      this.campButton(subX, y, subW, 24, `Shop the market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? "Merchant ACCESS (D30): open the market to buy supply into storage from the purse.");
+      y += rowH;
+      this.campButton(subX, y, subW, 24, "Invest the purse", true, () => this.bankerInterest(), "Banker (D30): the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
+      y += rowH;
+      this.campButton(subX, y, subW, 24, "Borrow 40g", true, () => this.bankerBorrow40(), "Banker (D30): overspend now; auto-repaid from incoming run gold.");
+      y += rowH;
+      this.campButton(subX, y, subW, 24, `Guard the purse (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker (D30): blunt a thief's skim — battle thief and event node alike.");
+      y += rowH;
+      this.campButton(subX, y, subW, 24, "Gather influence", !!this.guild, () => this.nobleIncome(), "Noble (D30/D34): earn Influence — a separate currency that can never pay Upkeep. Bribe enemies mid-battle.");
+      y += rowH;
+      // The Banker's purse-state, moved off the always-on HUD line into context (D58).
+      const eco = this.run.overworld;
+      const bank: string[] = [];
+      if (eco.interestPerStep > 0) bank.push(`interest +${eco.interestPerStep}g/step`);
+      if (eco.debt > 0) bank.push(`debt ${eco.debt}g`);
+      if (eco.protection > 0) bank.push(`protection ${Math.round(eco.protection * 100)}%`);
+      if (this.guild) bank.push(`Influence ${this.guild.influence}`);
+      if (bank.length) {
+        this.campObjects.push(this.add.text(subX, y, bank.join("   ·   "), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11));
+        y += rowH;
+      }
+    }
+    const leftBottom = y + 8;
 
     // --- Fatigue meter (per-character, banded — à la the morale readout) ---
     const meterX = cx + 60;
@@ -455,11 +492,13 @@ export class OverworldScene extends Phaser.Scene {
     );
     const meterBottom = top + 18 + this.run.party.filter((u) => u.alive).length * 21 + 8;
 
-    // --- Ledger glance (D45): always one click away, on the camp ---
-    this.campButton(cx + 60, leftBottom + 8, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger (D45): purse-scoped totals you can expand to line items, plus the route forecast (D48).");
+    // --- Right column: review the route + glance the ledger (D45/D58) ---
+    const utilY = Math.max(leftBottom + 8, meterBottom);
+    this.campButton(cx + 60, utilY, 240, 24, "Review Route Map", true, () => this.reviewMap(() => this.renderCamp()), "Look at the overworld node map (read-only) — your route, what's reachable, and what's still fogged. Click Back to return to camp.");
+    this.campButton(cx + 60, utilY + 30, 240, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.renderCamp()), "The economic ledger (D45): purse-scoped totals you can expand to line items, plus the route forecast (D48).");
 
     // --- End the Night — the prep→event gate (D46); placed below all content ---
-    const contentBottom = Math.max(leftBottom + 8, meterBottom);
+    const contentBottom = Math.max(leftBottom + 8, utilY + 30);
     // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
     // Mission" (D45 fork 2); rest/event "End the Night" into their payload.
     const commitLabel = isCombat
@@ -545,6 +584,23 @@ export class OverworldScene extends Phaser.Scene {
     if (out.bankedHeal) parts.push(`banked +${out.bankedHeal} HP/unit`);
     if (out.levels > 0) parts.push(`${actor.name} reached L${actor.level}!`);
     this.setHint(`${skill.name}: ${parts.join(", ")}.`);
+  }
+
+  /** Whether a Merchant rides along — they price (and route) the trap-kit buy. */
+  private hasMerchant(): boolean {
+    return this.run.party.some((u) => u.alive && u.jobId === "merchant");
+  }
+
+  /** The trap-kit price shown on the single Buy button (D58): Merchant tier, else flat. */
+  private trapKitPrice(node: MapNode): number {
+    if (this.hasMerchant()) return node.kind === "rest" ? ECONOMY.merchant.townPrice : ECONOMY.merchant.wildPrice;
+    return 15;
+  }
+
+  /** The one trap-kit buy (D58): the Merchant ACCESS price/route if present, else flat. */
+  private buyTrapKit(): void {
+    if (this.hasMerchant()) this.merchantBuyKit();
+    else this.provisionTrapKit();
   }
 
   private provisionTrapKit(): void {
@@ -840,6 +896,8 @@ export class OverworldScene extends Phaser.Scene {
       y += rowH;
     }
 
+    this.campButton(colX, y, 360, 24, "Review Route Map", true, () => this.reviewMap(() => this.showSurvey()), "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return to Survey.");
+    y += rowH;
     this.campButton(colX, y, 360, 24, "Open Ledger (totals + forecast)", true, () => this.showLedgerPanel(() => this.showSurvey()), "The economic ledger (D45): purse-scoped totals, expandable to lines, plus the forecast.");
     y += rowH + 6;
 
@@ -1119,17 +1177,14 @@ export class OverworldScene extends Phaser.Scene {
 
   private refreshCampText(): void {
     const tier = moraleTier(this.run.camp.morale);
-    const eco = this.run.overworld;
-    // The PURSE is camp.gold (D34); surface the Banker's purse-scoped state too.
-    const bank: string[] = [];
-    if (eco.interestPerStep > 0) bank.push(`int +${eco.interestPerStep}/step`);
-    if (eco.debt > 0) bank.push(`debt ${eco.debt}g`);
-    if (eco.protection > 0) bank.push(`protect ${Math.round(eco.protection * 100)}%`);
-    const bankStr = bank.length ? `  ·  ${bank.join(" · ")}` : "";
-    const influenceStr = this.guild ? `  ·  Influence ${this.guild.influence}` : "";
+    // The always-on line is the four decision-relevant groups only (D58): Purse,
+    // Morale, Storage/Kits, RP/Upkeep. The Banker's purse-state + Influence moved
+    // into the camp's Advanced panel / ledger, where they're actionable.
+    const upkeep = computeUpkeep(this.run.party).total;
     this.campText.setText(
       `Purse ${this.run.camp.gold}g  ·  Morale ${tier} (${this.run.camp.morale})  ·  ` +
-        `Storage ${slotsUsed(this.run.inventory)}/${this.run.inventory.storageCap}  ·  Kits ${countOf(this.run.inventory, "trap-kit")}  ·  RP ${this.run.rp}${bankStr}${influenceStr}`,
+        `Storage ${slotsUsed(this.run.inventory)}/${this.run.inventory.storageCap} (Kits ${countOf(this.run.inventory, "trap-kit")})  ·  ` +
+        `RP ${this.run.rp}  ·  Upkeep ${upkeep}g/night`,
     );
   }
 

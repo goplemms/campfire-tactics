@@ -1378,3 +1378,171 @@ trail of reasoning stays intact.
 - **Spec:** `src/core/traps.ts`, `entities.makeConcealedTrap`/`makeTrap` (status), `jobs` (Scout
   `set-snare`), `hollow-mill` (*The Sapper's Snares*).
 - **Superseded by:** —
+
+## D55 — Playtest QoL: move-through-allies, no-action auto-pass, keyboard + legend
+
+- **Status:** Decided (2026-06-18) · pre-playtest quality-of-life pass; touches the
+  **D42** movement/AI seam (`reachableTiles`/`occupiedGrid`) and the `BattleScene`
+  interaction layer
+- **Context:** A first hands-on pass surfaced a hard stall: a player unit ringed by
+  bodies had **zero reachable tiles**, and the battle had **no way to pass a turn**, so
+  the clock deadlocked (`onAdvance` early-returns while a unit is "waiting"). Bodies
+  hard-blocked movement, there was a single keyboard shortcut (`T`), and nothing
+  explained the board's vocabulary to a new tester.
+- **Decision:** Four moves, all aimed at letting a playtest feel the *game* and not the
+  friction.
+  - **Move through your own ranks:** `reachableTiles` and the `occupiedGrid`-backed
+    `planMove`/`planAttack` (plus deploy/rescue) now route **through living, un-captured
+    allies** — a unit can cross a friendly body but never *stop* on an occupied tile
+    (callers trim a budget-clamped path back to the last free tile). **Enemy and captured
+    bodies still block the lane** (zone-of-control preserved). Symmetric: the AI and the
+    danger-zone read it too.
+  - **No-action auto-pass + Wait:** every player turn offers an explicit **Wait (W)**
+    verb, and a unit with *no* legal action (no reachable tile, no strikeable foe, no
+    skill/Search/Disarm/Bribe/rescue) **auto-passes** — the universal backstop so the
+    clock can never stall.
+  - **Keyboard:** one `keydown` router — **Space/Enter** = Advance/confirm, **W** = Wait,
+    **1–9** = the active unit's skills, **Esc** = cancel a targeted skill/bribe *or* Undo
+    Move, **T** = danger zone, **F** = animation speed, **L** = legend, **Tab** = next
+    unit (deploy).
+  - **Legend (L):** a toggleable Tokens / Tiles / Turn-order / Keys reference panel.
+- **Follow-up (same pass):** three more feel fixes.
+  - **Two-step turn + Undo:** clicking a tile is now a **tentative move** that does *not*
+    end the turn — the unit walks, then the player attacks / uses a skill / Waits, with
+    **Undo Move** (Esc) to snap back to the start tile. Clicking a foe still
+    closes-and-strikes in one go (the express lane). CT is unaffected by `moved` (only
+    `acted` costs more), so deferring the commit needs no special accounting; a move that
+    springs a trap **locks** (no take-back on damage taken). Post-move the preview drops
+    the move-range/flank washes and telegraphs only the in-place strike.
+  - **Skill-key chips:** each active button is numbered (`1 …`) to advertise its 1–9 key.
+  - **Animation-speed toggle (F):** cycles move-tween speed 1×/2×/4× for snappier pacing.
+- **Spec:** `src/core/ai.ts` (`reachableTiles`, `occupiedGrid` `passAllyOf`),
+  `src/core/planning.ts` (`stoppablePrefix`), `src/game/combat-view.ts`
+  (`drawPreview` `moved` + `inPlaceForecast`), `src/game/scenes/BattleScene.ts`
+  (`onKey`, `cycleSpeed`, `tentativeMove`, `undoMove`, `waitUnit`, `noActionsAvailable`,
+  `toggleLegend`).
+- **Superseded by:** —
+
+## D56 — The headless run simulator (balance + robustness rig)
+
+- **Status:** Decided (2026-06-18) · playtesters delayed, so generate our own signal;
+  builds on the already-first-class headless seams (`RunLoop.autoTraverse`/`autoBattle`,
+  the **D-logistics** `PlaytestLog`/`summarizePlaytest`)
+- **Context:** With human testing on hold we still need two signals: **robustness** (does
+  the loop hold under thousands of seeds — the class of bug D55 just fixed) and a
+  **difficulty floor** ("if a random run always wins, something's wrong"). The engine was
+  already built for this — the only gap was a batch runner + aggregator.
+- **Decision:** A thin **`src/core/sim.ts`** layer that drives **only** the public
+  `RunLoop` seams + the `PlaytestLog`, never a parallel copy of any rule — so every future
+  encounter/job/node/objective is covered the day it lands.
+  - `simulateRun(makeRun)` mints a run, attaches a log, `autoTraverse`s to a terminal
+    (capturing throws as data), and returns a graded `RunResult` (complete/over/stall/
+    crash + end-layer + the lever summary). `batchSimulate` + `aggregate` roll N runs into
+    a `SimDigest`; `formatDigest` renders it.
+  - **`src/core/sim.test.ts`** is the **first-class guard** (runs under `npm test`/CI): a
+    fixed representative party over 80 procedural seeds + the Hollow Mill must **terminate**
+    (no soft-lock), **never throw**, and **replay deterministically**. It also prints the
+    digest (`npm run sim`, via `process.stdout.write`) and a **report-only** difficulty
+    tripwire (no CI fail yet — balance is moving).
+  - **Naive bot = the floor (honest caveat):** it plays tactically dumb and the headless
+    path skips deployment, the meta-economy and the full kit — so its completion rate is a
+    *lower bound* (high ⇒ too easy; low is inconclusive), and the **end-layer histogram** is
+    the real wall-finder. First read: ~5% procedural completion, wall at layer 6; the choice
+    levers (skip-food / capture-risk / in-place-rest) read 0% — the concrete case for the
+    next layer.
+  - **Next layer:** a pluggable **battle policy** so we can swap variants and **A/B** over
+    identical seeds — shipped as **D57**.
+- **Spec:** `src/core/sim.ts`, `src/core/sim.test.ts`, `npm run sim`.
+- **Superseded by:** —
+
+## D57 — Pluggable battle policy + the pilot policy (the enemy-AI A/B seam)
+
+- **Status:** Decided (2026-06-18) · realizes the D56 "next layer"; wraps the **D42**
+  scoring planner without changing it
+- **Context:** D56 wanted to A/B AI variants, and the planner (`planEnemyTurn`) was called
+  by name in three places (`Battle.runEnemyTurn`, `RunLoop.autoBattle`, telegraphing).
+  Hard-coding the planner blocked both AI experimentation and the sim's A/B.
+- **Decision:** A one-method **`BattlePolicy`** seam (`{ name, plan(unit, units, grid, opts)
+  }`) and a single **`PILOT_POLICY`** that wraps the existing scoring planner verbatim — our
+  baseline, the default on both sides, so play is **unchanged**.
+  - `Battle.runEnemyTurn(unit, policy = PILOT_POLICY)` plans through the policy; `autoBattle`
+    was de-duplicated to drive `runEnemyTurn` per acting side (it had inlined a copy of the
+    same plan→execute→endTurn).
+  - `RunLoop.policy = { player, enemy }` (mirrors `log`) is the side-by-side A/B knob; the
+    sim threads it via `SimOptions.policy`. A do-nothing policy is proven load-bearing both
+    at the `Battle` level and **through the sim** (a passive enemy lifts completion vs pilot).
+  - The interactive game is untouched (enemies default to pilot); telegraphing still reads
+    the pilot planner directly (it forecasts the actual enemy behaviour).
+  - **Not built:** smarter policies and a **meta-policy** for the choice levers (node pick /
+    camp spend) the naive bot reads 0% on — the scoreboard (D56) is ready to grade them.
+- **Spec:** `src/core/ai.ts` (`BattlePolicy`, `PILOT_POLICY`), `src/core/turn.ts`
+  (`runEnemyTurn(unit, policy)`), `src/core/runloop.ts` (`policy` field + `autoBattle`),
+  `src/core/sim.ts` (`SimOptions.policy`).
+- **Superseded by:** —
+
+## D58 — Decluttering the overworld camp (tier + collapse)
+
+- **Status:** Decided (2026-06-18) · UX/legibility pass on the **D35** unified camp; pure
+  presentation — the loop, actions and rules are untouched
+- **Context:** First-look feedback: the Make Camp screen is dense and opaque to a newcomer.
+  It stacked **~13–15 buttons** in three equal-weight sections (Overworld Actions / Camp /
+  Economy), had **two trap-kit buys**, surfaced **Scout on both camp and Survey**, leaked
+  class-verb jargon into labels ("Engage Purse Interest", "Buy-on-Debt", "Collect Political
+  Income"), and crammed **9 stats** onto the always-on HUD line.
+- **Decision:** Tier the screen by what a player actually decides, hiding depth (not cutting
+  it). Pure `OverworldScene` presentation.
+  - **Primary, always visible:** the signature job meta-skills (Chef/Merchant — *the hook*),
+    a single **Buy Trap Kit** (Merchant-priced if one rides along, else flat — kills the
+    duplicate), **Triage Heal**, the **Ledger**, and the prominent **End the Night** CTA.
+  - **Advanced ▸ (collapsed by default):** the optional gold economy — Market, Banker
+    (invest / borrow / guard), Noble (gather influence) — behind one toggle, with the
+    Banker's purse-state (interest/debt/protection) + Influence shown *there*, in context.
+  - **De-jargoned labels:** plain verbs ("Invest the purse", "Borrow 40g", "Guard the
+    purse", "Gather influence", "Shop the market"); the class + mechanic live in the hover.
+  - **Trimmed HUD line** to the four decision-relevant groups: **Purse · Morale · Storage
+    (Kits) · RP · Upkeep/night**.
+  - **Scout** removed from the pre-mission camp (you've already chosen the node) — it stays
+    on the **Survey** beat where planning-ahead belongs.
+  - **Map hint slimmed + a corner legend.** The always-on hint dumped a 7-glyph legend; it's
+    now action-only, with a small muted key pinned to the map's bottom-left (rendered in the
+    **default font**, like the node glyphs, so the key matches the board). Hover still
+    previews each node.
+  - **Review Route Map.** Camp/Survey hide the map; a "Review Route Map" button opens it
+    **read-only** (`drawMap(false)` — hover-previews, no commit) with a **← Back**, so you can
+    re-read your route/fog mid-camp without leaving.
+- **Spec:** `src/game/scenes/OverworldScene.ts` (`renderCamp` tiering + `campAdvanced`
+  toggle, `trapKitPrice`/`buyTrapKit`, `refreshCampText`, `drawMapLegend`, `drawMap(interactive)`
+  + `drawNode(interactive)`, `reviewMap`).
+- **Superseded by:** —
+
+## D59 — Icon registry: one source of truth for symbols, glyphs verified, atlas-ready
+
+- **Status:** Decided (2026-06-18) · the foundation of the information-communication pass;
+  extends the **theme.ts** token discipline (FONT/COLOR/INK/ROLE) to symbols
+- **Context:** Icons were the one visual atomic with **no source of truth** — scattered
+  inline string literals. That's how the map legend drifted from the board (D58) and how
+  **emoji-range glyphs** (⚔ ⚖ ⛩ ⚠ ⏳ ☠ 💥 ❄ ✚) slipped in; those degrade to boxes/× wherever
+  an emoji font is missing, and `?` ambiguously meant **both** story-event and fogged.
+- **Decision:** Settle the **seam now, art later**. A new `src/game/icons.ts` `ICON` registry
+  is the single source of truth — each concept → `{ glyph, label, color?, frame? }`.
+  - **v1 renders glyphs**, from a palette **verified (by render test) to render in Courier
+    Prime**, the bundled UI font — so symbols are identical on web/Steam/mobile with no
+    reliance on a platform emoji font. Node kinds remapped to safe glyphs: fight `‡`, rest
+    `≈`, goal `★`, thief `$`, shop `¤`, recruit `✚`, story `?`, toll `╫`, **fogged `◌`**
+    (disambiguated from story).
+  - **`legendLine(keys)`** generates the legend straight from the registry — it can never
+    drift from the board again.
+  - **`placeIcon()`** is the **atlas swap point**: v1 returns a Text glyph; give an entry a
+    `frame` and teach `placeIcon` to prefer an atlas Image and call sites (board markers)
+    don't change. The overworld node markers already route through it.
+  - **Migrated — overworld:** node glyphs, event icons, legend, fogged marker, visited tick,
+    the camp Advanced ▸/▾ toggle.
+  - **Migrated — combat:** flank pip (`⚔`→`‡`), lethal (`☠`→`†`), charging (`⏳`→`◷`), the
+    trap markers (player `✸`, armed `▲`, sprung `✕`), the trap-sprang hint (`💥` dropped), the
+    objective-progress mark (`⚠`→`!`), and the L-legend block. The whole render layer now reads
+    one registry. **Core status glyphs stay in `core/status.ts`** (plain ASCII `I/S/X/H/G/F/M`)
+    — the core/render split means the game-side registry can't reach them, and they're safe.
+- **Spec:** `src/game/icons.ts` (`ICON`, `IconKey`, `legendLine`, `placeIcon`),
+  `src/game/scenes/OverworldScene.ts`, `src/game/combat-view.ts`,
+  `src/game/scenes/BattleScene.ts`.
+- **Superseded by:** —

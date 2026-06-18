@@ -5,6 +5,19 @@ import { occupiedGrid, reachableTiles } from "./ai";
 import { findPath } from "./pathfinding";
 import { inAttackRange, effectiveMove, manhattan, computeDamage, computeFlankBonus } from "./combat";
 import { isImmobilized } from "./status";
+import { tileKey } from "./vision";
+
+/**
+ * Trim a walked path back to the last tile a unit may legally *stop* on: bodies
+ * are passable (D55) but you can't end on one, so a path clamped by the move
+ * budget that lands on a friendly body backs up to the last free tile.
+ */
+function stoppablePrefix(steps: readonly GridCoord[], units: readonly Unit[], self: Unit): GridCoord[] {
+  const occupied = new Set(units.filter((u) => u.alive && u !== self).map((u) => tileKey(u.pos)));
+  let end = steps.length;
+  while (end > 0 && occupied.has(tileKey(steps[end - 1]))) end -= 1;
+  return steps.slice(0, end);
+}
 
 /** A planned player action: a path to walk and, optionally, a foe to strike on arrival. */
 export interface MovePlan {
@@ -21,10 +34,12 @@ export interface MovePlan {
  * demo and mission scenes share.
  */
 export function planMove(actor: Unit, tile: GridCoord, units: readonly Unit[], grid: TileGrid): GridCoord[] | null {
-  const nav = occupiedGrid(grid, units, [actor]);
+  const nav = occupiedGrid(grid, units, [actor], actor.side); // route through friendly bodies (D55)
   const path = findPath(nav, actor.pos, tile);
   if (!path || path.length < 2) return null;
-  return path.slice(1).slice(0, effectiveMove(actor));
+  const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+  const steps = stoppablePrefix(path.slice(1).slice(0, budget), units, actor);
+  return steps.length > 0 ? steps : null;
 }
 
 /**
@@ -35,10 +50,11 @@ export function planMove(actor: Unit, tile: GridCoord, units: readonly Unit[], g
  */
 export function planAttack(actor: Unit, foe: Unit, units: readonly Unit[], grid: TileGrid): MovePlan | null {
   if (inAttackRange(actor, foe)) return { path: [], attackTarget: foe };
-  const nav = occupiedGrid(grid, units, [actor, foe]);
+  const nav = occupiedGrid(grid, units, [actor, foe], actor.side); // route through friendly bodies (D55)
   const path = findPath(nav, actor.pos, foe.pos);
   if (!path || path.length < 2) return null;
-  const approach = path.slice(1, -1).slice(0, effectiveMove(actor));
+  const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+  const approach = stoppablePrefix(path.slice(1, -1).slice(0, budget), units, actor);
   const dest = approach.length > 0 ? approach[approach.length - 1] : actor.pos;
   return { path: approach, attackTarget: manhattan(dest, foe.pos) <= actor.attackRange ? foe : null };
 }

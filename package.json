@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "shots": "node scripts/shots-overworld.mjs",
     "shots:mill": "node scripts/shots-hollow-mill.mjs",
+    "sim": "vitest run src/core/sim.test.ts",
     "verify": "npm run test && npm run build && npm run shots:mill"
   },
   "dependencies": {

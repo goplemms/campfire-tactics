@@ -51,7 +51,7 @@ import { addItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
 import { rpPerNight, payUpkeep, triageHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
-import { planEnemyTurn } from "./ai";
+import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import { restoreFatigue } from "./fatigue";
 import { takeOverworldAction, scoutedTier, type ActionOpts, type ActionResult } from "./overworld-actions";
 import { gainRunGold } from "./economy";
@@ -170,6 +170,13 @@ export class RunLoop {
    * seam into a reviewable timeline. Unset by default — zero behaviour change.
    */
   log?: PlaytestLog;
+  /**
+   * Battle policies for headless auto-play (D56), one per side — the seam the sim
+   * sets to **A/B AI variants** over identical seeds. Defaults to the **pilot**
+   * policy on both sides, so play is unchanged unless a caller swaps one in. Set it
+   * like {@link log} (before {@link autoTraverse}); {@link autoBattle} reads it.
+   */
+  policy: { player: BattlePolicy; enemy: BattlePolicy } = { player: PILOT_POLICY, enemy: PILOT_POLICY };
 
   constructor(run: RunState) {
     this.run = run;
@@ -626,14 +633,19 @@ export class RunLoop {
   }
 
   /**
-   * Play the current battle to a decision **deterministically** — both sides use
-   * the same nearest-enemy AI, threading no randomness beyond the clock's stable
-   * tie-breaks. Returns the winning side. Used by the full-loop integration test
-   * (and as a "simulate" hook); the interactive render drives the battle itself.
+   * Play the current battle to a decision **deterministically** — each side plans
+   * through its {@link BattlePolicy} (defaulting to {@link RunLoop.policy}, pilot on
+   * both sides), threading no randomness beyond the clock's stable tie-breaks. Pass
+   * `player`/`enemy` to **A/B two AI variants** in one call. Returns the winning
+   * side. Used by the simulator + full-loop test; the interactive render drives the
+   * battle itself.
    */
-  autoBattle(maxTurns = 1000): "player" | "enemy" | undefined {
+  autoBattle(opts: { maxTurns?: number; player?: BattlePolicy; enemy?: BattlePolicy } = {}): "player" | "enemy" | undefined {
     if (!this.battle) throw new Error("RunLoop.autoBattle: no staged battle");
     const battle = this.battle;
+    const maxTurns = opts.maxTurns ?? 1000;
+    const player = opts.player ?? this.policy.player;
+    const enemy = opts.enemy ?? this.policy.enemy;
     // Stop the moment the encounter is **decided** (D50) — a closing-gate can fail
     // the fight while enemies still stand, so poll the graded outcome, not just the
     // elimination primitive. resolve() reads the same classifier for the grade.
@@ -643,16 +655,9 @@ export class RunLoop {
       if (decided()) return battle.outcome().winner;
       const actor = battle.nextActor();
       if (!actor) break;
-      const plan = planEnemyTurn(actor, battle.units, battle.grid, {
-        isCharging: (u) => battle.clock.isCharging(u),
-      });
-      if (plan.path.length > 0) battle.moveUnit(actor, plan.path);
-      if (plan.ability && plan.target?.alive) {
-        battle.useSkill(actor, plan.ability, plan.target);
-        continue;
-      }
-      if (plan.target && plan.target.alive) battle.attack(actor, plan.target);
-      battle.endTurn(actor, { moved: plan.path.length > 0, acted: plan.target !== null });
+      // The whole plan→execute→endTurn step lives in Battle.runEnemyTurn — drive it
+      // with the acting side's policy (the seam the sim swaps for A/B, D56).
+      battle.runEnemyTurn(actor, actor.side === "player" ? player : enemy);
     }
     return battle.outcome().winner;
   }

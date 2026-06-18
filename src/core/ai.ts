@@ -307,6 +307,29 @@ export function planEnemyTurn(
   return bestPlan;
 }
 
+/**
+ * A swappable battle **policy** (D56): given a unit on its turn, plan its action.
+ * The seam that lets the headless sim **A/B AI variants** (and future AI work ship
+ * behind a name) — the interactive game's enemy turns and {@link "./turn".Battle}'s
+ * `autoBattle` both plan *through* a policy rather than calling a planner by name.
+ */
+export interface BattlePolicy {
+  /** A short, stable id for digests / A/B labelling. */
+  readonly name: string;
+  /** Plan `unit`'s turn — the same contract as {@link planEnemyTurn}. */
+  plan(unit: Unit, units: readonly Unit[], grid: TileGrid, opts?: AIOptions): AIPlan;
+}
+
+/**
+ * The **pilot** policy — the scoring "enumerate, score, pick" planner (D42) wrapped
+ * as a {@link BattlePolicy}. Our baseline and current default on both sides; every
+ * AI experiment is measured against it.
+ */
+export const PILOT_POLICY: BattlePolicy = {
+  name: "pilot",
+  plan: (unit, units, grid, opts) => planEnemyTurn(unit, units, grid, opts),
+};
+
 /** What an enemy intends to do to a player next turn (telegraphing). */
 export interface EnemyIntent {
   /** The enemy whose turn this forecasts. */

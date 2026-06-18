@@ -3,6 +3,7 @@ import { Battle } from "./turn";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import type { FieldEntity } from "./entities";
+import { PILOT_POLICY, planEnemyTurn, type BattlePolicy } from "./ai";
 
 function at(
   id: string,
@@ -118,6 +119,36 @@ describe("Battle orchestrator", () => {
     }
     expect(battle.outcome().over).toBe(true);
     expect(guard).toBeLessThan(500);
+  });
+
+  it("PILOT_POLICY plans identically to the underlying planner (D56)", () => {
+    const grid = new TileGrid(8, 1);
+    const enemy = at("e", "enemy", 0, 0);
+    const player = at("p", "player", 4, 0);
+    const viaPolicy = PILOT_POLICY.plan(enemy, [enemy, player], grid);
+    const direct = planEnemyTurn(enemy, [enemy, player], grid);
+    expect(viaPolicy.destination).toEqual(direct.destination);
+    expect(viaPolicy.target).toBe(direct.target);
+    expect(viaPolicy.path).toEqual(direct.path);
+  });
+
+  it("the policy seam is load-bearing — a passive side never acts and loses (D56)", () => {
+    const grid = new TileGrid(8, 1);
+    const hero = at("hero", "player", 0, 0, { attack: 20, maxHp: 40, hp: 40 });
+    const foe = at("foe", "enemy", 4, 0, { attack: 3, maxHp: 12, hp: 12 });
+    const battle = new Battle(grid, [hero, foe]);
+    battle.seed();
+    // A do-nothing policy: stand and pass. The pilot player should still win.
+    const passive: BattlePolicy = { name: "passive", plan: (u) => ({ unit: u, path: [], destination: u.pos, target: null }) };
+
+    let guard = 0;
+    while (!battle.outcome().over && guard++ < 200) {
+      const actor = battle.nextActor();
+      if (!actor) break;
+      battle.runEnemyTurn(actor, actor.side === "enemy" ? passive : PILOT_POLICY);
+    }
+    expect(battle.outcome().winner).toBe("player");
+    expect(foe.alive).toBe(false); // the pilot actually closed and killed the passive foe
   });
 
   it("resolves a job skill and spends the caster's CT (Act cost)", () => {

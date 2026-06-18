@@ -1450,8 +1450,32 @@ trail of reasoning stays intact.
     the real wall-finder. First read: ~5% procedural completion, wall at layer 6; the choice
     levers (skip-food / capture-risk / in-place-rest) read 0% — the concrete case for the
     next layer.
-  - **Next layer (not built):** a pluggable **meta/battle policy** so we can swap naive →
-    greedy → smart and **A/B enemy-AI variants** over identical seeds — the simulator is the
-    scoreboard for that work.
+  - **Next layer:** a pluggable **battle policy** so we can swap variants and **A/B** over
+    identical seeds — shipped as **D57**.
 - **Spec:** `src/core/sim.ts`, `src/core/sim.test.ts`, `npm run sim`.
+- **Superseded by:** —
+
+## D57 — Pluggable battle policy + the pilot policy (the enemy-AI A/B seam)
+
+- **Status:** Decided (2026-06-18) · realizes the D56 "next layer"; wraps the **D42**
+  scoring planner without changing it
+- **Context:** D56 wanted to A/B AI variants, and the planner (`planEnemyTurn`) was called
+  by name in three places (`Battle.runEnemyTurn`, `RunLoop.autoBattle`, telegraphing).
+  Hard-coding the planner blocked both AI experimentation and the sim's A/B.
+- **Decision:** A one-method **`BattlePolicy`** seam (`{ name, plan(unit, units, grid, opts)
+  }`) and a single **`PILOT_POLICY`** that wraps the existing scoring planner verbatim — our
+  baseline, the default on both sides, so play is **unchanged**.
+  - `Battle.runEnemyTurn(unit, policy = PILOT_POLICY)` plans through the policy; `autoBattle`
+    was de-duplicated to drive `runEnemyTurn` per acting side (it had inlined a copy of the
+    same plan→execute→endTurn).
+  - `RunLoop.policy = { player, enemy }` (mirrors `log`) is the side-by-side A/B knob; the
+    sim threads it via `SimOptions.policy`. A do-nothing policy is proven load-bearing both
+    at the `Battle` level and **through the sim** (a passive enemy lifts completion vs pilot).
+  - The interactive game is untouched (enemies default to pilot); telegraphing still reads
+    the pilot planner directly (it forecasts the actual enemy behaviour).
+  - **Not built:** smarter policies and a **meta-policy** for the choice levers (node pick /
+    camp spend) the naive bot reads 0% on — the scoreboard (D56) is ready to grade them.
+- **Spec:** `src/core/ai.ts` (`BattlePolicy`, `PILOT_POLICY`), `src/core/turn.ts`
+  (`runEnemyTurn(unit, policy)`), `src/core/runloop.ts` (`policy` field + `autoBattle`),
+  `src/core/sim.ts` (`SimOptions.policy`).
 - **Superseded by:** —

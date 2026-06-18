@@ -3,6 +3,7 @@ import { createUnit, type Unit } from "./units";
 import { createRun, createRunFromExpedition } from "./run";
 import { THE_HOLLOW_MILL } from "./hollow-mill";
 import { simulateRun, batchSimulate, aggregate, formatDigest } from "./sim";
+import { PILOT_POLICY, type BattlePolicy } from "./ai";
 
 // The digest writes straight to stdout (vitest leaves this uncaptured). No
 // @types/node in this project, so declare the narrow shape we use.
@@ -54,6 +55,16 @@ describe("run simulator (D55) — robustness net + difficulty floor", () => {
       expect(b.endNodeId).toBe(a.endNodeId);
       expect(b.summary).toEqual(a.summary);
     }
+  });
+
+  it("the policy seam is load-bearing through the sim — A/B lifts completion (D56)", () => {
+    // A do-nothing enemy policy: if the seam is wired, the pilot player should win
+    // far more runs than against the pilot enemy. Proves A/B works end to end.
+    const passive: BattlePolicy = { name: "passive", plan: (u) => ({ unit: u, path: [], destination: u.pos, target: null }) };
+    const makers = Array.from({ length: 12 }, (_, i) => () => createRun(`ab-${i}`, { party: starterParty() }));
+    const vsPilot = aggregate(batchSimulate(makers));
+    const vsPassive = aggregate(batchSimulate(makers, { policy: { player: PILOT_POLICY, enemy: passive } }));
+    expect(vsPassive.completionRate).toBeGreaterThan(vsPilot.completionRate);
   });
 
   it("prints the digest + reports the difficulty floor (report-only, never fails CI)", () => {

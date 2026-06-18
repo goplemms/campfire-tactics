@@ -24,6 +24,16 @@ import type { RunState } from "./run";
 import { RunLoop } from "./runloop";
 import { createPlaytestLog, summarizePlaytest, type PlaytestSummary } from "./playtest-log";
 import type { EncounterResult } from "./authored";
+import type { BattlePolicy } from "./ai";
+
+/** Per-run knobs for the simulator. */
+export interface SimOptions {
+  /**
+   * Battle policies to drive auto-play (D56) — set one or both to **A/B AI
+   * variants** over identical seeds. Defaults to the pilot policy on both sides.
+   */
+  policy?: { player: BattlePolicy; enemy: BattlePolicy };
+}
 
 /** The outcome of one simulated run. */
 export interface RunResult {
@@ -46,10 +56,11 @@ export interface RunResult {
  * terminal — capturing any throw rather than propagating it (a crash is data). The
  * factory must build a **fresh party each call** (auto-play mutates HP/permadeath).
  */
-export function simulateRun(makeRun: () => RunState): RunResult {
+export function simulateRun(makeRun: () => RunState, opts: SimOptions = {}): RunResult {
   const run = makeRun();
   const loop = new RunLoop(run);
   loop.log = createPlaytestLog(run, String(run.seed));
+  if (opts.policy) loop.policy = opts.policy;
   let error: string | undefined;
   try {
     loop.autoTraverse();
@@ -71,8 +82,8 @@ export function simulateRun(makeRun: () => RunState): RunResult {
 }
 
 /** Simulate a batch of run factories (one entry per seed/expedition). */
-export function batchSimulate(makers: ReadonlyArray<() => RunState>): RunResult[] {
-  return makers.map((m) => simulateRun(m));
+export function batchSimulate(makers: ReadonlyArray<() => RunState>, opts: SimOptions = {}): RunResult[] {
+  return makers.map((m) => simulateRun(m, opts));
 }
 
 /** The lever-engagement keys, in display order (mirrors {@link PlaytestSummary}). */

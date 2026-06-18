@@ -107,6 +107,9 @@ async function main() {
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 820, height: 680 });
+    // Stable captures: still motion/animation before any page script runs (the
+    // scenes read window.__SHOT__ at boot via isScreenshotMode()).
+    await page.evaluateOnNewDocument(() => { window.__SHOT__ = true; });
     page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
     page.on("console", (m) => m.type() === "error" && problems.push(`console: ${m.text()}`));
 

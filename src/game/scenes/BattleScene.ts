@@ -21,6 +21,7 @@ import {
   Battle,
   unitSkills,
   unlockedSkills,
+  DEFEND,
   isValidSkillTarget,
   makeTrap,
   canSee,
@@ -707,6 +708,9 @@ export class BattleScene extends Phaser.Scene {
         onClick: () => this.doDisarm(actor, adjTrap.id),
       });
     }
+    // The universal Defend (D41): every unit can brace until its next turn — the
+    // always-available defensive verb, even for a unit with no job actives.
+    specs.push({ text: "Defend (D)", description: `${DEFEND.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, DEFEND) });
     // Always offer a Wait (W): end the turn without acting — the universal backstop
     // so a boxed-in unit is never stuck (D55).
     specs.push({ text: "Wait (W)", description: "End this unit's turn without acting (spends the least time on the clock).", onClick: () => this.waitUnit(actor) });
@@ -944,6 +948,7 @@ export class BattleScene extends Phaser.Scene {
     const actor = this.waitingFor;
     if (!actor) return;
     if (k === "w" || k === "W") return this.waitUnit(actor);
+    if (k === "d" || k === "D") return this.onSkillButton(actor, DEFEND);
     if (k >= "1" && k <= "9") {
       const skills = unlockedSkills(actor, "battle");
       const idx = Number(k) - 1;

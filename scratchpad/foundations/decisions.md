@@ -1514,3 +1514,31 @@ trail of reasoning stays intact.
   toggle, `trapKitPrice`/`buyTrapKit`, `refreshCampText`, `drawMapLegend`, `drawMap(interactive)`
   + `drawNode(interactive)`, `reviewMap`).
 - **Superseded by:** —
+
+## D59 — Icon registry: one source of truth for symbols, glyphs verified, atlas-ready
+
+- **Status:** Decided (2026-06-18) · the foundation of the information-communication pass;
+  extends the **theme.ts** token discipline (FONT/COLOR/INK/ROLE) to symbols
+- **Context:** Icons were the one visual atomic with **no source of truth** — scattered
+  inline string literals. That's how the map legend drifted from the board (D58) and how
+  **emoji-range glyphs** (⚔ ⚖ ⛩ ⚠ ⏳ ☠ 💥 ❄ ✚) slipped in; those degrade to boxes/× wherever
+  an emoji font is missing, and `?` ambiguously meant **both** story-event and fogged.
+- **Decision:** Settle the **seam now, art later**. A new `src/game/icons.ts` `ICON` registry
+  is the single source of truth — each concept → `{ glyph, label, color?, frame? }`.
+  - **v1 renders glyphs**, from a palette **verified (by render test) to render in Courier
+    Prime**, the bundled UI font — so symbols are identical on web/Steam/mobile with no
+    reliance on a platform emoji font. Node kinds remapped to safe glyphs: fight `‡`, rest
+    `≈`, goal `★`, thief `$`, shop `¤`, recruit `✚`, story `?`, toll `╫`, **fogged `◌`**
+    (disambiguated from story).
+  - **`legendLine(keys)`** generates the legend straight from the registry — it can never
+    drift from the board again.
+  - **`placeIcon()`** is the **atlas swap point**: v1 returns a Text glyph; give an entry a
+    `frame` and teach `placeIcon` to prefer an atlas Image and call sites (board markers)
+    don't change. The overworld node markers already route through it.
+  - **Migrated:** the whole overworld map (node glyphs, event icons, legend, fogged marker,
+    visited tick, the camp Advanced ▸/▾ toggle). **Follow-up:** the combat-view glyphs
+    (charging `◷`, lethal `†`, flank `‡`, trap markers, the 💥 hint) — registry entries exist;
+    the migration is mechanical.
+- **Spec:** `src/game/icons.ts` (`ICON`, `IconKey`, `legendLine`, `placeIcon`),
+  `src/game/scenes/OverworldScene.ts` (`eventVisual`/`drawNode`/`drawFogged`/`drawMapLegend`).
+- **Superseded by:** —

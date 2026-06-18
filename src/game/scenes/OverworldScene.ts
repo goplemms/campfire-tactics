@@ -56,6 +56,7 @@ import {
 import { fitText } from "../ui";
 import { Button } from "../button";
 import { HintPanel } from "../hint-panel";
+import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
 
 /** Data handed between the overworld and a combat node's BattleScene. */
 export interface RunHandoff {
@@ -276,29 +277,28 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * A small, muted glyph key pinned to the map's bottom-left (D58) — replaces the
-   * legend that used to crowd the hint. Deliberately uses the **default font** (no
-   * `fontFamily`), exactly like the node glyphs, so the symbols match the board (the
-   * monospace UI font can't render ⚔/❄/⚖/⛩). Clears with the map.
+   * A small, muted key pinned to the map's bottom-left (D58) — **generated from the
+   * {@link ICON} registry** (D59), so it can never drift from the board, and rendered
+   * in the UI font (the glyphs are verified safe there). Clears with the map.
    */
   private drawMapLegend(): void {
-    const key = "⚔ fight    ❄ rest    ★ goal    $ thief    ⚖ shop    ✚ recruit    ? story    ⛩ toll    ◌ fogged";
+    const key = legendLine(["combat", "rest", "goal", "thief", "shop", "recruiter", "story", "toll", "fogged"]);
     const legend = this.add
-      .text(20, this.scale.height - 30, key, { color: INK.muted, fontSize: FONT.caption })
+      .text(20, this.scale.height - 30, key, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption })
       .setOrigin(0, 0.5)
       .setDepth(3);
     this.nodeObjects.push(legend);
   }
 
-  /** Glyph + tint for an event node, keyed by which event it runs (M11). */
-  private eventVisual(node: MapNode): { glyph: string; color: number } {
+  /** Icon key + circle tint for an event node, keyed by which event it runs (M11). */
+  private eventVisual(node: MapNode): { key: IconKey; color: number } {
     switch (eventForNode(this.run.seed, node).kind as EventKind) {
-      case "shop": return { glyph: "⚖", color: COLOR.gold };
-      case "recruiter": return { glyph: "✚", color: COLOR.info };
-      case "story": return { glyph: "?", color: COLOR.captive };
-      case "toll": return { glyph: "⛩", color: COLOR.gold };
+      case "shop": return { key: "shop", color: COLOR.gold };
+      case "recruiter": return { key: "recruiter", color: COLOR.info };
+      case "story": return { key: "story", color: COLOR.captive };
+      case "toll": return { key: "toll", color: COLOR.gold };
       case "thief":
-      default: return { glyph: "$", color: COLOR.captive };
+      default: return { key: "thief", color: COLOR.captive };
     }
   }
 
@@ -306,7 +306,8 @@ export class OverworldScene extends Phaser.Scene {
   private drawFogged(pos: { x: number; y: number }): void {
     const circle = this.add.circle(pos.x, pos.y, 13, COLOR.tileDark, 0.5).setDepth(1);
     circle.setStrokeStyle(1, COLOR.border, 0.4);
-    const label = this.add.text(pos.x, pos.y, "?", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(2);
+    // ◌ (not "?", which now means a story event) — disambiguated via the registry.
+    const label = placeIcon(this, pos.x, pos.y, "fogged", { color: INK.disabled }).setDepth(2);
     this.nodeObjects.push(circle, label);
   }
 
@@ -328,13 +329,14 @@ export class OverworldScene extends Phaser.Scene {
     else circle.setStrokeStyle(1, COLOR.tileDark, 0.8);
     this.nodeObjects.push(circle);
 
-    // Kind glyph (event nodes carry a per-event glyph, M11).
-    const glyph = node.kind === "rest" ? "❄" : event ? event.glyph : isFinal ? "★" : "⚔";
-    const label = this.add.text(pos.x, pos.y, glyph, { color: INK.onLight, fontSize: isFinal ? FONT.heading : FONT.body }).setOrigin(0.5).setDepth(2);
+    // Kind glyph, from the registry (event nodes carry a per-event icon, M11). Routed
+    // through placeIcon so a future atlas swaps in without touching this call (D59).
+    const iconKey: IconKey = node.kind === "rest" ? "rest" : event ? event.key : isFinal ? "goal" : "combat";
+    const label = placeIcon(this, pos.x, pos.y, iconKey, { color: INK.onLight, size: isFinal ? FONT.heading : FONT.body }).setDepth(2);
     this.nodeObjects.push(label);
 
     if (state.visited) {
-      const tick = this.add.text(pos.x + radius - 2, pos.y - radius + 2, "✓", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
+      const tick = this.add.text(pos.x + radius - 2, pos.y - radius + 2, ICON.check.glyph, { color: INK.success, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
       this.nodeObjects.push(tick);
     }
 
@@ -450,7 +452,7 @@ export class OverworldScene extends Phaser.Scene {
     y += rowH + 8;
 
     // --- Advanced ▸ : the optional gold economy, collapsed by default (D58) ---
-    this.campButton(colX, y, 360, 24, `${this.campAdvanced ? "▾" : "▸"}  Advanced — Banker · Noble · Market`, true, () => { this.campAdvanced = !this.campAdvanced; this.renderCamp(); }, "Optional economy verbs: interest, borrowing, theft protection, influence, and the market. Safe to leave alone while you learn the loop.");
+    this.campButton(colX, y, 360, 24, `${this.campAdvanced ? ICON.collapse.glyph : ICON.expand.glyph}  Advanced — Banker · Noble · Market`, true, () => { this.campAdvanced = !this.campAdvanced; this.renderCamp(); }, "Optional economy verbs: interest, borrowing, theft protection, influence, and the market. Safe to leave alone while you learn the loop.");
     y += rowH;
     if (this.campAdvanced) {
       const subX = colX + 16;

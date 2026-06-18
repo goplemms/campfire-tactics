@@ -209,6 +209,39 @@ buttons are Layer 1.
 > *netted* / *bolting for cover* (Layer 2); the **status word** on the HUD is
 > **Captured** and the region word is **Cover** (Layer 1).
 
+## Combat (D5 · the CT clock)
+
+The isometric battle. The clock vocabulary is fixed canon — players learn it once and
+read it everywhere.
+
+| Canonical | Means | Banned in labels |
+|---|---|---|
+| **CT clock** / **Charge-Time** | The continuous initiative clock (no rounds). | "ATB"; "initiative bar"; "timeline" (in labels) |
+| **Advance Clock** | The button that ticks the clock to the next turn. | "Next turn"; "End turn"; "Tick" |
+| **Turn order** | The rail showing who acts next. | "initiative"; "queue" |
+| **Speed** | The stat governing how fast CT fills. | "AGI"; "initiative" |
+| **active turn** = **Move** + **Act** | One unit's turn: move and act, either order. | "action"; "AP" (no action-point pool) |
+| **Charging** | A unit mid **Charged** ability (the `◷` glyph). | "casting"; "winding up" |
+| **Instant** / **Charged** | Resolves now / schedules and **resolves later**. | "quick"/"slow"; "channeled" |
+| **Defend** | The universal brace action (applies the **Guarded** status). | "Brace"/"Block" as the *button*; "Guard" (that's the Banker verb) |
+| **Wait** | Pass the turn without acting. | "Skip"; "Pass"; "Hold" |
+| **Bribe** | The Noble's mid-combat **Influence** verb (sway an enemy). | "Sway"/"Charm" as the button; abbreviating `Influence` to `Inf` |
+
+**Status-effect lexicon** — fixed labels, one word each, never re-skinned:
+**Immobilized · Slowed · Exposed · Hastened · Guarded · Swift · Marked Prey · Flanked**.
+New statuses follow the pattern (a single capitalized adjective/noun); check this list
+before coining one so two effects never share a word.
+
+**Vision ladder (D18):** the canonical tiers are **Hidden → Pinged → Seen** (with
+**ghost markers** for spotted-then-lost foes, and an **ambush bonus** for breaking from
+Hidden). These are **design canon**; in-battle *prose* may stay evocative ("stirs in
+ambush," "springs from cover") — but any **tier label or legend key** uses the ladder
+words.
+
+> **Two "Guard"s, kept apart:** combat **Guarded** = the Defend brace (damage
+> reduction); the Banker's **Guard the Purse** = theft protection (readout
+> **Protection N%**). Different tiers, never cross-labeled.
+
 ## Drift status (current build → canon)
 
 The first copy pass found the live strings already mostly disciplined. State:
@@ -241,6 +274,18 @@ Guild + deployment pass:
    Upkeep, vessel display names (`Scout Cart` / `Supply Train`), Quest Board, Armory,
    Dispatch, and the Deployment meters all already matched canon; only the two items
    above needed code changes.
+
+Combat pass:
+
+9. **Battle HUD `Gold` → `Purse`** — ✅ **fixed.** The in-battle camp readout labelled
+   the run pool `Gold N`; it's the same `run.camp.gold` the overworld shows as `Purse Ng`.
+   Now unified on `Purse Ng`.
+10. **`Inf` → `Influence`** — ✅ **fixed.** The bribe button read `Bribe (3 Inf)` while
+    its own error spelled out "Influence". Now `Bribe (3 Influence)` (no abbreviation —
+    Influence is never shortened, unlike the sanctioned `RP`).
+11. **Combat keywords otherwise compliant** — `Advance Clock`, `Turn order`, the status
+    lexicon, `Defend`/`Wait`, Morale tiers, Storage/Kits/RP/Upkeep, and `Captured` all
+    already matched canon; the fog prose stays Layer 2 by design.
 
 ## Adding a term
 

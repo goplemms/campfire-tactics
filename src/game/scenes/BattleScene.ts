@@ -680,7 +680,7 @@ export class BattleScene extends Phaser.Scene {
       const cost = bribeCost(this.currentPreview());
       const affordable = this.guild.influence >= cost;
       specs.push({
-        text: `Bribe (${cost} Inf)`,
+        text: `Bribe (${cost} Influence)`,
         description: affordable
           ? "Bribe an enemy (Noble Influence): a generic turns coat for the fight; an authored one joins the guild permanently."
           : `Not enough Influence (need ${cost}).`,
@@ -1400,7 +1400,7 @@ export class BattleScene extends Phaser.Scene {
     const tier = moraleTier(this.run.camp.morale);
     const up = computeUpkeep(this.run.party).total;
     this.campText.setText(
-      `Night ${this.run.night + 1}  ·  Gold ${this.run.camp.gold}  ·  Morale ${tier} (${this.run.camp.morale})  ·  ` +
+      `Night ${this.run.night + 1}  ·  Purse ${this.run.camp.gold}g  ·  Morale ${tier} (${this.run.camp.morale})  ·  ` +
         `Storage ${slotsUsed(this.run.inventory)}/${this.run.inventory.storageCap}  ·  Kits ${countOf(this.run.inventory, "trap-kit")}  ·  RP ${this.run.rp}  ·  Upkeep ${up}g/night`,
     );
   }

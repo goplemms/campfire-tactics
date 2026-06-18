@@ -145,24 +145,15 @@ export function enemyCount(index: number): number {
 }
 
 /**
- * Generate an encounter from a deterministic stream. Same `rng` sequence + same
- * `index` ⇒ identical encounter. The render layer never calls this directly; the
- * run derives `rng` from its seed so a replay reproduces the sequence.
+ * Interior cover (D12): scatter up to `count` **unique** blocked tiles across the
+ * middle columns (never the home/enemy spawn columns), de-duplicated. The `guard`
+ * caps retries so a dense board can't spin. Consumes `count`-worth of `rng`.
  */
-export function generateEncounter(rng: Rng, index: number): EncounterDef {
-  const { cols, rows } = GEN;
-
-  // Encounter type (D12) — fortified chance creeps up with index.
-  const fortChance = GEN.fortifiedBaseChance + GEN.fortifiedPerIndex * index;
-  const type: EncounterType = rng.chance(fortChance) ? "fortified" : "open-field";
-
-  // Interior cover: scatter blocked tiles in the middle columns (never on the
-  // home/enemy spawn columns), de-duplicated.
-  const blockedCount = rng.range(GEN.minBlocked, GEN.maxBlocked);
+function rollBlocked(rng: Rng, cols: number, rows: number, count: number): GridCoord[] {
   const blocked: GridCoord[] = [];
   const seen = new Set<string>();
   let guard = 0;
-  while (blocked.length < blockedCount && guard++ < 50) {
+  while (blocked.length < count && guard++ < 50) {
     const col = rng.range(2, cols - 3);
     const row = rng.range(0, rows - 1);
     const key = `${col},${row}`;
@@ -170,8 +161,14 @@ export function generateEncounter(rng: Rng, index: number): EncounterDef {
     seen.add(key);
     blocked.push({ col, row });
   }
+  return blocked;
+}
 
-  // Enemy roster: count ramps with index; stats scale; positions on the right.
+/**
+ * The enemy roster: count ramps with `index`, stats scale, bodies placed down the
+ * right columns avoiding blockers and collisions (the inner `pg` loop caps retries).
+ */
+function rollRoster(rng: Rng, index: number, cols: number, rows: number, blocked: readonly GridCoord[]): UnitSpec[] {
   const count = enemyCount(index);
   const hpBoost = Math.round(GEN.hpPerIndex * index);
   const atkBoost = Math.round(GEN.attackPerIndex * index);
@@ -209,8 +206,11 @@ export function generateEncounter(rng: Rng, index: number): EncounterDef {
       jobId: tpl.jobId,
     });
   }
+  return enemies;
+}
 
-  // Rewards: gold scales with index (jittered); a material drop or two.
+/** The reward: gold scales with `index` (jittered) plus one or two material drops. */
+function rollReward(rng: Rng, index: number): EncounterReward {
   const gold = GEN.baseGold + GEN.goldPerIndex * index + rng.range(0, 20);
   const dropCount = 1 + rng.int(2);
   const materials: MaterialDrop[] = [];
@@ -220,8 +220,28 @@ export function generateEncounter(rng: Rng, index: number): EncounterDef {
     if (existing) existing.count += 1;
     else materials.push({ id, count: 1 });
   }
+  return { gold, materials };
+}
 
-  return { index, type, cols, rows, blocked, enemies, reward: { gold, materials } };
+/**
+ * Generate an encounter from a deterministic stream. Same `rng` sequence + same
+ * `index` ⇒ identical encounter. The render layer never calls this directly; the
+ * run derives `rng` from its seed so a replay reproduces the sequence. The roll
+ * order — type, blocked tiles, roster, reward — is the determinism contract; the
+ * `rng.range` for the blocked count is an argument so it still draws before scatter.
+ */
+export function generateEncounter(rng: Rng, index: number): EncounterDef {
+  const { cols, rows } = GEN;
+
+  // Encounter type (D12) — fortified chance creeps up with index.
+  const fortChance = GEN.fortifiedBaseChance + GEN.fortifiedPerIndex * index;
+  const type: EncounterType = rng.chance(fortChance) ? "fortified" : "open-field";
+
+  const blocked = rollBlocked(rng, cols, rows, rng.range(GEN.minBlocked, GEN.maxBlocked));
+  const enemies = rollRoster(rng, index, cols, rows, blocked);
+  const reward = rollReward(rng, index);
+
+  return { index, type, cols, rows, blocked, enemies, reward };
 }
 
 /** Build a live {@link TileGrid} from an encounter def. */

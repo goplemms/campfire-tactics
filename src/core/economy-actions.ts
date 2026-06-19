@@ -28,12 +28,12 @@
 import type { RunState } from "./run";
 import type { Guild } from "./guild";
 import type { Unit } from "./units";
-import type { NodeKind } from "./overworld";
+import { getNode, effectiveMarketTier, type NodeKind, type MarketTier } from "./overworld";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
-import { addItem, canAdd } from "./inventory";
+import { addItem, canAdd, countOf, removeItem, getMaterial, saleValueOf, type MaterialDef } from "./inventory";
 import { streamFor } from "./rng";
-import { addInfluence, spendInfluence } from "./economy";
+import { addInfluence, spendInfluence, gainRunGold } from "./economy";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
 
 /** Economy-verb tuning — data, a numbers pass later (D30). */
@@ -43,6 +43,13 @@ export const ECONOMY = {
     townPrice: 8,
     /** Purse price out in the wild (a `combat`/`event` node). */
     wildPrice: 16,
+    /**
+     * Sell rate (D61): fraction of a material's saleValue paid per unit, by the
+     * node's effective market tier. `none` = can't sell; `poor` (an impromptu /
+     * Merchant-floor market) pays a haircut; a real `basic` town more; `premium`
+     * pays full face. Data, a numbers pass later.
+     */
+    sellRate: { none: 0, poor: 0.5, basic: 0.8, premium: 1 } as Record<MarketTier, number>,
   },
   banker: {
     /** Flat purse-interest rate per node-step, applied to the purse at engage. */
@@ -102,6 +109,47 @@ export function merchantBuy(run: RunState, materialId: string, nodeKind: NodeKin
   run.camp.gold -= price;
   addItem(run.inventory, materialId);
   return { applied: true, detail: `Bought ${materialId} for ${price}g (purse).`, spent: price, price };
+}
+
+// --- Merchant — SELL (goods -> gold, gated by market access, D61) ------------
+
+/** Gold one unit of `material` fetches at a `tier` market (0 = can't sell here). */
+export function sellPrice(material: MaterialDef, tier: MarketTier): number {
+  return Math.floor(saleValueOf(material) * ECONOMY.merchant.sellRate[tier]);
+}
+
+/** What a Merchant sell produced. */
+export interface MerchantSellResult extends VerbResult {
+  /** Gold credited to the purse (after any Banker-debt auto-repay). */
+  earned?: number;
+  /** The unit price paid at this market. */
+  price?: number;
+}
+
+/**
+ * **Merchant SELL** (D61): convert one unit of a carried good into **purse gold** at
+ * the **current node's effective market tier** ({@link "./overworld".effectiveMarketTier}
+ * — the node's own market raised by a Merchant in the party). This is the Merchant's
+ * honest gold faucet (goods -> gold), replacing the retired money-printer: you can't
+ * sell what you don't carry, nor at a `none` market. Refuses (spending/removing
+ * nothing) if the item isn't carried, isn't sellable, or there's no market here.
+ * Gold routes to the purse via {@link "./economy".gainRunGold} (auto-repays debt, D30).
+ */
+export function merchantSell(run: RunState, materialId: string): MerchantSellResult {
+  const material = getMaterial(materialId);
+  if (!material) return { applied: false, reason: `Unknown material "${materialId}".` };
+  if (countOf(run.inventory, materialId) <= 0) {
+    return { applied: false, reason: `No ${material.name} to sell.` };
+  }
+  const tier = effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party);
+  const price = sellPrice(material, tier);
+  if (price <= 0) {
+    const why = saleValueOf(material) <= 0 ? `${material.name} can't be sold.` : `No market here to sell ${material.name}.`;
+    return { applied: false, reason: why, price };
+  }
+  removeItem(run.inventory, materialId, 1);
+  const { credited } = gainRunGold(run, price);
+  return { applied: true, earned: credited, price, detail: `Sold ${material.name} for ${price}g (${tier} market).` };
 }
 
 // --- Banker — TIME-SHIFT + SECURE (purse only, never the treasury) ----------

@@ -30,6 +30,8 @@ export interface BattleEvents {
   chargeResolved: { id: string };
   /** A scheduled/charged effect was cancelled before it resolved (D37 fizzle). */
   chargeFizzled: { id: string };
+  /** A placed trap/snare sprang on a unit (D4/D13) — the render updates its marker. */
+  trapSprung: { id: string; tile: GridCoord; unit: Unit };
 }
 
 /** All valid event names. */

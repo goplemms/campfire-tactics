@@ -17,8 +17,10 @@ import {
   accrueNobleInfluence,
   bribeEnemy,
   bribeCost,
+  bribeChance,
   ECONOMY,
 } from "./economy-actions";
+import { streamFor } from "./rng";
 import { gainRunGold, payTreasuryUpkeep } from "./economy";
 import { countOf, addItem, getMaterial } from "./inventory";
 import { currentNode } from "./run";
@@ -258,7 +260,7 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
 
   it("a bribe reads the preview for its price and flips a GENERIC for the fight only (D33)", () => {
     const run = newRun("noble-bribe-generic");
-    run.overworld.influence = 10;
+    run.overworld.influence = 30; // renowned standing → a guaranteed sway (chance 1.0)
     const generic = createUnit({ id: "thug", side: "enemy", pos: { col: 7, row: 0 }, name: "Thug", speed: 10, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5 });
 
     const lowIntel: NodePreview = { nodeId: "n1-0", kind: "combat", layer: 1, intel: { tier: 0, grantsVision: false } };
@@ -276,7 +278,7 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
 
   it("a bribed AUTHORED unit is a permanent recruit (the temp↔permanent flag, D33)", () => {
     const run = newRun("noble-bribe-authored");
-    run.overworld.influence = 10;
+    run.overworld.influence = 30; // renowned standing → a guaranteed sway (chance 1.0)
     const named = createUnit({ id: "Sable", side: "enemy", pos: { col: 7, row: 0 }, name: "Sable", speed: 12, maxHp: 24, attack: 8, defense: 2, moveRange: 4, sightRadius: 5, authored: true });
     const res = bribeEnemy(run, named);
     expect(res.applied).toBe(true);
@@ -290,6 +292,35 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
     const generic = createUnit({ id: "thug2", side: "enemy", pos: { col: 7, row: 0 }, name: "Thug", speed: 10, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5 });
     const res = bribeEnemy(run, generic);
     expect(res.applied).toBe(false);
+    expect(res.failed).toBeUndefined(); // couldn't afford — *not* a failed roll
     expect(run.overworld.influence).toBe(0);
+  });
+
+  it("standing makes a bribe cheaper and likelier (D62)", () => {
+    // Cost falls as standing rises; the success chance is monotonic across bands.
+    expect(bribeCost(undefined, "renowned")).toBeLessThanOrEqual(bribeCost(undefined, "known"));
+    expect(bribeChance("known")).toBeLessThan(bribeChance("respected"));
+    expect(bribeChance("respected")).toBeLessThan(bribeChance("renowned"));
+    expect(bribeChance("renowned")).toBe(1);
+  });
+
+  it("a failed sway still spends the Influence (the gamble), deterministic per target+node (D62)", () => {
+    const run = newRun("noble-bribe-fail");
+    run.overworld.influence = 5; // 'known' band → chance 0.55, so some targets resist
+    // Find a target whose fixed roll resists at this band (no save-scum: same seed each call).
+    let resistId = "";
+    for (let i = 0; i < 60 && !resistId; i++) {
+      if (!streamFor(run.seed, `bribe:${run.mapNodeId}:foe-${i}`).chance(bribeChance("known"))) resistId = `foe-${i}`;
+    }
+    expect(resistId).not.toBe("");
+    const foe = createUnit({ id: resistId, side: "enemy", pos: { col: 7, row: 0 }, name: "Holdout", speed: 10, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5 });
+    const before = run.overworld.influence;
+    const res = bribeEnemy(run, foe);
+    expect(res.applied).toBe(false);
+    expect(res.failed).toBe(true);
+    expect(run.overworld.influence).toBeLessThan(before); // spent for nothing
+    // The roll is fixed for this target+node — re-attempting (refunded) resists again.
+    run.overworld.influence = before;
+    expect(bribeEnemy(run, foe).failed).toBe(true);
   });
 });

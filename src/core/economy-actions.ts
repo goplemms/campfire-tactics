@@ -33,7 +33,8 @@ import { checkOverworldCost, commitOverworldCost, type OverworldCost } from "./o
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
 import { addItem, canAdd, countOf, removeItem, getMaterial, saleValueOf, type MaterialDef } from "./inventory";
-import { addInfluence, spendInfluence, gainRunGold } from "./economy";
+import { streamFor } from "./rng";
+import { addInfluence, spendInfluence, gainRunGold, influenceTier, type InfluenceTier } from "./economy";
 import { grantAbilityUseXp } from "./leveling";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
 
@@ -76,8 +77,12 @@ export const ECONOMY = {
     patronizeCost: 12,
     /** ...for this much Influence in return (gold → standing, once per node). */
     patronizeYield: 3,
-    /** Base Influence cost to bribe an enemy (discounted by what intel reveals). */
+    /** Base Influence cost to bribe an enemy (discounted by what intel reveals + standing). */
     bribeBase: 4,
+    /** Bribe **cost discount** by the briber's standing band (D62) — better standing, cheaper sway. */
+    bribeDiscount: { unknown: 0, known: 0, respected: 1, favored: 2, renowned: 2 } as Record<InfluenceTier, number>,
+    /** Bribe **success chance** by the briber's standing band (D62) — better standing, likelier sway. */
+    bribeChance: { unknown: 0.4, known: 0.55, respected: 0.7, favored: 0.85, renowned: 1 } as Record<InfluenceTier, number>,
   },
 } as const;
 
@@ -300,35 +305,53 @@ export function patronize(run: RunState): PatronizeResult {
 
 /** What a bribe attempt produced. */
 export interface BribeResult extends VerbResult {
-  /** Influence spent. */
+  /** Influence spent (on a success **or** a failed roll — the gamble). */
   cost?: number;
+  /**
+   * True when the Influence was spent but the enemy **resisted** the sway (the roll
+   * failed) — distinct from `applied: false` with no `failed` (couldn't even afford it).
+   */
+  failed?: boolean;
   /** How the swayed unit resolves after the battle (temp generic / perm authored). */
   outcome?: RecruitOutcome;
 }
 
 /**
- * The Influence cost to bribe an enemy, **reading the D24 preview** (D30): the more
- * the party already knows about the encounter (a higher intel tier in the preview),
- * the cheaper the sway — knowing the field is leverage. Never below 1.
+ * The Influence cost to bribe an enemy (D30/D62): cheaper the more the **D24 preview**
+ * reveals (knowing the field is leverage) *and* the higher the briber's **standing**
+ * (`tier` — a renowned Noble sways cheaply). Never below 1.
  */
-export function bribeCost(preview?: NodePreview): number {
-  const tier = preview?.intel?.tier ?? 0;
-  return Math.max(1, ECONOMY.noble.bribeBase - tier);
+export function bribeCost(preview?: NodePreview, tier: InfluenceTier = "unknown"): number {
+  const intel = preview?.intel?.tier ?? 0;
+  return Math.max(1, ECONOMY.noble.bribeBase - intel - ECONOMY.noble.bribeDiscount[tier]);
+}
+
+/** The chance a bribe **succeeds** at the briber's standing band (D62) — rises with standing. */
+export function bribeChance(tier: InfluenceTier): number {
+  return ECONOMY.noble.bribeChance[tier];
 }
 
 /**
- * **Noble BRIBE** (D30/D33): sway an enemy by spending **Influence**, leaning on the
- * D24 `preview` for the price. On success the caller flips the unit to the player's
- * side for the fight; how it resolves *after* is the temp↔permanent vector (D33):
- * a **generic** enemy is temporary (fights this battle only), an **authored** one
- * is a permanent recruit ({@link "./recruitment".recruitToRoster}). Refuses
- * (spending nothing) if the run can't afford the Influence. Spends the run's
- * **per-expedition** standing (D62), not the guild.
+ * **Noble BRIBE** (D30/D33/D62): sway an enemy by spending **Influence**. Price and
+ * odds both read the briber's **standing** (and the D24 `preview`): a higher band sways
+ * cheaper *and* likelier. The sway is a **roll** — it can **fail**, and a failed roll
+ * still **spends the Influence** (the gamble). The roll is **deterministic per target +
+ * node** ({@link "./rng".streamFor}), so it can't be save-scummed — raise your standing
+ * to shift the odds, you can't reroll the same foe. On success the caller flips the unit
+ * for the fight; how it resolves *after* is the temp↔permanent vector (D33): a **generic**
+ * is temporary, an **authored** one a permanent recruit. Refuses (spending nothing) only
+ * when the run can't afford the cost. Spends the run's per-expedition standing, not the guild.
  */
-export function bribeEnemy(run: RunState, enemy: Pick<Unit, "authored" | "name">, preview?: NodePreview): BribeResult {
-  const cost = bribeCost(preview);
+export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | "name">, preview?: NodePreview): BribeResult {
+  const tier = influenceTier(run.overworld.influence);
+  const cost = bribeCost(preview, tier);
   if (!spendInfluence(run.overworld, cost)) {
     return { applied: false, reason: `Not enough Influence to bribe ${enemy.name} (${cost}).`, cost };
+  }
+  // The sway roll — likelier at higher standing, fixed per target+node (no save-scum).
+  const roll = streamFor(run.seed, `bribe:${run.mapNodeId}:${enemy.id}`);
+  if (!roll.chance(bribeChance(tier))) {
+    return { applied: false, failed: true, cost, detail: `${enemy.name} spurns the offer — ${cost} Influence spent for nothing.` };
   }
   const outcome = recruitClassify(enemy);
   const detail = outcome.permanent

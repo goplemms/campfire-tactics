@@ -65,6 +65,8 @@ import {
   type ConcealedTrap,
   bribeEnemy,
   bribeCost,
+  bribeChance,
+  influenceTier,
   recruitToRoster,
   type RunState,
   type RunLoop,
@@ -799,12 +801,14 @@ export class BattleScene extends Phaser.Scene {
       // The Noble's mid-combat BRIBE (D30/D33): spend the run's per-expedition Influence
       // (D62) to sway an enemy. A permanent recruit still banks to the guild roster.
       if (this.guild && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
-        const cost = bribeCost(this.currentPreview());
+        const tier = influenceTier(this.run.overworld.influence);
+        const cost = bribeCost(this.currentPreview(), tier);
+        const chance = Math.round(bribeChance(tier) * 100);
         const affordable = this.run.overworld.influence >= cost;
         specs.push({
-          text: `Bribe (${cost} Influence)`,
+          text: `Bribe (${cost} Influence · ${chance}%)`,
           description: affordable
-            ? "Bribe an enemy (Noble Influence): a generic turns coat for the fight; an authored one joins the guild permanently."
+            ? `Bribe an enemy (Noble Influence, ${tier} standing): ~${chance}% to sway — a failed roll still spends the Influence. A generic turns coat for the fight; an authored one joins the guild permanently.`
             : `Not enough Influence (need ${cost}).`,
           onClick: () => {
             if (!affordable) return this.setHint(`Not enough Influence to bribe (need ${cost}).`);
@@ -943,18 +947,22 @@ export class BattleScene extends Phaser.Scene {
     return previewNode(this.run, this.run.mapNodeId, scoutedTier(this.run.overworld, this.run.mapNodeId));
   }
 
-  /** Spend guild Influence to sway an enemy (D30/D33) — the unit's Act for the turn. */
+  /** Spend the run's Influence to sway an enemy (D30/D33/D62) — the unit's Act for the turn. */
   private doBribe(actor: Unit, foe: Unit): void {
     if (!this.guild) return;
     if (this.acted) { this.bribeArmed = false; return void this.setHint(`${actor.name} has already acted.`); }
     const res = bribeEnemy(this.run, foe, this.currentPreview());
     this.bribeArmed = false;
-    if (!res.applied) return this.setHint(`Can't bribe: ${res.reason}`);
-    // Turncoat: flip the enemy to the player's side for the rest of the fight.
-    (foe as unknown as { side: Side }).side = "player";
-    const view = this.view.views.get(foe.id);
-    view?.body.setFillStyle(COLOR.ally).setStrokeStyle(2, COLOR.allyEdge);
-    if (res.outcome?.permanent) this.pendingRecruits.push(foe);
+    // Couldn't afford it (nothing spent) — leave the turn intact so the player can act.
+    if (!res.applied && !res.failed) return this.setHint(`Can't bribe: ${res.reason}`);
+    // On success, flip the enemy to the player's side for the rest of the fight. A failed
+    // sway (res.failed) still spent the Influence and the Act — the moment passed.
+    if (res.applied) {
+      (foe as unknown as { side: Side }).side = "player";
+      const view = this.view.views.get(foe.id);
+      view?.body.setFillStyle(COLOR.ally).setStrokeStyle(2, COLOR.allyEdge);
+      if (res.outcome?.permanent) this.pendingRecruits.push(foe);
+    }
     this.busy = true;
     this.clearActionButtons();
     this.highlightTile(null);

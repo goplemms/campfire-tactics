@@ -37,7 +37,10 @@ import {
   bankerEngageInterest,
   bankerBorrow,
   bankerProtect,
-  collectPoliticalIncome,
+  // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
+  patronize,
+  hasNoble,
+  influenceTier,
   ECONOMY,
   // M11 — the data-driven event-node registry (D4/D23)
   eventForNode,
@@ -603,7 +606,15 @@ export class OverworldScene extends Phaser.Scene {
       y += rowH;
       this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.");
       y += rowH;
-      this.campButton(subX, y, subW, 24, "Gather Influence", !!this.guild, () => this.nobleIncome(), "Noble: earn Influence — a separate currency that can never pay Upkeep. Bribe enemies mid-battle.");
+      // Patronize (D62): the Noble courts patrons — gold → Influence, once per node.
+      // Needs a Noble in the party (the one building rapport); passive presence accrual
+      // adds to it each node-step on the road.
+      const noblePresent = hasNoble(this.run.party);
+      const patronCost = ECONOMY.noble.patronizeCost;
+      const patronTip = noblePresent
+        ? `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`
+        : "No Noble in the party. Field a Noble (high Intelligence) to build Influence — passively on the road and via Patronize.";
+      this.campButton(subX, y, subW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence)`, noblePresent && this.run.camp.gold >= patronCost, () => this.patronize(), patronTip);
       y += rowH;
       // The Banker's purse-state, moved off the always-on HUD line into context (D58).
       const eco = this.run.overworld;
@@ -611,7 +622,7 @@ export class OverworldScene extends Phaser.Scene {
       if (eco.interestPerStep > 0) bank.push(`Interest +${eco.interestPerStep}g/step`);
       if (eco.debt > 0) bank.push(`Debt ${eco.debt}g`);
       if (eco.protection > 0) bank.push(`Protection ${Math.round(eco.protection * 100)}%`);
-      if (this.guild) bank.push(`Influence ${this.guild.influence}`);
+      if (eco.influence > 0 || noblePresent) bank.push(`Influence ${eco.influence} (${influenceTier(eco.influence)})`);
       if (bank.length) {
         this.campObjects.push(this.add.text(subX, y, bank.join("   ·   "), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11));
         y += rowH;
@@ -820,7 +831,7 @@ export class OverworldScene extends Phaser.Scene {
   private drawTentLedger(b: Phaser.Geom.Rectangle): void {
     const node = this.campNode ?? currentNode(this.run);
     const merchantReady = node.kind === "rest" && this.run.party.some((u) => u.alive && u.jobId === "merchant") && cooldownRemaining(this.run.overworld, "market") === 0;
-    const ledger: Ledger = buildLedger(this.run, { influence: this.guild?.influence ?? 0, marketReady: merchantReady });
+    const ledger: Ledger = buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: merchantReady });
     const pad = 22;
     const leftX = b.left + pad;
     const rightX = b.right - pad;
@@ -911,11 +922,11 @@ export class OverworldScene extends Phaser.Scene {
     this.setHint(res.applied ? `Theft protection engaged (skims blunted ${Math.round((res.protection ?? 0) * 100)}%).` : `Can't: ${res.reason}`);
   }
 
-  private nobleIncome(): void {
-    if (!this.guild) return this.setHint("No guild to bank Influence.");
-    const gained = collectPoliticalIncome(this.guild);
+  private patronize(): void {
+    const res = patronize(this.run);
     this.renderCamp();
-    this.setHint(`Noble: +${gained} Influence (guild total ${this.guild.influence}). Influence can never pay Upkeep.`);
+    if (!res.applied) return this.setHint(`Can't: ${res.reason}`);
+    this.setHint(`Patronized: +${res.gained} Influence (now ${this.run.overworld.influence}, ${influenceTier(this.run.overworld.influence)}). Influence never pays Upkeep.`);
   }
 
   /** A camp button that greys out (non-interactive) when disabled, with a reason on hover. */

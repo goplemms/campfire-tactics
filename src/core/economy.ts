@@ -30,6 +30,7 @@
 
 import type { Guild } from "./guild";
 import type { RunState } from "./run";
+import type { OverworldEconomy } from "./overworld-actions";
 import type { Unit } from "./units";
 import { nonNegInt } from "./num";
 import { computeUpkeep, type UpkeepBill, type UpkeepLine } from "./upkeep";
@@ -116,31 +117,58 @@ export function payTreasuryUpkeep(guild: Guild, party: readonly Unit[] = guild.r
   return { bill, paid, underfunded, shortfall };
 }
 
-// --- Influence: a purpose-bound currency (D34) ------------------------------
+// --- Influence: a purpose-bound, per-expedition currency (D34/D62) -----------
 
 /**
- * Add **Influence** to the guild (M10, D34) — the Noble's political-income faucet.
- * Influence is walled off from gold: it can never pay Upkeep or buy gear.
+ * **Influence** standing bands (D62) — an ordered band over the raw value, the
+ * Noble's twin of the market/intel tiers. The *current* band gates the Noble's
+ * sinks (cheaper, likelier bribes; better map events), so spending standing on a
+ * bribe can knock you down a band — the deliberate hoard-vs-spend tension.
  */
-export function addInfluence(guild: Guild, amount: number): number {
-  const n = nonNegInt(amount);
-  guild.influence += n;
-  return guild.influence;
-}
+export type InfluenceTier = "unknown" | "known" | "respected" | "favored" | "renowned";
 
-/** True if the guild can afford an Influence cost. */
-export function canAffordInfluence(guild: Guild, cost: number): boolean {
-  return guild.influence >= cost;
+/** Influence band floors — the value each standing band starts at (D62). Data, a numbers pass later. */
+export const INFLUENCE_BANDS: readonly { min: number; tier: InfluenceTier }[] = [
+  { min: 25, tier: "renowned" },
+  { min: 15, tier: "favored" },
+  { min: 8, tier: "respected" },
+  { min: 3, tier: "known" },
+  { min: 0, tier: "unknown" },
+];
+
+/** Band a raw Influence value into its standing tier (D62). */
+export function influenceTier(value: number): InfluenceTier {
+  for (const band of INFLUENCE_BANDS) {
+    if (value >= band.min) return band.tier;
+  }
+  return "unknown";
 }
 
 /**
- * Spend **Influence** on a Noble verb (D34). Returns true if it was affordable and
+ * Add **Influence** to the run's **per-expedition** standing (D62) — the Noble's
+ * faucet (passive presence accrual + Patronize). Influence is walled off from gold
+ * (it can never pay Upkeep or buy gear) and is rebuilt each run like the purse — it
+ * does **not** bank to the guild.
+ */
+export function addInfluence(eco: OverworldEconomy, amount: number): number {
+  const n = nonNegInt(amount);
+  eco.influence += n;
+  return eco.influence;
+}
+
+/** True if the run holds enough Influence to afford `cost`. */
+export function canAffordInfluence(eco: OverworldEconomy, cost: number): boolean {
+  return eco.influence >= cost;
+}
+
+/**
+ * Spend **Influence** on a Noble verb (D62). Returns true if it was affordable and
  * deducted, false otherwise (the caller leaves the action un-applied). Influence
  * **only** flows out through the Noble's verbs — never as Upkeep or gear.
  */
-export function spendInfluence(guild: Guild, cost: number): boolean {
+export function spendInfluence(eco: OverworldEconomy, cost: number): boolean {
   const n = nonNegInt(cost);
-  if (guild.influence < n) return false;
-  guild.influence -= n;
+  if (eco.influence < n) return false;
+  eco.influence -= n;
   return true;
 }

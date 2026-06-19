@@ -193,11 +193,18 @@ export interface OverworldEconomy {
   debt: number;
   /** Theft-protection level (0 = none) — blunts a thief's skim ({@link "./theft"}). */
   protection: number;
+  /**
+   * The Noble's **per-expedition Influence** standing (D62) — a walled-off currency
+   * (never pays Upkeep/gear, {@link "./economy".addInfluence}) that accrues passively
+   * from a Noble's presence + the Patronize verb, and is spent on bribes. Run-scoped
+   * (rebuilt each expedition, like the purse) — it does **not** bank to the guild.
+   */
+  influence: number;
 }
 
 /** A fresh, fully-ready economy (every ability off cooldown, nothing scouted). */
 export function createOverworldEconomy(): OverworldEconomy {
-  return { cooldowns: {}, scouted: {}, campUses: {}, interestPerStep: 0, debt: 0, protection: 0 };
+  return { cooldowns: {}, scouted: {}, campUses: {}, interestPerStep: 0, debt: 0, protection: 0, influence: 0 };
 }
 
 /** A deep copy of the economy (for snapshots / round-trips). */
@@ -209,6 +216,7 @@ export function cloneOverworldEconomy(eco: OverworldEconomy): OverworldEconomy {
     interestPerStep: eco.interestPerStep,
     debt: eco.debt,
     protection: eco.protection,
+    influence: eco.influence,
   };
 }
 
@@ -288,19 +296,22 @@ export interface ActionOpts {
 }
 
 /** A two-axis cost check verdict — affordable (with the fatigue to spend), or why not. */
-type CostCheck = { ok: true; fatigueSpend: number } | { ok: false; reason: string };
+export type OverworldCostCheck = { ok: true; fatigueSpend: number } | { ok: false; reason: string };
 
 /**
  * The **single limiter gate** (D61): check an action's two-axis {@link OverworldCost}
  * against the run — pacing (cooldown / per-node cap) and price (fatigue headroom /
- * gold / rp). A pure check that spends nothing; it returns the fatigue to spend on
- * commit so the over-extension surcharge is computed once. `id` keys the pacing
- * ledgers (cooldown + per-node uses); `label` names the action in refusals.
+ * gold / influence / rp). A pure check that spends nothing; it returns the fatigue to
+ * spend on commit so the over-extension surcharge is computed once. `id` keys the
+ * pacing ledgers (cooldown + per-node uses); `label` names the action in refusals.
+ * `unit` is the acting character — **required only when the cost has `fatigue`** (an
+ * economy verb with no actor, e.g. Patronize, may omit it).
  *
- * (Influence price is wired when Influence goes run-scoped — D62, a later slice; no
- * action prices it yet.)
+ * Camp jobs, overworld abilities, and economy verbs all route through this one gate —
+ * the D61 fold. Pair a passing check with {@link commitOverworldCost} once the effect
+ * applies.
  */
-function checkCost(run: RunState, unit: Unit, id: string, cost: OverworldCost, label: string): CostCheck {
+export function checkOverworldCost(run: RunState, id: string, cost: OverworldCost, label: string, unit?: Unit): OverworldCostCheck {
   const eco = run.overworld;
   // Pacing — the cooldown spine.
   if ((cost.cooldown ?? 0) > 0) {
@@ -315,7 +326,7 @@ function checkCost(run: RunState, unit: Unit, id: string, cost: OverworldCost, l
   // the actor is over-extended; the cheap things always stay available.
   let fatigueSpend = 0;
   const baseFatigue = cost.fatigue ?? 0;
-  if (baseFatigue > 0) {
+  if (baseFatigue > 0 && unit) {
     const penalty = fatiguePenalty(unit.fatigue);
     if (baseFatigue >= penalty.lockAtOrAbove) {
       return { ok: false, reason: `${unit.name} is too exhausted for ${label} — rest first.` };
@@ -326,6 +337,10 @@ function checkCost(run: RunState, unit: Unit, id: string, cost: OverworldCost, l
   if ((cost.gold ?? 0) > 0 && run.camp.gold < cost.gold!) {
     return { ok: false, reason: `Not enough gold for ${label} (${cost.gold}g).` };
   }
+  // Price — Influence (the Noble's per-expedition standing, D62).
+  if ((cost.influence ?? 0) > 0 && eco.influence < cost.influence!) {
+    return { ok: false, reason: `Not enough Influence for ${label} (${cost.influence}).` };
+  }
   // Price — Rest Points.
   if ((cost.rp ?? 0) > 0 && run.rp < cost.rp!) {
     return { ok: false, reason: `Not enough Rest Points for ${label} (${cost.rp}).` };
@@ -335,14 +350,15 @@ function checkCost(run: RunState, unit: Unit, id: string, cost: OverworldCost, l
 
 /**
  * Spend a checked action's costs and arm its pacing (D61) — the commit half of the
- * gate, called only after {@link checkCost} passed and the effect applied. Spends the
- * (already-surcharged) fatigue, gold, and rp; arms the cooldown and bumps the per-node
- * use count keyed by `id`.
+ * gate, called only after {@link checkOverworldCost} passed and the effect applied.
+ * Spends the (already-surcharged) fatigue, gold, influence, and rp; arms the cooldown
+ * and bumps the per-node use count keyed by `id`.
  */
-function commitCost(run: RunState, unit: Unit, id: string, cost: OverworldCost, fatigueSpend: number): void {
+export function commitOverworldCost(run: RunState, id: string, cost: OverworldCost, fatigueSpend: number, unit?: Unit): void {
   const eco = run.overworld;
-  if (fatigueSpend > 0) unit.fatigue = spendFatigue(unit.fatigue, fatigueSpend);
+  if (fatigueSpend > 0 && unit) unit.fatigue = spendFatigue(unit.fatigue, fatigueSpend);
   if ((cost.gold ?? 0) > 0) run.camp.gold -= cost.gold!;
+  if ((cost.influence ?? 0) > 0) eco.influence -= cost.influence!;
   if ((cost.rp ?? 0) > 0) run.rp -= cost.rp!;
   if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;
   if (cost.usesPerNode !== undefined) eco.campUses[id] = campSkillUses(eco, id) + 1;
@@ -363,14 +379,14 @@ export function takeOverworldAction(
   const ability = getAbility(abilityId);
   if (!ability) return { applied: false, reason: `Unknown overworld ability "${abilityId}".` };
 
-  const check = checkCost(run, unit, abilityId, ability.cost, ability.name);
+  const check = checkOverworldCost(run, abilityId, ability.cost, ability.name, unit);
   if (!check.ok) return { applied: false, reason: check.reason };
 
   // Apply the effect (may still refuse — e.g. an unreachable Scout target).
   const applied = applyEffect(run, ability, opts);
   if (!applied.ok) return { applied: false, reason: applied.reason };
 
-  commitCost(run, unit, abilityId, ability.cost, check.fatigueSpend);
+  commitOverworldCost(run, abilityId, ability.cost, check.fatigueSpend, unit);
 
   // Use-leveling (D53): a successful overworld ability use bumps its user — the
   // non-combat growth path (Scout/Survey/etc.), paired with the deployed trickle.
@@ -409,11 +425,11 @@ function campSkillCost(skill: SkillDef): OverworldCost {
  */
 export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): CampSkillResult {
   const cost = campSkillCost(skill);
-  const check = checkCost(run, unit, skill.id, cost, skill.name);
+  const check = checkOverworldCost(run, skill.id, cost, skill.name, unit);
   if (!check.ok) return { applied: false, reason: check.reason };
 
   const outcome = useCampJobSkill(unit, skill, run.camp);
-  commitCost(run, unit, skill.id, cost, check.fatigueSpend);
+  commitOverworldCost(run, skill.id, cost, check.fatigueSpend, unit);
 
   const parts: string[] = [];
   if (outcome.morale) parts.push(`+${outcome.morale} morale`);

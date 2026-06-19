@@ -16,23 +16,23 @@
  *   from incoming run gold ({@link "./economy".gainRunGold}); and **theft
  *   protection** that blunts a skim ({@link "./theft"}). **Purse only — never the
  *   treasury** (D34).
- * - **Noble — INFLUENCE** ({@link collectPoliticalIncome}/{@link bribeEnemy}):
- *   political income lands as **Influence** (a separate currency that can never pay
- *   Upkeep), and a **bribe** sways an enemy — reading the D24 preview — into either
- *   a temporary turncoat (generic) or a permanent recruit (authored, D33).
+ * - **Noble — INFLUENCE** ({@link accrueNobleInfluence}/{@link patronize}/{@link
+ *   bribeEnemy}): **Influence** — a separate, **per-expedition** currency that can never
+ *   pay Upkeep — accrues passively from a Noble's presence and from the **Patronize**
+ *   verb (gold → standing), and is spent on a **bribe** that sways an enemy (reading the
+ *   D24 preview) into a temporary turncoat (generic) or a permanent recruit (authored, D33).
  *
  * **Determinism (D22):** income/bribe rolls derive from the guild seed; theft from
  * node/run seeds — no live RNG, no `Math.random`. Pure logic: no Phaser, no DOM.
  */
 
 import type { RunState } from "./run";
-import type { Guild } from "./guild";
 import type { Unit } from "./units";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
+import { checkOverworldCost, commitOverworldCost, type OverworldCost } from "./overworld-actions";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
 import { addItem, canAdd, countOf, removeItem, getMaterial, saleValueOf, type MaterialDef } from "./inventory";
-import { streamFor } from "./rng";
 import { addInfluence, spendInfluence, gainRunGold } from "./economy";
 import { grantAbilityUseXp } from "./leveling";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
@@ -64,9 +64,18 @@ export const ECONOMY = {
     protectionCost: 25,
   },
   noble: {
-    /** Political-income band → Influence (D34). */
-    incomeMin: 2,
-    incomeMax: 5,
+    /** Influence accrued **per node-step** by a Noble's presence — the passive faucet (D62). */
+    incomePerStep: 1,
+    /**
+     * Intelligence that marks a party member a **Noble** for presence accrual + Patronize
+     * (D62). Intelligence is the Noble's stat (it drives the intel floor); this is an
+     * interim proxy for "a Noble is present" until a dedicated Noble job lands.
+     */
+    presenceIntelligence: 3,
+    /** Patronize (D62): purse gold spent to court patrons... */
+    patronizeCost: 12,
+    /** ...for this much Influence in return (gold → standing, once per node). */
+    patronizeYield: 3,
     /** Base Influence cost to bribe an enemy (discounted by what intel reveals). */
     bribeBase: 4,
   },
@@ -224,20 +233,69 @@ export function bankerProtect(run: RunState): BankerProtectResult {
   return { applied: true, spent: cost, protection: run.overworld.protection, detail: `Theft protection engaged.` };
 }
 
-// --- Noble — INFLUENCE (a walled-off currency) ------------------------------
+// --- Noble — INFLUENCE (a walled-off, per-expedition currency, D62) ----------
 
 /**
- * **Noble INFLUENCE faucet** (D30/D34): collect **political income** as Influence —
- * a separate currency that can **never** pay Upkeep or buy gear ({@link
- * "./economy".addInfluence}). Deterministic from the guild seed + a monotonic
- * counter. Returns the Influence gained.
+ * True if the party fields a **Noble** — a member whose Intelligence (the Noble's
+ * stat, D62) marks them a standing-bearer. The presence that accrues Influence and
+ * works the Patronize verb, mirroring {@link "./overworld".merchantFloor}. (Interim
+ * proxy for a Noble until a dedicated Noble job lands.)
  */
-export function collectPoliticalIncome(guild: Guild): number {
-  const n = guild.politicsCounter++;
-  const rng = streamFor(guild.seed, `politics:${n}`);
-  const income = rng.range(ECONOMY.noble.incomeMin, ECONOMY.noble.incomeMax);
-  addInfluence(guild, income);
-  return income;
+export function hasNoble(party: readonly Unit[]): boolean {
+  return party.some((u) => u.alive && !u.captured && (u.intelligence ?? 0) >= ECONOMY.noble.presenceIntelligence);
+}
+
+/** Influence the party's Noble accrues per node-step (0 with no Noble present, D62). */
+export function nobleInfluencePerStep(party: readonly Unit[]): number {
+  return hasNoble(party) ? ECONOMY.noble.incomePerStep : 0;
+}
+
+/**
+ * Accrue the **Noble's passive Influence** one node-step (D62): a Noble builds rapport
+ * just by travelling — people seek them for patronage and work. The Noble's twin of the
+ * Banker's {@link "./overworld-actions".accruePurseInterest}; credited to the run's
+ * **per-expedition** standing (never the guild). Called from {@link "./run".breakCamp}.
+ * Returns the Influence gained (0 with no Noble present — no free faucet).
+ */
+export function accrueNobleInfluence(run: RunState): number {
+  const gain = nobleInfluencePerStep(run.party);
+  if (gain > 0) addInfluence(run.overworld, gain);
+  return gain;
+}
+
+/** What a Patronize produced. */
+export interface PatronizeResult extends VerbResult {
+  /** Purse gold spent. */
+  spent?: number;
+  /** Influence gained. */
+  gained?: number;
+}
+
+/** Patronize's two-axis cost (D61/D62): once per node (pacing) × purse gold (price). */
+const PATRONIZE_COST: OverworldCost = { usesPerNode: 1, gold: ECONOMY.noble.patronizeCost };
+
+/**
+ * **Noble PATRONIZE** (D62): spend purse gold to court patrons — an *active* Influence
+ * faucet (gold → standing) layered on the passive presence accrual. Routed through the
+ * shared two-axis limiter ({@link "./overworld-actions".checkOverworldCost}): **once per
+ * node** and **gold-priced**, so it can't be spammed (the D61 fold reaching the economy
+ * verbs). Requires a Noble in the party. Influence is per-expedition — never the guild.
+ */
+export function patronize(run: RunState): PatronizeResult {
+  if (!hasNoble(run.party)) {
+    return { applied: false, reason: "No Noble in the party to court patrons." };
+  }
+  const check = checkOverworldCost(run, "patronize", PATRONIZE_COST, "Patronize");
+  if (!check.ok) return { applied: false, reason: check.reason };
+  const yield_ = ECONOMY.noble.patronizeYield;
+  addInfluence(run.overworld, yield_);
+  commitOverworldCost(run, "patronize", PATRONIZE_COST, check.fatigueSpend);
+  return {
+    applied: true,
+    spent: ECONOMY.noble.patronizeCost,
+    gained: yield_,
+    detail: `Patronized for ${yield_} Influence (${ECONOMY.noble.patronizeCost}g).`,
+  };
 }
 
 /** What a bribe attempt produced. */
@@ -264,11 +322,12 @@ export function bribeCost(preview?: NodePreview): number {
  * side for the fight; how it resolves *after* is the temp↔permanent vector (D33):
  * a **generic** enemy is temporary (fights this battle only), an **authored** one
  * is a permanent recruit ({@link "./recruitment".recruitToRoster}). Refuses
- * (spending nothing) if the guild can't afford the Influence.
+ * (spending nothing) if the run can't afford the Influence. Spends the run's
+ * **per-expedition** standing (D62), not the guild.
  */
-export function bribeEnemy(guild: Guild, enemy: Pick<Unit, "authored" | "name">, preview?: NodePreview): BribeResult {
+export function bribeEnemy(run: RunState, enemy: Pick<Unit, "authored" | "name">, preview?: NodePreview): BribeResult {
   const cost = bribeCost(preview);
-  if (!spendInfluence(guild, cost)) {
+  if (!spendInfluence(run.overworld, cost)) {
     return { applied: false, reason: `Not enough Influence to bribe ${enemy.name} (${cost}).`, cost };
   }
   const outcome = recruitClassify(enemy);

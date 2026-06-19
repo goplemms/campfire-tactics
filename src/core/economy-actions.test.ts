@@ -11,7 +11,10 @@ import {
   bankerEngageInterest,
   bankerBorrow,
   bankerProtect,
-  collectPoliticalIncome,
+  patronize,
+  hasNoble,
+  nobleInfluencePerStep,
+  accrueNobleInfluence,
   bribeEnemy,
   bribeCost,
   ECONOMY,
@@ -193,28 +196,69 @@ describe("economy-actions — Banker TIME-SHIFT + SECURE (purse only) (D30/D34)"
   });
 });
 
-describe("economy-actions — Noble INFLUENCE (D30/D34)", () => {
-  it("political income lands as Influence (a separate currency)", () => {
-    const g = guildWith("noble-income");
-    const before = g.influence;
-    const gained = collectPoliticalIncome(g);
-    expect(gained).toBeGreaterThan(0);
-    expect(g.influence).toBe(before + gained);
+/** A commoner — no Intelligence, so not a Noble (the presence proxy, D62). */
+function commoner(seed: string): Unit {
+  return createUnit({ id: `grunt-${seed}`, side: "player", pos: { col: -1, row: -1 }, jobId: "soldier", speed: 10, maxHp: 20, attack: 6, defense: 2, moveRange: 4, sightRadius: 4, intelligence: 0 });
+}
+
+describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => {
+  it("a Noble in the party accrues passive Influence each node-step", () => {
+    const run = newRun("noble-passive"); // the default fighter has Intelligence 3 → a Noble
+    expect(hasNoble(run.party)).toBe(true);
+    const before = run.overworld.influence;
+    const gained = accrueNobleInfluence(run);
+    expect(gained).toBe(ECONOMY.noble.incomePerStep);
+    expect(run.overworld.influence).toBe(before + gained);
   });
 
-  it("Influence can't pay Upkeep — earning it leaves the treasury bill unfunded", () => {
+  it("no Noble in the party → no passive Influence (no free faucet)", () => {
+    const run = createRun("noble-none", { party: [commoner("none")], difficultyId: "normal", gold: 100, storageCap: 8 });
+    expect(hasNoble(run.party)).toBe(false);
+    expect(nobleInfluencePerStep(run.party)).toBe(0);
+    expect(accrueNobleInfluence(run)).toBe(0);
+    expect(run.overworld.influence).toBe(0);
+  });
+
+  it("Patronize converts purse gold into Influence, once per node (the two-axis gate, D61)", () => {
+    const run = newRun("noble-patronize", 100);
+    const goldBefore = run.camp.gold;
+    const first = patronize(run);
+    expect(first.applied).toBe(true);
+    expect(run.overworld.influence).toBe(ECONOMY.noble.patronizeYield);
+    expect(run.camp.gold).toBe(goldBefore - ECONOMY.noble.patronizeCost);
+    // Spent for the node — a second Patronize refuses until Break Camp.
+    const second = patronize(run);
+    expect(second.applied).toBe(false);
+    expect(second.reason).toMatch(/spent for tonight/i);
+    // The per-node cap resets on the node-step.
+    breakCamp(run);
+    expect(patronize(run).applied).toBe(true);
+  });
+
+  it("Patronize refuses without a Noble, and when the purse can't cover it", () => {
+    const noNoble = createRun("noble-patronize-none", { party: [commoner("pat")], difficultyId: "normal", gold: 100, storageCap: 8 });
+    expect(patronize(noNoble).applied).toBe(false);
+
+    const broke = newRun("noble-patronize-broke", ECONOMY.noble.patronizeCost - 1);
+    const res = patronize(broke);
+    expect(res.applied).toBe(false);
+    expect(res.reason).toMatch(/gold/i);
+  });
+
+  it("Influence can't pay Upkeep — earning it leaves the treasury bill unfunded (D34)", () => {
     const g = guildWith("noble-no-upkeep", 0);
-    collectPoliticalIncome(g);
-    collectPoliticalIncome(g);
-    const infBefore = g.influence;
+    const run = newRun("noble-no-upkeep-run");
+    accrueNobleInfluence(run);
+    const infBefore = run.overworld.influence;
+    expect(infBefore).toBeGreaterThan(0);
     const res = payTreasuryUpkeep(g);
     expect(res.paid).toBe(0); // treasury empty; Influence is no help
-    expect(g.influence).toBe(infBefore); // and it isn't spent on Upkeep
+    expect(run.overworld.influence).toBe(infBefore); // and it isn't spent on Upkeep
   });
 
   it("a bribe reads the preview for its price and flips a GENERIC for the fight only (D33)", () => {
-    const g = guildWith("noble-bribe-generic");
-    g.influence = 10;
+    const run = newRun("noble-bribe-generic");
+    run.overworld.influence = 10;
     const generic = createUnit({ id: "thug", side: "enemy", pos: { col: 7, row: 0 }, name: "Thug", speed: 10, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5 });
 
     const lowIntel: NodePreview = { nodeId: "n1-0", kind: "combat", layer: 1, intel: { tier: 0, grantsVision: false } };
@@ -222,30 +266,30 @@ describe("economy-actions — Noble INFLUENCE (D30/D34)", () => {
     // Knowing the field is leverage: a higher-intel preview makes the sway cheaper.
     expect(bribeCost(highIntel)).toBeLessThan(bribeCost(lowIntel));
 
-    const infBefore = g.influence;
-    const res = bribeEnemy(g, generic, highIntel);
+    const infBefore = run.overworld.influence;
+    const res = bribeEnemy(run, generic, highIntel);
     expect(res.applied).toBe(true);
-    expect(g.influence).toBe(infBefore - res.cost!);
+    expect(run.overworld.influence).toBe(infBefore - res.cost!);
     expect(res.outcome!.temporary).toBe(true);
     expect(res.outcome!.permanent).toBe(false);
   });
 
   it("a bribed AUTHORED unit is a permanent recruit (the temp↔permanent flag, D33)", () => {
-    const g = guildWith("noble-bribe-authored");
-    g.influence = 10;
+    const run = newRun("noble-bribe-authored");
+    run.overworld.influence = 10;
     const named = createUnit({ id: "Sable", side: "enemy", pos: { col: 7, row: 0 }, name: "Sable", speed: 12, maxHp: 24, attack: 8, defense: 2, moveRange: 4, sightRadius: 5, authored: true });
-    const res = bribeEnemy(g, named);
+    const res = bribeEnemy(run, named);
     expect(res.applied).toBe(true);
     expect(res.outcome!.permanent).toBe(true);
     expect(res.outcome!.temporary).toBe(false);
   });
 
-  it("refuses (spending no Influence) when the guild can't afford the bribe", () => {
-    const g = guildWith("noble-broke");
-    g.influence = 0;
+  it("refuses (spending no Influence) when the run can't afford the bribe", () => {
+    const run = newRun("noble-broke");
+    run.overworld.influence = 0;
     const generic = createUnit({ id: "thug2", side: "enemy", pos: { col: 7, row: 0 }, name: "Thug", speed: 10, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5 });
-    const res = bribeEnemy(g, generic);
+    const res = bribeEnemy(run, generic);
     expect(res.applied).toBe(false);
-    expect(g.influence).toBe(0);
+    expect(run.overworld.influence).toBe(0);
   });
 });

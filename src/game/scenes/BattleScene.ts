@@ -796,10 +796,11 @@ export class BattleScene extends Phaser.Scene {
           onClick: () => (cooling ? this.setHint(`${skill.name} is still cooling down.`) : this.onSkillButton(actor, skill)),
         });
       });
-      // The Noble's mid-combat BRIBE (D30/D33): spend guild Influence to sway an enemy.
+      // The Noble's mid-combat BRIBE (D30/D33): spend the run's per-expedition Influence
+      // (D62) to sway an enemy. A permanent recruit still banks to the guild roster.
       if (this.guild && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
         const cost = bribeCost(this.currentPreview());
-        const affordable = this.guild.influence >= cost;
+        const affordable = this.run.overworld.influence >= cost;
         specs.push({
           text: `Bribe (${cost} Influence)`,
           description: affordable
@@ -946,7 +947,7 @@ export class BattleScene extends Phaser.Scene {
   private doBribe(actor: Unit, foe: Unit): void {
     if (!this.guild) return;
     if (this.acted) { this.bribeArmed = false; return void this.setHint(`${actor.name} has already acted.`); }
-    const res = bribeEnemy(this.guild, foe, this.currentPreview());
+    const res = bribeEnemy(this.run, foe, this.currentPreview());
     this.bribeArmed = false;
     if (!res.applied) return this.setHint(`Can't bribe: ${res.reason}`);
     // Turncoat: flip the enemy to the player's side for the rest of the fight.

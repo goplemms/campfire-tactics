@@ -85,13 +85,6 @@ export interface Guild {
   /** The pure gold vault (D34) — fed only by quest payouts + returning purses. */
   treasury: number;
   /**
-   * **Influence** (M10, D34) — the Noble's purpose-bound currency: earned as
-   * political income, spendable **only** on the Noble's verbs (bribe/sway). It is
-   * walled off from gold — it can **never** pay Upkeep or buy gear
-   * ({@link "./economy"}).
-   */
-  influence: number;
-  /**
    * The refreshing **mercenary pool** (M10, D33) at the hall — several rolled,
    * gold-hired recruits beyond the single rebuild valve ({@link "./recruitment"}).
    */
@@ -107,8 +100,6 @@ export interface Guild {
   questCounter: number;
   /** Monotonic counter for deterministic mercenary rolls (the rebuild valve). */
   mercCounter: number;
-  /** Monotonic counter for deterministic Noble political-income rolls (M10, D34). */
-  politicsCounter: number;
 }
 
 /** Guild tuning — data, a numbers pass later (D27/D34). */
@@ -129,8 +120,6 @@ export interface CreateGuildOptions {
   roster?: Unit[];
   armory?: string[];
   treasury?: number;
-  /** Starting Influence (M10, D34); defaults to 0. */
-  influence?: number;
   caravans?: Caravan[];
   difficultyId?: string;
   /** Label for the main quest (data; the campaign spine, D26). */
@@ -144,7 +133,6 @@ export function createGuild(seed: string | number, opts: CreateGuildOptions = {}
     roster: opts.roster ?? [],
     armory: opts.armory ?? [],
     treasury: opts.treasury ?? 0,
-    influence: opts.influence ?? 0,
     mercPool: [],
     caravans: opts.caravans ?? [],
     board: [],
@@ -152,7 +140,6 @@ export function createGuild(seed: string | number, opts: CreateGuildOptions = {}
     difficultyId: opts.difficultyId ?? "normal",
     questCounter: 0,
     mercCounter: 0,
-    politicsCounter: 0,
   };
   // The main quest (campaign spine) — a fixed, seed-derived record (D26).
   guild.board.push({

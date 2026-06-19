@@ -12,9 +12,8 @@ import {
   scoutedTier,
   createOverworldEconomy,
   SCOUT,
-  MARKET,
 } from "./overworld-actions";
-import { unitSkills } from "./jobs";
+import { getJob } from "./jobs";
 import type { SkillDef } from "./skills";
 import { previewNode } from "./intel";
 import { FATIGUE } from "./fatigue";
@@ -30,19 +29,22 @@ function newRun(seed: string): RunState {
   return createRun(seed, { party: roster(), difficultyId: "normal", gold: 200, storageCap: 6 });
 }
 
-/** The acting Merchant (for Market). */
-function merchant(run: RunState): Unit {
-  return run.party.find((u) => u.jobId === "merchant")!;
+/** An acting party member (any unit will do for the fatigue/cap mechanics). */
+function actor(run: RunState): Unit {
+  return run.party[0];
+}
+
+/** The Chef's costless camp skill (Cook Stew) — the per-node-capped signature action. */
+function cookSkill(): SkillDef {
+  return getJob("chef")!.skills[0];
 }
 
 describe("overworld-actions — registry (D29)", () => {
   it("abilities are data with a cost menu (cooldown + optional fatigue/gold)", () => {
     expect(getAbility("scout")).toBe(SCOUT);
-    expect(getAbility("market")).toBe(MARKET);
     expect(getAbility("nope")).toBeUndefined();
     // The cooldown spine is always present.
     expect(SCOUT.cost.cooldown).toBeGreaterThan(0);
-    expect(MARKET.cost.cooldown).toBeGreaterThan(0);
   });
 });
 
@@ -98,19 +100,16 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
 });
 
 describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
-  it("refuses a demanding action when the actor is exhausted, but never a cheap one", () => {
+  it("never locks out a cheap action, even when the actor is exhausted", () => {
     const run = newRun("fatigue-lock");
-    const coin = merchant(run);
-    coin.fatigue = FATIGUE.exhausted; // deeply over-extended
+    const a = actor(run);
+    a.fatigue = FATIGUE.exhausted; // deeply over-extended
 
-    // Market is demanding (cost >= demandingCost) → locked out.
-    const market = takeOverworldAction(run, coin, "market");
-    expect(market.applied).toBe(false);
-    expect(market.reason).toMatch(/exhausted/i);
-
-    // Scout is cheap (cost 1 < demandingCost) → still available even when exhausted.
+    // Scout is cheap (cost 1 < demandingCost 2) → still available even when exhausted.
+    // (The demanding-action *lock* itself is unit-tested in fatigue.test via
+    // fatiguePenalty; no demanding overworld ability exists post-D61.)
     const target = reachableNodes(run)[0];
-    const scout = takeOverworldAction(run, coin, "scout", { targetNodeId: target.id });
+    const scout = takeOverworldAction(run, a, "scout", { targetNodeId: target.id });
     expect(scout.applied).toBe(true);
   });
 
@@ -158,79 +157,50 @@ describe("overworld-actions — Scout raises a reachable node's preview tier", (
   });
 });
 
-describe("overworld-actions — Market moves gold/provision under the cap", () => {
-  it("marketing earns gold and expands storage (the existing Merchant effect)", () => {
-    const run = newRun("market-gold");
-    const coin = merchant(run);
-    const goldBefore = run.camp.gold;
-    const capBefore = run.camp.storageCap;
-
-    const res = takeOverworldAction(run, coin, "market");
-    expect(res.applied).toBe(true);
-    expect(run.camp.gold).toBeGreaterThan(goldBefore);
-    expect(run.camp.storageCap).toBeGreaterThan(capBefore);
-    // The master logistics cap (D6) is kept in sync with the inventory.
-    expect(run.inventory.storageCap).toBe(run.camp.storageCap);
-    // Market is on cooldown afterward.
-    expect(cooldownRemaining(run.overworld, "market")).toBe(MARKET.cost.cooldown);
-  });
-});
-
 describe("overworld-actions — the per-node camp-skill cap (D35)", () => {
-  /** The Merchant's costless signature action (Trade), capped at one use per node. */
-  function tradeSkill(run: RunState): SkillDef {
-    const skill = unitSkills(merchant(run), "meta").find((s) => s.effect.kind === "economy")!;
-    expect(skill.usesPerNode).toBe(1); // the limiter is declared on the skill
-    return skill;
-  }
+  it("declares the cap on the skill (Cook Stew is once per node)", () => {
+    expect(cookSkill().usesPerNode).toBe(1);
+  });
 
-  it("a costless camp skill applies up to its cap, then refuses (no more unlimited gold)", () => {
+  it("a costless camp skill applies up to its cap, then refuses (no more unlimited use)", () => {
     const run = newRun("camp-cap");
-    const coin = merchant(run);
-    const trade = tradeSkill(run);
-    const goldBefore = run.camp.gold;
+    const a = actor(run);
+    const cook = cookSkill();
+    const moraleBefore = run.camp.morale;
 
-    expect(campSkillUsesLeft(run.overworld, trade)).toBe(1);
-    const first = useCampSkillAtNode(run, coin, trade);
+    expect(campSkillUsesLeft(run.overworld, cook)).toBe(1);
+    const first = useCampSkillAtNode(run, a, cook);
     expect(first.applied).toBe(true);
-    expect(run.camp.gold).toBe(goldBefore + 50);
-    expect(campSkillUses(run.overworld, trade.id)).toBe(1);
+    expect(run.camp.morale).toBe(moraleBefore + 1);
+    expect(campSkillUses(run.overworld, cook.id)).toBe(1);
 
-    // The second use this node is refused — the gold faucet is shut, not doubled.
-    const second = useCampSkillAtNode(run, coin, trade);
+    // The second use this node is refused — the buff is spent, not doubled.
+    const second = useCampSkillAtNode(run, a, cook);
     expect(second.applied).toBe(false);
     expect(second.reason).toMatch(/spent for tonight/i);
-    expect(run.camp.gold).toBe(goldBefore + 50);
+    expect(run.camp.morale).toBe(moraleBefore + 1);
   });
 
   it("the cap resets on the node-step (Break Camp), so each node grants a fresh use", () => {
     const run = newRun("camp-reset");
-    const coin = merchant(run);
-    const trade = tradeSkill(run);
+    const a = actor(run);
+    const cook = cookSkill();
 
-    expect(useCampSkillAtNode(run, coin, trade).applied).toBe(true);
-    expect(useCampSkillAtNode(run, coin, trade).applied).toBe(false); // spent
+    expect(useCampSkillAtNode(run, a, cook).applied).toBe(true);
+    expect(useCampSkillAtNode(run, a, cook).applied).toBe(false); // spent
 
     breakCamp(run); // the node-step tick clears the per-node allowance
-    expect(campSkillUses(run.overworld, trade.id)).toBe(0);
-    expect(useCampSkillAtNode(run, coin, trade).applied).toBe(true); // fresh node, fresh use
-  });
-
-  it("keeps the master storage cap (D6) in sync when trade widens storage", () => {
-    const run = newRun("camp-storage");
-    const coin = merchant(run);
-    const trade = tradeSkill(run);
-    useCampSkillAtNode(run, coin, trade);
-    expect(run.inventory.storageCap).toBe(run.camp.storageCap);
+    expect(campSkillUses(run.overworld, cook.id)).toBe(0);
+    expect(useCampSkillAtNode(run, a, cook).applied).toBe(true); // fresh node, fresh use
   });
 
   it("an uncapped camp skill (no usesPerNode) is gated by its own cost, not the node-cap", () => {
     const run = newRun("camp-uncapped");
-    const coin = merchant(run);
+    const a = actor(run);
     // A hypothetical resource-paid action: no per-node cap → fires repeatedly.
-    const uncapped: SkillDef = { ...tradeSkill(run), id: "trade-uncapped", usesPerNode: undefined };
+    const uncapped: SkillDef = { ...cookSkill(), id: "cook-uncapped", usesPerNode: undefined };
     expect(campSkillUsesLeft(run.overworld, uncapped)).toBe(Infinity);
-    expect(useCampSkillAtNode(run, coin, uncapped).applied).toBe(true);
-    expect(useCampSkillAtNode(run, coin, uncapped).applied).toBe(true);
+    expect(useCampSkillAtNode(run, a, uncapped).applied).toBe(true);
+    expect(useCampSkillAtNode(run, a, uncapped).applied).toBe(true);
   });
 });

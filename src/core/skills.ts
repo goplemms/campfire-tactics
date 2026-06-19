@@ -100,12 +100,6 @@ export interface CleanseEffect {
   kind: "cleanse";
 }
 
-/** Meta/economy: the Merchant adds gold and storage to the camp. */
-export interface EconomyEffect {
-  kind: "economy";
-  gold: number;
-  storage: number;
-}
 /** Meta/camp: the Chef raises party morale and banks a between-battle heal. */
 export interface MoraleEffect {
   kind: "morale";
@@ -136,7 +130,6 @@ export type SkillEffect =
   | ForcedMoveEffect
   | CleaveEffect
   | MedHealEffect
-  | EconomyEffect
   | MoraleEffect
   | PlaceTrapEffect;
 

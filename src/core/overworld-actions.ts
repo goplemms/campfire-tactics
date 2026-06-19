@@ -33,8 +33,7 @@ import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
 import { reachableFrom } from "./overworld";
-import { applyCampSkill, useCampJobSkill, type Camp, type CampOutcome } from "./camp";
-import { getJob } from "./jobs";
+import { useCampJobSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp } from "./leveling";
 
 /**
@@ -57,18 +56,15 @@ export interface ScoutEffect {
   /** How many tiers to bump the target node's preview by. */
   tierBump: number;
 }
-/**
- * The Merchant's **ACCESS** verb (D30) reframed as an overworld action: the
- * existing camp Merchant economy effect (gold + storage under the cap), surfaced
- * between nodes. Reuses {@link "./jobs".MERCHANT}'s Trade skill via
- * {@link "./camp".applyCampSkill} — no parallel economy.
- */
-export interface MarketEffect {
-  kind: "market";
-}
 
-/** The declarative effect an overworld ability applies (interpreted by the resolver). */
-export type OverworldEffect = ScoutEffect | MarketEffect;
+/**
+ * The declarative effect an overworld ability applies (interpreted by the resolver).
+ * (The Merchant's old `market` effect — a gold/storage mint — was retired in D61;
+ * the Merchant's access is now the node's {@link "./overworld".MarketTier} + the
+ * {@link "./economy-actions".merchantBuy}/{@link "./economy-actions".merchantSell}
+ * verbs, not a cooldown ability.)
+ */
+export type OverworldEffect = ScoutEffect;
 
 /** An overworld ability — pure data (D29), the overworld twin of a {@link "./skills".SkillDef}. */
 export interface OverworldAbility {
@@ -98,24 +94,9 @@ export const SCOUT: OverworldAbility = {
   cost: { cooldown: 2, fatigue: 1 },
 };
 
-/**
- * **Market** — the Merchant's ACCESS verb (D30) on the overworld: trade for gold +
- * storage (the existing camp effect). The demanding action: a longer cooldown and
- * heavier fatigue (so it locks first when a Merchant over-extends).
- */
-export const MARKET: OverworldAbility = {
-  id: "market",
-  name: "Market",
-  description: "Hike to market — earn gold and expand storage (the Merchant's access).",
-  effect: { kind: "market" },
-  cost: { cooldown: 3, fatigue: 2 },
-  jobIds: ["merchant"],
-};
-
 /** The overworld-ability registry — the single source abilities load from. */
 export const OVERWORLD_ABILITIES: Record<string, OverworldAbility> = {
   [SCOUT.id]: SCOUT,
-  [MARKET.id]: MARKET,
 };
 
 /** Look up an overworld ability by id. */
@@ -321,9 +302,8 @@ export interface CampSkillResult extends ActionResult {
  * unlimited; this enforces {@link "./skills".SkillDef.usesPerNode} against the
  * per-node {@link OverworldEconomy.campUses} counter (reset each node-step). When the
  * cap is reached it **refuses** (never throws), so the render shows why; otherwise it
- * applies the effect (levelling the owner, D32/D53), keeps the storage cap in sync,
- * and bumps the use count. A skill with no `usesPerNode` is uncapped — it pays its own
- * way per cast and always applies.
+ * applies the effect (levelling the owner, D32/D53) and bumps the use count. A skill
+ * with no `usesPerNode` is uncapped — it pays its own way per cast and always applies.
  */
 export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): CampSkillResult {
   const eco = run.overworld;
@@ -332,13 +312,9 @@ export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): 
     return { applied: false, reason: `${skill.name} is spent for tonight — Break Camp to use it again.` };
   }
   const outcome = useCampJobSkill(unit, skill, run.camp);
-  // Keep the master logistics cap (D6) in sync when trade widened storage.
-  if (outcome.storage) run.inventory.storageCap = run.camp.storageCap;
   eco.campUses[skill.id] = campSkillUses(eco, skill.id) + 1;
 
   const parts: string[] = [];
-  if (outcome.gold) parts.push(`+${outcome.gold} gold`);
-  if (outcome.storage) parts.push(`+${outcome.storage} storage`);
   if (outcome.morale) parts.push(`+${outcome.morale} morale`);
   if (outcome.bankedHeal) parts.push(`banked +${outcome.bankedHeal} HP/unit`);
   if (outcome.levels > 0) parts.push(`${unit.name} reached L${unit.level}!`);
@@ -362,15 +338,6 @@ function applyEffect(
       }
       run.overworld.scouted[targetId] = scoutedTier(run.overworld, targetId) + effect.tierBump;
       return { ok: true, detail: `Scouted ${targetId} — preview raised ${effect.tierBump} tier.` };
-    }
-    case "market": {
-      // Reuse the existing camp Merchant economy effect (D30 ACCESS) — no parallel
-      // economy. The storage cap is the master logistics cap (D6), kept in sync.
-      const trade = getJob("merchant")?.skills.find((s) => s.effect.kind === "economy");
-      if (!trade) return { ok: false, reason: "No Merchant trade available." };
-      const out = applyCampSkill(trade, run.camp);
-      run.inventory.storageCap = run.camp.storageCap;
-      return { ok: true, detail: `Market: +${out.gold ?? 0} gold, +${out.storage ?? 0} storage.` };
     }
   }
 }

@@ -27,16 +27,12 @@ function unit(id: string, side: Side, hp: number, maxHp: number): Unit {
   });
 }
 
-const tradeSkill = getJob("merchant")!.skills[0];
 const cookSkill = getJob("chef")!.skills[0];
 
 describe("camp economy + morale (Merchant / Chef, Meta phase)", () => {
-  it("Merchant's Trade adds gold and storage", () => {
-    const camp = createCamp({ gold: 0, storageCap: 6 });
-    const out = applyCampSkill(tradeSkill, camp);
-    expect(out).toEqual({ gold: 50, storage: 2 });
-    expect(camp.gold).toBe(50);
-    expect(camp.storageCap).toBe(8);
+  it("the Merchant has no gold-minting camp skill (retired D61)", () => {
+    // D61: the Merchant is ACCESS + SELL (market verbs), not a +gold camp skill.
+    expect(getJob("merchant")!.skills).toHaveLength(0);
   });
 
   it("Chef's Cook Stew raises morale and banks a heal", () => {

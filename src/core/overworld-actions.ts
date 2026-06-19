@@ -33,6 +33,7 @@ import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
 import { decayCounters, bumpCounter } from "./num";
+import { earn, spend } from "./purse-journal";
 import { reachableFrom } from "./overworld";
 import { useCampJobSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp } from "./leveling";
@@ -266,7 +267,7 @@ export function tickCooldowns(eco: OverworldEconomy): void {
  */
 export function accruePurseInterest(eco: OverworldEconomy, camp: Camp): number {
   if (eco.interestPerStep <= 0) return 0;
-  camp.gold += eco.interestPerStep;
+  earn(camp, eco.interestPerStep, "interest", "Banker interest");
   return eco.interestPerStep;
 }
 
@@ -363,7 +364,7 @@ export function checkOverworldCost(run: RunState, id: string, cost: OverworldCos
 export function commitOverworldCost(run: RunState, id: string, cost: OverworldCost, fatigueSpend: number, unit?: Unit): void {
   const eco = run.overworld;
   if (fatigueSpend > 0 && unit) unit.fatigue = spendFatigue(unit.fatigue, fatigueSpend);
-  if ((cost.gold ?? 0) > 0) run.camp.gold -= cost.gold!;
+  if ((cost.gold ?? 0) > 0) spend(run.camp, cost.gold!, "action", id, { nodeId: run.mapNodeId, night: run.night });
   if ((cost.influence ?? 0) > 0) eco.influence -= cost.influence!;
   if ((cost.rp ?? 0) > 0) run.rp -= cost.rp!;
   if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;

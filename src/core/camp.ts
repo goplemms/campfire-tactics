@@ -14,6 +14,7 @@ import { healUnit, type Unit } from "./units";
 import type { EventBus } from "./events";
 import type { SkillDef } from "./skills";
 import { grantAbilityUseXp } from "./leveling";
+import { openingPurseLog, type PurseEntry } from "./purse-journal";
 
 /** Mutable camp / meta state. */
 export interface Camp {
@@ -51,17 +52,27 @@ export interface Camp {
    * tracked here — only Repairs compounds, D45.)
    */
   gearWear: number;
+  /**
+   * The **purse journal** (`camp.gold`'s transaction log) — every gold movement,
+   * tagged by {@link "./purse-journal".PurseSource}, in order. Mutated only through
+   * the {@link "./purse-journal".earn}/{@link "./purse-journal".spend} chokepoint, so
+   * `sum(deltas) === gold` by construction. Seeded with the carried-purse opening
+   * entry by {@link createCamp}. Read by future reporting (the ledger fold, sim trace).
+   */
+  purseLog: PurseEntry[];
 }
 
-/** A fresh camp with sensible starting values. */
+/** A fresh camp with sensible starting values (the purse log seeded with the opening gold). */
 export function createCamp(init: Partial<Camp> = {}): Camp {
+  const gold = init.gold ?? 0;
   return {
-    gold: init.gold ?? 0,
+    gold,
     storageCap: init.storageCap ?? 6,
     morale: init.morale ?? 0,
     pendingHeal: init.pendingHeal ?? 0,
     skippedUpkeep: init.skippedUpkeep ?? [],
     gearWear: init.gearWear ?? 0,
+    purseLog: init.purseLog ?? openingPurseLog(gold),
   };
 }
 

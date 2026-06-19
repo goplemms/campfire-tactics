@@ -154,6 +154,7 @@ export const CHEF: JobDef = {
       target: "party",
       range: 0,
       spend: "act",
+      usesPerNode: 1, // one stew per camp (D35) — costless, so the node-cap is its limiter
       effect: { kind: "morale", morale: 1, partyHeal: 8 },
     },
   ],
@@ -177,6 +178,7 @@ export const MERCHANT: JobDef = {
       target: "camp",
       range: 0,
       spend: "act",
+      usesPerNode: 1, // one trade per camp (D35) — the costless node-cap mirrors Market's cooldown
       effect: { kind: "economy", gold: 50, storage: 2 },
     },
   ],

@@ -30,9 +30,10 @@
 
 import type { Unit } from "./units";
 import type { RunState } from "./run";
+import type { SkillDef } from "./skills";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
 import { reachableFrom } from "./overworld";
-import { applyCampSkill, type Camp } from "./camp";
+import { applyCampSkill, useCampJobSkill, type Camp, type CampOutcome } from "./camp";
 import { getJob } from "./jobs";
 import { grantAbilityUseXp } from "./leveling";
 
@@ -135,6 +136,14 @@ export interface OverworldEconomy {
   /** Extra intel tiers bought per node id (Scout), fed to `previewNode`. */
   scouted: Record<string, number>;
   /**
+   * Times each **camp job skill** has been used **at the current node**, keyed by
+   * skill id — the limiter for costless signature actions (D35; Chef stew, Merchant
+   * trade). Compared against {@link "./skills".SkillDef.usesPerNode} and **reset to
+   * empty each node-step** ({@link tickCooldowns}), so the allowance is per-node, not
+   * per-run.
+   */
+  campUses: Record<string, number>;
+  /**
    * The **Banker's** purse-scoped sub-state (M10, D30/D34) — **never** touches the
    * guild treasury. All three are off (0) until a Banker verb engages them
    * ({@link "./economy-actions"}).
@@ -149,7 +158,7 @@ export interface OverworldEconomy {
 
 /** A fresh, fully-ready economy (every ability off cooldown, nothing scouted). */
 export function createOverworldEconomy(): OverworldEconomy {
-  return { cooldowns: {}, scouted: {}, interestPerStep: 0, debt: 0, protection: 0 };
+  return { cooldowns: {}, scouted: {}, campUses: {}, interestPerStep: 0, debt: 0, protection: 0 };
 }
 
 /** A deep copy of the economy (for snapshots / round-trips). */
@@ -157,6 +166,7 @@ export function cloneOverworldEconomy(eco: OverworldEconomy): OverworldEconomy {
   return {
     cooldowns: { ...eco.cooldowns },
     scouted: { ...eco.scouted },
+    campUses: { ...eco.campUses },
     interestPerStep: eco.interestPerStep,
     debt: eco.debt,
     protection: eco.protection,
@@ -168,6 +178,20 @@ export function cooldownRemaining(eco: OverworldEconomy, abilityId: string): num
   return eco.cooldowns[abilityId] ?? 0;
 }
 
+/** Times a camp job skill has already been used at the current node (0 = unused). */
+export function campSkillUses(eco: OverworldEconomy, skillId: string): number {
+  return eco.campUses[skillId] ?? 0;
+}
+
+/**
+ * Uses **left** for a camp job skill at the current node. `usesPerNode` undefined ⇒
+ * uncapped (the skill is gated by its own per-cast cost), reported as `Infinity`.
+ */
+export function campSkillUsesLeft(eco: OverworldEconomy, skill: SkillDef): number {
+  if (skill.usesPerNode === undefined) return Infinity;
+  return Math.max(0, skill.usesPerNode - campSkillUses(eco, skill.id));
+}
+
 /** The extra intel tier bought for a node so far (the Scout bump). */
 export function scoutedTier(eco: OverworldEconomy, nodeId: string): number {
   return eco.scouted[nodeId] ?? 0;
@@ -175,8 +199,9 @@ export function scoutedTier(eco: OverworldEconomy, nodeId: string): number {
 
 /**
  * Advance the overworld clock **one node-step**: decrement every cooldown by 1
- * (floored at 0). Called once per node played from {@link "./run".recordNight}, so
- * both combat and rest nodes tick the spine.
+ * (floored at 0) and **clear the per-node camp-use counts** so the next node opens
+ * with a fresh action allowance (D35). Called once per node played from
+ * {@link "./run".breakCamp}, so both combat and rest nodes tick the spine.
  */
 export function tickCooldowns(eco: OverworldEconomy): void {
   for (const id of Object.keys(eco.cooldowns)) {
@@ -184,6 +209,8 @@ export function tickCooldowns(eco: OverworldEconomy): void {
     if (next <= 0) delete eco.cooldowns[id];
     else eco.cooldowns[id] = next;
   }
+  // Per-node allowance resets at the node boundary (D35) — a new camp, fresh uses.
+  eco.campUses = {};
 }
 
 /**
@@ -280,6 +307,42 @@ export function takeOverworldAction(
     fatigueSpent: fatigueCost,
     goldSpent: goldCost > 0 ? goldCost : undefined,
   };
+}
+
+/** The outcome of a gated camp-skill use — the {@link CampOutcome} plus the gate verdict. */
+export interface CampSkillResult extends ActionResult {
+  /** When applied: what the camp skill changed + the levels its owner gained. */
+  outcome?: CampOutcome & { levels: number };
+}
+
+/**
+ * Use a **camp job skill** at the current node, **gated by its per-node cap** (D35).
+ * The costless signature actions (Chef stew, Merchant trade) would otherwise be
+ * unlimited; this enforces {@link "./skills".SkillDef.usesPerNode} against the
+ * per-node {@link OverworldEconomy.campUses} counter (reset each node-step). When the
+ * cap is reached it **refuses** (never throws), so the render shows why; otherwise it
+ * applies the effect (levelling the owner, D32/D53), keeps the storage cap in sync,
+ * and bumps the use count. A skill with no `usesPerNode` is uncapped — it pays its own
+ * way per cast and always applies.
+ */
+export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): CampSkillResult {
+  const eco = run.overworld;
+  const left = campSkillUsesLeft(eco, skill);
+  if (left <= 0) {
+    return { applied: false, reason: `${skill.name} is spent for tonight — Break Camp to use it again.` };
+  }
+  const outcome = useCampJobSkill(unit, skill, run.camp);
+  // Keep the master logistics cap (D6) in sync when trade widened storage.
+  if (outcome.storage) run.inventory.storageCap = run.camp.storageCap;
+  eco.campUses[skill.id] = campSkillUses(eco, skill.id) + 1;
+
+  const parts: string[] = [];
+  if (outcome.gold) parts.push(`+${outcome.gold} gold`);
+  if (outcome.storage) parts.push(`+${outcome.storage} storage`);
+  if (outcome.morale) parts.push(`+${outcome.morale} morale`);
+  if (outcome.bankedHeal) parts.push(`banked +${outcome.bankedHeal} HP/unit`);
+  if (outcome.levels > 0) parts.push(`${unit.name} reached L${unit.level}!`);
+  return { applied: true, outcome, detail: `${skill.name}: ${parts.join(", ")}.` };
 }
 
 /** Apply an ability's effect; returns success + a detail string, or a refusal. */

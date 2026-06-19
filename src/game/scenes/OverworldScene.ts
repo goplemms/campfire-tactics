@@ -14,6 +14,7 @@ import {
   getAbility,
   cooldownRemaining,
   scoutedTier,
+  campSkillUsesLeft,
   fatiguePenalty,
   projectDossier,
   attentionCount,
@@ -21,7 +22,6 @@ import {
   projectManifest,
   getVessel,
   unitSkills,
-  useCampJobSkill,
   addItem,
   triageHeal,
   chunkHp,
@@ -498,7 +498,15 @@ export class OverworldScene extends Phaser.Scene {
     let y = top + 22;
     for (const u of this.run.party) {
       for (const skill of unitSkills(u, "meta")) {
-        this.campButton(colX, y, 360, 24, `${u.name}: ${skill.name}`, true, () => this.useCampSkill(u, skill), `${skill.name} — ${skill.description}`);
+        // Costless signature actions are per-node capped (D35) — disable when spent,
+        // and badge the label with the uses left so the limiter is legible.
+        const left = campSkillUsesLeft(this.run.overworld, skill);
+        const capped = Number.isFinite(left);
+        const label = capped && skill.usesPerNode! > 1 ? `${u.name}: ${skill.name}  (${left} left)` : `${u.name}: ${skill.name}`;
+        const tip = capped
+          ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Break Camp.)`
+          : `${skill.name} — ${skill.description}`;
+        this.campButton(colX, y, 360, 24, label, left > 0, () => this.useCampSkill(u, skill), tip);
         y += rowH;
       }
     }
@@ -835,17 +843,11 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private useCampSkill(actor: Unit, skill: SkillDef): void {
-    // The signature action levels its owner now (D32/D53): a Chef grows from cooking.
-    const out = useCampJobSkill(actor, skill, this.run.camp);
-    if (out.storage) this.run.inventory.storageCap = this.run.camp.storageCap;
+    // Gated by the per-node cap (D35): the signature action levels its owner now
+    // (D32/D53) but can't be spammed for unlimited gold/morale/XP.
+    const res = this.loop.useCampSkill(actor, skill);
     this.renderCamp();
-    const parts: string[] = [];
-    if (out.gold) parts.push(`+${out.gold} gold`);
-    if (out.storage) parts.push(`+${out.storage} storage`);
-    if (out.morale) parts.push(`+${out.morale} morale`);
-    if (out.bankedHeal) parts.push(`banked +${out.bankedHeal} HP/unit`);
-    if (out.levels > 0) parts.push(`${actor.name} reached L${actor.level}!`);
-    this.setHint(`${skill.name}: ${parts.join(", ")}.`);
+    this.setHint(res.applied ? `${res.detail ?? "Done."}` : `Can't: ${res.reason ?? "refused."}`);
   }
 
   /** Whether a Merchant rides along — they price (and route) the trap-kit buy. */

@@ -165,6 +165,14 @@ combat CT clock** (D5), one tier up.
   the specialist** — a Merchant can't market every node; the decision is *when* to spend
   the charge. **Why cooldowns:** they *encourage* engagement (use-it-or-waste-it), whereas
   a tight hoardable pool *punishes* use (players hoard, the choice curdles into agony).
+  - **Costless camp jobs use a per-node cap, not a cooldown.** The signature non-combat
+    job actions (Chef's stew → morale + banked heal, Merchant's trade → gold + storage)
+    cost nothing per cast, so the spine that bounds them is a **per-node use cap**
+    (`usesPerNode` on the skill, default **1**), reset every node-step. Without it they
+    were firing unlimited times for unlimited gold / morale / use-XP. A camp action that
+    *does* pay its own way each cast (a Vancian charge, a gold/resource buy) leaves the
+    cap **uncapped** and is gated by that cost instead — so it can fire as many times as
+    the party can afford.
 - **Guardrail — loose fatigue.** [Fatigue](stats.md#fatigue-overworld-meter-d29) is **not**
   a tight rationed pool — it follows the codebase's **shallow asymmetric-floor** shape
   (D7/D11 deployment overdraw, D8 morale): a **generous allowance, invisible in normal

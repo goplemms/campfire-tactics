@@ -130,6 +130,9 @@ reference them rather than re-explain:
   consequence policy (decision D9).
 - **[Stats](systems/stats.md)** — the stats committed so far (Speed, Awareness)
   and what each governs.
+- **[Influence](systems/influence.md)** — the Noble's per-expedition *standing*
+  currency: presence → opportunity (passive accrual + Patronize), spent on bribes and
+  gating event quality (decision D62).
 
 ## One run, end to end (pseudo-example)
 

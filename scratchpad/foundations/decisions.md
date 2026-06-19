@@ -1684,6 +1684,17 @@ trail of reasoning stays intact.
     liquidated** — selling then competes with using/recovering it (a genuine trade-off).
   - Both read **`effectiveMarketTier`** for the rate (better at `premium`, impossible at
     `none`), so the sell faucet inherits the market-access scarcity from item 2.
+  - **Encounter loot splits into two streams (refinement, 2026-06-19).** A win pays
+    **found gold** — coin, banked **immediately** to the purse — *and* **sellable loot** —
+    `valuables` drops into storage that are **illiquid until Sold**, and Sell needs a market
+    (`effectiveMarketTier > none`: a market node *or* a Merchant raising the floor, at worse
+    impromptu rates). This makes **market access a gate on *realising your reward***, not just
+    on buying — the keystone that makes routing-to-markets and the Merchant matter. Data-wise
+    it reuses `EncounterReward` (`gold` = found coin; valuables = a `MaterialDrop` of the new
+    class); the "split" is the reward generator allocating value between the two.
+  - **Tuning guardrail:** **found gold must cover baseline Upkeep** on its own — sellable loot
+    is the *upside* you route/liquidate to realise, never the *baseline* you need to survive
+    (else a win you can't yet sell becomes a rations death-spiral, worst early).
   - **Glossary reconciliation required:** the glossary currently lists **"Sell" as a *banned
     synonym* for the retired `Trade` skill** — D61 promotes **Sell** to a first-class verb
     (and adds a `Valuables`/`Salvage` keyword), so that entry must be re-authored when built.
@@ -1695,7 +1706,7 @@ trail of reasoning stays intact.
 - **Spec (to build):** `src/core/overworld.ts` (`MarketTier`, `MapNode.market`, seeding +
   `effectiveMarketTier`/`merchantFloor`), `src/core/inventory.ts` (a `valuables`/salvage
   material class + a per-item **sale value** on `MaterialDef`), `src/core/generation.ts` /
-  resolution (drop valuables in `EncounterReward`), `src/core/overworld-actions.ts` (the
+  resolution (split `EncounterReward` value into **found gold** + **valuables** drops), `src/core/overworld-actions.ts` (the
   two-axis `cost` shape + the unpaced-and-unpriced invariant; fold camp jobs + economy verbs
   into the one resolver), `src/core/economy-actions.ts` (Merchant **sell** verb reading
   `effectiveMarketTier`; Influence → passive accrual at `breakCamp`), `src/core/jobs.ts`

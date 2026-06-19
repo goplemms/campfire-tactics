@@ -2,7 +2,6 @@ import Phaser from "phaser";
 import { GuildScene } from "./scenes/GuildScene";
 import { OverworldScene } from "./scenes/OverworldScene";
 import { BattleScene } from "./scenes/BattleScene";
-import { PartyDossierScene } from "./scenes/PartyDossierScene";
 import { BattleBootScene, OverworldBootScene, ExpeditionBootScene, HollowMillBootScene } from "./debug-battle";
 import { COLOR } from "./theme";
 
@@ -33,12 +32,12 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   height: 600,
   backgroundColor: COLOR.bg,
   scene: isExpedition
-    ? [ExpeditionBootScene, GuildScene, OverworldScene, BattleScene, PartyDossierScene]
+    ? [ExpeditionBootScene, GuildScene, OverworldScene, BattleScene]
     : isOverworld
-      ? [OverworldBootScene, GuildScene, OverworldScene, BattleScene, PartyDossierScene]
+      ? [OverworldBootScene, GuildScene, OverworldScene, BattleScene]
       : isBattle
-        ? [BattleBootScene, GuildScene, OverworldScene, BattleScene, PartyDossierScene]
+        ? [BattleBootScene, GuildScene, OverworldScene, BattleScene]
         : isDemo
-          ? [HollowMillBootScene, GuildScene, OverworldScene, BattleScene, PartyDossierScene]
-          : [GuildScene, OverworldScene, BattleScene, PartyDossierScene],
+          ? [HollowMillBootScene, GuildScene, OverworldScene, BattleScene]
+          : [GuildScene, OverworldScene, BattleScene],
 };

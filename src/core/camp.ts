@@ -2,10 +2,10 @@
  * Camp state — the Meta-phase economy + morale the non-combat jobs act on (M5).
  *
  * The signature jobs hook *different* phases (D3): the **Merchant** works the
- * economy (gold + storage), the **Chef** raises **morale** (D8) and banks a
- * between-battle **party heal**. Both act here, in camp, then their effects carry
- * into the following battle. This module is the small state object + the pure
- * functions that apply those effects.
+ * economy (trading goods for gold at a market, {@link "./economy-actions"}), the
+ * **Chef** raises **morale** (D8) and banks a between-battle **party heal**. The
+ * Chef acts here, in camp, then its effect carries into the following battle. This
+ * module is the small state object + the pure functions that apply those effects.
  *
  * Pure logic: no Phaser, no DOM.
  */
@@ -17,9 +17,18 @@ import { grantAbilityUseXp } from "./leveling";
 
 /** Mutable camp / meta state. */
 export interface Camp {
-  /** Currency (Merchant generates it). */
+  /**
+   * The run **purse** (D34): loot and the Merchant's *sales* fill it
+   * ({@link "./economy-actions".merchantSell}); Upkeep, buys, and bribes drain it.
+   * (D61 retired the Merchant's old gold-*mint* — it trades, it doesn't print.)
+   */
   gold: number;
-  /** Storage capacity in slots (Merchant raises it). */
+  /**
+   * **Vestigial** (D61): the live storage cap is `run.inventory.storageCap`, set by
+   * the **caravan/vessel** ({@link "./caravan".Caravan.storageCap}) — not the camp,
+   * and no longer raised by the Merchant. Nothing reads this field; kept only so
+   * existing {@link createCamp} callers/snapshots don't break. Remove in a cleanup pass.
+   */
   storageCap: number;
   /** Party morale, a banded value (D8); higher is better. */
   morale: number;

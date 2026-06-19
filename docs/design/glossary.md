@@ -151,7 +151,7 @@ the drift found in the current build.
 | **Invest** | The Banker's interest verb (purse accrues interest per step). | "Save"; "Deposit" |
 | **Borrow** | The Banker's buy-on-debt verb. | "Loan"; "Advance" |
 | **Gather Influence** | The Noble's INFLUENCE verb. | "Earn rep"; "Curry favor" (in the label) |
-| **Trade** | The Merchant camp skill (+gold, +storage). | "Sell"; "Deal" |
+| **Trade** | The Merchant camp skill (+gold, +storage). ⚠️ **Retired by D61** — the gold-minting Trade is dropped; the Merchant verb becomes node-tier **access** (buy) + **Sell**. **"Sell" is being promoted to its own keyword**, so it is no longer a banned synonym here. Re-author this row + add **Valuables**/**Salvage** when D61 builds. | (was "Sell"; "Deal") |
 | **Cook Stew** | The Chef camp skill (+morale, banks heal). | "Cook" alone if other dishes ever exist |
 | **Set Trap** | The Survivalist deployment skill. | "Lay trap"; "Plant trap" |
 

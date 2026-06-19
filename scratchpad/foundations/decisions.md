@@ -1668,17 +1668,39 @@ trail of reasoning stays intact.
      *goods → gold* (sell; needs inventory + a market), **Banker** = *time → gold* (passive
      interest), **Noble** = *presence/rep → Influence* (passive, walled-off currency).
      Numbers need a tuning pass to keep them balanced.
-- **Open / deferred / not built:**
-  - **Sell depends on item sale-values** — the sell faucet needs inventory items to carry a
-    gold value; confirm/extend the `Inventory`/materials model before sell is more than a stub.
+- **Sell needs a value model — and a sellable-goods *class* (Decided this pass: BOTH).**
+  Investigation (2026-06-19) found the gap is bigger than a missing price field: `MaterialDef`
+  carries **no gold value**, buying is priced flat by **node tier** (not per item), there is
+  **no sell function**, and — crucially — **no category of sellable goods** (the catalog is
+  five *functional* items; encounter rewards drop **gold directly** + functional materials).
+  So "Merchant converts goods → gold" had no goods to convert. Note the vision docs already
+  *imagined* this as flavor — `01-pre-deployment.md` lists "buy/**sell** equipment" and its
+  worked example "sells **salvaged scrap** (+60g)" — but it was never mechanised. **Decision:**
+  - **(a) A new `valuables`/salvage item class** — zero function, **pure gold value**, drops
+    from encounters as loot. It's the primary sell faucet *and* a real decision, because
+    carrying it burns scarce **storage slots** (D6): haul loot to the next good market vs.
+    spend slots on gear. (This is the docs' "salvaged scrap," finally given a mechanic.)
+  - **(b) Sale values on the existing functional materials** too, so **surplus gear can be
+    liquidated** — selling then competes with using/recovering it (a genuine trade-off).
+  - Both read **`effectiveMarketTier`** for the rate (better at `premium`, impossible at
+    `none`), so the sell faucet inherits the market-access scarcity from item 2.
+  - **Glossary reconciliation required:** the glossary currently lists **"Sell" as a *banned
+    synonym* for the retired `Trade` skill** — D61 promotes **Sell** to a first-class verb
+    (and adds a `Valuables`/`Salvage` keyword), so that entry must be re-authored when built.
+- **Still open / deferred / not built:**
   - **Influence final shape** (item 5) — Open.
   - **Terrain/biome node axis** (item 2) — Deferred; seam left open.
-  - **Tuning pass** across the three economy classes + market tier yields — later.
+  - **Tuning pass** across the three economy classes + market tier yields (incl. sale-rate
+    curves and valuables drop rates) — later.
 - **Spec (to build):** `src/core/overworld.ts` (`MarketTier`, `MapNode.market`, seeding +
-  `effectiveMarketTier`/`merchantFloor`), `src/core/overworld-actions.ts` (the two-axis
-  `cost` shape + the unpaced-and-unpriced invariant; fold camp jobs + economy verbs into the
-  one resolver), `src/core/economy-actions.ts` (Merchant sell verb; Influence → passive
-  accrual at `breakCamp`), `src/core/jobs.ts` (retire the `+50g` Trade effect; re-home the
-  Merchant verb), the routing/forecast layer (surface market availability per edge). Updates
-  the `usesPerNode` interim into the general `pacing` knob.
+  `effectiveMarketTier`/`merchantFloor`), `src/core/inventory.ts` (a `valuables`/salvage
+  material class + a per-item **sale value** on `MaterialDef`), `src/core/generation.ts` /
+  resolution (drop valuables in `EncounterReward`), `src/core/overworld-actions.ts` (the
+  two-axis `cost` shape + the unpaced-and-unpriced invariant; fold camp jobs + economy verbs
+  into the one resolver), `src/core/economy-actions.ts` (Merchant **sell** verb reading
+  `effectiveMarketTier`; Influence → passive accrual at `breakCamp`), `src/core/jobs.ts`
+  (retire the `+50g` Trade effect; re-home the Merchant verb), the routing/forecast layer
+  (surface market availability per edge), and `docs/design/glossary.md` (promote **Sell** to a
+  keyword; add **Valuables**/**Salvage**; retire **Trade**). Updates the `usesPerNode` interim
+  into the general `pacing` knob.
 - **Superseded by:** —

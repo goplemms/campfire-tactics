@@ -688,7 +688,9 @@ export class OverworldScene extends Phaser.Scene {
       this.tentDossier?.destroy();
       this.tentDossier = undefined;
       clearLayer(this.overlay);
-      this.reviewMap(() => this.openTent(back, "party"));
+      // ← Back first restores the camp/survey panel (and its title — reviewMap
+      // retitled the bar "Route Map · reviewing"), then re-floats the Tent over it.
+      this.reviewMap(() => { back(); this.openTent(back, "party"); });
       return;
     }
     this.tentTab = tab;

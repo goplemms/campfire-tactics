@@ -1658,11 +1658,16 @@ trail of reasoning stays intact.
   4. **Dedup Trade/Market** into the single node-tier **access** verb (buy *and* sell),
      priced by `effectiveMarketTier`. The duplicate effect and the D30 contradiction both
      dissolve.
-  5. **Influence → passive per-node accrual** (**Open — final shape TBD**). Retire the
-     spammable `Gather Influence` button; political income **arrives at the node-step** like
-     Banker interest (amount possibly keyed to a Noble's presence, mirroring the passive
-     intel floor). The user wants to **re-evaluate where Influence lives altogether** before
-     committing the final form — recorded here as direction, not a closed call.
+  5. **Influence is carved out to its own subsystem (D62).** Influence is a **walled-off
+     currency** (D34) with its own identity — patronage / reputation / politics — that *touches*
+     economic behaviour but isn't part of the gold economy, so its redesign is **not** decided
+     here. D61's only commitment: the **two-axis invariant** (item 1) bounds the spammable
+     `Gather Influence` faucet for free once economy verbs fold into the one resolver (it can no
+     longer be both unpaced and unpriced). **What Influence *is* — income source, passive vs.
+     active, the Noble's role, its sinks — is deferred to D62.** ⚠️ Note the shipped interim
+     stopgap did **not** cover Gather Influence (different code path: `nobleIncome →
+     collectPoliticalIncome`), so the faucet is **still live-exploitable** until either the
+     two-axis fold or D62 lands.
   6. **The economy trichotomy (keeps the three classes competitive).** Each is a faucet of a
      **different input**, so they are not three flavours of "gives gold": **Merchant** =
      *goods → gold* (sell; needs inventory + a market), **Banker** = *time → gold* (passive
@@ -1699,7 +1704,8 @@ trail of reasoning stays intact.
     synonym* for the retired `Trade` skill** — D61 promotes **Sell** to a first-class verb
     (and adds a `Valuables`/`Salvage` keyword), so that entry must be re-authored when built.
 - **Still open / deferred / not built:**
-  - **Influence final shape** (item 5) — Open.
+  - **Influence subsystem** (item 5) — carved out to **D62**; its identity/mechanics are
+    out of D61's scope.
   - **Terrain/biome node axis** (item 2) — Deferred; seam left open.
   - **Tuning pass** across the three economy classes + market tier yields (incl. sale-rate
     curves and valuables drop rates) — later.
@@ -1709,9 +1715,43 @@ trail of reasoning stays intact.
   resolution (split `EncounterReward` value into **found gold** + **valuables** drops), `src/core/overworld-actions.ts` (the
   two-axis `cost` shape + the unpaced-and-unpriced invariant; fold camp jobs + economy verbs
   into the one resolver), `src/core/economy-actions.ts` (Merchant **sell** verb reading
-  `effectiveMarketTier`; Influence → passive accrual at `breakCamp`), `src/core/jobs.ts`
+  `effectiveMarketTier`; bring `Gather Influence` under the two-axis invariant so it can't be
+  unpaced+unpriced — the full Influence redesign is **D62**), `src/core/jobs.ts`
   (retire the `+50g` Trade effect; re-home the Merchant verb), the routing/forecast layer
   (surface market availability per edge), and `docs/design/glossary.md` (promote **Sell** to a
   keyword; add **Valuables**/**Salvage**; retire **Trade**). Updates the `usesPerNode` interim
   into the general `pacing` knob.
+- **Superseded by:** —
+
+## D62 — Influence as its own subsystem (politics / patronage / reputation)
+
+- **Status:** Deferred (opened 2026-06-19) · carved out of **D61** item 5; builds on **D34**
+  (Influence is a walled-off currency) and the Noble's **D30** verbs.
+- **Context:** While reworking the gold economy (D61) we kept hitting Influence and kept
+  having to *not* decide it — because it isn't really part of the gold economy. It's a
+  **separate currency with its own identity** (patronage / reputation / politics) that
+  *touches* economic behaviour (it pays the Noble's bribes, can't pay Upkeep) but has its own
+  overall fantasy. The current implementation is also thin and partly broken: political income
+  is a **spammable `Gather Influence` button** (`collectPoliticalIncome`, no gate → unlimited
+  Influence → unlimited bribes), which the D61 interim cap did **not** cover.
+- **Decision:** **Deferred** — to be designed as its own subsystem (likely its own
+  `docs/design/systems/` doc), *not* folded into D61. Recorded so it isn't lost.
+- **Open questions to resolve when picked up:**
+  - **Identity & fantasy:** what *is* Influence — patronage, standing with factions, political
+    capital? Is it one pool or faction-scoped?
+  - **Income source:** passive accrual (per node-step, like Banker interest) vs. earned from
+    specific acts/events vs. keyed to a Noble's *presence* (mirroring the passive intel/market
+    floor idiom)? — the exploit fix follows from whatever this is; D61's two-axis invariant is
+    the interim guard.
+  - **Sinks beyond bribe:** sway-avoid fights, access/recruitment (D33), faction unlocks?
+  - **Persistence/scope:** purse-like (per-caravan, lost on a wipe) vs. guild-persistent
+    (D34)? Today it lives on the `Guild`.
+  - **Where it surfaces:** the camp Advanced panel, a guild-tier screen, or its own surface?
+- **Interim until built:** `Gather Influence` stays **live-exploitable** (unlimited) on the
+  current branch; closed either by the D61 two-axis fold or by this subsystem, whichever lands
+  first. A one-off cap is possible but deliberately skipped to avoid another throwaway patch.
+- **Spec:** TBD (own subsystem doc). Touches `src/core/economy-actions.ts`
+  (`collectPoliticalIncome`/`bribeEnemy`), `src/core/economy.ts` (`Influence`),
+  `src/core/guild.ts` (`politicsCounter`/scope), `src/game/scenes/OverworldScene.ts`
+  (`nobleIncome` surfacing).
 - **Superseded by:** —

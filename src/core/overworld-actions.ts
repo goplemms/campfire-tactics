@@ -272,14 +272,23 @@ export function accruePurseInterest(eco: OverworldEconomy, camp: Camp): number {
 
 // --- The resolver -----------------------------------------------------------
 
-/** The outcome of attempting an overworld action — applied, or why refused. */
-export interface ActionResult {
-  /** True if the effect fired (cooldown armed, costs spent). */
+/**
+ * The base shape **every** camp / overworld / economy action returns (D61): it
+ * either `applied` (with an optional `detail` summary) or was refused (with a
+ * `reason`). The single canonical result type the action surfaces share — the
+ * economy verbs' `VerbResult` ({@link "./economy-actions"}) is an alias of this.
+ */
+export interface ActionOutcome {
+  /** True if the action took effect (costs spent, pacing armed). */
   applied: boolean;
   /** When refused: a human-readable reason for the render. */
   reason?: string;
   /** When applied: a short summary of what happened. */
   detail?: string;
+}
+
+/** An overworld-action outcome — the shared base plus the spend readouts. */
+export interface ActionResult extends ActionOutcome {
   /** Fatigue actually spent on the acting unit (base + any over-extension surcharge). */
   fatigueSpent?: number;
   /** Gold spent, if the ability was priced. */

@@ -29,7 +29,7 @@
 import type { RunState } from "./run";
 import type { Unit } from "./units";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
-import { checkOverworldCost, commitOverworldCost, type OverworldCost } from "./overworld-actions";
+import { checkOverworldCost, commitOverworldCost, type OverworldCost, type ActionOutcome } from "./overworld-actions";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
 import { addItem, canAdd, countOf, removeItem, getMaterial, saleValueOf, type MaterialDef } from "./inventory";
@@ -86,12 +86,12 @@ export const ECONOMY = {
   },
 } as const;
 
-/** A generic verb result the render reads (applied, or why refused). */
-export interface VerbResult {
-  applied: boolean;
-  reason?: string;
-  detail?: string;
-}
+/**
+ * A generic economy-verb result the render reads (applied, or why refused) — the
+ * shared {@link "./overworld-actions".ActionOutcome} base, so the economy verbs and
+ * the overworld actions speak one result shape. Per-verb extras extend it below.
+ */
+export type VerbResult = ActionOutcome;
 
 // --- Merchant — ACCESS (purse-funded, market-tier-gated) --------------------
 

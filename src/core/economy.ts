@@ -33,7 +33,7 @@ import type { RunState } from "./run";
 import type { OverworldEconomy } from "./overworld-actions";
 import type { Unit } from "./units";
 import { nonNegInt, bandFor } from "./num";
-import { computeUpkeep, type UpkeepBill, type UpkeepLine } from "./upkeep";
+import { computeUpkeep, foodFirst, type UpkeepBill, type UpkeepLine } from "./upkeep";
 
 // --- The run purse: loot in, debt auto-repaid (D34/D30) ---------------------
 
@@ -99,9 +99,7 @@ export interface TreasuryUpkeepResult {
  */
 export function payTreasuryUpkeep(guild: Guild, party: readonly Unit[] = guild.roster): TreasuryUpkeepResult {
   const bill = computeUpkeep(party);
-  const ordered = [...bill.lines].sort((a, b) =>
-    a.id === "food" ? -1 : b.id === "food" ? 1 : 0,
-  );
+  const ordered = foodFirst(bill.lines);
   let paid = 0;
   let shortfall = 0;
   const underfunded: UpkeepLine["id"][] = [];

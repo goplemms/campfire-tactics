@@ -22,7 +22,7 @@
  */
 
 import type { RunState } from "./run";
-import { computeUpkeep, type UpkeepLine } from "./upkeep";
+import { computeUpkeep, foodFirst } from "./upkeep";
 import { projectForecast, type RouteForecast } from "./forecast";
 
 /** One expandable line item within a ledger category (signed gold). */
@@ -74,11 +74,6 @@ export interface BuildLedgerOptions {
   influence?: number;
   /** Whether a market verb is usable here (town/rest node · Merchant · off cooldown). */
   marketReady?: boolean;
-}
-
-/** Food-first ordering (skipping Food is the harsher breach, D15). */
-function foodFirst(lines: readonly UpkeepLine[]): UpkeepLine[] {
-  return [...lines].sort((a, b) => (a.id === "food" ? -1 : b.id === "food" ? 1 : 0));
 }
 
 /**

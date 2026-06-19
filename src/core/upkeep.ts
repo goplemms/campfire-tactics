@@ -55,6 +55,17 @@ export interface UpkeepBill {
   total: number;
 }
 
+/**
+ * Order Upkeep lines **food-first** (D15): skipping Food is the harsher breach, so
+ * every funding pass — the run purse ({@link payUpkeep}), the guild treasury
+ * ({@link "./economy".payTreasuryUpkeep}), and the ledger projection
+ * ({@link "./ledger".buildLedger}) — funds Food before Repairs. The single owner of
+ * that ordering policy (was copy-pasted as an inline comparator in all three). Pure.
+ */
+export function foodFirst(lines: readonly UpkeepLine[]): UpkeepLine[] {
+  return [...lines].sort((a, b) => (a.id === "food" ? -1 : b.id === "food" ? 1 : 0));
+}
+
 /** True if any party member is a Chef (unlocks the food discount, D15). */
 function hasChef(party: readonly Unit[]): boolean {
   return party.some((u) => getJob(u.jobId)?.upkeep?.food !== undefined);
@@ -125,9 +136,7 @@ export function payUpkeep(
   const bill = computeUpkeep(party);
   const skipSet = new Set(opts.skip ?? camp.skippedUpkeep);
   // Food before Repairs: skipping food is the harsher breach, so fund it first.
-  const ordered = [...bill.lines].sort((a, b) =>
-    a.id === "food" ? -1 : b.id === "food" ? 1 : 0,
-  );
+  const ordered = foodFirst(bill.lines);
   let paid = 0;
   let moraleDelta = 0;
   const underfunded: UpkeepLine["id"][] = [];

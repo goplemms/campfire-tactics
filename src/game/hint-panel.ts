@@ -24,6 +24,10 @@ export interface HintPanelOptions {
  *     peeks it open so the tip is never shown into a collapsed void.
  *   • **click-pin** — clicking the header pins it open (or unpins) so it won't
  *     auto-collapse while you read or play.
+ *   • **minimize** — the header's "—" button stows the card down to its chip and
+ *     keeps it there: hover-peek and incoming tips no longer pop it open, so a
+ *     pinned/feedback card can be cleared out of the way when it crowds the layout.
+ *     Clicking the stowed chip restores it.
  *
  * Collapsed it shrinks to just its header chip (right-anchored), so it clears even
  * a long centered scene title; it only grows to full width when expanded — an
@@ -39,6 +43,7 @@ export class HintPanel extends Phaser.GameObjects.Container {
   private readonly headerBg: Phaser.GameObjects.Rectangle;
   private readonly headerLabel: Phaser.GameObjects.Text;
   private readonly chevron: Phaser.GameObjects.Text;
+  private readonly minimizeBtn: Phaser.GameObjects.Text;
   private readonly bodyBg: Phaser.GameObjects.Rectangle;
   private readonly tipText: Phaser.GameObjects.Text;
   private readonly keysText: Phaser.GameObjects.Text;
@@ -54,6 +59,7 @@ export class HintPanel extends Phaser.GameObjects.Container {
   private hovered = false;
   private tipActive = false;
   private isOpen = false;
+  private minimized = false;
   private collapseTimer?: Phaser.Time.TimerEvent;
 
   constructor(scene: Phaser.Scene, opts: HintPanelOptions = {}) {
@@ -74,8 +80,9 @@ export class HintPanel extends Phaser.GameObjects.Container {
     this.headerBg = scene.add.rectangle(0, 0, W, HintPanel.HEADER_H, COLOR.surfaceAlt, 0.96).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0);
     this.headerLabel = scene.add.text(0, 0, this.baseLabel, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5);
     this.chevron = scene.add.text(0, 0, "▸", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5);
+    this.minimizeBtn = scene.add.text(0, 0, "—", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5);
 
-    this.add([this.bodyBg, this.tipText, this.keysText, this.headerBg, this.headerLabel, this.chevron]);
+    this.add([this.bodyBg, this.tipText, this.keysText, this.headerBg, this.headerLabel, this.chevron, this.minimizeBtn]);
     this.setDepth(15);
     scene.add.existing(this);
 
@@ -84,8 +91,16 @@ export class HintPanel extends Phaser.GameObjects.Container {
       r.setInteractive({ useHandCursor: true });
       r.on(Events.GAMEOBJECT_POINTER_OVER, () => this.onOver());
       r.on(Events.GAMEOBJECT_POINTER_OUT, () => this.onOut());
-      r.on(Events.GAMEOBJECT_POINTER_DOWN, () => this.togglePin());
+      r.on(Events.GAMEOBJECT_POINTER_DOWN, () => this.headerClick());
     }
+
+    // The minimize button stows the card; it sits atop the header bar, so with the
+    // input plugin's default topOnly it captures the click before the header's pin
+    // toggle. Its own hover keeps the card open while the pointer rests on it.
+    this.minimizeBtn.setInteractive({ useHandCursor: true });
+    this.minimizeBtn.on(Events.GAMEOBJECT_POINTER_OVER, () => this.onOver());
+    this.minimizeBtn.on(Events.GAMEOBJECT_POINTER_OUT, () => this.onOut());
+    this.minimizeBtn.on(Events.GAMEOBJECT_POINTER_DOWN, () => this.minimize());
 
     this.pinned = opts.startPinned ?? false;
     if (this.pinned) this.headerLabel.setText(`${this.baseLabel} · pinned`);
@@ -104,6 +119,12 @@ export class HintPanel extends Phaser.GameObjects.Container {
    * (peek open); restoring the resting text ends the tip (collapse if unpinned).
    */
   setText(text: string): this {
+    // Stowed by the user: swallow the peek but still record it, so a later restore
+    // reflects the latest tip rather than a stale resting line.
+    if (this.minimized) {
+      this.tipText.setText(text);
+      return this;
+    }
     if (text === this.resting) {
       this.tipActive = false;
       this.setTipText(this.resting);
@@ -146,14 +167,33 @@ export class HintPanel extends Phaser.GameObjects.Container {
     this.scheduleCollapse();
   }
 
-  private togglePin(): void {
+  /** Header click: restore from a stowed state, else toggle the open-pin. */
+  private headerClick(): void {
+    if (this.minimized) {
+      this.minimized = false;
+      this.expand();
+      return;
+    }
     this.pinned = !this.pinned;
     this.headerLabel.setText(this.pinned ? `${this.baseLabel} · pinned` : this.baseLabel);
     if (this.pinned) this.expand();
     else this.scheduleCollapse();
   }
 
+  /** Stow the card down to its chip and hold it there until the user restores it. */
+  private minimize(): void {
+    this.minimized = true;
+    this.pinned = false;
+    this.hovered = false;
+    this.tipActive = false;
+    this.collapseTimer?.remove();
+    this.collapseTimer = undefined;
+    this.headerLabel.setText(this.baseLabel);
+    this.apply(false);
+  }
+
   private expand(): void {
+    if (this.minimized) return;
     this.collapseTimer?.remove();
     this.collapseTimer = undefined;
     this.apply(true);
@@ -188,6 +228,9 @@ export class HintPanel extends Phaser.GameObjects.Container {
     this.headerBg.setSize(wc, hH).setPosition(hx, headerY);
     this.headerLabel.setPosition(hx + 8, headerY + hH / 2);
     this.chevron.setPosition(W - 7, headerY + hH / 2);
+    // The minimize control only earns its keep on the full-width open card; stowed to
+    // a chip the chevron alone signals "click to restore".
+    this.minimizeBtn.setVisible(expanded).setPosition(W - 22, headerY + hH / 2);
 
     this.bodyBg.setVisible(expanded);
     this.tipText.setVisible(expanded);

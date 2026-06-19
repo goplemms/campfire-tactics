@@ -28,6 +28,7 @@
 import type { RunState } from "./run";
 import type { MapNode } from "./overworld";
 import { streamFor } from "./rng";
+import { clamp, clamp01 } from "./num";
 
 /** Theft tuning — data, a numbers pass later (D30). */
 export const THEFT = {
@@ -67,9 +68,9 @@ export function rollSkim(
   const frac = rng.float(THEFT.minFraction, THEFT.maxFraction);
   let skim = Math.max(Math.min(THEFT.floor, purse), Math.round(purse * frac));
   // The Banker's protection blunts the skim (D30).
-  const guard = Math.max(0, Math.min(1, protection));
+  const guard = clamp01(protection);
   skim = Math.round(skim * (1 - guard));
-  return Math.max(0, Math.min(purse, skim));
+  return clamp(skim, 0, purse);
 }
 
 /**

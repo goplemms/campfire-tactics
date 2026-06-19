@@ -7,7 +7,7 @@
  * can react — the same bus a trap or aura would hang off.
  */
 
-import type { Unit, Side } from "./units";
+import { isActive, activeUnits, hasActive, opposite, type Unit, type Side } from "./units";
 import type { GridCoord } from "./iso";
 import type { EventBus } from "./events";
 import { nonNegInt } from "./num";
@@ -75,9 +75,9 @@ export function effectiveMove(unit: Unit): number {
  * aura's own Slowed is added/removed — a skill-applied Slow is left alone.
  */
 export function refreshAuras(units: readonly Unit[]): void {
-  const rings = units.filter((u) => u.alive && !u.captured && u.passives[PASSIVE.tarpit]);
+  const rings = units.filter((u) => isActive(u) && u.passives[PASSIVE.tarpit]);
   for (const u of units) {
-    if (!u.alive || u.captured) continue;
+    if (!isActive(u)) continue;
     const inRing = rings.some((k) => k.side !== u.side && isAdjacent(k.pos, u.pos));
     const cur = u.statuses.find((s) => s.id === SLOWED && s.data?.aura === "tarpit");
     if (inRing && !cur) {
@@ -103,12 +103,7 @@ export function adjacentBodies(
   side: Side,
 ): number {
   return units.filter(
-    (u) =>
-      u.alive &&
-      !u.captured &&
-      u.side === side &&
-      u !== target &&
-      isAdjacent(u.pos, target.pos),
+    (u) => isActive(u) && u.side === side && u !== target && isAdjacent(u.pos, target.pos),
   ).length;
 }
 
@@ -147,8 +142,7 @@ export function computeFlankBonus(
  */
 export function isFlanked(unit: Unit, units: readonly Unit[]): boolean {
   if (adjacentBodies(unit, units, unit.side) > 0) return false; // sheltered by formation
-  const enemySide: Side = unit.side === "player" ? "enemy" : "player";
-  const adjFoes = units.filter((u) => u.alive && !u.captured && u.side === enemySide && isAdjacent(u.pos, unit.pos));
+  const adjFoes = activeUnits(units, opposite(unit.side)).filter((u) => isAdjacent(u.pos, unit.pos));
   const meleeFoes = adjFoes.filter((f) => f.attackRange <= 1);
   if (meleeFoes.length === 0) return false; // only a melee attacker can flank
   if (adjFoes.length >= 2) return true; // ganged: the melee foe + a second body
@@ -256,8 +250,8 @@ export interface BattleOutcome {
  * over with no winner; otherwise the battle continues.
  */
 export function battleOutcome(units: readonly Unit[]): BattleOutcome {
-  const playersActive = units.some((u) => u.alive && !u.captured && u.side === "player");
-  const enemiesActive = units.some((u) => u.alive && !u.captured && u.side === "enemy");
+  const playersActive = hasActive(units, "player");
+  const enemiesActive = hasActive(units, "enemy");
   if (playersActive && enemiesActive) return { over: false };
   if (playersActive) return { over: true, winner: "player" };
   if (enemiesActive) return { over: true, winner: "enemy" };

@@ -23,6 +23,27 @@ export function chebyshev(a: GridCoord, b: GridCoord): number {
   return Math.max(Math.abs(a.col - b.col), Math.abs(a.row - b.row));
 }
 
+/**
+ * The four orthogonal (4-connected) neighbour offsets, in the canonical
+ * **up / right / down / left** order the grid relies on for deterministic paths.
+ */
+export const ORTHO_OFFSETS: readonly GridCoord[] = [
+  { col: 0, row: -1 }, // up
+  { col: 1, row: 0 }, // right
+  { col: 0, row: 1 }, // down
+  { col: -1, row: 0 }, // left
+];
+
+/**
+ * The four orthogonal neighbours of a tile (no diagonals, **no** walkability
+ * filter), in the canonical order. {@link "./grid".TileGrid.walkableNeighbors}
+ * filters this to the passable ones; aura/ring code that ignores blocking (the
+ * tarpit ring) maps it straight into a key set.
+ */
+export function orthoNeighbors(c: GridCoord): GridCoord[] {
+  return ORTHO_OFFSETS.map((d) => ({ col: c.col + d.col, row: c.row + d.row }));
+}
+
 /** A point in screen/world space, in pixels. */
 export interface ScreenPoint {
   readonly x: number;

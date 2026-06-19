@@ -22,6 +22,7 @@
 
 import type { Unit } from "./units";
 import type { Rng } from "./rng";
+import { bandFor } from "./num";
 import { getEnemyTemplate, type EncounterType } from "./generation";
 import { getNode, type NodeKind } from "./overworld";
 import { eventForNode } from "./node-events";
@@ -146,8 +147,7 @@ export const REWARD_BANDS: readonly { min: number; label: string }[] = [
 
 /** The reward band label for a gold figure. */
 export function rewardBand(gold: number): string {
-  for (const b of REWARD_BANDS) if (gold >= b.min) return b.label;
-  return REWARD_BANDS[REWARD_BANDS.length - 1].label;
+  return bandFor(gold, REWARD_BANDS, REWARD_BANDS[REWARD_BANDS.length - 1]).label;
 }
 
 /**

@@ -32,7 +32,7 @@ import type { Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
-import { decayCounters } from "./num";
+import { decayCounters, bumpCounter } from "./num";
 import { reachableFrom } from "./overworld";
 import { useCampJobSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp } from "./leveling";
@@ -358,7 +358,7 @@ export function commitOverworldCost(run: RunState, id: string, cost: OverworldCo
   if ((cost.influence ?? 0) > 0) eco.influence -= cost.influence!;
   if ((cost.rp ?? 0) > 0) run.rp -= cost.rp!;
   if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;
-  if (cost.usesPerNode !== undefined) eco.campUses[id] = campSkillUses(eco, id) + 1;
+  if (cost.usesPerNode !== undefined) bumpCounter(eco.campUses, id);
 }
 
 /**
@@ -450,8 +450,11 @@ function applyEffect(
       if (!reachable.some((n) => n.id === targetId)) {
         return { ok: false, reason: "That node isn't reachable to scout." };
       }
-      run.overworld.scouted[targetId] = scoutedTier(run.overworld, targetId) + effect.tierBump;
+      bumpCounter(run.overworld.scouted, targetId, effect.tierBump);
       return { ok: true, detail: `Scouted ${targetId} — preview raised ${effect.tierBump} tier.` };
     }
   }
+  // Guard (D61): a new OverworldEffect kind that's not handled above throws a clear
+  // error here instead of silently returning undefined (→ a confusing `.ok` crash).
+  return { ok: false, reason: `Unhandled overworld effect "${(effect as OverworldEffect).kind}".` };
 }

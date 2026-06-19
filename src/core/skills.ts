@@ -17,6 +17,7 @@ import { resolveAttack, manhattan, PASSIVE } from "./combat";
 import { applyStatus, markPrey, cleanseOne, hastened } from "./status";
 import { countOf, removeItem, type Inventory } from "./inventory";
 import { abilityScaleBonus } from "./leveling";
+import { assertNever } from "./num";
 
 /** The ordered phases of the game pipeline (D3). */
 export type Phase = "meta" | "deployment" | "battle" | "resolution";
@@ -287,9 +288,13 @@ export function isValidSkillTarget(
         target.side === caster.side &&
         manhattan(caster.pos, target.pos) <= skill.range
       );
+    case "camp":
+    case "party":
+      // Non-combat targets — never a valid single-unit target.
+      return false;
+    default:
+      return assertNever(skill.target, "isValidSkillTarget: unhandled target");
   }
-  // `camp` / `party` are non-combat targets — never a valid single-unit target.
-  return false;
 }
 
 /** What a {@link BattleEffect} handler resolves against — a caster/target pair + the bus & roster. */

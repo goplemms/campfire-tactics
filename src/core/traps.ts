@@ -16,6 +16,7 @@ import type { Inventory } from "./inventory";
 import { addItem } from "./inventory";
 import type { Rng } from "./rng";
 import { chebyshev } from "./iso";
+import { clamp01 } from "./num";
 import { unitSkills } from "./jobs";
 import { EntityRegistry, isConcealedTrap, type ConcealedTrap } from "./entities";
 
@@ -46,7 +47,7 @@ export function spotChance(awareness: number, concealment: number, distance: num
     SPOT.perAwareness * awareness -
     SPOT.perConcealment * concealment -
     SPOT.perDistance * distance;
-  return Math.max(0, Math.min(1, p));
+  return clamp01(p);
 }
 
 /** The concealed traps still hidden (unrevealed, unsprung) on the field. */

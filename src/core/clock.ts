@@ -14,7 +14,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit, Side } from "./units";
+import { isActive, activeUnits, type Unit, type Side } from "./units";
 import type { EventBus } from "./events";
 import { hasStatus, statusAmount, SLOWED, HASTENED } from "./status";
 import { decayCounters } from "./num";
@@ -100,9 +100,7 @@ export interface ScheduledEffect {
  * **losing a unit to capture lowers the seed**, handing the enemy earlier turns.
  */
 export function sideSeed(units: readonly Unit[], side: Side): number {
-  return units
-    .filter((u) => u.alive && !u.captured && u.side === side)
-    .reduce((sum, u) => sum + u.speed, 0);
+  return activeUnits(units, side).reduce((sum, u) => sum + u.speed, 0);
 }
 
 /** The CT clock over a fixed set of units. */
@@ -214,7 +212,7 @@ export class CTClock {
    * Returns `null` if no living unit can ever act.
    */
   advanceToNextActor(): Unit | null {
-    const canAct = (u: Unit) => u.alive && !u.captured;
+    const canAct = isActive;
     if (!this.units.some(canAct)) return null;
     let guard = 0;
     const GUARD_MAX = 1_000_000;

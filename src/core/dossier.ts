@@ -21,6 +21,7 @@ import { getJob } from "./jobs";
 import { fatigueTier, type FatigueTier } from "./fatigue";
 import { moraleTier, type MoraleTier } from "./camp";
 import { computeUpkeep } from "./upkeep";
+import { DYING_COUNTER, isDying } from "./mortality";
 import { countOf, getMaterial, slotsUsed } from "./inventory";
 import { LEVELING } from "./leveling";
 
@@ -97,7 +98,7 @@ export interface DossierProjection {
 
 /** Classify a unit's standout danger (worst-first). See {@link Jeopardy}. */
 export function jeopardyOf(u: Unit): Jeopardy {
-  if ((u.counters?.dyingNights ?? 0) > 0) return "dying";
+  if (isDying(u)) return "dying";
   if (u.captured) return "captured";
   if (!u.alive) return "down";
   if (u.maxHp > 0 && u.hp / u.maxHp <= CRITICAL_HP_FRACTION) return "critical";
@@ -106,7 +107,7 @@ export function jeopardyOf(u: Unit): Jeopardy {
 
 function memberRow(u: Unit): MemberRow {
   const job = getJob(primaryJobOf(u));
-  const dying = u.counters?.dyingNights ?? 0;
+  const dying = u.counters?.[DYING_COUNTER] ?? 0;
   return {
     unit: u,
     name: u.name,

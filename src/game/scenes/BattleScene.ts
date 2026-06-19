@@ -22,13 +22,11 @@ import {
   onSkillCooldown,
   DEFEND,
   isValidSkillTarget,
-  makeTrap,
   canSee,
   chebyshev,
   // M5b/D11 — deployment: the shared stealth-alert model
-  removeItem,
   countOf,
-  slotsUsed,
+  campReadoutLine,
   safeDepth,
   freeCaptive,
   captureUnit,
@@ -38,14 +36,11 @@ import {
   // M5 — camp / morale
   moraleTier,
   moraleModifiers,
-  // D32/D53 — the survivalist levels from laying traps (its signature deploy action)
-  grantAbilityUseXp,
   // M6 — the run loop
   currentEncounter,
   isAuthoredEncounter,
   encounterOutcome,
   jobLevelOf,
-  computeUpkeep,
   // M10 — theft (D30) + mid-combat bribe → recruitment (D33)
   thiefSteal,
   recoverStolen,
@@ -62,7 +57,10 @@ import {
   revealTrapsNear,
   disarmTrap,
   canDisarm,
+  playerTrapSkill,
+  placePlayerTrap,
   type ConcealedTrap,
+  type PlaceTrapEffect,
   bribeEnemy,
   bribeCost,
   bribeChance,
@@ -79,7 +77,6 @@ import {
   type Unit,
   type Side,
   type SkillDef,
-  type StatusInstance,
   type TheftAttempt,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
@@ -151,10 +148,11 @@ export class BattleScene extends Phaser.Scene {
   private deployActor: Unit | null = null;
   private deployAlert: DeployAlert = createAlert();
   private deployRng!: Rng;
-  private placedTraps: { pos: GridCoord; damage: number; marker: Phaser.GameObjects.Text; sprung: boolean }[] = [];
-  private trapDamage = 12;
-  /** The debuff the party's snare inflicts on a spring (Immobilize) — enables Deadeye. */
-  private trapStatus?: StatusInstance;
+  /** The party's Set Trap spec (damage + snare status), resolved at deploy; undefined = no trapper. */
+  private trapEffect?: PlaceTrapEffect;
+  /** Board markers for the player's own placed traps, keyed by the registered entity id. */
+  private playerTrapMarkers = new Map<string, Phaser.GameObjects.Text>();
+  private trapSeq = 0;
   // D12 — concealed enemy traps: a seeded spot-roll stream + per-trap board markers.
   private spotRng!: Rng;
   private trapMarkers = new Map<string, Phaser.GameObjects.Text>();
@@ -274,7 +272,8 @@ export class BattleScene extends Phaser.Scene {
     this.waitingFor = null;
     this.armedSkill = null;
     this.deployActor = null;
-    this.placedTraps = [];
+    this.playerTrapMarkers.clear();
+    this.trapSeq = 0;
     this.pendingHerb = null;
     this.objectiveText.setText("");
     this.rebuildBoard();
@@ -319,13 +318,10 @@ export class BattleScene extends Phaser.Scene {
     this.deployRng = streamFor(this.run.seed, "deploy");
     this.spotRng = streamFor(this.run.seed, "trap-spot");
     this.trapMarkers.clear();
-    const trapSkill = this.run.party
-      .flatMap((u) => unitSkills(u, "deployment"))
-      .find((s) => s.effect.kind === "placeTrap");
-    if (trapSkill && trapSkill.effect.kind === "placeTrap") {
-      this.trapDamage = trapSkill.effect.damage;
-      this.trapStatus = trapSkill.effect.status; // a snare's Immobilize → sets up Deadeye
-    }
+    this.playerTrapMarkers.clear();
+    this.trapSeq = 0;
+    // The party's Set Trap spec (damage + snare status) — resolved once in core (D11).
+    this.trapEffect = playerTrapSkill(this.run.party);
     this.selectDeployActor(this.battle.units.find((u) => u.side === "player") ?? null);
     this.setPrimary("Start Battle");
   }
@@ -514,25 +510,21 @@ export class BattleScene extends Phaser.Scene {
 
   private placeTrap(): void {
     const actor = this.deployActor;
-    if (!actor || actor.captured || this.busy) return;
-    if (countOf(this.run.inventory, "trap-kit") <= 0) {
-      this.setHint("No trap kits carried — load some in camp first.");
+    if (!actor || actor.captured || this.busy || !this.trapEffect) return;
+    // The rules (kit cost, tile clear, entity registration, use-XP) live in core
+    // (placePlayerTrap); the scene keeps only the board marker, keyed by entity id.
+    const id = `ptrap-${this.trapSeq++}`;
+    const res = placePlayerTrap(this.run.inventory, this.battle.entities, actor, actor.pos, this.trapEffect, id);
+    if (!res.ok) {
+      this.setHint(res.reason ?? "Can't place a trap here.");
       return;
     }
-    const tile = actor.pos;
-    if (this.placedTraps.some((t) => t.pos.col === tile.col && t.pos.row === tile.row)) {
-      this.setHint("There's already a trap here — move first.");
-      return;
-    }
-    removeItem(this.run.inventory, "trap-kit", 1);
-    const { x, y } = this.tileToWorld(tile);
+    const { x, y } = this.tileToWorld(actor.pos);
     const marker = this.add.text(x, y - this.view.halfH(), ICON.trapMine.glyph, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
     this.boardObjects.push(marker);
-    this.placedTraps.push({ pos: { ...tile }, damage: this.trapDamage, marker, sprung: false });
-    // The signature deploy action levels its owner now (D32/D53).
-    const levels = grantAbilityUseXp(actor);
+    this.playerTrapMarkers.set(id, marker);
     this.refreshCampText();
-    this.setHint(levels > 0
+    this.setHint((res.levels ?? 0) > 0
       ? `Trap placed — ${actor.name} reached L${actor.level}! Range back or Start Battle.`
       : "Trap placed. A deep one is noisy — range back or Start Battle.");
     // A trap laid past the safe zone is a noisy action too, so it rolls a spot.
@@ -564,15 +556,13 @@ export class BattleScene extends Phaser.Scene {
     this.safeZoneGfx?.clear();
     this.highlightTile(null);
 
-    this.placedTraps.forEach((t, i) => this.battle.entities.register(makeTrap(`trap-${i}`, t.pos, "player", t.damage, { status: this.trapStatus })));
-    this.battle.bus.on("unitEnterTile", ({ unit, tile }) => {
-      if (unit.side !== "enemy") return;
-      const t = this.placedTraps.find((t) => !t.sprung && t.pos.col === tile.col && t.pos.row === tile.row);
-      if (t) {
-        t.sprung = true;
-        t.marker.setText(ICON.trapSprung.glyph).setColor(INK.disabled);
-        this.tweens.add({ targets: t.marker, scale: 1.8, duration: 140, yoyo: true });
-      }
+    // Player traps were registered as entities at placement; the entity announces
+    // its own spring (the trapSprung bus event), so the scene just animates the marker.
+    this.battle.bus.on("trapSprung", ({ id }) => {
+      const m = this.playerTrapMarkers.get(id);
+      if (!m) return;
+      m.setText(ICON.trapSprung.glyph).setColor(INK.disabled);
+      this.tweens.add({ targets: m, scale: 1.8, duration: 140, yoyo: true });
     });
     // Floating combat text + impact scaling ride the rules' damage/heal bus, so
     // they cover every source (attacks, traps, charged skills) — parity with the demo.
@@ -1571,12 +1561,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private refreshCampText(): void {
-    const tier = moraleTier(this.run.camp.morale);
-    const up = computeUpkeep(this.run.party).total;
-    this.campText.setText(
-      `Night ${this.run.night + 1}  ·  Purse ${this.run.camp.gold}g  ·  Morale ${tier} (${this.run.camp.morale})  ·  ` +
-        `Storage ${slotsUsed(this.run.inventory)}/${this.run.inventory.storageCap}  ·  Kits ${countOf(this.run.inventory, "trap-kit")}  ·  RP ${this.run.rp}  ·  Upkeep ${up}g/night`,
-    );
+    // Format owned by core (campReadoutLine) — the battle HUD adds only the Night prefix.
+    this.campText.setText(campReadoutLine(this.run, { night: this.run.night + 1 }));
   }
 
   private refreshIntelText(): void {

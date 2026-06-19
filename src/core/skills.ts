@@ -17,6 +17,7 @@ import { resolveAttack, manhattan, PASSIVE } from "./combat";
 import { applyStatus, markPrey, cleanseOne, hastened } from "./status";
 import { countOf, removeItem, type Inventory } from "./inventory";
 import { abilityScaleBonus } from "./leveling";
+import { assertNever } from "./num";
 
 /** The ordered phases of the game pipeline (D3). */
 export type Phase = "meta" | "deployment" | "battle" | "resolution";
@@ -119,19 +120,36 @@ export interface PlaceTrapEffect {
   status?: StatusInstance;
 }
 
-/** The declarative effect a skill applies when it resolves. */
-export type SkillEffect =
+/**
+ * **Battle-phase** effects resolved **unit-vs-unit** by {@link resolveSkill} via the
+ * {@link BATTLE_EFFECT_HANDLERS} registry. Adding a kind here forces a new registry
+ * entry at compile time (the mapped-type exhaustiveness).
+ */
+export type BattleEffect =
   | DamageEffect
   | HealEffect
   | StatusEffect
   | ChannelEffect
   | TriageHealEffect
-  | CleanseEffect
-  | ForcedMoveEffect
-  | CleaveEffect
-  | MedHealEffect
-  | MoraleEffect
-  | PlaceTrapEffect;
+  | CleanseEffect;
+/**
+ * Battle effects that need more than a unit pair — the **grid/roster** (forced-move,
+ * cleave) or the **shared stash** (med-heal). Resolved by dedicated {@link
+ * "./turn".Battle} methods (`resolveShove`/`cleave`/`useHeal`), never by `resolveSkill`.
+ */
+export type FieldEffect = ForcedMoveEffect | CleaveEffect | MedHealEffect;
+/** **Meta/camp** effects resolved by {@link "./camp".applyCampSkill}. */
+export type CampEffect = MoraleEffect;
+/** **Deployment** effects realized when the field is built (the trap layer). */
+export type DeploymentEffect = PlaceTrapEffect;
+
+/**
+ * The declarative effect a skill applies when it resolves — **partitioned by the
+ * interpreter that owns it** ({@link BattleEffect} / {@link FieldEffect} /
+ * {@link CampEffect} / {@link DeploymentEffect}), so where a kind resolves is part
+ * of the type, not a comment.
+ */
+export type SkillEffect = BattleEffect | FieldEffect | CampEffect | DeploymentEffect;
 
 /**
  * Optional ability cost beyond the Act (D37). The combat economy is **time**:
@@ -270,14 +288,81 @@ export function isValidSkillTarget(
         target.side === caster.side &&
         manhattan(caster.pos, target.pos) <= skill.range
       );
+    case "camp":
+    case "party":
+      // Non-combat targets — never a valid single-unit target.
+      return false;
+    default:
+      return assertNever(skill.target, "isValidSkillTarget: unhandled target");
   }
-  // `camp` / `party` are non-combat targets — never a valid single-unit target.
-  return false;
+}
+
+/** What a {@link BattleEffect} handler resolves against — a caster/target pair + the bus & roster. */
+interface BattleEffectCtx {
+  caster: Unit;
+  target: Unit;
+  bus?: EventBus;
+  units?: readonly Unit[];
 }
 
 /**
- * Apply a skill's effect to a target. Emits the relevant bus events (damage /
- * heal) so listeners and the render layer react. Returns what happened.
+ * The **battle-effect registry** (the D3/D4 "effects are data, one interpreter"
+ * ethos made structural): a handler per {@link BattleEffect} kind. The mapped type
+ * `{ [K in BattleEffect["kind"]]: ... }` is **exhaustive at compile time** — every
+ * kind must appear, and adding a kind to {@link BattleEffect} fails the build here
+ * until its handler is written. Each handler is keyed to its own effect variant via
+ * `Extract`, so `effect` is fully typed inside. Replaces the former throwing switch.
+ */
+const BATTLE_EFFECT_HANDLERS: {
+  [K in BattleEffect["kind"]]: (effect: Extract<BattleEffect, { kind: K }>, ctx: BattleEffectCtx) => SkillOutcome;
+} = {
+  damage: (effect, { caster, target, bus, units }) => {
+    const damage = resolveAttack(
+      caster,
+      target,
+      bus,
+      caster.attack + effect.bonusAttack + abilityScaleBonus(caster),
+      units,
+    );
+    const out: SkillOutcome = { damage };
+    if (effect.onHit && target.alive) {
+      applyStatus(target, { ...effect.onHit });
+      out.status = effect.onHit.id;
+    }
+    return out;
+  },
+  heal: (effect, { caster, target, bus }) =>
+    applyHeal(caster, target, effect.amount + abilityScaleBonus(caster), bus),
+  "triage-heal": (effect, { caster, target, bus }) => {
+    // Triage (D40): heal more the more wounded the target is. Without the
+    // passive it's a plain heal of `amount`. Scales with job level (D39).
+    const triage = caster.passives[PASSIVE.triage] ?? 0;
+    const missing = target.maxHp - target.hp;
+    const amount = effect.amount + abilityScaleBonus(caster) + Math.floor(triage * missing);
+    return applyHeal(caster, target, amount, bus);
+  },
+  status: (effect, { target }) => {
+    applyStatus(target, { ...effect.status });
+    return { status: effect.status.id };
+  },
+  channel: (_effect, { caster, target }) => {
+    // Maintained-stance channel: lock the mark onto the chosen prey (D37).
+    markPrey(caster, target.id);
+    return { status: "marked" };
+  },
+  cleanse: (_effect, { target }) => {
+    const removed = cleanseOne(target);
+    return { cleansed: removed?.id };
+  },
+};
+
+/**
+ * Apply a skill's effect to a target. Dispatches the effect through the
+ * {@link BATTLE_EFFECT_HANDLERS} registry, emitting the relevant bus events
+ * (damage / heal) so listeners and the render layer react. Returns what happened.
+ * A non-battle effect (a {@link FieldEffect}/{@link CampEffect}/{@link
+ * DeploymentEffect} routed here by mistake) throws — it resolves in its own phase
+ * (see {@link "./turn".Battle} / {@link "./camp".applyCampSkill} / the trap layer).
  */
 export function resolveSkill(
   skill: SkillDef,
@@ -287,48 +372,11 @@ export function resolveSkill(
   units?: readonly Unit[],
 ): SkillOutcome {
   const effect = skill.effect;
-  switch (effect.kind) {
-    case "damage": {
-      const damage = resolveAttack(
-        caster,
-        target,
-        bus,
-        caster.attack + effect.bonusAttack + abilityScaleBonus(caster),
-        units,
-      );
-      const out: SkillOutcome = { damage };
-      if (effect.onHit && target.alive) {
-        applyStatus(target, { ...effect.onHit });
-        out.status = effect.onHit.id;
-      }
-      return out;
-    }
-    case "heal": {
-      return applyHeal(caster, target, effect.amount + abilityScaleBonus(caster), bus);
-    }
-    case "triage-heal": {
-      // Triage (D40): heal more the more wounded the target is. Without the
-      // passive it's a plain heal of `amount`. Scales with job level (D39).
-      const triage = caster.passives[PASSIVE.triage] ?? 0;
-      const missing = target.maxHp - target.hp;
-      const amount = effect.amount + abilityScaleBonus(caster) + Math.floor(triage * missing);
-      return applyHeal(caster, target, amount, bus);
-    }
-    case "status": {
-      applyStatus(target, { ...effect.status });
-      return { status: effect.status.id };
-    }
-    case "channel": {
-      // Maintained-stance channel: lock the mark onto the chosen prey (D37).
-      markPrey(caster, target.id);
-      return { status: "marked" };
-    }
-    case "cleanse": {
-      const removed = cleanseOne(target);
-      return { cleansed: removed?.id };
-    }
+  const handler = (
+    BATTLE_EFFECT_HANDLERS as Partial<Record<SkillEffect["kind"], (e: SkillEffect, ctx: BattleEffectCtx) => SkillOutcome>>
+  )[effect.kind];
+  if (!handler) {
+    throw new Error(`resolveSkill: "${effect.kind}" is not a Battle-phase effect`);
   }
-  // Non-combat effects (economy/morale/placeTrap) resolve in their own phase
-  // (see camp.ts / makeTrap), not against a single unit.
-  throw new Error(`resolveSkill: "${effect.kind}" is not a Battle-phase effect`);
+  return handler(effect, { caster, target, bus, units });
 }

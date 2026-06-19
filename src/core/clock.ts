@@ -14,9 +14,10 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit, Side } from "./units";
+import { isActive, activeUnits, type Unit, type Side } from "./units";
 import type { EventBus } from "./events";
 import { hasStatus, statusAmount, SLOWED, HASTENED } from "./status";
+import { decayCounters } from "./num";
 
 /**
  * A unit's **effective** CT-gain speed this tick (D41): base Speed, plus
@@ -37,11 +38,7 @@ export function effectiveSpeed(unit: Unit): number {
  * "~200 CT" cooldown re-arms in roughly two of the unit's turns.
  */
 export function tickSkillCooldowns(unit: Unit, amount: number): void {
-  for (const id of Object.keys(unit.cooldowns)) {
-    const left = unit.cooldowns[id] - amount;
-    if (left <= 0) delete unit.cooldowns[id];
-    else unit.cooldowns[id] = left;
-  }
+  decayCounters(unit.cooldowns, amount);
 }
 
 /** True if `skillId` is still cooling down on `unit` (D37). */
@@ -103,9 +100,7 @@ export interface ScheduledEffect {
  * **losing a unit to capture lowers the seed**, handing the enemy earlier turns.
  */
 export function sideSeed(units: readonly Unit[], side: Side): number {
-  return units
-    .filter((u) => u.alive && !u.captured && u.side === side)
-    .reduce((sum, u) => sum + u.speed, 0);
+  return activeUnits(units, side).reduce((sum, u) => sum + u.speed, 0);
 }
 
 /** The CT clock over a fixed set of units. */
@@ -217,7 +212,7 @@ export class CTClock {
    * Returns `null` if no living unit can ever act.
    */
   advanceToNextActor(): Unit | null {
-    const canAct = (u: Unit) => u.alive && !u.captured;
+    const canAct = isActive;
     if (!this.units.some(canAct)) return null;
     let guard = 0;
     const GUARD_MAX = 1_000_000;

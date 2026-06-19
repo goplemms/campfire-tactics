@@ -11,7 +11,7 @@ reshape a run:
 
 - **Chef** — raises party morale and provides between-battle healing.
 - **Survivalist** — sets traps on the map *before* an encounter begins.
-- **Merchant** — increases storage size and generates gold.
+- **Merchant** — finds a market anywhere and trades goods for gold.
 
 Each job deliberately acts in a *different* part of the game, which drives the
 architecture below.
@@ -40,7 +40,7 @@ Because the non-combat jobs act in different places, the game is modeled as
 ordered phases, and jobs/skills are **data** that hook into a phase:
 
 ```
-Meta (camp / party / economy)   →  Chef buffs, Merchant gold & storage
+Meta (camp / party / economy)   →  Chef buffs, Merchant markets & trade
   → Deployment (pre-battle setup) →  Survivalist places traps
     → Battle (the iso grid)       →  combat jobs & skills
       → Resolution (rewards, loss) →  feeds back into Meta

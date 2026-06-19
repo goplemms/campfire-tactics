@@ -130,6 +130,7 @@ export function makeTrap(
       // A snare trap also debuffs (Immobilize) — which is what enables the Hunter's
       // Deadeye on the now-afflicted prey (the trapper↔Hunter synergy).
       if (opts.status) applyStatus(unit, { ...opts.status });
+      bus.emit("trapSprung", { id: trap.id, tile: trap.pos, unit });
     },
   };
   return trap;
@@ -185,6 +186,7 @@ export function makeConcealedTrap(
       if (trap.sprung || unit.side === owner) return;
       trap.sprung = true;
       applyDamage(unit, damage, bus);
+      bus.emit("trapSprung", { id: trap.id, tile: trap.pos, unit });
     },
   };
   return trap;

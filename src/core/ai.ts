@@ -17,8 +17,8 @@
  * the same planner can fast-forward either side headlessly.
  */
 
-import type { Unit, Side } from "./units";
-import { tileKey, type GridCoord } from "./iso";
+import { activeUnits, isActive, opposite, type Unit, type Side } from "./units";
+import { tileKey, orthoNeighbors, type GridCoord } from "./iso";
 import type { SkillDef } from "./skills";
 import { TileGrid } from "./grid";
 import { findPath } from "./pathfinding";
@@ -122,15 +122,8 @@ export interface Reach {
 function ringTilesAgainst(unit: Unit, units: readonly Unit[]): Set<string> {
   const ring = new Set<string>();
   for (const u of units) {
-    if (!u.alive || u.captured || u.side === unit.side || !u.passives[PASSIVE.tarpit]) continue;
-    for (const nb of [
-      { col: u.pos.col + 1, row: u.pos.row },
-      { col: u.pos.col - 1, row: u.pos.row },
-      { col: u.pos.col, row: u.pos.row + 1 },
-      { col: u.pos.col, row: u.pos.row - 1 },
-    ]) {
-      ring.add(tileKey(nb));
-    }
+    if (!isActive(u) || u.side === unit.side || !u.passives[PASSIVE.tarpit]) continue;
+    for (const nb of orthoNeighbors(u.pos)) ring.add(tileKey(nb));
   }
   return ring;
 }
@@ -204,7 +197,7 @@ function priority(foe: Unit): number {
 function isolationPenalty(unit: Unit, from: GridCoord, units: readonly Unit[]): number {
   const saved = unit.pos;
   unit.pos = from;
-  const foesAdjacent = adjacentBodies(unit, units, unit.side === "player" ? "enemy" : "player");
+  const foesAdjacent = adjacentBodies(unit, units, opposite(unit.side));
   const alliesAdjacent = adjacentBodies(unit, units, unit.side);
   unit.pos = saved;
   return alliesAdjacent === 0 ? AI.isolationPenalty * foesAdjacent : 0;
@@ -233,7 +226,7 @@ export function planEnemyTurn(
   opts: AIOptions = {},
 ): AIPlan {
   const side = unit.side;
-  const foes = units.filter((u) => u.alive && !u.captured && u.side !== side);
+  const foes = activeUnits(units, opposite(side));
   const stay: AIPlan = { unit, path: [], destination: unit.pos, target: null };
   if (foes.length === 0) return stay;
 
@@ -373,7 +366,7 @@ export function forecastEnemyAction(unit: Unit, units: readonly Unit[], grid: Ti
  * by the render's threat-range overlay.
  */
 export function threatenedTiles(units: readonly Unit[], grid: TileGrid, victimSide: Side): GridCoord[] {
-  const enemies = units.filter((u) => u.alive && !u.captured && u.side !== victimSide);
+  const enemies = activeUnits(units, opposite(victimSide));
   const seen = new Set<string>();
   const out: GridCoord[] = [];
   for (const e of enemies) {

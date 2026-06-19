@@ -15,6 +15,11 @@ import type { EventBus } from "./events";
 /** Which side a unit fights for. */
 export type Side = "player" | "enemy";
 
+/** The opposing side — the single home for the `=== "player" ? "enemy" : "player"` idiom. */
+export function opposite(side: Side): Side {
+  return side === "player" ? "enemy" : "player";
+}
+
 /** Per-job progression (D39): a job level + XP toward the next, per unit. */
 export interface JobLevel {
   level: number;
@@ -236,6 +241,30 @@ export function createUnit(spec: UnitSpec): Unit {
     cooldowns: {},
     passives: {},
   };
+}
+
+/**
+ * True if a unit is **active** (D7): alive and not captured. A captured unit is
+ * still "alive" but bound — it doesn't take turns, isn't an active threat, and
+ * doesn't hold a side in the battle. The single predicate behind body-counting,
+ * the initiative seed, threat ranges, the win check, and the AI's foe lists.
+ */
+export function isActive(unit: Pick<Unit, "alive" | "captured">): boolean {
+  return unit.alive && !unit.captured;
+}
+
+/**
+ * The {@link isActive} units, optionally narrowed to one `side` — the single
+ * filter the body-count / win-check / AI-foe-list call sites share, replacing the
+ * inlined `u.alive && !u.captured && u.side === …` predicate.
+ */
+export function activeUnits(units: readonly Unit[], side?: Side): Unit[] {
+  return units.filter((u) => isActive(u) && (side === undefined || u.side === side));
+}
+
+/** True if `side` has any {@link isActive} unit — the win-check primitive. */
+export function hasActive(units: readonly Unit[], side: Side): boolean {
+  return units.some((u) => isActive(u) && u.side === side);
 }
 
 /**

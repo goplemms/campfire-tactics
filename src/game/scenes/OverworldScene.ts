@@ -7,9 +7,8 @@ type TentTab = "party" | "stores" | "ledger" | "map";
 import {
   RunLoop,
   previewNode,
-  slotsUsed,
   countOf,
-  moraleTier,
+  campReadoutLine,
   // M8 — the overworld action economy (D35)
   getAbility,
   cooldownRemaining,
@@ -1412,16 +1411,11 @@ export class OverworldScene extends Phaser.Scene {
   // --- UI helpers ------------------------------------------------------------
 
   private refreshCampText(): void {
-    const tier = moraleTier(this.run.camp.morale);
     // The always-on line is the four decision-relevant groups only (D58): Purse,
     // Morale, Storage/Kits, RP/Upkeep. The Banker's purse-state + Influence moved
-    // into the camp's Advanced panel / ledger, where they're actionable.
-    const upkeep = computeUpkeep(this.run.party).total;
-    this.campText.setText(
-      `Purse ${this.run.camp.gold}g  ·  Morale ${tier} (${this.run.camp.morale})  ·  ` +
-        `Storage ${slotsUsed(this.run.inventory)}/${this.run.inventory.storageCap} (Kits ${countOf(this.run.inventory, "trap-kit")})  ·  ` +
-        `RP ${this.run.rp}  ·  Upkeep ${upkeep}g/night`,
-    );
+    // into the camp's Advanced panel / ledger, where they're actionable. The format
+    // is owned by core (campReadoutLine) so the battle + overworld HUDs can't drift.
+    this.campText.setText(campReadoutLine(this.run));
   }
 
   private setHint(text: string): void {

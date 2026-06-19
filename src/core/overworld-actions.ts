@@ -32,6 +32,7 @@ import type { Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
+import { decayCounters, bumpCounter } from "./num";
 import { reachableFrom } from "./overworld";
 import { useCampJobSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp } from "./leveling";
@@ -251,11 +252,7 @@ export function scoutedTier(eco: OverworldEconomy, nodeId: string): number {
  * {@link "./run".breakCamp}, so both combat and rest nodes tick the spine.
  */
 export function tickCooldowns(eco: OverworldEconomy): void {
-  for (const id of Object.keys(eco.cooldowns)) {
-    const next = eco.cooldowns[id] - 1;
-    if (next <= 0) delete eco.cooldowns[id];
-    else eco.cooldowns[id] = next;
-  }
+  decayCounters(eco.cooldowns, 1);
   // Per-node allowance resets at the node boundary (D35) — a new camp, fresh uses.
   eco.campUses = {};
 }
@@ -275,14 +272,23 @@ export function accruePurseInterest(eco: OverworldEconomy, camp: Camp): number {
 
 // --- The resolver -----------------------------------------------------------
 
-/** The outcome of attempting an overworld action — applied, or why refused. */
-export interface ActionResult {
-  /** True if the effect fired (cooldown armed, costs spent). */
+/**
+ * The base shape **every** camp / overworld / economy action returns (D61): it
+ * either `applied` (with an optional `detail` summary) or was refused (with a
+ * `reason`). The single canonical result type the action surfaces share — the
+ * economy verbs' `VerbResult` ({@link "./economy-actions"}) is an alias of this.
+ */
+export interface ActionOutcome {
+  /** True if the action took effect (costs spent, pacing armed). */
   applied: boolean;
   /** When refused: a human-readable reason for the render. */
   reason?: string;
   /** When applied: a short summary of what happened. */
   detail?: string;
+}
+
+/** An overworld-action outcome — the shared base plus the spend readouts. */
+export interface ActionResult extends ActionOutcome {
   /** Fatigue actually spent on the acting unit (base + any over-extension surcharge). */
   fatigueSpent?: number;
   /** Gold spent, if the ability was priced. */
@@ -361,7 +367,7 @@ export function commitOverworldCost(run: RunState, id: string, cost: OverworldCo
   if ((cost.influence ?? 0) > 0) eco.influence -= cost.influence!;
   if ((cost.rp ?? 0) > 0) run.rp -= cost.rp!;
   if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;
-  if (cost.usesPerNode !== undefined) eco.campUses[id] = campSkillUses(eco, id) + 1;
+  if (cost.usesPerNode !== undefined) bumpCounter(eco.campUses, id);
 }
 
 /**
@@ -453,8 +459,11 @@ function applyEffect(
       if (!reachable.some((n) => n.id === targetId)) {
         return { ok: false, reason: "That node isn't reachable to scout." };
       }
-      run.overworld.scouted[targetId] = scoutedTier(run.overworld, targetId) + effect.tierBump;
+      bumpCounter(run.overworld.scouted, targetId, effect.tierBump);
       return { ok: true, detail: `Scouted ${targetId} — preview raised ${effect.tierBump} tier.` };
     }
   }
+  // Guard (D61): a new OverworldEffect kind that's not handled above throws a clear
+  // error here instead of silently returning undefined (→ a confusing `.ok` crash).
+  return { ok: false, reason: `Unhandled overworld effect "${(effect as OverworldEffect).kind}".` };
 }

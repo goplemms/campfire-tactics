@@ -15,8 +15,11 @@ This phase is the **constraint layer**. Everything you can do in Deployment and
 Combat is gated by what you provisioned here. It is also where the non-combat jobs
 that don't act on the map do their work:
 
-- **Merchant** — buy/sell equipment, generate gold, and (crucially) **set how
-  much storage** the party has. Storage is the master cap on everything carried.
+- **Merchant** — **trade goods for gold** at a market (buy supplies in, sell
+  salvage out), and — as a Merchant in the party — **raise a node's market access**
+  so otherwise market-less stops can trade (D61). Storage, the master cap on
+  everything carried, is set by the **caravan/vessel** — *not* the Merchant (D61
+  retired the old gold-mint and storage-stat).
 - **Chef** — owns the **Food** line of [Upkeep](systems/logistics.md) (lowers the
   per-unit cost), and provides **morale** (see [morale](systems/morale.md)) via meals
   and a banked between-battle **heal/buff**. Food is paid as Upkeep gold, *not*

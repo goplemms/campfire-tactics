@@ -7,7 +7,7 @@
  * so the same address that projects to a screen point also indexes a tile.
  */
 
-import type { GridCoord } from "./iso";
+import { orthoNeighbors, type GridCoord } from "./iso";
 
 /**
  * A rectangular tile grid. Tiles are stored row-major; `blocked[row][col]` is
@@ -56,12 +56,6 @@ export class TileGrid {
    * deterministic.
    */
   walkableNeighbors(coord: GridCoord): GridCoord[] {
-    const candidates: GridCoord[] = [
-      { col: coord.col, row: coord.row - 1 }, // up
-      { col: coord.col + 1, row: coord.row }, // right
-      { col: coord.col, row: coord.row + 1 }, // down
-      { col: coord.col - 1, row: coord.row }, // left
-    ];
-    return candidates.filter((c) => this.isWalkable(c));
+    return orthoNeighbors(coord).filter((c) => this.isWalkable(c));
   }
 }

@@ -270,8 +270,9 @@ export const SCOUT_JOB: JobDef = {
   growth: { speed: 2, moveRange: 1 },
   skills: [
     {
-      // Field-craft (subsumes the Survivalist): the fast playmaker plants and disarms
-      // snares. A sprung snare Immobilizes its prey — setting up the Hunter's Deadeye.
+      // Field-craft (extends the Survivalist's, which still exists as its own job): the
+      // fast playmaker plants and disarms snares. The Scout's snare also Immobilizes its
+      // prey — a richer trap than the Survivalist's plain Set Trap — setting up Deadeye.
       id: "set-snare",
       name: "Set Snare",
       description: "Plant a snare in Deployment: 8 damage and Immobilizes the first enemy onto it (sets up Deadeye).",
@@ -373,7 +374,8 @@ export const SNARE_TRAPPER: JobDef = {
 /**
  * The **universal Defend** action (D41): every unit can brace (instant Act →
  * self-Guarded until its next turn). Re-homes the Guarded status (earned, not
- * granted) and is the Chef's field verb. Not on any job — surfaced for all.
+ * granted) — the brace any fielded unit can fall back on. Not on any job —
+ * surfaced for all.
  */
 export const DEFEND: SkillDef = {
   id: "defend",

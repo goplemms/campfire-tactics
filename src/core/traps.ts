@@ -13,11 +13,21 @@
  */
 import type { Unit } from "./units";
 import type { Inventory } from "./inventory";
-import { addItem } from "./inventory";
+import { addItem, countOf, removeItem } from "./inventory";
 import type { Rng } from "./rng";
-import { chebyshev } from "./iso";
+import { chebyshev, type GridCoord } from "./iso";
+import { clamp01 } from "./num";
 import { unitSkills } from "./jobs";
-import { EntityRegistry, isConcealedTrap, type ConcealedTrap } from "./entities";
+import { grantAbilityUseXp } from "./leveling";
+import type { PlaceTrapEffect } from "./skills";
+import {
+  EntityRegistry,
+  makeTrap,
+  isConcealedTrap,
+  isRecoverable,
+  type ConcealedTrap,
+  type RecoverableEntity,
+} from "./entities";
 
 /** Spot-roll tuning (D11 awareness). */
 export const SPOT = {
@@ -46,7 +56,7 @@ export function spotChance(awareness: number, concealment: number, distance: num
     SPOT.perAwareness * awareness -
     SPOT.perConcealment * concealment -
     SPOT.perDistance * distance;
-  return Math.max(0, Math.min(1, p));
+  return clamp01(p);
 }
 
 /** The concealed traps still hidden (unrevealed, unsprung) on the field. */
@@ -84,6 +94,78 @@ export function revealTrapsNear(
 /** True if `unit` knows traps (holds a Set Trap deployment skill) — so it can disarm one. */
 export function canDisarm(unit: Unit): boolean {
   return unitSkills(unit, "deployment").some((s) => s.effect.kind === "placeTrap");
+}
+
+// --- Player trap placement (the Survivalist's own Set Trap, Deployment) ------
+
+/**
+ * The party's **Set Trap** placement spec (D11), if any member holds the
+ * deployment skill: its `damage` and optional snare `status` (Immobilize). The
+ * single source of the player trap's tuning — the BattleScene used to read the
+ * skill effect inline and fall back to a hard-coded damage. Returns undefined when
+ * no one can lay a trap (the deploy button is gated on it).
+ */
+export function playerTrapSkill(party: readonly Unit[]): PlaceTrapEffect | undefined {
+  for (const u of party) {
+    for (const s of unitSkills(u, "deployment")) {
+      if (s.effect.kind === "placeTrap") return s.effect;
+    }
+  }
+  return undefined;
+}
+
+/** A player-placed (recoverable, non-concealed, player-owned) trap on `tile`, if any. */
+function playerTrapAt(entities: EntityRegistry, tile: GridCoord): RecoverableEntity | undefined {
+  return entities
+    .at(tile)
+    .find((e): e is RecoverableEntity => isRecoverable(e) && !isConcealedTrap(e) && e.owner === "player");
+}
+
+/**
+ * Whether the actor can lay a trap on `tile` right now (D11): a **trap kit** must be
+ * carried, and the tile must be clear of an already-placed player trap. Pure check —
+ * spends nothing; pair a pass with {@link placePlayerTrap}.
+ */
+export function canPlacePlayerTrap(inv: Inventory, entities: EntityRegistry, tile: GridCoord): { ok: boolean; reason?: string } {
+  if (countOf(inv, "trap-kit") <= 0) return { ok: false, reason: "No trap kits carried — load some in camp first." };
+  if (playerTrapAt(entities, tile)) return { ok: false, reason: "There's already a trap here — move first." };
+  return { ok: true };
+}
+
+/** What a player trap placement produced. */
+export interface PlaceTrapResult {
+  ok: boolean;
+  reason?: string;
+  /** The registered trap entity (so the render can key its marker by `trap.id`). */
+  trap?: RecoverableEntity;
+  /** Character levels the placing actor gained (the signature-action use-XP, D32/D53). */
+  levels?: number;
+}
+
+/**
+ * **Place a player trap** (D11/D13) — the pure resolver behind the Deployment Set
+ * Trap verb (previously living entirely in the BattleScene): validate the kit +
+ * tile ({@link canPlacePlayerTrap}), consume one kit, register a one-shot
+ * {@link makeTrap} entity (`id`, owner `player`, the skill's damage + snare status)
+ * on the battle's {@link EntityRegistry}, and grant the actor ability-use XP. The
+ * registered entity is the single source of truth for its sprung state (the render
+ * reacts to the `trapSprung` bus event), so no shadow model is needed.
+ */
+export function placePlayerTrap(
+  inv: Inventory,
+  entities: EntityRegistry,
+  actor: Unit,
+  tile: GridCoord,
+  effect: PlaceTrapEffect,
+  id: string,
+): PlaceTrapResult {
+  const check = canPlacePlayerTrap(inv, entities, tile);
+  if (!check.ok) return { ok: false, reason: check.reason };
+  removeItem(inv, "trap-kit", 1);
+  const trap = makeTrap(id, tile, "player", effect.damage, { status: effect.status });
+  entities.register(trap);
+  const levels = grantAbilityUseXp(actor);
+  return { ok: true, trap, levels };
 }
 
 /** The outcome of a disarm attempt. */

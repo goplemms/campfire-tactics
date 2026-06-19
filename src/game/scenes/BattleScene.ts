@@ -26,7 +26,7 @@ import {
   chebyshev,
   // M5b/D11 — deployment: the shared stealth-alert model
   countOf,
-  slotsUsed,
+  campReadoutLine,
   safeDepth,
   freeCaptive,
   captureUnit,
@@ -41,7 +41,6 @@ import {
   isAuthoredEncounter,
   encounterOutcome,
   jobLevelOf,
-  computeUpkeep,
   // M10 — theft (D30) + mid-combat bribe → recruitment (D33)
   thiefSteal,
   recoverStolen,
@@ -1562,12 +1561,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private refreshCampText(): void {
-    const tier = moraleTier(this.run.camp.morale);
-    const up = computeUpkeep(this.run.party).total;
-    this.campText.setText(
-      `Night ${this.run.night + 1}  ·  Purse ${this.run.camp.gold}g  ·  Morale ${tier} (${this.run.camp.morale})  ·  ` +
-        `Storage ${slotsUsed(this.run.inventory)}/${this.run.inventory.storageCap}  ·  Kits ${countOf(this.run.inventory, "trap-kit")}  ·  RP ${this.run.rp}  ·  Upkeep ${up}g/night`,
-    );
+    // Format owned by core (campReadoutLine) — the battle HUD adds only the Night prefix.
+    this.campText.setText(campReadoutLine(this.run, { night: this.run.night + 1 }));
   }
 
   private refreshIntelText(): void {

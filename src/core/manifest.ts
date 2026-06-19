@@ -13,6 +13,8 @@
 
 import type { RunState } from "./run";
 import { MATERIALS, countOf, slotsFor, slotsUsed, type MaterialDef } from "./inventory";
+import { moraleTier, type MoraleTier } from "./camp";
+import { computeUpkeep } from "./upkeep";
 
 /** One carried-material line: how many, how many slots, what it does. */
 export interface ManifestItem {
@@ -47,6 +49,51 @@ export interface CaravanManifest {
   /** The run purse (gold). Flow/economy detail stays in the nested ledger. */
   purse: number;
   groups: ManifestGroup[];
+}
+
+/**
+ * The always-on **HUD readout** (D58): the four decision-relevant groups — Purse,
+ * Morale, Storage/Kits, RP/Upkeep. A pure projection, so the overworld and battle
+ * HUDs read one source instead of each re-assembling (and drifting from) the line.
+ */
+export interface CampReadout {
+  purse: number;
+  moraleTier: MoraleTier;
+  morale: number;
+  storageUsed: number;
+  storageCap: number;
+  kits: number;
+  rp: number;
+  upkeep: number;
+}
+
+/** Project a run into the {@link CampReadout} HUD figures (pure). */
+export function campReadout(run: RunState): CampReadout {
+  return {
+    purse: run.camp.gold,
+    moraleTier: moraleTier(run.camp.morale),
+    morale: run.camp.morale,
+    storageUsed: slotsUsed(run.inventory),
+    storageCap: run.inventory.storageCap,
+    kits: countOf(run.inventory, "trap-kit"),
+    rp: run.rp,
+    upkeep: computeUpkeep(run.party).total,
+  };
+}
+
+/**
+ * The canonical one-line HUD string (D58) both run scenes render — the single owner
+ * of the format, replacing the two hand-built lines that had drifted (Kits in parens
+ * vs. split, Night prefix). Pass `night` to prefix `Night N · ` (the battle HUD).
+ */
+export function campReadoutLine(run: RunState, opts: { night?: number } = {}): string {
+  const r = campReadout(run);
+  const prefix = opts.night !== undefined ? `Night ${opts.night}  ·  ` : "";
+  return (
+    prefix +
+    `Purse ${r.purse}g  ·  Morale ${r.moraleTier} (${r.morale})  ·  ` +
+    `Storage ${r.storageUsed}/${r.storageCap}  ·  Kits ${r.kits}  ·  RP ${r.rp}  ·  Upkeep ${r.upkeep}g/night`
+  );
 }
 
 /** A concise player-facing effect blurb for a material (data-driven where it can be). */

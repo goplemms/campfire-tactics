@@ -321,11 +321,12 @@ export class OverworldScene extends Phaser.Scene {
     recruiter: { key: "recruiter", color: COLOR.info },
     story: { key: "story", color: COLOR.captive },
     toll: { key: "toll", color: COLOR.gold },
+    patron: { key: "patron", color: COLOR.gold },
   };
 
   /** Icon key + circle tint for an event node, keyed by which event it runs (M11). */
   private eventVisual(node: MapNode): { key: IconKey; color: number } {
-    return OverworldScene.EVENT_VISUALS[eventForNode(this.run.seed, node).kind];
+    return OverworldScene.EVENT_VISUALS[eventForNode(this.run.seed, node, influenceTier(this.run.overworld.influence)).kind];
   }
 
   /** A fogged node (D48): a dim silhouette with no contents — out of intel reach. */
@@ -971,9 +972,22 @@ export class OverworldScene extends Phaser.Scene {
       case "shop": return this.showShopScreen();
       case "recruiter": return this.showRecruiterScreen();
       case "story": return this.showStoryScreen();
+      case "patron": return this.playPatronEvent();
       case "thief":
       default: return this.playThiefEvent();
     }
+  }
+
+  // Patron's Welcome — a standing-gated boon (D62): auto-resolve the feast + report it.
+  private playPatronEvent(): void {
+    const res = this.loop.eventNode(); // auto-resolves the boon + records the night
+    this.refreshCampText();
+    const o = res.outcome;
+    const lines: string[] = [o.summary];
+    if (o.moraleDelta) lines.push(`Spirits lift (+${o.moraleDelta} morale).`);
+    if (o.materials.length) lines.push(`A parting gift: ${o.materials.join(", ")} (sell it at a market).`);
+    lines.push(`Standing now ${this.run.overworld.influence} Influence (${influenceTier(this.run.overworld.influence)}).`);
+    this.showOverlay(res.def.name, lines.join("\n"), true, 520, 220, () => this.afterNode());
   }
 
   /** Leave the event, record the node-step, and route to the Survey beat/terminal (D46). */

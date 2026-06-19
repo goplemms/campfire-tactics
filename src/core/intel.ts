@@ -25,6 +25,7 @@ import type { Rng } from "./rng";
 import { getEnemyTemplate, type EncounterType } from "./generation";
 import { getNode, type NodeKind } from "./overworld";
 import { eventForNode } from "./node-events";
+import { influenceTier } from "./economy";
 import { runEncounter, type RunState } from "./run";
 import { isAuthoredEncounter, type EncounterSource } from "./staging";
 
@@ -197,7 +198,7 @@ export function previewNode(run: RunState, nodeId: string, extraTier = 0): NodeP
   if (node.kind === "event") {
     // The banded teaser of whichever event this node runs (M11, D24) — stable for
     // a seed, since the event is a deterministic per-node pick.
-    preview.eventHint = eventForNode(run.seed, node).teaser;
+    preview.eventHint = eventForNode(run.seed, node, influenceTier(run.overworld.influence)).teaser;
     return preview;
   }
   const def = runEncounter(run, node);

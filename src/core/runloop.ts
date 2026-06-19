@@ -43,6 +43,7 @@ import {
   type CombatXpTally,
 } from "./leveling";
 import type { MapNode } from "./overworld";
+import { influenceTier } from "./economy";
 import { moraleModifiers } from "./morale";
 import { moraleTier } from "./camp";
 import { applyCampToParty } from "./camp";
@@ -365,7 +366,7 @@ export class RunLoop {
 
   /** The event the current node runs — deterministic for a seed (M11, D22). */
   eventDef(): EventDef {
-    return eventForNode(this.run.seed, currentNode(this.run));
+    return eventForNode(this.run.seed, currentNode(this.run), influenceTier(this.run.overworld.influence));
   }
 
   /**
@@ -378,7 +379,7 @@ export class RunLoop {
    */
   eventNode(): EventResolution {
     const node = currentNode(this.run);
-    const def = eventForNode(this.run.seed, node);
+    const def = eventForNode(this.run.seed, node, influenceTier(this.run.overworld.influence));
     const outcome = resolveEvent(this.run, node);
     const over = this.recordEventNight(outcome.goldDelta);
     const result: EventResolution = { def, outcome, over };

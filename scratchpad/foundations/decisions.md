@@ -1639,12 +1639,17 @@ trail of reasoning stays intact.
   `+50g` Trade/Market gold-mint** (removed the `economy` effect kind, the `MARKET` ability,
   and the Merchant's meta camp skill; Merchant is now ACCESS + SELL) and added a camp
   **"Sell Valuables"** button (the loot faucet's surface); (6) the **glossary** (Buy / Sell /
-  Valuables / Market-tier keywords; Trade retired). All green (500 tests); the production
-  bundle builds. **Caveat:** the Phaser camp UI is type-checked + builds but is **not
-  runtime-smoke-tested**. **Remaining D61 build items:** buy reads `effectiveMarketTier`
-  (+ refuse at `none`) — deferred to avoid the event-shop (`shopStock`/`merchantPrice`)
-  pricing reconciliation; **Merchant XP-on-sell** (it no longer levels from a camp skill);
-  and the **numbers/tuning pass** (sale rates, buy prices, valuables drop rates).
+  Valuables / Market-tier keywords; Trade retired). The Phaser camp UI was then
+  **runtime-smoke-tested** headlessly (`npm run shots` boots the real `OverworldScene` in
+  Chrome and fails on any page error — all camp frames captured clean).
+- **Build progress update (2026-06-19, final):** the last functional items landed too —
+  **(7) buy reads `effectiveMarketTier`** (`merchantBuy`/`merchantPrice` now price by market
+  **tier**, refuse at `none`; the camp Buy button is market-gated; the event-shop is a fixed
+  `basic` market, resolving the reconciliation) and **(8) Merchant XP-on-sell** (`merchantSell`
+  grants the brokering Merchant use-XP — replacing the retired Trade's XP, so the class still
+  grows from its signature work). All green (**502 tests**), production build + headless
+  smoke-test pass. **Only remaining D61 item: the numbers/tuning pass** (buy prices, sale
+  rates, valuables drop rates) — deliberately left for a balance/playtest sweep.
 - **Decision:** Converge the whole camp/overworld action surface onto **one limiter model**,
   and reframe the Merchant's economy around **access scarcity** rather than a gold faucet.
   1. **Two-axis limiter model (pacing × price).** Every camp/overworld action becomes one

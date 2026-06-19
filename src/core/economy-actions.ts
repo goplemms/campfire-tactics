@@ -28,21 +28,25 @@
 import type { RunState } from "./run";
 import type { Guild } from "./guild";
 import type { Unit } from "./units";
-import { getNode, effectiveMarketTier, type NodeKind, type MarketTier } from "./overworld";
+import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
 import { addItem, canAdd, countOf, removeItem, getMaterial, saleValueOf, type MaterialDef } from "./inventory";
 import { streamFor } from "./rng";
 import { addInfluence, spendInfluence, gainRunGold } from "./economy";
+import { grantAbilityUseXp } from "./leveling";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
 
 /** Economy-verb tuning — data, a numbers pass later (D30). */
 export const ECONOMY = {
   merchant: {
-    /** Purse price to buy one supply at a `rest`/town node (better access). */
-    townPrice: 8,
-    /** Purse price out in the wild (a `combat`/`event` node). */
-    wildPrice: 16,
+    /**
+     * Buy price (D61) to purchase one supply, by the node's **effective market
+     * tier**: a better market is cheaper access. `none` = no market (buy refused);
+     * `poor` (impromptu / Merchant-floor) is dear; a real `basic` town cheaper;
+     * `premium` cheapest. Data, a numbers pass later.
+     */
+    buyPrice: { none: 0, poor: 16, basic: 10, premium: 8 } as Record<MarketTier, number>,
     /**
      * Sell rate (D61): fraction of a material's saleValue paid per unit, by the
      * node's effective market tier. `none` = can't sell; `poor` (an impromptu /
@@ -75,31 +79,35 @@ export interface VerbResult {
   detail?: string;
 }
 
-// --- Merchant — ACCESS (purse-funded, node-tier-gated) ----------------------
+// --- Merchant — ACCESS (purse-funded, market-tier-gated) --------------------
 
-/** The Merchant's price to buy one supply at a node of the given kind (D30). */
-export function merchantPrice(nodeKind: NodeKind): number {
-  // A safe `rest` camp doubles as the "town" — better access than the wild.
-  return nodeKind === "rest" ? ECONOMY.merchant.townPrice : ECONOMY.merchant.wildPrice;
+/** The Merchant's price to buy one supply at a market of the given tier (D61). */
+export function merchantPrice(tier: MarketTier): number {
+  // A better market is cheaper access; `none` returns 0 (buy is refused upstream).
+  return ECONOMY.merchant.buyPrice[tier];
 }
 
 /** What a Merchant buy produced. */
 export interface MerchantBuyResult extends VerbResult {
   /** Purse gold spent. */
   spent?: number;
-  /** The node-tier price paid. */
+  /** The market-tier price paid. */
   price?: number;
 }
 
 /**
- * **Merchant ACCESS** (D30): spend **run-gold** (the purse, `camp.gold`) to buy one
- * of a supply into caravan **storage**, at a **node-tier price** (cheaper at a
- * `rest`/town node than in the wild). Refuses (without spending) if the purse can't
- * cover it or storage is full (the provisioning cap, D6). Never touches the
- * treasury (D34).
+ * **Merchant ACCESS** (D30/D61): spend **run-gold** (the purse, `camp.gold`) to buy
+ * one of a supply into caravan **storage**, at a **market-tier price** (`tier` is the
+ * node's {@link "./overworld".effectiveMarketTier}, so a better market — or a Merchant
+ * raising the floor — buys cheaper). Refuses (without spending) when there's **no
+ * market** (`none`), the purse can't cover it, or storage is full (the provisioning
+ * cap, D6). Never touches the treasury (D34).
  */
-export function merchantBuy(run: RunState, materialId: string, nodeKind: NodeKind): MerchantBuyResult {
-  const price = merchantPrice(nodeKind);
+export function merchantBuy(run: RunState, materialId: string, tier: MarketTier): MerchantBuyResult {
+  if (tier === "none") {
+    return { applied: false, reason: `No market here to buy ${materialId}.` };
+  }
+  const price = merchantPrice(tier);
   if (run.camp.gold < price) {
     return { applied: false, reason: `Not enough purse gold (${price}g) to buy ${materialId}.`, price };
   }
@@ -108,7 +116,7 @@ export function merchantBuy(run: RunState, materialId: string, nodeKind: NodeKin
   }
   run.camp.gold -= price;
   addItem(run.inventory, materialId);
-  return { applied: true, detail: `Bought ${materialId} for ${price}g (purse).`, spent: price, price };
+  return { applied: true, detail: `Bought ${materialId} for ${price}g (${tier} market).`, spent: price, price };
 }
 
 // --- Merchant — SELL (goods -> gold, gated by market access, D61) ------------
@@ -124,6 +132,8 @@ export interface MerchantSellResult extends VerbResult {
   earned?: number;
   /** The unit price paid at this market. */
   price?: number;
+  /** Character levels the brokering Merchant gained from the sale (D32/D53). */
+  levels?: number;
 }
 
 /**
@@ -149,7 +159,11 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
   }
   removeItem(run.inventory, materialId, 1);
   const { credited } = gainRunGold(run, price);
-  return { applied: true, earned: credited, price, detail: `Sold ${material.name} for ${price}g (${tier} market).` };
+  // The Merchant grows from its signature work (D32/D53) — replacing the use-XP the
+  // retired Trade camp skill used to grant. Only a live Merchant brokers (and levels).
+  const broker = run.party.find((u) => u.alive && !u.captured && u.jobId === "merchant");
+  const levels = broker ? grantAbilityUseXp(broker) : 0;
+  return { applied: true, earned: credited, price, levels, detail: `Sold ${material.name} for ${price}g (${tier} market).` };
 }
 
 // --- Banker — TIME-SHIFT + SECURE (purse only, never the treasury) ----------

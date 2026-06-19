@@ -120,9 +120,13 @@ Because gold must stay **scarce** or Upkeep stops biting, the economy classes ea
 
 | Class | Verb | Tier | Loop |
 |---|---|---|---|
-| **Merchant** | **access** | overworld | field markets / better prices (a value faucet) ↔ buys are a sink |
+| **Merchant** | **access + sell** | overworld | **access is scarce** — a tiered **node** property (`none < poor < basic < premium`); a Merchant *raises the floor* (impromptu market anywhere, worse rates). Gold income = favourable **sell** rates (goods → gold), **not** a money-printer (D61). Buys are the sink. |
 | **Banker** | **time-shift + secure** | **overworld / purse-scoped** | interest on the **carried purse** (flat/diminishing faucet) ↔ buy-on-debt interest + **theft protection** (sinks/insurance). Fires **only in the field**; **does not touch the treasury**. |
-| **Noble** | **influence** | overworld | political income → a separate **Influence** currency (faucet) ↔ bribes / sway-avoid / access (Influence sinks). Influence **cannot pay Upkeep**, so it can never slacken the central pressure. |
+| **Noble** | **influence** | overworld | political income → a separate **Influence** currency, accruing **passively per node-step** (D61, not a clickable verb) ↔ bribes / sway-avoid / access (Influence sinks). Influence **cannot pay Upkeep**, so it can never slacken the central pressure. |
+
+> **Faucets of different inputs (D61).** The three classes stay competitive because each
+> converts a *different* input: **goods** (Merchant sell) · **time** (Banker interest) ·
+> **reputation** (Noble influence) — not three flavours of "gives gold."
 
 **Influence** is a purpose-bound currency (= the Noble's whole economy), deliberately
 **walled off from gold** — it retires a gold faucet rather than adding one.

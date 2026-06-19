@@ -689,7 +689,10 @@ trail of reasoning stays intact.
     theft events (fits the next event-node batch, D23).
 - **Spec:** [`docs/design/systems/logistics.md`](../../docs/design/systems/logistics.md)
   (Economy), [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md).
-- **Superseded by:** —
+- **Superseded by:** **D61** (in part) — the Merchant's gold-minting `Trade`/`Market` is
+  retired (Merchant = ACCESS + **sell**, not a gold faucet; access is a scarce **node**
+  resource), and Noble political income moves from a clickable verb to **passive accrual**.
+  The one-verb-per-class principle and the active-theft sink stand.
 
 ## D31 — Support units on the battle map + the defendable supply wagon
 
@@ -858,7 +861,11 @@ trail of reasoning stays intact.
 - **Spec:** [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md)
   (hook surface), [`docs/design/systems/stats.md`](../../docs/design/systems/stats.md)
   (Fatigue).
-- **Superseded by:** —
+- **Superseded by:** **D61** (refines, not replaces) — the cooldown spine becomes the
+  **pacing** half of a two-axis (pacing × price) limiter that *all* camp/overworld actions
+  (incl. the previously-ungated job meta-skills) share, with the invariant that no action is
+  both unpaced **and** unpriced. Camp-at-every-node, the loose-fatigue guardrail, and the
+  cooldowns-over-hoardable-pools principle stand.
 
 ## D36 — Positional damage: support/pincer flanking (gap B, first half)
 
@@ -1588,4 +1595,90 @@ trail of reasoning stays intact.
   (`beginPlayerTurn`, `recomputeReach`, `turnHint`, `canMoveFurther`, `turnExhausted`,
   `endPlayerTurn`, `afterActionContinue`, `playerMoveStep`, `playerAttack`, `playerRescue`,
   `onPointerMove`, `noteAct`).
+- **Superseded by:** —
+
+## D61 — The overworld action-economy limiter model + the market-access axis (Merchant rework)
+
+- **Status:** Decided (2026-06-19) · design pass, **not yet built** beyond the interim
+  stopgap below; reworks parts of **D30** (the gold economy / Merchant role) and **D35**
+  (the overworld action-economy spine), and opens a new **map axis** on **D22**'s `MapNode`.
+  Sub-items flagged **Open**/**Deferred** inline.
+- **Context:** Playtesting flagged that **camp actions could be used an unlimited number of
+  times**. The investigation found this was not one rogue action but a **limiter patchwork**:
+  the signature job meta-skills (Chef **Cook Stew**, Merchant **Trade**) flowed through
+  `useCampJobSkill` with **no cooldown, fatigue, or cost** — the `spend: "act"` they declare
+  is a *combat-CT* limiter that is meaningless on the overworld surface — so each click minted
+  gold / morale / banked heal **and** ability-use XP without bound. Two deeper problems
+  surfaced underneath:
+  - **The Merchant's `Trade` is a money-printer** (`+50g` from nothing), which **contradicts
+    its D30 role** — *"Merchant = ACCESS, the one economy class whose verb is **not** 'gives
+    gold'."* The `+50g` Trade is an M5-era placeholder that predates the D30/D34 economy pass.
+    Worse, the **Market** overworld ability (D30 ACCESS, cooldown 3) **reuses that very same
+    minting effect**, so the costless `Trade` button silently undermined Market's cooldown —
+    two buttons, identical effect, different rules.
+  - **`Gather Influence` (Noble) is the same unlimited-faucet bug**: each click mints
+    Influence with no gate, and Influence buys bribes that turn/recruit enemies. Its sibling
+    faucet, the **Banker's interest**, *accrues passively per node-step* — revealing that
+    political income was meant to be a **passive faucet**, not a spammable button.
+- **Interim stopgap (shipped, branch `claude/unlimited-camp-actions-w1w8d3`):** a
+  per-node use cap (`SkillDef.usesPerNode`, default 1 on Cook Stew / Trade) tracked in
+  `OverworldEconomy.campUses`, reset on the node-step (`tickCooldowns`), enforced by
+  `useCampSkillAtNode`. It stops the bleed; the model below **subsumes** it.
+- **Decision:** Converge the whole camp/overworld action surface onto **one limiter model**,
+  and reframe the Merchant's economy around **access scarcity** rather than a gold faucet.
+  1. **Two-axis limiter model (pacing × price).** Every camp/overworld action becomes one
+     data shape with **two independent knobs** — the D29 limiter menu made explicit:
+     - **Pacing (axis A):** `cooldown` (node-steps, the D35 spine) **or** `usesPerNode` (a
+       per-node cap) **or** none.
+     - **Price (axis B), per cast:** `fatigue` / `gold` / Vancian `charges` / `rp` /
+       `influence` — what each individual use costs.
+     One registry, one resolver (the `takeOverworldAction` shape, extended). The **invariant
+     that kills the bug class: no action may have both empty pacing *and* empty price** —
+     "free and unlimited" becomes unrepresentable, enforced once. This natively supports
+     **multi-cast-per-node gated by resources** (e.g. a Seer casting as often as it can pay
+     charges): `pacing: none` + `price: { charges: 1 }`.
+  2. **Market access is a node axis, tiered, Merchant raises the floor.** Access itself is
+     the scarce resource — *the caravan cannot find a market at every node*. Add a
+     **`MarketTier`** (`none < poor < basic < premium`, an **ordered** band per the
+     banding convention) to `MapNode`, seeded at generation. The buy/sell resolver reads it:
+     **refused at `none`**, price/quality-scaled otherwise. A **Merchant in the party raises
+     the floor** (`none → poor` — the *impromptu market anywhere*, at worse rates — and bumps
+     quality generally), reusing the **intel-floor idiom** (`effectiveMarketTier(node, party)
+     = clampUp(node.market, merchantFloor(party))`, exactly as the Noble's Intelligence raises
+     the intel floor). **Market and terrain are orthogonal axes** (a mountain town and a
+     desert town can both be `basic`), so `MarketTier` is its **own** node field with its
+     **own** seeder — today `f(kind, seed)`, later `f(kind, terrain, seed)` with **zero
+     consumer changes**. This is the **extensibility seam** that makes *market-first* safe.
+     **Terrain/biome as a first-class node axis is Deferred** — the seam is left open.
+  3. **Merchant = ACCESS + SELL, not a gold faucet.** Retire the `+50g` `Trade`
+     money-printer. The Merchant's gold income comes from **favorable *sell* rates**
+     (goods → gold **conversion**) — honest because you cannot sell what you do not carry,
+     nor at a `none` market, so gold stays scarce and Upkeep keeps biting (D15). The Merchant's
+     **use-leveling** (D32/D53 "grows from trading") re-attaches to the access/sell verb.
+  4. **Dedup Trade/Market** into the single node-tier **access** verb (buy *and* sell),
+     priced by `effectiveMarketTier`. The duplicate effect and the D30 contradiction both
+     dissolve.
+  5. **Influence → passive per-node accrual** (**Open — final shape TBD**). Retire the
+     spammable `Gather Influence` button; political income **arrives at the node-step** like
+     Banker interest (amount possibly keyed to a Noble's presence, mirroring the passive
+     intel floor). The user wants to **re-evaluate where Influence lives altogether** before
+     committing the final form — recorded here as direction, not a closed call.
+  6. **The economy trichotomy (keeps the three classes competitive).** Each is a faucet of a
+     **different input**, so they are not three flavours of "gives gold": **Merchant** =
+     *goods → gold* (sell; needs inventory + a market), **Banker** = *time → gold* (passive
+     interest), **Noble** = *presence/rep → Influence* (passive, walled-off currency).
+     Numbers need a tuning pass to keep them balanced.
+- **Open / deferred / not built:**
+  - **Sell depends on item sale-values** — the sell faucet needs inventory items to carry a
+    gold value; confirm/extend the `Inventory`/materials model before sell is more than a stub.
+  - **Influence final shape** (item 5) — Open.
+  - **Terrain/biome node axis** (item 2) — Deferred; seam left open.
+  - **Tuning pass** across the three economy classes + market tier yields — later.
+- **Spec (to build):** `src/core/overworld.ts` (`MarketTier`, `MapNode.market`, seeding +
+  `effectiveMarketTier`/`merchantFloor`), `src/core/overworld-actions.ts` (the two-axis
+  `cost` shape + the unpaced-and-unpriced invariant; fold camp jobs + economy verbs into the
+  one resolver), `src/core/economy-actions.ts` (Merchant sell verb; Influence → passive
+  accrual at `breakCamp`), `src/core/jobs.ts` (retire the `+50g` Trade effect; re-home the
+  Merchant verb), the routing/forecast layer (surface market availability per edge). Updates
+  the `usesPerNode` interim into the general `pacing` knob.
 - **Superseded by:** —

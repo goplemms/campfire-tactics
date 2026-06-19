@@ -134,6 +134,13 @@ export const GEN = {
   /** Reward gold = base + index * perIndex, jittered. */
   baseGold: 40,
   goldPerIndex: 15,
+  /**
+   * Sellable-loot (D61): valuables dropped as the *illiquid* half of a reward
+   * (found `gold` stays the Upkeep baseline; this is the upside you Sell at a
+   * market). Count = base + floor(index * perIndex) + a small jitter.
+   */
+  baseValuables: 1,
+  valuablesPerIndex: 0.5,
   /** Chance an encounter is fortified (D12), rising slightly with index. */
   fortifiedBaseChance: 0.2,
   fortifiedPerIndex: 0.05,
@@ -220,6 +227,10 @@ function rollReward(rng: Rng, index: number): EncounterReward {
     if (existing) existing.count += 1;
     else materials.push({ id, count: 1 });
   }
+  // Sellable loot (D61) — the illiquid half, pushed last so functional drops keep
+  // storage priority. Drawn here at the tail of the roll (no earlier draw shifts).
+  const valuables = GEN.baseValuables + Math.floor(index * GEN.valuablesPerIndex) + rng.int(2);
+  if (valuables > 0) materials.push({ id: "valuables", count: valuables });
   return { gold, materials };
 }
 

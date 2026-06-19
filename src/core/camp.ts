@@ -69,24 +69,18 @@ export function moraleTier(morale: number): MoraleTier {
 
 /** What a camp skill changed, for the render layer to report. */
 export interface CampOutcome {
-  gold?: number;
-  storage?: number;
   morale?: number;
   bankedHeal?: number;
 }
 
 /**
- * Apply a Meta-phase skill's effect to the camp. Handles the Merchant's
- * `economy` effect and the Chef's `morale` effect; other effect kinds are not
- * camp effects and throw.
+ * Apply a Meta-phase skill's effect to the camp. Handles the Chef's `morale`
+ * effect; other effect kinds are not camp effects and throw. (The Merchant's old
+ * `economy` mint was retired in D61 — see {@link "./economy-actions".merchantSell}.)
  */
 export function applyCampSkill(skill: SkillDef, camp: Camp): CampOutcome {
   const effect = skill.effect;
   switch (effect.kind) {
-    case "economy":
-      camp.gold += effect.gold;
-      camp.storageCap += effect.storage;
-      return { gold: effect.gold, storage: effect.storage };
     case "morale":
       camp.morale += effect.morale;
       camp.pendingHeal += effect.partyHeal;

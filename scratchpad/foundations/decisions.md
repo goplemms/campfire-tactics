@@ -689,7 +689,10 @@ trail of reasoning stays intact.
     theft events (fits the next event-node batch, D23).
 - **Spec:** [`docs/design/systems/logistics.md`](../../docs/design/systems/logistics.md)
   (Economy), [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md).
-- **Superseded by:** —
+- **Superseded by:** **D61** (in part) — the Merchant's gold-minting `Trade`/`Market` is
+  retired (Merchant = ACCESS + **sell**, not a gold faucet; access is a scarce **node**
+  resource), and Noble political income moves from a clickable verb to **passive accrual**.
+  The one-verb-per-class principle and the active-theft sink stand.
 
 ## D31 — Support units on the battle map + the defendable supply wagon
 
@@ -858,7 +861,11 @@ trail of reasoning stays intact.
 - **Spec:** [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md)
   (hook surface), [`docs/design/systems/stats.md`](../../docs/design/systems/stats.md)
   (Fatigue).
-- **Superseded by:** —
+- **Superseded by:** **D61** (refines, not replaces) — the cooldown spine becomes the
+  **pacing** half of a two-axis (pacing × price) limiter that *all* camp/overworld actions
+  (incl. the previously-ungated job meta-skills) share, with the invariant that no action is
+  both unpaced **and** unpriced. Camp-at-every-node, the loose-fatigue guardrail, and the
+  cooldowns-over-hoardable-pools principle stand.
 
 ## D36 — Positional damage: support/pincer flanking (gap B, first half)
 
@@ -1588,4 +1595,189 @@ trail of reasoning stays intact.
   (`beginPlayerTurn`, `recomputeReach`, `turnHint`, `canMoveFurther`, `turnExhausted`,
   `endPlayerTurn`, `afterActionContinue`, `playerMoveStep`, `playerAttack`, `playerRescue`,
   `onPointerMove`, `noteAct`).
+- **Superseded by:** —
+
+## D61 — The overworld action-economy limiter model + the market-access axis (Merchant rework)
+
+- **Status:** Decided (2026-06-19) · design pass, **not yet built** beyond the interim
+  stopgap below; reworks parts of **D30** (the gold economy / Merchant role) and **D35**
+  (the overworld action-economy spine), and opens a new **map axis** on **D22**'s `MapNode`.
+  Sub-items flagged **Open**/**Deferred** inline.
+- **Context:** Playtesting flagged that **camp actions could be used an unlimited number of
+  times**. The investigation found this was not one rogue action but a **limiter patchwork**:
+  the signature job meta-skills (Chef **Cook Stew**, Merchant **Trade**) flowed through
+  `useCampJobSkill` with **no cooldown, fatigue, or cost** — the `spend: "act"` they declare
+  is a *combat-CT* limiter that is meaningless on the overworld surface — so each click minted
+  gold / morale / banked heal **and** ability-use XP without bound. Two deeper problems
+  surfaced underneath:
+  - **The Merchant's `Trade` is a money-printer** (`+50g` from nothing), which **contradicts
+    its D30 role** — *"Merchant = ACCESS, the one economy class whose verb is **not** 'gives
+    gold'."* The `+50g` Trade is an M5-era placeholder that predates the D30/D34 economy pass.
+    Worse, the **Market** overworld ability (D30 ACCESS, cooldown 3) **reuses that very same
+    minting effect**, so the costless `Trade` button silently undermined Market's cooldown —
+    two buttons, identical effect, different rules.
+  - **`Gather Influence` (Noble) is the same unlimited-faucet bug**: each click mints
+    Influence with no gate, and Influence buys bribes that turn/recruit enemies. Its sibling
+    faucet, the **Banker's interest**, *accrues passively per node-step* — revealing that
+    political income was meant to be a **passive faucet**, not a spammable button.
+- **Interim stopgap (shipped, branch `claude/unlimited-camp-actions-w1w8d3`):** a
+  per-node use cap (`SkillDef.usesPerNode`, default 1 on Cook Stew / Trade) tracked in
+  `OverworldEconomy.campUses`, reset on the node-step (`tickCooldowns`), enforced by
+  `useCampSkillAtNode`. It stops the bleed; the model below **subsumes** it.
+- **Build progress (2026-06-19, branch `claude/unlimited-camp-actions-w1w8d3`):** the
+  **additive market core is built + green** (501 tests) in four slices —
+  (1) the **market-access node axis** (`MarketTier`, `MapNode.market`, per-node-stream
+  seeding, `merchantFloor`/`effectiveMarketTier`); (2) the **valuables/loot item class** +
+  `saleValue` on functional materials; (3) the **`merchantSell`** verb + `sellPrice` rate
+  by tier; (4) **split loot** (found gold + valuables drops — sim storage-pressure rose
+  13% → 56%, the haul-vs-gear decision now live). **Phase C still to do (the breaking
+  change):** buy reads `effectiveMarketTier` (+ refuse at `none`); **retire the `+50g`
+  Trade/Market gold-mint** (wide test blast radius); the **camp UI** rework (Trade/Market
+  buttons → Buy/Sell, market readout per node — needs a runtime smoke-test); and the
+  **glossary** (promote Sell, add Valuables, retire Trade).
+- **Build progress update (2026-06-19, cont.):** Phase C landed too — (5) **retired the
+  `+50g` Trade/Market gold-mint** (removed the `economy` effect kind, the `MARKET` ability,
+  and the Merchant's meta camp skill; Merchant is now ACCESS + SELL) and added a camp
+  **"Sell Valuables"** button (the loot faucet's surface); (6) the **glossary** (Buy / Sell /
+  Valuables / Market-tier keywords; Trade retired). The Phaser camp UI was then
+  **runtime-smoke-tested** headlessly (`npm run shots` boots the real `OverworldScene` in
+  Chrome and fails on any page error — all camp frames captured clean).
+- **Build progress update (2026-06-19, final):** the last functional items landed too —
+  **(7) buy reads `effectiveMarketTier`** (`merchantBuy`/`merchantPrice` now price by market
+  **tier**, refuse at `none`; the camp Buy button is market-gated; the event-shop is a fixed
+  `basic` market, resolving the reconciliation) and **(8) Merchant XP-on-sell** (`merchantSell`
+  grants the brokering Merchant use-XP — replacing the retired Trade's XP, so the class still
+  grows from its signature work). All green (**502 tests**), production build + headless
+  smoke-test pass. **Only remaining D61 item: the numbers/tuning pass** (buy prices, sale
+  rates, valuables drop rates) — deliberately left for a balance/playtest sweep.
+- **Decision:** Converge the whole camp/overworld action surface onto **one limiter model**,
+  and reframe the Merchant's economy around **access scarcity** rather than a gold faucet.
+  1. **Two-axis limiter model (pacing × price).** Every camp/overworld action becomes one
+     data shape with **two independent knobs** — the D29 limiter menu made explicit:
+     - **Pacing (axis A):** `cooldown` (node-steps, the D35 spine) **or** `usesPerNode` (a
+       per-node cap) **or** none.
+     - **Price (axis B), per cast:** `fatigue` / `gold` / Vancian `charges` / `rp` /
+       `influence` — what each individual use costs.
+     One registry, one resolver (the `takeOverworldAction` shape, extended). The **invariant
+     that kills the bug class: no action may have both empty pacing *and* empty price** —
+     "free and unlimited" becomes unrepresentable, enforced once. This natively supports
+     **multi-cast-per-node gated by resources** (e.g. a Seer casting as often as it can pay
+     charges): `pacing: none` + `price: { charges: 1 }`.
+  2. **Market access is a node axis, tiered, Merchant raises the floor.** Access itself is
+     the scarce resource — *the caravan cannot find a market at every node*. Add a
+     **`MarketTier`** (`none < poor < basic < premium`, an **ordered** band per the
+     banding convention) to `MapNode`, seeded at generation. The buy/sell resolver reads it:
+     **refused at `none`**, price/quality-scaled otherwise. A **Merchant in the party raises
+     the floor** (`none → poor` — the *impromptu market anywhere*, at worse rates — and bumps
+     quality generally), reusing the **intel-floor idiom** (`effectiveMarketTier(node, party)
+     = clampUp(node.market, merchantFloor(party))`, exactly as the Noble's Intelligence raises
+     the intel floor). **Market and terrain are orthogonal axes** (a mountain town and a
+     desert town can both be `basic`), so `MarketTier` is its **own** node field with its
+     **own** seeder — today `f(kind, seed)`, later `f(kind, terrain, seed)` with **zero
+     consumer changes**. This is the **extensibility seam** that makes *market-first* safe.
+     **Terrain/biome as a first-class node axis is Deferred** — the seam is left open.
+  3. **Merchant = ACCESS + SELL, not a gold faucet.** Retire the `+50g` `Trade`
+     money-printer. The Merchant's gold income comes from **favorable *sell* rates**
+     (goods → gold **conversion**) — honest because you cannot sell what you do not carry,
+     nor at a `none` market, so gold stays scarce and Upkeep keeps biting (D15). The Merchant's
+     **use-leveling** (D32/D53 "grows from trading") re-attaches to the access/sell verb.
+  4. **Dedup Trade/Market** into the single node-tier **access** verb (buy *and* sell),
+     priced by `effectiveMarketTier`. The duplicate effect and the D30 contradiction both
+     dissolve.
+  5. **Influence is carved out to its own subsystem (D62).** Influence is a **walled-off
+     currency** (D34) with its own identity — patronage / reputation / politics — that *touches*
+     economic behaviour but isn't part of the gold economy, so its redesign is **not** decided
+     here. D61's only commitment: the **two-axis invariant** (item 1) bounds the spammable
+     `Gather Influence` faucet for free once economy verbs fold into the one resolver (it can no
+     longer be both unpaced and unpriced). **What Influence *is* — income source, passive vs.
+     active, the Noble's role, its sinks — is deferred to D62.** ⚠️ Note the shipped interim
+     stopgap did **not** cover Gather Influence (different code path: `nobleIncome →
+     collectPoliticalIncome`), so the faucet is **still live-exploitable** until either the
+     two-axis fold or D62 lands.
+  6. **The economy trichotomy (keeps the three classes competitive).** Each is a faucet of a
+     **different input**, so they are not three flavours of "gives gold": **Merchant** =
+     *goods → gold* (sell; needs inventory + a market), **Banker** = *time → gold* (passive
+     interest), **Noble** = *presence/rep → Influence* (passive, walled-off currency).
+     Numbers need a tuning pass to keep them balanced.
+- **Sell needs a value model — and a sellable-goods *class* (Decided this pass: BOTH).**
+  Investigation (2026-06-19) found the gap is bigger than a missing price field: `MaterialDef`
+  carries **no gold value**, buying is priced flat by **node tier** (not per item), there is
+  **no sell function**, and — crucially — **no category of sellable goods** (the catalog is
+  five *functional* items; encounter rewards drop **gold directly** + functional materials).
+  So "Merchant converts goods → gold" had no goods to convert. Note the vision docs already
+  *imagined* this as flavor — `01-pre-deployment.md` lists "buy/**sell** equipment" and its
+  worked example "sells **salvaged scrap** (+60g)" — but it was never mechanised. **Decision:**
+  - **(a) A new `valuables`/salvage item class** — zero function, **pure gold value**, drops
+    from encounters as loot. It's the primary sell faucet *and* a real decision, because
+    carrying it burns scarce **storage slots** (D6): haul loot to the next good market vs.
+    spend slots on gear. (This is the docs' "salvaged scrap," finally given a mechanic.)
+  - **(b) Sale values on the existing functional materials** too, so **surplus gear can be
+    liquidated** — selling then competes with using/recovering it (a genuine trade-off).
+  - Both read **`effectiveMarketTier`** for the rate (better at `premium`, impossible at
+    `none`), so the sell faucet inherits the market-access scarcity from item 2.
+  - **Encounter loot splits into two streams (refinement, 2026-06-19).** A win pays
+    **found gold** — coin, banked **immediately** to the purse — *and* **sellable loot** —
+    `valuables` drops into storage that are **illiquid until Sold**, and Sell needs a market
+    (`effectiveMarketTier > none`: a market node *or* a Merchant raising the floor, at worse
+    impromptu rates). This makes **market access a gate on *realising your reward***, not just
+    on buying — the keystone that makes routing-to-markets and the Merchant matter. Data-wise
+    it reuses `EncounterReward` (`gold` = found coin; valuables = a `MaterialDrop` of the new
+    class); the "split" is the reward generator allocating value between the two.
+  - **Tuning guardrail:** **found gold must cover baseline Upkeep** on its own — sellable loot
+    is the *upside* you route/liquidate to realise, never the *baseline* you need to survive
+    (else a win you can't yet sell becomes a rations death-spiral, worst early).
+  - **Glossary reconciliation required:** the glossary currently lists **"Sell" as a *banned
+    synonym* for the retired `Trade` skill** — D61 promotes **Sell** to a first-class verb
+    (and adds a `Valuables`/`Salvage` keyword), so that entry must be re-authored when built.
+- **Still open / deferred / not built:**
+  - **Influence subsystem** (item 5) — carved out to **D62**; its identity/mechanics are
+    out of D61's scope.
+  - **Terrain/biome node axis** (item 2) — Deferred; seam left open.
+  - **Tuning pass** across the three economy classes + market tier yields (incl. sale-rate
+    curves and valuables drop rates) — later.
+- **Spec (to build):** `src/core/overworld.ts` (`MarketTier`, `MapNode.market`, seeding +
+  `effectiveMarketTier`/`merchantFloor`), `src/core/inventory.ts` (a `valuables`/salvage
+  material class + a per-item **sale value** on `MaterialDef`), `src/core/generation.ts` /
+  resolution (split `EncounterReward` value into **found gold** + **valuables** drops), `src/core/overworld-actions.ts` (the
+  two-axis `cost` shape + the unpaced-and-unpriced invariant; fold camp jobs + economy verbs
+  into the one resolver), `src/core/economy-actions.ts` (Merchant **sell** verb reading
+  `effectiveMarketTier`; bring `Gather Influence` under the two-axis invariant so it can't be
+  unpaced+unpriced — the full Influence redesign is **D62**), `src/core/jobs.ts`
+  (retire the `+50g` Trade effect; re-home the Merchant verb), the routing/forecast layer
+  (surface market availability per edge), and `docs/design/glossary.md` (promote **Sell** to a
+  keyword; add **Valuables**/**Salvage**; retire **Trade**). Updates the `usesPerNode` interim
+  into the general `pacing` knob.
+- **Superseded by:** —
+
+## D62 — Influence as its own subsystem (politics / patronage / reputation)
+
+- **Status:** Deferred (opened 2026-06-19) · carved out of **D61** item 5; builds on **D34**
+  (Influence is a walled-off currency) and the Noble's **D30** verbs.
+- **Context:** While reworking the gold economy (D61) we kept hitting Influence and kept
+  having to *not* decide it — because it isn't really part of the gold economy. It's a
+  **separate currency with its own identity** (patronage / reputation / politics) that
+  *touches* economic behaviour (it pays the Noble's bribes, can't pay Upkeep) but has its own
+  overall fantasy. The current implementation is also thin and partly broken: political income
+  is a **spammable `Gather Influence` button** (`collectPoliticalIncome`, no gate → unlimited
+  Influence → unlimited bribes), which the D61 interim cap did **not** cover.
+- **Decision:** **Deferred** — to be designed as its own subsystem (likely its own
+  `docs/design/systems/` doc), *not* folded into D61. Recorded so it isn't lost.
+- **Open questions to resolve when picked up:**
+  - **Identity & fantasy:** what *is* Influence — patronage, standing with factions, political
+    capital? Is it one pool or faction-scoped?
+  - **Income source:** passive accrual (per node-step, like Banker interest) vs. earned from
+    specific acts/events vs. keyed to a Noble's *presence* (mirroring the passive intel/market
+    floor idiom)? — the exploit fix follows from whatever this is; D61's two-axis invariant is
+    the interim guard.
+  - **Sinks beyond bribe:** sway-avoid fights, access/recruitment (D33), faction unlocks?
+  - **Persistence/scope:** purse-like (per-caravan, lost on a wipe) vs. guild-persistent
+    (D34)? Today it lives on the `Guild`.
+  - **Where it surfaces:** the camp Advanced panel, a guild-tier screen, or its own surface?
+- **Interim until built:** `Gather Influence` stays **live-exploitable** (unlimited) on the
+  current branch; closed either by the D61 two-axis fold or by this subsystem, whichever lands
+  first. A one-off cap is possible but deliberately skipped to avoid another throwaway patch.
+- **Spec:** TBD (own subsystem doc). Touches `src/core/economy-actions.ts`
+  (`collectPoliticalIncome`/`bribeEnemy`), `src/core/economy.ts` (`Influence`),
+  `src/core/guild.ts` (`politicsCounter`/scope), `src/game/scenes/OverworldScene.ts`
+  (`nobleIncome` surfacing).
 - **Superseded by:** —

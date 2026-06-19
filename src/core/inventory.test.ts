@@ -9,6 +9,7 @@ import {
   countOf,
   slotsFor,
   getMaterial,
+  saleValueOf,
   MATERIALS,
 } from "./inventory";
 
@@ -53,5 +54,21 @@ describe("inventory (slotted stacks, party-wide — D14)", () => {
   it("marks rune reagent as consumed (non-recoverable), trap kit as recoverable", () => {
     expect(getMaterial("trap-kit")!.recoverable).toBe(true);
     expect(getMaterial("rune-reagent")!.recoverable).toBe(false);
+  });
+
+  it("defines a sell-only valuables/loot class with pure gold value (D61)", () => {
+    const v = getMaterial("valuables")!;
+    expect(v.loot).toBe(true);
+    expect(v.saleValue).toBeGreaterThan(0);
+    // Pure value: no combat function (no damage, not medical).
+    expect(v.damage).toBeUndefined();
+    expect(v.medical).toBeUndefined();
+  });
+
+  it("gives functional materials a sale value too, and saleValueOf reads it (0 if none)", () => {
+    expect(saleValueOf(MATERIALS["trap-kit"])).toBeGreaterThan(0);
+    expect(saleValueOf(MATERIALS.salve)).toBeGreaterThan(0);
+    // A hypothetical valueless material sells for 0 (not sellable).
+    expect(saleValueOf({ id: "x", name: "X", stackSize: 1, slotCost: 1, recoverable: false })).toBe(0);
   });
 });

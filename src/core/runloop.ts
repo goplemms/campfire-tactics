@@ -14,6 +14,7 @@
  */
 
 import { healUnit, woundedBySeverity, type Unit } from "./units";
+import type { SkillDef } from "./skills";
 import { Battle } from "./turn";
 import {
   type RunState,
@@ -53,7 +54,7 @@ import { rpPerNight, payUpkeep, triageHeal, computeUpkeep, RECOVERY, type Upkeep
 import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import { restoreFatigue } from "./fatigue";
-import { takeOverworldAction, scoutedTier, type ActionOpts, type ActionResult } from "./overworld-actions";
+import { takeOverworldAction, useCampSkillAtNode, scoutedTier, type ActionOpts, type ActionResult, type CampSkillResult } from "./overworld-actions";
 import { gainRunGold } from "./economy";
 import {
   type PlaytestLog,
@@ -220,6 +221,17 @@ export class RunLoop {
    */
   overworldAction(unit: Unit, abilityId: string, opts: ActionOpts = {}): ActionResult {
     return takeOverworldAction(this.run, unit, abilityId, opts);
+  }
+
+  /**
+   * Use a **camp job skill** at the current node (D35) — the signature non-combat
+   * action (Chef stew, Merchant trade). Delegates to {@link useCampSkillAtNode},
+   * which gates the costless actions by their per-node cap so they can't be spammed,
+   * levels the owner, and keeps the storage cap in sync. Never throws on a refusal —
+   * returns the {@link CampSkillResult} the render reads.
+   */
+  useCampSkill(unit: Unit, skill: SkillDef): CampSkillResult {
+    return useCampSkillAtNode(this.run, unit, skill);
   }
 
   // --- Rest node (no battle, D23) -------------------------------------------

@@ -23,6 +23,7 @@
 
 import { streamFor } from "./rng";
 import { generateEncounter, type EncounterDef } from "./generation";
+import type { Unit } from "./units";
 
 /**
  * A node kind (D23). A fight (`combat`), a no-battle recovery camp (`rest`), or a
@@ -32,6 +33,31 @@ import { generateEncounter, type EncounterDef } from "./generation";
  * only the thief event the theft loop needs.
  */
 export type NodeKind = "combat" | "rest" | "event";
+
+/**
+ * **Market-access tier (D61)** — *how good is trade at this node?* An ordered band
+ * (the banding convention): `none` (no market — can't buy/sell here) < `poor` (an
+ * impromptu/wild market, worse rates) < `basic` (a town) < `premium` (a proper
+ * trade hub). Access is a **scarce resource** — the caravan can't find a market at
+ * every node — and is **orthogonal to terrain** (a mountain town and a desert town
+ * can both be `basic`): {@link MarketTier} is its **own** node axis with its own
+ * seeder, today keyed off {@link NodeKind} (terrain later — the seeder signature is
+ * left extensible). A Merchant in the party **raises the floor** ({@link merchantFloor}).
+ */
+export type MarketTier = "none" | "poor" | "basic" | "premium";
+
+/** The market tiers low→high — the ordering the band's compare/clamp read. */
+export const MARKET_TIERS: readonly MarketTier[] = ["none", "poor", "basic", "premium"];
+
+/** A market tier's ordinal (none = 0 … premium = 3), for compare/clamp. */
+export function marketRank(tier: MarketTier): number {
+  return MARKET_TIERS.indexOf(tier);
+}
+
+/** The higher of two market tiers — the "raise the floor" op (cf. intel's `clampTier`). */
+export function clampUpMarket(a: MarketTier, b: MarketTier): MarketTier {
+  return marketRank(a) >= marketRank(b) ? a : b;
+}
 
 /** A single node on the run map. */
 export interface MapNode {
@@ -51,6 +77,13 @@ export interface MapNode {
    * generating one. Unset ⇒ the node generates procedurally (the default).
    */
   authoredId?: string;
+  /**
+   * **Market-access tier at this node (D61)** — seeded at generation from
+   * {@link nodeMarket}. **Absent ⇒ `none`** (so older fixtures/maps read as "no
+   * market" rather than crashing); the generator always sets it. Read through
+   * {@link effectiveMarketTier}, which folds in the Merchant floor.
+   */
+  market?: MarketTier;
 }
 
 /** A fully-generated, deterministic run map. */
@@ -81,7 +114,44 @@ export const MAP_GEN = {
   eventChance: 0.14,
   /** Extra forward edges a node may gain beyond its guaranteed one (branchiness). */
   maxFanout: 2,
+  /** Chance a `rest`/town node is a `premium` trade hub rather than a `basic` market (D61). */
+  premiumMarketChance: 0.3,
+  /** Chance a wild (`combat`/`event`) node has an impromptu `poor` market rather than `none` (D61). */
+  wildMarketChance: 0.25,
 } as const;
+
+/**
+ * Seed a node's **market-access tier** (D61). `rest`/town nodes always have a
+ * market (`basic`, sometimes `premium`); wild `combat`/`event` nodes usually have
+ * `none`, occasionally an impromptu `poor` market. Keyed off {@link NodeKind} for
+ * now — the signature is left open for a future terrain axis (a desert town seeding
+ * poorer than a crossroads). Pure: draws only from the passed stream.
+ */
+function nodeMarket(rng: ReturnType<typeof streamFor>, kind: NodeKind): MarketTier {
+  if (kind === "rest") return rng.chance(MAP_GEN.premiumMarketChance) ? "premium" : "basic";
+  return rng.chance(MAP_GEN.wildMarketChance) ? "poor" : "none";
+}
+
+/**
+ * The market floor a **Merchant** in the party guarantees (D61): an active Merchant
+ * can broker an *impromptu* market anywhere, so the floor rises to `poor`; without
+ * one it stays `none`. The overworld twin of the Noble's passive intel floor — read
+ * by {@link effectiveMarketTier}.
+ */
+export function merchantFloor(party: readonly Unit[]): MarketTier {
+  const hasMerchant = party.some((u) => u.alive && !u.captured && u.jobId === "merchant");
+  return hasMerchant ? "poor" : "none";
+}
+
+/**
+ * The market tier the caravan actually trades at (D61): the node's own market
+ * **raised by the Merchant floor** (`clampUp`). `none` ⇒ no market here (buys/sells
+ * refused). The single reader for both buying and selling, so access scarcity is
+ * applied in one place.
+ */
+export function effectiveMarketTier(node: MapNode, party: readonly Unit[]): MarketTier {
+  return clampUpMarket(node.market ?? "none", merchantFloor(party));
+}
 
 /** Add a forward edge to a node, keeping the list sorted + de-duplicated. */
 function addEdge(node: MapNode, targetId: string): void {
@@ -120,7 +190,12 @@ export function generateOverworld(seed: string | number): OverworldMap {
     const count = layerWidth(rng, l, layers);
     const layerNodes: MapNode[] = [];
     for (let i = 0; i < count; i++) {
-      layerNodes.push({ id: `n${l}-${i}`, layer: l, index: i, kind: nodeKind(rng, l, layers), edges: [] });
+      const id = `n${l}-${i}`;
+      const kind = nodeKind(rng, l, layers);
+      // Market draws from a per-node stream (D61) so it never perturbs the main
+      // map stream — every seed's layout/kinds/edges stay byte-identical.
+      const market = nodeMarket(streamFor(seed, `market:${id}`), kind);
+      layerNodes.push({ id, layer: l, index: i, kind, market, edges: [] });
     }
     byLayer.push(layerNodes);
   }

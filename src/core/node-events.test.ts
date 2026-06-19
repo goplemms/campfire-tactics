@@ -125,14 +125,15 @@ describe("node-events — the event pick is deterministic (D22)", () => {
 // --- Shop (Merchant ACCESS reused, D30/D34) ---------------------------------
 
 describe("node-events — shop buys from the purse under the cap (D30/D34)", () => {
-  it("shopStock prices by node tier (town < wild)", () => {
+  it("a roadside shop is always a `basic` market (D61) — priced the same at any node", () => {
     const restNode: MapNode = { ...NODE, kind: "rest" };
     const seed = "shop-price";
-    const wild = shopStock(seed, NODE);
-    const town = shopStock(seed, restNode);
-    expect(wild[0].price).toBe(merchantPrice("event"));
-    expect(town[0].price).toBe(merchantPrice("rest"));
-    expect(town[0].price).toBeLessThan(wild[0].price);
+    const onEvent = shopStock(seed, NODE);
+    const onRest = shopStock(seed, restNode);
+    // The shop event is its own guaranteed market, independent of the node's tier.
+    expect(onEvent[0].price).toBe(merchantPrice("basic"));
+    expect(onRest[0].price).toBe(merchantPrice("basic"));
+    expect(onEvent[0].price).toBeGreaterThan(0);
   });
 
   it("shopStock is a stable, seeded selection from the registry", () => {

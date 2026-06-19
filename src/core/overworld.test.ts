@@ -6,8 +6,24 @@ import {
   isFinalNode,
   nodeEncounter,
   MAP_GEN,
+  MARKET_TIERS,
+  marketRank,
+  clampUpMarket,
+  merchantFloor,
+  effectiveMarketTier,
   type OverworldMap,
+  type MapNode,
 } from "./overworld";
+import { createUnit, type Unit } from "./units";
+
+/** A throwaway party member of the given job (for the market-floor tests). */
+function member(jobId: Unit["jobId"], over: Partial<Parameters<typeof createUnit>[0]> = {}): Unit {
+  return createUnit({
+    id: `u-${jobId}`, side: "player", pos: { col: 0, row: 0 }, jobId,
+    speed: 10, maxHp: 20, attack: 5, defense: 2, moveRange: 3, sightRadius: 6,
+    ...over,
+  });
+}
 
 /** Breadth-first set of every node id reachable from the start. */
 function reachableSet(map: OverworldMap): Set<string> {
@@ -37,6 +53,14 @@ describe("overworld — determinism (D22)", () => {
     const b = generateOverworld("seed-B");
     // The full structures differ (kinds and/or edges); at minimum, not deep-equal.
     expect(a).not.toEqual(b);
+  });
+
+  it("market access is seeded deterministically without perturbing layout (D61)", () => {
+    // A per-node market sub-stream means adding the axis kept layout/kinds/edges
+    // byte-identical (the determinism test above still passes) AND market is stable.
+    const a = generateOverworld("market-det");
+    const b = generateOverworld("market-det");
+    for (const id of a.order) expect(getNode(a, id).market).toBe(getNode(b, id).market);
   });
 
   it("a node's encounter is deterministic via its id + layer", () => {
@@ -149,5 +173,50 @@ describe("overworld — structure & reachability (D22)", () => {
         expect(count).toBeLessThanOrEqual(MAP_GEN.width);
       }
     }
+  });
+});
+
+describe("overworld — the market-access axis (D61)", () => {
+  it("the tier band is ordered, and clampUp returns the higher tier", () => {
+    expect(MARKET_TIERS).toEqual(["none", "poor", "basic", "premium"]);
+    expect(marketRank("none")).toBeLessThan(marketRank("poor"));
+    expect(marketRank("basic")).toBeLessThan(marketRank("premium"));
+    expect(clampUpMarket("none", "poor")).toBe("poor"); // raise
+    expect(clampUpMarket("basic", "poor")).toBe("basic"); // never lower
+    expect(clampUpMarket("premium", "premium")).toBe("premium");
+  });
+
+  it("every generated node has a market keyed to its kind (rest = a market; wild = none/poor)", () => {
+    const map = generateOverworld("market-seed");
+    for (const id of map.order) {
+      const n = getNode(map, id);
+      expect(n.market).toBeDefined();
+      if (n.kind === "rest") expect(["basic", "premium"]).toContain(n.market); // a town always trades
+      else expect(["none", "poor"]).toContain(n.market); // wild: usually none, sometimes impromptu
+    }
+  });
+
+  it("a Merchant raises the market floor to `poor` (impromptu market anywhere)", () => {
+    expect(merchantFloor([member("soldier"), member("chef")])).toBe("none");
+    expect(merchantFloor([member("soldier"), member("merchant")])).toBe("poor");
+    // A downed or captured Merchant can't broker a market.
+    const downed = member("merchant"); downed.alive = false;
+    const captive = member("merchant"); captive.captured = true;
+    expect(merchantFloor([downed])).toBe("none");
+    expect(merchantFloor([captive])).toBe("none");
+  });
+
+  it("effectiveMarketTier folds the Merchant floor over the node, never lowering it", () => {
+    const wild: MapNode = { id: "w", layer: 1, index: 0, kind: "combat", edges: [], market: "none" };
+    const town: MapNode = { id: "t", layer: 2, index: 0, kind: "rest", edges: [], market: "basic" };
+    const noMerchant = [member("soldier")];
+    const withMerchant = [member("merchant")];
+    // A Merchant turns a no-market wild node into an impromptu `poor` one…
+    expect(effectiveMarketTier(wild, noMerchant)).toBe("none");
+    expect(effectiveMarketTier(wild, withMerchant)).toBe("poor");
+    // …but never drags a real town's market down to the impromptu floor.
+    expect(effectiveMarketTier(town, withMerchant)).toBe("basic");
+    // A node with no market field defaults to `none`.
+    expect(effectiveMarketTier({ ...wild, market: undefined }, noMerchant)).toBe("none");
   });
 });

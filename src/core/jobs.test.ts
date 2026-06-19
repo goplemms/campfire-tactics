@@ -59,7 +59,9 @@ describe("jobs (data-driven loading)", () => {
   it("ships the three signature jobs, each hooking a different phase (D3)", () => {
     expect(getJob("survivalist")!.skills[0].phase).toBe("deployment");
     expect(getJob("chef")!.skills[0].phase).toBe("meta");
-    expect(getJob("merchant")!.skills[0].phase).toBe("meta");
+    // The Merchant's gold-minting Trade camp skill was retired (D61) — its economy
+    // is now the market-access verbs (buy/sell), so it ships no meta camp skill.
+    expect(getJob("merchant")!.skills).toHaveLength(0);
 
     // unitSkills filters a job's skills by the phase each one hooks.
     const withJob = (id: string, job: JobId): Unit =>

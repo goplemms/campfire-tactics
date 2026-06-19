@@ -154,32 +154,25 @@ export const CHEF: JobDef = {
       target: "party",
       range: 0,
       spend: "act",
+      usesPerNode: 1, // one stew per camp (D35) — costless, so the node-cap is its limiter
       effect: { kind: "morale", morale: 1, partyHeal: 8 },
     },
   ],
 };
 
 /**
- * The Merchant — the signature **Meta/economy**-phase job (D3). Trading
- * generates gold and expands storage (the master logistics cap, D6).
+ * The Merchant — the signature **economy** job (D3/D61). The old gold-minting
+ * **Trade** camp skill was retired (D61): the Merchant doesn't *print* gold, it is
+ * **ACCESS + SELL** — it raises a node's market floor ({@link "./overworld".merchantFloor})
+ * and works the {@link "./economy-actions".merchantBuy}/{@link "./economy-actions".merchantSell}
+ * verbs (goods <-> gold at the node's market tier). Hence **no meta camp skill**.
  */
 export const MERCHANT: JobDef = {
   id: "merchant",
   name: "Merchant",
-  description: "Works the economy: generates gold and expands storage.",
+  description: "Works the economy: finds markets anywhere and trades goods for gold.",
   noncombat: true,
-  skills: [
-    {
-      id: "trade",
-      name: "Trade",
-      description: "Earn +50 gold and add +2 storage slots.",
-      phase: "meta",
-      target: "camp",
-      range: 0,
-      spend: "act",
-      effect: { kind: "economy", gold: 50, storage: 2 },
-    },
-  ],
+  skills: [],
 };
 
 // --- The M12 combat-depth roster (D40) — 2 active + 1 passive each ----------

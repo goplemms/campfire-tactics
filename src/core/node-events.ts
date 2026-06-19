@@ -154,16 +154,24 @@ export interface ShopOffer {
 }
 
 /**
+ * A roadside **shop event** is itself a guaranteed market (D61) — independent of the
+ * event node's own (usually `none`/`poor`) seeded market tier, it always trades at a
+ * **`basic`** market, so its stock is always buyable.
+ */
+const SHOP_MARKET_TIER = "basic" as const;
+
+/**
  * A shop's **seeded** stock (M11) — a stable, node-keyed selection of supplies from
- * the {@link "./inventory".MATERIALS} registry, each at the **node-tier price**
+ * the {@link "./inventory".MATERIALS} registry, each at the **shop market price**
  * ({@link "./economy-actions".merchantPrice}). Stable for a seed (D22).
  */
 export function shopStock(seed: string | number, node: MapNode): ShopOffer[] {
   const rng = streamFor(seed, `event:${node.id}:shop`);
-  const price = merchantPrice(node.kind);
+  const price = merchantPrice(SHOP_MARKET_TIER);
   // Medical herbs (D40) are authored-quest provisioning, not overworld shop
-  // stock — excluded so the seeded shop selection stays stable.
-  const stockable = Object.keys(MATERIALS).filter((id) => !MATERIALS[id].medical);
+  // stock; sell-only loot (D61) is never bought — both excluded so the seeded
+  // shop selection stays stable.
+  const stockable = Object.keys(MATERIALS).filter((id) => !MATERIALS[id].medical && !MATERIALS[id].loot);
   const ids = rng.shuffle(stockable).slice(0, NODE_EVENTS.shopStockSize);
   return ids.map((id) => ({ materialId: id, name: MATERIALS[id].name, price }));
 }
@@ -174,9 +182,9 @@ export function shopStock(seed: string | number, node: MapNode): ShopOffer[] {
  * storage under the cap (D6), never the treasury (D34). Returns the outcome
  * (`goldDelta < 0` on a buy; `summary` carries any refusal).
  */
-export function shopBuy(run: RunState, node: MapNode, materialId: string): EventOutcome {
+export function shopBuy(run: RunState, _node: MapNode, materialId: string): EventOutcome {
   const before = run.camp.gold;
-  const res = merchantBuy(run, materialId, node.kind);
+  const res = merchantBuy(run, materialId, SHOP_MARKET_TIER);
   const out = emptyOutcome("shop");
   if (!res.applied) {
     out.summary = res.reason ?? "Can't buy that.";

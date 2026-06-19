@@ -14,6 +14,7 @@ import {
   getAbility,
   cooldownRemaining,
   scoutedTier,
+  campSkillUsesLeft,
   fatiguePenalty,
   projectDossier,
   attentionCount,
@@ -21,14 +22,18 @@ import {
   projectManifest,
   getVessel,
   unitSkills,
-  useCampJobSkill,
-  addItem,
   triageHeal,
   chunkHp,
   runDifficulty,
   combatRoster,
   // M10 — the gold economy verbs (D30/D34) + theft (D30)
   merchantBuy,
+  // D61 — market access + the Merchant buy/sell faucet
+  merchantSell,
+  merchantPrice,
+  sellPrice,
+  effectiveMarketTier,
+  getMaterial,
   bankerEngageInterest,
   bankerBorrow,
   bankerProtect,
@@ -54,7 +59,6 @@ import {
   type EventKind,
   type Unit,
   type OverworldAbility,
-  type ActionResult,
   type SkillDef,
   type Guild,
   type Ledger,
@@ -498,13 +502,38 @@ export class OverworldScene extends Phaser.Scene {
     let y = top + 22;
     for (const u of this.run.party) {
       for (const skill of unitSkills(u, "meta")) {
-        this.campButton(colX, y, 360, 24, `${u.name}: ${skill.name}`, true, () => this.useCampSkill(u, skill), `${skill.name} — ${skill.description}`);
+        // Costless signature actions are per-node capped (D35) — disable when spent,
+        // and badge the label with the uses left so the limiter is legible.
+        const left = campSkillUsesLeft(this.run.overworld, skill);
+        const capped = Number.isFinite(left);
+        const label = capped && skill.usesPerNode! > 1 ? `${u.name}: ${skill.name}  (${left} left)` : `${u.name}: ${skill.name}`;
+        const tip = capped
+          ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Break Camp.)`
+          : `${skill.name} — ${skill.description}`;
+        this.campButton(colX, y, 360, 24, label, left > 0, () => this.useCampSkill(u, skill), tip);
         y += rowH;
       }
     }
-    // One trap-kit buy (D58): Merchant-priced if one rides along, else the flat rate.
-    const kitPrice = this.trapKitPrice(node);
-    this.campButton(colX, y, 360, 24, `Buy Trap Kit (${kitPrice}g)`, true, () => this.buyTrapKit(), "Buy a Trap Kit into storage (1 slot) for the Scout/Survivalist. Cheaper at a town/rest node, or with a Merchant in the party.");
+    // One trap-kit buy (D61): priced by — and gated on — this node's market access.
+    const tier = effectiveMarketTier(node, this.run.party);
+    const kitPrice = merchantPrice(tier);
+    const buyTip = tier === "none"
+      ? "No market here. Route to a town/rest node, or bring a Merchant to broker an impromptu market."
+      : `Buy a Trap Kit into storage (1 slot) at the ${tier} market. A town or a Merchant buys cheaper.`;
+    const buyLabel = tier === "none" ? "Buy Trap Kit (no market)" : `Buy Trap Kit (${kitPrice}g)`;
+    this.campButton(colX, y, 360, 24, buyLabel, tier !== "none", () => this.merchantBuyKit(), buyTip);
+    y += rowH;
+    // Sell valuables (D61): liquidate looted salvage into purse gold at this node's
+    // market — gated by market access (none = can't sell; a Merchant unlocks it anywhere).
+    const valCount = countOf(this.run.inventory, "valuables");
+    const unitPrice = sellPrice(getMaterial("valuables")!, tier);
+    const canSell = valCount > 0 && unitPrice > 0;
+    const sellTip = valCount === 0
+      ? "No valuables to sell — win fights to find salvage worth hauling to a market."
+      : unitPrice === 0
+        ? "No market here. Route to a town/rest node, or bring a Merchant to broker an impromptu sale."
+        : `Sell all ${valCount} valuables at the ${tier} market (${unitPrice}g each).`;
+    this.campButton(colX, y, 360, 24, `Sell Valuables (${valCount} · ${unitPrice}g ea)`, canSell, () => this.sellValuables(), sellTip);
     y += rowH;
     this.campButton(colX, y, 360, 24, "Triage Heal", true, () => this.triage(), "Spend Rest Points to heal the most-wounded fighter one chunk.");
     y += rowH + 8;
@@ -563,16 +592,11 @@ export class OverworldScene extends Phaser.Scene {
    */
   private renderAdvancedEconomy(colX: number, startY: number, rowH: number): number {
     let y = startY;
-    this.campButton(colX, y, 360, 24, `${this.campAdvanced ? ICON.collapse.glyph : ICON.expand.glyph}  Advanced — Banker · Noble · Market`, true, () => { this.campAdvanced = !this.campAdvanced; this.renderCamp(); }, "Optional economy verbs: interest, borrowing, theft protection, influence, and the market. Safe to leave alone while you learn the loop.");
+    this.campButton(colX, y, 360, 24, `${this.campAdvanced ? ICON.collapse.glyph : ICON.expand.glyph}  Advanced — Banker · Noble`, true, () => { this.campAdvanced = !this.campAdvanced; this.renderCamp(); }, "Optional economy verbs: interest, borrowing, theft protection, and influence. Safe to leave alone while you learn the loop.");
     y += rowH;
     if (this.campAdvanced) {
       const subX = colX + 16;
       const subW = 344;
-      const market = getAbility("market")!;
-      const marketActor = this.marketActor();
-      const mRefusal = this.refusal(market, marketActor);
-      this.campButton(subX, y, subW, 24, `Market  ·  ${this.costReadout(market, marketActor)}`, !mRefusal, () => this.doOverworldAction(marketActor, "market"), mRefusal ?? "Merchant ACCESS: open the market to buy supply into storage from the purse.");
-      y += rowH;
       this.campButton(subX, y, subW, 24, "Invest the Purse", true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
       y += rowH;
       this.campButton(subX, y, subW, 24, "Borrow 40g", true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.");
@@ -629,12 +653,6 @@ export class OverworldScene extends Phaser.Scene {
   private scoutActor(): Unit {
     const active = this.activeUnits();
     return active.reduce((best, u) => (u.intelligence > best.intelligence ? u : best), active[0] ?? this.run.party[0]);
-  }
-
-  /** The acting unit for Market: the Merchant if active, else any active member. */
-  private marketActor(): Unit {
-    const active = this.activeUnits();
-    return active.find((u) => u.jobId === "merchant") ?? active[0] ?? this.run.party[0];
   }
 
   /** The camp "Party" button label, badged with the count needing a look (⚠N). */
@@ -828,53 +846,29 @@ export class OverworldScene extends Phaser.Scene {
     }
   }
 
-  private doOverworldAction(actor: Unit, abilityId: string, opts: { targetNodeId?: string } = {}): void {
-    const res: ActionResult = this.loop.overworldAction(actor, abilityId, opts);
+  private useCampSkill(actor: Unit, skill: SkillDef): void {
+    // Gated by the per-node cap (D35): the signature action levels its owner now
+    // (D32/D53) but can't be spammed for unlimited gold/morale/XP.
+    const res = this.loop.useCampSkill(actor, skill);
     this.renderCamp();
     this.setHint(res.applied ? `${res.detail ?? "Done."}` : `Can't: ${res.reason ?? "refused."}`);
   }
 
-  private useCampSkill(actor: Unit, skill: SkillDef): void {
-    // The signature action levels its owner now (D32/D53): a Chef grows from cooking.
-    const out = useCampJobSkill(actor, skill, this.run.camp);
-    if (out.storage) this.run.inventory.storageCap = this.run.camp.storageCap;
-    this.renderCamp();
-    const parts: string[] = [];
-    if (out.gold) parts.push(`+${out.gold} gold`);
-    if (out.storage) parts.push(`+${out.storage} storage`);
-    if (out.morale) parts.push(`+${out.morale} morale`);
-    if (out.bankedHeal) parts.push(`banked +${out.bankedHeal} HP/unit`);
-    if (out.levels > 0) parts.push(`${actor.name} reached L${actor.level}!`);
-    this.setHint(`${skill.name}: ${parts.join(", ")}.`);
-  }
-
-  /** Whether a Merchant rides along — they price (and route) the trap-kit buy. */
-  private hasMerchant(): boolean {
-    return this.run.party.some((u) => u.alive && u.jobId === "merchant");
-  }
-
-  /** The trap-kit price shown on the single Buy button (D58): Merchant tier, else flat. */
-  private trapKitPrice(node: MapNode): number {
-    if (this.hasMerchant()) return node.kind === "rest" ? ECONOMY.merchant.townPrice : ECONOMY.merchant.wildPrice;
-    return 15;
-  }
-
-  /** The one trap-kit buy (D58): the Merchant ACCESS price/route if present, else flat. */
-  private buyTrapKit(): void {
-    if (this.hasMerchant()) this.merchantBuyKit();
-    else this.provisionTrapKit();
-  }
-
-  private provisionTrapKit(): void {
-    const cost = 15;
-    if (this.run.camp.gold < cost) return this.setHint("Not enough gold for a Trap Kit (15g).");
-    if (addItem(this.run.inventory, "trap-kit", 1)) {
-      this.run.camp.gold -= cost;
-      this.renderCamp();
-      this.setHint(`Bought a Trap Kit (${countOf(this.run.inventory, "trap-kit")} carried).`);
-    } else {
-      this.setHint("Storage full — Market or Trade for more slots.");
+  /** Sell the whole valuables stack into purse gold at the current node's market (D61). */
+  private sellValuables(): void {
+    let total = 0;
+    let sold = 0;
+    let levels = 0;
+    while (countOf(this.run.inventory, "valuables") > 0) {
+      const res = merchantSell(this.run, "valuables");
+      if (!res.applied) break;
+      total += res.earned ?? 0;
+      sold += 1;
+      levels += res.levels ?? 0;
     }
+    this.renderCamp();
+    const lvl = levels > 0 ? ` (Merchant +${levels} level${levels === 1 ? "" : "s"})` : "";
+    this.setHint(sold > 0 ? `Sold ${sold} valuables for ${total}g.${lvl}` : "Can't sell here.");
   }
 
   private triage(): void {
@@ -893,8 +887,8 @@ export class OverworldScene extends Phaser.Scene {
   // --- The gold economy verbs (M10, D30/D34) --------------------------------
 
   private merchantBuyKit(): void {
-    const node = this.campNode!;
-    const res = merchantBuy(this.run, "trap-kit", node.kind);
+    const node = this.campNode ?? currentNode(this.run);
+    const res = merchantBuy(this.run, "trap-kit", effectiveMarketTier(node, this.run.party));
     this.renderCamp();
     this.setHint(res.applied ? `${res.detail}` : `Can't: ${res.reason}`);
   }

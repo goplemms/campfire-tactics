@@ -144,14 +144,17 @@ the drift found in the current build.
 | Canonical | Means | Banned synonyms (and why) |
 |---|---|---|
 | **Scout** | Raise a node's intel preview one tier. | — (already clean) |
-| **Market** | The Merchant's ACCESS verb: open a market to buy supply. | **"Shop"** — the button `Shop the market`, the ability `Market`, and the event `Roadside Market` are three skins of one verb. **Pick `Market`** for the verb; the *event node* may keep its flavor name (Layer 2) but its buy action reads `Market`. |
+| **Market** | A node's **market-access tier** (D61): `none < poor < basic < premium` — how good trade is here. A Merchant raises the floor. | **"Shop"** for the *place*. The tier is the noun; **Buy**/**Sell** are the verbs. The event node may keep a flavor name (Layer 2) but its actions read `Buy`/`Sell`. |
+| **Buy** | The Merchant's ACCESS verb: spend purse gold for supply, priced by the node's Market tier. | "Shop"; "Purchase" |
+| **Sell** | The Merchant's faucet (D61): convert carried goods (esp. **Valuables**) into purse gold at the node's Market tier. | "Trade"; "Deal"; "Vendor" |
+| **Valuables** | Sell-only loot (D61): pure gold value, no function; the illiquid half of a reward, hauled to a Market. | "Salvage"/"Scrap" (flavor only); "Loot" (collides with the gold drop) |
 | **Triage Heal** | Spend RP to heal the most-wounded one chunk. | "Heal" alone; "Patch"; "Mend" |
 | **In-place rest** | The repeatable Survey-beat recovery (rations → RP + small heal). | "Rest" alone (collides three ways — see below); "Camp here" |
 | **Guard the Purse** | The Banker's SECURE verb: blunt a thief's skim. | **"Protect"** as the *verb*. Two-part rule: **`Guard`** is the verb/button; **`Protection N%`** is the resulting status readout (the effect's magnitude). Never `Protect the purse` as an action. |
 | **Invest** | The Banker's interest verb (purse accrues interest per step). | "Save"; "Deposit" |
 | **Borrow** | The Banker's buy-on-debt verb. | "Loan"; "Advance" |
 | **Gather Influence** | The Noble's INFLUENCE verb. | "Earn rep"; "Curry favor" (in the label) |
-| **Trade** | The Merchant camp skill (+gold, +storage). | "Sell"; "Deal" |
+| ~~**Trade**~~ | **Retired (D61).** The Merchant's gold-minting `+gold/+storage` camp skill is gone; its economy is now **Buy** + **Sell** against a node's **Market** tier. Don't reintroduce `Trade` as a verb. | — |
 | **Cook Stew** | The Chef camp skill (+morale, banks heal). | "Cook" alone if other dishes ever exist |
 | **Set Trap** | The Survivalist deployment skill. | "Lay trap"; "Plant trap" |
 

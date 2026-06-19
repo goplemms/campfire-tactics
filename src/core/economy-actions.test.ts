@@ -6,6 +6,8 @@ import { createCaravan } from "./caravan";
 import {
   merchantBuy,
   merchantPrice,
+  merchantSell,
+  sellPrice,
   bankerEngageInterest,
   bankerBorrow,
   bankerProtect,
@@ -15,8 +17,17 @@ import {
   ECONOMY,
 } from "./economy-actions";
 import { gainRunGold, payTreasuryUpkeep } from "./economy";
-import { countOf } from "./inventory";
+import { countOf, addItem, getMaterial } from "./inventory";
+import { currentNode } from "./run";
 import type { NodePreview } from "./intel";
+
+/** A Merchant party member (raises the market floor, D61). */
+function merchant(): Unit {
+  return createUnit({
+    id: `merchant-${nextId++}`, side: "player", pos: { col: -1, row: -1 },
+    jobId: "merchant", speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4,
+  });
+}
 
 let nextId = 0;
 function fighter(name: string): Unit {
@@ -45,28 +56,93 @@ function guildWith(seed: string, treasury = 500): Guild {
   return createGuild(seed, { roster: [fighter("Rook")], treasury, caravans: [createCaravan("alpha", "scout-cart")] });
 }
 
-describe("economy-actions — Merchant ACCESS (purse, node-tier price) (D30)", () => {
-  it("buys a supply from the PURSE at a node-tier price", () => {
+describe("economy-actions — Merchant ACCESS (purse, market-tier price) (D30/D61)", () => {
+  it("buys a supply from the PURSE at the market-tier price", () => {
     const run = newRun("merchant", 100);
     const goldBefore = run.camp.gold;
-    const res = merchantBuy(run, "trap-kit", "combat");
+    const res = merchantBuy(run, "trap-kit", "poor");
     expect(res.applied).toBe(true);
-    expect(res.price).toBe(ECONOMY.merchant.wildPrice);
-    expect(run.camp.gold).toBe(goldBefore - ECONOMY.merchant.wildPrice);
+    expect(res.price).toBe(ECONOMY.merchant.buyPrice.poor);
+    expect(run.camp.gold).toBe(goldBefore - ECONOMY.merchant.buyPrice.poor);
     expect(countOf(run.inventory, "trap-kit")).toBe(1);
   });
 
-  it("a town (rest) node offers better access than the wild (D30)", () => {
-    expect(merchantPrice("rest")).toBeLessThan(merchantPrice("combat"));
-    expect(merchantPrice("rest")).toBe(ECONOMY.merchant.townPrice);
+  it("a better market is cheaper access (premium < basic < poor) (D61)", () => {
+    expect(merchantPrice("premium")).toBeLessThan(merchantPrice("basic"));
+    expect(merchantPrice("basic")).toBeLessThan(merchantPrice("poor"));
+  });
+
+  it("refuses to buy where there is no market (`none`), spending nothing (D61)", () => {
+    const run = newRun("merchant-nomarket");
+    const res = merchantBuy(run, "trap-kit", "none");
+    expect(res.applied).toBe(false);
+    expect(res.reason).toMatch(/no market/i);
+    expect(countOf(run.inventory, "trap-kit")).toBe(0);
   });
 
   it("refuses (spending nothing) when the purse can't cover it", () => {
     const run = newRun("merchant-broke", 1);
-    const res = merchantBuy(run, "trap-kit", "combat");
+    const res = merchantBuy(run, "trap-kit", "basic");
     expect(res.applied).toBe(false);
     expect(run.camp.gold).toBe(1);
     expect(countOf(run.inventory, "trap-kit")).toBe(0);
+  });
+});
+
+describe("economy-actions — Merchant SELL (goods -> gold, market-gated) (D61)", () => {
+  it("sellPrice scales with the market tier (none can't sell; premium = full face)", () => {
+    const v = getMaterial("valuables")!;
+    expect(sellPrice(v, "none")).toBe(0);
+    expect(sellPrice(v, "premium")).toBe(v.saleValue); // full face at a premium hub
+    expect(sellPrice(v, "poor")).toBeGreaterThan(0);
+    expect(sellPrice(v, "poor")).toBeLessThan(sellPrice(v, "basic"));
+    expect(sellPrice(v, "basic")).toBeLessThan(sellPrice(v, "premium"));
+  });
+
+  it("sells a carried good for purse gold at the start node's market", () => {
+    const run = newRun("sell-happy"); // start node is a `rest` (a real market)
+    addItem(run.inventory, "valuables", 2);
+    const goldBefore = run.camp.gold;
+    const expected = sellPrice(getMaterial("valuables")!, currentNode(run).market!);
+    const res = merchantSell(run, "valuables");
+    expect(res.applied).toBe(true);
+    expect(res.earned).toBe(expected);
+    expect(run.camp.gold).toBe(goldBefore + expected);
+    expect(countOf(run.inventory, "valuables")).toBe(1); // one sold
+  });
+
+  it("refuses (removing nothing) with no market here, and an impromptu Merchant unlocks it", () => {
+    const run = newRun("sell-nomarket");
+    run.map.nodes[run.mapNodeId].market = "none"; // a wild node, no market
+    addItem(run.inventory, "valuables", 1);
+    const blocked = merchantSell(run, "valuables");
+    expect(blocked.applied).toBe(false);
+    expect(countOf(run.inventory, "valuables")).toBe(1); // nothing removed
+
+    // A Merchant in the party brokers an impromptu `poor` market -> the sale lands.
+    run.party.push(merchant());
+    const ok = merchantSell(run, "valuables");
+    expect(ok.applied).toBe(true);
+    expect(ok.earned).toBe(sellPrice(getMaterial("valuables")!, "poor"));
+    expect(countOf(run.inventory, "valuables")).toBe(0);
+  });
+
+  it("refuses to sell a good you don't carry", () => {
+    const run = newRun("sell-empty");
+    const res = merchantSell(run, "valuables");
+    expect(res.applied).toBe(false);
+  });
+
+  it("a brokering Merchant gains use-XP from the sale (D61, replaces Trade XP)", () => {
+    const run = newRun("sell-xp");
+    const coin = merchant();
+    run.party.push(coin);
+    addItem(run.inventory, "valuables", 1);
+    const xpBefore = coin.xp;
+    const res = merchantSell(run, "valuables");
+    expect(res.applied).toBe(true);
+    expect(coin.xp).toBeGreaterThan(xpBefore); // the Merchant grows from trading
+    expect(typeof res.levels).toBe("number");
   });
 });
 

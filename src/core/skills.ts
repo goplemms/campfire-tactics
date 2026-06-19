@@ -100,12 +100,6 @@ export interface CleanseEffect {
   kind: "cleanse";
 }
 
-/** Meta/economy: the Merchant adds gold and storage to the camp. */
-export interface EconomyEffect {
-  kind: "economy";
-  gold: number;
-  storage: number;
-}
 /** Meta/camp: the Chef raises party morale and banks a between-battle heal. */
 export interface MoraleEffect {
   kind: "morale";
@@ -136,7 +130,6 @@ export type SkillEffect =
   | ForcedMoveEffect
   | CleaveEffect
   | MedHealEffect
-  | EconomyEffect
   | MoraleEffect
   | PlaceTrapEffect;
 
@@ -177,6 +170,18 @@ export interface SkillDef {
    * **2nd active at level 2** ({@link "./leveling".unlockedSkills}).
    */
   unlockLevel?: number;
+  /**
+   * For a **meta/camp** skill: the maximum times it may be fired **at a single
+   * overworld node** (D35 spine). The overworld action economy gates every verb so
+   * it can't be spammed; `usesPerNode` is the gate for a *costless* signature job
+   * action (Chef's stew, Merchant's trade), reset each node-step ({@link
+   * "./overworld-actions".tickCooldowns}). **Undefined ⇒ uncapped** — a skill that
+   * pays its own way each cast (a Vancian charge, a gold/resource buy) is gated by
+   * that cost and may fire as many times as it can afford. Enforced by {@link
+   * "./overworld-actions".useCampSkillAtNode}; combat-phase skills ignore it (the CT
+   * clock is their limiter).
+   */
+  usesPerNode?: number;
   effect: SkillEffect;
 }
 

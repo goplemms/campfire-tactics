@@ -165,6 +165,15 @@ combat CT clock** (D5), one tier up.
   the specialist** — a Merchant can't market every node; the decision is *when* to spend
   the charge. **Why cooldowns:** they *encourage* engagement (use-it-or-waste-it), whereas
   a tight hoardable pool *punishes* use (players hoard, the choice curdles into agony).
+  - **The spine generalises to two axes (D61): pacing × price.** The cooldown is the
+    *pacing* half; the full model gives **every** camp/overworld action two independent
+    knobs — **pacing** (`cooldown` *or* a per-node use cap *or* none) and a per-cast
+    **price** (fatigue / gold / Vancian charge / RP / Influence) — with the invariant that
+    **no action may be both unpaced *and* unpriced** (that loophole is what let the costless
+    job meta-skills — Chef's stew, Merchant's trade — fire unlimited times for free). A
+    resource-paid action (a Vancian cast) leaves *pacing* off and is bounded by its price —
+    so it can **fire as many times per node as the party can afford**. (Interim: a
+    `usesPerNode` cap on the costless jobs ships ahead of the full model.)
 - **Guardrail — loose fatigue.** [Fatigue](stats.md#fatigue-overworld-meter-d29) is **not**
   a tight rationed pool — it follows the codebase's **shallow asymmetric-floor** shape
   (D7/D11 deployment overdraw, D8 morale): a **generous allowance, invisible in normal
@@ -301,6 +310,18 @@ three flavours of "gives gold":
   **Influence** currency (patronage/reputation) spent *only* on the Noble's verbs — it
   **cannot pay Upkeep**, so it is the Noble's whole economy rather than a redundant gold
   faucet.
+
+> **Reworked by D61.** Two corrections to the above. **(1) Merchant = ACCESS, *not* a gold
+> faucet.** The Merchant's signature action is *access to trade*, which is itself **scarce** —
+> the caravan can't find a market at every node (terrain, distance). Access is modelled as a
+> tiered **node property** (`none < poor < basic < premium`); a Merchant in the party **raises
+> the floor** (an impromptu market anywhere, at worse rates — the same floor-raising idiom as
+> the Noble's intel floor). Their *gold income* comes from favourable **sell** rates
+> (goods → gold), never from minting — the old `+50g` `Trade`/`Market` money-printer is
+> retired. **(2) Noble political income is *passive*, not a clickable verb** — it accrues at
+> the node-step like the Banker's interest, killing the unlimited-faucet exploit. The three
+> classes stay competitive as faucets of **different inputs**: goods (Merchant) · time
+> (Banker) · reputation (Noble).
 
 > **Pool & currency structure (D34).** Gold is **two pools** — a persistent guild
 > **treasury** (a vault whose only inflow is quest payouts) and a per-caravan **run purse**

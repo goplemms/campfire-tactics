@@ -65,6 +65,7 @@ export function itemEffect(mat: MaterialDef): string {
     }
   }
   if (mat.id === "rune-reagent") return "Rune casting fuel";
+  if (mat.loot) return `Valuables · sell for ${mat.saleValue}g at a market`;
   return mat.name;
 }
 

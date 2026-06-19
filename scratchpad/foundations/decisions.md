@@ -1635,6 +1635,16 @@ trail of reasoning stays intact.
   Trade/Market gold-mint** (wide test blast radius); the **camp UI** rework (Trade/Market
   buttons → Buy/Sell, market readout per node — needs a runtime smoke-test); and the
   **glossary** (promote Sell, add Valuables, retire Trade).
+- **Build progress update (2026-06-19, cont.):** Phase C landed too — (5) **retired the
+  `+50g` Trade/Market gold-mint** (removed the `economy` effect kind, the `MARKET` ability,
+  and the Merchant's meta camp skill; Merchant is now ACCESS + SELL) and added a camp
+  **"Sell Valuables"** button (the loot faucet's surface); (6) the **glossary** (Buy / Sell /
+  Valuables / Market-tier keywords; Trade retired). All green (500 tests); the production
+  bundle builds. **Caveat:** the Phaser camp UI is type-checked + builds but is **not
+  runtime-smoke-tested**. **Remaining D61 build items:** buy reads `effectiveMarketTier`
+  (+ refuse at `none`) — deferred to avoid the event-shop (`shopStock`/`merchantPrice`)
+  pricing reconciliation; **Merchant XP-on-sell** (it no longer levels from a camp skill);
+  and the **numbers/tuning pass** (sale rates, buy prices, valuables drop rates).
 - **Decision:** Converge the whole camp/overworld action surface onto **one limiter model**,
   and reframe the Merchant's economy around **access scarcity** rather than a gold faucet.
   1. **Two-axis limiter model (pacing × price).** Every camp/overworld action becomes one

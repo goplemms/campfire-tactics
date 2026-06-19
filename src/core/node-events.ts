@@ -162,8 +162,9 @@ export function shopStock(seed: string | number, node: MapNode): ShopOffer[] {
   const rng = streamFor(seed, `event:${node.id}:shop`);
   const price = merchantPrice(node.kind);
   // Medical herbs (D40) are authored-quest provisioning, not overworld shop
-  // stock — excluded so the seeded shop selection stays stable.
-  const stockable = Object.keys(MATERIALS).filter((id) => !MATERIALS[id].medical);
+  // stock; sell-only loot (D61) is never bought — both excluded so the seeded
+  // shop selection stays stable.
+  const stockable = Object.keys(MATERIALS).filter((id) => !MATERIALS[id].medical && !MATERIALS[id].loot);
   const ids = rng.shuffle(stockable).slice(0, NODE_EVENTS.shopStockSize);
   return ids.map((id) => ({ materialId: id, name: MATERIALS[id].name, price }));
 }

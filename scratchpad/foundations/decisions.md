@@ -1624,6 +1624,17 @@ trail of reasoning stays intact.
   per-node use cap (`SkillDef.usesPerNode`, default 1 on Cook Stew / Trade) tracked in
   `OverworldEconomy.campUses`, reset on the node-step (`tickCooldowns`), enforced by
   `useCampSkillAtNode`. It stops the bleed; the model below **subsumes** it.
+- **Build progress (2026-06-19, branch `claude/unlimited-camp-actions-w1w8d3`):** the
+  **additive market core is built + green** (501 tests) in four slices —
+  (1) the **market-access node axis** (`MarketTier`, `MapNode.market`, per-node-stream
+  seeding, `merchantFloor`/`effectiveMarketTier`); (2) the **valuables/loot item class** +
+  `saleValue` on functional materials; (3) the **`merchantSell`** verb + `sellPrice` rate
+  by tier; (4) **split loot** (found gold + valuables drops — sim storage-pressure rose
+  13% → 56%, the haul-vs-gear decision now live). **Phase C still to do (the breaking
+  change):** buy reads `effectiveMarketTier` (+ refuse at `none`); **retire the `+50g`
+  Trade/Market gold-mint** (wide test blast radius); the **camp UI** rework (Trade/Market
+  buttons → Buy/Sell, market readout per node — needs a runtime smoke-test); and the
+  **glossary** (promote Sell, add Valuables, retire Trade).
 - **Decision:** Converge the whole camp/overworld action surface onto **one limiter model**,
   and reframe the Merchant's economy around **access scarcity** rather than a gold faucet.
   1. **Two-axis limiter model (pacing × price).** Every camp/overworld action becomes one

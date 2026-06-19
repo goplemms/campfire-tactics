@@ -4,8 +4,6 @@ import { roleColor } from "../roles";
 import { CombatView } from "../combat-view";
 import { addVignette } from "../vignette";
 import {
-  planMove,
-  planAttack,
   type ResolveResult,
   findPath,
   occupiedGrid,
@@ -163,10 +161,30 @@ export class BattleScene extends Phaser.Scene {
   // Battle interaction.
   private waitingFor: Unit | null = null;
   private armedSkill: SkillDef | null = null;
-  /** Two-step turn (D55): the active unit has made its (undoable) move and is now choosing an action. */
-  private moved = false;
-  /** Tile the active unit stood on before its tentative move — where Undo Move snaps it back. */
-  private preMovePos: GridCoord | null = null;
+  /**
+   * Free-move turn (D60): the active unit spends a **movement budget** tile-by-tile
+   * across as many clicks as it likes, and its one **Act** (attack / skill) can fall
+   * anywhere in that sequence — move, strike, move again. The turn ends only when the
+   * player presses **End Turn** (or auto-ends once budget *and* Act are both spent).
+   */
+  /** Movement still in the budget this turn (tiles); 0 once spent or Immobilized. */
+  private moveBudget = 0;
+  /** True once the unit has used its single Act this turn (attack / skill / verb). */
+  private acted = false;
+  /** Whether that Act costs the full Act CT (a `spend: "move"` skill does not). */
+  private actCharged = false;
+  /** True if the unit has stepped at all this turn (drives the end-turn CT spend). */
+  private movedThisTurn = false;
+  /** Tile the unit stood on at turn start — where Undo Move snaps it back. */
+  private turnStartPos: GridCoord | null = null;
+  /** A sprung trap locks the turn's movement: no take-back once it's cost HP. */
+  private turnLocked = false;
+  /** The reachable destinations for the unit's *remaining* budget (path + cost each). */
+  private reach: ReturnType<typeof reachableTiles> = [];
+  /** `reach` keyed by tile for O(1) click/hover lookup (`"col,row"`). */
+  private reachByKey = new Map<string, ReturnType<typeof reachableTiles>[number]>();
+  /** The tile under the cursor whose route is lit (FE path read), or null. */
+  private hoverTile: GridCoord | null = null;
   /** Animation speed multiplier for moves (F cycles 1×/2×/4×) — playtest pacing (D55). */
   private turnSpeed = 1;
   /** A herb picked for the medic's med-heal, pending a target (D44 flow). */
@@ -221,6 +239,8 @@ export class BattleScene extends Phaser.Scene {
     this.primary = this.makeTextButton(this.scale.width / 2, this.scale.height - 26, 200, 34, "", COLOR.successDeep, COLOR.success, () => this.onPrimary());
     this.primary.setDepth(12);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
+    // Hover routing (D60): light the path to the tile under the cursor as it moves.
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPointerMove, this);
     // Keyboard shortcuts (D55 QoL): one handler routes every key — see onKey / the
     // Legend (L) for the full list. The harness sets __SHOT__ for headless captures.
     this.input.keyboard?.on("keydown", (e: KeyboardEvent) => this.onKey(e));
@@ -592,8 +612,12 @@ export class BattleScene extends Phaser.Scene {
 
   private onPrimary(): void {
     if (this.phase === "deployment") this.startBattle();
-    else if (this.phase === "battle") this.onAdvance();
-    else if (this.phase === "resolution") this.returnToOverworld();
+    else if (this.phase === "battle") {
+      // During a player turn the primary button IS End Turn (D60); otherwise it
+      // advances the clock to the next actor.
+      if (this.waitingFor && !this.busy) this.endPlayerTurn(this.waitingFor);
+      else this.onAdvance();
+    } else if (this.phase === "resolution") this.returnToOverworld();
   }
 
   private onAdvance(): void {
@@ -616,20 +640,75 @@ export class BattleScene extends Phaser.Scene {
     if (actor.side === "enemy") {
       this.runEnemyTurn(actor);
     } else {
-      this.waitingFor = actor;
-      // The active unit looks around — an Awareness roll may spot nearby traps (D12).
-      this.spotTrapsForActor(actor);
-      this.showSkillButtons(actor);
-      this.drawPreview();
-      // Auto-pass a unit with nothing it can do (D55): no move, no strike, no verb —
-      // so a boxed-in or fully-spent unit never stalls the clock waiting on a click.
-      if (this.noActionsAvailable(actor)) {
-        this.setHint(`${actor.name} has no available action — turn passed. Advance Clock.`);
-        this.waitUnit(actor);
-        return;
-      }
-      this.setHint(`${actor.name}'s turn — move, attack, use a skill, or Wait (W).`);
+      this.beginPlayerTurn(actor);
     }
+  }
+
+  /**
+   * Open a player unit's **free-move turn** (D60): seed the movement budget, clear
+   * the per-turn flags, spot nearby traps, and surface the board read (reach wash +
+   * strike telegraph) and the action row. The big primary button becomes **End
+   * Turn** — the obvious, deliberate way to close the turn. A unit with nothing it
+   * can do auto-passes (the D55 backstop) so the clock can't stall.
+   */
+  private beginPlayerTurn(actor: Unit): void {
+    this.waitingFor = actor;
+    this.moveBudget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+    this.acted = false;
+    this.actCharged = false;
+    this.movedThisTurn = false;
+    this.turnLocked = false;
+    this.turnStartPos = { ...actor.pos };
+    this.hoverTile = null;
+    this.recomputeReach(actor);
+    // The active unit looks around — an Awareness roll may spot nearby traps (D12).
+    this.spotTrapsForActor(actor);
+    if (this.noActionsAvailable(actor)) {
+      this.setHint(`${actor.name} has no available action — turn passed. Advance Clock.`);
+      this.endPlayerTurn(actor);
+      return;
+    }
+    this.setPrimary("End Turn");
+    this.showSkillButtons(actor);
+    this.drawPreview();
+    this.highlightTile(actor.pos);
+    this.setHint(this.turnHint(actor));
+  }
+
+  /** Recompute the reachable tiles for the unit's *remaining* budget (move + hover). */
+  private recomputeReach(actor: Unit): void {
+    this.reach = this.moveBudget > 0 && !isImmobilized(actor)
+      ? reachableTiles(actor, this.battle.units, this.grid, this.moveBudget)
+      : [];
+    this.reachByKey = new Map(this.reach.map((r) => [`${r.tile.col},${r.tile.row}`, r]));
+  }
+
+  /** The contextual turn prompt — what the unit can still do this turn (D60). */
+  private turnHint(actor: Unit): string {
+    const canMove = this.canMoveFurther();
+    if (this.acted) {
+      return canMove
+        ? `${actor.name} struck — still has ${this.moveBudget} move left. Click a lit tile, then End Turn (Space/W).`
+        : `${actor.name} has acted. End Turn (Space/W).`;
+    }
+    return canMove
+      ? `${actor.name}'s turn — click a lit tile to move, click a highlighted foe to strike, use a skill, or End Turn (Space/W).`
+      : `${actor.name}'s turn — strike a highlighted foe, use a skill, or End Turn (Space/W).`;
+  }
+
+  /** True if the unit has budget and at least one reachable tile beyond its own. */
+  private canMoveFurther(): boolean {
+    return this.moveBudget > 0 && this.reach.some((r) => r.path.length > 0);
+  }
+
+  /**
+   * The auto-end gate (D60): a turn ends on its own only when **both** halves are
+   * spent — the Act is used *and* there's no movement left. Anything short of that
+   * (movement remaining, or an Act still available) keeps the turn open so it never
+   * closes on the player unexpectedly; they press End Turn when they're done.
+   */
+  private turnExhausted(): boolean {
+    return this.acted && !this.canMoveFurther();
   }
 
   /**
@@ -650,8 +729,13 @@ export class BattleScene extends Phaser.Scene {
     return true;
   }
 
-  /** Pass the active unit's turn without acting (the Wait verb + auto-pass backstop). */
-  private waitUnit(actor: Unit): void {
+  /**
+   * **End the active unit's turn** (D60) — the explicit End Turn button / W key, the
+   * turn-start no-action backstop, and the auto-end-when-spent path all route here.
+   * Spends CT from what the unit actually did this turn (`moved`/`acted`), so a unit
+   * that only stepped pays the cheap Move cost and a unit that struck pays the Act.
+   */
+  private endPlayerTurn(actor: Unit): void {
     if (this.busy || this.waitingFor !== actor) return;
     this.waitingFor = null;
     this.armedSkill = null;
@@ -660,72 +744,99 @@ export class BattleScene extends Phaser.Scene {
     this.busy = true;
     this.clearActionButtons();
     this.highlightTile(null);
-    this.battle.endTurn(actor, {}); // no move, no act — spends the least CT
+    this.hoverTile = null;
+    this.battle.endTurn(actor, { moved: this.movedThisTurn, acted: this.actCharged });
     this.afterTurn();
-    if (!this.over) this.setHint(`${actor.name} waits. Advance Clock.`);
+    if (!this.over) this.setHint(`${actor.name}'s turn ends. Advance Clock.`);
   }
 
-  private showSkillButtons(actor: Unit, opts: { moved?: boolean } = {}): void {
-    // Level-gated actives (D39): a 2nd active unlocks as the job levels — so combat
-    // growth shows up here, in every fight (the converged renderer). Each active is
-    // numbered to advertise its 1–9 keyboard shortcut (D55).
-    const skills = unlockedSkills(actor, "battle");
+  /**
+   * Continue an *open* turn after a move or Act (D60): refresh the board, then either
+   * auto-end (both halves spent) or re-surface the reach/strike read and the action
+   * row so the unit can keep moving or take its Act. The single resume point every
+   * non-ending player action funnels through.
+   */
+  private afterActionContinue(actor: Unit): void {
+    this.busy = false;
+    if (this.over) return;
+    if (this.encounterDecided()) return this.finishBattle();
+    this.recomputeReach(actor);
+    if (this.turnExhausted()) {
+      this.endPlayerTurn(actor);
+      return;
+    }
+    this.highlightTile(actor.pos);
+    this.showSkillButtons(actor);
+    this.drawPreview();
+    this.setHint(this.turnHint(actor));
+  }
+
+  private showSkillButtons(actor: Unit): void {
     const specs: { text: string; description?: string; onClick: () => void }[] = [];
-    // Post-move, lead with Undo so the rethink path is one click away (D55).
-    if (opts.moved) specs.push({ text: "Undo Move", description: "Snap back to where this unit started its turn (Esc).", onClick: () => this.undoMove(actor) });
-    skills.forEach((skill, i) => {
-      // Surface the per-skill cooldown (D37): an armed skill is *live* state that
-      // was invisible — show it's cooling and steer the click to a hint rather than
-      // letting a re-use slip through (the menu now enforces what the clock tracks).
-      const cooling = onSkillCooldown(actor, skill.id);
-      specs.push({
-        text: `${i + 1}  ${skill.name}${cooling ? "  · cooling" : ""}`,
-        description: cooling
-          ? `${skill.name} is cooling down — ready again in a turn or two.`
-          : `${skill.name} — ${skill.description}  ·  key ${i + 1}`,
-        onClick: () => (cooling ? this.setHint(`${skill.name} is still cooling down.`) : this.onSkillButton(actor, skill)),
-      });
-    });
-    // The Noble's mid-combat BRIBE (D30/D33): spend guild Influence to sway an enemy.
-    if (this.guild && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
-      const cost = bribeCost(this.currentPreview());
-      const affordable = this.guild.influence >= cost;
-      specs.push({
-        text: `Bribe (${cost} Influence)`,
-        description: affordable
-          ? "Bribe an enemy (Noble Influence): a generic turns coat for the fight; an authored one joins the guild permanently."
-          : `Not enough Influence (need ${cost}).`,
-        onClick: () => {
-          if (!affordable) return this.setHint(`Not enough Influence to bribe (need ${cost}).`);
-          this.bribeArmed = true;
-          this.armedSkill = null;
-          this.setHint(`Bribe: click an enemy to sway it (or click ${actor.name} to cancel).`);
-        },
-      });
+    // Undo leads while the move is still a take-back — moved this turn, not yet acted,
+    // and no sprung trap has locked it (D60).
+    if (this.movedThisTurn && !this.acted && !this.turnLocked) {
+      specs.push({ text: "Undo Move", description: "Snap back to where this unit started its turn, restoring its full move (Esc).", onClick: () => this.undoMove(actor) });
     }
-    // Trap-field verbs (D12): Search to scan for hidden traps; the trapper disarms
-    // a spotted, adjacent one to pocket its kit. Only surfaced when traps are afield.
-    if (hiddenTraps(this.battle.entities).length > 0) {
-      specs.push({
-        text: "Search",
-        description: "Spend the turn scanning the ground ahead for concealed traps (a wider, better look).",
-        onClick: () => this.doSearch(actor),
+    // The Act buttons (skill / Bribe / Search / Disarm / Defend) are the unit's one
+    // action this turn — surfaced only until that Act is spent (D60).
+    if (!this.acted) {
+      // Level-gated actives (D39): a 2nd active unlocks as the job levels — so combat
+      // growth shows up here, in every fight. Each is numbered for its 1–9 key (D55).
+      unlockedSkills(actor, "battle").forEach((skill, i) => {
+        // Surface the per-skill cooldown (D37): an armed skill is *live* state that
+        // was invisible — show it's cooling and steer the click to a hint rather than
+        // letting a re-use slip through (the menu now enforces what the clock tracks).
+        const cooling = onSkillCooldown(actor, skill.id);
+        specs.push({
+          text: `${i + 1}  ${skill.name}${cooling ? "  · cooling" : ""}`,
+          description: cooling
+            ? `${skill.name} is cooling down — ready again in a turn or two.`
+            : `${skill.name} — ${skill.description}  ·  key ${i + 1}`,
+          onClick: () => (cooling ? this.setHint(`${skill.name} is still cooling down.`) : this.onSkillButton(actor, skill)),
+        });
       });
+      // The Noble's mid-combat BRIBE (D30/D33): spend guild Influence to sway an enemy.
+      if (this.guild && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
+        const cost = bribeCost(this.currentPreview());
+        const affordable = this.guild.influence >= cost;
+        specs.push({
+          text: `Bribe (${cost} Influence)`,
+          description: affordable
+            ? "Bribe an enemy (Noble Influence): a generic turns coat for the fight; an authored one joins the guild permanently."
+            : `Not enough Influence (need ${cost}).`,
+          onClick: () => {
+            if (!affordable) return this.setHint(`Not enough Influence to bribe (need ${cost}).`);
+            this.bribeArmed = true;
+            this.armedSkill = null;
+            this.setHint(`Bribe: click an enemy to sway it (or click ${actor.name} to cancel).`);
+          },
+        });
+      }
+      // Trap-field verbs (D12): Search to scan for hidden traps; the trapper disarms
+      // a spotted, adjacent one to pocket its kit. Only surfaced when traps are afield.
+      if (hiddenTraps(this.battle.entities).length > 0) {
+        specs.push({
+          text: "Search",
+          description: "Spend this unit's action scanning the ground ahead for concealed traps (a wider, better look).",
+          onClick: () => this.doSearch(actor),
+        });
+      }
+      const adjTrap = this.adjacentRevealedTrap(actor);
+      if (adjTrap && canDisarm(actor)) {
+        specs.push({
+          text: "Disarm trap",
+          description: "Disarm the adjacent spotted trap and pocket its kit (a trap-trained unit only).",
+          onClick: () => this.doDisarm(actor, adjTrap.id),
+        });
+      }
+      // The universal Defend (D41): every unit can brace until its next turn — the
+      // always-available defensive verb, even for a unit with no job actives.
+      specs.push({ text: "Defend (D)", description: `${DEFEND.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, DEFEND) });
     }
-    const adjTrap = this.adjacentRevealedTrap(actor);
-    if (adjTrap && canDisarm(actor)) {
-      specs.push({
-        text: "Disarm trap",
-        description: "Disarm the adjacent spotted trap and pocket its kit (a trap-trained unit only).",
-        onClick: () => this.doDisarm(actor, adjTrap.id),
-      });
-    }
-    // The universal Defend (D41): every unit can brace until its next turn — the
-    // always-available defensive verb, even for a unit with no job actives.
-    specs.push({ text: "Defend (D)", description: `${DEFEND.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, DEFEND) });
-    // Always offer a Wait (W): end the turn without acting — the universal backstop
-    // so a boxed-in unit is never stuck (D55).
-    specs.push({ text: "Wait (W)", description: "End this unit's turn without acting (spends the least time on the clock).", onClick: () => this.waitUnit(actor) });
+    // End Turn (W) — the explicit close, mirroring the prominent primary button so a
+    // unit is never stuck and the turn never ends without a deliberate press (D60).
+    specs.push({ text: "End Turn (W)", description: "End this unit's turn (spends the move/Act it actually used). Also the green button below, Space, or W.", onClick: () => this.endPlayerTurn(actor) });
     this.layoutActionRow(specs);
   }
 
@@ -749,31 +860,37 @@ export class BattleScene extends Phaser.Scene {
       .find((t) => t.revealed && !t.sprung && chebyshev(t.pos, actor.pos) <= 1);
   }
 
-  /** Spend the turn on a deliberate Search — a wider radius and a better spot roll. */
+  /** Mark the unit's single Act spent this turn (D60); `charged` drives the CT cost. */
+  private noteAct(charged = true): void {
+    this.acted = true;
+    this.actCharged = charged;
+  }
+
+  /** Spend this unit's Act on a deliberate Search — a wider radius and a better spot roll. */
   private doSearch(actor: Unit): void {
-    if (this.busy || this.waitingFor !== actor) return;
+    if (this.busy || this.waitingFor !== actor || this.acted) return;
     this.spotTrapsForActor(actor, true);
-    this.waitingFor = null;
     this.busy = true;
     this.clearActionButtons();
     this.highlightTile(null);
-    this.battle.endTurn(actor, { acted: true });
-    this.afterTurn();
+    this.hoverTile = null;
+    this.noteAct();
+    this.afterActionContinue(actor);
   }
 
-  /** Disarm a spotted adjacent trap (Survivalist), harvest its kit, end the turn. */
+  /** Disarm a spotted adjacent trap (Survivalist), harvest its kit — the unit's Act. */
   private doDisarm(actor: Unit, trapId: string): void {
-    if (this.busy || this.waitingFor !== actor) return;
+    if (this.busy || this.waitingFor !== actor || this.acted) return;
     const res = disarmTrap(this.battle.entities, trapId, actor, this.run.inventory);
     if (!res.ok) return this.setHint(`Can't disarm: ${res.reason}`);
     this.redrawTrapMarkers();
     this.refreshCampText();
-    this.waitingFor = null;
     this.busy = true;
     this.clearActionButtons();
     this.highlightTile(null);
-    this.battle.endTurn(actor, { acted: true });
-    this.afterTurn();
+    this.hoverTile = null;
+    this.noteAct();
+    this.afterActionContinue(actor);
     this.setHint(res.harvested
       ? `${actor.name} disarms the trap and pockets a ${res.harvested}.`
       : `${actor.name} disarms the trap (storage full — the kit is lost).`);
@@ -825,9 +942,10 @@ export class BattleScene extends Phaser.Scene {
     return previewNode(this.run, this.run.mapNodeId, scoutedTier(this.run.overworld, this.run.mapNodeId));
   }
 
-  /** Spend guild Influence to sway an enemy (D30/D33). Consumes the actor's turn. */
+  /** Spend guild Influence to sway an enemy (D30/D33) — the unit's Act for the turn. */
   private doBribe(actor: Unit, foe: Unit): void {
     if (!this.guild) return;
+    if (this.acted) { this.bribeArmed = false; return void this.setHint(`${actor.name} has already acted.`); }
     const res = bribeEnemy(this.guild, foe, this.currentPreview());
     this.bribeArmed = false;
     if (!res.applied) return this.setHint(`Can't bribe: ${res.reason}`);
@@ -836,17 +954,20 @@ export class BattleScene extends Phaser.Scene {
     const view = this.view.views.get(foe.id);
     view?.body.setFillStyle(COLOR.ally).setStrokeStyle(2, COLOR.allyEdge);
     if (res.outcome?.permanent) this.pendingRecruits.push(foe);
-    this.waitingFor = null;
     this.busy = true;
     this.clearActionButtons();
     this.highlightTile(null);
-    this.battle.endTurn(actor, { acted: true });
-    this.afterTurn();
-    if (!this.over) this.setHint(res.detail ?? `${foe.name} swayed.`);
+    this.hoverTile = null;
+    this.noteAct();
+    this.refreshHud();
+    this.afterActionContinue(actor);
+    if (!this.over && this.waitingFor === actor) this.setHint(res.detail ?? `${foe.name} swayed.`);
   }
 
   private onSkillButton(actor: Unit, skill: SkillDef): void {
     if (this.busy || this.waitingFor !== actor) return;
+    // One Act per turn (D60): once it's spent, the skill keys/buttons are inert.
+    if (this.acted) return void this.setHint(`${actor.name} has already acted — move, or End Turn (Space/W).`);
     // Respect the per-skill cooldown for the keyboard path too (D37).
     if (onSkillCooldown(actor, skill.id)) return void this.setHint(`${skill.name} is still cooling down.`);
     // Medic med-heal (D44): pick a herb from the carried stash, then a target ally.
@@ -878,24 +999,36 @@ export class BattleScene extends Phaser.Scene {
     const herb = this.pendingHerb;
     this.armedSkill = null;
     this.pendingHerb = null;
-    this.waitingFor = null;
     this.busy = true;
     this.clearActionButtons();
     this.highlightTile(null);
+    this.hoverTile = null;
     let verb: string;
     if (skill.effect.kind === "med-heal" && herb) {
-      // Spend the chosen herb on the target (D44 medic flow).
-      const out = this.battle.useHeal(actor, skill, target, herb, this.run.inventory);
-      verb = out.cleansed ? `cleanses ${out.cleansed}` : out.healed ? `heals ${out.healed}` : "no herb";
+      // Spend the chosen herb on the target (D44 medic flow) — turn left open (D60).
+      const out = this.battle.useHeal(actor, skill, target, herb, this.run.inventory, { commitTurn: false });
+      if (out.healed === undefined && out.cleansed === undefined) {
+        // The herb's no longer in the stash — nothing committed; reopen the turn.
+        this.busy = false;
+        this.showSkillButtons(actor);
+        this.drawPreview();
+        return this.setHint("That herb isn't carried anymore.");
+      }
+      verb = out.cleansed ? `cleanses ${out.cleansed}` : `heals ${out.healed}`;
       this.flashHeal(target);
     } else {
-      const outcome = this.battle.useSkill(actor, skill, target);
+      const outcome = this.battle.useSkill(actor, skill, target, { commitTurn: false });
       if (skill.target === "self") this.flashHeal(target);
       else this.flashAttack(actor, target);
-      verb = outcome.healed ? `heals ${outcome.healed}` : outcome.damage ? `hits for ${outcome.damage}` : outcome.status ? `applies ${outcome.status}` : "acts";
+      verb = outcome.healed ? `heals ${outcome.healed}` : outcome.damage ? `hits for ${outcome.damage}` : outcome.charging ? "charging" : outcome.status ? `applies ${outcome.status}` : "acts";
     }
-    this.afterTurn();
-    if (!this.over) this.setHint(`${actor.name} used ${skill.name} — ${verb}. Advance Clock.`);
+    // The skill is the unit's Act; its CT cost follows the skill's spend (D60).
+    this.noteAct(skill.spend === "act");
+    this.refreshHud();
+    this.afterActionContinue(actor);
+    if (!this.over && this.waitingFor === actor) {
+      this.setHint(`${actor.name} used ${skill.name} — ${verb}. ${this.canMoveFurther() ? "Move on, or " : ""}End Turn (Space/W).`);
+    }
   }
 
   private runEnemyTurn(actor: Unit): void {
@@ -948,9 +1081,9 @@ export class BattleScene extends Phaser.Scene {
     if (k === "f" || k === "F") { this.cycleSpeed(); return; }
     if (k === " " || k === "Enter") { e.preventDefault(); this.onPrimary(); return; }
     if (k === "Escape") {
-      // Back out of an armed target first; otherwise undo a tentative move.
+      // Back out of an armed target first; otherwise undo this turn's movement.
       if (this.armedSkill || this.bribeArmed || this.pendingHerb) return this.cancelArmed();
-      if (this.phase === "battle" && this.moved && this.waitingFor && !this.busy) return this.undoMove(this.waitingFor);
+      if (this.phase === "battle" && this.movedThisTurn && !this.acted && this.waitingFor && !this.busy) return this.undoMove(this.waitingFor);
       return;
     }
 
@@ -961,7 +1094,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.phase !== "battle" || this.busy || this.over) return;
     const actor = this.waitingFor;
     if (!actor) return;
-    if (k === "w" || k === "W") return this.waitUnit(actor);
+    if (k === "w" || k === "W") return this.endPlayerTurn(actor);
     if (k === "d" || k === "D") return this.onSkillButton(actor, DEFEND);
     if (k >= "1" && k <= "9") {
       const skills = unlockedSkills(actor, "battle");
@@ -985,7 +1118,7 @@ export class BattleScene extends Phaser.Scene {
     this.pendingHerb = null;
     if (actor) {
       this.showSkillButtons(actor);
-      this.setHint(`${actor.name}'s turn — move, attack, use a skill, or Wait (W).`);
+      this.setHint(this.turnHint(actor));
     }
     this.drawPreview();
   }
@@ -1006,17 +1139,20 @@ export class BattleScene extends Phaser.Scene {
       `  ${ICON.trapMine.glyph} your trap     ${ICON.trapArmed.glyph} spotted enemy trap     ${ICON.trapSprung.glyph} sprung trap`,
       "",
       "TILES",
-      "  green wash — safe deploy depth     blue wash — move range",
-      "  gold outline — flank tile     red outline — strike target (red = lethal)",
+      "  green wash — safe deploy depth     blue wash — tiles still in move budget",
+      "  bright path — route to the tile under the cursor",
+      "  red outline — a foe you can strike from here (red = lethal)",
       "  red wash — danger zone (toggle with T)",
       "",
       `TURN ORDER rail (top-left): who acts next · ${ICON.charging.glyph} charging`,
       "",
-      "A TURN: click a tile to move, then attack / use a skill / Wait.",
-      "  The move is undoable until you act — rethink freely.",
+      "A TURN (move freely, act once): click lit tiles to move a step at a time —",
+      "  spend it all at once or move, strike a foe, then move again. Your one",
+      "  attack/skill can fall anywhere in that sequence. The turn ends when you",
+      "  press End Turn (or once move + action are both spent). Undo resets the move.",
       "",
       "KEYS",
-      "  Space/Enter — Advance Clock / confirm      W — Wait (pass turn)",
+      "  Space/Enter — End Turn / Advance / confirm   W — End Turn",
       "  1–9 — use the active unit's skills          Esc — cancel target / Undo Move",
       "  T — danger zone     F — animation speed     L — this legend",
       "  Tab — next unit (deployment)",
@@ -1048,7 +1184,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.bribeArmed) {
       if (clicked === actor) {
         this.bribeArmed = false;
-        this.setHint(`${actor.name}'s turn — move, attack, or use a skill.`);
+        this.setHint(this.turnHint(actor));
         return;
       }
       if (clicked && clicked.side === "enemy" && !clicked.captured) this.doBribe(actor, clicked);
@@ -1059,7 +1195,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.armedSkill) {
       if (clicked === actor) {
         this.armedSkill = null;
-        this.setHint(`${actor.name}'s turn — move, attack, or use a skill.`);
+        this.setHint(this.turnHint(actor));
         this.drawPreview();
         return;
       }
@@ -1068,139 +1204,150 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    if (clicked && clicked.captured && clicked.side === actor.side && clicked !== actor) this.playerRescueOrApproach(actor, clicked);
-    else if (clicked && clicked.side !== actor.side && !clicked.captured) this.playerAttackOrApproach(actor, clicked);
-    else if (!clicked && this.grid.isWalkable(tile)) this.playerMove(actor, tile);
-  }
-
-  private playerRescueOrApproach(actor: Unit, captive: Unit): void {
-    if (isAdjacent(actor.pos, captive.pos)) return this.commitRescue(actor, [], captive);
-    if (this.moved) return this.setHint(`${actor.name} has already moved — step adjacent next turn to free ${captive.name}.`);
-    const nav = occupiedGrid(this.grid, this.battle.units, [actor, captive], actor.side); // route through friendly bodies (D55)
-    const path = findPath(nav, actor.pos, captive.pos);
-    if (!path || path.length < 2) return this.setHint("No path to your captured ally.");
-    const occupied = new Set(this.battle.units.filter((u) => u.alive && u !== actor && u !== captive).map((u) => `${u.pos.col},${u.pos.row}`));
-    let approach = path.slice(1, -1).slice(0, actor.moveRange);
-    while (approach.length > 0 && occupied.has(`${approach[approach.length - 1].col},${approach[approach.length - 1].row}`)) approach = approach.slice(0, -1);
-    const dest = approach.length > 0 ? approach[approach.length - 1] : actor.pos;
-    this.commitRescue(actor, approach, isAdjacent(dest, captive.pos) ? captive : null);
-  }
-
-  private commitRescue(actor: Unit, path: GridCoord[], captive: Unit | null): void {
-    this.waitingFor = null;
-    this.armedSkill = null;
-    this.busy = true;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    if (path.length > 0) this.battle.moveUnit(actor, path);
-    let freed = false;
-    if (captive && isAdjacent(actor.pos, captive.pos)) {
-      freeCaptive(captive);
-      this.tintCaptured(captive, false);
-      freed = true;
-    }
-    this.battle.endTurn(actor, { moved: path.length > 0, acted: freed });
-    this.animateMove(actor, path, () => {
-      if (freed) this.flashHeal(captive!);
-      this.afterTurn();
-      if (!this.over && freed) this.setHint(`${actor.name} freed ${captive!.name}! Advance Clock.`);
-    });
-  }
-
-  private playerAttackOrApproach(actor: Unit, foe: Unit): void {
-    // Once a unit has made its (tentative) move, it can only strike in place — no
-    // second move (D55). Otherwise the click closes-and-strikes in one go.
-    if (this.moved) {
-      if (inAttackRange(actor, foe)) return this.commitPlayer(actor, [], foe);
-      return this.setHint(`${foe.name} is out of reach — Undo Move (Esc), pick a closer target, or Wait.`);
-    }
-    const plan = planAttack(actor, foe, this.battle.units, this.grid);
-    if (!plan) return this.setHint("No path to that foe.");
-    this.commitPlayer(actor, plan.path, plan.attackTarget);
-  }
-
-  private playerMove(actor: Unit, tile: GridCoord): void {
-    if (this.moved) return this.setHint(`${actor.name} has already moved — attack, use a skill, Undo Move (Esc), or Wait.`);
-    const path = planMove(actor, tile, this.battle.units, this.grid);
-    if (!path) return this.setHint("Can't move there.");
-    this.tentativeMove(actor, path);
+    if (clicked && clicked.captured && clicked.side === actor.side && clicked !== actor) this.playerRescue(actor, clicked);
+    else if (clicked && clicked.side !== actor.side && !clicked.captured) this.playerAttack(actor, clicked);
+    else if (clicked === actor) this.setHint(this.turnHint(actor)); // clicking yourself is a no-op nudge
+    else if (!clicked && this.grid.isWalkable(tile)) this.playerMoveStep(actor, tile);
   }
 
   /**
-   * Step one (D55): walk `actor` to its destination **without ending the turn**, so
-   * the player can survey the board and then attack / use a skill / Wait — or Undo.
-   * The move fires its side-effects (traps, auras) as a real move does; if it cost
-   * the unit HP (a trap sprang), the move *locks* — no take-backs on a sprung trap.
+   * Hover routing (D60): while a player unit is waiting, light the route to the tile
+   * under the cursor (FE-style path read) and float the cursor highlight there. A
+   * cheap reach lookup — no pathfinding per move — so it can run every frame.
    */
-  private tentativeMove(actor: Unit, path: GridCoord[]): void {
-    this.preMovePos = { ...actor.pos };
+  private onPointerMove(pointer: Phaser.Input.Pointer): void {
+    if (this.phase !== "battle" || this.busy || this.over || !this.waitingFor) return;
+    if (this.armedSkill || this.bribeArmed || this.pendingHerb) return;
+    const tile = this.grid?.inBounds(this.worldToTile(pointer.worldX, pointer.worldY))
+      ? this.worldToTile(pointer.worldX, pointer.worldY)
+      : null;
+    const reachable = tile ? this.reachByKey.get(`${tile.col},${tile.row}`) : undefined;
+    const next = reachable && reachable.path.length > 0 ? tile : null;
+    if ((next?.col ?? -1) === (this.hoverTile?.col ?? -1) && (next?.row ?? -1) === (this.hoverTile?.row ?? -1)) return;
+    this.hoverTile = next;
+    this.highlightTile(next ?? this.waitingFor.pos);
+    this.drawPreview();
+  }
+
+  /**
+   * Free a captured ally the unit stands next to — the unit's Act (D60). No
+   * auto-approach: walk adjacent yourself (lit tiles), then click to free.
+   */
+  private playerRescue(actor: Unit, captive: Unit): void {
+    if (this.acted) return this.setHint(`${actor.name} has already acted — End Turn, then free ${captive.name} next turn.`);
+    if (!isAdjacent(actor.pos, captive.pos)) {
+      return this.setHint(`Move ${actor.name} onto a lit tile next to ${captive.name}, then click to free them.`);
+    }
+    this.busy = true;
+    this.armedSkill = null;
+    this.clearActionButtons();
+    this.highlightTile(null);
+    this.hoverTile = null;
+    freeCaptive(captive);
+    this.tintCaptured(captive, false);
+    this.noteAct();
+    this.flashHeal(captive);
+    this.refreshHud();
+    this.afterActionContinue(actor);
+    if (!this.over) this.setHint(`${actor.name} freed ${captive.name}!`);
+  }
+
+  /**
+   * Strike a foe in attack range — the unit's Act (D60). No auto-approach (the old
+   * close-and-strike was the "slippery" feel): a foe out of range just prompts you
+   * to step closer. The turn stays open afterward, so leftover move can still spend.
+   */
+  private playerAttack(actor: Unit, foe: Unit): void {
+    if (this.acted) return this.setHint(`${actor.name} has already acted this turn — move, or End Turn (Space/W).`);
+    if (!inAttackRange(actor, foe)) {
+      return this.setHint(`${foe.name} is out of range — click a lit tile to move closer, then strike.`);
+    }
+    this.busy = true;
+    this.armedSkill = null;
+    this.clearActionButtons();
+    this.highlightTile(null);
+    this.hoverTile = null;
+    this.battle.attack(actor, foe);
+    this.noteAct();
+    this.flashAttack(actor, foe);
+    this.refreshHud();
+    this.afterActionContinue(actor);
+  }
+
+  /**
+   * Step the unit to a clicked **lit** tile, spending that leg of its move budget
+   * (D60). Only tiles in `reach` (the remaining budget) are walkable — a click
+   * outside it just hints. The move fires its side-effects (traps, auras); if a
+   * trap bites (HP drops) the turn *locks* — no take-back on damage taken. The turn
+   * stays open so the unit can strike, move again, or End Turn.
+   */
+  private playerMoveStep(actor: Unit, tile: GridCoord): void {
+    const r = this.reachByKey.get(`${tile.col},${tile.row}`);
+    if (!r || r.path.length === 0) {
+      return this.setHint(
+        this.canMoveFurther()
+          ? "Out of reach — click a lit tile (you move in steps, not leaps)."
+          : `${actor.name} is out of moves — strike a foe, use a skill, or End Turn (Space/W).`,
+      );
+    }
     const hpBefore = actor.hp;
     this.busy = true;
     this.armedSkill = null;
     this.clearActionButtons();
     this.highlightTile(null);
-    this.battle.moveUnit(actor, path);
-    this.animateMove(actor, path, () => {
-      this.busy = false;
-      this.moved = true;
+    this.hoverTile = null;
+    this.battle.moveUnit(actor, r.path);
+    this.movedThisTurn = true;
+    this.moveBudget -= r.cost;
+    this.animateMove(actor, r.path, () => {
       this.checkTrapSprings();
       this.refreshHud();
-      if (!actor.alive || this.encounterDecided()) return this.afterTurn();
-      const locked = actor.hp < hpBefore; // a trap bit — the move stands
-      if (locked) this.preMovePos = null;
-      this.highlightTile(actor.pos);
-      this.showSkillButtons(actor, { moved: !locked });
-      this.drawPreview();
-      this.setHint(
-        locked
-          ? `${actor.name} moved — a trap bit, so the move stands. Attack, use a skill, or Wait.`
-          : `${actor.name} moved — attack, use a skill, Undo Move (Esc), or Wait (W).`,
-      );
+      if (!actor.alive || this.encounterDecided()) {
+        this.busy = false;
+        return this.afterTurn();
+      }
+      if (actor.hp < hpBefore) this.turnLocked = true; // a trap bit — the move stands
+      this.afterActionContinue(actor);
     });
   }
 
-  /** Step one, reversed (D55): snap the active unit back to where it began its turn. */
+  /**
+   * Undo **all** of this turn's movement: snap back to the start tile and restore
+   * the full move budget (D60). Allowed only while the unit hasn't acted and no
+   * sprung trap has locked the turn.
+   */
   private undoMove(actor: Unit): void {
-    if (this.busy || !this.moved || !this.preMovePos || this.waitingFor !== actor) return;
-    actor.pos = { ...this.preMovePos };
-    this.moved = false;
-    this.preMovePos = null;
+    if (this.busy || !this.movedThisTurn || this.acted || this.turnLocked || !this.turnStartPos || this.waitingFor !== actor) return;
+    actor.pos = { ...this.turnStartPos };
+    this.movedThisTurn = false;
+    this.moveBudget = isImmobilized(actor) ? 0 : effectiveMove(actor);
     refreshAuras(this.battle.units); // positions changed back — re-arm the tarpit ring (D40)
     this.placeView(actor);
+    this.recomputeReach(actor);
     this.highlightTile(actor.pos);
     this.refreshHud();
     this.showSkillButtons(actor);
     this.drawPreview();
-    this.setHint(`${actor.name}'s turn — move, attack, use a skill, or Wait (W).`);
-  }
-
-  private commitPlayer(actor: Unit, path: GridCoord[], target: Unit | null): void {
-    const movedThisTurn = this.moved || path.length > 0;
-    this.waitingFor = null;
-    this.armedSkill = null;
-    this.moved = false;
-    this.preMovePos = null;
-    this.busy = true;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    if (path.length > 0) this.battle.moveUnit(actor, path);
-    if (target && target.alive) this.battle.attack(actor, target);
-    this.battle.endTurn(actor, { moved: movedThisTurn, acted: target !== null });
-    this.animateMove(actor, path, () => {
-      if (target) this.flashAttack(actor, target);
-      this.afterTurn();
-    });
+    this.setHint(this.turnHint(actor));
   }
 
   private afterTurn(): void {
     this.busy = false;
-    this.moved = false;
-    this.preMovePos = null;
+    this.movedThisTurn = false;
+    this.acted = false;
+    this.actCharged = false;
+    this.turnLocked = false;
+    this.turnStartPos = null;
+    this.hoverTile = null;
+    this.reach = [];
+    this.reachByKey.clear();
     this.resolveTheftDeaths();
     this.checkTrapSprings(); // a move may have sprung a hidden trap — reveal + mark it
     this.refreshHud();
     this.highlightTile(null);
     this.view.clearPreview(this.preview);
+    // The turn's over — the primary button goes back to advancing the clock (D60).
+    this.setPrimary("Advance Clock");
     // Graded poll (D50/D51): the fight can end on an objective even with foes alive.
     if (this.encounterDecided()) return this.finishBattle();
     this.setHint("Press Advance Clock for the next turn.");
@@ -1453,7 +1600,13 @@ export class BattleScene extends Phaser.Scene {
     }
     if (this.showThreat) this.view.drawThreatZone(this.threatGfx, this.battle.units, this.grid, "player");
     else this.threatGfx.clear();
-    this.view.drawPreview(this.preview, actor, this.battle.units, this.grid, this.armedSkill ?? undefined, this.moved);
+    const hoverPath = this.hoverTile ? this.reachByKey.get(`${this.hoverTile.col},${this.hoverTile.row}`)?.path : undefined;
+    this.view.drawPreview(this.preview, actor, this.battle.units, this.grid, {
+      armed: this.armedSkill ?? undefined,
+      moveBudget: this.moveBudget,
+      acted: this.acted,
+      hoverPath,
+    });
   }
 
   private highlightTile(coord: GridCoord | null): void {

@@ -165,4 +165,34 @@ describe("Battle orchestrator", () => {
     expect(foe.hp).toBe(18);
     expect(hero.ct).toBe(0); // 100 - ACT_COST
   });
+
+  it("resolves a skill but leaves the turn open under commitTurn:false (D60 free-move)", () => {
+    const grid = new TileGrid(8, 1);
+    const hero = at("hero", "player", 0, 0, { attack: 8, jobId: "soldier" } as Partial<Unit>);
+    const foe = at("foe", "enemy", 1, 0, { defense: 2, hp: 30, maxHp: 30 });
+    const battle = new Battle(grid, [hero, foe]);
+    hero.ct = 100;
+
+    const powerStrike = { id: "ps", name: "PS", description: "", phase: "battle", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 } } as const;
+    const out = battle.useSkill(hero, powerStrike, foe, { commitTurn: false });
+
+    expect(out.damage).toBe(12); // effect still resolves
+    expect(foe.hp).toBe(18);
+    expect(hero.ct).toBe(100); // CT untouched — the render layer ends the turn itself
+  });
+
+  it("arms a skill cooldown under commitTurn:false without ending the turn (D60)", () => {
+    const grid = new TileGrid(8, 1);
+    const medic = at("medic", "player", 0, 0);
+    const ally = at("ally", "player", 1, 0, { hp: 4, maxHp: 12 });
+    const battle = new Battle(grid, [medic, ally]);
+    medic.ct = 100;
+
+    const mend = { id: "mend", name: "Mend", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } } as const;
+    battle.useSkill(medic, mend, ally, { commitTurn: false });
+
+    expect(ally.hp).toBe(9); // healed
+    expect(battle.canUseSkill(medic, mend)).toBe(false); // cooldown still armed
+    expect(medic.ct).toBe(100); // but the turn is left open
+  });
 });

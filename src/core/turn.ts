@@ -102,18 +102,25 @@ export class Battle {
   }
 
   /**
-   * Resolve a job skill against a target (firing its bus events) and end the
-   * caster's turn, spending CT per the skill's cost. The single entry the render
-   * layer uses for the skill buttons. Honors the **ability economy** (D37): a
-   * **charged** skill commits now and resolves later on the clock (caster-death
-   * fizzles it); a skill with a **cooldown** arms it; both still spend the Act.
+   * Resolve a job skill against a target (firing its bus events) and — unless
+   * `commitTurn` is false — end the caster's turn, spending CT per the skill's
+   * cost. The single entry the render layer uses for the skill buttons. Honors the
+   * **ability economy** (D37): a **charged** skill commits now and resolves later
+   * on the clock (caster-death fizzles it); a skill with a **cooldown** arms it;
+   * both still spend the Act.
+   *
+   * **`commitTurn: false`** (the D60 free-move turn) resolves the effect and arms
+   * its cooldown/charge but leaves the turn *open* — the render layer keeps the
+   * caster on the clock so it can spend any leftover movement, then ends the turn
+   * itself. The AI and the headless sim keep the default (the skill ends the turn).
    */
-  useSkill(caster: Unit, skill: SkillDef, target: Unit): SkillOutcome {
+  useSkill(caster: Unit, skill: SkillDef, target: Unit, opts: { commitTurn?: boolean } = {}): SkillOutcome {
+    const commitTurn = opts.commitTurn ?? true;
     if (!this.canUseSkill(caster, skill)) return {};
     let outcome: SkillOutcome;
     if (skill.effect.kind === "forced-move") {
       outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);
-      this.endTurn(caster, { acted: skill.spend === "act", moved: skill.spend === "move" });
+      if (commitTurn) this.endTurn(caster, { acted: skill.spend === "act", moved: skill.spend === "move" });
       return outcome;
     }
     if (skill.cost?.charge) {
@@ -131,7 +138,7 @@ export class Battle {
       outcome = resolveSkill(skill, caster, target, this.bus, this.units);
     }
     if (skill.cost?.cooldown) armSkillCooldown(caster, skill.id, skill.cost.cooldown);
-    this.endTurn(caster, { acted: skill.spend === "act", moved: skill.spend === "move" });
+    if (commitTurn) this.endTurn(caster, { acted: skill.spend === "act", moved: skill.spend === "move" });
     return outcome;
   }
 
@@ -195,14 +202,15 @@ export class Battle {
    * The Medic's **Heal** (D40 combat↔logistics bridge): consume `herbId` from
    * the shared stash and heal `target` with the herb's rider (salve/stimulant/
    * antidote). Arms the Heal cooldown and ends the turn. A no-op (no turn spent)
-   * if cooling down or the herb isn't carried.
+   * if cooling down or the herb isn't carried. `commitTurn: false` leaves the turn
+   * open for the D60 free-move flow (the render layer ends it).
    */
-  useHeal(caster: Unit, skill: SkillDef, target: Unit, herbId: string, inv: Inventory): SkillOutcome {
+  useHeal(caster: Unit, skill: SkillDef, target: Unit, herbId: string, inv: Inventory, opts: { commitTurn?: boolean } = {}): SkillOutcome {
     if (!this.canUseSkill(caster, skill)) return {};
     const out = resolveMedHeal(caster, target, herbId, inv, this.bus);
     if (out.healed === undefined) return out; // herb not carried — no commit
     if (skill.cost?.cooldown) armSkillCooldown(caster, skill.id, skill.cost.cooldown);
-    this.endTurn(caster, { acted: skill.spend === "act", moved: skill.spend === "move" });
+    if ((opts.commitTurn ?? true)) this.endTurn(caster, { acted: skill.spend === "act", moved: skill.spend === "move" });
     return out;
   }
 

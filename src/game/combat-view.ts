@@ -6,10 +6,7 @@ import {
   isValidSkillTarget,
   isImmobilized,
   isFlanked,
-  effectiveMove,
   reachableTiles,
-  forecastAttack,
-  flankTiles,
   forecastEnemyAction,
   threatenedTiles,
   manhattan,
@@ -208,14 +205,30 @@ export class CombatView {
   }
 
   /**
-   * Paint a player unit's turn preview onto `g`: when a skill is `armed`, its valid
-   * targets (green allies / red foes); otherwise the reachable tiles (blue wash) plus
-   * a threat outline on every foe a move would bring into attack range. Clears `g`
-   * first, so the caller just re-invokes it whenever the turn state changes.
+   * Paint a player unit's turn preview onto `g` (the D60 Fire-Emblem-style read):
+   * when a skill is `armed`, its valid targets (green allies / red foes); otherwise
+   *
+   * - a **blue reach wash** over every tile still in the unit's *remaining* move
+   *   budget this turn (it shrinks tile-by-tile as the unit steps),
+   * - a **lit hover path** (`hoverPath`) — the exact squares the unit would walk to
+   *   the tile under the cursor, with a bright outline on the destination,
+   * - a **red strike outline + damage badge** on every foe the unit can hit from
+   *   **where it now stands** (the attack it can take this instant) — unless it has
+   *   already `acted`, since the Act is once per turn.
+   *
+   * Clears `g` first, so the caller just re-invokes it whenever the turn state
+   * (budget, hover, acted) changes.
    */
-  drawPreview(g: Phaser.GameObjects.Graphics, actor: Unit, units: readonly Unit[], grid: TileGrid, armed?: SkillDef, moved = false): void {
+  drawPreview(
+    g: Phaser.GameObjects.Graphics,
+    actor: Unit,
+    units: readonly Unit[],
+    grid: TileGrid,
+    opts: { armed?: SkillDef; moveBudget: number; acted: boolean; hoverPath?: readonly GridCoord[] },
+  ): void {
     g.clear();
     this.clearForecast();
+    const { armed, moveBudget, acted, hoverPath } = opts;
     if (armed) {
       for (const u of units) {
         if (!u.alive || u.hidden || !isValidSkillTarget(armed, actor, u)) continue;
@@ -224,30 +237,30 @@ export class CombatView {
       }
       return;
     }
-    // After a (tentative) move the budget is spent — skip the move-range / flank
-    // washes and telegraph only the strikes available from where the unit stands.
-    if (!moved) {
-      const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
-      const reach = reachableTiles(actor, units, grid, budget);
-      for (const r of reach) {
+    // Reach wash for the movement still in the budget this turn — the set of tiles a
+    // click would walk to (the start tile is implicit and left unwashed).
+    if (moveBudget > 0 && !isImmobilized(actor)) {
+      for (const r of reachableTiles(actor, units, grid, moveBudget)) {
         if (r.tile.col === actor.pos.col && r.tile.row === actor.pos.row) continue;
-        this.fillTile(g, r.tile, COLOR.reach, 0.18);
-      }
-      // Flank-tile preview: outline the reachable tiles that would set up a gang-up
-      // on an adjacent foe — "stand here to flank" (the spatial half of the forecast).
-      for (const tile of flankTiles(actor, units, grid)) {
-        this.outlineTile(g, tile, COLOR.gold);
+        this.fillTile(g, r.tile, COLOR.reach, 0.16);
       }
     }
-    // Telegraph each foe the actor could strike: outline it, and float a forecast
-    // badge — best-case damage, a flank tag, and a skull when lethal. Pre-move this
-    // scans every tile the actor could strike from; post-move it's the in-place hit.
-    for (const foe of units) {
-      if (!foe.alive || foe.hidden || foe.side === actor.side) continue;
-      const f = moved ? this.inPlaceForecast(actor, foe, units) : forecastAttack(actor, foe, units, grid);
-      if (!f) continue;
-      this.outlineTile(g, foe.pos, f.lethal ? COLOR.danger : COLOR.threat);
-      this.drawForecast(foe, f);
+    // The hovered route, lit square-by-square (FFT/FE path read), destination ringed.
+    if (hoverPath && hoverPath.length > 0) {
+      for (const tile of hoverPath) this.fillTile(g, tile, COLOR.reach, 0.42, COLOR.accent);
+      this.outlineTile(g, hoverPath[hoverPath.length - 1], COLOR.accent);
+    }
+    // Strike telegraph: the foes the actor could hit **in place** right now — outline
+    // each and float a forecast badge (best-case damage, flank tag, lethal skull).
+    // Suppressed once the Act is spent (no second attack this turn).
+    if (!acted) {
+      for (const foe of units) {
+        if (!foe.alive || foe.hidden || foe.side === actor.side) continue;
+        const f = this.inPlaceForecast(actor, foe, units);
+        if (!f) continue;
+        this.outlineTile(g, foe.pos, f.lethal ? COLOR.danger : COLOR.threat);
+        this.drawForecast(foe, f);
+      }
     }
     // Enemy intent: for every foe that would act on one of the actor's side next
     // turn, draw a threat link to its mark and the incoming damage — read the

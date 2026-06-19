@@ -1421,7 +1421,9 @@ trail of reasoning stays intact.
   (`drawPreview` `moved` + `inPlaceForecast`), `src/game/scenes/BattleScene.ts`
   (`onKey`, `cycleSpeed`, `tentativeMove`, `undoMove`, `waitUnit`, `noActionsAvailable`,
   `toggleLegend`).
-- **Superseded by:** —
+- **Superseded by:** **D60** refines the *Two-step turn + Undo* follow-up into the
+  free-move turn (incremental budget, no auto-path, explicit End Turn). The move-through-
+  allies / auto-pass / keyboard / legend moves stand.
 
 ## D56 — The headless run simulator (balance + robustness rig)
 
@@ -1545,4 +1547,45 @@ trail of reasoning stays intact.
 - **Spec:** `src/game/icons.ts` (`ICON`, `IconKey`, `legendLine`, `placeIcon`),
   `src/game/scenes/OverworldScene.ts`, `src/game/combat-view.ts`,
   `src/game/scenes/BattleScene.ts`.
+- **Superseded by:** —
+
+## D60 — Free-move combat turn (Fire-Emblem-style movement rework)
+
+- **Status:** Decided (2026-06-19) · playtest feel pass; reworks the `BattleScene`
+  interaction layer and the `CombatView` turn preview, refines **D55**'s two-step turn
+- **Context:** A hands-on playtest read the battle interaction as **slippery** and
+  opaque: clicking a foe **auto-pathed the unit clear across the board** and struck in
+  one motion (`planAttack`), a tile-click spent the **whole** move budget at once, ranged
+  units **shuffled erratically** toward foes to get in range, and a turn **ended the
+  instant you acted** with no visible "your turn is over" beat — the D55 two-step softened
+  this but kept the express-lane auto-path and the single all-or-nothing move.
+- **Decision:** A unit spends a **movement budget tile-by-tile across as many clicks as it
+  likes**, and its **one Act** (attack / skill / Search / Disarm / Bribe / rescue) can fall
+  anywhere in that sequence — *move 2, strike, move 2 more*. The turn ends **only on an
+  explicit End Turn** (the prominent primary button, now relabelled per turn, plus Space /
+  W), or **auto-ends once both halves are spent** (Act used *and* no movement left) — never
+  as a silent side effect of acting.
+  - **Incremental move, no auto-path:** clicking a **lit** (in-budget) tile walks just that
+    leg and subtracts its cost from `moveBudget`; the blue reach wash shrinks as the unit
+    steps. Clicking a foe **only strikes if it's already in range** — out of range just
+    prompts "move closer". This kills the slide and makes **ranged units predictable** (they
+    never auto-advance). Movement reads off the same `reachableTiles` flood as the preview, so
+    they can't disagree (tarpit-ring cost included).
+  - **Fire-Emblem read:** hovering a reachable tile **lights the exact route** to it
+    (`hoverPath`, destination ringed); foes the unit can hit **from where it now stands** get
+    a red strike outline + damage forecast (suppressed once the Act is spent).
+  - **Act ≠ end of turn:** the core `Battle.useSkill`/`useHeal` gained a **`commitTurn`**
+    option (default `true` — the AI and headless sim are unchanged); the render layer passes
+    `commitTurn: false` so a skill resolves (effect + cooldown/charge) but leaves the unit on
+    the clock to spend leftover movement. The scene then ends the turn itself, spending CT
+    from what the unit actually did (`moved`/`acted`; a `spend: "move"` skill stays cheap).
+  - **Undo** snaps **all** of the turn's movement back to the start tile and restores the
+    full budget — allowed until the Act is taken or a sprung trap locks the move (HP lost).
+  - **Wait → End Turn:** the universal pass verb is now **End Turn** (still W); the auto-pass
+    backstop for a unit with no legal action (D55) routes through the same exit.
+- **Spec:** `src/core/turn.ts` (`useSkill`/`useHeal` `commitTurn`), `src/game/combat-view.ts`
+  (`drawPreview` opts: `moveBudget`/`acted`/`hoverPath`), `src/game/scenes/BattleScene.ts`
+  (`beginPlayerTurn`, `recomputeReach`, `turnHint`, `canMoveFurther`, `turnExhausted`,
+  `endPlayerTurn`, `afterActionContinue`, `playerMoveStep`, `playerAttack`, `playerRescue`,
+  `onPointerMove`, `noteAct`).
 - **Superseded by:** —

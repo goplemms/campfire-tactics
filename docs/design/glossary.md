@@ -74,6 +74,24 @@ The one canonical sequence. These four are **fixed keywords**; never substitute.
 > Night — Rest` is allowed **because the node kind is literally Rest** — the gate
 > verb is still "End the Night," with "Rest" naming *which event fires*.
 
+## Surfaces & hubs (*D58*)
+
+The run's deep-info lives in **one** hub with **one** idiom — a bounds-driven
+overlay that floats over the live overworld (no scene swap). One verb opens it;
+a tab bar switches view. Each datum is single-sourced to exactly one tab.
+
+| Canonical | Means | Banned in labels |
+|---|---|---|
+| **Captain's Tent** | The single deep-info hub for a run (opened from Make Camp / Survey). | "menu"; "panel"; "screen"; "Dossier" *as the hub name* |
+| **Party** (tab) | The roster readout — per-member vitality, jeopardy, growth, stats (the dossier). | "Dossier" as the tab label; "Roster" (that's the guild pool) |
+| **Stores** (tab) | The caravan manifest — party/storage caps, carried stock, purse. | "Inventory"; "bag"; "pack" |
+| **Ledger** (tab) | Gold flow (realized + projected) + the route forecast. | "Accounts"; "Budget" |
+| **Map** (tab) | The read-only route board (hands off to the full board, ← Back returns). | "Overview"; "World" |
+
+> The Tent **converges** what were three scattered surfaces (a dossier scene, an
+> inventory panel, a nested ledger). Party owns *vitality*; Stores owns
+> *logistics*; Ledger owns *gold* — they never mirror each other.
+
 ## Currencies & resources
 
 | Canonical | Means | Banned in labels |

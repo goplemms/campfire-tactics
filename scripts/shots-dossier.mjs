@@ -33,7 +33,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const exists = (p) => access(p).then(() => true, () => false);
 
 const S = `window.game.scene.getScene("OverworldScene")`;
-const DV = `window.game.scene.getScene("PartyDossier")`;
 const wrap = (body) => `(()=>{const s=${S};${body}})()`;
 
 // Wound the party and clock one member so the dossier shows real jeopardy.
@@ -45,9 +44,9 @@ const HURT = wrap(`
 const STEPS = [
   { name: "01-camp-badge", minMs: 700, eval: wrap(`s.enterCamp(s.loop.reachable()[0]);`) },
   { name: "02-camp-badge-hurt", eval: `${HURT};${wrap(`s.renderCamp();`)}` },
-  { name: "03-dossier-overview", eval: wrap(`s.openDossier();`) },
-  { name: "04-dossier-member", eval: `(()=>{const d=${DV};d.view.select(1);})()` },
-  { name: "05-dossier-dying", eval: `(()=>{const d=${DV};d.view.select(0);})()` },
+  { name: "03-dossier-overview", eval: wrap(`s.openTent(()=>s.renderCamp(),"party");`) },
+  { name: "04-dossier-member", eval: wrap(`s.tentDossier.select(1);`) },
+  { name: "05-dossier-dying", eval: wrap(`s.tentDossier.select(0);`) },
 ];
 
 async function ensureChrome() {

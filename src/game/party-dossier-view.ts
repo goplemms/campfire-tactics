@@ -37,6 +37,13 @@ export interface DossierViewOptions {
   data: DossierProjection;
   /** Intent: the player asked to leave the dossier. */
   onClose: () => void;
+  /**
+   * Embedded in a host that already provides the frame (the Captain's Tent tab
+   * bar + Close + backdrop). When set, the view draws **only** its rail + detail —
+   * no backdrop, no title, no Back — so it reads as one tab among siblings rather
+   * than a competing modal. The host owns close (and the bounds below its chrome).
+   */
+  embedded?: boolean;
 }
 
 /** The human label + colour for a member's standout jeopardy (`null` = none). */
@@ -88,35 +95,39 @@ export class PartyDossierView {
     const b = this.o.bounds;
     const s = this.scene;
 
-    // Backdrop: a page fully covers; an overlay dims the live scene behind it.
-    const backdrop =
-      this.o.mode === "page"
-        ? s.add.rectangle(b.centerX, b.centerY, b.width, b.height, COLOR.bg, 1).setDepth(40)
-        : s.add.rectangle(b.centerX, b.centerY, b.width, b.height, COLOR.black, 0.55).setDepth(40);
-    this.objects.push(backdrop);
+    // When embedded, the host (Captain's Tent) owns the backdrop, title and Close —
+    // the view contributes only its rail + detail, starting at the top of its bounds.
+    if (!this.o.embedded) {
+      // Backdrop: a page fully covers; an overlay dims the live scene behind it.
+      const backdrop =
+        this.o.mode === "page"
+          ? s.add.rectangle(b.centerX, b.centerY, b.width, b.height, COLOR.bg, 1).setDepth(40)
+          : s.add.rectangle(b.centerX, b.centerY, b.width, b.height, COLOR.black, 0.55).setDepth(40);
+      this.objects.push(backdrop);
 
-    // Header — title + a Back button (top-right).
-    this.objects.push(
-      s.add
-        .text(b.left + 24, b.top + 26, "Party Dossier", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title })
-        .setOrigin(0, 0.5)
-        .setDepth(42),
-    );
-    const back = new Button(s, b.right - 70, b.top + 26, {
-      text: "Back",
-      w: 90,
-      h: 28,
-      fill: COLOR.btnFill,
-      stroke: COLOR.btnStroke,
-      onClick: () => this.o.onClose(),
-    });
-    s.add.existing(back).setDepth(43);
-    this.objects.push(back);
+      // Header — title + a Back button (top-right).
+      this.objects.push(
+        s.add
+          .text(b.left + 24, b.top + 26, "Party Dossier", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title })
+          .setOrigin(0, 0.5)
+          .setDepth(42),
+      );
+      const back = new Button(s, b.right - 70, b.top + 26, {
+        text: "Back",
+        w: 90,
+        h: 28,
+        fill: COLOR.btnFill,
+        stroke: COLOR.btnStroke,
+        onClick: () => this.o.onClose(),
+      });
+      s.add.existing(back).setDepth(43);
+      this.objects.push(back);
+    }
 
     // Layout: a fixed-width rail on the left, the detail panel filling the rest.
     const railX = b.left + 24;
     const railW = 188;
-    const top = b.top + 64;
+    const top = this.o.embedded ? b.top + 8 : b.top + 64;
     this.px = railX + railW + 24;
     this.pw = b.right - 24 - this.px;
     this.ptop = top;
@@ -180,25 +191,20 @@ export class PartyDossierView {
     let y = this.ptop + 6;
     y = this.heading("Party Overview", y);
 
+    // Party *vitality* only — the body's own state. Logistics (Storage, Supplies)
+    // and gold flow (Upkeep) are single-sourced in the Stores and Ledger tabs, so
+    // they no longer mirror here (the Captain's Tent convergence, D58).
     y = this.line(`Morale: ${p.moraleLabel} (${p.morale >= 0 ? "+" : ""}${p.morale})`, y);
-    y = this.line(`Upkeep: ${p.upkeep}g / night`, y);
     y = this.line(`Rest Points banked: ${p.rp}`, y);
-    y = this.line(`Storage: ${p.storageUsed}/${p.storageCap} slots`, y);
     y += 6;
 
-    // The "how much should we stock/heal" answer.
+    // The "how much should we heal" answer.
     const need =
       p.hpDeficit > 0
         ? `Party down ${p.hpDeficit} HP — ${p.woundedCount} wounded`
         : "Party at full health";
     y = this.line(need, y, p.hpDeficit > 0 ? INK.ember : INK.success);
     if (p.jeopardyCount > 0) y = this.line(`${p.jeopardyCount} member(s) in urgent jeopardy — see the ⚠ tabs`, y, INK.danger);
-    y += 8;
-
-    y = this.subheading("Supplies (stock vs. need)", y);
-    for (const it of p.stock) {
-      y = this.line(`${it.name}  ×${it.count}`, y, it.count > 0 ? INK.secondary : INK.disabled);
-    }
   }
 
   private renderMember(m: MemberRow): void {

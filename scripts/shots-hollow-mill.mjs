@@ -54,7 +54,7 @@ const STEPS = [
   { name: "01-intro", minMs: 800 }, // the expedition orientation card over the fogged map
   { name: "02-map-fog", eval: ov(`for(const o of s.overlay)o.destroy();s.overlay=[];`) }, // the hand-built Hollow Mill map
   { name: "03-make-camp", eval: ov(`s.enterCamp(s.loop.reachable()[0]);`) }, // camp, heading to E1
-  { name: "04-ledger", eval: ov(`s.showLedgerPanel(()=>{});`) }, // the ledger + forecast over the authored reward
+  { name: "04-ledger", eval: ov(`s.openTent(()=>s.renderCamp(),"ledger");`) }, // the Captain's Tent ledger + forecast over the authored reward
 
   { name: "05-e1-deploy", minMs: 1100, eval: navTo("e1") }, // E1 — the skirmish deployment board
   { name: "06-e1-battle", minMs: 900, eval: advance(12) }, // a few turns in

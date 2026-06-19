@@ -51,13 +51,13 @@ const STEPS = BOOT === "battle"
       { name: "02-map-fog", eval: wrap(clearOverlay) }, // dismiss the card → the curated map + fog
       { name: "03-preview", eval: wrap(`s.showPreview(s.loop.reachable()[0]);`) },
       { name: "04-make-camp", eval: wrap(`s.enterCamp(s.loop.reachable().find(n=>n.kind==='combat')||s.loop.reachable()[0]);`) },
-      { name: "05-ledger", eval: wrap(`s.showLedgerPanel(()=>{});`) },
+      { name: "05-ledger", eval: wrap(`s.openTent(()=>s.renderCamp(),"ledger");`) },
       { name: "06-survey", eval: wrap(`${clearOverlay}s.showSurvey();`) },
     ]
   : [
       { name: "01-map-fog", minMs: 700, eval: `void 0;` }, // initial: the map with fog
       { name: "02-make-camp", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);`) },
-      { name: "03-ledger", eval: wrap(`s.showLedgerPanel(()=>{});`) },
+      { name: "03-ledger", eval: wrap(`s.openTent(()=>s.renderCamp(),"ledger");`) },
       { name: "04-ledger-skip-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
       { name: "04b-ledger-skip-both", eval: wrap(`s.toggleSkip("repairs",()=>{});`) },
       { name: "04c-ledger-restore-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },

@@ -1,6 +1,9 @@
 import Phaser from "phaser";
 import { COLOR, FONT, INK } from "../theme";
-import type { DossierHandoff } from "./PartyDossierScene";
+import { PartyDossierView } from "../party-dossier-view";
+
+/** The Captain's Tent tabs (D58) — the run's deep-info hub, one verb to open. */
+type TentTab = "party" | "stores" | "ledger" | "map";
 import {
   RunLoop,
   previewNode,
@@ -14,6 +17,7 @@ import {
   fatiguePenalty,
   projectDossier,
   attentionCount,
+  captainsJournal,
   projectManifest,
   getVessel,
   unitSkills,
@@ -56,6 +60,7 @@ import {
   type Ledger,
   type RouteForecast,
   type UpkeepLine,
+  type JournalConcern,
 } from "../../core";
 import { fitText, clearLayer } from "../ui";
 import { Button } from "../button";
@@ -111,6 +116,12 @@ export class OverworldScene extends Phaser.Scene {
   /** Camp progressive disclosure (D58): the optional Banker/Noble/Market economy is
    *  collapsed by default so the everyday camp reads as a few obvious actions. */
   private campAdvanced = false;
+
+  // The Captain's Tent (D58): the one deep-info hub, an in-scene overlay. The active
+  // tab, where to return on close, and the embedded dossier view (so it tears down).
+  private tentTab: TentTab = "party";
+  private tentReturn: (() => void) | null = null;
+  private tentDossier?: PartyDossierView;
 
   private titleText!: Phaser.GameObjects.Text;
   private campText!: Phaser.GameObjects.Text;
@@ -442,15 +453,14 @@ export class OverworldScene extends Phaser.Scene {
     // --- Camp actions + the optional Advanced economy (D58) -------------------
     let y = this.renderCampActions(node, colX, top, rowH);
     y = this.renderAdvancedEconomy(colX, y, rowH);
+    y = this.renderCaptainsJournal(colX, y + 14, panelW - 60);
     const leftBottom = y + 8;
 
-    // --- Right column: the party dossier, the route + the ledger (D45/D58) ---
-    // The per-character readout now lives in the dossier (HP, fatigue, jeopardy);
-    // the button badges when someone needs a look so the glance isn't lost.
+    // --- Right column: one verb into the Captain's Tent (D58) ----------------
+    // Party, Stores, Ledger and the route Map all live under one hub now; the
+    // button badges when someone needs a look so the glance isn't lost.
     const utilY = top + 8;
-    this.campButton(cx + 60, utilY, 240, 24, this.partyButtonLabel(), true, () => this.openDossier(), "Open the Party Dossier: each member's HP, fatigue, conditions and jeopardy, plus a party overview (morale, upkeep, supplies). ⚠ marks anyone hurt, dying or captured.");
-    this.campButton(cx + 60, utilY + 30, 240, 24, "Review Route Map", true, () => this.reviewMap(() => this.renderCamp()), "Look at the overworld node map (read-only) — your route, what's reachable, and what's still fogged. Click Back to return to camp.");
-    this.campButton(cx + 60, utilY + 60, 240, 24, "Inventory", true, () => this.showInventoryPanel(() => this.renderCamp()), "Caravan inventory: party & storage limits, carried traps and herbs (with slots), and the purse. The economic ledger (totals + forecast) lives inside it.");
+    this.campButton(cx + 60, utilY, 240, 28, this.tentButtonLabel(), true, () => this.openTent(() => this.renderCamp(), "party"), "Open the Captain's Tent — the party dossier, caravan stores, the ledger and the route map, all under one hub. ⚠ marks anyone hurt, dying or captured.");
 
     // --- End the Night — the prep→event gate (D46); placed below all content ---
     const contentBottom = Math.max(leftBottom + 8, utilY + 60);
@@ -494,6 +504,51 @@ export class OverworldScene extends Phaser.Scene {
     this.campButton(colX, y, 360, 24, "Triage Heal", true, () => this.triage(), "Spend Rest Points to heal the most-wounded fighter one chunk.");
     y += rowH + 8;
     return y;
+  }
+
+  /**
+   * The **Captain's Journal** (D58 surfacing) — the party's own nagging state laid
+   * out as the captain's running to-do, worst-first: worn gear piling up, a fading
+   * companion, someone left captured. These are *accidental blindness*, not enemy
+   * fog (D48), so they're surfaced freely. Pure facts come from {@link captainsJournal};
+   * this only adds the Layer-2 grumble. Draws **nothing** when nothing nags
+   * (anti-agony: a glance, never a chore). Returns the `y` past it.
+   */
+  private renderCaptainsJournal(x: number, top: number, width: number): number {
+    const concerns = captainsJournal(this.run);
+    if (concerns.length === 0) return top;
+    this.campObjects.push(
+      this.add.text(x - 10, top, "Captain's Journal", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+    );
+    let y = top + 16;
+    for (const c of concerns) {
+      const line = this.add
+        .text(x - 6, y, `• ${this.journalLine(c)}`, { color: this.journalColor(c.severity), fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 4, wordWrap: { width } })
+        .setOrigin(0, 0)
+        .setDepth(11);
+      this.campObjects.push(line);
+      y += line.height + 6;
+    }
+    return y + 6;
+  }
+
+  private journalColor(severity: JournalConcern["severity"]): string {
+    return severity === "urgent" ? INK.danger : severity === "warning" ? INK.ember : INK.muted;
+  }
+
+  /** The captain's grumble for one concern — Layer-2 flavor over the canon facts. */
+  private journalLine(c: JournalConcern): string {
+    const nights = (n: number) => `${n} night${n === 1 ? "" : "s"}`;
+    switch (c.kind) {
+      case "gear-wear":
+        return `Gear's wearing thin (${c.value}) — we should make a rest node to set it right.`;
+      case "dying":
+        return `${c.subject} is fading — ${nights(c.value)} before we lose them. We need a cleric.`;
+      case "rescue":
+        return c.value > 0
+          ? `${c.subject} is still in enemy hands — ${nights(c.value)} to mount the rescue.`
+          : `${c.subject} is still in enemy hands — they're counting on a rescue.`;
+    }
   }
 
   /**
@@ -589,10 +644,181 @@ export class OverworldScene extends Phaser.Scene {
    * close (a clean seam for the future live-overlay mode — launch the same scene
    * without pausing). The dossier reads the live run, so its numbers are current.
    */
-  private openDossier(): void {
-    this.scene.launch("PartyDossier", { run: this.run, mode: "page" } as DossierHandoff);
-    this.scene.bringToTop("PartyDossier");
-    this.scene.pause();
+  // --- The Captain's Tent (D58): the one deep-info hub ------------------------
+
+  /** The camp/survey button that opens the Tent, badged with anyone needing a look. */
+  private tentButtonLabel(): string {
+    const n = attentionCount(projectDossier(this.run));
+    return n > 0 ? `Captain's Tent  ⚠${n}` : "Captain's Tent";
+  }
+
+  /**
+   * Open the Captain's Tent — the run's single deep-info hub, an in-scene **overlay**
+   * (the chosen idiom: it floats over the live camp, no scene swap). One verb opens
+   * it; a tab bar (Party · Stores · Ledger · Map) switches view. It converges what
+   * were three scattered surfaces — the dossier scene, the inventory panel and its
+   * nested ledger — under one frame, each datum single-sourced to its tab.
+   */
+  private openTent(returnTo: () => void, tab: TentTab = "party"): void {
+    this.tentReturn = returnTo;
+    this.tentTab = tab;
+    this.renderTent();
+  }
+
+  /** Tear down the Tent and hand control back to whoever opened it (camp / survey). */
+  private closeTent(): void {
+    this.tentDossier?.destroy();
+    this.tentDossier = undefined;
+    clearLayer(this.overlay);
+    const back = this.tentReturn;
+    this.tentReturn = null;
+    back?.();
+  }
+
+  private selectTentTab(tab: TentTab): void {
+    if (tab === "map") {
+      // The map wants the whole board, not a panel — hand off to the read-only route
+      // view (its ← Back reopens the Tent on Party, so Map reads as a sibling tab).
+      const back = this.tentReturn ?? (() => this.renderCamp());
+      this.tentDossier?.destroy();
+      this.tentDossier = undefined;
+      clearLayer(this.overlay);
+      this.reviewMap(() => this.openTent(back, "party"));
+      return;
+    }
+    this.tentTab = tab;
+    this.renderTent();
+  }
+
+  /** (Re)draw the Tent: the frame + tab bar, then the active tab's body. */
+  private renderTent(): void {
+    this.tentDossier?.destroy();
+    this.tentDossier = undefined;
+    clearLayer(this.overlay);
+
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+    const w = 760;
+    const h = Math.min(this.scale.height - 24, 540);
+    const left = cx - w / 2;
+    const top = cy - h / 2;
+
+    // Full-screen backdrop (dims + swallows clicks to the camp behind) + the frame.
+    const backdrop = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(22).setInteractive();
+    this.overlay.push(
+      backdrop,
+      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
+      this.add.text(left + 24, top + 22, "Captain's Tent", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
+    );
+    this.overlay.push(this.makeTextButton(left + w - 70, top + 22, 96, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => this.closeTent()).setDepth(26));
+
+    // Tab bar — Map sits among the panel tabs even though it hands off to the board.
+    const tabs: { id: TentTab; label: string }[] = [
+      { id: "party", label: this.partyButtonLabel() },
+      { id: "stores", label: "Stores" },
+      { id: "ledger", label: "Ledger" },
+      { id: "map", label: "Map" },
+    ];
+    const tabY = top + 58;
+    tabs.forEach((t, i) => {
+      const active = t.id === this.tentTab;
+      const btn = this.makeTextButton(left + 24 + 70 + i * 144, tabY, 134, 30, t.label, active ? COLOR.btnFill : COLOR.surfaceRaised, active ? COLOR.gold : COLOR.border, () => this.selectTentTab(t.id));
+      this.overlay.push(btn.setDepth(26));
+    });
+    const rule = this.add.graphics().setDepth(24);
+    rule.lineStyle(1, COLOR.borderSoft, 0.9);
+    rule.lineBetween(left + 16, tabY + 22, left + w - 16, tabY + 22);
+    this.overlay.push(rule);
+
+    // Content bounds below the tab bar; each body lays out inside it.
+    const contentTop = tabY + 34;
+    const bounds = new Phaser.Geom.Rectangle(left + 8, contentTop, w - 16, top + h - 16 - contentTop);
+    if (this.tentTab === "party") this.drawTentParty(bounds);
+    else if (this.tentTab === "stores") this.drawTentStores(bounds);
+    else this.drawTentLedger(bounds);
+
+    this.setHint("Captain's Tent — Party, Stores, Ledger, Map. Close (or Esc) returns to camp.");
+    this.input.keyboard?.once("keydown-ESC", () => this.closeTent());
+  }
+
+  /** Party tab — the bounds-driven dossier view, embedded (the Tent owns the chrome). */
+  private drawTentParty(bounds: Phaser.Geom.Rectangle): void {
+    this.tentDossier = new PartyDossierView(this, {
+      bounds,
+      mode: "overlay",
+      embedded: true,
+      data: projectDossier(this.run),
+      onClose: () => this.closeTent(),
+    });
+  }
+
+  /** Stores tab — the caravan manifest (party/storage caps, carried stock, purse). */
+  private drawTentStores(b: Phaser.Geom.Rectangle): void {
+    const m = projectManifest(this.run, this.caravanInfo());
+    const pad = 22;
+    const leftX = b.left + pad;
+    const rightX = b.right - pad;
+    const rowH = 22;
+    const partyStr = m.partyCapacity != null ? `Party ${m.partyCount}/${m.partyCapacity}` : `Party ${m.partyCount}`;
+    const vessel = m.vesselLabel ? `${m.vesselLabel} · ` : "";
+    const g = this.add.graphics().setDepth(24);
+    this.overlay.push(
+      g,
+      this.add.text(leftX, b.top + 12, `${vessel}${partyStr}  ·  Storage ${m.storageUsed}/${m.storageCap} (free ${m.storageFree})`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(rightX, b.top + 12, `Purse ${m.purse}g`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
+    );
+    let y = b.top + 30;
+    if (m.storageFree <= 0) {
+      this.overlay.push(this.add.text(leftX, y, "⚠ Storage full — use or sell before buying.", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+      y += 18;
+    }
+    g.lineStyle(1, COLOR.borderSoft, 0.9);
+    g.lineBetween(leftX, y, rightX, y);
+    y += 16;
+    for (const grp of m.groups) {
+      this.overlay.push(this.add.text(leftX, y, grp.title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+      y += rowH;
+      for (const it of grp.items) {
+        const dim = it.count <= 0;
+        const slotStr = it.slots > 0 ? `  (${it.slots} sl)` : "";
+        this.overlay.push(
+          this.add.text(leftX + 8, y, it.name, { color: dim ? INK.disabled : INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
+          this.add.text(leftX + 130, y, `${it.effect} · ${it.recoverable ? "recoverable" : "consumed"}`, { color: dim ? INK.disabled : INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25),
+          this.add.text(rightX, y, `×${it.count}${slotStr}`, { color: dim ? INK.disabled : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+        );
+        y += rowH;
+      }
+    }
+  }
+
+  /** Ledger tab — gold flow (realized + projected) + the route forecast (D45/D48). */
+  private drawTentLedger(b: Phaser.Geom.Rectangle): void {
+    const node = this.campNode ?? currentNode(this.run);
+    const merchantReady = node.kind === "rest" && this.run.party.some((u) => u.alive && u.jobId === "merchant") && cooldownRemaining(this.run.overworld, "market") === 0;
+    const ledger: Ledger = buildLedger(this.run, { influence: this.guild?.influence ?? 0, marketReady: merchantReady });
+    const pad = 22;
+    const leftX = b.left + pad;
+    const rightX = b.right - pad;
+    const colX = rightX - 86;
+    const rowH = 22;
+    const g = this.add.graphics().setDepth(24);
+    this.overlay.push(
+      g,
+      this.add.text(leftX, b.top + 10, `Balance  ${ledger.balance}g`, { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(rightX, b.top + 10, `Influence ${ledger.influence} · never pays Upkeep`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+    );
+    g.lineStyle(1, COLOR.borderSoft, 0.9);
+    g.lineBetween(leftX, b.top + 24, rightX, b.top + 24);
+    g.lineBetween(leftX, b.top + 26, rightX, b.top + 26);
+
+    let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx: b.centerX, pad, w: b.width }, b.top + 26 + 18);
+    y += 8;
+    this.overlay.push(this.add.text(leftX, y, "Forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+    y += 16;
+    this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
+    if (ledger.marketReady) {
+      this.overlay.push(this.makeTextButton(leftX + 90, b.bottom - 16, 170, 28, "Jump to Market", COLOR.btnFill, COLOR.gold, () => { this.merchantBuyKit(); this.renderTent(); }).setDepth(26));
+    }
   }
 
   private doOverworldAction(actor: Unit, abilityId: string, opts: { targetNodeId?: string } = {}): void {
@@ -920,12 +1146,10 @@ export class OverworldScene extends Phaser.Scene {
       y += rowH;
     }
 
-    this.campButton(colX, y, 360, 24, this.partyButtonLabel(), true, () => this.openDossier(), "Open the Party Dossier: each member's HP, fatigue, conditions and jeopardy, plus a party overview. ⚠ marks anyone hurt, dying or captured.");
-    y += rowH;
-    this.campButton(colX, y, 360, 24, "Review Route Map", true, () => this.reviewMap(() => this.showSurvey()), "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return to Survey.");
-    y += rowH;
-    this.campButton(colX, y, 360, 24, "Inventory", true, () => this.showInventoryPanel(() => this.showSurvey()), "Caravan inventory: party & storage limits, carried traps and herbs, the purse — and the ledger (totals + forecast) nested within.");
+    this.campButton(colX, y, 360, 24, this.tentButtonLabel(), true, () => this.openTent(() => this.showSurvey(), "party"), "Open the Captain's Tent — the party dossier, caravan stores, the ledger and the route map, all under one hub. ⚠ marks anyone hurt, dying or captured.");
     y += rowH + 6;
+
+    y = this.renderCaptainsJournal(colX, y, panelW - 60);
 
     const breakBtn = this.makeTextButton(cx, y + 12, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
     this.campObjects.push(breakBtn);
@@ -1002,75 +1226,6 @@ export class OverworldScene extends Phaser.Scene {
     this.drawMap();
   }
 
-  // --- The economic ledger panel (D45) ---------------------------------------
-
-  /**
-   * The ledger panel (D45), styled as **ledger paper**: ruled rows, descriptions
-   * left, a right-hand **amount column**, the embedded forecast, Influence shown but
-   * walled off (D34), and a **jump-to-market** when usable. The **Upkeep** rows are
-   * **clickable** — click one to *cross it off the ledger* (a voluntary skip, D45):
-   * the line strikes through, its amount disappears (the gold is freed), and the
-   * intent-aware gate won't nag it. Click again to restore it. Every number flows
-   * through {@link buildLedger}.
-   */
-  private showLedgerPanel(onClose: () => void): void {
-    clearLayer(this.overlay);
-    const node = this.campNode ?? currentNode(this.run);
-    const merchantReady = node.kind === "rest" && this.run.party.some((u) => u.alive && u.jobId === "merchant") && cooldownRemaining(this.run.overworld, "market") === 0;
-    const ledger: Ledger = buildLedger(this.run, { influence: this.guild?.influence ?? 0, marketReady: merchantReady });
-
-    const cx = this.scale.width / 2;
-    const w = 620;
-    const pad = 30;
-    const leftX = cx - w / 2 + pad;
-    const rightX = cx + w / 2 - pad;
-    const colX = rightX - 86; // the amount-column rule (a classic ledger column)
-    const rowH = 22;
-
-    // Size the sheet to its content (header + rows + forecast + buttons).
-    const rowsCount = ledger.categories.reduce((n, c) => n + 1 + c.lines.length, 0);
-    const forecastLines = this.forecastSummary(ledger.forecast).split("\n");
-    const headH = 64;
-    const forecastH = 18 + forecastLines.length * 14 + 12;
-    const btnH = 46;
-    const h = Math.min(this.scale.height - 16, headH + rowsCount * rowH + forecastH + btnH + 20);
-    const cy = this.scale.height / 2;
-    const top = cy - h / 2;
-
-    // Depths: sheet 23 · ruling/hit 24 · text 25 · buttons 26.
-    const g = this.add.graphics().setDepth(24);
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
-      g,
-      this.add.text(cx, top + 16, "Ledger", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
-      this.add.text(leftX, top + 40, `Balance  ${ledger.balance}g`, { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(rightX, top + 40, `Influence ${ledger.influence} · never pays Upkeep`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
-    );
-    // Double rule under the header (ledger feel).
-    g.lineStyle(1, COLOR.borderSoft, 0.9);
-    g.lineBetween(leftX, top + 54, rightX, top + 54);
-    g.lineBetween(leftX, top + 56, rightX, top + 56);
-
-    let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx, pad, w }, top + 56 + 18, onClose);
-
-    // Forecast footer.
-    y += 8;
-    this.overlay.push(
-      this.add.text(leftX, y, "Forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-    );
-    y += 16;
-    this.overlay.push(
-      this.add.text(leftX, y, forecastLines.join("\n"), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25),
-    );
-
-    // Buttons (depth 26 — above the sheet).
-    const by = top + h - 22;
-    if (ledger.marketReady) {
-      this.overlay.push(this.makeTextButton(leftX + 90, by, 170, 28, "Jump to Market", COLOR.btnFill, COLOR.gold, () => { this.merchantBuyKit(); this.showLedgerPanel(onClose); }).setDepth(26));
-    }
-    this.overlay.push(this.makeTextButton(rightX - 60, by, 110, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => { clearLayer(this.overlay); onClose(); }).setDepth(26));
-  }
-
   /** The caravan behind this run (for its vessel caps), if a guild dispatched it. */
   private caravanInfo(): { vesselLabel?: string; partyCapacity?: number } {
     if (!this.guild || !this.caravanId) return {};
@@ -1078,69 +1233,6 @@ export class OverworldScene extends Phaser.Scene {
     if (!caravan) return {};
     const vessel = getVessel(caravan.vesselId);
     return { vesselLabel: vessel.label, partyCapacity: vessel.capacity };
-  }
-
-  /**
-   * The caravan inventory panel (D-info-surfacing): the logistics hub — party &
-   * storage limits, the carried traps/herbs (count · effect · slots · recoverable),
-   * and the purse. The economic **ledger** (gold flow + forecast) nests *inside* it
-   * (a button → {@link showLedgerPanel} whose Close returns here), so item-stock and
-   * gold-flow share one entry point without conflating the two.
-   */
-  private showInventoryPanel(onClose: () => void): void {
-    clearLayer(this.overlay);
-    const m = projectManifest(this.run, this.caravanInfo());
-
-    const cx = this.scale.width / 2;
-    const w = 600;
-    const pad = 30;
-    const leftX = cx - w / 2 + pad;
-    const rightX = cx + w / 2 - pad;
-    const rowH = 22;
-
-    const itemRows = m.groups.reduce((n, g) => n + 1 + g.items.length, 0);
-    const headH = 86;
-    const btnH = 46;
-    const h = Math.min(this.scale.height - 16, headH + itemRows * rowH + btnH);
-    const cy = this.scale.height / 2;
-    const top = cy - h / 2;
-
-    // Sheet + header (depths 23 sheet · 24 rule · 25 text · 26 buttons, as the ledger).
-    const g = this.add.graphics().setDepth(24);
-    const partyStr = m.partyCapacity != null ? `Party ${m.partyCount}/${m.partyCapacity}` : `Party ${m.partyCount}`;
-    const vessel = m.vesselLabel ? `${m.vesselLabel} · ` : "";
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.border).setDepth(23),
-      g,
-      this.add.text(cx, top + 16, "Caravan Inventory", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
-      this.add.text(leftX, top + 42, `${vessel}${partyStr}  ·  Storage ${m.storageUsed}/${m.storageCap} (free ${m.storageFree})`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(rightX, top + 42, `Purse ${m.purse}g`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
-    );
-    if (m.storageFree <= 0) {
-      this.overlay.push(this.add.text(leftX, top + 60, "⚠ Storage full — use or sell before buying.", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-    }
-    g.lineStyle(1, COLOR.borderSoft, 0.9);
-    g.lineBetween(leftX, top + 74, rightX, top + 74);
-
-    let y = top + 74 + 16;
-    for (const grp of m.groups) {
-      this.overlay.push(this.add.text(leftX, y, grp.title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-      y += rowH;
-      for (const it of grp.items) {
-        const dim = it.count <= 0;
-        const slotStr = it.slots > 0 ? `  (${it.slots} sl)` : "";
-        this.overlay.push(
-          this.add.text(leftX + 8, y, it.name, { color: dim ? INK.disabled : INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-          this.add.text(leftX + 130, y, `${it.effect} · ${it.recoverable ? "recoverable" : "consumed"}`, { color: dim ? INK.disabled : INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25),
-          this.add.text(rightX, y, `×${it.count}${slotStr}`, { color: dim ? INK.disabled : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
-        );
-        y += rowH;
-      }
-    }
-
-    const by = top + h - 22;
-    this.overlay.push(this.makeTextButton(leftX + 120, by, 230, 28, "Ledger (totals + forecast)", COLOR.btnFill, COLOR.gold, () => this.showLedgerPanel(() => this.showInventoryPanel(onClose))).setDepth(26));
-    this.overlay.push(this.makeTextButton(rightX - 60, by, 110, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => { clearLayer(this.overlay); onClose(); }).setDepth(26));
   }
 
   /**
@@ -1154,7 +1246,6 @@ export class OverworldScene extends Phaser.Scene {
     g: Phaser.GameObjects.Graphics,
     geom: { leftX: number; rightX: number; colX: number; rowH: number; cx: number; pad: number; w: number },
     startY: number,
-    onClose: () => void,
   ): number {
     const { leftX, rightX, colX, rowH, cx, pad, w } = geom;
     let y = startY;
@@ -1202,7 +1293,7 @@ export class OverworldScene extends Phaser.Scene {
             this.setHint(skipped ? `Click to restore ${l.label} to the ledger (fund it again).` : `Click to cross ${l.label} off the ledger — frees its gold; you'll take the consequence and the gate won't nag.`);
           });
           hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => hit.setFillStyle(COLOR.surfaceAlt, 0));
-          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.toggleSkip(lineId, onClose));
+          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.toggleSkip(lineId));
           this.overlay.push(hit);
         }
         y += rowH;
@@ -1221,14 +1312,14 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. */
-  private toggleSkip(id: UpkeepLine["id"], onClose: () => void): void {
+  private toggleSkip(id: UpkeepLine["id"]): void {
     const set = new Set(this.run.camp.skippedUpkeep);
     if (set.has(id)) set.delete(id);
     else set.add(id);
     this.run.camp.skippedUpkeep = [...set] as ("food" | "repairs")[];
     this.refreshCampText();
     this.setHint(set.has(id) ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
-    this.showLedgerPanel(onClose);
+    this.renderTent();
   }
 
   // --- Terminal screens ------------------------------------------------------

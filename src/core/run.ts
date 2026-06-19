@@ -26,7 +26,7 @@ import { Rng, type RngState } from "./rng";
 import { createUnit, type Unit } from "./units";
 import { createInventory, type Inventory } from "./inventory";
 import { createCamp, type Camp } from "./camp";
-import { getDifficulty, type DifficultyPolicy } from "./mortality";
+import { getDifficulty, type DifficultyPolicy, type RescueQuest } from "./mortality";
 import { accrueDeployedXp } from "./leveling";
 import { type EncounterDef } from "./generation";
 import type { EncounterResult } from "./authored";
@@ -132,6 +132,12 @@ export interface RunState {
   /** Difficulty id → the consequence policy the run consults (D9). */
   difficultyId: string;
   history: EncounterRecord[];
+  /**
+   * Outstanding rescue follow-ups (D9/D21): a companion left captured-and-unrescued
+   * becomes a {@link "./mortality".RescueQuest} here, so the abandonment is never
+   * silently forgotten — the Captain's Journal nags from it until it's run or lapses.
+   */
+  rescueQuests: RescueQuest[];
   /** True once the run has ended (a wipe, or a non-win battle). */
   over: boolean;
   /** True once a final-layer node has been cleared (run-complete, D23). */
@@ -171,6 +177,7 @@ export function createRun(seed: string | number, opts: CreateRunOptions): RunSta
     night: 0,
     difficultyId: opts.difficultyId ?? "normal",
     history: [],
+    rescueQuests: [],
     over: false,
     complete: false,
   };

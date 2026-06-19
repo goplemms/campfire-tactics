@@ -39,8 +39,8 @@ const STOCK = wrap(`
 
 const STEPS = [
   { name: "01-enter-camp", minMs: 700, eval: wrap(`s.enterCamp(s.loop.reachable()[0]);`) },
-  { name: "02-inventory", eval: `${STOCK};${wrap(`s.showInventoryPanel(()=>{});`)}` },
-  { name: "03-nested-ledger", eval: wrap(`s.showLedgerPanel(()=>s.showInventoryPanel(()=>{}));`) },
+  { name: "02-inventory", eval: `${STOCK};${wrap(`s.openTent(()=>s.renderCamp(),"stores");`)}` },
+  { name: "03-nested-ledger", eval: wrap(`s.selectTentTab("ledger");`) },
 ];
 
 async function ensureChrome() {

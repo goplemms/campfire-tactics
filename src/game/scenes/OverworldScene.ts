@@ -456,14 +456,19 @@ export class OverworldScene extends Phaser.Scene {
     y = this.renderCaptainsJournal(colX, y + 14, panelW - 60);
     const leftBottom = y + 8;
 
-    // --- Right column: one verb into the Captain's Tent (D58) ----------------
-    // Party, Stores, Ledger and the route Map all live under one hub now; the
-    // button badges when someone needs a look so the glance isn't lost.
+    // --- Right column: quick deep-links into the Captain's Tent (D58) ---------
+    // The Tent is the unified hub, but each surface keeps a one-click button so the
+    // common glances (party, stores) aren't a click deeper. Each opens the Tent on
+    // its tab; the tab bar then reaches the rest. Route Map goes straight to the board.
     const utilY = top + 8;
-    this.campButton(cx + 60, utilY, 240, 28, this.tentButtonLabel(), true, () => this.openTent(() => this.renderCamp(), "party"), "Open the Captain's Tent — the party dossier, caravan stores, the ledger and the route map, all under one hub. ⚠ marks anyone hurt, dying or captured.");
+    const tx = cx + 60;
+    this.campButton(tx, utilY, 240, 24, this.tentButtonLabel(), true, () => this.openTent(() => this.renderCamp(), "party"), "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured.");
+    this.campButton(tx, utilY + 30, 240, 24, "Stores", true, () => this.openTent(() => this.renderCamp(), "stores"), "Caravan stores — party & storage caps, carried traps and herbs (with slots), and the purse (a Captain's Tent tab).");
+    this.campButton(tx, utilY + 60, 240, 24, "Ledger", true, () => this.openTent(() => this.renderCamp(), "ledger"), "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here (a Captain's Tent tab).");
+    this.campButton(tx, utilY + 90, 240, 24, "Review Route Map", true, () => this.reviewMap(() => this.renderCamp()), "Look at the overworld node map (read-only) — your route, what's reachable, and what's still fogged. Click Back to return to camp.");
 
     // --- End the Night — the prep→event gate (D46); placed below all content ---
-    const contentBottom = Math.max(leftBottom + 8, utilY + 60);
+    const contentBottom = Math.max(leftBottom + 8, utilY + 90);
     // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
     // Mission" (D45 fork 2); rest/event "End the Night" into their payload.
     const commitLabel = isCombat
@@ -1146,7 +1151,13 @@ export class OverworldScene extends Phaser.Scene {
       y += rowH;
     }
 
-    this.campButton(colX, y, 360, 24, this.tentButtonLabel(), true, () => this.openTent(() => this.showSurvey(), "party"), "Open the Captain's Tent — the party dossier, caravan stores, the ledger and the route map, all under one hub. ⚠ marks anyone hurt, dying or captured.");
+    this.campButton(colX, y, 360, 24, this.tentButtonLabel(), true, () => this.openTent(() => this.showSurvey(), "party"), "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured.");
+    y += rowH;
+    this.campButton(colX, y, 360, 24, "Stores", true, () => this.openTent(() => this.showSurvey(), "stores"), "Caravan stores — party & storage caps, carried traps and herbs, the purse (a Captain's Tent tab).");
+    y += rowH;
+    this.campButton(colX, y, 360, 24, "Ledger", true, () => this.openTent(() => this.showSurvey(), "ledger"), "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here (a Captain's Tent tab).");
+    y += rowH;
+    this.campButton(colX, y, 360, 24, "Review Route Map", true, () => this.reviewMap(() => this.showSurvey()), "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return to Survey.");
     y += rowH + 6;
 
     y = this.renderCaptainsJournal(colX, y, panelW - 60);

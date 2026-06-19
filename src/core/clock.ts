@@ -17,6 +17,7 @@
 import type { Unit, Side } from "./units";
 import type { EventBus } from "./events";
 import { hasStatus, statusAmount, SLOWED, HASTENED } from "./status";
+import { decayCounters } from "./num";
 
 /**
  * A unit's **effective** CT-gain speed this tick (D41): base Speed, plus
@@ -37,11 +38,7 @@ export function effectiveSpeed(unit: Unit): number {
  * "~200 CT" cooldown re-arms in roughly two of the unit's turns.
  */
 export function tickSkillCooldowns(unit: Unit, amount: number): void {
-  for (const id of Object.keys(unit.cooldowns)) {
-    const left = unit.cooldowns[id] - amount;
-    if (left <= 0) delete unit.cooldowns[id];
-    else unit.cooldowns[id] = left;
-  }
+  decayCounters(unit.cooldowns, amount);
 }
 
 /** True if `skillId` is still cooling down on `unit` (D37). */

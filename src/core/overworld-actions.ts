@@ -32,6 +32,7 @@ import type { Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
+import { decayCounters } from "./num";
 import { reachableFrom } from "./overworld";
 import { useCampJobSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp } from "./leveling";
@@ -251,11 +252,7 @@ export function scoutedTier(eco: OverworldEconomy, nodeId: string): number {
  * {@link "./run".breakCamp}, so both combat and rest nodes tick the spine.
  */
 export function tickCooldowns(eco: OverworldEconomy): void {
-  for (const id of Object.keys(eco.cooldowns)) {
-    const next = eco.cooldowns[id] - 1;
-    if (next <= 0) delete eco.cooldowns[id];
-    else eco.cooldowns[id] = next;
-  }
+  decayCounters(eco.cooldowns, 1);
   // Per-node allowance resets at the node boundary (D35) — a new camp, fresh uses.
   eco.campUses = {};
 }

@@ -122,13 +122,16 @@ export function merchantBuy(run: RunState, materialId: string, tier: MarketTier)
     return { applied: false, reason: `No market here to buy ${materialId}.` };
   }
   const price = merchantPrice(tier);
-  if (run.camp.gold < price) {
-    return { applied: false, reason: `Not enough purse gold (${price}g) to buy ${materialId}.`, price };
-  }
+  // The purse price rides the **shared gate** as a gold knob (D61) — the same
+  // check/spend path as Patronize and every overworld action, so "what paying
+  // gold means" lives in one place ({@link checkOverworldCost}), not per verb.
+  const cost: OverworldCost = { gold: price };
+  const check = checkOverworldCost(run, "merchant-buy", cost, `buy ${materialId}`);
+  if (!check.ok) return { applied: false, reason: check.reason, price };
   if (!canAdd(run.inventory, materialId)) {
     return { applied: false, reason: `No storage room for ${materialId}.`, price };
   }
-  run.camp.gold -= price;
+  commitOverworldCost(run, "merchant-buy", cost, check.fatigueSpend);
   addItem(run.inventory, materialId);
   return { applied: true, detail: `Bought ${materialId} for ${price}g (${tier} market).`, spent: price, price };
 }
@@ -231,11 +234,13 @@ export interface BankerProtectResult extends VerbResult {
  * treasury (D34).
  */
 export function bankerProtect(run: RunState): BankerProtectResult {
-  const cost = ECONOMY.banker.protectionCost;
-  if (run.camp.gold < cost) return { applied: false, reason: `Not enough purse gold (${cost}g) for protection.` };
-  run.camp.gold -= cost;
+  // Gold-priced through the shared gate (D61) — same path as Patronize / the Merchant buy.
+  const cost: OverworldCost = { gold: ECONOMY.banker.protectionCost };
+  const check = checkOverworldCost(run, "banker-protect", cost, "theft protection");
+  if (!check.ok) return { applied: false, reason: check.reason };
+  commitOverworldCost(run, "banker-protect", cost, check.fatigueSpend);
   run.overworld.protection = Math.max(run.overworld.protection, ECONOMY.banker.protectionLevel);
-  return { applied: true, spent: cost, protection: run.overworld.protection, detail: `Theft protection engaged.` };
+  return { applied: true, spent: ECONOMY.banker.protectionCost, protection: run.overworld.protection, detail: `Theft protection engaged.` };
 }
 
 // --- Noble — INFLUENCE (a walled-off, per-expedition currency, D62) ----------

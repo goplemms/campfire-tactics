@@ -35,6 +35,11 @@ import {
   type SkillOutcome,
 } from "./skills";
 
+/** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
+function spendFor(skill: SkillDef): TurnSpend {
+  return { acted: skill.spend === "act", moved: skill.spend === "move" };
+}
+
 export class Battle {
   readonly grid: TileGrid;
   readonly units: Unit[];
@@ -102,6 +107,17 @@ export class Battle {
   }
 
   /**
+   * The shared **commit half** of a skill use: arm its cooldown (if any) and —
+   * unless the D60 free-move flow keeps the turn open (`commitTurn: false`) — end
+   * the caster's turn, spending CT per the skill's `spend`. Used by `useSkill`,
+   * `useHeal`, and `cleave` so the cooldown-arm + turn-end pair lives in one place.
+   */
+  private commitSkill(caster: Unit, skill: SkillDef, commitTurn: boolean): void {
+    if (skill.cost?.cooldown) armSkillCooldown(caster, skill.id, skill.cost.cooldown);
+    if (commitTurn) this.endTurn(caster, spendFor(skill));
+  }
+
+  /**
    * Resolve a job skill against a target (firing its bus events) and — unless
    * `commitTurn` is false — end the caster's turn, spending CT per the skill's
    * cost. The single entry the render layer uses for the skill buttons. Honors the
@@ -120,7 +136,7 @@ export class Battle {
     let outcome: SkillOutcome;
     if (skill.effect.kind === "forced-move") {
       outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);
-      if (commitTurn) this.endTurn(caster, { acted: skill.spend === "act", moved: skill.spend === "move" });
+      this.commitSkill(caster, skill, commitTurn);
       return outcome;
     }
     if (skill.cost?.charge) {
@@ -137,8 +153,7 @@ export class Battle {
     } else {
       outcome = resolveSkill(skill, caster, target, this.bus, this.units);
     }
-    if (skill.cost?.cooldown) armSkillCooldown(caster, skill.id, skill.cost.cooldown);
-    if (commitTurn) this.endTurn(caster, { acted: skill.spend === "act", moved: skill.spend === "move" });
+    this.commitSkill(caster, skill, commitTurn);
     return outcome;
   }
 
@@ -194,7 +209,7 @@ export class Battle {
         hits += 1;
       }
     }
-    this.endTurn(caster, { acted: true });
+    this.commitSkill(caster, skill, true);
     return { hits, damage };
   }
 
@@ -209,8 +224,7 @@ export class Battle {
     if (!this.canUseSkill(caster, skill)) return {};
     const out = resolveMedHeal(caster, target, herbId, inv, this.bus);
     if (out.healed === undefined) return out; // herb not carried — no commit
-    if (skill.cost?.cooldown) armSkillCooldown(caster, skill.id, skill.cost.cooldown);
-    if ((opts.commitTurn ?? true)) this.endTurn(caster, { acted: skill.spend === "act", moved: skill.spend === "move" });
+    this.commitSkill(caster, skill, opts.commitTurn ?? true);
     return out;
   }
 

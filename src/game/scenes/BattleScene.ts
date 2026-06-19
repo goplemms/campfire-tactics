@@ -806,10 +806,10 @@ export class BattleScene extends Phaser.Scene {
         const chance = Math.round(bribeChance(tier) * 100);
         const affordable = this.run.overworld.influence >= cost;
         specs.push({
-          text: `Bribe (${cost} Influence · ${chance}%)`,
+          text: "Bribe",
           description: affordable
-            ? `Bribe an enemy (Noble Influence, ${tier} standing): ~${chance}% to sway — a failed roll still spends the Influence. A generic turns coat for the fight; an authored one joins the guild permanently.`
-            : `Not enough Influence (need ${cost}).`,
+            ? `Sway an enemy for ${cost} Influence — ~${chance}% at ${tier} standing (a failed roll still spends the Influence and the Act). A generic turns coat for the fight; an authored one joins the guild permanently.`
+            : `Not enough Influence to bribe (need ${cost}).`,
           onClick: () => {
             if (!affordable) return this.setHint(`Not enough Influence to bribe (need ${cost}).`);
             this.bribeArmed = true;

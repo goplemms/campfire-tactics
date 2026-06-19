@@ -31,7 +31,8 @@ import {
   type CaravanResolution,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
-import { fitText, clearLayer } from "../ui";
+import { clearLayer } from "../ui";
+import { Button, type ButtonOptions } from "../button";
 import { HintPanel } from "../hint-panel";
 
 /** Data handed back to the hall when a caravan reaches a terminal (D27). */
@@ -403,35 +404,43 @@ export class GuildScene extends Phaser.Scene {
     this.ui.push(this.add.text(x, y, s, { color, fontFamily: FONT.family, fontSize: size }).setOrigin(originX, 0).setDepth(10));
   }
 
+  /** Build a {@link Button}, register it for the render-clear pass, and depth-sort it.
+   *  The shared component handles the rect + fitted label + pointer/hover wiring; these
+   *  three helpers just supply the hall's flat-button geometry (top-left x/y → centre). */
+  private addButton(cx: number, cy: number, depth: number, opts: ButtonOptions): void {
+    const b = new Button(this, cx, cy, opts).setDepth(depth);
+    this.add.existing(b);
+    this.ui.push(b);
+  }
+
+  /** A left-aligned list row (quest/party/pool/armory), with a selected highlight. */
   private listButton(x: number, y: number, w: number, label: string, selected: boolean, onClick: () => void): void {
-    const bg = this.add.rectangle(x, y, w, 24, selected ? COLOR.successDeep : COLOR.surfaceRaised, 1).setStrokeStyle(1, selected ? COLOR.accent : COLOR.border).setOrigin(0, 0).setDepth(1).setInteractive({ useHandCursor: true });
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => bg.setFillStyle(selected ? COLOR.successDeep : COLOR.surfaceAlt));
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => bg.setFillStyle(selected ? COLOR.successDeep : COLOR.surfaceRaised));
-    this.ui.push(bg);
-    const text = this.add.text(x + 8, y + 4, label, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setDepth(2);
-    fitText(text, w - 16);
-    this.ui.push(text);
+    this.addButton(x + w / 2, y + 12, 1, {
+      text: label, w, h: 24,
+      fill: selected ? COLOR.successDeep : COLOR.surfaceRaised,
+      stroke: selected ? COLOR.accent : COLOR.border, strokeWidth: 1,
+      color: INK.bright, fontSize: FONT.label, pad: 16, align: "left",
+      onClick,
+    });
   }
 
+  /** A full-width action button (Dispatch / Buy Gear / Quick Hire); greyed + inert when disabled. */
   private wideButton(x: number, y: number, w: number, label: string, enabled: boolean, onClick: () => void): void {
-    const bg = this.add.rectangle(x, y, w, 30, enabled ? COLOR.successDeep : COLOR.surfaceRaised, 1).setStrokeStyle(2, enabled ? COLOR.success : COLOR.border).setOrigin(0, 0).setDepth(1);
-    if (enabled) {
-      bg.setInteractive({ useHandCursor: true });
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
-    }
-    this.ui.push(bg);
-    const text = this.add.text(x + w / 2, y + 15, label, { color: enabled ? INK.onSuccess : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
-    fitText(text, w - 12);
-    this.ui.push(text);
+    this.addButton(x + w / 2, y + 15, 1, {
+      text: label, w, h: 30,
+      fill: enabled ? COLOR.successDeep : COLOR.surfaceRaised,
+      stroke: enabled ? COLOR.success : COLOR.border, strokeWidth: 2,
+      color: enabled ? INK.onSuccess : INK.disabled, fontSize: FONT.label, pad: 12,
+      enabled, onClick,
+    });
   }
 
+  /** A compact centred button (the ±20 purse steppers). */
   private smallButton(x: number, y: number, w: number, label: string, onClick: () => void, h = 22, fill: number = COLOR.surfaceAlt, stroke: number = COLOR.borderSoft, originX = 0): void {
-    const bg = this.add.rectangle(x, y, w, h, fill, 1).setStrokeStyle(1, stroke).setOrigin(originX, 0.5).setDepth(2).setInteractive({ useHandCursor: true });
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
-    this.ui.push(bg);
-    const text = this.add.text(x + (originX === 0 ? w / 2 : 0), y, label, { color: INK.onSuccess, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(3);
-    fitText(text, w - 12);
-    this.ui.push(text);
+    this.addButton(x + w * (0.5 - originX), y, 2, {
+      text: label, w, h, fill, stroke, strokeWidth: 1,
+      color: INK.onSuccess, fontSize: FONT.label, pad: 12,
+      onClick,
+    });
   }
 }

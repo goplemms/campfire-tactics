@@ -39,6 +39,10 @@ export interface ButtonOptions {
   pad?: number;
   /** Brighten the fill on hover. Default true. */
   hover?: boolean;
+  /** Label alignment: "left" pins the label to the left edge (inset by pad/2); default centered. */
+  align?: "left" | "center";
+  /** When false the button is inert — no hand cursor, hover, or click (a disabled action). Default true. */
+  enabled?: boolean;
   hint?: ButtonHint;
 }
 
@@ -70,8 +74,18 @@ export class Button extends Phaser.GameObjects.Container {
     this.animate = !isScreenshotMode();
     this.bg = scene.add.rectangle(0, 0, o.w, o.h, o.fill).setStrokeStyle(o.strokeWidth ?? 2, o.stroke);
     this.label = scene.add.text(0, 0, o.text, { color: o.color ?? INK.onSuccess, fontFamily: FONT.family, fontSize: o.fontSize ?? FONT.body }).setOrigin(0.5);
+    // Left-aligned labels pin to the left edge, inset by half the pad (matching the
+    // hall's `x + pad/2` list rows); the default keeps the label centered.
+    if (o.align === "left") this.label.setOrigin(0, 0.5).setX(-o.w / 2 + this.pad / 2);
     this.add([this.bg, this.label]);
     fitText(this.label, o.w - this.pad);
+
+    // A disabled button renders inert: no hit area, hand cursor, hover, or click —
+    // the caller supplies the greyed fill/stroke/colour.
+    if (o.enabled === false) {
+      if (o.hint) this.wireHint(o.hint);
+      return;
+    }
 
     this.bg.setInteractive({ useHandCursor: true });
     const lit = Phaser.Display.Color.IntegerToColor(o.fill).brighten(18).color;
@@ -95,12 +109,15 @@ export class Button extends Phaser.GameObjects.Container {
       if (brighten) this.bg.setFillStyle(o.fill);
       if (this.animate) this.scaleTo(1);
     });
-    if (o.hint) {
-      const { bar, description, idle } = o.hint;
-      if (description) {
-        this.bg.on(Events.GAMEOBJECT_POINTER_OVER, () => bar.setText(description));
-        this.bg.on(Events.GAMEOBJECT_POINTER_OUT, () => bar.setText(idle()));
-      }
+    if (o.hint) this.wireHint(o.hint);
+  }
+
+  /** Bind the hover-hint sink: show `description` while hovered, restore `idle()` on out. */
+  private wireHint(hint: ButtonHint): void {
+    const { bar, description, idle } = hint;
+    if (description) {
+      this.bg.on(Events.GAMEOBJECT_POINTER_OVER, () => bar.setText(description));
+      this.bg.on(Events.GAMEOBJECT_POINTER_OUT, () => bar.setText(idle()));
     }
   }
 

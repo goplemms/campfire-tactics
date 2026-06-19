@@ -11,6 +11,10 @@ import {
   cooldownRemaining,
   scoutedTier,
   createOverworldEconomy,
+  validateOverworldCost,
+  hasPacing,
+  hasPrice,
+  OVERWORLD_ABILITIES,
   SCOUT,
 } from "./overworld-actions";
 import { getJob } from "./jobs";
@@ -89,10 +93,10 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
     takeOverworldAction(run, actor, "scout", { targetNodeId: target.id });
-    expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown);
+    expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown!);
 
     // Break Camp is the node-step that ticks cooldowns — at departure, not the event.
-    for (let i = 0; i < SCOUT.cost.cooldown; i++) {
+    for (let i = 0; i < SCOUT.cost.cooldown!; i++) {
       breakCamp(run);
     }
     expect(cooldownRemaining(run.overworld, "scout")).toBe(0);
@@ -202,5 +206,41 @@ describe("overworld-actions — the per-node camp-skill cap (D35)", () => {
     expect(campSkillUsesLeft(run.overworld, uncapped)).toBe(Infinity);
     expect(useCampSkillAtNode(run, a, uncapped).applied).toBe(true);
     expect(useCampSkillAtNode(run, a, uncapped).applied).toBe(true);
+  });
+});
+
+describe("the two-axis limiter invariant (D61)", () => {
+  it("rejects a free-and-unlimited cost (no pacing, no price, not self-limited)", () => {
+    expect(() => validateOverworldCost("Exploit", {})).toThrow(/free and unlimited/);
+  });
+
+  it("accepts a cost paced by either axis", () => {
+    expect(() => validateOverworldCost("Cooldowned", { cooldown: 2 })).not.toThrow();
+    expect(() => validateOverworldCost("Capped", { usesPerNode: 1 })).not.toThrow();
+  });
+
+  it("accepts a cost priced by any knob", () => {
+    expect(() => validateOverworldCost("Fatiguing", { fatigue: 1 })).not.toThrow();
+    expect(() => validateOverworldCost("Gilded", { gold: 10 })).not.toThrow();
+    expect(() => validateOverworldCost("Political", { influence: 2 })).not.toThrow();
+    expect(() => validateOverworldCost("Restful", { rp: 1 })).not.toThrow();
+  });
+
+  it("accepts an unpaced, unpriced action only when it is selfLimited (e.g. Merchant sell)", () => {
+    expect(() => validateOverworldCost("Sell", { selfLimited: true })).not.toThrow();
+  });
+
+  it("classifies pacing vs price knobs", () => {
+    expect(hasPacing({ cooldown: 2 })).toBe(true);
+    expect(hasPacing({ usesPerNode: 0 })).toBe(true); // a 0-cap is still a (zero) pacing declaration
+    expect(hasPacing({ gold: 5 })).toBe(false);
+    expect(hasPrice({ gold: 5 })).toBe(true);
+    expect(hasPrice({ cooldown: 2 })).toBe(false);
+  });
+
+  it("every registered overworld ability satisfies the invariant", () => {
+    for (const ability of Object.values(OVERWORLD_ABILITIES)) {
+      expect(() => validateOverworldCost(ability.name, ability.cost)).not.toThrow();
+    }
   });
 });

@@ -44,7 +44,7 @@ Predictable shape makes copy scannable without reading every word:
   (cooldown → fatigue → gold), so the eye learns the slots.
 - **Capitalize the keyword (in labels & readouts).** A canonical resource/status noun
   is **Capitalized in every persistent, scannable surface** — buttons, HUD lines,
-  status chips, panel headers, list readouts: `Guard the Purse`, `Gather Influence`,
+  status chips, panel headers, list readouts: `Guard the Purse`, `Patronize`,
   `Slots 2/4 · Storage 6 · Purse 40g`, `Debt 40g · Interest +2g/step`. This visually
   links an action to its HUD number (the `Purse 120g` you read up top is the `Purse`
   you Guard). **Transient hint *sentences*** (refusals, confirmations like "Treasury
@@ -98,7 +98,8 @@ a tab bar switches view. Each datum is single-sourced to exactly one tab.
 |---|---|---|
 | **Purse** | The carried **run** gold (lost on a wipe). The field-spend pool. | bare "gold" *when you mean the run pool*; "money"; "funds" |
 | **Treasury** | The persistent **guild** vault (quest payouts only). | "bank" (collides with the Banker class); "savings" |
-| **Influence** | The Noble's separate currency; **never** pays Upkeep. | "rep"; "reputation" (in labels); "favor" |
+| **Influence** | The Noble's separate, **per-expedition** currency (D62) — accrues from a Noble's presence + **Patronize**, spent on **Bribe**, gates event quality; **never** pays Upkeep. Rebuilt each run (does not bank to the guild). | "rep"; "reputation" (in labels); "favor" |
+| **Standing** | The banded **Influence** tier (D62): `unknown < known < respected < favored < renowned`. The current band gates the Noble's sinks (cheaper/likelier bribes, better events). | bare "Influence" *when you mean the band*; "rank"; "level" |
 | **Upkeep** | The nightly maintenance cost (Food + Repairs lines). | "maintenance"; "costs"; "burn" *as a label* (see below) |
 | **Storage** | Caravan slot capacity for gear/ammo/consumables. | "inventory"; "bag"; "pack" |
 | **Rest Points (RP)** | Banked support-role healing currency; spent via Triage. | spelling out "rest" ambiguously near a rest node |
@@ -153,7 +154,8 @@ the drift found in the current build.
 | **Guard the Purse** | The Banker's SECURE verb: blunt a thief's skim. | **"Protect"** as the *verb*. Two-part rule: **`Guard`** is the verb/button; **`Protection N%`** is the resulting status readout (the effect's magnitude). Never `Protect the purse` as an action. |
 | **Invest** | The Banker's interest verb (purse accrues interest per step). | "Save"; "Deposit" |
 | **Borrow** | The Banker's buy-on-debt verb. | "Loan"; "Advance" |
-| **Gather Influence** | The Noble's INFLUENCE verb. | "Earn rep"; "Curry favor" (in the label) |
+| **Patronize** | The Noble's active INFLUENCE verb (D62): spend purse gold to court patrons → **Influence**, once per node. Passive presence accrual rides alongside it. | "Curry favor"/"Schmooze" (in the label); "Buy influence" (collides with Buy) |
+| ~~**Gather Influence**~~ | **Retired (D62).** The spammable political-income faucet is gone; Influence now comes from a Noble's **passive presence accrual** + **Patronize**. Don't reintroduce an unpaced Influence button. | — |
 | ~~**Trade**~~ | **Retired (D61).** The Merchant's gold-minting `+gold/+storage` camp skill is gone; its economy is now **Buy** + **Sell** against a node's **Market** tier. Don't reintroduce `Trade` as a verb. | — |
 | **Cook Stew** | The Chef camp skill (+morale, banks heal). | "Cook" alone if other dishes ever exist |
 | **Set Trap** | The Survivalist deployment skill. | "Lay trap"; "Plant trap" |
@@ -246,7 +248,7 @@ read it everywhere.
 | **Instant** / **Charged** | Resolves now / schedules and **resolves later**. | "quick"/"slow"; "channeled" |
 | **Defend** | The universal brace action (applies the **Guarded** status). | "Brace"/"Block" as the *button*; "Guard" (that's the Banker verb) |
 | **Wait** | Pass the turn without acting. | "Skip"; "Pass"; "Hold" |
-| **Bribe** | The Noble's mid-combat **Influence** verb (sway an enemy). | "Sway"/"Charm" as the button; abbreviating `Influence` to `Inf` |
+| **Bribe** | The Noble's mid-combat **Influence** verb (sway an enemy). A **roll** scaled by **Standing** (D62): higher band = cheaper + likelier; a failed sway still spends the Influence and the Act. | "Sway"/"Charm" as the button; abbreviating `Influence` to `Inf` |
 
 **Status-effect lexicon** — fixed labels, one word each, never re-skinned:
 **Immobilized · Slowed · Exposed · Hastened · Guarded · Swift · Marked Prey · Flanked**.

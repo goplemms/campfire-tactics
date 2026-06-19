@@ -9,6 +9,7 @@ import {
   EVENTS,
   getEvent,
   eventForNode,
+  eventWeightAt,
   resolveEvent,
   eventChoices,
   chooseEventOption,
@@ -405,5 +406,57 @@ describe("node-events — autoResolve keeps autoTraverse deterministic (D22)", (
       return run.history;
     }
     expect(play()).toEqual(play());
+  });
+});
+
+describe("node-events — standing gates event quality (D62)", () => {
+  it("at 'unknown' standing the weights are the base weights (no-Noble baseline unchanged)", () => {
+    for (const e of EVENTS) {
+      // Premium events (minInfluence) are gated out at unknown; the rest match base.
+      const expected = e.minInfluence ? 0 : e.weight;
+      expect(eventWeightAt(e, "unknown")).toBe(expected);
+    }
+  });
+
+  it("a boon grows likelier and a bane rarer as standing rises", () => {
+    const shop = getEvent("shop"); // boon
+    const thief = getEvent("thief"); // bane
+    expect(eventWeightAt(shop, "renowned")).toBeGreaterThan(eventWeightAt(shop, "unknown"));
+    expect(eventWeightAt(thief, "renowned")).toBeLessThan(eventWeightAt(thief, "unknown"));
+  });
+
+  it("the premium Patron's Welcome is gated below 'favored' standing", () => {
+    const patron = getEvent("patron-welcome");
+    expect(patron.minInfluence).toBe("favored");
+    expect(eventWeightAt(patron, "respected")).toBe(0); // gated out
+    expect(eventWeightAt(patron, "favored")).toBeGreaterThan(0); // unlocked
+    expect(eventWeightAt(patron, "renowned")).toBeGreaterThan(0);
+  });
+
+  it("a patron event can only appear once standing is high enough", () => {
+    const map = generateOverworld("patron-reach");
+    const eventIds = map.order.map((id) => getNode(map, id)).filter((n) => n.kind === "event");
+    const atUnknown = new Set(eventIds.map((n) => eventForNode("patron-reach", n, "unknown").id));
+    const atRenowned = new Set(eventIds.map((n) => eventForNode("patron-reach", n, "renowned").id));
+    expect(atUnknown.has("patron-welcome")).toBe(false); // never at low standing
+    // (Whether a given map *has* a node that lands the patron at renowned is seed-dependent;
+    // the gate — never below favored — is the invariant asserted above.)
+    expect(atRenowned.size).toBeGreaterThan(0);
+  });
+
+  it("the Patron's Welcome boon: morale + a sellable gift + a touch of Influence (no gold-from-nothing)", () => {
+    const run = newRun("patron-boon");
+    run.overworld.influence = 16; // favored
+    const moraleBefore = run.camp.morale;
+    const infBefore = run.overworld.influence;
+    const goldBefore = run.camp.gold;
+    const out = getEvent("patron-welcome").autoResolve(run, NODE);
+    expect(out.kind).toBe("patron");
+    expect(run.camp.morale).toBe(moraleBefore + out.moraleDelta);
+    expect(out.moraleDelta).toBeGreaterThan(0);
+    expect(countOf(run.inventory, "valuables")).toBeGreaterThan(0); // a sellable gift
+    expect(run.overworld.influence).toBeGreaterThan(infBefore); // goodwill compounds
+    expect(out.goldDelta).toBe(0); // never mints gold
+    expect(run.camp.gold).toBe(goldBefore);
   });
 });

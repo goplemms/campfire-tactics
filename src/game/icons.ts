@@ -44,6 +44,7 @@ export const ICON = {
   recruiter: { glyph: "✚", label: "recruit", color: INK.cyan },
   story: { glyph: "?", label: "story", color: INK.secondary },
   toll: { glyph: "╫", label: "toll", color: INK.gold },
+  patron: { glyph: "♛", label: "patron", color: INK.gold },
   fogged: { glyph: "◌", label: "fogged", color: INK.disabled },
 
   // --- Combat board + status (registry is complete; combat-view migration is a follow-up) ---

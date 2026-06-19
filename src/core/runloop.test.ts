@@ -222,7 +222,7 @@ describe("runloop — the unified camp at every node (D35)", () => {
       const next = reachableNodes(run)[0];
       if (next) {
         chooseNode(run, next.id);
-        expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown - 1);
+        expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown! - 1);
       }
     }
   });

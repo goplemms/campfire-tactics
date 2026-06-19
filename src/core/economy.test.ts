@@ -15,7 +15,9 @@ import {
   addInfluence,
   spendInfluence,
   canAffordInfluence,
+  influenceTier,
 } from "./economy";
+import { createOverworldEconomy } from "./overworld-actions";
 
 let nextId = 0;
 function fighter(name: string): Unit {
@@ -163,26 +165,35 @@ describe("economy — Upkeep is the TREASURY-side sink (D15/D34)", () => {
   });
 });
 
-describe("economy — Influence is a purpose-bound currency (D34)", () => {
-  it("adds and spends, walled off from gold", () => {
-    const g = guildWith("influence");
-    addInfluence(g, 5);
-    expect(g.influence).toBe(5);
-    expect(canAffordInfluence(g, 3)).toBe(true);
-    expect(spendInfluence(g, 3)).toBe(true);
-    expect(g.influence).toBe(2);
-    expect(spendInfluence(g, 5)).toBe(false); // can't overdraw
-    expect(g.influence).toBe(2);
+describe("economy — Influence is a purpose-bound, per-expedition currency (D34/D62)", () => {
+  it("adds and spends on the run economy, walled off from gold", () => {
+    const eco = createOverworldEconomy();
+    addInfluence(eco, 5);
+    expect(eco.influence).toBe(5);
+    expect(canAffordInfluence(eco, 3)).toBe(true);
+    expect(spendInfluence(eco, 3)).toBe(true);
+    expect(eco.influence).toBe(2);
+    expect(spendInfluence(eco, 5)).toBe(false); // can't overdraw
+    expect(eco.influence).toBe(2);
   });
 
   it("Influence can NEVER pay Upkeep — Upkeep only reads the treasury (D34)", () => {
     const g = guildWith("influence-upkeep");
     g.treasury = 0;
-    addInfluence(g, 1000); // a fortune in Influence
+    const eco = createOverworldEconomy();
+    addInfluence(eco, 1000); // a fortune in Influence, held by the run (not the guild)
     const res = payTreasuryUpkeep(g);
     // Upkeep still goes unfunded: Influence is not gold and can't cover it.
     expect(res.paid).toBe(0);
     expect(res.underfunded.length).toBeGreaterThan(0);
-    expect(g.influence).toBe(1000); // untouched by Upkeep
+    expect(eco.influence).toBe(1000); // untouched by Upkeep
+  });
+
+  it("bands the raw standing value into tiers (D62)", () => {
+    expect(influenceTier(0)).toBe("unknown");
+    expect(influenceTier(3)).toBe("known");
+    expect(influenceTier(8)).toBe("respected");
+    expect(influenceTier(15)).toBe("favored");
+    expect(influenceTier(25)).toBe("renowned");
   });
 });

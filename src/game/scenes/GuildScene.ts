@@ -140,10 +140,10 @@ export class GuildScene extends Phaser.Scene {
     clearLayer(this.ui);
 
     const W = this.scale.width;
-    // The two pools + Influence (D34): the persistent TREASURY (vault), the
-    // walled-off INFLUENCE currency, the roster, and the free armory. The run
-    // PURSE lives on each caravan (shown in Assembly / surfaced on a return).
-    this.text(W / 2, 14, `Guild Hall — Treasury ${this.guild.treasury}g  ·  Influence ${this.guild.influence}  ·  Roster ${this.guild.roster.length}  ·  Armory ${availableGear(this.guild).length} free`, INK.primary, FONT.title, 0.5);
+    // The persistent guild pools (D34): the TREASURY (vault), the roster, and the free
+    // armory. The run PURSE lives on each caravan (shown in Assembly / surfaced on a
+    // return); Influence is now **per-expedition** (D62), so it lives on the run, not here.
+    this.text(W / 2, 14, `Guild Hall — Treasury ${this.guild.treasury}g  ·  Roster ${this.guild.roster.length}  ·  Armory ${availableGear(this.guild).length} free`, INK.primary, FONT.title, 0.5);
 
     this.drawBoard(20, 44);
     this.drawAssembly(280, 44);

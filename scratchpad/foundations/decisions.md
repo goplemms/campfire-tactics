@@ -1648,8 +1648,18 @@ trail of reasoning stays intact.
   `basic` market, resolving the reconciliation) and **(8) Merchant XP-on-sell** (`merchantSell`
   grants the brokering Merchant use-XP — replacing the retired Trade's XP, so the class still
   grows from its signature work). All green (**502 tests**), production build + headless
-  smoke-test pass. **Only remaining D61 item: the numbers/tuning pass** (buy prices, sale
-  rates, valuables drop rates) — deliberately left for a balance/playtest sweep.
+  smoke-test pass.
+- **Build progress update (2026-06-19, the two-axis fold — item 1, now built):** the
+  headline limiter model landed (branch `claude/ecstatic-edison-ap8407`). One two-axis
+  `OverworldCost` — pacing (`cooldown` / `usesPerNode`) × price (`fatigue` / `gold` /
+  `influence` / `rp`), plus a `selfLimited` escape for inventory-bound verbs — and **one
+  gate** (`checkOverworldCost`/`commitOverworldCost`) that Scout, the camp jobs, **and** the
+  economy verbs (Patronize) all route through. The **invariant** (`validateOverworldCost`,
+  asserted over the registry at load) makes "unpaced **and** unpriced" unrepresentable; the
+  `usesPerNode` interim is now just the general pacing knob. This **closes the bug class**,
+  and — paired with D62 — the last live faucet (`Gather Influence`) is **deleted**, not
+  capped. **Only remaining D61 item: the numbers/tuning pass** (buy prices, sale rates,
+  valuables drop rates) — deliberately left for a balance/playtest sweep.
 - **Decision:** Converge the whole camp/overworld action surface onto **one limiter model**,
   and reframe the Merchant's economy around **access scarcity** rather than a gold faucet.
   1. **Two-axis limiter model (pacing × price).** Every camp/overworld action becomes one
@@ -1730,8 +1740,8 @@ trail of reasoning stays intact.
     synonym* for the retired `Trade` skill** — D61 promotes **Sell** to a first-class verb
     (and adds a `Valuables`/`Salvage` keyword), so that entry must be re-authored when built.
 - **Still open / deferred / not built:**
-  - **Influence subsystem** (item 5) — carved out to **D62**; its identity/mechanics are
-    out of D61's scope.
+  - **Influence subsystem** (item 5) — carved out to **D62**; now **Decided + built** there
+    (per-expedition standing, passive accrual + Patronize, bribe-by-standing, event quality).
   - **Terrain/biome node axis** (item 2) — Deferred; seam left open.
   - **Tuning pass** across the three economy classes + market tier yields (incl. sale-rate
     curves and valuables drop rates) — later.
@@ -1751,33 +1761,54 @@ trail of reasoning stays intact.
 
 ## D62 — Influence as its own subsystem (politics / patronage / reputation)
 
-- **Status:** Deferred (opened 2026-06-19) · carved out of **D61** item 5; builds on **D34**
-  (Influence is a walled-off currency) and the Noble's **D30** verbs.
+- **Status:** **Decided + Built** (2026-06-19, branch `claude/ecstatic-edison-ap8407`) ·
+  carved out of **D61** item 5; builds on **D34** (Influence is a walled-off currency), the
+  Noble's **D30** verbs, and the **D61** two-axis limiter. Spec: [`influence.md`](../../docs/design/systems/influence.md).
+  Tuning is the only deferred piece.
 - **Context:** While reworking the gold economy (D61) we kept hitting Influence and kept
   having to *not* decide it — because it isn't really part of the gold economy. It's a
   **separate currency with its own identity** (patronage / reputation / politics) that
   *touches* economic behaviour (it pays the Noble's bribes, can't pay Upkeep) but has its own
-  overall fantasy. The current implementation is also thin and partly broken: political income
-  is a **spammable `Gather Influence` button** (`collectPoliticalIncome`, no gate → unlimited
+  overall fantasy. The old implementation was thin and broken: political income was a
+  **spammable `Gather Influence` button** (`collectPoliticalIncome`, no gate → unlimited
   Influence → unlimited bribes), which the D61 interim cap did **not** cover.
-- **Decision:** **Deferred** — to be designed as its own subsystem (likely its own
-  `docs/design/systems/` doc), *not* folded into D61. Recorded so it isn't lost.
-- **Open questions to resolve when picked up:**
-  - **Identity & fantasy:** what *is* Influence — patronage, standing with factions, political
-    capital? Is it one pool or faction-scoped?
-  - **Income source:** passive accrual (per node-step, like Banker interest) vs. earned from
-    specific acts/events vs. keyed to a Noble's *presence* (mirroring the passive intel/market
-    floor idiom)? — the exploit fix follows from whatever this is; D61's two-axis invariant is
-    the interim guard.
-  - **Sinks beyond bribe:** sway-avoid fights, access/recruitment (D33), faction unlocks?
-  - **Persistence/scope:** purse-like (per-caravan, lost on a wipe) vs. guild-persistent
-    (D34)? Today it lives on the `Guild`.
-  - **Where it surfaces:** the camp Advanced panel, a guild-tier screen, or its own surface?
-- **Interim until built:** `Gather Influence` stays **live-exploitable** (unlimited) on the
-  current branch; closed either by the D61 two-axis fold or by this subsystem, whichever lands
-  first. A one-off cap is possible but deliberately skipped to avoid another throwaway patch.
-- **Spec:** TBD (own subsystem doc). Touches `src/core/economy-actions.ts`
-  (`collectPoliticalIncome`/`bribeEnemy`), `src/core/economy.ts` (`Influence`),
-  `src/core/guild.ts` (`politicsCounter`/scope), `src/game/scenes/OverworldScene.ts`
-  (`nobleIncome` surfacing).
+- **Decision:** **Influence is the Noble's "opportunity" currency** — *presence → options*,
+  the third leg of the economy trichotomy (Merchant goods→gold, Banker time→gold, Noble
+  presence→Influence). Resolved this pass:
+  1. **Per-expedition, banded.** Influence lives on the **run** (`run.overworld.influence`),
+     **rebuilt each expedition** like the purse — it does **not** bank to the guild (so a
+     passive faucet can't compound forever). The raw value bands into **Standing**
+     (`unknown < known < respected < favored < renowned`), the Noble's twin of the
+     market/intel tiers; the **current band** gates every sink.
+  2. **Faucets — both keyed to a Noble's presence, both gated (no free faucet).** Interim
+     Noble proxy = a party member with Intelligence ≥ 3 (the Noble's stat). (a) **Passive
+     presence accrual** per node-step (the Noble's twin of Banker interest), fired from
+     `breakCamp`. (b) **Patronize** — an active camp verb (gold → Influence) routed through
+     the **D61 two-axis gate** (`usesPerNode: 1` × `gold`). The exploit is **designed out**:
+     `Gather Influence`/`collectPoliticalIncome` **deleted**, not capped.
+  3. **Sinks scale with Standing — the hoard-vs-spend tension.** A high *current* band gates
+     good outcomes; *spending* draws it down. (a) **Bribe** now reads Standing for both
+     **price** (cheaper) and **odds** (likelier), and is a **roll that can fail** — a failed
+     sway still spends the Influence **and** the Act. The roll is **deterministic per
+     target+node** (no save-scum). (b) **Event quality**: Standing **biases the event pick**
+     (boons likelier, banes rarer) and **unlocks premium events** — the **Patron's Welcome**
+     (gated `favored`+) paying morale + a sellable Valuables gift + a touch of Influence.
+     **No gold-from-nothing** — gold stays scarce (D15/D30).
+- **Build (all green, 519 tests · build + headless smoke pass):** `economy.ts`
+  (`InfluenceTier`/`influenceTier`/bands; `addInfluence`/`spendInfluence`/`canAffordInfluence`
+  retargeted to `OverworldEconomy`), `overworld-actions.ts` (`influence` on the economy +
+  round-trip; the shared gate spends/checks it), `economy-actions.ts` (`hasNoble`,
+  `nobleInfluencePerStep`, `accrueNobleInfluence`, `patronize`; `bribeCost`/`bribeChance` by
+  band, `bribeEnemy` rolls + `failed`), `run.ts` (accrual in `breakCamp`), `guild.ts` (drop
+  the persistent `influence` + `politicsCounter`), `node-events.ts` (`eventWeightAt` +
+  `standingBias`/`minInfluence`; the `patron` kind + Patron's Welcome), `intel.ts`/`runloop.ts`
+  (thread the band into `eventForNode`), the scenes (Patronize button + readout, bribe
+  chance/failure, patron icon + report; Guild Hall drops Influence), `glossary.md`, and the
+  new `systems/influence.md`.
+- **Still deferred:**
+  - **A dedicated Noble job** — replace the Intelligence ≥ 3 presence proxy with the class's
+    `jobId` when it's built.
+  - **Richer sinks** — sway-to-avoid-a-fight, faction access/unlocks, recruitment gates.
+  - **Tuning** — accrual rate, Patronize cost/yield, band thresholds, bribe cost/chance
+    curves, event-bias magnitudes (rides the D61 parked balance sweep).
 - **Superseded by:** —

@@ -38,6 +38,7 @@ import type { MapNode } from "./overworld";
 import type { Unit } from "./units";
 import { streamFor } from "./rng";
 import { MATERIALS, addItem, canAdd } from "./inventory";
+import { addInfluence, influenceTier, type InfluenceTier } from "./economy";
 import { merchantBuy, merchantPrice } from "./economy-actions";
 import { rollMercenary } from "./guild";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
@@ -49,7 +50,7 @@ import { thiefEventSkim } from "./theft";
  * that tells you the price up front and doesn't sneak" — a *known*, deterministic
  * cost you see while planning and **route around** (vs. the fogged thief skim).
  */
-export type EventKind = "thief" | "shop" | "recruiter" | "story" | "toll";
+export type EventKind = "thief" | "shop" | "recruiter" | "story" | "toll" | "patron";
 
 /** Node-event tuning — all data, a numbers pass later (D23/D30/D33/D48). */
 export const NODE_EVENTS = {
@@ -60,6 +61,16 @@ export const NODE_EVENTS = {
   /** The toll fee range (D48) — deterministic per node, tuning deferred. */
   tollMin: 10,
   tollMax: 30,
+} as const;
+
+/** Patron's Welcome payout (D62) — a standing-gated boon, no gold-from-nothing. Tuning later. */
+const PATRON = {
+  /** Morale lift from the feast (D8). */
+  morale: 2,
+  /** A parting gift dropped into storage — `valuables` you can later sell at a market (D61). */
+  gift: "valuables",
+  /** Goodwill compounds: the welcome nudges standing up a touch. */
+  influence: 2,
 } as const;
 
 /**
@@ -125,6 +136,18 @@ export interface EventDef {
   teaser: string;
   /** Relative weight in the deterministic per-node pick. */
   weight: number;
+  /**
+   * How the Noble's **standing** sways this event's odds (D62): a `boon` grows likelier
+   * with higher Influence, a `bane` (thief/toll) rarer. Omitted ⇒ unaffected. The "quality
+   * of what happens on the map rises with your standing" lever — read by {@link eventForNode}.
+   */
+  standingBias?: "boon" | "bane";
+  /**
+   * The minimum Influence **band** at which this event can appear at all (D62) — a
+   * premium event gated behind real standing (e.g. the Patron's Welcome at `favored`).
+   * Omitted ⇒ available at any standing.
+   */
+  minInfluence?: InfluenceTier;
   /**
    * The headless default resolution (D22): what the auto path applies when nobody
    * is interacting — a thief skims, a shop is passed, a recruiter is declined, a
@@ -394,6 +417,7 @@ export const EVENTS: readonly EventDef[] = [
     name: "Thief on the Road",
     teaser: "A thief on the road — it skims the purse (Banker protection blunts it).",
     weight: 3,
+    standingBias: "bane", // standing keeps the roads friendlier — thieves grow rarer (D62)
     autoResolve(run, node) {
       const theft = thiefEventSkim(run, node);
       const out = emptyOutcome("thief");
@@ -411,6 +435,7 @@ export const EVENTS: readonly EventDef[] = [
     name: "Roadside Market",
     teaser: "A roadside market — spend purse gold on supplies (node-tier prices).",
     weight: 3,
+    standingBias: "boon", // a known caravan draws more opportunities (D62)
     autoResolve(_run, _node) {
       // Headless default: buy nothing (a deterministic no-op).
       return emptyOutcome("shop", "The caravan passed the roadside market without trading.");
@@ -439,6 +464,7 @@ export const EVENTS: readonly EventDef[] = [
     name: "Wandering Sellsword",
     teaser: "A wandering sellsword — hire a body for purse gold to join the run.",
     weight: 2,
+    standingBias: "boon", // sellswords seek out a caravan with a name (D62)
     autoResolve(_run, _node) {
       // Headless default: decline (a clean no-op — no party change).
       return emptyOutcome("recruiter", "The caravan passed on the sellsword's offer.");
@@ -468,6 +494,7 @@ export const EVENTS: readonly EventDef[] = [
     name: "A Choice on the Road",
     teaser: "Something on the road asks a choice of the caravan.",
     weight: 2,
+    standingBias: "boon",
     autoResolve(run, node) {
       // Headless default: take a seed-picked option (deterministic, D22).
       const story = storyForNode(run.seed, node);
@@ -488,6 +515,7 @@ export const EVENTS: readonly EventDef[] = [
     name: "Tollgate",
     teaser: "A tollgate — a known fee to pass (see the forecast). Route around it to save.",
     weight: 2,
+    standingBias: "bane", // standing greases the way — fewer gates demand a toll (D62)
     autoResolve(run, node) {
       // A known, announced fee (D48): pay it from the purse to pass. Never drives
       // the purse negative; the pay-or-fight-the-guards choice is deferred (D23/D30).
@@ -502,6 +530,30 @@ export const EVENTS: readonly EventDef[] = [
       return out;
     },
   },
+  {
+    // The standing-gated premium event (D62): a local patron feasts the company. The
+    // *upside of a renowned Noble* — morale, a parting gift, and goodwill that compounds.
+    // No gold-from-nothing (the economy stays scarce); it's a boon you earn with standing.
+    id: "patron-welcome",
+    kind: "patron",
+    name: "Patron's Welcome",
+    teaser: "A local patron throws open their doors — your standing precedes you.",
+    weight: 4,
+    standingBias: "boon",
+    minInfluence: "favored", // only a well-regarded caravan is feasted (D62)
+    autoResolve(run, _node) {
+      const out = emptyOutcome("patron", "A patron feasts the company — spirits lift, and a parting gift is pressed into your hands.");
+      run.camp.morale += PATRON.morale;
+      out.moraleDelta = PATRON.morale;
+      if (canAdd(run.inventory, PATRON.gift)) {
+        addItem(run.inventory, PATRON.gift);
+        out.materials = [PATRON.gift];
+      }
+      // Goodwill compounds: the welcome itself nudges standing up a touch (D62).
+      addInfluence(run.overworld, PATRON.influence);
+      return out;
+    },
+  },
 ];
 
 /** Look up an event def by id (M11). */
@@ -511,15 +563,36 @@ export function getEvent(id: string): EventDef {
   return def;
 }
 
+/** Ordered Influence bands, lowest → highest — for the standing-bias step math (D62). */
+const INFLUENCE_ORDER: readonly InfluenceTier[] = ["unknown", "known", "respected", "favored", "renowned"];
+
 /**
- * The event an event-node runs (M11, D22) — a **deterministic weighted pick** from
- * `streamFor(seed, "event:<nodeId>")`, so each event node has a **stable** event for
- * a seed, and different nodes/seeds diverge. (Callers should only ask this of an
- * `event`-kind node; it doesn't check the kind.)
+ * An event's **standing-adjusted weight** (D62): the base weight, scaled by how the
+ * Noble's current band `tier` sways it (a `boon` grows, a `bane` shrinks), and **0**
+ * when the event is gated above the current band (`minInfluence`). At `unknown` standing
+ * every multiplier is 1 and nothing is gated, so this is identical to the base weight —
+ * the no-Noble baseline is unchanged.
  */
-export function eventForNode(seed: string | number, node: MapNode): EventDef {
+export function eventWeightAt(def: EventDef, tier: InfluenceTier): number {
+  const step = INFLUENCE_ORDER.indexOf(tier); // 0 (unknown) .. 4 (renowned)
+  if (def.minInfluence && INFLUENCE_ORDER.indexOf(def.minInfluence) > step) return 0;
+  if (def.standingBias === "boon") return def.weight * (1 + 0.5 * step); // up to 3× at renowned
+  if (def.standingBias === "bane") return def.weight * Math.max(0.2, 1 - 0.2 * step); // down to 0.2×
+  return def.weight;
+}
+
+/**
+ * The event an event-node runs (M11, D22; standing-weighted D62) — a **deterministic
+ * weighted pick** from `streamFor(seed, "event:<nodeId>")`, so each event node has a
+ * **stable** event for a seed. The pick is biased by the Noble's standing `tier`
+ * ({@link eventWeightAt}): higher standing makes boons likelier, banes rarer, and
+ * unlocks premium events — *quality scales with Influence*. (Callers should only ask
+ * this of an `event`-kind node; it doesn't check the kind.)
+ */
+export function eventForNode(seed: string | number, node: MapNode, tier: InfluenceTier = "unknown"): EventDef {
   const rng = streamFor(seed, `event:${node.id}`);
-  return rng.pickWeighted(EVENTS, (e) => e.weight);
+  const pool = EVENTS.filter((e) => eventWeightAt(e, tier) > 0);
+  return rng.pickWeighted(pool, (e) => eventWeightAt(e, tier));
 }
 
 // --- The interpreter: resolve / choices / choose (D4) -----------------------
@@ -530,7 +603,7 @@ export function eventForNode(seed: string | number, node: MapNode): EventDef {
  * uses). Returns the outcome (already applied to `run`).
  */
 export function resolveEvent(run: RunState, node: MapNode): EventOutcome {
-  return eventForNode(run.seed, node).autoResolve(run, node);
+  return eventForNode(run.seed, node, influenceTier(run.overworld.influence)).autoResolve(run, node);
 }
 
 /** An interactive option the render surfaces for an event (M11). */
@@ -552,7 +625,7 @@ export interface EventChoice {
  * none. Pure read — mutates nothing.
  */
 export function eventChoices(run: RunState, node: MapNode): EventChoice[] {
-  const def = eventForNode(run.seed, node);
+  const def = eventForNode(run.seed, node, influenceTier(run.overworld.influence));
   return def.choices?.(run, node) ?? [];
 }
 
@@ -562,7 +635,7 @@ export function eventChoices(run: RunState, node: MapNode): EventChoice[] {
  * back to its {@link EventDef.autoResolve}. Returns the outcome (already applied).
  */
 export function chooseEventOption(run: RunState, node: MapNode, choiceId: string): EventOutcome {
-  const def = eventForNode(run.seed, node);
+  const def = eventForNode(run.seed, node, influenceTier(run.overworld.influence));
   return def.choose?.(run, node, choiceId) ?? def.autoResolve(run, node);
 }
 

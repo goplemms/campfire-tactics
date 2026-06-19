@@ -6,9 +6,13 @@
 > **D56** (swappable battle policy). Touches: `src/core/turn.ts` (the `Battle`
 > driver), `src/core/ai.ts` (`AIPlan`), `src/core/combat.ts`, `src/core/events.ts`.
 >
-> Status: **proposed — evaluated, not started.** Sibling in spirit to the
+> Status: **Phase 1 built & verified (command interpreter + action log + replay);
+> Phase 2 (undo) gated, not started.** Sibling in spirit to the
 > [purse journal](purse-journal.md): build the *substrate* (commands + log) first,
-> defer the *product feature* (undo UX) to a gated Phase 2.
+> defer the *product feature* (undo UX) to a gated Phase 2. Implementation:
+> `src/core/combat-actions.ts` (the `CombatAction` union + `ActionResult`),
+> `src/core/turn.ts` (`Battle.apply`, `battle.log`, `replay`), tests in
+> `src/core/combat-actions.test.ts`.
 
 ## Motivation
 
@@ -139,12 +143,60 @@ freely, then commit the turn" is a natural, expected fit. Guardrails:
   rolls. (Trap spot-rolls / theft use `streamFor(seed, label)` and are deterministic by
   label, but they sit at the deployment/field edge, not the core turn loop.)
 
+### Step 0 finding — the RNG-in-effects audit (run for Phase 1) ✅
+
+**Result: the skill / status / charge resolution path is RNG-free.** Greps of the
+combat-action path (`turn.ts`, `combat.ts`, `status.ts`, `clock.ts`, `skills.ts`)
+turn up **no `Math.random`, no `Rng` import, and no seeded stream** of any kind.
+Concretely:
+
+- **Skill effects** (`skills.ts` `BATTLE_EFFECT_HANDLERS`: damage / heal / triage-heal
+  / status / channel / cleanse) and the field effects resolved on `Battle`
+  (`resolveShove` / `cleave` / `useHeal`) are all **pure** functions of the unit pair +
+  roster — `max(1, atk − def)` plus positional/status modifiers, fixed heal/status magnitudes.
+- **Status ticks** (`status.ts` `tickStatuses`) and **charge resolution** (`clock.ts`
+  `tick` → `ScheduledEffect.run`) carry no rolls; a charge re-runs its captured closure
+  deterministically, and the fizzle predicate is a pure caster-alive check.
+- **Trap *springing*** (a field entity's `onUnitEnterTile`, fired mid-`moveUnit`) deals
+  its entity's **fixed** `damage` — no roll at spring time.
+
+The **only** combat-adjacent randomness is the trap **spot-roll** (`traps.ts`
+`revealTrapsNear` → `rng.chance`, an *Awareness search*) and **theft skim**
+(`theft.ts`). Both are **player-initiated field-edge actions** routed from the render
+layer (`spotTrapsForActor` / the thief's pre-turn skim), **not** part of
+`Battle.apply`'s validate→mutate→emit path, and both are deterministic by
+`streamFor(seed, label)`. They never fire during action resolution.
+
+**Implication for Phase 2:** the checkpoint+replay undo mechanism needs **no RNG
+stream-position capture** for the core action set — replaying the action log
+reconstructs combat state exactly. The stream position only matters if/when a
+field-edge verb (Search / theft) is folded into the action log; until then it's
+out of scope.
+
 ## Phasing
 
-1. **Phase 1 — command + log.** `CombatAction` union + `Battle.apply`; route the
-   existing methods through it one at a time (thin wrappers first); lower `AIPlan`
-   and player input to `apply`; append to `battle.log`. Add the `replay(log) === state`
-   test. **Delivers the "consistent way to add actions" intent in full.**
+1. **Phase 1 — command + log. ✅ Built.** `CombatAction` union + `Battle.apply`;
+   the existing methods (`moveUnit`/`attack`/`useSkill`/`cleave`/`endTurn`) are now
+   thin wrappers that build an action and call `apply`; `runEnemyTurn` lowers an
+   `AIPlan` to a `CombatAction[]` via `planActions` and applies each, so the AI and
+   player input share one route; every applied action appends to `battle.log`. The
+   `replay(initial, log) === state` invariant has a test (1-on-1 + full-roster + a
+   partial-log mid-state). Each public method's behaviour is unchanged (the 528-test
+   suite passed untouched, and the headless sim digest is byte-identical).
+   - **Internal sub-effects stay unlogged**: a shove's forced steps (`resolveShove`
+     → raw `execMove`) and a skill/cleave's turn-commit (`commitSkill` → raw
+     `execEndTurn`) are part of the one logged `skill`/`cleave` action, so the log
+     carries exactly one entry per public call (and replay doesn't double-apply).
+   - **Reference rule applied:** mutable per-battle units are referenced by `id`
+     (resolved in `apply`, the load-bearing requirement for the replay rebuild);
+     immutable authored `SkillDef`s ride in the action directly (not rebuilt on
+     replay; also keeps ad-hoc test skills working). A pure-id skill form for
+     wire-format is a Phase-2 refinement, gated on a skill registry that doesn't exist.
+   - **Deferred from the union (deliberate, behaviour-preserving):** `useHeal` (the
+     med-bridge consumes the *shared stash*, an external resource — see the
+     deployment-verbs open question) and the deployment-phase verbs. Their *turn-end*
+     still flows through `apply` (the render's explicit `endTurn`); only the heal
+     mutation itself is not yet a logged action. `defend` (D41) is reserved, unbuilt.
 2. **Phase 2 — undo.** Turn-start checkpoint + replay; player-turn-scoped UX; gated on
    the RNG-in-effects audit. **Delivers take-back.**
 

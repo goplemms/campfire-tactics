@@ -75,6 +75,16 @@ describe("generation — content", () => {
     }
   });
 
+  it("splits loot: found gold + a sellable valuables drop (D61)", () => {
+    for (let i = 0; i < 5; i++) {
+      const def = gen("loot-split", i);
+      expect(def.reward.gold).toBeGreaterThan(0); // found gold (the liquid baseline)
+      const loot = def.reward.materials.find((m) => m.id === "valuables");
+      expect(loot).toBeDefined(); // the illiquid half, sold at a market
+      expect(loot!.count).toBeGreaterThan(0);
+    }
+  });
+
   it("assigns a valid encounter type", () => {
     const types = new Set<string>();
     for (let i = 0; i < 20; i++) types.add(gen("types", i).type);

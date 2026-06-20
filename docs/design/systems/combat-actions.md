@@ -173,6 +173,38 @@ reconstructs combat state exactly. The stream position only matters if/when a
 field-edge verb (Search / theft) is folded into the action log; until then it's
 out of scope.
 
+### Soft-randomization seam — label-derived combat RNG (built, off by default)
+
+We **will** want "a range of possibility" in combat (damage variance, hit/crit,
+effect procs). Rather than reach for `Math.random` (which a `core/` grep test
+forbids and which would break replay), the seam is the **label/coordinate** PRNG the
+trap/encounter rolls already use — `streamFor(seed, label)`:
+
+- **`Battle.roll(label)`** returns a fresh deterministic `Rng` keyed by
+  `(battleSeed, label, draw#)`, where `draw#` is a monotonic counter that advances
+  **only inside `apply`**. Because it is label-derived, there is **no stateful cursor
+  to snapshot** — a replay re-derives every roll from the same coordinates, so the
+  `replay(log) === state` invariant holds *with the RNG on* (there's a test).
+- **`BattleOptions = { seed?, variance? }`** on the constructor. The defaults
+  (`seed 0`, `variance 0`) take **no draw**, so an unconfigured battle is
+  byte-identical to the deterministic baseline — the 537-test suite and the headless
+  sim digest were unchanged when the seam landed. Production wires
+  `streamFor(run.seed, \`battle:${node}:${night}\`)` so the run still reproduces from
+  its run seed.
+- **The flagship wiring is damage variance** (a ±`variance` multiplier on final
+  damage in `resolveAttack`, fast-pathed to the exact integer when off). Hit/crit and
+  proc rolls ride the **same** `roll(label).chance(p)` seam (demonstrated by tests);
+  wiring them into specific effects is the same mechanical "new roll site" change.
+- **The one rule the seam imposes:** *only resolution (`apply`) may draw.* Planning
+  (`planEnemyTurn`) and the telegraph (`forecastEnemyAction`) score on the
+  **mean** (`computeDamage`, no draw), so the act of thinking never consumes the
+  battle stream and never desyncs a replay.
+
+**This revises the Step-0 conclusion's "no draw to capture" for Phase 2:** still
+true, *because* the seam is label-derived rather than a threaded cursor. If a future
+roll ever needs a stateful stream, `Rng` is already serializable (`state()` /
+`setState()`) — the checkpoint would snapshot that one 32-bit int.
+
 ## Phasing
 
 1. **Phase 1 — command + log. ✅ Built.** `CombatAction` union + `Battle.apply`;

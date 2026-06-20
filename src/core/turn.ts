@@ -40,6 +40,27 @@ import {
   type ActionResult,
   type UnitId,
 } from "./combat-actions";
+import { streamFor, type Rng } from "./rng";
+
+/**
+ * Construction-time battle settings (all optional, all defaulting to the
+ * **deterministic** baseline so an unconfigured battle is byte-identical to the
+ * pre-RNG behaviour). The seam the "range of possibility" soft-randomization rides.
+ */
+export interface BattleOptions {
+  /**
+   * Seed for this battle's **label-derived** RNG (`streamFor(seed, label)`). Stays
+   * `0` by default; production wires `streamFor(run.seed, \`battle:${node}:${night}\`)`
+   * so the whole run still reproduces from its run seed.
+   */
+  seed?: string | number;
+  /**
+   * **Damage-variance amplitude** (±fraction of final damage): `0` (default) is the
+   * deterministic floor (no roll, no draw); `0.2` spreads each hit across ±20%.
+   * Resolved only in {@link Battle.apply} (planning sees the mean).
+   */
+  variance?: number;
+}
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
 function spendFor(skill: SkillDef): TurnSpend {
@@ -62,15 +83,49 @@ export class Battle {
    */
   private readonly _log: CombatAction[] = [];
 
-  constructor(grid: TileGrid, units: Unit[]) {
+  /** This battle's RNG seed (label-derived rolls draw from `streamFor(seed, …)`). */
+  private readonly rngSeed: string | number;
+  /** Damage-variance amplitude (0 = deterministic; no draw happens). */
+  private readonly variance: number;
+  /**
+   * Monotonic draw counter — the temporal coordinate that disambiguates rolls. It
+   * advances **only** inside {@link apply} (the sole draw site), so it increments in
+   * the exact same order on a {@link replay} and the rolls re-derive identically.
+   */
+  private drawCount = 0;
+
+  constructor(grid: TileGrid, units: Unit[], opts: BattleOptions = {}) {
     this.grid = grid;
     this.units = units;
     this.bus = new EventBus();
     this.clock = new CTClock(units, this.bus);
     this.entities = new EntityRegistry(this.bus);
+    this.rngSeed = opts.seed ?? 0;
+    this.variance = opts.variance ?? 0;
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
     for (const u of units) stampPassives(u);
     refreshAuras(units);
+  }
+
+  /**
+   * **The single combat-RNG seam** (the "soft randomization" substrate). Returns a
+   * fresh deterministic {@link Rng} for one labelled roll, keyed by `(seed, label,
+   * draw#)` — the label/coordinate approach (`streamFor`) the trap/encounter rolls
+   * already use, so there is **no stateful cursor to snapshot**: a replay re-derives
+   * every roll from the same coordinates. **Call only from within action resolution
+   * ({@link apply}-driven)** — drawing during planning/forecast would desync replay.
+   */
+  roll(label: string): Rng {
+    return streamFor(this.rngSeed, `${label}#${this.drawCount++}`);
+  }
+
+  /**
+   * The damage-variance multiplier for one hit (±{@link variance}), or exactly `1`
+   * — taking **no** draw — when variance is off. Keeps the off-path byte-identical.
+   */
+  private damageScale(attacker: Unit, defender: Unit): number {
+    if (this.variance <= 0) return 1;
+    return this.roll(`dmg:${attacker.id}->${defender.id}`).float(1 - this.variance, 1 + this.variance);
   }
 
   /**
@@ -113,7 +168,7 @@ export class Battle {
       case "attack": {
         const attacker = this.unit(action.unit);
         const target = this.unit(action.target);
-        const damage = resolveAttack(attacker, target, this.bus, attacker.attack, this.units);
+        const damage = resolveAttack(attacker, target, this.bus, attacker.attack, this.units, this.damageScale(attacker, target));
         this._log.push(action);
         return { ok: true, damage };
       }
@@ -294,7 +349,7 @@ export class Battle {
     let damage = 0;
     for (const u of this.units) {
       if (u.alive && u.side !== caster.side && arcKeys.has(key(u.pos))) {
-        damage += resolveAttack(caster, u, this.bus, caster.attack + bonus, this.units);
+        damage += resolveAttack(caster, u, this.bus, caster.attack + bonus, this.units, this.damageScale(caster, u));
         hits += 1;
       }
     }
@@ -386,16 +441,18 @@ function planActions(plan: AIPlan): CombatAction[] {
  * commitsTurn commits} it) instead of planning. Returns the rebuilt battle.
  *
  * `initialUnits` is **mutated** (the {@link Battle} constructor stamps passives) —
- * pass throwaway clones of the pre-seed roster.
+ * pass throwaway clones of the pre-seed roster. `opts` must carry the **same**
+ * {@link BattleOptions} (seed + variance) the original battle used, so any seeded
+ * rolls re-derive identically; `moraleBonus` re-applies the initiative warming.
  */
 export function replay(
   grid: TileGrid,
   initialUnits: Unit[],
   log: readonly CombatAction[],
-  moraleBonus = 0,
+  opts: BattleOptions & { moraleBonus?: number } = {},
 ): Battle {
-  const battle = new Battle(grid, initialUnits);
-  battle.seed(moraleBonus);
+  const battle = new Battle(grid, initialUnits, opts);
+  battle.seed(opts.moraleBonus ?? 0);
   let i = 0;
   while (i < log.length) {
     const actor = battle.nextActor();

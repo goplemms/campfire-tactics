@@ -43,51 +43,53 @@ const navTo = (id) => ov(
   `s.scene.start("BattleScene",{run:s.run,loop:s.loop});`,
 );
 
-// Push the front to a target column and open a fresh unit turn on the new board.
-const pushFront = (col) => bs(
-  `s.front.col=${col};` +
+// Grow the enemy danger radius to a target and open a fresh unit turn on the new board.
+const growDanger = (radiusExpr) => bs(
+  `s.front.radius=${radiusExpr};s.drawZones();` +
   `const u=s.deployActor??s.battle.units.find(x=>x.side==="player"&&!x.captured&&!x.hidden);` +
   `s.beginDeployTurn(u);`,
 );
 
 const STEPS = [
-  // 1) Fresh deploy: the green safe band near home, the front parked off the enemy
-  //    edge, the first unit's turn — Dig In / trap / Start Battle row, End Turn primary.
+  // 1) Fresh deploy: the green campfire bubble (ember star) at home, the enemy source
+  //    (red star) at its edge, the first unit's turn — Dig In / trap / Start Battle.
   { name: "01-deploy-start", minMs: 1200, eval: navTo("e1") },
 
   // 2) Between turns: End Turn rests the clock on the player, and the big primary
-  //    becomes Advance Clock — the net only steps on an explicit press.
+  //    becomes Advance Clock — the danger only grows on an explicit press.
   { name: "02-advance-clock", minMs: 700, eval: bs(`s.onPrimary();`) },
 
-  // 3) The net closing: the front has marched into mid-board — a red danger zone with
-  //    an amber telegraph on the next column to fall, the green safe band squeezed.
-  { name: "03-net-closing", minMs: 700, eval: pushFront("Math.max(3, Math.ceil(s.grid.cols/2)+1)") },
+  // 3) The danger closing in: the enemy radius has swollen toward mid-board — a red
+  //    bubble with an amber telegraph ring, the green campfire ground squeezed.
+  { name: "03-danger-closing", minMs: 700, eval: growDanger("Math.floor((s.grid.cols-1)/2)") },
 
-  // 4) Dig In, caught in the net: a unit hunkered on a danger tile, its title reading
-  //    the live "IN THE NET (xx% if it closes)" capture odds.
+  // 4) Dig In, caught in the danger: a unit hunkered on a danger-edge tile, its title
+  //    reading the live "IN DANGER (xx% if it grows)" capture odds.
   {
     name: "04-dig-in",
     minMs: 700,
     eval: bs(
+      `const f=s.front;` +
       `const u=s.battle.units.find(x=>x.side==="player"&&!x.captured&&!x.hidden);` +
-      `u.pos={col:s.front.col,row:1};s.placeView(u);s.beginDeployTurn(u);s.dugIn.add(u.id);s.deployActed=true;` +
-      `s.refreshDeployButtons();s.refreshDeployStatus();`,
+      `u.pos={col:Math.max(0,f.origin.col-f.radius),row:f.origin.row};s.placeView(u);` +
+      `s.beginDeployTurn(u);s.dugIn.add(u.id);s.deployActed=true;s.refreshDeployButtons();s.refreshDeployStatus();`,
     ),
   },
 
-  // 5) The alarm: a unit snared as the net closes — netted (cage), greyed, bound where
-  //    it stood inside the enemy zone, the alarm hint up. Battle begins next.
+  // 5) The alarm: a unit snared as the danger closed in — netted (cage), greyed, bound
+  //    where it stood, the alarm hint up. Battle begins next.
   {
     name: "05-alarm-capture",
     minMs: 700,
     eval: bs(
+      `const f=s.front;` +
       `const players=s.battle.units.filter(x=>x.side==="player"&&!x.captured&&!x.hidden);` +
-      `s.front.col=Math.max(3,Math.ceil(s.grid.cols/2));` +
-      `const v=players.find(p=>p.pos.row===2)??players[0];v.pos={col:s.front.col+1,row:2};` +
+      `const v=players.find(p=>p.pos.row===f.origin.row)||players[0];` +
+      `v.pos={col:Math.max(0,f.origin.col-Math.max(1,f.radius-1)),row:f.origin.row};` +
       `v.captured=true;v.ct=0;s.placeView(v);s.tintCaptured(v,true);s.dropNet(v);` +
-      `s.deployActor=null;s.drawDangerZone();s.drawSafeZone(null);s.highlightTile(null);s.clearActionButtons();` +
-      `s.titleText.setText("Deployment — "+v.name+" SNARED — alarm raised · front col "+s.front.col);` +
-      `s.setHint(v.name+" was snared as the net closed — the alarm goes up! Battle begins.");`,
+      `s.deployActor=null;s.drawZones();s.highlightTile(null);s.clearActionButtons();` +
+      `s.titleText.setText("Deployment — "+v.name+" SNARED — alarm raised · enemy reach "+f.radius);` +
+      `s.setHint(v.name+" was snared as the danger closed in — the alarm goes up! Battle begins.");`,
     ),
   },
 ];

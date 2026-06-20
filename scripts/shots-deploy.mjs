@@ -43,37 +43,42 @@ const navTo = (id) => ov(
   `s.scene.start("BattleScene",{run:s.run,loop:s.loop});`,
 );
 
-// Push the front to a target column and re-read the board for the active unit.
+// Push the front to a target column and open a fresh unit turn on the new board.
 const pushFront = (col) => bs(
   `s.front.col=${col};` +
   `const u=s.deployActor??s.battle.units.find(x=>x.side==="player"&&!x.captured&&!x.hidden);` +
-  `s.selectDeployActor(u);`,
+  `s.beginDeployTurn(u);`,
 );
 
 const STEPS = [
   // 1) Fresh deploy: the green safe band near home, the front parked off the enemy
-  //    edge, the first unit's turn with the Dig In / trap / Start Battle controls.
+  //    edge, the first unit's turn — Dig In / trap / Start Battle row, End Turn primary.
   { name: "01-deploy-start", minMs: 1200, eval: navTo("e1") },
 
-  // 2) The net closing: the front has marched into mid-board — a red danger zone with
-  //    an amber telegraph on the next column to fall, the green safe band squeezed.
-  { name: "02-net-closing", minMs: 700, eval: pushFront("Math.max(3, Math.ceil(s.grid.cols/2)+1)") },
+  // 2) Between turns: End Turn rests the clock on the player, and the big primary
+  //    becomes Advance Clock — the net only steps on an explicit press.
+  { name: "02-advance-clock", minMs: 700, eval: bs(`s.onPrimary();`) },
 
-  // 3) Dig In, caught in the net: a unit hunkered on a danger tile, its title reading
+  // 3) The net closing: the front has marched into mid-board — a red danger zone with
+  //    an amber telegraph on the next column to fall, the green safe band squeezed.
+  { name: "03-net-closing", minMs: 700, eval: pushFront("Math.max(3, Math.ceil(s.grid.cols/2)+1)") },
+
+  // 4) Dig In, caught in the net: a unit hunkered on a danger tile, its title reading
   //    the live "IN THE NET (xx% if it closes)" capture odds.
   {
-    name: "03-dig-in",
+    name: "04-dig-in",
     minMs: 700,
     eval: bs(
       `const u=s.battle.units.find(x=>x.side==="player"&&!x.captured&&!x.hidden);` +
-      `u.pos={col:s.front.col,row:1};s.placeView(u);s.dugIn.add(u.id);s.selectDeployActor(u);`,
+      `u.pos={col:s.front.col,row:1};s.placeView(u);s.beginDeployTurn(u);s.dugIn.add(u.id);s.deployActed=true;` +
+      `s.refreshDeployButtons();s.refreshDeployStatus();`,
     ),
   },
 
-  // 4) The alarm: a unit snared as the net closes — netted (cage), greyed, bound where
+  // 5) The alarm: a unit snared as the net closes — netted (cage), greyed, bound where
   //    it stood inside the enemy zone, the alarm hint up. Battle begins next.
   {
-    name: "04-alarm-capture",
+    name: "05-alarm-capture",
     minMs: 700,
     eval: bs(
       `const players=s.battle.units.filter(x=>x.side==="player"&&!x.captured&&!x.hidden);` +

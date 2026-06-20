@@ -33,6 +33,7 @@ import type { RunState } from "./run";
 import type { OverworldEconomy } from "./overworld-actions";
 import type { Unit } from "./units";
 import { nonNegInt, bandFor } from "./num";
+import { earn, type PurseSource } from "./purse-journal";
 import { computeUpkeep, foodFirst, type UpkeepBill, type UpkeepLine } from "./upkeep";
 
 // --- The run purse: loot in, debt auto-repaid (D34/D30) ---------------------
@@ -52,13 +53,14 @@ export interface RunGoldResult {
  * incoming gold **auto-repays it first** (D30), and only the remainder lands in the
  * purse. Returns the split.
  */
-export function gainRunGold(run: RunState, amount: number): RunGoldResult {
+export function gainRunGold(run: RunState, amount: number, source: PurseSource = "loot", label = "Loot"): RunGoldResult {
   const gold = nonNegInt(amount);
   const debt = run.overworld.debt;
   const debtRepaid = Math.min(debt, gold);
   run.overworld.debt = debt - debtRepaid;
   const credited = gold - debtRepaid;
-  run.camp.gold += credited;
+  // The debt-repaid portion never reaches the purse, so only `credited` is journaled.
+  earn(run.camp, credited, source, label, { nodeId: run.mapNodeId, night: run.night });
   return { credited, debtRepaid };
 }
 

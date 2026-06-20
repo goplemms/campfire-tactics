@@ -29,6 +29,7 @@ import type { RunState } from "./run";
 import type { MapNode } from "./overworld";
 import { streamFor } from "./rng";
 import { clamp, clamp01 } from "./num";
+import { earn, spend } from "./purse-journal";
 
 /** Theft tuning — data, a numbers pass later (D30). */
 export const THEFT = {
@@ -87,7 +88,7 @@ export function thiefSteal(
   protection = run.overworld.protection,
 ): TheftAttempt {
   const stolen = rollSkim(run.seed, label, run.camp.gold, protection);
-  run.camp.gold -= stolen;
+  spend(run.camp, stolen, "theft", "Purse skimmed by thief", { nodeId: run.mapNodeId, night: run.night });
   return { stolen, purseAfter: run.camp.gold, protection, resolved: false };
 }
 
@@ -110,7 +111,7 @@ export function thiefEventSkim(
  */
 export function recoverStolen(run: RunState, attempt: TheftAttempt): number {
   if (attempt.resolved) return 0;
-  run.camp.gold += attempt.stolen;
+  earn(run.camp, attempt.stolen, "recovery", "Recovered stolen gold", { nodeId: run.mapNodeId, night: run.night });
   attempt.resolved = true;
   return attempt.stolen;
 }

@@ -23,6 +23,7 @@ import type { Camp } from "./camp";
 import { getJob } from "./jobs";
 import type { DifficultyPolicy } from "./mortality";
 import { DYING_COUNTER } from "./mortality";
+import { spend } from "./purse-journal";
 
 // --- Upkeep (D15) -----------------------------------------------------------
 
@@ -149,7 +150,7 @@ export function payUpkeep(
       moraleDelta += line.moraleHit;
       if (line.id === "repairs") gearWorn = true;
     } else if (camp.gold >= line.cost) {
-      camp.gold -= line.cost;
+      spend(camp, line.cost, "upkeep", line.name);
       paid += line.cost;
     } else {
       // Can't-afford breach (D15): the same consequence, but reported as a breach.
@@ -258,7 +259,7 @@ export interface ClericResult {
 export function clericRevive(camp: Camp, unit: Unit, cost = CLERIC_COST): ClericResult {
   const dying = (unit.counters[DYING_COUNTER] ?? 0) > 0 && !unit.alive;
   if (!dying || camp.gold < cost) return { revived: false, goldSpent: 0 };
-  camp.gold -= cost;
+  spend(camp, cost, "cleric", "Cleric revive");
   delete unit.counters[DYING_COUNTER];
   unit.alive = true;
   unit.hp = chunkHp(unit);

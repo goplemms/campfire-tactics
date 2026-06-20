@@ -217,6 +217,14 @@ export function applyDamage(
  * Resolve a basic attack: apply damage, emit `onUnitDamaged`, and on a kill flip
  * `alive` and emit `onUnitDefeated`. Returns the damage dealt. `attackPower`
  * overrides the attacker's base attack (used by skills like Power Strike).
+ *
+ * `scale` is an optional **soft-randomization multiplier** on the final damage
+ * (the "range of possibility" knob): `1` (the default) is the deterministic floor
+ * and is fast-pathed to the exact integer `computeDamage` returns — so the seam is
+ * **byte-identical when off**. A caller that wants variance derives `scale` from a
+ * seeded, label-keyed roll **at resolution time** (in `Battle.apply`) and passes it
+ * here; planning/forecast keep calling with the default so the AI scores on the
+ * mean, never consuming the battle's RNG.
  */
 export function resolveAttack(
   attacker: Unit,
@@ -224,13 +232,11 @@ export function resolveAttack(
   bus?: EventBus,
   attackPower: number = attacker.attack,
   units?: readonly Unit[],
+  scale = 1,
 ): number {
-  const dealt = applyDamage(
-    defender,
-    computeDamage(attacker, defender, attackPower, units),
-    bus,
-    attacker,
-  );
+  const base = computeDamage(attacker, defender, attackPower, units);
+  const amount = scale === 1 ? base : Math.max(1, Math.round(base * scale));
+  const dealt = applyDamage(defender, amount, bus, attacker);
   rampMark(attacker, defender);
   return dealt;
 }

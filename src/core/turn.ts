@@ -34,6 +34,93 @@ import {
   type SkillDef,
   type SkillOutcome,
 } from "./skills";
+import {
+  commitsTurn,
+  type CombatAction,
+  type ActionResult,
+  type UnitId,
+} from "./combat-actions";
+import { streamFor, type Rng } from "./rng";
+import type { ClockSnapshot } from "./clock";
+import type { EntitySnapshot } from "./entities";
+import type { StatusInstance } from "./status";
+import type { GridCoord as Coord } from "./iso";
+
+/** A unit's undoable mutable state (everything a logged action can change). */
+interface UnitSnapshot {
+  pos: Coord;
+  hp: number;
+  ct: number;
+  alive: boolean;
+  captured: boolean;
+  hidden?: boolean;
+  statuses: StatusInstance[];
+  counters: Record<string, number>;
+  cooldowns: Record<string, number>;
+}
+
+/**
+ * A turn-undo checkpoint (combat-actions Phase 2): the battle's mutable state
+ * **before** one applied action — enough to roll it back in place. Captures the
+ * log length and the RNG draw counter (so re-rolled values re-derive identically),
+ * plus the unit / clock / entity state. Restored by value into identity-stable
+ * objects, so the render keeps every reference (no re-emission, no re-binding).
+ */
+interface BattleCheckpoint {
+  logLen: number;
+  drawCount: number;
+  units: Map<UnitId, UnitSnapshot>;
+  clock: ClockSnapshot;
+  entities: EntitySnapshot;
+}
+
+/** Capture a unit's undoable mutable state by value. */
+function snapshotUnit(u: Unit): UnitSnapshot {
+  return {
+    pos: { col: u.pos.col, row: u.pos.row },
+    hp: u.hp,
+    ct: u.ct,
+    alive: u.alive,
+    captured: u.captured,
+    hidden: u.hidden,
+    statuses: u.statuses.map((s) => ({ ...s, data: s.data ? { ...s.data } : undefined })),
+    counters: { ...u.counters },
+    cooldowns: { ...u.cooldowns },
+  };
+}
+
+/** Write a unit snapshot back onto the (identity-stable) live unit. */
+function restoreUnit(u: Unit, s: UnitSnapshot): void {
+  u.pos = { col: s.pos.col, row: s.pos.row };
+  u.hp = s.hp;
+  u.ct = s.ct;
+  u.alive = s.alive;
+  u.captured = s.captured;
+  u.hidden = s.hidden;
+  u.statuses = s.statuses.map((x) => ({ ...x, data: x.data ? { ...x.data } : undefined }));
+  u.counters = { ...s.counters };
+  u.cooldowns = { ...s.cooldowns };
+}
+
+/**
+ * Construction-time battle settings (all optional, all defaulting to the
+ * **deterministic** baseline so an unconfigured battle is byte-identical to the
+ * pre-RNG behaviour). The seam the "range of possibility" soft-randomization rides.
+ */
+export interface BattleOptions {
+  /**
+   * Seed for this battle's **label-derived** RNG (`streamFor(seed, label)`). Stays
+   * `0` by default; production wires `streamFor(run.seed, \`battle:${node}:${night}\`)`
+   * so the whole run still reproduces from its run seed.
+   */
+  seed?: string | number;
+  /**
+   * **Damage-variance amplitude** (±fraction of final damage): `0` (default) is the
+   * deterministic floor (no roll, no draw); `0.2` spreads each hit across ±20%.
+   * Resolved only in {@link Battle.apply} (planning sees the mean).
+   */
+  variance?: number;
+}
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
 function spendFor(skill: SkillDef): TurnSpend {
@@ -47,15 +134,66 @@ export class Battle {
   readonly clock: CTClock;
   readonly entities: EntityRegistry;
 
-  constructor(grid: TileGrid, units: Unit[]) {
+  /**
+   * The **action log** (D4 event-sourcing of commands) — the combat analog of the
+   * purse journal. {@link apply} appends each executed {@link CombatAction} here in
+   * order; it is the substrate {@link replay} (and later undo / netcode / a sim
+   * trace) reads. Combat state is a graph, not a conserved scalar, so it
+   * reconstructs by **replay**, not by summing (`replay(log) === state`).
+   */
+  private readonly _log: CombatAction[] = [];
+
+  /** This battle's RNG seed (label-derived rolls draw from `streamFor(seed, …)`). */
+  private readonly rngSeed: string | number;
+  /** Damage-variance amplitude (0 = deterministic; no draw happens). */
+  private readonly variance: number;
+  /**
+   * Monotonic draw counter — the temporal coordinate that disambiguates rolls. It
+   * advances **only** inside {@link apply} (the sole draw site), so it increments in
+   * the exact same order on a {@link replay} and the rolls re-derive identically.
+   */
+  private drawCount = 0;
+
+  /**
+   * The turn-undo checkpoint stack (combat-actions Phase 2). `null` when undo is
+   * **disarmed** (enemy turns, headless sim) — no snapshots are taken, so there is
+   * zero cost. {@link beginUndo} arms it for a player turn; each successfully applied
+   * action pushes a pre-state checkpoint; {@link undo} pops + restores.
+   */
+  private undoStack: BattleCheckpoint[] | null = null;
+
+  constructor(grid: TileGrid, units: Unit[], opts: BattleOptions = {}) {
     this.grid = grid;
     this.units = units;
     this.bus = new EventBus();
     this.clock = new CTClock(units, this.bus);
     this.entities = new EntityRegistry(this.bus);
+    this.rngSeed = opts.seed ?? 0;
+    this.variance = opts.variance ?? 0;
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
     for (const u of units) stampPassives(u);
     refreshAuras(units);
+  }
+
+  /**
+   * **The single combat-RNG seam** (the "soft randomization" substrate). Returns a
+   * fresh deterministic {@link Rng} for one labelled roll, keyed by `(seed, label,
+   * draw#)` — the label/coordinate approach (`streamFor`) the trap/encounter rolls
+   * already use, so there is **no stateful cursor to snapshot**: a replay re-derives
+   * every roll from the same coordinates. **Call only from within action resolution
+   * ({@link apply}-driven)** — drawing during planning/forecast would desync replay.
+   */
+  roll(label: string): Rng {
+    return streamFor(this.rngSeed, `${label}#${this.drawCount++}`);
+  }
+
+  /**
+   * The damage-variance multiplier for one hit (±{@link variance}), or exactly `1`
+   * — taking **no** draw — when variance is off. Keeps the off-path byte-identical.
+   */
+  private damageScale(attacker: Unit, defender: Unit): number {
+    if (this.variance <= 0) return 1;
+    return this.roll(`dmg:${attacker.id}->${defender.id}`).float(1 - this.variance, 1 + this.variance);
   }
 
   /**
@@ -64,6 +202,179 @@ export class Battle {
    */
   seed(moraleBonus = 0): void {
     this.clock.seedInitiative(moraleBonus ? { player: moraleBonus } : {});
+  }
+
+  /** The append-only action log in execution order (read-only to callers). */
+  get log(): readonly CombatAction[] {
+    return this._log;
+  }
+
+  /** Resolve a {@link UnitId} to its live unit in this battle's roster. */
+  private unit(id: UnitId): Unit {
+    const u = this.units.find((x) => x.id === id);
+    if (!u) throw new Error(`Battle.apply: no unit with id "${id}"`);
+    return u;
+  }
+
+  // --- Undo (combat-actions Phase 2) ----------------------------------------
+
+  /**
+   * **Arm undo** for an undoable span — a player turn (D60 free-move / D-into-the-
+   * breach take-back). While armed, each successfully applied action records a
+   * pre-state checkpoint, so {@link undo} can peel actions back one at a time.
+   * Starts a fresh (empty) history. The headless sim and enemy turns leave undo
+   * disarmed, so they pay nothing.
+   */
+  beginUndo(): void {
+    this.undoStack = [];
+  }
+
+  /** **Disarm undo** — the turn committed; drop the history (no take-back across turns). */
+  endUndo(): void {
+    this.undoStack = null;
+  }
+
+  /** True if undo is armed and there is at least one action to take back. */
+  canUndo(): boolean {
+    return (this.undoStack?.length ?? 0) > 0;
+  }
+
+  /** How many actions are currently undoable (the armed history depth). */
+  undoDepth(): number {
+    return this.undoStack?.length ?? 0;
+  }
+
+  /**
+   * **Undo the most recent action**, rolling the battle back to exactly its state
+   * before that action — positions, HP, CT, statuses, cooldowns, the CT clock and
+   * its in-flight charges, entity flags, the RNG draw cursor, and the log. Restored
+   * **in place** into the same unit/clock/entity objects (no re-emission, so live
+   * listeners like the combat-XP tally and render FX don't re-fire). Returns the
+   * undone {@link CombatAction}, or `null` if there's nothing to undo.
+   */
+  undo(): CombatAction | null {
+    if (!this.undoStack || this.undoStack.length === 0) return null;
+    const checkpoint = this.undoStack.pop()!;
+    const undone = this._log[this._log.length - 1] ?? null;
+    this.restoreCheckpoint(checkpoint);
+    return undone;
+  }
+
+  /** Undo every action back to the start of the armed span; returns them newest-first. */
+  undoAll(): CombatAction[] {
+    const undone: CombatAction[] = [];
+    let a: CombatAction | null;
+    while ((a = this.undo()) !== null) undone.push(a);
+    return undone;
+  }
+
+  /** Capture the battle's mutable state before an action (a turn-undo checkpoint). */
+  private captureCheckpoint(): BattleCheckpoint {
+    const units = new Map<UnitId, UnitSnapshot>();
+    for (const u of this.units) units.set(u.id, snapshotUnit(u));
+    return {
+      logLen: this._log.length,
+      drawCount: this.drawCount,
+      units,
+      clock: this.clock.snapshot(),
+      entities: this.entities.snapshot(),
+    };
+  }
+
+  /** Roll all mutable state (and the log) back to a checkpoint — the undo primitive. */
+  private restoreCheckpoint(cp: BattleCheckpoint): void {
+    for (const u of this.units) {
+      const s = cp.units.get(u.id);
+      if (s) restoreUnit(u, s);
+    }
+    this.clock.restore(cp.clock);
+    this.entities.restore(cp.entities);
+    this.drawCount = cp.drawCount;
+    this._log.length = cp.logLen; // drop the actions taken since the checkpoint
+    // Positions reverted → re-derive the position-dependent tarpit aura (D40). The
+    // restored statuses already match, so this is a confirming no-op in practice.
+    refreshAuras(this.units);
+  }
+
+  /**
+   * **The single execution path** for a battle action (Phase 1 of the
+   * combat-actions design): validate → mutate → emit → **append to the log**. Player
+   * input and {@link AIPlan} both lower to {@link CombatAction}s and flow through
+   * here, so the two paths can't drift. Returns an {@link ActionResult} carrying the
+   * verb's natural outcome (so the public wrappers keep their original return
+   * shapes); a **refused** action (e.g. a skill on cooldown) is *not* logged.
+   *
+   * When undo is **armed** ({@link beginUndo}), a successful action also pushes a
+   * pre-state checkpoint onto the undo stack (Phase 2). The snapshot is taken before
+   * mutation and kept only if the action committed to the log, so a refusal leaves
+   * the stack untouched.
+   *
+   * Adding a battle action = a new {@link CombatAction} variant + a case here.
+   */
+  apply(action: CombatAction): ActionResult {
+    const checkpoint = this.undoStack ? this.captureCheckpoint() : null;
+    const result = this.dispatch(action);
+    if (checkpoint && result.ok) this.undoStack!.push(checkpoint);
+    return result;
+  }
+
+  /** Validate → mutate → emit → log a single action (the interpreter core). */
+  private dispatch(action: CombatAction): ActionResult {
+    switch (action.kind) {
+      case "move": {
+        this.execMove(this.unit(action.unit), action.path, false);
+        this._log.push(action);
+        return { ok: true };
+      }
+      case "attack": {
+        const attacker = this.unit(action.unit);
+        const target = this.unit(action.target);
+        const damage = resolveAttack(attacker, target, this.bus, attacker.attack, this.units, this.damageScale(attacker, target));
+        this._log.push(action);
+        return { ok: true, damage };
+      }
+      case "skill": {
+        const caster = this.unit(action.unit);
+        const target = this.unit(action.target);
+        const skill = action.skill;
+        const commitTurn = action.commitTurn ?? true;
+        if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
+        let outcome: SkillOutcome;
+        if (skill.effect.kind === "forced-move") {
+          outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);
+        } else if (skill.cost?.charge) {
+          // Commit to the timeline; the effect lands when its gauge fills (D5/D37).
+          this.clock.schedule({
+            id: `charge:${caster.id}:${skill.id}:${this.clock.time}`,
+            speed: skill.cost.charge,
+            caster,
+            run: () => {
+              if (target.alive) resolveSkill(skill, caster, target, this.bus, this.units);
+            },
+          });
+          outcome = { charging: true };
+        } else {
+          outcome = resolveSkill(skill, caster, target, this.bus, this.units);
+        }
+        this.commitSkill(caster, skill, commitTurn);
+        this._log.push(action);
+        return { ok: true, outcome };
+      }
+      case "cleave": {
+        const caster = this.unit(action.unit);
+        const skill = action.skill;
+        if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
+        const { hits, damage } = this.execCleave(caster, skill, action.dir);
+        this.commitSkill(caster, skill, true);
+        this._log.push(action);
+        return { ok: true, hits, damage };
+      }
+      case "endTurn": {
+        this.execEndTurn(this.unit(action.unit), action.spend);
+        this._log.push(action);
+        return { ok: true };
+      }
+    }
   }
 
   /**
@@ -84,6 +395,14 @@ export class Battle {
    * combos fire. `forced` marks push/pull entries (D19).
    */
   moveUnit(unit: Unit, path: readonly GridCoord[], forced = false): void {
+    // A `forced` step is an internal sub-effect of a shove (the skill action
+    // already logs); a normal move lowers to a logged `move` action through apply.
+    if (forced) this.execMove(unit, path, true);
+    else this.apply({ kind: "move", unit: unit.id, path: [...path] });
+  }
+
+  /** The raw walk (the move-action body): emit leave/enter per step, refresh auras. */
+  private execMove(unit: Unit, path: readonly GridCoord[], forced: boolean): void {
     for (const tile of path) {
       this.bus.emit("unitLeaveTile", { unit, tile: unit.pos });
       unit.pos = { col: tile.col, row: tile.row };
@@ -98,7 +417,8 @@ export class Battle {
    * so **flanking** (D36) applies. Returns damage dealt.
    */
   attack(attacker: Unit, target: Unit): number {
-    return resolveAttack(attacker, target, this.bus, attacker.attack, this.units);
+    const r = this.apply({ kind: "attack", unit: attacker.id, target: target.id });
+    return r.ok ? r.damage ?? 0 : 0;
   }
 
   /** True if `caster` may use `skill` right now (not cooling down, D37). */
@@ -114,7 +434,9 @@ export class Battle {
    */
   private commitSkill(caster: Unit, skill: SkillDef, commitTurn: boolean): void {
     if (skill.cost?.cooldown) armSkillCooldown(caster, skill.id, skill.cost.cooldown);
-    if (commitTurn) this.endTurn(caster, spendFor(skill));
+    // Raw end (not the logged wrapper): the skill/cleave action already records the
+    // turn commit, so re-routing through apply here would double-log an endTurn.
+    if (commitTurn) this.execEndTurn(caster, spendFor(skill));
   }
 
   /**
@@ -131,30 +453,8 @@ export class Battle {
    * itself. The AI and the headless sim keep the default (the skill ends the turn).
    */
   useSkill(caster: Unit, skill: SkillDef, target: Unit, opts: { commitTurn?: boolean } = {}): SkillOutcome {
-    const commitTurn = opts.commitTurn ?? true;
-    if (!this.canUseSkill(caster, skill)) return {};
-    let outcome: SkillOutcome;
-    if (skill.effect.kind === "forced-move") {
-      outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);
-      this.commitSkill(caster, skill, commitTurn);
-      return outcome;
-    }
-    if (skill.cost?.charge) {
-      // Commit to the timeline; the effect lands when its gauge fills.
-      this.clock.schedule({
-        id: `charge:${caster.id}:${skill.id}:${this.clock.time}`,
-        speed: skill.cost.charge,
-        caster,
-        run: () => {
-          if (target.alive) resolveSkill(skill, caster, target, this.bus, this.units);
-        },
-      });
-      outcome = { charging: true };
-    } else {
-      outcome = resolveSkill(skill, caster, target, this.bus, this.units);
-    }
-    this.commitSkill(caster, skill, commitTurn);
-    return outcome;
+    const r = this.apply({ kind: "skill", unit: caster.id, skill, target: target.id, commitTurn: opts.commitTurn ?? true });
+    return r.ok ? r.outcome ?? {} : {};
   }
 
   /**
@@ -192,7 +492,12 @@ export class Battle {
    * caster's turn. Returns the foes hit + total damage.
    */
   cleave(caster: Unit, skill: SkillDef, dir: GridCoord): { hits: number; damage: number } {
-    if (!this.canUseSkill(caster, skill)) return { hits: 0, damage: 0 };
+    const r = this.apply({ kind: "cleave", unit: caster.id, skill, dir });
+    return r.ok ? { hits: r.hits ?? 0, damage: r.damage ?? 0 } : { hits: 0, damage: 0 };
+  }
+
+  /** The raw arc resolution (the cleave-action body) — hit every foe in the 90° arc. */
+  private execCleave(caster: Unit, skill: SkillDef, dir: GridCoord): { hits: number; damage: number } {
     const bonus = skill.effect.kind === "cleave" ? skill.effect.bonusAttack : 0;
     const c = caster.pos;
     const arc: GridCoord[] =
@@ -205,11 +510,10 @@ export class Battle {
     let damage = 0;
     for (const u of this.units) {
       if (u.alive && u.side !== caster.side && arcKeys.has(key(u.pos))) {
-        damage += resolveAttack(caster, u, this.bus, caster.attack + bonus, this.units);
+        damage += resolveAttack(caster, u, this.bus, caster.attack + bonus, this.units, this.damageScale(caster, u));
         hits += 1;
       }
     }
-    this.commitSkill(caster, skill, true);
     return { hits, damage };
   }
 
@@ -230,6 +534,11 @@ export class Battle {
 
   /** End a unit's turn: fire `turnEnd` and spend its CT (act costs more). */
   endTurn(unit: Unit, spend: TurnSpend): void {
+    this.apply({ kind: "endTurn", unit: unit.id, spend });
+  }
+
+  /** The raw turn-end (the endTurn-action body): fire `turnEnd`, spend the CT. */
+  private execEndTurn(unit: Unit, spend: TurnSpend): void {
     this.bus.emit("turnEnd", { unit });
     this.clock.spend(unit, spend);
   }
@@ -244,17 +553,9 @@ export class Battle {
     const plan = policy.plan(unit, this.units, this.grid, {
       isCharging: (u) => this.clock.isCharging(u),
     });
-    if (plan.path.length > 0) this.moveUnit(unit, plan.path);
-    if (plan.ability && plan.target?.alive) {
-      // A debuff ability (the snare) — useSkill ends the turn itself.
-      this.useSkill(unit, plan.ability, plan.target);
-      return plan;
-    }
-    if (plan.target && plan.target.alive) this.attack(unit, plan.target);
-    this.endTurn(unit, {
-      moved: plan.path.length > 0,
-      acted: plan.target !== null,
-    });
+    // Lower the plan to a CombatAction[] and run each through the one interpreter —
+    // the AI path now shares the exact execution route with player input (D42/D56).
+    for (const action of planActions(plan)) this.apply(action);
     return plan;
   }
 
@@ -267,4 +568,63 @@ export class Battle {
   visibleTiles(side: Side): Set<string> {
     return computeVisibleTiles(this.units, side);
   }
+}
+
+/**
+ * Lower an {@link AIPlan} (intent-as-data, D42) to the {@link CombatAction}s that
+ * realize it — the *plan → actions* half of the AI/player convergence. Mirrors the
+ * old `runEnemyTurn` ordering exactly: an optional move, then **either** a
+ * turn-ending ability (the snare) **or** an optional attack followed by an explicit
+ * `endTurn`. A skill commits the turn itself, so no `endTurn` follows it.
+ */
+function planActions(plan: AIPlan): CombatAction[] {
+  const unit = plan.unit.id;
+  const actions: CombatAction[] = [];
+  if (plan.path.length > 0) actions.push({ kind: "move", unit, path: plan.path.map((t) => ({ ...t })) });
+  if (plan.ability && plan.target?.alive) {
+    actions.push({ kind: "skill", unit, skill: plan.ability, target: plan.target.id, commitTurn: true });
+    return actions; // the skill ends the turn (commitSkill spends the CT)
+  }
+  if (plan.target?.alive) actions.push({ kind: "attack", unit, target: plan.target.id });
+  actions.push({ kind: "endTurn", unit, spend: { moved: plan.path.length > 0, acted: plan.target !== null } });
+  return actions;
+}
+
+/**
+ * **Replay** a recorded action {@link log} from an initial roster and assert it
+ * reconstructs the same battle (the `replay(initial, log) === state` invariant —
+ * the combat analog of the purse journal's `sum(log) === gold`). Combat state is a
+ * graph, not a scalar, so it rebuilds by **re-running** rather than summing: build a
+ * fresh {@link Battle} from `initialUnits` (a pre-construction snapshot), seed it
+ * identically, then drive the deterministic, RNG-free turn loop — for each
+ * {@link Battle.nextActor} (which ticks the clock + statuses identically), apply the
+ * recorded actions for that turn (up to and including the one that {@link
+ * commitsTurn commits} it) instead of planning. Returns the rebuilt battle.
+ *
+ * `initialUnits` is **mutated** (the {@link Battle} constructor stamps passives) —
+ * pass throwaway clones of the pre-seed roster. `opts` must carry the **same**
+ * {@link BattleOptions} (seed + variance) the original battle used, so any seeded
+ * rolls re-derive identically; `moraleBonus` re-applies the initiative warming.
+ */
+export function replay(
+  grid: TileGrid,
+  initialUnits: Unit[],
+  log: readonly CombatAction[],
+  opts: BattleOptions & { moraleBonus?: number } = {},
+): Battle {
+  const battle = new Battle(grid, initialUnits, opts);
+  battle.seed(opts.moraleBonus ?? 0);
+  let i = 0;
+  while (i < log.length) {
+    const actor = battle.nextActor();
+    if (!actor) break;
+    // Apply this actor's recorded turn: every turn's actions end in exactly one
+    // committing action (an endTurn, a cleave, or a turn-committing skill).
+    while (i < log.length) {
+      const action = log[i++];
+      battle.apply(action);
+      if (commitsTurn(action)) break;
+    }
+  }
+  return battle;
 }

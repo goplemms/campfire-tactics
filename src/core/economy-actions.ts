@@ -30,6 +30,7 @@ import type { RunState } from "./run";
 import type { Unit } from "./units";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
 import { checkOverworldCost, commitOverworldCost, type OverworldCost, type ActionOutcome } from "./overworld-actions";
+import { earn } from "./purse-journal";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
 import { addItem, canAdd, countOf, removeItem, getMaterial, saleValueOf, type MaterialDef } from "./inventory";
@@ -175,7 +176,7 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
     return { applied: false, reason: why, price };
   }
   removeItem(run.inventory, materialId, 1);
-  const { credited } = gainRunGold(run, price);
+  const { credited } = gainRunGold(run, price, "sale", `Sold ${material.name}`);
   // The Merchant grows from its signature work (D32/D53) — replacing the use-XP the
   // retired Trade camp skill used to grant. Only a live Merchant brokers (and levels).
   const broker = run.party.find((u) => u.alive && !u.captured && u.jobId === "merchant");
@@ -214,7 +215,7 @@ export interface BankerBorrowResult extends VerbResult {
 export function bankerBorrow(run: RunState, amount: number): BankerBorrowResult {
   const borrowed = nonNegInt(amount);
   if (borrowed <= 0) return { applied: false, reason: "Nothing to borrow." };
-  run.camp.gold += borrowed;
+  earn(run.camp, borrowed, "banker", "Banker loan", { nodeId: run.mapNodeId, night: run.night });
   run.overworld.debt += borrowed;
   return { applied: true, borrowed, debt: run.overworld.debt, detail: `Borrowed ${borrowed}g against future loot.` };
 }

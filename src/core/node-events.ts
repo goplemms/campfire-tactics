@@ -43,6 +43,7 @@ import { merchantBuy, merchantPrice } from "./economy-actions";
 import { rollMercenary } from "./guild";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
 import { thiefEventSkim } from "./theft";
+import { earn, spend } from "./purse-journal";
 
 /**
  * An event kind (M11; **toll** added M13/D48). New kinds are new records on
@@ -257,7 +258,7 @@ export function hireRecruit(run: RunState, offer: RecruiterOffer): EventOutcome 
     out.summary = `Not enough purse gold (${offer.price}g) to hire ${offer.unit.name}.`;
     return out;
   }
-  run.camp.gold -= offer.price;
+  spend(run.camp, offer.price, "recruit", `Hire ${offer.unit.name}`, { nodeId: run.mapNodeId, night: run.night });
   run.party.push(offer.unit);
   out.goldDelta = -offer.price;
   out.recruited = offer.unit;
@@ -384,7 +385,9 @@ export function applyStoryChoice(run: RunState, node: MapNode, story: StorySpec,
   if (gold !== 0) {
     // A pay can never drive the purse negative.
     const applied = gold < 0 ? -Math.min(run.camp.gold, -gold) : gold;
-    run.camp.gold += applied;
+    const ctx = { nodeId: run.mapNodeId, night: run.night };
+    if (applied > 0) earn(run.camp, applied, "event", "Story payout", ctx);
+    else if (applied < 0) spend(run.camp, -applied, "event", "Story cost", ctx);
     out.goldDelta = applied;
   }
   if (spec.moraleDelta) {
@@ -521,7 +524,7 @@ export const EVENTS: readonly EventDef[] = [
       // the purse negative; the pay-or-fight-the-guards choice is deferred (D23/D30).
       const fee = tollFee(run.seed, node);
       const paid = Math.min(run.camp.gold, fee);
-      run.camp.gold -= paid;
+      spend(run.camp, paid, "toll", `Toll @ ${node.id}`, { nodeId: node.id, night: run.night });
       const out = emptyOutcome("toll");
       out.goldDelta = -paid;
       out.summary = paid >= fee

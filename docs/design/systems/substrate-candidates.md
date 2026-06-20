@@ -354,5 +354,86 @@ existing chokepoint" pass. The deferred combat verbs (#7) are the graph→replay
 6. **Storage** — later; per-key scalar→sum; chokepoint exists, add provenance only.
 7. **Deferred combat verbs** — later; graph→replay; finishes the combat substrate but high-risk.
 8. **Run-state stepping** — not worth it; no scalar, no scatter, already centralized.
+
+---
+
+## Utility review — is any of this actually worth building?
+
+The ranking above scores **pattern fit and leverage**. That is the wrong question to
+stop on. The harder question — *what present pain does each remove, and who consumes the
+provenance* — deflates most of the list. Recorded here so the audit doesn't read as a
+licence to build all eight.
+
+### The honest yardstick the precedents set
+
+Both shipped refactors were justified by **removing existing bad code with a waiting
+consumer**, not by matching a shape:
+
+- The purse journal **deleted `buildLedger`'s after-the-fact mis-derivation** — there
+  was wrong code, and a screen (the ledger) waiting to read the right record.
+- Combat actions **collapsed genuinely divergent player/AI paths** (they reached the
+  primitives by different routes — a real drift bug) **and shipped undo** — a concrete
+  player feature.
+
+Each had **(a) a present-tense pain** and **(b) a consumer that justified the
+substrate**. Measure the candidates against *that*, not against "is it scattered."
+
+### Where the candidates fall short of it
+
+- **Scatter ≠ pain.** `treasury -= mercCost` and `treasury += payout` are not divergent
+  paths doing one logical op by different routes (the combat sin) — they are *distinct,
+  correct* operations that happen to touch the same field. Counting 7 sites overstates
+  the wound; there is no mis-derivation and no drift bug to fix, unlike the purse.
+- **It adds machinery, not removes it.** The candidates replace correct one-line
+  mutations with a chokepoint + log. That is net *more* code on a working path — the
+  opposite of the purse/combat refactors, which retired bad code.
+- **No consumer.** There is no treasury report, RP report, morale report, XP history, or
+  storage-provenance screen on the roadmap. The purse journal *deferred* presentation
+  and got away with it because gold is the game's bottom line; shipping **four more**
+  presentation-less substrates is speculative inventory — a cost paid now against a
+  payoff that may never be asked for.
+- **The invariant is only a future tripwire.** `sum(log) === value` is true by
+  construction; it can fail only if someone *later* adds a bypassing site. For a settled
+  M9/M10 economy that rarely gains new sinks, that net catches little. (Contrast the
+  purse, where the invariant retro-actively proved 11 real sites reconciled.)
+- **Two candidates have nothing mechanical left to win.** XP and storage **already have
+  their chokepoints** (`grantXp`, `addItem`/`removeItem`). The drift-prevention win — the
+  whole mechanical point — is already banked. All that remains is speculative provenance.
+
+### What actually carries present-tense value
+
+- **The Influence bypass (`overworld-actions.ts:368`) is a real bug, today.** It is also
+  the *only* concrete present-tense win in the list — and it does **not** need a journal.
+  Route that one site through `spendInfluence` and the bug is gone. **Do this regardless;
+  it is a one-line fix, not a substrate.**
+- **The generalized per-pool journal is worth it only if you commit to ≥2 real
+  consumers up front.** As pure abstraction ("we might want reports someday") it is
+  premature — abstraction without a second instantiation is just a more expensive way to
+  hold one currency. Its value is entirely contingent on a balancing-report roadmap
+  existing.
+- **Combat verbs (#7) are the one candidate whose payoff is a feature, not a report** —
+  extending undo to heal/capture/trap-placement. That payoff is real, but so is the
+  re-route risk. It is a genuine product decision (is undo-on-heal wanted?), not free
+  plumbing — decide it on the feature, not on the pattern.
+
+### Revised guidance
+
+1. **Fix the Influence bypass now** — direct, no substrate.
+2. **Do not build the scalar journals speculatively.** Treat each as a *prerequisite* to
+   be pulled **when its report/feature is actually scheduled** — the substrate is real
+   work only once a consumer exists. Treasury is still first *when* that day comes
+   (it is the most likely report and the cleanest port of the purse), but "build next"
+   should read "build next *if a between-runs balance readout is on the roadmap*."
+3. **Drop XP and storage from consideration** until a growth-history / storage-provenance
+   UI is concretely planned — their mechanical win is already banked, so they are
+   provenance-only and the most speculative of the lot.
+4. **Treat the combat verbs as a feature decision**, scheduled on the merit of the undo
+   coverage they unlock, not batched with the additive plumbing.
+
+**Bottom line: the only thing here worth doing unprompted is the one-line Influence
+bugfix.** Everything else is a *well-shaped option to exercise when its consumer
+materialises* — correctly identified by the audit, but not, on its own, a reason to
+build. The leverage formula flattered the scalars by rewarding scatter; the value lens
+says hold them as ready-to-pull designs and let a real report or feature trigger each.
 </content>
 </invoke>

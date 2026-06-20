@@ -25,6 +25,7 @@ import type { TileGrid } from "./grid";
 import type { GridCoord } from "./iso";
 import { findPath } from "./pathfinding";
 import { occupiedGrid } from "./ai";
+import { effectiveSpeed, TURN_THRESHOLD, ACT_COST, MOVE_COST, type TurnSpend } from "./clock";
 
 /** Exposure at which a unit is captured. */
 export const CAPTURE_THRESHOLD = 100;
@@ -243,4 +244,211 @@ export function resolveDeployAction(
   }
   if (capturedAt === -1) settleAlert(alert); // got away — the patrol relaxes
   return { spotted: true, retreatPath, capturedAt };
+}
+
+// --- D63: the closing-net deployment front ----------------------------------
+//
+// Deployment is a **turn-based stealth phase**: player units take real turns on a
+// CT clock, and the enemy is represented by a single advancing **danger front** —
+// a column that marches from the enemy (right) edge toward the party's home edge
+// (col 0). The front is itself an actor on the clock, with a Speed derived from
+// the enemy roster (leaning toward the fastest scout), so a quick camp closes the
+// net faster. Capture is rolled **only on the front's turn**, for every unit the
+// net has swallowed — never per player turn, so a fast party gets *more*
+// positioning turns without being punished with *more* capture dice. A unit can
+// **Dig In** to hunker on its tile at a fraction of the capture chance. The first
+// unit netted raises the alarm and combat begins; if the front overruns the home
+// edge first, the scene starts the battle anyway.
+
+/** Columns the danger front advances on each of its turns. */
+export const FRONT_ADVANCE_PER_TURN = 1;
+/** Lean toward the fastest enemy when deriving front Speed (0 = average, 1 = max). */
+export const FRONT_SPEED_LEAN = 0.5;
+/** How sharply the front spikes the per-turn capture chance over the stealth curve. */
+export const FRONT_DANGER_MULTIPLIER = 3;
+/** Fraction of the capture chance a dug-in unit faces (hunkered = hard to grab). */
+export const DIG_IN_CAPTURE_FACTOR = 0.25;
+
+/** The advancing enemy danger front (D63): cols `>= col` are the danger zone. */
+export interface DeployFront {
+  /** Leftmost dangerous column; starts off the right edge and marches toward 0. */
+  col: number;
+  /** CT-style Speed — how fast the net closes, derived from the enemy roster. */
+  speed: number;
+}
+
+/**
+ * The front's Speed: the enemy roster's average Speed pulled toward its fastest
+ * member by {@link FRONT_SPEED_LEAN}. A camp of sluggish bruisers closes slowly;
+ * a lone scout in the mix noticeably quickens the net. Floored at 1.
+ */
+export function frontSpeed(enemies: readonly Unit[], lean = FRONT_SPEED_LEAN): number {
+  if (enemies.length === 0) return 1;
+  const speeds = enemies.map((e) => e.speed);
+  const avg = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+  const max = Math.max(...speeds);
+  return Math.max(1, Math.round(avg + (max - avg) * lean));
+}
+
+/** A fresh front parked off the enemy edge (nothing dangerous yet). */
+export function createFront(grid: TileGrid, enemies: readonly Unit[], lean = FRONT_SPEED_LEAN): DeployFront {
+  return { col: grid.cols, speed: frontSpeed(enemies, lean) };
+}
+
+/** True if column `col` is inside (at or past) the danger front. */
+export function inDangerZone(col: number, front: DeployFront): boolean {
+  return col >= front.col;
+}
+
+/** Push the front one (or `by`) columns toward the home edge, clamped at 0. */
+export function advanceFront(front: DeployFront, by = FRONT_ADVANCE_PER_TURN): void {
+  front.col = Math.max(0, front.col - by);
+}
+
+/**
+ * The per-front-turn capture chance for `unit`: zero unless the net has reached
+ * it, then scaling with how deep into the danger zone it sits (more enemies
+ * around it) **and** how far past its own safe depth it ranged — spiked by
+ * {@link FRONT_DANGER_MULTIPLIER} and slashed for a dug-in unit. Capped by
+ * {@link CAPTURE_CHANCE_MAX} so even a deep, surrounded unit is never a sure loss.
+ */
+export function frontCaptureChance(
+  unit: Unit,
+  front: DeployFront,
+  opts: { moraleDepthBonus?: number; dugIn?: boolean } = {},
+): number {
+  if (!inDangerZone(unit.pos.col, front)) return 0;
+  const depthPastFront = unit.pos.col - front.col + 1; // >= 1 once swallowed
+  const pastSafe = Math.max(0, unit.pos.col - safeDepth(unit, opts.moraleDepthBonus ?? 0));
+  let chance = Math.min(CAPTURE_CHANCE_MAX, (depthPastFront + pastSafe) * CAPTURE_PER_DEPTH * FRONT_DANGER_MULTIPLIER);
+  if (opts.dugIn) chance *= DIG_IN_CAPTURE_FACTOR;
+  return chance;
+}
+
+/** The resolved outcome of one front turn — the net advances, then rolls capture. */
+export interface FrontTurnOutcome {
+  /** The front's new column after advancing. */
+  advancedTo: number;
+  /** Columns that became dangerous on this turn (for the engulf FX). */
+  newlyEngulfed: number[];
+  /** The first unit netted this turn, or null. */
+  captured: Unit | null;
+  /** Units that faced a capture roll, deepest first. */
+  rolled: Unit[];
+  /** True if a capture raised the alarm (combat should begin). */
+  alarm: boolean;
+}
+
+/**
+ * Resolve the front's turn (D63): advance the net one step, then roll capture for
+ * every player unit it has swallowed — deepest (most exposed) first. The party's
+ * **last un-captured fighter is never netted** (parity with the stealth retreat),
+ * and the **first** capture stops the rolls and raises the alarm. All rolls take
+ * the seeded `rng`, so the whole turn is reproducible.
+ */
+export function resolveFrontTurn(
+  front: DeployFront,
+  units: readonly Unit[],
+  rng: Rng,
+  opts: { moraleDepthBonus?: number; dugIn?: (u: Unit) => boolean; by?: number } = {},
+): FrontTurnOutcome {
+  const before = front.col;
+  advanceFront(front, opts.by ?? FRONT_ADVANCE_PER_TURN);
+  const newlyEngulfed: number[] = [];
+  for (let c = front.col; c < before; c++) newlyEngulfed.push(c);
+
+  const exposed = units
+    .filter((u) => u.side === "player" && u.alive && !u.captured && inDangerZone(u.pos.col, front))
+    .sort((a, b) => b.pos.col - a.pos.col || a.pos.row - b.pos.row || a.id.localeCompare(b.id));
+
+  const rolled: Unit[] = [];
+  let captured: Unit | null = null;
+  let remaining = units.filter((u) => u.side === "player" && !u.captured).length;
+  for (const u of exposed) {
+    if (remaining <= 1) break; // never net the party's last fighter
+    rolled.push(u);
+    const dugIn = opts.dugIn?.(u) ?? false;
+    if (rng.chance(frontCaptureChance(u, front, { moraleDepthBonus: opts.moraleDepthBonus, dugIn }))) {
+      captureUnit(u);
+      captured = u;
+      remaining -= 1;
+      break; // first capture raises the alarm → combat begins
+    }
+  }
+  return { advancedTo: front.col, newlyEngulfed, captured, rolled, alarm: captured !== null };
+}
+
+/** Whose turn it is in the deployment clock — a player unit, or the front. */
+export interface DeployTurn {
+  /** The player unit to act, or null when it's the front's turn. */
+  unit: Unit | null;
+  /** True when the front acts this step. */
+  isFront: boolean;
+}
+
+/**
+ * The deployment-phase clock (D63): player units and the enemy front share one CT
+ * timeline, exactly like combat's {@link CTClock}, so initiative reads the same.
+ * Player units charge by their effective Speed; the front charges by its derived
+ * Speed. Because capture is rolled on the front's turn (not per player turn), a
+ * faster party simply earns more positioning turns between net-closings.
+ */
+export class DeployClock {
+  /** The front's charge-time accumulator. */
+  frontCt = 0;
+  private readonly players: Unit[];
+
+  constructor(units: readonly Unit[], private readonly front: DeployFront) {
+    this.players = units.filter((u) => u.side === "player");
+  }
+
+  /** Seed player CT from Speed (a warmer party acts first); the front starts cold. */
+  seed(bonus = 0): void {
+    for (const u of this.players) u.ct = u.captured ? 0 : Math.max(0, u.speed + bonus);
+    this.frontCt = 0;
+  }
+
+  private tick(): void {
+    for (const u of this.players) {
+      if (!u.alive || u.captured) continue;
+      u.ct += effectiveSpeed(u);
+    }
+    this.frontCt += this.front.speed;
+  }
+
+  private ready(): boolean {
+    return this.frontCt >= TURN_THRESHOLD || this.players.some((u) => u.alive && !u.captured && u.ct >= TURN_THRESHOLD);
+  }
+
+  /**
+   * Tick until a player unit or the front is ready, then return the readiest. The
+   * front wins only on a strict CT lead — players take ties, so Speed and Awareness
+   * keep buying the party its turns. Returns the front if no player can act.
+   */
+  next(): DeployTurn {
+    let guard = 0;
+    const GUARD_MAX = 1_000_000;
+    while (!this.ready()) {
+      this.tick();
+      if (++guard > GUARD_MAX) return { unit: null, isFront: true };
+    }
+    const readyPlayers = this.players
+      .filter((u) => u.alive && !u.captured && u.ct >= TURN_THRESHOLD)
+      .sort((a, b) => b.ct - a.ct || b.speed - a.speed || a.id.localeCompare(b.id));
+    const best = readyPlayers[0];
+    if (this.frontCt >= TURN_THRESHOLD && (!best || this.frontCt > best.ct)) {
+      return { unit: null, isFront: true };
+    }
+    return best ? { unit: best, isFront: false } : { unit: null, isFront: true };
+  }
+
+  /** Spend a player unit's CT after its turn (acting costs more than only moving). */
+  spend(unit: Unit, spend: TurnSpend): void {
+    unit.ct -= spend.acted ? ACT_COST : MOVE_COST;
+  }
+
+  /** Spend the front's CT after its turn. */
+  spendFront(): void {
+    this.frontCt -= TURN_THRESHOLD;
+  }
 }

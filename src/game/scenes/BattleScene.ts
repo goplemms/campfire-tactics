@@ -560,15 +560,75 @@ export class BattleScene extends Phaser.Scene {
       for (let col = 0; col < this.grid.cols; col++) {
         const t = { col, row };
         if (!this.grid.isWalkable(t)) continue;
-        if (inDangerZone(t, this.front)) {
-          this.fillTileDiamond(this.dangerZoneGfx, t, COLOR.danger, 0.34);
-        } else if (stepDistance(t, this.front.origin) === this.front.radius + 1) {
-          // The ring about to fall next turn — a warning telegraph in amber.
-          this.fillTileDiamond(this.dangerZoneGfx, t, COLOR.accent, 0.22);
-        } else if (inSafeZone(t, this.campfire, this.front)) {
-          this.fillTileDiamond(this.safeZoneGfx, t, COLOR.successDeep, 0.28);
+        switch (this.zoneOf(t)) {
+          case "danger":
+            this.fillTileDiamond(this.dangerZoneGfx, t, COLOR.danger, 0.34);
+            break;
+          case "warning":
+            // The ring about to fall next turn — a warning telegraph in amber.
+            this.fillTileDiamond(this.dangerZoneGfx, t, COLOR.accent, 0.22);
+            break;
+          case "safe":
+            this.fillTileDiamond(this.safeZoneGfx, t, COLOR.successDeep, 0.28);
+            break;
         }
       }
+    }
+    // Trace a dotted outline around each zone's perimeter for at-a-glance clarity.
+    this.strokeZoneOutline(this.safeZoneGfx, "safe", COLOR.success);
+    this.strokeZoneOutline(this.dangerZoneGfx, "warning", COLOR.accent);
+    this.strokeZoneOutline(this.dangerZoneGfx, "danger", COLOR.danger);
+  }
+
+  /** Which deployment band a walkable tile falls in (drives both fill and outline). */
+  private zoneOf(t: GridCoord): "danger" | "warning" | "safe" | "none" {
+    if (inDangerZone(t, this.front)) return "danger";
+    if (stepDistance(t, this.front.origin) === this.front.radius + 1) return "warning";
+    if (inSafeZone(t, this.campfire, this.front)) return "safe";
+    return "none";
+  }
+
+  /**
+   * Stroke a dashed line along every tile edge where a `zone` tile meets a tile
+   * of another band — the visible boundary of that zone. Iso diamond edges map to
+   * the four orthogonal grid neighbours.
+   */
+  private strokeZoneOutline(g: Phaser.GameObjects.Graphics, zone: "danger" | "warning" | "safe", color: number): void {
+    const halfW = this.view.halfW();
+    const halfH = this.view.halfH();
+    // Neighbour delta → the two diamond vertices (relative to centre) of the shared edge.
+    const edges: Array<{ dc: number; dr: number; a: [number, number]; b: [number, number] }> = [
+      { dc: 1, dr: 0, a: [halfW, 0], b: [0, halfH] }, // col+1 → bottom-right edge
+      { dc: -1, dr: 0, a: [0, -halfH], b: [-halfW, 0] }, // col-1 → top-left edge
+      { dc: 0, dr: 1, a: [0, halfH], b: [-halfW, 0] }, // row+1 → bottom-left edge
+      { dc: 0, dr: -1, a: [0, -halfH], b: [halfW, 0] }, // row-1 → top-right edge
+    ];
+    g.lineStyle(1.5, color, 0.9);
+    for (let row = 0; row < this.grid.rows; row++) {
+      for (let col = 0; col < this.grid.cols; col++) {
+        const t = { col, row };
+        if (!this.grid.isWalkable(t) || this.zoneOf(t) !== zone) continue;
+        const { x, y } = this.tileToWorld(t);
+        for (const e of edges) {
+          const n = { col: col + e.dc, row: row + e.dr };
+          const outside = !this.grid.isWalkable(n) || this.zoneOf(n) !== zone;
+          if (outside) this.dashedLine(g, x + e.a[0], y + e.a[1], x + e.b[0], y + e.b[1]);
+        }
+      }
+    }
+  }
+
+  /** Draw a dashed segment from (x1,y1) to (x2,y2) on `g` using the active line style. */
+  private dashedLine(g: Phaser.GameObjects.Graphics, x1: number, y1: number, x2: number, y2: number, dash = 5, gap = 4): void {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return;
+    const ux = dx / len;
+    const uy = dy / len;
+    for (let d = 0; d < len; d += dash + gap) {
+      const end = Math.min(d + dash, len);
+      g.lineBetween(x1 + ux * d, y1 + uy * d, x1 + ux * end, y1 + uy * end);
     }
   }
 

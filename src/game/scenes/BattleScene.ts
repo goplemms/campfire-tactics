@@ -29,10 +29,14 @@ import {
   campReadoutLine,
   safeDepth,
   freeCaptive,
-  captureUnit,
-  createAlert,
-  resolveDeployAction,
   streamFor,
+  // D63 — the closing-net deployment: a turn-based front that pushes the danger
+  // zone into the party's safe side until someone's caught and the alarm goes up.
+  createFront,
+  DeployClock,
+  resolveFrontTurn,
+  inDangerZone,
+  frontCaptureChance,
   // M5 — camp / morale
   moraleTier,
   moraleModifiers,
@@ -70,8 +74,7 @@ import {
   type RunLoop,
   type IntelReport,
   type IntelTier,
-  type DeployAlert,
-  type DeployOutcome,
+  type DeployFront,
   type Rng,
   type GridCoord,
   type Unit,
@@ -144,10 +147,15 @@ export class BattleScene extends Phaser.Scene {
   /** The toggleable Legend & Keys panel (L) — empty when hidden. */
   private legend: Phaser.GameObjects.GameObject[] = [];
 
-  // Deployment state (D11): a shared camp-alert meter + a seeded roll stream.
+  // Deployment state (D11): the active unit + a seeded roll stream for the net.
   private deployActor: Unit | null = null;
-  private deployAlert: DeployAlert = createAlert();
   private deployRng!: Rng;
+  // D63 — the closing net: an advancing enemy danger front, a deployment-phase CT
+  // clock that interleaves player turns with the front's, and the dug-in stance set.
+  private dangerZoneGfx?: Phaser.GameObjects.Graphics;
+  private front!: DeployFront;
+  private deployClock!: DeployClock;
+  private dugIn = new Set<string>();
   /** The party's Set Trap spec (damage + snare status), resolved at deploy; undefined = no trapper. */
   private trapEffect?: PlaceTrapEffect;
   /** Board markers for the player's own placed traps, keyed by the registered entity id. */
@@ -296,6 +304,8 @@ export class BattleScene extends Phaser.Scene {
     this.gridGfx?.destroy();
     this.safeZoneGfx?.destroy();
     this.safeZoneGfx = undefined;
+    this.dangerZoneGfx?.destroy();
+    this.dangerZoneGfx = undefined;
     this.highlight.clear();
     this.view.clearPreview(this.preview);
     this.threatGfx.clear();
@@ -312,7 +322,6 @@ export class BattleScene extends Phaser.Scene {
 
   private enterDeploy(): void {
     this.phase = "deployment";
-    this.deployAlert = createAlert();
     this.deployRng = streamFor(this.run.seed, "deploy");
     this.spotRng = streamFor(this.run.seed, "trap-spot");
     this.trapMarkers.clear();
@@ -320,8 +329,100 @@ export class BattleScene extends Phaser.Scene {
     this.trapSeq = 0;
     // The party's Set Trap spec (damage + snare status) — resolved once in core (D11).
     this.trapEffect = playerTrapSkill(this.run.party);
-    this.selectDeployActor(this.battle.units.find((u) => u.side === "player") ?? null);
+    // D63 — the closing net: the enemy is a single danger front that marches in from
+    // its edge, with a Speed leaning toward the camp's fastest scout. Player units and
+    // the front share one deployment CT clock, so a quick party earns more positioning
+    // turns between net-closings.
+    this.dugIn.clear();
+    const enemies = this.battle.units.filter((u) => u.side === "enemy");
+    this.front = createFront(this.grid, enemies);
+    this.deployClock = new DeployClock(this.battle.units, this.front);
+    this.deployClock.seed();
     this.setPrimary("Start Battle");
+    this.drawDangerZone();
+    this.deployNextActor();
+  }
+
+  // --- Phase: Deployment — the turn-based closing net (D63) -------------------
+
+  /** Advance the deployment clock to the next actor — a player unit, or the front. */
+  private deployNextActor(): void {
+    if (this.over || this.phase !== "deployment") return;
+    const turn = this.deployClock.next();
+    if (turn.isFront || !turn.unit) this.runFrontTurn();
+    else this.beginDeployTurn(turn.unit);
+  }
+
+  /** Open one player unit's deployment turn: it may move, dig in, or set a trap. */
+  private beginDeployTurn(unit: Unit): void {
+    this.selectDeployActor(unit);
+    this.setHint(
+      `${unit.name}'s turn — click a tile to reposition, Dig In to hunker, place a trap, or Start Battle. ` +
+        `The enemy front is at column ${this.front.col}; it captures whoever it catches on its turn.`,
+    );
+  }
+
+  /**
+   * Resolve the front's turn (D63): the net advances one column, then rolls capture
+   * for every unit it has swallowed. The first capture raises the alarm and battle
+   * begins; if the net overruns the camp's home edge with nobody caught, battle
+   * begins anyway. Otherwise we hand the turn back to the clock.
+   */
+  private runFrontTurn(): void {
+    const out = resolveFrontTurn(this.front, this.battle.units, this.deployRng, {
+      moraleDepthBonus: this.deployMods().safeDepthBonus,
+      dugIn: (u) => this.dugIn.has(u.id),
+    });
+    this.deployClock.spendFront();
+    this.deployActor = null;
+    this.clearActionButtons();
+    this.drawDangerZone();
+    this.drawSafeZone(null);
+    this.highlightTile(null);
+
+    if (out.captured) {
+      const caught = out.captured;
+      this.dugIn.delete(caught.id);
+      this.dropNet(caught);
+      this.placeView(caught);
+      this.tintCaptured(caught, true);
+      this.busy = true;
+      this.setHint(`${caught.name} was snared as the net closed — the alarm goes up! Battle begins.`);
+      this.time.delayedCall(950, () => {
+        this.busy = false;
+        this.startBattle();
+      });
+      return;
+    }
+    if (this.front.col <= 0) {
+      this.busy = true;
+      this.setHint("The enemy line has overrun the camp — battle begins!");
+      this.time.delayedCall(800, () => {
+        this.busy = false;
+        this.startBattle();
+      });
+      return;
+    }
+    this.setHint(`The danger front pushes in to column ${this.front.col}. Pull back or dig in — it closes again soon.`);
+    this.deployNextActor();
+  }
+
+  /** End the active unit's deployment turn, spend its CT, and advance the clock. */
+  private endDeployTurn(unit: Unit, spend: { moved?: boolean; acted?: boolean }): void {
+    this.deployClock.spend(unit, spend);
+    this.deployActor = null;
+    this.clearActionButtons();
+    this.deployNextActor();
+  }
+
+  /** Dig In (D63): hunker on this tile for a sharply reduced capture chance. */
+  private digIn(): void {
+    const actor = this.deployActor;
+    if (!actor || actor.captured || this.busy) return;
+    this.dugIn.add(actor.id);
+    this.setHint(`${actor.name} digs in — braced low against the closing net.`);
+    this.refreshDeployStatus();
+    this.endDeployTurn(actor, { acted: true });
   }
 
   private moraleMods() {
@@ -351,35 +452,29 @@ export class BattleScene extends Phaser.Scene {
     this.deployActor = unit;
     this.highlightTile(unit ? unit.pos : null);
     this.drawSafeZone(unit);
+    this.drawDangerZone();
     this.refreshDeployButtons();
     this.refreshDeployStatus();
-    if (unit) {
-      this.setHint(`${unit.name}: click a tile to move (deeper = riskier), place a trap where you stand, or pick another unit.`);
-    }
   }
 
   private refreshDeployButtons(): void {
     const actor = this.deployActor;
     const specs: { text: string; description?: string; onClick: () => void }[] = [];
+    if (actor && !actor.captured) {
+      specs.push({
+        text: "Dig In",
+        description: "Hunker on this tile — far lower capture chance when the net closes, at the cost of this turn.",
+        onClick: () => this.digIn(),
+      });
+    }
     if (actor && !actor.captured && unitSkills(actor, "deployment").some((s) => s.effect.kind === "placeTrap")) {
       specs.push({
         text: "Place Trap Here",
-        description: "Drop a trap on this tile (1 kit). Deeper tiles raise capture risk.",
+        description: "Drop a trap on this tile (1 kit) and end the turn. Deeper tiles raise capture risk.",
         onClick: () => this.placeTrap(),
       });
     }
-    if (this.battle.units.filter((u) => u.side === "player" && !u.captured).length > 1) {
-      specs.push({ text: "Next Unit", description: "Switch to another unit to deploy.", onClick: () => this.cycleDeployActor() });
-    }
     this.layoutActionRow(specs);
-  }
-
-  private cycleDeployActor(): void {
-    if (this.busy) return;
-    const players = this.battle.units.filter((u) => u.side === "player" && !u.captured);
-    if (players.length === 0) return;
-    const i = this.deployActor ? players.indexOf(this.deployActor) : -1;
-    this.selectDeployActor(players[(i + 1) % players.length]);
   }
 
   private depthOf(tile: GridCoord): number {
@@ -388,15 +483,25 @@ export class BattleScene extends Phaser.Scene {
 
   private refreshDeployStatus(): void {
     const actor = this.deployActor;
+    const kits = countOf(this.run.inventory, "trap-kit");
     if (!actor) {
-      this.titleText.setText("Deployment");
+      this.titleText.setText(`Deployment — danger front at col ${this.front?.col ?? "—"} · Trap Kits ${kits}`);
       return;
     }
     const mods = this.deployMods();
     const past = Math.max(0, this.depthOf(actor.pos) - safeDepth(actor, mods.safeDepthBonus));
-    const kits = countOf(this.run.inventory, "trap-kit");
-    const tag = actor.captured ? " — CAPTURED" : past > 0 ? ` — ${past} past safe` : " — in cover";
-    this.titleText.setText(`Deployment — ${actor.name}${tag} · camp alert ${this.deployAlert.meter}% · Trap Kits ${kits}`);
+    const inDanger = this.front && inDangerZone(actor.pos.col, this.front);
+    const dug = this.dugIn.has(actor.id);
+    const tag = actor.captured
+      ? " — CAPTURED"
+      : inDanger
+        ? ` — IN THE NET (${Math.round(frontCaptureChance(actor, this.front, { moraleDepthBonus: mods.safeDepthBonus, dugIn: dug }) * 100)}% if it closes)`
+        : dug
+          ? " — dug in"
+          : past > 0
+            ? ` — ${past} past safe`
+            : " — in cover";
+    this.titleText.setText(`Deployment — ${actor.name}${tag} · front col ${this.front.col} · Trap Kits ${kits}`);
   }
 
   private drawSafeZone(unit: Unit | null): void {
@@ -410,19 +515,52 @@ export class BattleScene extends Phaser.Scene {
     for (let row = 0; row < this.grid.rows; row++) {
       for (let col = 0; col <= maxCol && col < this.grid.cols; col++) {
         if (!this.grid.isWalkable({ col, row })) continue;
-        const { x, y } = this.tileToWorld({ col, row });
-        const halfW = this.view.halfW();
-        const halfH = this.view.halfH();
-        this.safeZoneGfx.fillStyle(COLOR.successDeep, 0.28);
-        this.safeZoneGfx.beginPath();
-        this.safeZoneGfx.moveTo(x, y - halfH);
-        this.safeZoneGfx.lineTo(x + halfW, y);
-        this.safeZoneGfx.lineTo(x, y + halfH);
-        this.safeZoneGfx.lineTo(x - halfW, y);
-        this.safeZoneGfx.closePath();
-        this.safeZoneGfx.fillPath();
+        // The closing net overrides the unit's silent cover — don't paint a tile
+        // green once the danger front has reached it.
+        if (this.front && inDangerZone(col, this.front)) continue;
+        this.fillTileDiamond(this.safeZoneGfx, { col, row }, COLOR.successDeep, 0.28);
       }
     }
+  }
+
+  /**
+   * The advancing enemy danger front (D63): paint every swallowed column red, and
+   * telegraph the column(s) about to fall next turn in warning amber so the player
+   * can plan their last reposition.
+   */
+  private drawDangerZone(): void {
+    if (!this.dangerZoneGfx) {
+      this.dangerZoneGfx = this.add.graphics().setDepth(0.45);
+      this.boardObjects.push(this.dangerZoneGfx);
+    }
+    this.dangerZoneGfx.clear();
+    if (!this.front) return;
+    for (let row = 0; row < this.grid.rows; row++) {
+      for (let col = 0; col < this.grid.cols; col++) {
+        if (!this.grid.isWalkable({ col, row })) continue;
+        if (inDangerZone(col, this.front)) {
+          this.fillTileDiamond(this.dangerZoneGfx, { col, row }, COLOR.danger, 0.34);
+        } else if (col >= this.front.col - 1 && col < this.front.col) {
+          // The next column to fall — a warning telegraph in amber.
+          this.fillTileDiamond(this.dangerZoneGfx, { col, row }, COLOR.accent, 0.22);
+        }
+      }
+    }
+  }
+
+  /** Fill one iso tile diamond with a colour + alpha — shared by the deploy overlays. */
+  private fillTileDiamond(g: Phaser.GameObjects.Graphics, coord: GridCoord, color: number, alpha: number): void {
+    const { x, y } = this.tileToWorld(coord);
+    const halfW = this.view.halfW();
+    const halfH = this.view.halfH();
+    g.fillStyle(color, alpha);
+    g.beginPath();
+    g.moveTo(x, y - halfH);
+    g.lineTo(x + halfW, y);
+    g.lineTo(x, y + halfH);
+    g.lineTo(x - halfW, y);
+    g.closePath();
+    g.fillPath();
   }
 
   private deployMove(tile: GridCoord): void {
@@ -444,60 +582,13 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     actor.pos = { ...steps[steps.length - 1] };
+    this.dugIn.delete(actor.id); // moving breaks the dig-in stance
     this.busy = true;
     this.animateMove(actor, steps, () => {
       this.busy = false;
       this.highlightTile(actor.pos);
-      this.resolveDeploy(actor);
+      this.endDeployTurn(actor, { moved: true });
     });
-  }
-
-  /** Resolve a noisy deploy action (move or deep trap) via the shared core model. */
-  private resolveDeploy(actor: Unit): void {
-    const outcome = resolveDeployAction(this.deployAlert, actor, this.grid, this.battle.units, this.deployRng, this.deployMods().safeDepthBonus);
-    if (outcome.spotted) this.playRetreat(actor, outcome);
-    else {
-      this.refreshDeployStatus();
-      this.refreshDeployButtons();
-    }
-  }
-
-  /** Animate a spotted unit bolting for cover along the resolver's planned path. */
-  private playRetreat(unit: Unit, outcome: DeployOutcome): void {
-    this.setHint(`${unit.name} was spotted — bolting for cover!`);
-    if (outcome.retreatPath.length === 0) {
-      this.refreshDeployStatus();
-      this.refreshDeployButtons();
-      return;
-    }
-    this.walkRetreat(unit, outcome.retreatPath, outcome.capturedAt, 0);
-  }
-
-  /** Step the retreat one tile at a time; net the unit at the planned capture index. */
-  private walkRetreat(unit: Unit, path: readonly GridCoord[], capturedAt: number, i: number): void {
-    if (i >= path.length) {
-      this.busy = false;
-      this.highlightTile(unit.pos);
-      this.setHint(`${unit.name} slipped back into cover — camp alert eased to ${this.deployAlert.meter}%.`);
-      this.refreshDeployStatus();
-      this.refreshDeployButtons();
-      return;
-    }
-    this.busy = true;
-    unit.pos = { ...path[i] };
-    this.animateMove(unit, [path[i]], () => {
-      this.placeView(unit);
-      if (i === capturedAt) return this.netCapture(unit);
-      this.walkRetreat(unit, path, capturedAt, i + 1);
-    });
-  }
-
-  /** Netted mid-retreat: drop the net, then bind the unit in the enemy zone. */
-  private netCapture(unit: Unit): void {
-    captureUnit(unit);
-    this.dropNet(unit);
-    this.busy = false;
-    this.captureDuringDeploy(unit);
   }
 
   /** Drop the capture-net cage on a unit's tile (shared deploy FX). */
@@ -522,21 +613,11 @@ export class BattleScene extends Phaser.Scene {
     this.boardObjects.push(marker);
     this.playerTrapMarkers.set(id, marker);
     this.refreshCampText();
+    this.dugIn.delete(actor.id);
     this.setHint((res.levels ?? 0) > 0
-      ? `Trap placed — ${actor.name} reached L${actor.level}! Range back or Start Battle.`
-      : "Trap placed. A deep one is noisy — range back or Start Battle.");
-    // A trap laid past the safe zone is a noisy action too, so it rolls a spot.
-    this.resolveDeploy(actor);
-  }
-
-  private captureDuringDeploy(unit: Unit): void {
-    unit.pos = { col: this.grid.cols - 2, row: this.grid.rows - 1 };
-    this.placeView(unit);
-    this.tintCaptured(unit, true);
-    this.highlightTile(null);
-    const next = this.battle.units.find((u) => u.side === "player" && !u.captured && u !== unit);
-    this.selectDeployActor(next ?? null);
-    this.setHint(`${unit.name} was netted mid-retreat! She starts the battle bound in the enemy zone — rescue her, or win to bring her home.`);
+      ? `Trap placed — ${actor.name} reached L${actor.level}! Turn ends; the net closes soon.`
+      : "Trap placed — turn ends. The danger front keeps pushing in.");
+    this.endDeployTurn(actor, { acted: true });
   }
 
   // --- Phase: Battle ---------------------------------------------------------
@@ -552,6 +633,7 @@ export class BattleScene extends Phaser.Scene {
     this.bribeArmed = false;
     this.deployActor = null;
     this.safeZoneGfx?.clear();
+    this.dangerZoneGfx?.clear();
     this.highlightTile(null);
 
     // Player traps were registered as entities at placement; the entity announces
@@ -601,8 +683,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private onPrimary(): void {
-    if (this.phase === "deployment") this.startBattle();
-    else if (this.phase === "battle") {
+    if (this.phase === "deployment") {
+      // Commit early — but not while the net is mid-resolution (D63), so a click
+      // can't race the auto-start that fires after a capture / overrun.
+      if (!this.busy) this.startBattle();
+    } else if (this.phase === "battle") {
       // During a player turn the primary button IS End Turn (D60); otherwise it
       // advances the clock to the next actor.
       if (this.waitingFor && !this.busy) this.endPlayerTurn(this.waitingFor);
@@ -1089,7 +1174,6 @@ export class BattleScene extends Phaser.Scene {
     }
 
     if (this.phase === "deployment") {
-      if (k === "Tab") { e.preventDefault(); this.cycleDeployActor(); }
       return;
     }
     if (this.phase !== "battle" || this.busy || this.over) return;
@@ -1156,7 +1240,12 @@ export class BattleScene extends Phaser.Scene {
       "  Space/Enter — End Turn / Advance / confirm   W — End Turn",
       "  1–9 — use the active unit's skills          Esc — cancel target / Undo Move",
       "  T — danger zone     F — animation speed     L — this legend",
-      "  Tab — next unit (deployment)",
+      "",
+      "DEPLOYMENT (the closing net): your units take turns; the enemy is a red",
+      "  danger front that pushes in each time it acts (amber = the next column to",
+      "  fall). Move to pull back, Dig In to hunker (far safer), or set a trap. A",
+      "  unit caught in the net when it closes may be captured — the first capture",
+      "  raises the alarm and the battle begins.",
     ].join("\n");
     this.legend.push(
       this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.btnStroke).setDepth(30),
@@ -1170,10 +1259,11 @@ export class BattleScene extends Phaser.Scene {
     if (!this.grid || !this.grid.inBounds(tile)) return;
 
     if (this.phase === "deployment") {
-      if (this.busy) return;
+      // Turn-based deployment (D63): only the unit whose turn it is may act, and
+      // clicking an empty tile repositions it (the clock dictates the order).
+      if (this.busy || !this.deployActor) return;
       const clicked = this.battle.units.find((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row);
-      if (clicked && clicked.side === "player" && !clicked.captured) this.selectDeployActor(clicked);
-      else if (!clicked) this.deployMove(tile);
+      if (!clicked) this.deployMove(tile);
       return;
     }
     if (this.phase !== "battle") return;

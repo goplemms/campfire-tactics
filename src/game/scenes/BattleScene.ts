@@ -175,8 +175,6 @@ export class BattleScene extends Phaser.Scene {
   private actCharged = false;
   /** True if the unit has stepped at all this turn (drives the end-turn CT spend). */
   private movedThisTurn = false;
-  /** Tile the unit stood on at turn start — where Undo Move snaps it back. */
-  private turnStartPos: GridCoord | null = null;
   /** A sprung trap locks the turn's movement: no take-back once it's cost HP. */
   private turnLocked = false;
   /** The reachable destinations for the unit's *remaining* budget (path + cost each). */
@@ -650,7 +648,9 @@ export class BattleScene extends Phaser.Scene {
     this.actCharged = false;
     this.movedThisTurn = false;
     this.turnLocked = false;
-    this.turnStartPos = { ...actor.pos };
+    // Arm the action-log undo for the turn (D60 take-back) — every move/strike/skill
+    // the unit makes becomes undoable back to this point, until the turn commits.
+    this.battle.beginUndo();
     this.hoverTile = null;
     this.recomputeReach(actor);
     // The active unit looks around — an Awareness roll may spot nearby traps (D12).
@@ -729,6 +729,7 @@ export class BattleScene extends Phaser.Scene {
    */
   private endPlayerTurn(actor: Unit): void {
     if (this.busy || this.waitingFor !== actor) return;
+    this.battle.endUndo(); // the turn commits — no take-back across the boundary
     this.waitingFor = null;
     this.armedSkill = null;
     this.pendingHerb = null;
@@ -765,10 +766,11 @@ export class BattleScene extends Phaser.Scene {
 
   private showSkillButtons(actor: Unit): void {
     const specs: { text: string; description?: string; onClick: () => void }[] = [];
-    // Undo leads while the move is still a take-back — moved this turn, not yet acted,
-    // and no sprung trap has locked it (D60).
-    if (this.movedThisTurn && !this.acted && !this.turnLocked) {
-      specs.push({ text: "Undo Move", description: "Snap back to where this unit started its turn, restoring its full move (Esc).", onClick: () => this.undoMove(actor) });
+    // Undo leads whenever this turn's actions can be taken back — anything done this
+    // turn (a move *or* a strike/skill), as long as no sprung trap has locked it (no
+    // take-back on damage taken, D60). Routes through the action log (Phase 2).
+    if (this.battle.canUndo() && !this.turnLocked) {
+      specs.push({ text: "Undo Turn", description: "Take back everything this unit did this turn — moves and strikes — back to where it started (Esc).", onClick: () => this.undoTurn(actor) });
     }
     // The Act buttons (skill / Bribe / Search / Disarm / Defend) are the unit's one
     // action this turn — surfaced only until that Act is spent (D60).
@@ -1080,9 +1082,9 @@ export class BattleScene extends Phaser.Scene {
     if (k === "f" || k === "F") { this.cycleSpeed(); return; }
     if (k === " " || k === "Enter") { e.preventDefault(); this.onPrimary(); return; }
     if (k === "Escape") {
-      // Back out of an armed target first; otherwise undo this turn's movement.
+      // Back out of an armed target first; otherwise take back this turn's actions.
       if (this.armedSkill || this.bribeArmed || this.pendingHerb) return this.cancelArmed();
-      if (this.phase === "battle" && this.movedThisTurn && !this.acted && this.waitingFor && !this.busy) return this.undoMove(this.waitingFor);
+      if (this.phase === "battle" && !this.turnLocked && this.waitingFor && !this.busy && this.battle.canUndo()) return this.undoTurn(this.waitingFor);
       return;
     }
 
@@ -1311,23 +1313,37 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Undo **all** of this turn's movement: snap back to the start tile and restore
-   * the full move budget (D60). Allowed only while the unit hasn't acted and no
-   * sprung trap has locked the turn.
+   * Undo **this unit's whole turn** (D60 / *Into the Breach* take-back): roll the
+   * battle back to where the turn began through the action log — including a strike
+   * or skill, not just movement — then resync the board. The clock, in-flight
+   * charges, statuses, revived foes and the RNG cursor all revert in core
+   * ({@link "../../core/turn".Battle.undoAll}); the render just re-reads the result.
+   * Forbidden once a sprung trap has locked the turn (no take-back on damage taken)
+   * or while an animation is mid-flight.
    */
-  private undoMove(actor: Unit): void {
-    if (this.busy || !this.movedThisTurn || this.acted || this.turnLocked || !this.turnStartPos || this.waitingFor !== actor) return;
-    actor.pos = { ...this.turnStartPos };
-    this.movedThisTurn = false;
+  private undoTurn(actor: Unit): void {
+    if (this.busy || this.turnLocked || this.waitingFor !== actor || !this.battle.canUndo()) return;
+    this.armedSkill = null;
+    this.pendingHerb = null;
+    this.bribeArmed = false;
+    this.battle.undoAll(); // core: positions, HP, statuses, clock/charges, RNG cursor, log
+    // Render flags back to the turn's start.
     this.moveBudget = isImmobilized(actor) ? 0 : effectiveMove(actor);
-    refreshAuras(this.battle.units); // positions changed back — re-arm the tarpit ring (D40)
-    this.placeView(actor);
+    this.acted = false;
+    this.actCharged = false;
+    this.movedThisTurn = false;
+    // Resync every unit's view — the take-back may have moved/revived/healed others.
+    for (const u of this.battle.units) {
+      this.placeView(u);
+      if (u.side === "player") this.tintCaptured(u, u.captured);
+    }
+    refreshAuras(this.battle.units); // confirm the tarpit ring matches the restored positions (D40)
     this.recomputeReach(actor);
     this.highlightTile(actor.pos);
     this.refreshHud();
     this.showSkillButtons(actor);
     this.drawPreview();
-    this.setHint(this.turnHint(actor));
+    this.setHint(`${actor.name}'s turn reset — take it again, or End Turn (Space/W).`);
   }
 
   private afterTurn(): void {
@@ -1336,7 +1352,6 @@ export class BattleScene extends Phaser.Scene {
     this.acted = false;
     this.actCharged = false;
     this.turnLocked = false;
-    this.turnStartPos = null;
     this.hoverTile = null;
     this.reach = [];
     this.reachByKey.clear();

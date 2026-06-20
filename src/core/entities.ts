@@ -86,6 +86,44 @@ export class EntityRegistry {
   at(tile: GridCoord): FieldEntity[] {
     return this.all().filter((e) => sameTile(e.pos, tile));
   }
+
+  /**
+   * Snapshot the entities' **mutable flags** (`sprung` / `revealed`) for a turn-undo
+   * checkpoint (combat-actions Phase 2). Entity *identity* is stable across the
+   * undo window (no entity is added/removed by a logged battle action), so only the
+   * flag values need capturing — the bus wiring and tile callbacks are untouched.
+   */
+  snapshot(): EntitySnapshot {
+    const flags = new Map<string, EntityFlags>();
+    for (const e of this.entities.values()) {
+      const f: EntityFlags = {};
+      if ("sprung" in e) f.sprung = (e as RecoverableEntity).sprung;
+      if ("revealed" in e) f.revealed = (e as ConcealedTrap).revealed;
+      flags.set(e.id, f);
+    }
+    return { flags };
+  }
+
+  /** Roll the entities' mutable flags back to a {@link snapshot} (undo). */
+  restore(snap: EntitySnapshot): void {
+    for (const e of this.entities.values()) {
+      const f = snap.flags.get(e.id);
+      if (!f) continue;
+      if (f.sprung !== undefined) (e as RecoverableEntity).sprung = f.sprung;
+      if (f.revealed !== undefined) (e as ConcealedTrap).revealed = f.revealed;
+    }
+  }
+}
+
+/** A single entity's undoable flag values. */
+interface EntityFlags {
+  sprung?: boolean;
+  revealed?: boolean;
+}
+
+/** A captured set of entity flags, keyed by entity id (a turn-undo checkpoint). */
+export interface EntitySnapshot {
+  flags: Map<string, EntityFlags>;
 }
 
 /**

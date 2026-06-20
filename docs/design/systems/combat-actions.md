@@ -6,13 +6,15 @@
 > **D56** (swappable battle policy). Touches: `src/core/turn.ts` (the `Battle`
 > driver), `src/core/ai.ts` (`AIPlan`), `src/core/combat.ts`, `src/core/events.ts`.
 >
-> Status: **Phase 1 built & verified (command interpreter + action log + replay);
-> Phase 2 (undo) gated, not started.** Sibling in spirit to the
-> [purse journal](purse-journal.md): build the *substrate* (commands + log) first,
-> defer the *product feature* (undo UX) to a gated Phase 2. Implementation:
-> `src/core/combat-actions.ts` (the `CombatAction` union + `ActionResult`),
-> `src/core/turn.ts` (`Battle.apply`, `battle.log`, `replay`), tests in
-> `src/core/combat-actions.test.ts`.
+> Status: **Phase 1 & Phase 2 built & verified** — command interpreter + action log
+> + replay, the label-derived RNG seam, *and* turn-scoped undo (the take-back), all
+> on one substrate. Sibling in spirit to the [purse journal](purse-journal.md): the
+> *substrate* (commands + log) came first, the *product feature* (undo) layered on
+> top. Implementation: `src/core/combat-actions.ts` (the `CombatAction` union +
+> `ActionResult`), `src/core/turn.ts` (`Battle.apply`, `battle.log`, `replay`, the
+> `roll` seam, and `beginUndo`/`undo`/`undoAll`), `src/core/clock.ts` +
+> `src/core/entities.ts` (snapshot/restore), wired into `BattleScene` as the
+> **Undo Turn** verb. Tests: `combat-actions` / `combat-rng` / `combat-undo`.
 
 ## Motivation
 
@@ -114,21 +116,41 @@ below rather than falling out for free.
 | Invariant | `sum(log) === gold` | `replay(log) === state` |
 | Undo | implicit (reporting only) | replay-from-checkpoint or snapshot/restore |
 
-## Design — Phase 2: undo (gated)
+## Design — Phase 2: undo ✅ Built
 
-**Mechanism — recommend checkpoint + replay; do *not* build inverse-events.**
+**Mechanism — snapshot-per-action with identity-stable in-place restore.** We
+evaluated three and shipped the one that the live render makes *safest*:
 
-- **Checkpoint + replay (recommended).** Snapshot state at the **start of the player's
-  turn**; "undo last action" = re-apply `log[turnStart…]` minus the undone action.
-  Because auras, the Heavy-Knight tarpit ring, CT, and capture meters all **recompute
-  deterministically** from state, replay reconstructs them correctly. The core loop is
-  RNG-free, so there's no random stream to rewind for move/attack/skill resolution.
-- **Snapshot-per-action (alternative).** Clone state before each action; undo =
-  restore. Simpler conceptually, but needs a real clone path (units + statuses +
-  **field entities, which hold a bus reference** — the awkward part) that doesn't
-  exist yet. Replay sidesteps entity cloning by re-running from the checkpoint.
-- **Inverse-events — avoid.** Un-applying a status that triggered an aura that slowed a
-  unit that moved… is fragile and bug-prone. Determinism makes replay strictly better.
+- **Snapshot-per-action (shipped).** Before each successfully-applied action,
+  `apply` pushes a checkpoint: the log length + the RNG draw cursor + the units'
+  mutable state + the clock state (time **and** in-flight charges) + entity flags.
+  `undo()` pops it and restores **in place** — units/clock/entities keep their
+  **object identity**; only field *values* revert. This is why it's clean now
+  although the doc first deferred it: keeping identities stable means (a) field
+  entities never need *cloning* (their bus wiring + tile callbacks are untouched —
+  the "awkward part" evaporates), and (b) a charge's captured closure stays bound to
+  the same live units, so an in-flight charge undoes correctly.
+- **Why not checkpoint + replay** (the originally-recommended path): re-applying
+  `log[turnStart…]` through `apply` would re-emit `unitDamaged`/`unitDefeated` on the
+  **live bus** — double-counting the RunLoop's combat-XP tally and replaying render
+  FX. In-place restore touches no listeners. (The two still *agree*: a test asserts
+  `replay(log) === state` after mid-turn undos — the log stays the canonical record.)
+- **Inverse-events — avoided**, as planned: fragile and bug-prone; determinism makes
+  state-restore strictly better.
+
+**Composes with the RNG seam.** The checkpoint captures the draw cursor, so undoing
+a hit and re-doing it re-rolls **identically** (same `draw#` ⇒ same value) — the
+take-back is faithful even with damage variance on (tested).
+
+**Scope & guardrails (shipped).** Undo is **armed only for a player turn**
+(`beginUndo` at turn start, `endUndo` on commit) — the headless sim and enemy turns
+pay nothing. It's **turn-scoped**: no take-back across the turn boundary (the history
+is dropped on commit) or across the enemy turn, which sidesteps the info-leak. The
+render forbids it once a **sprung trap has locked the turn** (no take-back on damage
+*taken*). In `BattleScene` this generalizes the old movement-only "Undo Move" into
+**Undo Turn** (Esc) — now also taking back a **strike or skill** (the *Into the
+Breach* move: hit, see it didn't help, take it back), reviving the foe and all.
+`Battle.undo()` (single-step) is also exposed for a future finer-grained UX.
 
 **Scope — player-turn undo, *Into the Breach* style.** The game already telegraphs
 enemy intent (`forecastEnemyAction`), so "make moves, watch the forecast update, undo
@@ -229,8 +251,11 @@ roll ever needs a stateful stream, `Rng` is already serializable (`state()` /
      deployment-verbs open question) and the deployment-phase verbs. Their *turn-end*
      still flows through `apply` (the render's explicit `endTurn`); only the heal
      mutation itself is not yet a logged action. `defend` (D41) is reserved, unbuilt.
-2. **Phase 2 — undo.** Turn-start checkpoint + replay; player-turn-scoped UX; gated on
-   the RNG-in-effects audit. **Delivers take-back.**
+2. **Phase 2 — undo. ✅ Built.** Snapshot-per-action checkpoints on the log;
+   identity-stable in-place restore (units + clock + charges + entities + RNG cursor);
+   player-turn-scoped, trap-lock-guarded; surfaced as **Undo Turn** in `BattleScene`.
+   The RNG-in-effects audit (Step 0) cleared it, and the label-derived seam keeps the
+   take-back faithful with variance on. **Delivers take-back.**
 
 This mirrors the purse-journal sequencing: prove the substrate, then layer the feature.
 
@@ -261,7 +286,11 @@ This mirrors the purse-journal sequencing: prove the substrate, then layer the f
   actions? (Undo granularity and the `endTurn` spend model depend on this.)
 - **Deployment-phase verbs** (trap placement, capture, range-back) — same `CombatAction`
   union, or a separate deployment-action set? They're already partly command-shaped.
-- **How much state the checkpoint must hold** — units + clock + entities; confirm the
-  entity/bus relationship can be re-established by replay rather than cloned.
-- **Multi-step / charged skills (D5/D16/D37)** — a charge resolves on the timeline; how
-  does replay treat in-flight charges across an undo boundary?
+- **How much state the checkpoint must hold** — *resolved (Phase 2):* the units'
+  mutable fields + the clock (time + scheduled effects) + entity flags + the log
+  length + the RNG draw cursor. The entity/bus relationship is never cloned —
+  identity-stable in-place restore keeps it intact.
+- **Multi-step / charged skills (D5/D16/D37)** — *resolved (Phase 2):* an in-flight
+  charge is captured in the clock snapshot (shallow-copied so its `gauge` reverts by
+  value while its `run` closure stays bound to the same live units), so undoing the
+  cast rolls the scheduled effect cleanly off the timeline (tested).

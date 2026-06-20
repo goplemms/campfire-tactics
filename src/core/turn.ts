@@ -41,6 +41,66 @@ import {
   type UnitId,
 } from "./combat-actions";
 import { streamFor, type Rng } from "./rng";
+import type { ClockSnapshot } from "./clock";
+import type { EntitySnapshot } from "./entities";
+import type { StatusInstance } from "./status";
+import type { GridCoord as Coord } from "./iso";
+
+/** A unit's undoable mutable state (everything a logged action can change). */
+interface UnitSnapshot {
+  pos: Coord;
+  hp: number;
+  ct: number;
+  alive: boolean;
+  captured: boolean;
+  hidden?: boolean;
+  statuses: StatusInstance[];
+  counters: Record<string, number>;
+  cooldowns: Record<string, number>;
+}
+
+/**
+ * A turn-undo checkpoint (combat-actions Phase 2): the battle's mutable state
+ * **before** one applied action — enough to roll it back in place. Captures the
+ * log length and the RNG draw counter (so re-rolled values re-derive identically),
+ * plus the unit / clock / entity state. Restored by value into identity-stable
+ * objects, so the render keeps every reference (no re-emission, no re-binding).
+ */
+interface BattleCheckpoint {
+  logLen: number;
+  drawCount: number;
+  units: Map<UnitId, UnitSnapshot>;
+  clock: ClockSnapshot;
+  entities: EntitySnapshot;
+}
+
+/** Capture a unit's undoable mutable state by value. */
+function snapshotUnit(u: Unit): UnitSnapshot {
+  return {
+    pos: { col: u.pos.col, row: u.pos.row },
+    hp: u.hp,
+    ct: u.ct,
+    alive: u.alive,
+    captured: u.captured,
+    hidden: u.hidden,
+    statuses: u.statuses.map((s) => ({ ...s, data: s.data ? { ...s.data } : undefined })),
+    counters: { ...u.counters },
+    cooldowns: { ...u.cooldowns },
+  };
+}
+
+/** Write a unit snapshot back onto the (identity-stable) live unit. */
+function restoreUnit(u: Unit, s: UnitSnapshot): void {
+  u.pos = { col: s.pos.col, row: s.pos.row };
+  u.hp = s.hp;
+  u.ct = s.ct;
+  u.alive = s.alive;
+  u.captured = s.captured;
+  u.hidden = s.hidden;
+  u.statuses = s.statuses.map((x) => ({ ...x, data: x.data ? { ...x.data } : undefined }));
+  u.counters = { ...s.counters };
+  u.cooldowns = { ...s.cooldowns };
+}
 
 /**
  * Construction-time battle settings (all optional, all defaulting to the
@@ -93,6 +153,14 @@ export class Battle {
    * the exact same order on a {@link replay} and the rolls re-derive identically.
    */
   private drawCount = 0;
+
+  /**
+   * The turn-undo checkpoint stack (combat-actions Phase 2). `null` when undo is
+   * **disarmed** (enemy turns, headless sim) — no snapshots are taken, so there is
+   * zero cost. {@link beginUndo} arms it for a player turn; each successfully applied
+   * action pushes a pre-state checkpoint; {@link undo} pops + restores.
+   */
+  private undoStack: BattleCheckpoint[] | null = null;
 
   constructor(grid: TileGrid, units: Unit[], opts: BattleOptions = {}) {
     this.grid = grid;
@@ -148,6 +216,86 @@ export class Battle {
     return u;
   }
 
+  // --- Undo (combat-actions Phase 2) ----------------------------------------
+
+  /**
+   * **Arm undo** for an undoable span — a player turn (D60 free-move / D-into-the-
+   * breach take-back). While armed, each successfully applied action records a
+   * pre-state checkpoint, so {@link undo} can peel actions back one at a time.
+   * Starts a fresh (empty) history. The headless sim and enemy turns leave undo
+   * disarmed, so they pay nothing.
+   */
+  beginUndo(): void {
+    this.undoStack = [];
+  }
+
+  /** **Disarm undo** — the turn committed; drop the history (no take-back across turns). */
+  endUndo(): void {
+    this.undoStack = null;
+  }
+
+  /** True if undo is armed and there is at least one action to take back. */
+  canUndo(): boolean {
+    return (this.undoStack?.length ?? 0) > 0;
+  }
+
+  /** How many actions are currently undoable (the armed history depth). */
+  undoDepth(): number {
+    return this.undoStack?.length ?? 0;
+  }
+
+  /**
+   * **Undo the most recent action**, rolling the battle back to exactly its state
+   * before that action — positions, HP, CT, statuses, cooldowns, the CT clock and
+   * its in-flight charges, entity flags, the RNG draw cursor, and the log. Restored
+   * **in place** into the same unit/clock/entity objects (no re-emission, so live
+   * listeners like the combat-XP tally and render FX don't re-fire). Returns the
+   * undone {@link CombatAction}, or `null` if there's nothing to undo.
+   */
+  undo(): CombatAction | null {
+    if (!this.undoStack || this.undoStack.length === 0) return null;
+    const checkpoint = this.undoStack.pop()!;
+    const undone = this._log[this._log.length - 1] ?? null;
+    this.restoreCheckpoint(checkpoint);
+    return undone;
+  }
+
+  /** Undo every action back to the start of the armed span; returns them newest-first. */
+  undoAll(): CombatAction[] {
+    const undone: CombatAction[] = [];
+    let a: CombatAction | null;
+    while ((a = this.undo()) !== null) undone.push(a);
+    return undone;
+  }
+
+  /** Capture the battle's mutable state before an action (a turn-undo checkpoint). */
+  private captureCheckpoint(): BattleCheckpoint {
+    const units = new Map<UnitId, UnitSnapshot>();
+    for (const u of this.units) units.set(u.id, snapshotUnit(u));
+    return {
+      logLen: this._log.length,
+      drawCount: this.drawCount,
+      units,
+      clock: this.clock.snapshot(),
+      entities: this.entities.snapshot(),
+    };
+  }
+
+  /** Roll all mutable state (and the log) back to a checkpoint — the undo primitive. */
+  private restoreCheckpoint(cp: BattleCheckpoint): void {
+    for (const u of this.units) {
+      const s = cp.units.get(u.id);
+      if (s) restoreUnit(u, s);
+    }
+    this.clock.restore(cp.clock);
+    this.entities.restore(cp.entities);
+    this.drawCount = cp.drawCount;
+    this._log.length = cp.logLen; // drop the actions taken since the checkpoint
+    // Positions reverted → re-derive the position-dependent tarpit aura (D40). The
+    // restored statuses already match, so this is a confirming no-op in practice.
+    refreshAuras(this.units);
+  }
+
   /**
    * **The single execution path** for a battle action (Phase 1 of the
    * combat-actions design): validate → mutate → emit → **append to the log**. Player
@@ -156,9 +304,22 @@ export class Battle {
    * verb's natural outcome (so the public wrappers keep their original return
    * shapes); a **refused** action (e.g. a skill on cooldown) is *not* logged.
    *
+   * When undo is **armed** ({@link beginUndo}), a successful action also pushes a
+   * pre-state checkpoint onto the undo stack (Phase 2). The snapshot is taken before
+   * mutation and kept only if the action committed to the log, so a refusal leaves
+   * the stack untouched.
+   *
    * Adding a battle action = a new {@link CombatAction} variant + a case here.
    */
   apply(action: CombatAction): ActionResult {
+    const checkpoint = this.undoStack ? this.captureCheckpoint() : null;
+    const result = this.dispatch(action);
+    if (checkpoint && result.ok) this.undoStack!.push(checkpoint);
+    return result;
+  }
+
+  /** Validate → mutate → emit → log a single action (the interpreter core). */
+  private dispatch(action: CombatAction): ActionResult {
     switch (action.kind) {
       case "move": {
         this.execMove(this.unit(action.unit), action.path, false);

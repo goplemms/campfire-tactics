@@ -237,4 +237,27 @@ export class CTClock {
     const cost = spend.acted ? ACT_COST : MOVE_COST;
     unit.ct -= cost;
   }
+
+  /**
+   * Snapshot the clock's mutable state (the global time + the in-flight scheduled
+   * effects) for a turn-undo checkpoint (the combat-actions Phase 2 substrate). The
+   * effects are **shallow-copied** so each one's `gauge` is captured by value while
+   * its `run`/`caster`/`fizzleWhen` keep pointing at the *same, identity-stable*
+   * units — so a {@link restore} re-binds nothing and a charge's closure stays valid.
+   */
+  snapshot(): ClockSnapshot {
+    return { time: this.time, scheduled: this.scheduled.map((e) => ({ ...e })) };
+  }
+
+  /** Roll the clock's mutable state back to a {@link snapshot} (undo). */
+  restore(snap: ClockSnapshot): void {
+    this.time = snap.time;
+    this.scheduled = snap.scheduled.map((e) => ({ ...e }));
+  }
+}
+
+/** A captured clock state — the time cursor + the in-flight scheduled effects. */
+export interface ClockSnapshot {
+  time: number;
+  scheduled: ScheduledEffect[];
 }

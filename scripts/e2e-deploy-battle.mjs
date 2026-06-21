@@ -118,6 +118,7 @@ async function main() {
         const cur = await snap();
         if (cur.phase === "resolution") { reachedResolution = true; break; }
         if (cur.waiting) {
+          if (!sawPlayerTurn) await shot("battle-player-turn"); // action row + focus card, live
           sawPlayerTurn = true;
           await g.key(" "); // Space = End Turn while a player unit is active (D60)
         } else {

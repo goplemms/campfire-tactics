@@ -108,6 +108,21 @@ import { ICON } from "../icons";
 const BOARD_SCALE = 1.4;
 
 /**
+ * Compact the intel foe-type list for the HUD line: when every type shares a leading
+ * word (a faction — "Bandit Thug", "Bandit Bowman"…), factor it out once
+ * ("Bandit: Thug, Bowman, …") instead of repeating it per name. Falls back to a plain
+ * join when there's no shared prefix (or a bare one-word type), so it never mangles a
+ * mixed list. Display-only; the intel set itself is unchanged.
+ */
+function compactFoeTypes(types: readonly string[]): string {
+  if (types.length < 2) return types.join(", ");
+  const lead = types[0].split(" ")[0];
+  const shareLead = types.every((t) => t.split(" ")[0] === lead && t.split(" ").length > 1);
+  if (!shareLead) return types.join(", ");
+  return `${lead}: ${types.map((t) => t.slice(lead.length).trim()).join(", ")}`;
+}
+
+/**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
  * run the {@link "./OverworldScene"} hands it. It owns no rules — the
  * {@link RunLoop} (already positioned at the chosen node) stages the encounter and
@@ -264,12 +279,13 @@ export class BattleScene extends Phaser.Scene {
     // Objective banner — a generic readout (label + gauge) under the intel line.
     this.objectiveText = this.add.text(this.scale.width / 2, 60, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
     // Right column = "timing/history": the turn-order rail (drawn by CombatView) and
-    // its label move here, off the left so the left can host the focus card.
-    this.orderText = this.add.text(this.scale.width - 158, 100, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
+    // its label move here, off the left so the left can host the focus card. The label
+    // sits below the camp card (above the rail) so it isn't occluded by it.
+    this.orderText = this.add.text(this.scale.width - 158, 122, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
     // Left column = "you" (the decision zone): the active-unit focus card. Camp-state —
-    // passive reference — is tucked top-right, below the Tips chip.
+    // passive reference — is tucked top-right, clear below the Tips chip.
     this.focusCard = new MiniCard(this, 8, 82, { w: 150, hp: true }).hide();
-    this.campCard = new MiniCard(this, this.scale.width - 158, 36, { w: 150 });
+    this.campCard = new MiniCard(this, this.scale.width - 158, 42, { w: 150 });
     this.hintPanel = new HintPanel(this);
     // The persistent board colour key — the same component carries across phases,
     // re-keyed in enterDeploy / startBattle so the wash language is always legible.
@@ -1088,9 +1104,8 @@ export class BattleScene extends Phaser.Scene {
       // always-available defensive verb, even for a unit with no job actives.
       specs.push({ text: "Defend (D)", description: `${DEFEND.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, DEFEND) });
     }
-    // End Turn (W) — the explicit close, mirroring the prominent primary button so a
-    // unit is never stuck and the turn never ends without a deliberate press (D60).
-    specs.push({ text: "End Turn (W)", description: "End this unit's turn (spends the move/Act it actually used). Also the green button below, Space, or W.", onClick: () => this.endPlayerTurn(actor) });
+    // The turn's explicit close is the prominent green primary button (plus Space and
+    // W) — so the action row carries only the unit's *verbs*, not a second End Turn.
     this.layoutActionRow(specs);
   }
 
@@ -1797,7 +1812,7 @@ export class BattleScene extends Phaser.Scene {
     // right (the timing/history column) so the left can host the focus card.
     this.orderText.setText("Turn order");
     const limit = this.railExpanded ? undefined : BattleScene.RAIL_COLLAPSED;
-    const rail = this.view.drawInitiative(this.battle.units, this.scale.width - 158, 118, (u) => this.battle.clock.isCharging(u), limit);
+    const rail = this.view.drawInitiative(this.battle.units, this.scale.width - 158, 138, (u) => this.battle.clock.isCharging(u), limit);
     this.layoutRailChevron(rail);
     this.refreshHp();
     this.refreshObjectiveText();
@@ -1916,6 +1931,17 @@ export class BattleScene extends Phaser.Scene {
     } else {
       rows.push({ label: "Move left", value: `${this.moveBudget}`, color: this.moveBudget > 0 ? INK.secondary : INK.muted });
       rows.push({ label: "Action", value: this.acted ? "spent" : "ready", color: this.acted ? INK.muted : INK.success });
+      // Centralise the active unit's statuses here (the active-unit zone) — otherwise
+      // they read only as tiny board pips + rail glyphs. Tinted by net valence.
+      if (actor.statuses.length > 0) {
+        const harmful = actor.statuses.some((s) => s.kind === "debuff");
+        const helpful = actor.statuses.some((s) => s.kind === "buff");
+        rows.push({
+          label: "Status",
+          value: actor.statuses.map((s) => s.name).join(", "),
+          color: harmful ? INK.danger : helpful ? INK.success : INK.muted,
+        });
+      }
     }
     this.focusCard.set(actor.name, rows, { frac: actor.maxHp > 0 ? actor.hp / actor.maxHp : 0 });
   }
@@ -1927,9 +1953,9 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     const parts = [`Intel T${r.tier}`];
-    if (r.types) parts.push(`types: ${r.types.join(", ")}`);
-    if (r.count !== undefined) parts.push(`count: ${r.count}`);
-    if (r.grantsVision) parts.push("starting vision");
+    if (r.count !== undefined) parts.push(`${r.count} foe${r.count === 1 ? "" : "s"}`);
+    if (r.types && r.types.length) parts.push(compactFoeTypes(r.types));
+    if (r.grantsVision) parts.push("vision");
     // Show the *tactical* encounter shape (open-field vs. fortified = pre-placed
     // hazards, D12) for procedural fights; an authored set-piece reveals no such
     // banner, so we drop the parenthetical rather than leak the "authored" dev tag.

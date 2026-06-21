@@ -145,6 +145,15 @@ interface ResolutionReport {
   sections: ReportSection[];
 }
 
+/** Command-menu geometry (the bottom-left stacked action box) — shared so the docked
+ *  primary and the verb stack agree on width/pitch/anchor. */
+const MENU_BW = 150;
+const MENU_BH = 28;
+const MENU_PITCH = 31;
+const MENU_PAD = 7;
+const MENU_LEFT = 12; // box left margin
+const MENU_CX = MENU_LEFT + MENU_PAD + MENU_BW / 2; // button centre x (bottom-left)
+
 /**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
  * run the {@link "./OverworldScene"} hands it. It owns no rules — the
@@ -318,7 +327,7 @@ export class BattleScene extends Phaser.Scene {
     this.threatGfx = this.add.graphics().setDepth(0.36);
     this.preview = this.add.graphics().setDepth(0.4);
     this.highlight = this.add.graphics().setDepth(0.5);
-    this.primary = this.makeTextButton(this.scale.width / 2, this.scale.height - 48, 150, 28, "", COLOR.successDeep, COLOR.success, () => this.onPrimary());
+    this.primary = this.makeTextButton(MENU_CX, this.scale.height - 40, MENU_BW, MENU_BH, "", COLOR.successDeep, COLOR.success, () => this.onPrimary());
     this.primary.setDepth(12);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
     // Hover routing (D60): light the path to the tile under the cursor as it moves.
@@ -2136,21 +2145,21 @@ export class BattleScene extends Phaser.Scene {
     this.primary.setLabel(text).setVisible(visible);
   }
 
-  /** The bottom-band resting Y of the End Turn / Advance Clock primary (centre of the box). */
+  /** The resting Y of the End Turn / Advance Clock primary — the box's bottom slot. */
   private primaryRestY(): number {
-    return this.scale.height - 48;
+    return this.scale.height - 40;
   }
 
   private clearActionButtons(): void {
     clearLayer(this.actionButtons);
     // With no command menu up, the primary (End Turn / Advance Clock / …) stands alone,
-    // centred in the bottom band; layoutActionMenu re-docks it into the box's bottom slot.
-    this.primary?.setPosition(this.scale.width / 2, this.primaryRestY());
+    // bottom-left; layoutActionMenu re-docks it into the box's bottom slot.
+    this.primary?.setPosition(MENU_CX, this.primaryRestY());
   }
 
   /**
    * Lay the unit's verbs as a **vertical command menu** (D-UX): a translucent box of
-   * stacked, full-width buttons centred in the bottom band, with the green End Turn /
+   * stacked, full-width buttons docked **bottom-left**, with the green End Turn /
    * Advance Clock primary **docked as the bottom entry** so the whole command cluster —
    * verbs and the turn's close — sits in one place and the pointer barely travels
    * between choices (the traditional tactics command box, vs. the old wide row). Reads
@@ -2162,25 +2171,21 @@ export class BattleScene extends Phaser.Scene {
   private layoutActionMenu(specs: { text: string; description?: string; onClick: () => void }[]): void {
     this.clearActionButtons();
     if (specs.length === 0) return;
-    const cx = this.scale.width / 2;
-    const bw = 150;
-    const bh = 28;
-    const pitch = 31;
-    const pad = 7;
+    const cx = MENU_CX;
     const dockPrimary = this.primary.visible;
     // The primary docks as the bottom slot; the verbs stack above it.
     const slots = specs.length + (dockPrimary ? 1 : 0);
     const bottomY = this.primaryRestY();
-    const topY = bottomY - (slots - 1) * pitch;
+    const topY = bottomY - (slots - 1) * MENU_PITCH;
     const box = this.add
-      .rectangle(cx, (topY + bottomY) / 2, bw + 2 * pad, (slots - 1) * pitch + bh + 2 * pad, COLOR.surface, 0.85)
+      .rectangle(cx, (topY + bottomY) / 2, MENU_BW + 2 * MENU_PAD, (slots - 1) * MENU_PITCH + MENU_BH + 2 * MENU_PAD, COLOR.surface, 0.85)
       .setStrokeStyle(1, COLOR.borderSoft)
       .setDepth(11);
     this.actionButtons.push(box);
     specs.forEach((spec, i) => {
-      this.actionButtons.push(this.makeTextButton(cx, topY + i * pitch, bw, bh, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
+      this.actionButtons.push(this.makeTextButton(cx, topY + i * MENU_PITCH, MENU_BW, MENU_BH, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
     });
-    if (dockPrimary) this.primary.setPosition(cx, topY + specs.length * pitch);
+    if (dockPrimary) this.primary.setPosition(cx, topY + specs.length * MENU_PITCH);
   }
 
   // --- Animation -------------------------------------------------------------

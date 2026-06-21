@@ -491,19 +491,21 @@ export class CombatView {
     for (const l of this.logLines) l.setVisible(false);
   }
 
-  /** Re-lay the pooled log lines bottom-anchored above the action row, newest last. */
+  /** Re-lay the pooled log lines bottom-anchored in the bottom-right, newest last. */
   private renderLog(): void {
     const step = 14;
-    // Sit above the persistent board key (bottom-left, ≈ height − 98) so the two
-    // bottom-left readouts stack instead of overprinting (D-UX zone separation).
-    const bottomY = this.scene.scale.height - 120;
+    // Bottom-right column (left-aligned text), sitting above the vertical board key so
+    // the two right-side readouts stack instead of overprinting — the bottom-left is
+    // now the command box (D-UX zone separation).
+    const x = this.scene.scale.width - 244;
+    const bottomY = this.scene.scale.height - 108;
     const n = this.logBuffer.length;
     this.logBuffer.forEach((entry, i) => {
       const line = this.logLines[i] ?? this.scene.add.text(0, 0, "", { fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
       this.logLines[i] = line;
       // Older lines fade toward the top — the eye lands on the freshest.
       const age = n - 1 - i;
-      line.setPosition(10, bottomY - age * step).setText(entry.text).setColor(entry.color).setAlpha(1 - age * 0.13).setVisible(true);
+      line.setPosition(x, bottomY - age * step).setText(entry.text).setColor(entry.color).setAlpha(1 - age * 0.13).setVisible(true);
     });
     for (let i = n; i < this.logLines.length; i++) this.logLines[i].setVisible(false);
   }

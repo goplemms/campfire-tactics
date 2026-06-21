@@ -37,3 +37,12 @@ jobs:
         run: npm run test:e2e
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      # On a red E2E, keep the stage + failure screenshots so the break is
+      # diagnosable from the run page without reproducing locally.
+      - name: Upload E2E screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: screenshots/e2e-deploy-battle/
+          if-no-files-found: ignore

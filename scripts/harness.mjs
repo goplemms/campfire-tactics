@@ -126,6 +126,11 @@ export async function withGame(fn, opts = {}) {
       async key(name) {
         await page.keyboard.press(name === " " ? "Space" : name);
       },
+      async screenshot(file) {
+        await mkdir(path.dirname(file), { recursive: true });
+        const canvas = await page.$("canvas");
+        await canvas.screenshot({ path: file });
+      },
     };
     return await fn(session);
   } finally {

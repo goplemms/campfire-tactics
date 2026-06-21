@@ -128,9 +128,21 @@ node `core/` suite can't reach. Two layers, built phased:
   and Space/Escape key presses through deploy→battle, asserting outcomes (move +
   log + undo, dig-in + undo, Start Battle transition, a driven player turn). 17
   assertions, no page errors. Needs Chrome (kept out of the fast unit suite).
-- **Phase B — headless interaction controller (incremental).** Lift the scene's
-  turn-flow / input decisions into a pure, vitest-testable controller so the deep
-  click-through coverage runs browser-free in the fast suite, leaving the scene a
-  thin renderer. Start with the deploy sub-phase.
+- **Phase B — headless interaction controller (incremental, started).** Lift the
+  scene's deploy *decisions* into the fast suite. **Finding:** the heavy deploy
+  mechanics were already pure in `core/deployment.ts` (clock order, capture odds,
+  front resolution, safe-ground) and covered by its 74 tests — the scene was mostly
+  render/animation/input glue. So the first increment extracted the two genuinely-
+  stranded decisions into `core/deploy-flow.ts` (vitest-tested, +9):
+  - `frontTurnStage(out, grid, camp, front)` → `capture | overrun | continue` (the
+    `runFrontTurn` branch), and
+  - `deployActions(ctx)` → the ordered action-row ids (the `refreshDeployButtons`
+    decision).
+  The scene now *renders* those choices instead of making them. Verified: unit
+  suite (594), `vite build`, `test:e2e` (17 assertions), `shots:deploy` — all green.
+  - **Remaining (larger, optional):** a full `BattleController` owning the
+    *battle*-phase turn flow (the bulk of the remaining untested scene glue), so the
+    combat click-through also moves into the fast suite. Bigger refactor; the `test:e2e`
+    harness now de-risks it. Pull when worth it.
 </content>
 </invoke>

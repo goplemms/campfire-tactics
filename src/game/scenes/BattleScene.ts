@@ -38,9 +38,13 @@ import {
   resolveFrontTurn,
   inDangerZone,
   inSafeZone,
-  safeGroundRemains,
   stepDistance,
   frontCaptureChance,
+  // D63 Phase B — the pure deploy-flow decisions (headless, vitest-tested), so the
+  // scene renders the choices instead of making them.
+  frontTurnStage,
+  deployActions,
+  type DeployActionId,
   // M5 — camp / morale
   moraleTier,
   moraleModifiers,
@@ -414,8 +418,11 @@ export class BattleScene extends Phaser.Scene {
     this.drawZones();
     this.highlightTile(null);
 
-    if (out.captured) {
-      const caught = out.captured;
+    // The branch (catch → alarm / overrun / continue) is a pure decision now (D63
+    // Phase B); the scene just renders the chosen stage.
+    const stage = frontTurnStage(out, this.grid, this.campfire, this.front);
+    if (stage.kind === "capture") {
+      const caught = out.captured!;
       // The net's turn is the deploy "enemy turn": bind the catch through the one
       // interpreter (logged), mirroring how a combat enemy turn flows through apply.
       this.battle.capture(caught);
@@ -430,7 +437,7 @@ export class BattleScene extends Phaser.Scene {
       });
       return;
     }
-    if (!safeGroundRemains(this.grid, this.campfire, this.front)) {
+    if (stage.kind === "overrun") {
       this.busy = true;
       this.setHint("The enemy has overrun the camp — battle begins!");
       this.time.delayedCall(800, () => {
@@ -529,39 +536,40 @@ export class BattleScene extends Phaser.Scene {
 
   private refreshDeployButtons(): void {
     const actor = this.deployActor;
-    const specs: { text: string; description?: string; onClick: () => void }[] = [];
-    // Undo leads when this deploy turn has anything to take back (D63) — moves, a
-    // dig-in, or a placed trap (kit refunded), back to the turn's start, like combat.
-    if (actor && !actor.captured && this.battle.canUndo()) {
-      specs.push({
+    // The *decision* of which verbs to surface is pure (deployActions, D63 Phase B);
+    // the scene only maps each id to its label + handler (movement is a separate,
+    // click-to-move budget, not a button).
+    const canTrap = !!actor && unitSkills(actor, "deployment").some((s) => s.effect.kind === "placeTrap");
+    const ids = deployActions({
+      hasActor: !!actor,
+      captured: !!actor?.captured,
+      acted: this.deployActed,
+      canUndo: this.battle.canUndo(),
+      canTrap,
+    });
+    const make: Record<DeployActionId, { text: string; description?: string; onClick: () => void }> = {
+      undo: {
         text: "Undo",
         description: "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc).",
-        onClick: () => this.undoDeployTurn(actor),
-      });
-    }
-    // The act (Dig In / Place Trap) is the unit's one action this turn — surfaced
-    // only until it's spent; movement is a separate, click-to-move budget.
-    if (actor && !actor.captured && !this.deployActed) {
-      specs.push({
+        onClick: () => { if (actor) this.undoDeployTurn(actor); },
+      },
+      digIn: {
         text: "Dig In",
         description: "Hunker on this tile — far lower capture chance when the net closes, at the cost of this turn.",
         onClick: () => this.digIn(),
-      });
-      if (unitSkills(actor, "deployment").some((s) => s.effect.kind === "placeTrap")) {
-        specs.push({
-          text: "Place Trap Here",
-          description: "Drop a trap on this tile (1 kit). Deeper tiles raise capture risk.",
-          onClick: () => this.placeTrap(),
-        });
-      }
-    }
-    // Commit early at any point — begin the fight with everyone where they stand.
-    specs.push({
-      text: "Start Battle",
-      description: "Commit now — begin the fight with the party where it stands.",
-      onClick: () => { if (!this.busy) this.startBattle(); },
-    });
-    this.layoutActionRow(specs);
+      },
+      placeTrap: {
+        text: "Place Trap Here",
+        description: "Drop a trap on this tile (1 kit). Deeper tiles raise capture risk.",
+        onClick: () => this.placeTrap(),
+      },
+      startBattle: {
+        text: "Start Battle",
+        description: "Commit now — begin the fight with the party where it stands.",
+        onClick: () => { if (!this.busy) this.startBattle(); },
+      },
+    };
+    this.layoutActionRow(ids.map((id) => make[id]));
   }
 
   private refreshDeployStatus(): void {

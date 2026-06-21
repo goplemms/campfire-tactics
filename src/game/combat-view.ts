@@ -456,7 +456,9 @@ export class CombatView {
   /** Re-lay the pooled log lines bottom-anchored above the action row, newest last. */
   private renderLog(): void {
     const step = 14;
-    const bottomY = this.scene.scale.height - 96;
+    // Sit above the persistent board key (bottom-left, ≈ height − 98) so the two
+    // bottom-left readouts stack instead of overprinting (D-UX zone separation).
+    const bottomY = this.scene.scale.height - 120;
     const n = this.logBuffer.length;
     this.logBuffer.forEach((entry, i) => {
       const line = this.logLines[i] ?? this.scene.add.text(0, 0, "", { fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);

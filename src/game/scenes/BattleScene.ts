@@ -24,7 +24,7 @@ import {
   canSee,
   // M5b/D11 — deployment: the shared stealth-alert model
   countOf,
-  campChipLine,
+  campReadout,
   freeCaptive,
   streamFor,
   // D63 — the closing net: two radial influence sources. The party's campfire
@@ -96,6 +96,7 @@ import { Button } from "../button";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
+import { MiniCard, type CardRow } from "../info-cards";
 import { dropNet as dropNetCage } from "../deploy-fx";
 import { ICON } from "../icons";
 
@@ -145,10 +146,12 @@ export class BattleScene extends Phaser.Scene {
 
   // Persistent HUD.
   private titleText!: Phaser.GameObjects.Text;
-  private campText!: Phaser.GameObjects.Text;
   private intelText!: Phaser.GameObjects.Text;
   private objectiveText!: Phaser.GameObjects.Text;
   private orderText!: Phaser.GameObjects.Text;
+  /** Active-unit focus card (left, the decision zone) + the peripheral camp-state card. */
+  private focusCard!: MiniCard;
+  private campCard!: MiniCard;
   private hintPanel!: HintPanel;
   /** The always-on board colour key (safe/danger washes), set per phase. */
   private legendStrip!: LegendStrip;
@@ -250,15 +253,19 @@ export class BattleScene extends Phaser.Scene {
     // The campfire glow — a warm vignette over the board, beneath the tokens/HUD.
     addVignette(this);
     // Persistent UI.
+    // Top strip = "the situation": phase title + intel, centred and uncluttered now
+    // that the camp/economy readout has moved to its own peripheral card (below).
     this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
-    // The camp/economy readout is reference, not a decision input, during a mission —
-    // demoted (muted + caption) and condensed (campChipLine) so the tactical title +
-    // intel lines lead. The full readout lives on the overworld camp where it's spent.
-    this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(10);
-    this.intelText = this.add.text(this.scale.width / 2, 60, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
-    this.orderText = this.add.text(10, 68, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
+    this.intelText = this.add.text(this.scale.width / 2, 42, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
     // Objective banner — a generic readout (label + gauge) under the intel line.
-    this.objectiveText = this.add.text(this.scale.width / 2, 76, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
+    this.objectiveText = this.add.text(this.scale.width / 2, 60, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
+    // Right column = "timing/history": the turn-order rail (drawn by CombatView) and
+    // its label move here, off the left so the left can host the focus card.
+    this.orderText = this.add.text(this.scale.width - 158, 100, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
+    // Left column = "you" (the decision zone): the active-unit focus card. Camp-state —
+    // passive reference — is tucked top-right, below the Tips chip.
+    this.focusCard = new MiniCard(this, 8, 82, { w: 150, hp: true }).hide();
+    this.campCard = new MiniCard(this, this.scale.width - 158, 36, { w: 150 });
     this.hintPanel = new HintPanel(this);
     // The persistent board colour key — the same component carries across phases,
     // re-keyed in enterDeploy / startBattle so the wash language is always legible.
@@ -586,24 +593,13 @@ export class BattleScene extends Phaser.Scene {
   private refreshDeployStatus(): void {
     const actor = this.deployActor;
     const kits = countOf(this.run.inventory, "trap-kit");
-    const reach = `enemy reach ${this.front?.radius ?? "—"}`;
-    if (!actor) {
-      this.titleText.setText(`Deployment — ${reach} · Trap Kits ${kits}`);
-      return;
-    }
-    const inDanger = this.front && inDangerZone(actor.pos, this.front);
-    const dug = actor.dugIn === true;
-    const safe = this.front && this.campfire && inSafeZone(actor.pos, this.campfire, this.front);
-    const tag = actor.captured
-      ? " — CAPTURED"
-      : inDanger
-        ? ` — IN DANGER (${Math.round(frontCaptureChance(actor, this.front, { dugIn: dug }) * 100)}% if it grows)`
-        : dug
-          ? " — dug in"
-          : safe
-            ? " — safe by the fire"
-            : " — exposed (neutral ground)";
-    this.titleText.setText(`Deployment — ${actor.name}${tag} · ${reach} · Trap Kits ${kits}`);
+    // The title now carries only the *global* deploy state — the net's reach, your
+    // safe radius, kits. The per-unit band + capture risk live on the focus card.
+    const reach = this.front?.radius ?? "—";
+    const safeR = this.campfire?.radius ?? "—";
+    const who = actor ? (actor.captured ? `${actor.name} captured` : `${actor.name}'s turn`) : "set up";
+    this.titleText.setText(`Deployment — ${who} · reach ${reach} · safe ${safeR} · ${kits} kit${kits === 1 ? "" : "s"}`);
+    this.refreshFocusCard();
   }
 
   /**
@@ -926,6 +922,7 @@ export class BattleScene extends Phaser.Scene {
     this.showSkillButtons(actor);
     this.drawPreview();
     this.highlightTile(actor.pos);
+    this.refreshFocusCard();
     this.setHint(this.turnHint(actor));
   }
 
@@ -992,6 +989,7 @@ export class BattleScene extends Phaser.Scene {
     this.clearActionButtons();
     this.highlightTile(null);
     this.hoverTile = null;
+    this.focusCard.hide();
     this.battle.endTurn(actor, { moved: this.movedThisTurn, acted: this.actCharged });
     this.afterTurn();
     if (!this.over) this.setHint(`${actor.name}'s turn ends. Advance Clock.`);
@@ -1015,6 +1013,7 @@ export class BattleScene extends Phaser.Scene {
     this.highlightTile(actor.pos);
     this.showSkillButtons(actor);
     this.drawPreview();
+    this.refreshFocusCard();
     this.setHint(this.turnHint(actor));
   }
 
@@ -1633,6 +1632,7 @@ export class BattleScene extends Phaser.Scene {
     this.over = true;
     this.phase = "resolution";
     this.legendStrip.setItems([]); // board key is meaningless under the result overlay
+    this.focusCard.hide();
     this.highlightTile(null);
     this.clearActionButtons();
 
@@ -1788,11 +1788,13 @@ export class BattleScene extends Phaser.Scene {
 
   private refreshHud(): void {
     // The shared visual initiative rail (CombatView): chips sorted by charge time,
-    // the acting unit lit, each carrying side/role, HP and the CT readout.
+    // the acting unit lit, each carrying side/role, HP and the CT readout. Docked
+    // right (the timing/history column) so the left can host the focus card.
     this.orderText.setText("Turn order");
-    this.view.drawInitiative(this.battle.units, 8, 84, (u) => this.battle.clock.isCharging(u));
+    this.view.drawInitiative(this.battle.units, this.scale.width - 158, 118, (u) => this.battle.clock.isCharging(u));
     this.refreshHp();
     this.refreshObjectiveText();
+    this.refreshFocusCard();
   }
 
   /**
@@ -1835,10 +1837,57 @@ export class BattleScene extends Phaser.Scene {
     if (revealed) this.refreshHp(); // refreshUnits re-reads hidden → un-fades the token
   }
 
+  /**
+   * The peripheral **camp-state** card (top-right): passive reference you can't
+   * change mid-mission (morale, purse, storage), grouped out of the decision zone.
+   * Figures owned by core (`campReadout`); the camp-time levers it omits (RP/Upkeep)
+   * live on the overworld camp where they're actually spent.
+   */
   private refreshCampText(): void {
-    // Format owned by core (campChipLine) — the demoted, condensed tactical readout;
-    // the camp-time levers (Kits/RP/Upkeep) surface where they're spent, not here.
-    this.campText.setText(campChipLine(this.run, { night: this.run.night + 1 }));
+    const r = campReadout(this.run);
+    // Attribute morale to its *effect* here (D-UX): in Deployment morale widens the
+    // safe radius, so the otherwise-inert tier reads as "High (+1 safe)" — off-focus,
+    // but its mechanical pull is legible where it lands rather than as a bare stat.
+    const mb = this.phase === "deployment" ? this.moraleMods().safeDepthBonus : 0;
+    const morale = mb > 0 ? `${r.moraleTier} (+${mb} safe)` : r.moraleTier;
+    this.campCard.set(`Camp · Night ${this.run.night + 1}`, [
+      { label: "Morale", value: morale },
+      { label: "Purse", value: `${r.purse}g` },
+      { label: "Storage", value: `${r.storageUsed}/${r.storageCap}` },
+    ]);
+  }
+
+  /**
+   * The left-column **active-unit focus** card — the decision zone (D-UX): who's
+   * acting, their HP, and the figures that drive *this* phase's choice. In Deployment
+   * that's the capture risk + position band (emphasised, pulled out of the title); in
+   * Battle it's the move/Act budget. The "change if I act" deltas layer on next.
+   */
+  private refreshFocusCard(): void {
+    const actor = this.phase === "deployment" ? this.deployActor : this.waitingFor;
+    if (!actor) {
+      this.focusCard.hide();
+      return;
+    }
+    const rows: CardRow[] = [];
+    if (this.phase === "deployment") {
+      const dug = actor.dugIn === true;
+      const inDanger = this.front && inDangerZone(actor.pos, this.front);
+      const safe = this.front && this.campfire && inSafeZone(actor.pos, this.campfire, this.front);
+      const band = actor.captured ? "Captured" : inDanger ? "In danger" : dug ? "Dug in" : safe ? "Safe" : "Exposed";
+      const bandColor = actor.captured || inDanger ? INK.danger : safe || dug ? INK.success : INK.muted;
+      rows.push({ label: "Position", value: band, color: bandColor });
+      if (inDanger && !actor.captured) {
+        const pct = Math.round(frontCaptureChance(actor, this.front, { dugIn: dug }) * 100);
+        rows.push({ label: "Capture risk", value: `${pct}%`, color: INK.danger, emphasize: true });
+      } else if (!actor.captured) {
+        rows.push({ label: "Capture risk", value: dug ? "low (dug in)" : safe ? "none" : "if net reaches", color: bandColor });
+      }
+    } else {
+      rows.push({ label: "Move left", value: `${this.moveBudget}`, color: this.moveBudget > 0 ? INK.secondary : INK.muted });
+      rows.push({ label: "Action", value: this.acted ? "spent" : "ready", color: this.acted ? INK.muted : INK.success });
+    }
+    this.focusCard.set(actor.name, rows, { frac: actor.maxHp > 0 ? actor.hp / actor.maxHp : 0 });
   }
 
   private refreshIntelText(): void {

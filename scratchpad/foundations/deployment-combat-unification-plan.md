@@ -116,5 +116,21 @@ substrate, implemented twice.
 - core/render split; core has no `Math.random` (`rng.test.ts`).
 - ids-not-refs across any new logged command.
 - Each phase is its own commit; the suite is green before each push.
+
+## Closing the scene-test gap (follow-on)
+
+The deploy/battle *orchestration* lives in the Phaser `BattleScene`, which the
+node `core/` suite can't reach. Two layers, built phased:
+
+- **Phase A — assertion-bearing E2E (done).** `scripts/harness.mjs` (a shared
+  Chrome+Vite harness with scene-eval + real-input helpers) + `scripts/e2e-deploy-
+  battle.mjs` (`npm run test:e2e`): drives the *real* scene with real tile clicks
+  and Space/Escape key presses through deploy→battle, asserting outcomes (move +
+  log + undo, dig-in + undo, Start Battle transition, a driven player turn). 17
+  assertions, no page errors. Needs Chrome (kept out of the fast unit suite).
+- **Phase B — headless interaction controller (incremental).** Lift the scene's
+  turn-flow / input decisions into a pure, vitest-testable controller so the deep
+  click-through coverage runs browser-free in the fast suite, leaving the scene a
+  thin renderer. Start with the deploy sub-phase.
 </content>
 </invoke>

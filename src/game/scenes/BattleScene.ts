@@ -98,7 +98,7 @@ import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
 import { MiniCard, type CardRow } from "../info-cards";
 import { dropNet as dropNetCage } from "../deploy-fx";
-import { ICON } from "../icons";
+import { ICON, type IconKey, type IconSpec } from "../icons";
 
 /**
  * Board zoom for the real combat field (D-UX): enlarge tiles + tokens so details
@@ -120,6 +120,29 @@ function compactFoeTypes(types: readonly string[]): string {
   const shareLead = types.every((t) => t.split(" ")[0] === lead && t.split(" ").length > 1);
   if (!shareLead) return types.join(", ");
   return `${lead}: ${types.map((t) => t.slice(lead.length).trim()).join(", ")}`;
+}
+
+/** One icon-led line in a resolution section — an outcome and the colour it reads as. */
+interface ReportRow {
+  /** Registry icon keying the row's glyph + default tint; omit for a plain bullet. */
+  icon?: IconKey;
+  text: string;
+  /** Text colour override (the row's valence), else the section default. */
+  color?: string;
+}
+
+/** A titled group of {@link ReportRow}s — dropped entirely when it has no rows. */
+interface ReportSection {
+  heading: string;
+  rows: ReportRow[];
+}
+
+/** The full after-action report: a toned headline + subtitle over grouped sections. */
+interface ResolutionReport {
+  title: string;
+  good: boolean;
+  subtitle: string;
+  sections: ReportSection[];
 }
 
 /**
@@ -1669,9 +1692,9 @@ export class BattleScene extends Phaser.Scene {
     // Re-tint any freed allies.
     for (const u of this.run.party) if (!u.captured) this.tintCaptured(u, false);
 
-    const { title, good, lines } = this.buildResolutionSummary(res, goldEscaped, recruited);
-    this.showOverlay(title, lines.join("\n"), good, 480, 200);
-    this.setHint(`Resolution — ${lines.join("  ")}`);
+    const report = this.buildResolutionSummary(res, goldEscaped, recruited);
+    this.showResolutionReport(report);
+    this.setHint(`Resolution — ${report.title}. ${report.subtitle}`);
     // On any terminal (wipe / loss / run-complete) the overworld shows the end
     // screen; otherwise the player returns to the map to pick the next node.
     this.setPrimary(res.over ? (this.loop.isComplete() ? "See Results" : "Run Over") : "Return to Map");
@@ -1705,53 +1728,72 @@ export class BattleScene extends Phaser.Scene {
 
   /**
    * Build the three-way graded terminal (D50/D51) — win / objective-failure / wipe —
-   * as a title, tone, and the body lines (rewards, casualties, level-ups, theft +
-   * recruitment outcomes). Pure assembly off the resolved result; shows nothing.
+   * as a structured **after-action report**: a titled, toned headline and grouped,
+   * icon-led sections (Spoils, The party, Advancement, Aftermath). Pure assembly off
+   * the resolved result; empty sections are dropped by the renderer. The grouping
+   * follows the D-UX rule — the payoff (spoils, level-ups) and the costs (casualties,
+   * captures) read as distinct, colour-coded blocks instead of one grey wall.
    */
   private buildResolutionSummary(
     res: ResolveResult,
     goldEscaped: number,
     recruited: string[],
-  ): { title: string; good: boolean; lines: string[] } {
+  ): ResolutionReport {
     const won = res.result === "win";
     const title = won ? "Victory!" : res.result === "objective-failure" ? "Objective Failed — Retreat" : "Defeat";
-    const lines: string[] = [];
+    const subtitle = won
+      ? "The field is won — gather the spoils and move on."
+      : res.result === "objective-failure"
+        ? "The objective was lost — the party retreats alive, the prize forfeited."
+        : "The party was overwhelmed.";
+    const nameOf = (id: string) => this.battle.units.find((u) => u.id === id)?.name ?? id;
+
+    const spoils: ReportRow[] = [];
     if (won) {
-      lines.push(`+${res.goldEarned} gold.`);
-      if (res.rescued.length) lines.push(`Auto-rescued ${res.rescued.join(", ")} (won the field).`);
-      lines.push(res.recovered.length ? `Recovered ${res.recovered.length} unsprung trap kit(s).` : "No unsprung materials.");
-    } else if (res.result === "objective-failure") {
-      lines.push("The objective was lost — the party retreats alive, the prize forfeited.");
-    } else {
-      lines.push("The party was overwhelmed.");
+      spoils.push({ icon: "spoils", text: `+${res.goldEarned} gold`, color: INK.gold });
+      spoils.push(
+        res.recovered.length
+          ? { icon: "loot", text: `Recovered ${res.recovered.length} unsprung trap kit${res.recovered.length === 1 ? "" : "s"}` }
+          : { text: "No unsprung materials to recover.", color: INK.muted },
+      );
     }
-    // Casualties apply on either survivable outcome (D51).
+
+    // The party (D51): rescues and casualties apply on either survivable outcome.
+    const party: ReportRow[] = [];
+    if (res.rescued.length) party.push({ icon: "rescued", text: `Freed by winning the field: ${res.rescued.join(", ")}`, color: INK.success });
     if (res.result !== "wipe") {
-      if (res.downed.length) lines.push(`Downed: ${res.downed.map((d) => `${d.unitId} (${d.resolution})`).join(", ")}.`);
-      if (res.permadeaths.length) lines.push(`Lost forever: ${res.permadeaths.join(", ")}.`);
+      if (res.downed.length) party.push({ icon: "fallen", text: `Downed: ${res.downed.map((d) => `${nameOf(d.unitId)} (${d.resolution})`).join(", ")}`, color: INK.ember });
+      if (res.permadeaths.length) party.push({ icon: "lost", text: `Lost forever: ${res.permadeaths.map(nameOf).join(", ")}`, color: INK.danger });
     }
     // Captives left behind become rescue follow-ups (D9/D21) — name them so the
     // abandonment isn't silently dropped; the Captain's Journal keeps nagging after.
-    if (res.rescueQuests.length) {
-      lines.push(`Captured — needs rescue: ${res.rescueQuests.map((q) => q.unitId).join(", ")}.`);
-    }
-    // Level-up feedback (D53): who reached a new job level, with their new actives.
+    if (res.rescueQuests.length) party.push({ icon: "captive", text: `Captured — needs rescue: ${res.rescueQuests.map((q) => nameOf(q.unitId)).join(", ")}`, color: INK.ember });
+
+    // Advancement (D53): who reached a new job level, with their new actives.
+    const advancement: ReportRow[] = [];
     for (const u of this.battle.units) {
       if (u.side !== "player") continue;
       const was = this.preBattleJobLevels.get(u.id) ?? jobLevelOf(u, u.primaryJob);
       const now = jobLevelOf(u, u.primaryJob);
       if (now > was) {
         const actives = unlockedSkills(u, "battle").map((s) => s.name).join(", ");
-        lines.push(`${u.name} reached job L${now} — actives: ${actives || "—"}.`);
+        advancement.push({ icon: "levelUp", text: `${u.name} reached job L${now}${actives ? ` — ${actives}` : ""}`, color: INK.gold });
       }
     }
-    if (won && this.loop.isComplete()) lines.push("The final mission is cleared — the run is complete!");
-    // Theft + recruitment outcomes (M10).
-    if (this.goldStolen > 0) {
-      lines.push(`Thieves skimmed ${this.goldStolen}g — recovered ${this.goldRecovered}g${goldEscaped > 0 ? `, ${goldEscaped}g escaped` : ""}.`);
-    }
-    if (recruited.length) lines.push(`Swayed to the guild (permanent): ${recruited.join(", ")}.`);
-    return { title, good: won, lines };
+
+    // Aftermath (M10): theft, recruitment, and the run-complete flourish.
+    const aftermath: ReportRow[] = [];
+    if (this.goldStolen > 0) aftermath.push({ icon: "theft", text: `Thieves skimmed ${this.goldStolen}g — recovered ${this.goldRecovered}g${goldEscaped > 0 ? `, ${goldEscaped}g escaped` : ""}`, color: INK.ember });
+    if (recruited.length) aftermath.push({ icon: "recruited", text: `Swayed to the guild (permanent): ${recruited.join(", ")}`, color: INK.cyan });
+    if (won && this.loop.isComplete()) aftermath.push({ icon: "levelUp", text: "The final mission is cleared — the run is complete!", color: INK.gold });
+
+    const sections: ReportSection[] = [
+      { heading: "Spoils", rows: spoils },
+      { heading: "The party", rows: party },
+      { heading: "Advancement", rows: advancement },
+      { heading: "Aftermath", rows: aftermath },
+    ];
+    return { title, good: won, subtitle, sections };
   }
 
   /** Hand the run back to the overworld so the player can pick the next node. */
@@ -1759,15 +1801,47 @@ export class BattleScene extends Phaser.Scene {
     this.scene.start("OverworldScene", { run: this.run, loop: this.loop, guild: this.guild, caravanId: this.caravanId } as RunHandoff);
   }
 
-  private showOverlay(title: string, body: string, good: boolean, w = 480, h = 170): void {
+  /**
+   * Render the {@link ResolutionReport} as a centred after-action card: a toned
+   * headline + subtitle over icon-led, colour-coded sections. Self-sizes to its
+   * content (empty sections skipped, long rows wrap) and is built in a Container so a
+   * single clearLayer tears the whole report down on Return to Map.
+   */
+  private showResolutionReport(r: ResolutionReport): void {
     clearLayer(this.overlay);
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.92).setStrokeStyle(2, good ? COLOR.success : COLOR.danger).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 28, title, { color: good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy + 14, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(21),
-    );
+    const w = 484;
+    const padX = 26;
+    const leftX = -w / 2 + padX;
+    const accent = r.good ? COLOR.success : COLOR.danger;
+    const card = this.add.container(this.scale.width / 2, 0).setDepth(20);
+
+    let y = 22;
+    card.add(this.add.text(0, y, r.title, { color: r.good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5, 0));
+    y += 36;
+    const sub = this.add.text(0, y, r.subtitle, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body, align: "center", wordWrap: { width: w - 2 * padX } }).setOrigin(0.5, 0);
+    card.add(sub);
+    y += sub.height + 12;
+
+    for (const sec of r.sections) {
+      if (sec.rows.length === 0) continue;
+      card.add(this.add.text(leftX, y, sec.heading.toUpperCase(), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0));
+      card.add(this.add.rectangle(leftX, y + 15, w - 2 * padX, 1, COLOR.borderSoft).setOrigin(0, 0.5));
+      y += 22;
+      for (const row of sec.rows) {
+        const spec: IconSpec | undefined = row.icon ? ICON[row.icon] : undefined;
+        const glyph = this.add.text(leftX, y, spec?.glyph ?? "·", { color: spec?.color ?? INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0);
+        const text = this.add.text(leftX + 20, y, row.text, { color: row.color ?? INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, wordWrap: { width: w - 2 * padX - 20 } }).setOrigin(0, 0);
+        card.add([glyph, text]);
+        y += Math.max(text.height, 17) + 4;
+      }
+      y += 10;
+    }
+
+    const totalH = y + 6;
+    const bg = this.add.rectangle(0, totalH / 2, w, totalH, COLOR.bg, 0.96).setStrokeStyle(2, accent);
+    card.addAt(bg, 0);
+    card.setY(Math.max(8, this.scale.height / 2 - totalH / 2));
+    this.overlay.push(card);
   }
 
   // --- Drawing helpers -------------------------------------------------------

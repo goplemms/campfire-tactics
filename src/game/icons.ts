@@ -60,6 +60,17 @@ export const ICON = {
   collapse: { glyph: "▾", label: "collapse" },
   check: { glyph: "✓", label: "done", color: INK.success },
   warn: { glyph: "!", label: "in progress", color: INK.ember },
+
+  // --- Resolution / after-action report ---
+  spoils: { glyph: "¤", label: "spoils", color: INK.gold },
+  loot: { glyph: "✸", label: "loot", color: INK.ember },
+  levelUp: { glyph: "★", label: "level up", color: INK.gold },
+  rescued: { glyph: "✓", label: "rescued", color: INK.success },
+  fallen: { glyph: "†", label: "fallen", color: INK.ember },
+  lost: { glyph: "✕", label: "lost forever", color: INK.danger },
+  captive: { glyph: "!", label: "captured", color: INK.ember },
+  recruited: { glyph: "✚", label: "recruited", color: INK.cyan },
+  theft: { glyph: "$", label: "theft", color: INK.ember },
 } as const satisfies Record<string, IconSpec>;
 
 export type IconKey = keyof typeof ICON;

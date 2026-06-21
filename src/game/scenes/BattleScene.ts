@@ -8,7 +8,6 @@ import {
   findPath,
   occupiedGrid,
   reachableTiles,
-  forecastAttack,
   effectiveMove,
   isImmobilized,
   inAttackRange,
@@ -23,7 +22,6 @@ import {
   DEFEND,
   isValidSkillTarget,
   canSee,
-  chebyshev,
   // M5b/D11 — deployment: the shared stealth-alert model
   countOf,
   campReadoutLine,
@@ -40,11 +38,14 @@ import {
   inSafeZone,
   stepDistance,
   frontCaptureChance,
-  // D63 Phase B — the pure deploy-flow decisions (headless, vitest-tested), so the
-  // scene renders the choices instead of making them.
+  // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
+  // tested), so the scene renders the choices instead of making them.
   frontTurnStage,
   deployActions,
   type DeployActionId,
+  advanceOutcome,
+  noActionsAvailable as scanNoActions,
+  adjacentRevealedTrap as findAdjacentRevealedTrap,
   // M5 — camp / morale
   moraleTier,
   moraleModifiers,
@@ -866,24 +867,22 @@ export class BattleScene extends Phaser.Scene {
     if (this.over || this.busy || this.waitingFor) return;
     if (this.encounterDecided()) return this.finishBattle();
     const actor = this.battle.nextActor();
-    if (!actor) return this.finishBattle();
-    // The clock tick inside nextActor may have closed a gate (D50) — re-poll.
-    if (this.encounterDecided()) return this.finishBattle();
+    // The clock tick inside nextActor may have closed a gate (D50) — re-poll, then
+    // let the pure decision pick the branch the scene renders (D60 Phase B).
+    const out = advanceOutcome(actor, this.encounterDecided());
+    if (out.kind === "finish") return this.finishBattle();
     this.revealScouted();
-    this.highlightTile(actor.pos);
+    this.highlightTile(out.actor.pos);
     this.refreshHud();
     // A hidden ambush body lies in wait — it doesn't act until the party scouts it
     // into view (D42/D44 fog); it just passes its turn.
-    if (actor.hidden) {
-      this.battle.endTurn(actor, {});
+    if (out.kind === "ambushPass") {
+      this.battle.endTurn(out.actor, {});
       this.setHint("Something stirs in ambush ahead… scout it out.");
       return;
     }
-    if (actor.side === "enemy") {
-      this.runEnemyTurn(actor);
-    } else {
-      this.beginPlayerTurn(actor);
-    }
+    if (out.kind === "enemyTurn") this.runEnemyTurn(out.actor);
+    else this.beginPlayerTurn(out.actor);
   }
 
   /**
@@ -961,16 +960,8 @@ export class BattleScene extends Phaser.Scene {
    * verb. The auto-pass backstop reads this so a surrounded unit can't deadlock.
    */
   private noActionsAvailable(actor: Unit): boolean {
-    const units = this.battle.units;
-    const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
-    if (reachableTiles(actor, units, this.grid, budget).some((r) => r.tile.col !== actor.pos.col || r.tile.row !== actor.pos.row)) return false;
-    if (units.some((u) => u.alive && !u.captured && u.side !== actor.side && forecastAttack(actor, u, units, this.grid))) return false;
-    if (units.some((u) => u.captured && u.side === actor.side && u !== actor && isAdjacent(actor.pos, u.pos))) return false;
-    if (unlockedSkills(actor, "battle").length > 0) return false;
-    if (hiddenTraps(this.battle.entities).length > 0) return false; // Search is available
-    if (this.adjacentRevealedTrap(actor) && canDisarm(actor)) return false;
-    if (this.guild && units.some((u) => u.side === "enemy" && u.alive)) return false; // Bribe
-    return true;
+    // The D55 backstop is a pure scan now (battle-flow, D60 Phase B).
+    return scanNoActions({ actor, units: this.battle.units, grid: this.grid, entities: this.battle.entities, hasGuild: !!this.guild });
   }
 
   /**
@@ -1103,10 +1094,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** A revealed, un-sprung concealed trap adjacent to `actor` (the disarm target). */
   private adjacentRevealedTrap(actor: Unit): ConcealedTrap | undefined {
-    return this.battle.entities
-      .all()
-      .filter(isConcealedTrap)
-      .find((t) => t.revealed && !t.sprung && chebyshev(t.pos, actor.pos) <= 1);
+    return findAdjacentRevealedTrap(actor, this.battle.entities); // pure (battle-flow, D60 Phase B)
   }
 
   /** Mark the unit's single Act spent this turn (D60); `charged` drives the CT cost. */

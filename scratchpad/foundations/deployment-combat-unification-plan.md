@@ -140,9 +140,14 @@ node `core/` suite can't reach. Two layers, built phased:
     decision).
   The scene now *renders* those choices instead of making them. Verified: unit
   suite (594), `vite build`, `test:e2e` (17 assertions), `shots:deploy` — all green.
-  - **Remaining (larger, optional):** a full `BattleController` owning the
-    *battle*-phase turn flow (the bulk of the remaining untested scene glue), so the
-    combat click-through also moves into the fast suite. Bigger refactor; the `test:e2e`
-    harness now de-risks it. Pull when worth it.
+  - **Battle phase (done).** Same finding held — the heavy combat logic was already
+    pure (CT clock + `nextActor`, the AI, resolution gates). The stranded *decisions*
+    moved to `core/battle-flow.ts` (vitest-tested, +13): `advanceOutcome` (the
+    `onAdvance` branch: finish / ambush-pass / enemy / player), `noActionsAvailable`
+    (the D55 auto-pass backstop), and `adjacentRevealedTrap` (the disarm scan). The
+    scene now renders those choices. Verified: unit suite (607), build, `test:e2e`,
+    `shots:mill` — all green.
+- **CI (done).** `.github/workflows/ci.yml` runs build + unit suite + `test:e2e`
+  (headless, on the runner's Chrome) on every PR and main push.
 </content>
 </invoke>

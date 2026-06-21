@@ -51,6 +51,38 @@ export function armSkillCooldown(unit: Unit, skillId: string, ct: number): void 
   if (ct > 0) unit.cooldowns[skillId] = ct;
 }
 
+/**
+ * Determinism-stable "who acts next" order for CT actors: **highest CT first**,
+ * ties broken by **Speed**, then **id**. The single comparator both the combat
+ * clock ({@link CTClock}) and the deployment clock ({@link "./deployment".DeployClock})
+ * sort their ready actors by — so initiative reads identically in either phase.
+ */
+export function byReadiest<T extends { ct: number; speed: number; id: string }>(a: T, b: T): number {
+  return b.ct - a.ct || b.speed - a.speed || a.id.localeCompare(b.id);
+}
+
+/** Stall guard — the most ticks {@link tickUntilReady} will advance before giving up. */
+export const CLOCK_GUARD_MAX = 1_000_000;
+
+/**
+ * Drive a CT timeline to its next decision point — the shared loop both clocks run.
+ * Tick until `ready()` holds, bounded by the stall guard **and** `canProgress()`,
+ * which is re-checked each tick because a resolving charge can defeat the last
+ * eligible actor mid-tick. Returns `true` once an actor is ready, `false` if the
+ * timeline can't progress or trips the guard. The *policy* (which actors tick, how
+ * the next actor is chosen) stays with each clock; only this engine is shared.
+ */
+export function tickUntilReady(ready: () => boolean, canProgress: () => boolean, tick: () => void): boolean {
+  if (!canProgress()) return false;
+  let guard = 0;
+  while (!ready()) {
+    tick();
+    if (++guard > CLOCK_GUARD_MAX) return false;
+    if (!canProgress()) return false;
+  }
+  return true;
+}
+
 /** CT needed to take a turn. */
 export const TURN_THRESHOLD = 100;
 /** CT spent when a unit Acts (the expensive option). */
@@ -213,18 +245,14 @@ export class CTClock {
    */
   advanceToNextActor(): Unit | null {
     const canAct = isActive;
-    if (!this.units.some(canAct)) return null;
-    let guard = 0;
-    const GUARD_MAX = 1_000_000;
-    while (!this.units.some((u) => canAct(u) && u.ct >= TURN_THRESHOLD)) {
-      this.tick();
-      if (++guard > GUARD_MAX) return null;
-      if (!this.units.some(canAct)) return null;
-    }
-    const ready = this.units.filter((u) => canAct(u) && u.ct >= TURN_THRESHOLD);
-    ready.sort(
-      (a, b) => b.ct - a.ct || b.speed - a.speed || a.id.localeCompare(b.id),
+    const advanced = tickUntilReady(
+      () => this.units.some((u) => canAct(u) && u.ct >= TURN_THRESHOLD),
+      () => this.units.some(canAct),
+      () => this.tick(),
     );
+    if (!advanced) return null;
+    const ready = this.units.filter((u) => canAct(u) && u.ct >= TURN_THRESHOLD);
+    ready.sort(byReadiest);
     return ready[0];
   }
 

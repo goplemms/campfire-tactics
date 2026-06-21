@@ -31,8 +31,11 @@ substrate, implemented twice.
 
 ## What is still a *parallel* system (the refactor surface)
 
-1. **`DeployClock` (deployment.ts) duplicates `CTClock`'s loop** — seed/tick/
-   ready/next/spend, with the enemy `front` bolted in as a pseudo-actor.
+1. ~~**`DeployClock` (deployment.ts) duplicates `CTClock`'s loop**~~ — *Phase 2:*
+   the guarded tick-until-ready loop + the determinism comparator are now shared
+   (`tickUntilReady`/`byReadiest` in `clock.ts`); each clock keeps only its own
+   actor policy (the front's strict-lead tie rule is intentional, so it stays a
+   distinct actor).
 2. **Deployment bypasses `Battle.apply`** — move/dig-in/place-trap/capture mutate
    state directly, so deployment has **no replay and no undo** (combat has both).
 3. **Separate RNG** — `streamFor(run.seed,"deploy")` drawn in the scene, not via
@@ -57,13 +60,26 @@ substrate, implemented twice.
 - Light-touch the design `README.md` deployment line for accuracy.
 - Gate: `npm test` + `tsc --noEmit` green (no code touched).
 
-### Phase 2 — One clock (`DeployClock` → `CTClock`)
-- Model the enemy `front` as a first-class actor on the **one** `CTClock` (a
-  special unit/scheduled actor), retiring `DeployClock`'s duplicated loop.
-- `BattleScene` deployment drives `battle.clock` (seeded for the deploy sub-phase)
-  instead of a second clock object.
+### Phase 2 — One clock engine (shared stepping core) ✅
+- **Finding that reshaped the approach:** the front is *not* cleanly a "first-class
+  unit on `CTClock`." `DeployClock` deliberately gives **players tie priority** (the
+  front wins only on a *strict* CT lead), and its participant set is players + a
+  non-`Unit` front. Folding the front into the unit pool would change the tie rule
+  and risk the 74 deploy tests + the determinism sim. The strict-lead rule is
+  intentional design, so the front stays a **distinct actor**.
+- **What shipped instead — extract the shared engine, not the participant model.**
+  The genuinely duplicated parts were the **guarded tick-until-ready loop** and the
+  **determinism comparator**, copied verbatim in both clocks. Both now live in
+  `clock.ts` as `tickUntilReady(ready, canProgress, tick)` and
+  `byReadiest(a, b)`; `CTClock.advanceToNextActor` and `DeployClock.next` are rebuilt
+  on them. Each clock keeps its own *policy* (which actors tick, the front's
+  strict-lead tie rule) — only the engine is shared, so initiative reads identically
+  in either phase by construction.
 - Behaviour-preserving: same turn order, same capture-on-front's-turn cadence.
-- Gate: `deployment.test.ts` + full suite green; `shots:deploy` smoke renders.
+- Gate met: full suite green (578, +3 engine tests), typecheck clean.
+- **Deferred to Phase 3 (render-layer):** `BattleScene`'s parallel
+  `deployNextActor`/`beginDeployTurn`/`endDeployTurn` vs
+  `onAdvance`/`beginPlayerTurn`/`endPlayerTurn` orchestration.
 
 ### Phase 3 — One action log (deploy verbs through `Battle.apply`)
 - Add `CombatAction` variants (or a sibling `DeployAction` set) for deploy

@@ -25,7 +25,7 @@ import type { TileGrid } from "./grid";
 import type { GridCoord } from "./iso";
 import { findPath } from "./pathfinding";
 import { occupiedGrid } from "./ai";
-import { effectiveSpeed, TURN_THRESHOLD, ACT_COST, MOVE_COST, type TurnSpend } from "./clock";
+import { effectiveSpeed, byReadiest, tickUntilReady, TURN_THRESHOLD, ACT_COST, MOVE_COST, type TurnSpend } from "./clock";
 
 /** Exposure at which a unit is captured. */
 export const CAPTURE_THRESHOLD = 100;
@@ -483,17 +483,19 @@ export class DeployClock {
    * Tick until a player unit or the front is ready, then return the readiest. The
    * front wins only on a strict CT lead — players take ties, so Speed and Awareness
    * keep buying the party its turns. Returns the front if no player can act.
+   *
+   * Shares combat's stepping engine ({@link tickUntilReady} + {@link byReadiest});
+   * the **front-vs-player strict-lead tie rule** below is deployment's own policy —
+   * the reason the front stays a distinct actor rather than a unit in the pool.
    */
   next(): DeployTurn {
-    let guard = 0;
-    const GUARD_MAX = 1_000_000;
-    while (!this.ready()) {
-      this.tick();
-      if (++guard > GUARD_MAX) return { unit: null, isFront: true };
+    // The front always charges, so the timeline can always progress (never stalls).
+    if (!tickUntilReady(() => this.ready(), () => true, () => this.tick())) {
+      return { unit: null, isFront: true };
     }
     const readyPlayers = this.players
       .filter((u) => u.alive && !u.captured && u.ct >= TURN_THRESHOLD)
-      .sort((a, b) => b.ct - a.ct || b.speed - a.speed || a.id.localeCompare(b.id));
+      .sort(byReadiest);
     const best = readyPlayers[0];
     if (this.frontCt >= TURN_THRESHOLD && (!best || this.frontCt > best.ct)) {
       return { unit: null, isFront: true };

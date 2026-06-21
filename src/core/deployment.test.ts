@@ -24,6 +24,8 @@ import {
   inSafeZone,
   advanceFront,
   frontCaptureChance,
+  captureChanceAt,
+  deployForecast,
   resolveFrontTurn,
   safeGroundRemains,
   stepDistance,
@@ -355,6 +357,48 @@ describe("D63 capture chance — danger spike, depth, dig-in", () => {
 
   it("never exceeds the capture cap, even deep and surrounded", () => {
     expect(frontCaptureChance(at(7), front(10))).toBeLessThanOrEqual(CAPTURE_CHANCE_MAX);
+  });
+
+  it("captureChanceAt scores a bare coord exactly as frontCaptureChance scores the unit", () => {
+    const f = front(5);
+    const u = at(4);
+    expect(captureChanceAt(u.pos, f)).toBe(frontCaptureChance(u, f));
+    expect(captureChanceAt(u.pos, f, { dugIn: true })).toBe(frontCaptureChance(u, f, { dugIn: true }));
+  });
+});
+
+describe("D63 deployForecast — the per-choice risk forecast for the focus card", () => {
+  const at = (col: number, row = 2) => {
+    const u = unit("u", "player", 2);
+    u.pos = { col, row };
+    return u;
+  };
+  const front = (radius: number) => ({ origin: { col: 7, row: 2 }, radius, speed: 10 });
+
+  it("digging in is offered below the hold baseline; moving out reads safe", () => {
+    const f = front(5);
+    const u = at(4); // inside the danger
+    const safeTile = { col: 1, row: 2 }; // back by the fire, out of reach of the net
+    const fc = deployForecast(u, f, [safeTile]);
+    expect(fc.hold).toBe(frontCaptureChance(u, f));
+    expect(fc.digIn).toBeCloseTo(fc.hold * DIG_IN_CAPTURE_FACTOR, 5);
+    expect(fc.move).toBe(0); // stepping clear of the danger zeroes it
+  });
+
+  it("offers no dig-in figure once the unit is already dug in", () => {
+    const f = front(5);
+    const u = at(4);
+    const fc = deployForecast(u, f, [], { dugIn: true });
+    expect(fc.digIn).toBeNull();
+    expect(fc.hold).toBeCloseTo(frontCaptureChance(u, f) * DIG_IN_CAPTURE_FACTOR, 5);
+  });
+
+  it("suppresses the move row when no reachable tile beats standing pat", () => {
+    const f = front(5);
+    const u = at(7); // on the source — deepest, can only get shallower or stay
+    const deeperOnly = { col: 7, row: 2 }; // its own tile: no improvement
+    expect(deployForecast(u, f, [deeperOnly]).move).toBeNull();
+    expect(deployForecast(u, f, []).move).toBeNull();
   });
 });
 

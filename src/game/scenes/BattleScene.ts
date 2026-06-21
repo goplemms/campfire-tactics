@@ -37,7 +37,7 @@ import {
   inDangerZone,
   inSafeZone,
   stepDistance,
-  frontCaptureChance,
+  deployForecast,
   // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
   // tested), so the scene renders the choices instead of making them.
   frontTurnStage,
@@ -1922,9 +1922,16 @@ export class BattleScene extends Phaser.Scene {
       const band = actor.captured ? "Captured" : inDanger ? "In danger" : dug ? "Dug in" : safe ? "Safe" : "Exposed";
       const bandColor = actor.captured || inDanger ? INK.danger : safe || dug ? INK.success : INK.muted;
       rows.push({ label: "Position", value: band, color: bandColor });
-      if (inDanger && !actor.captured) {
-        const pct = Math.round(frontCaptureChance(actor, this.front, { dugIn: dug }) * 100);
-        rows.push({ label: "Capture risk", value: `${pct}%`, color: INK.danger, emphasize: true });
+      if (inDanger && this.front && !actor.captured) {
+        // Hot decision: forecast each choice's capture risk (D48 route-forecast ethos),
+        // so the card answers "what should this unit do *now*", not just "how bad is it".
+        // Repositioning is only on the table before the unit has moved this turn.
+        const reach = this.deployMoved ? [] : reachableTiles(actor, this.battle.units, this.grid, actor.moveRange).map((r) => r.tile);
+        const fc = deployForecast(actor, this.front, reach, { dugIn: dug });
+        const pct = (n: number) => `${Math.round(n * 100)}%`;
+        rows.push({ label: "Hold", value: pct(fc.hold), color: INK.danger, emphasize: true });
+        if (fc.digIn !== null) rows.push({ label: "Dig in", value: pct(fc.digIn), color: INK.success });
+        if (fc.move !== null) rows.push({ label: "Move", value: fc.move <= 0 ? "safe" : pct(fc.move), color: INK.success });
       } else if (!actor.captured) {
         rows.push({ label: "Capture risk", value: dug ? "low (dug in)" : safe ? "none" : "if net reaches", color: bandColor });
       }
@@ -1943,7 +1950,7 @@ export class BattleScene extends Phaser.Scene {
         });
       }
     }
-    this.focusCard.set(actor.name, rows, { frac: actor.maxHp > 0 ? actor.hp / actor.maxHp : 0 });
+    this.focusCard.set(actor.name, rows, { frac: actor.maxHp > 0 ? actor.hp / actor.maxHp : 0, cur: actor.hp, max: actor.maxHp });
   }
 
   private refreshIntelText(): void {

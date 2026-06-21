@@ -226,7 +226,10 @@ trail of reasoning stays intact.
   at design stage from the session play-trace). The banded/transparent/spatial
   *spirit* is unchanged.
 - **Spec:** [`docs/design/02-deployment.md`](../../docs/design/02-deployment.md).
-- **Superseded by:** —
+- **Superseded by:** **D63** — the retreat-race above was **never built**; the
+  implemented Deployment is D63's **closing-net** model (a CT-clock board phase with
+  an advancing enemy danger source). The banded/transparent/spatial *spirit*, the
+  Awareness/Speed/morale/intel roles, and the capture/rescue payoff all carry over.
 
 ## D12 — Enemy-prep symmetry + unified in-combat capture
 
@@ -1811,4 +1814,60 @@ trail of reasoning stays intact.
   - **Richer sinks** — sway-to-avoid-a-fight, faction access/unlocks, recruitment gates.
   - **Tuning** — accrual rate, Patronize cost/yield, band thresholds, bribe cost/chance
     curves, event-bias magnitudes (rides the D61 parked balance sweep).
+- **Superseded by:** —
+
+## D63 — Deployment as the closing net (retires the retreat-gamble) + the combat convergence
+
+- **Status:** **Decided + Built** (deployment retro-documented; the
+  Deployment↔Combat unification is **in progress** on branch
+  `claude/combat-predeployment-refactor-h3v2cf`). Refines **D7/D11** (the deployment
+  gamble) and leans on **D5** (the CT clock). Spec:
+  [`docs/design/02-deployment.md`](../../docs/design/02-deployment.md); plan:
+  [`deployment-combat-unification-plan.md`](deployment-combat-unification-plan.md).
+- **Context:** Two pressures converged. (1) The D11 *"safe period → auto-retreat at
+  the buzzer → per-step capture roll"* model was specced but **never built**; when
+  Deployment was actually implemented it became something cleaner and more legible.
+  (2) That implementation made Deployment a **turn-based, CT-clock, move-and-act board
+  phase** — i.e. it started *being* the combat substrate, but written as a parallel
+  system (`DeployClock` beside `CTClock`, mutations outside `Battle.apply`). We had to
+  decide what Deployment actually is, and how much of combat's spine it should share.
+- **Options considered (the model):** (a) build D11's retreat-race as specced /
+  (b) a **closing-net** model — two radial influence sources on the board, the enemy's
+  growing to eat your safe ground, capture rolled on the net's turn / (c) a static
+  point-budget setup.
+- **Decision (the model): (b), the closing net.** Deployment plays on the board as a
+  short stealth phase:
+  - **Two radial sources, in orthogonal steps.** The party's **campfire** (home-edge
+    anchor) projects a **safe radius** sized by party **presence** (atk+def+hp/10);
+    the enemy's **danger source** starts at radius 0 and **grows one step on each of
+    its turns**. The danger **overrides** the campfire, so your safe ground shrinks
+    turn by turn.
+  - **Capture is rolled only on the net's turn**, for every unit inside the danger
+    radius (deepest first); per-tile odds scale with depth (`frontCaptureChance`),
+    capped so it's never a sure loss, and the party's **last un-captured fighter is
+    never netted**. A unit can **Dig In** to take a fraction of the chance at the cost
+    of its turn. The **first** catch raises the alarm → Battle begins; if the net
+    overruns the last safe tile first, Battle begins anyway.
+  - **Stats keep their D11 roles:** Awareness/morale/intel widen the safe radius
+    (`deployMods`); Speed buys *more positioning turns between net-closings* (capture
+    is on the net's clock, not per player turn — a fast party isn't punished with more
+    dice). Capture/rescue is unchanged (D7/D9/D12): a netted unit is bound on the map,
+    dropped from the initiative seed, a rescuable sub-objective.
+- **Decision (the architecture): Deployment is a *phase of* `Battle`, converged in
+  phases.** It already shares the `Unit` model, the roster, board movement, the
+  **entity registry** (player traps register on `battle.entities` and combat springs
+  them through the one trigger bus, D4), the capture/rescue state, and the CT
+  constants. The remaining parallelism (`DeployClock`'s duplicated loop; deploy
+  verbs bypassing the `Battle.apply` action log → no undo/replay; a separate RNG
+  draw) is retired in the ordered phases of the unification plan:
+  1. **Truth reconciliation** (this record + the `02-deployment.md`/D11 rewrite).
+  2. **One clock** — fold `DeployClock` into `CTClock` (the front as a first-class
+     actor).
+  3. **One action log** — lower deploy verbs through `Battle.apply` for replay +
+     undo parity (the substrate-audit `#7` graph→replay item; landed last, per-verb).
+- **Build (deployment, all green):** `core/deployment.ts` (the D63 closing-net block —
+  `campfireRadius`/`createFront`/`frontCaptureChance`/`resolveFrontTurn`/`DeployClock`,
+  plus the retained D7 capture/rescue + the legacy M5b/D11 exposure helpers kept for
+  reference), `scenes/BattleScene.ts` (the `phase:"deployment"` driver), and
+  `deployment.test.ts` (74 cases). The convergence phases 2–3 are tracked in the plan.
 - **Superseded by:** —

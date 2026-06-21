@@ -88,8 +88,9 @@ pseudo-example**:
    provisioning. Buy/sell equipment, load ammo & materials within storage limits,
    cook for morale/healing, assign jobs. The constraint layer that gates the map.
 2. **[Deployment](02-deployment.md)** — the on-map "earlier that day" setup. A
-   per-unit **push-your-luck** placement of traps, nests, and runes against the
-   real battlefield. Overreach and your unit gets captured.
+   turn-based **push-your-luck** placement of traps, nests, and runes against a
+   **closing enemy net** (D63), on the same CT clock as Combat. Overreach and your
+   unit gets captured.
 3. **[Combat](03-combat.md)** — the isometric battle on an FFT-style continuous
    **Charge-Time (CT) clock**, where prepared field entities trigger.
 4. **[Resolution](04-resolution.md)** — recover unsprung materials, resolve

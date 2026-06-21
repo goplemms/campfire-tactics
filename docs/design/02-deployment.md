@@ -12,59 +12,60 @@ the materials provisioned in [Pre-deployment](01-pre-deployment.md) to place
 **field entities** (traps, defensive nests, ritual runes — see
 [field-entities](systems/field-entities.md)) against the real terrain.
 
-It is **not** a free setup phase. It is a **per-unit push-your-luck time gamble.**
-The enemy has advance scouts; the longer a unit lingers preparing, the greater the
-chance it is caught out of position.
+It is **not** a free setup phase. It is a **push-your-luck race against a closing
+net.** The enemy is advancing; the longer your units linger forward preparing, the
+likelier one is caught out of position.
 
-### The exposure model — safe period, then a retreat gamble (D11)
+> **Note (D63).** The model below is the **implemented** one — *the closing net*. It
+> replaces the earlier "safe period → auto-retreat at the buzzer → per-step capture
+> roll" gamble specced in **D11** (which was never built). The banded, transparent,
+> spatial *spirit* of D11 — and the Awareness/Speed/morale/intel roles, and the
+> capture/rescue payoff — all carry over; only the resolution curve changed.
 
-Deployment is a spatial gamble about **how far you range**, resolved as a **race
-home**. It stays **banded and shown on the board** (no hidden surprises):
+### The closing-net model — two influence sources on one clock (D63)
 
-**Stage 1 — the safe period.** Units range out and place entities **freely, at zero
-risk** (the safe period's length is sized in bands by Awareness). The enemy's scouts
-haven't arrived yet, so where you place during this window is safe.
+Deployment runs as a **turn-based phase on the same board and the same CT clock as
+Combat** (see [action-economy](systems/action-economy.md)). Player units take real
+turns — **move**, **Dig In**, or **place** a field entity — and the board is shaped
+by **two radial influence sources**, measured in orthogonal steps:
 
-**Stage 2 — the retreat.** When the safe period closes, every still-exposed unit
-**auto-retreats** toward its nearest **safe zone** (within X tiles of your edge) —
-the player doesn't micro the walk-back; it plays out. A **capture roll fires at the
-end of each retreat step**, with per-step odds set by a **tug-of-war**:
-
-- **Proximity ↓** — each step *toward* safety lowers the chance (the distance band
-  shrinks as you near home):
+- **Your campfire** — a home-edge anchor whose **safe radius** scales with the
+  party's total combat **presence** (a sturdier party intimidates further out).
+- **The enemy's danger source** — a single actor on the deployment clock that starts
+  with no reach and **grows one step on each of its turns**. The danger **overrides**
+  the campfire, so a growing enemy radius **eats into your safe ground** — your
+  territory shrinks turn by turn.
 
 ```
-   CAMP ░░░░  Safe       (in the safe zone — ~0%)
-        ▒▒▒▒  Exposed    (low)
-        ▓▓▓▓  Hunted     (medium)
-   ENEMY████  Cornered   (high — out by the enemy approach)
+   CAMP ★░░░░  Safe        (inside the campfire, not yet reached — ~0%)
+        ░░░░░  Exposed     (neutral ground — safe for now)
+        ▒▒▒▒▒  Warning     (the ring the net takes next turn)
+   ENEMY█████★ Danger      (inside the enemy radius — rolls capture)
 ```
 
-- **Time ↑** — each step that *passes* raises the chance ("the enemy is upon you" —
-  the net closing in).
+**Capture is rolled only on the net's turn** — never per player turn — for every unit
+inside the danger radius, **deepest first**. The per-tile odds scale with how deep a
+unit sits inside the radius (capped, so even a surrounded unit is never a sure loss),
+and the party's **last un-captured fighter is never netted**. The **first** catch
+raises the alarm and Combat begins; if the net overruns the last safe tile with
+nobody caught, Combat begins anyway.
 
-So a unit caught **deep** faces both *more steps to survive* **and** a *rising* clock
-— compounding odds. A unit near home snaps back to ~0 before the clock bites. The
-**decision** was how greedy to be during the safe period; the **retreat** is the dice.
-The board shows each forward unit's **projected total retreat risk** from where it
-stands, so you commit with eyes open — you just can't un-roll it once the buzzer goes.
+A unit may **Dig In**: hunker on its tile for a **sharply reduced** capture chance,
+at the cost of its turn (moving breaks the stance). Or simply **hold safe ground** —
+place nothing, take zero risk, be ready when Combat starts. Deployment is opt-in per
+unit: *range forward (more setup, more risk)* vs. *hold / dig in (safe, less setup)*.
 
 Two stats drive the gamble (see [Stats](systems/stats.md)):
 
 | Stat | Role in Deployment |
 |---|---|
-| **Awareness** | **Safety, two ways:** a longer **safe period** *and* gentler retreat odds (lower proximity bands / slower time pressure). You spot the scouts coming. |
-| **Speed** | **Range & throughput.** How far you can venture *and still get home*, and how many placements fit before the buzzer. (Also the unit's Combat CT stat.) |
+| **Awareness** | **Safety.** Widens your safe radius (folded with morale + intel in `deployMods`), so you can place further forward before the net reaches you. |
+| **Speed** | **Throughput.** Capture is on the *net's* clock, so a faster party earns **more positioning turns between net-closings** — more setup for the same risk. (Also the unit's Combat CT stat.) |
 
-High party **morale** can nudge the safe period longer (confident troops set up
-bolder) — see [morale](systems/morale.md). And a **Tier-3 [intel](systems/intel.md)**
-read (enemy *positions*) reveals where the gradient bites hardest — so investing in
-intel makes ranging out safer and smarter, a deliberate cross-reinforcement of the
-prep systems.
-
-A unit may instead **hold position**: place nothing, take **zero risk**, and be
-**ready** (well-positioned, full kit) when Combat starts. Deployment is therefore
-opt-in per unit: *prep (more setup, more risk)* vs. *hold (safe, no setup)*.
+High party **morale** widens the safe radius (confident troops set up bolder) — see
+[morale](systems/morale.md). And a **Tier-3 [intel](systems/intel.md)** read, plus
+scouted ground (D10), further widens it — so investing in intel makes ranging out
+safer, a deliberate cross-reinforcement of the prep systems.
 
 ### Capture — the cost of overreach
 
@@ -126,33 +127,37 @@ seed** for both sides.
 ## Pseudo-example
 
 > The canyon map from Pre-deployment loads. The party has `2 × trap kit`,
-> `1 × fire-rune reagent`, and Vale's arrows already on her.
+> `1 × fire-rune reagent`, and Vale's arrows already on her. A sturdy party, so the
+> **campfire's safe radius reaches the canyon mouth**; the enemy danger source starts
+> cold at the far edge.
 >
-> 1. **Bram** (Survivalist, **high Awareness**) has a **long safe period**. He plants
->    **both trap kits** on the chokepoint tiles, all within his safe window, and ends
->    it **near home**. At the buzzer his short retreat reads **~0%** — both traps
->    armed, no risk taken.
-> 2. **Vale** (Scout, **high Speed**, modest Awareness) ranges **deep** near the
->    enemy approach to pre-place the **fire rune**. The board warns her projected
->    retreat risk is **~35%**. The player gambles for the value. When the buzzer
->    goes, Vale auto-retreats — and **fails a step roll partway home**. ✗ —
->    **captured**, repositioned into the **enemy's safe zone**.
+> 1. **Bram** (Survivalist) spends his turns inside the safe ring, planting **both
+>    trap kits** on the chokepoint tiles. No risk taken — the net hasn't reached him.
+> 2. **Vale** (Scout, **high Speed**) uses her extra positioning turns to range
+>    **forward of the fire**, near the enemy approach, and **place the fire rune** on
+>    a deep tile. The board flags that tile **Warning** — the net takes it next turn.
+>    The player gambles for the value and leaves her there.
+> 3. The clock steps to the **net's turn**: the danger radius grows over Vale's tile
+>    and rolls capture. ✗ — **Vale is netted**, bound on the map, and the **alarm
+>    goes up**.
 >    - The side is now **3 active + 1 captured**.
->    - Vale's Speed is dropped from the **initiative seed** → the **enemy side
->      will act first**.
-> 3. **Rook** (Soldier) and **Ember** (Mage) **hold position** — safe, ready,
->    well-placed behind the trap line.
-> 4. **Commit.** Deployment resolves: 2 traps armed at the canyon mouth, 1 fire
->    rune live near the enemy approach, Vale captured on the ledge, enemy holds
->    the initiative. On to **Combat**.
+>    - Vale's Speed drops from the **initiative seed** → the **enemy side acts first**.
+> 4. **Rook** (Soldier) and **Ember** (Mage) had **held safe ground** behind the trap
+>    line — ready, well-placed. The alarm starts Combat with everyone where they
+>    stand: 2 traps armed at the canyon mouth, 1 fire rune live near the enemy
+>    approach, Vale captured on the ledge, enemy holding the initiative. On to **Combat**.
 
 ## Open questions / future scope
 
-- Exposure model is **resolved** (D11, refined): safe period (free placement) →
-  **auto-retreat** at the buzzer with a **per-step capture roll** whose odds are
-  proximity↓ vs. time↑; banded, board shows projected retreat risk; Awareness
-  lengthens the safe period *and* softens retreat odds; Speed = range + throughput.
-  Only exact band %s, time-pressure curve, and safe-zone size are tuning.
+- Exposure model is **resolved + built** (D63 — the closing net; supersedes the
+  never-built D11 retreat-race): two radial sources on the CT clock (campfire safe
+  radius sized by presence vs. an enemy danger source that grows one step per net
+  turn and overrides the campfire); capture rolled **on the net's turn**, deepest
+  first, banded and capped, last fighter spared; **Dig In** for a reduced chance;
+  Awareness/morale/intel widen the safe radius, Speed buys more positioning turns.
+  Only the radius/growth/capture-curve numbers are tuning. **Architecture:**
+  Deployment is being unified into `Battle` as a true phase — see the
+  [unification plan](../../scratchpad/foundations/deployment-combat-unification-plan.md).
 - Enemy-prep symmetry is **resolved** (D12): A3 fortified-encounter type;
   Intel/Awareness-gated detection; Act-cost disarm or route-around; the Snare drags
   units into in-combat capture. See [field-entities](systems/field-entities.md).

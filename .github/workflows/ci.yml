@@ -1,0 +1,48 @@
+name: CI
+
+# Quality gate: type-check + unit suite on every PR (and main pushes), plus the
+# headless click-through E2E (scripts/e2e-deploy-battle.mjs) in a real browser.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One run per ref; cancel a superseded run when new commits land.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build # tsc --noEmit && vite build
+      - run: npm test # vitest run — the fast core suite
+      # The E2E drives the real BattleScene in headless Chrome. The GitHub
+      # ubuntu image ships Google Chrome with its libs; point the harness at it
+      # (CHROME_BIN) instead of downloading chrome-for-testing.
+      - name: Locate Chrome
+        id: chrome
+        run: echo "path=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser)" >> "$GITHUB_OUTPUT"
+      - name: E2E (deploy → battle click-through)
+        run: npm run test:e2e
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      # On a red E2E, keep the stage + failure screenshots so the break is
+      # diagnosable from the run page without reproducing locally.
+      - name: Upload E2E screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: screenshots/e2e-deploy-battle/
+          if-no-files-found: ignore

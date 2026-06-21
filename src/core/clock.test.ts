@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CTClock, ACT_COST, MOVE_COST, sideSeed } from "./clock";
+import { CTClock, ACT_COST, MOVE_COST, sideSeed, byReadiest, tickUntilReady, TURN_THRESHOLD } from "./clock";
 import { EventBus } from "./events";
 import { createUnit, type Unit } from "./units";
 
@@ -100,5 +100,43 @@ describe("CTClock", () => {
     expect(resolvedAt).toBe(4);
     expect(resolvedIds).toEqual(["frost"]);
     expect(clock.pendingEffects()).toBe(0);
+  });
+});
+
+// The shared CT stepping engine (D63 unification, Phase 2) — the single comparator
+// and tick-until-ready loop both CTClock and DeployClock are built on.
+describe("shared clock engine", () => {
+  it("byReadiest orders by CT desc, then Speed desc, then id", () => {
+    const a = { id: "a", ct: 100, speed: 10 };
+    const b = { id: "b", ct: 120, speed: 5 };
+    const c = { id: "c", ct: 100, speed: 12 };
+    const d = { id: "d", ct: 100, speed: 10 }; // ties a on ct+speed → id breaks it
+    expect([a, b, c, d].sort(byReadiest).map((x) => x.id)).toEqual(["b", "c", "a", "d"]);
+  });
+
+  it("tickUntilReady advances until an actor crosses the threshold", () => {
+    const actor = { ct: 0, speed: 30 };
+    let ticks = 0;
+    const ready = tickUntilReady(
+      () => actor.ct >= TURN_THRESHOLD,
+      () => true,
+      () => {
+        actor.ct += actor.speed;
+        ticks += 1;
+      },
+    );
+    expect(ready).toBe(true);
+    expect(ticks).toBe(4); // 30·4 = 120 ≥ 100
+  });
+
+  it("tickUntilReady reports a stall when the timeline can't progress", () => {
+    let ticked = false;
+    const ready = tickUntilReady(
+      () => false,
+      () => false, // nothing can act
+      () => { ticked = true; },
+    );
+    expect(ready).toBe(false);
+    expect(ticked).toBe(false); // never even ticks
   });
 });

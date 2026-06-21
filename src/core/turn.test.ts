@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { Battle } from "./turn";
+import { Battle, replay } from "./turn";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import type { FieldEntity } from "./entities";
 import { PILOT_POLICY, planEnemyTurn, type BattlePolicy } from "./ai";
+import { createInventory, countOf } from "./inventory";
+import type { PlaceTrapEffect } from "./skills";
 
 function at(
   id: string,
@@ -194,5 +196,104 @@ describe("Battle orchestrator", () => {
     expect(ally.hp).toBe(9); // healed
     expect(battle.canUseSkill(medic, mend)).toBe(false); // cooldown still armed
     expect(medic.ct).toBe(100); // but the turn is left open
+  });
+});
+
+// Deployment-phase verbs through the one interpreter (D63 unification): the deploy
+// turn shares Battle.apply, its log, and its undo stack with combat.
+describe("Battle — deployment verbs (D63)", () => {
+  const trapEffect: PlaceTrapEffect = { kind: "placeTrap", damage: 5 };
+
+  it("digIn sets the stance, logs, and undoes cleanly", () => {
+    const grid = new TileGrid(6, 1);
+    const u = at("u", "player", 0, 0);
+    const battle = new Battle(grid, [u]);
+    battle.beginUndo();
+    battle.digIn(u);
+    expect(u.dugIn).toBe(true);
+    expect(battle.log[battle.log.length - 1]).toEqual({ kind: "digIn", unit: "u" });
+    battle.undo();
+    expect(u.dugIn).toBe(false);
+    expect(battle.log.length).toBe(0);
+  });
+
+  it("deployMove walks the unit, breaks dig-in, and is undoable", () => {
+    const grid = new TileGrid(6, 1);
+    const u = at("u", "player", 0, 0, { dugIn: true });
+    const battle = new Battle(grid, [u]);
+    battle.beginUndo();
+    battle.deployMove(u, [{ col: 1, row: 0 }, { col: 2, row: 0 }]);
+    expect(u.pos).toEqual({ col: 2, row: 0 });
+    expect(u.dugIn).toBe(false); // moving broke the stance
+    battle.undo();
+    expect(u.pos).toEqual({ col: 0, row: 0 });
+    expect(u.dugIn).toBe(true); // restored
+  });
+
+  it("placeTrap consumes a kit from the wired stash and registers the entity", () => {
+    const grid = new TileGrid(6, 1);
+    const trapper = at("t", "player", 0, 0);
+    const battle = new Battle(grid, [trapper]);
+    const stash = createInventory(6, { "trap-kit": 2 });
+    battle.setStash(stash);
+
+    const res = battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0");
+    expect(res.ok && res.trap).toBeTruthy();
+    expect(countOf(stash, "trap-kit")).toBe(1); // one kit spent
+    expect(battle.entities.all().some((e) => e.id === "ptrap-0")).toBe(true);
+    expect(battle.log[battle.log.length - 1]).toMatchObject({ kind: "placeTrap", unit: "t", id: "ptrap-0" });
+  });
+
+  it("undoing a placeTrap refunds the kit and removes the entity", () => {
+    const grid = new TileGrid(6, 1);
+    const trapper = at("t", "player", 0, 0);
+    const battle = new Battle(grid, [trapper]);
+    const stash = createInventory(6, { "trap-kit": 1 });
+    battle.setStash(stash);
+    battle.beginUndo();
+    battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0");
+    expect(countOf(stash, "trap-kit")).toBe(0);
+    battle.undo();
+    expect(countOf(stash, "trap-kit")).toBe(1); // kit refunded
+    expect(battle.entities.all().some((e) => e.id === "ptrap-0")).toBe(false);
+  });
+
+  it("placeTrap refuses with no stash wired and with no kit", () => {
+    const grid = new TileGrid(6, 1);
+    const trapper = at("t", "player", 0, 0);
+    const battle = new Battle(grid, [trapper]);
+    expect(battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "x").ok).toBe(false); // no stash
+    battle.setStash(createInventory(6, {})); // empty
+    expect(battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "x").ok).toBe(false); // no kit
+    expect(battle.log.length).toBe(0); // a refused action never logs
+  });
+
+  it("capture binds the unit through the interpreter and logs it", () => {
+    const grid = new TileGrid(6, 1);
+    const caught = at("c", "player", 3, 0, { ct: 80 });
+    const battle = new Battle(grid, [caught, at("e", "enemy", 5, 0)]);
+    battle.capture(caught);
+    expect(caught.captured).toBe(true);
+    expect(caught.ct).toBe(0);
+    expect(battle.log[battle.log.length - 1]).toEqual({ kind: "capture", unit: "c" });
+  });
+
+  it("replay drains the deploy prelude before driving the combat turns", () => {
+    const grid = new TileGrid(8, 1);
+    const mk = () => [at("p", "player", 0, 0, { speed: 20 }), at("e", "enemy", 7, 0, { speed: 5 })];
+    const [p, e] = mk();
+    const battle = new Battle(grid, [p, e]);
+    // A deploy prelude (reposition + dig in), then seed + a combat turn.
+    battle.deployMove(p, [{ col: 1, row: 0 }]);
+    battle.digIn(p);
+    battle.seed();
+    const actor = battle.nextActor()!;
+    battle.endTurn(actor, { moved: false });
+
+    const rebuilt = replay(grid, mk(), battle.log);
+    const rp = rebuilt.units.find((u) => u.id === "p")!;
+    expect(rp.pos).toEqual({ col: 1, row: 0 });
+    // dig-in survived into combat (nothing cleared it), proving the prelude replayed.
+    expect(rp.dugIn).toBe(true);
   });
 });

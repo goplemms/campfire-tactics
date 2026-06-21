@@ -33,13 +33,18 @@ import {
   resolveMedHeal,
   type SkillDef,
   type SkillOutcome,
+  type PlaceTrapEffect,
 } from "./skills";
 import {
   commitsTurn,
+  isDeployAction,
   type CombatAction,
   type ActionResult,
   type UnitId,
 } from "./combat-actions";
+import { placePlayerTrap } from "./traps";
+import { captureUnit } from "./deployment";
+import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import type { ClockSnapshot } from "./clock";
 import type { EntitySnapshot } from "./entities";
@@ -53,6 +58,7 @@ interface UnitSnapshot {
   ct: number;
   alive: boolean;
   captured: boolean;
+  dugIn?: boolean;
   hidden?: boolean;
   statuses: StatusInstance[];
   counters: Record<string, number>;
@@ -72,6 +78,8 @@ interface BattleCheckpoint {
   units: Map<UnitId, UnitSnapshot>;
   clock: ClockSnapshot;
   entities: EntitySnapshot;
+  /** Shared-stash counts by value (D63) — so undoing a `placeTrap` refunds its kit. */
+  stash?: Record<string, number>;
 }
 
 /** Capture a unit's undoable mutable state by value. */
@@ -82,6 +90,7 @@ function snapshotUnit(u: Unit): UnitSnapshot {
     ct: u.ct,
     alive: u.alive,
     captured: u.captured,
+    dugIn: u.dugIn,
     hidden: u.hidden,
     statuses: u.statuses.map((s) => ({ ...s, data: s.data ? { ...s.data } : undefined })),
     counters: { ...u.counters },
@@ -96,6 +105,7 @@ function restoreUnit(u: Unit, s: UnitSnapshot): void {
   u.ct = s.ct;
   u.alive = s.alive;
   u.captured = s.captured;
+  u.dugIn = s.dugIn;
   u.hidden = s.hidden;
   u.statuses = s.statuses.map((x) => ({ ...x, data: x.data ? { ...x.data } : undefined }));
   u.counters = { ...s.counters };
@@ -162,6 +172,14 @@ export class Battle {
    */
   private undoStack: BattleCheckpoint[] | null = null;
 
+  /**
+   * The shared supply stash (D63 unification) — the run inventory the Deployment
+   * `placeTrap` verb draws kits from, wired by the scene via {@link setStash} before
+   * the deploy phase. Left unset for a bare battle (headless sim / tests that don't
+   * place traps), where `placeTrap` simply refuses.
+   */
+  private stash?: Inventory;
+
   constructor(grid: TileGrid, units: Unit[], opts: BattleOptions = {}) {
     this.grid = grid;
     this.units = units;
@@ -207,6 +225,11 @@ export class Battle {
   /** The append-only action log in execution order (read-only to callers). */
   get log(): readonly CombatAction[] {
     return this._log;
+  }
+
+  /** Wire the shared supply stash the Deployment `placeTrap` verb draws from (D63). */
+  setStash(stash: Inventory): void {
+    this.stash = stash;
   }
 
   /** Resolve a {@link UnitId} to its live unit in this battle's roster. */
@@ -278,6 +301,7 @@ export class Battle {
       units,
       clock: this.clock.snapshot(),
       entities: this.entities.snapshot(),
+      stash: this.stash ? { ...this.stash.counts } : undefined,
     };
   }
 
@@ -289,6 +313,7 @@ export class Battle {
     }
     this.clock.restore(cp.clock);
     this.entities.restore(cp.entities);
+    if (cp.stash && this.stash) this.stash.counts = { ...cp.stash };
     this.drawCount = cp.drawCount;
     this._log.length = cp.logLen; // drop the actions taken since the checkpoint
     // Positions reverted → re-derive the position-dependent tarpit aura (D40). The
@@ -374,6 +399,31 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "deployMove": {
+        // Deployment reposition: the same walk as `move` (springs entities, breaks
+        // dig-in), kept a distinct verb so replay can drain the deploy prelude.
+        this.execMove(this.unit(action.unit), action.path, false);
+        this._log.push(action);
+        return { ok: true };
+      }
+      case "digIn": {
+        this.unit(action.unit).dugIn = true;
+        this._log.push(action);
+        return { ok: true };
+      }
+      case "placeTrap": {
+        if (!this.stash) return { ok: false, reason: "No supply stash wired for trap placement." };
+        const actor = this.unit(action.unit);
+        const res = placePlayerTrap(this.stash, this.entities, actor, action.pos, action.effect, action.id);
+        if (!res.ok) return { ok: false, reason: res.reason ?? "Can't place a trap here." };
+        this._log.push(action);
+        return { ok: true, trap: res.trap, levels: res.levels };
+      }
+      case "capture": {
+        captureUnit(this.unit(action.unit));
+        this._log.push(action);
+        return { ok: true };
+      }
     }
   }
 
@@ -408,6 +458,8 @@ export class Battle {
       unit.pos = { col: tile.col, row: tile.row };
       this.bus.emit("unitEnterTile", { unit, tile, forced });
     }
+    // Moving breaks the Deployment dig-in stance (D63); a no-op in combat.
+    if (path.length > 0) unit.dugIn = false;
     // Positions changed → recompute the Heavy Knight's tarpit ring (D40).
     refreshAuras(this.units);
   }
@@ -537,6 +589,38 @@ export class Battle {
     this.apply({ kind: "endTurn", unit: unit.id, spend });
   }
 
+  // --- Deployment-phase verbs (D63 unification) -----------------------------
+
+  /**
+   * Reposition a unit during Deployment — the same logged walk as a combat move
+   * (so it's undoable and springs any entity it crosses), and it breaks the unit's
+   * dig-in stance. Distinct from `move` only so {@link replay} can tell the deploy
+   * prelude from the combat turn loop.
+   */
+  deployMove(unit: Unit, path: readonly GridCoord[]): void {
+    this.apply({ kind: "deployMove", unit: unit.id, path: [...path] });
+  }
+
+  /** Hunker for a reduced capture chance when the net's turn comes (D63). */
+  digIn(unit: Unit): void {
+    this.apply({ kind: "digIn", unit: unit.id });
+  }
+
+  /**
+   * Lay a player trap on `pos`, consuming one kit from the wired stash (D11/D63).
+   * On success returns the registered entity + any character levels gained; on a
+   * refusal (no kit, tile taken, or no stash wired) returns the reason for the hint.
+   */
+  placeTrap(unit: Unit, pos: GridCoord, effect: PlaceTrapEffect, id: string): { ok: true; trap?: RecoverableEntity; levels: number } | { ok: false; reason: string } {
+    const r = this.apply({ kind: "placeTrap", unit: unit.id, pos, effect, id });
+    return r.ok ? { ok: true, trap: r.trap, levels: r.levels ?? 0 } : { ok: false, reason: r.reason };
+  }
+
+  /** Bind a unit captured by the closing net (D7/D63) — the deploy "enemy turn" outcome. */
+  capture(unit: Unit): void {
+    this.apply({ kind: "capture", unit: unit.id });
+  }
+
   /** The raw turn-end (the endTurn-action body): fire `turnEnd`, spend the CT. */
   private execEndTurn(unit: Unit, spend: TurnSpend): void {
     this.bus.emit("turnEnd", { unit });
@@ -613,8 +697,11 @@ export function replay(
   opts: BattleOptions & { moraleBonus?: number } = {},
 ): Battle {
   const battle = new Battle(grid, initialUnits, opts);
-  battle.seed(opts.moraleBonus ?? 0);
+  // Drain the Deployment prelude (D63 unification): deploy verbs always lead the
+  // log and aren't part of a CT turn, so apply them before seeding + driving combat.
   let i = 0;
+  while (i < log.length && isDeployAction(log[i])) battle.apply(log[i++]);
+  battle.seed(opts.moraleBonus ?? 0);
   while (i < log.length) {
     const actor = battle.nextActor();
     if (!actor) break;

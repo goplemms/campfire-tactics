@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "node scripts/e2e-deploy-battle.mjs",
     "shots": "node scripts/shots-overworld.mjs",
     "shots:mill": "node scripts/shots-hollow-mill.mjs",
     "shots:dossier": "node scripts/shots-dossier.mjs",

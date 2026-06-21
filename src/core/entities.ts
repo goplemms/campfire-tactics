@@ -88,24 +88,36 @@ export class EntityRegistry {
   }
 
   /**
-   * Snapshot the entities' **mutable flags** (`sprung` / `revealed`) for a turn-undo
-   * checkpoint (combat-actions Phase 2). Entity *identity* is stable across the
-   * undo window (no entity is added/removed by a logged battle action), so only the
-   * flag values need capturing — the bus wiring and tile callbacks are untouched.
+   * Snapshot the entities' **membership + mutable flags** (`sprung` / `revealed`) for
+   * a turn-undo checkpoint (combat-actions Phase 2). Combat actions don't add/remove
+   * entities, so for a combat turn the membership is stable and only the flags move;
+   * the Deployment `placeTrap` verb (D63) *does* register an entity mid-turn, so the
+   * membership (entity refs by id) is captured too — undo then drops a trap laid
+   * since the checkpoint (and would re-add a removed one). Bus wiring is untouched.
    */
   snapshot(): EntitySnapshot {
     const flags = new Map<string, EntityFlags>();
+    const members = new Map<string, FieldEntity>();
     for (const e of this.entities.values()) {
+      members.set(e.id, e);
       const f: EntityFlags = {};
       if ("sprung" in e) f.sprung = (e as RecoverableEntity).sprung;
       if ("revealed" in e) f.revealed = (e as ConcealedTrap).revealed;
       flags.set(e.id, f);
     }
-    return { flags };
+    return { flags, members };
   }
 
-  /** Roll the entities' mutable flags back to a {@link snapshot} (undo). */
+  /** Roll the entities' membership + mutable flags back to a {@link snapshot} (undo). */
   restore(snap: EntitySnapshot): void {
+    // Membership: drop entities added since the checkpoint; re-add any removed since.
+    for (const id of [...this.entities.keys()]) {
+      if (!snap.members.has(id)) this.entities.delete(id);
+    }
+    for (const [id, e] of snap.members) {
+      if (!this.entities.has(id)) this.entities.set(id, e);
+    }
+    // Flags.
     for (const e of this.entities.values()) {
       const f = snap.flags.get(e.id);
       if (!f) continue;
@@ -121,9 +133,11 @@ interface EntityFlags {
   revealed?: boolean;
 }
 
-/** A captured set of entity flags, keyed by entity id (a turn-undo checkpoint). */
+/** A captured set of entity membership + flags, keyed by entity id (a turn-undo checkpoint). */
 export interface EntitySnapshot {
   flags: Map<string, EntityFlags>;
+  /** Entity refs by id at checkpoint time — the membership undo reconciles back to. */
+  members: Map<string, FieldEntity>;
 }
 
 /**

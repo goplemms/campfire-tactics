@@ -246,39 +246,75 @@ export function resolveDeployAction(
   return { spotted: true, retreatPath, capturedAt };
 }
 
-// --- D63: the closing-net deployment front ----------------------------------
+// --- D63: the closing-net deployment — two influence sources ----------------
 //
 // Deployment is a **turn-based stealth phase**: player units take real turns on a
-// CT clock, and the enemy is represented by a single advancing **danger front** —
-// a column that marches from the enemy (right) edge toward the party's home edge
-// (col 0). The front is itself an actor on the clock, with a Speed derived from
-// the enemy roster (leaning toward the fastest scout), so a quick camp closes the
-// net faster. Capture is rolled **only on the front's turn**, for every unit the
-// net has swallowed — never per player turn, so a fast party gets *more*
-// positioning turns without being punished with *more* capture dice. A unit can
-// **Dig In** to hunker on its tile at a fraction of the capture chance. The first
-// unit netted raises the alarm and combat begins; if the front overruns the home
-// edge first, the scene starts the battle anyway.
+// CT clock, and the board is shaped by **two radial influence sources** measured
+// in orthogonal steps:
+//  - the party's **campfire** (a home-side anchor) whose **safe radius** scales
+//    with the party's total combat *presence* — a sturdier party (Heavy Knights
+//    and the like) intimidates further out;
+//  - the enemy's **danger source**, whose radius **grows one step on each of its
+//    turns** (a single actor on the deployment clock, Speed leaned toward the
+//    enemy's fastest). The danger **overrides** the campfire, so a growing enemy
+//    radius eats into your safe ground — your territory shrinks turn by turn.
+//
+// Capture is rolled **only on the enemy source's turn**, for every unit inside the
+// danger radius — never per player turn, so a fast party gets *more* positioning
+// turns without *more* capture dice. A unit can **Dig In** to hunker at a fraction
+// of the capture chance. The first unit caught raises the alarm and combat begins;
+// if the danger overruns every last safe tile first, the scene starts it anyway.
 
-/** Columns the danger front advances on each of its turns. */
+/** Steps the danger radius grows on each of the enemy source's turns. */
 export const FRONT_ADVANCE_PER_TURN = 1;
-/** Lean toward the fastest enemy when deriving front Speed (0 = average, 1 = max). */
+/** Lean toward the fastest enemy when deriving the source's Speed (0 = avg, 1 = max). */
 export const FRONT_SPEED_LEAN = 0.5;
-/** How sharply the front spikes the per-turn capture chance over the stealth curve. */
+/** How sharply the danger spikes the per-turn capture chance over the base curve. */
 export const FRONT_DANGER_MULTIPLIER = 3;
 /** Fraction of the capture chance a dug-in unit faces (hunkered = hard to grab). */
 export const DIG_IN_CAPTURE_FACTOR = 0.25;
+/** Base safe radius (steps) the campfire grants before any presence bonus. */
+export const SAFE_BASE_RADIUS = 2;
+/** Party presence per extra step of campfire safe radius. */
+export const SAFE_POWER_PER_STEP = 20;
 
-/** The advancing enemy danger front (D63): cols `>= col` are the danger zone. */
-export interface DeployFront {
-  /** Leftmost dangerous column; starts off the right edge and marches toward 0. */
-  col: number;
-  /** CT-style Speed — how fast the net closes, derived from the enemy roster. */
+/** A unit's deployment **presence** — its intimidation weight at the campfire. */
+export function unitPresence(unit: Unit): number {
+  return unit.attack + unit.defense + Math.floor(unit.maxHp / 10);
+}
+
+/** The party's summed presence (living, un-captured player units). */
+export function partyPresence(units: readonly Unit[]): number {
+  return units
+    .filter((u) => u.side === "player" && u.alive && !u.captured)
+    .reduce((sum, u) => sum + unitPresence(u), 0);
+}
+
+/** The campfire's safe radius (steps): a base widened by the party's presence. */
+export function campfireRadius(units: readonly Unit[]): number {
+  return Math.max(1, SAFE_BASE_RADIUS + Math.floor(partyPresence(units) / SAFE_POWER_PER_STEP));
+}
+
+/** A radial influence source on the board, measured in orthogonal steps. */
+export interface DeploySource {
+  origin: GridCoord;
+  /** Reach in steps — tiles within this Manhattan distance are inside. */
+  radius: number;
+}
+
+/** The enemy danger source (D63): a {@link DeploySource} that ticks on the clock. */
+export interface DeployFront extends DeploySource {
+  /** CT-style Speed — how fast the source closes, derived from the enemy roster. */
   speed: number;
 }
 
+/** Orthogonal (Manhattan) step distance between two tiles. */
+export function stepDistance(a: GridCoord, b: GridCoord): number {
+  return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+}
+
 /**
- * The front's Speed: the enemy roster's average Speed pulled toward its fastest
+ * The enemy source's Speed: the roster's average Speed pulled toward its fastest
  * member by {@link FRONT_SPEED_LEAN}. A camp of sluggish bruisers closes slowly;
  * a lone scout in the mix noticeably quickens the net. Floored at 1.
  */
@@ -290,92 +326,115 @@ export function frontSpeed(enemies: readonly Unit[], lean = FRONT_SPEED_LEAN): n
   return Math.max(1, Math.round(avg + (max - avg) * lean));
 }
 
-/** A fresh front parked off the enemy edge (nothing dangerous yet). */
+/** The campfire anchored at the home-edge centre, sized by the party's presence. */
+export function createCampfire(grid: TileGrid, units: readonly Unit[]): DeploySource {
+  return { origin: { col: 0, row: Math.floor((grid.rows - 1) / 2) }, radius: campfireRadius(units) };
+}
+
+/** A fresh enemy danger source at the enemy-edge centre (nothing dangerous yet). */
 export function createFront(grid: TileGrid, enemies: readonly Unit[], lean = FRONT_SPEED_LEAN): DeployFront {
-  return { col: grid.cols, speed: frontSpeed(enemies, lean) };
+  return { origin: { col: grid.cols - 1, row: Math.floor((grid.rows - 1) / 2) }, radius: 0, speed: frontSpeed(enemies, lean) };
 }
 
-/** True if column `col` is inside (at or past) the danger front. */
-export function inDangerZone(col: number, front: DeployFront): boolean {
-  return col >= front.col;
-}
-
-/** Push the front one (or `by`) columns toward the home edge, clamped at 0. */
-export function advanceFront(front: DeployFront, by = FRONT_ADVANCE_PER_TURN): void {
-  front.col = Math.max(0, front.col - by);
+/** True if `coord` is inside the enemy danger radius. */
+export function inDangerZone(coord: GridCoord, front: DeploySource): boolean {
+  return stepDistance(coord, front.origin) <= front.radius;
 }
 
 /**
- * The per-front-turn capture chance for `unit`: zero unless the net has reached
- * it, then scaling with how deep into the danger zone it sits (more enemies
- * around it) **and** how far past its own safe depth it ranged — spiked by
- * {@link FRONT_DANGER_MULTIPLIER} and slashed for a dug-in unit. Capped by
- * {@link CAPTURE_CHANCE_MAX} so even a deep, surrounded unit is never a sure loss.
+ * True if `coord` is still safe ground: inside the campfire radius **and** not yet
+ * reached by the danger source. The danger overrides the campfire, so the safe
+ * zone shrinks as the enemy radius grows.
+ */
+export function inSafeZone(coord: GridCoord, camp: DeploySource, front: DeploySource): boolean {
+  return stepDistance(coord, camp.origin) <= camp.radius && !inDangerZone(coord, front);
+}
+
+/** Grow the danger radius one (or `by`) steps. */
+export function advanceFront(front: DeployFront, by = FRONT_ADVANCE_PER_TURN): void {
+  front.radius += by;
+}
+
+/**
+ * The per-turn capture chance for `unit`: zero unless the danger has reached it,
+ * then scaling with how deep inside the radius it sits (more enemies around it) —
+ * spiked by {@link FRONT_DANGER_MULTIPLIER} and slashed for a dug-in unit. Capped
+ * by {@link CAPTURE_CHANCE_MAX} so even a deep, surrounded unit is never a sure loss.
  */
 export function frontCaptureChance(
   unit: Unit,
-  front: DeployFront,
-  opts: { moraleDepthBonus?: number; dugIn?: boolean } = {},
+  front: DeploySource,
+  opts: { dugIn?: boolean } = {},
 ): number {
-  if (!inDangerZone(unit.pos.col, front)) return 0;
-  const depthPastFront = unit.pos.col - front.col + 1; // >= 1 once swallowed
-  const pastSafe = Math.max(0, unit.pos.col - safeDepth(unit, opts.moraleDepthBonus ?? 0));
-  let chance = Math.min(CAPTURE_CHANCE_MAX, (depthPastFront + pastSafe) * CAPTURE_PER_DEPTH * FRONT_DANGER_MULTIPLIER);
+  if (!inDangerZone(unit.pos, front)) return 0;
+  const depth = front.radius - stepDistance(unit.pos, front.origin) + 1; // >= 1 once inside
+  let chance = Math.min(CAPTURE_CHANCE_MAX, depth * CAPTURE_PER_DEPTH * FRONT_DANGER_MULTIPLIER);
   if (opts.dugIn) chance *= DIG_IN_CAPTURE_FACTOR;
   return chance;
 }
 
-/** The resolved outcome of one front turn — the net advances, then rolls capture. */
+/** The resolved outcome of one enemy-source turn — the radius grows, then capture. */
 export interface FrontTurnOutcome {
-  /** The front's new column after advancing. */
+  /** The danger radius after growing. */
   advancedTo: number;
-  /** Columns that became dangerous on this turn (for the engulf FX). */
-  newlyEngulfed: number[];
-  /** The first unit netted this turn, or null. */
+  /** The first unit caught this turn, or null. */
   captured: Unit | null;
-  /** Units that faced a capture roll, deepest first. */
+  /** Units that faced a capture roll, deepest (closest to the source) first. */
   rolled: Unit[];
   /** True if a capture raised the alarm (combat should begin). */
   alarm: boolean;
 }
 
 /**
- * Resolve the front's turn (D63): advance the net one step, then roll capture for
- * every player unit it has swallowed — deepest (most exposed) first. The party's
- * **last un-captured fighter is never netted** (parity with the stealth retreat),
- * and the **first** capture stops the rolls and raises the alarm. All rolls take
- * the seeded `rng`, so the whole turn is reproducible.
+ * Resolve the enemy source's turn (D63): grow the danger radius one step, then roll
+ * capture for every player unit inside it — deepest (closest to the source) first.
+ * The party's **last un-captured fighter is never caught**, and the **first** catch
+ * stops the rolls and raises the alarm. All rolls take the seeded `rng`, so the
+ * whole turn is reproducible.
  */
 export function resolveFrontTurn(
   front: DeployFront,
   units: readonly Unit[],
   rng: Rng,
-  opts: { moraleDepthBonus?: number; dugIn?: (u: Unit) => boolean; by?: number } = {},
+  opts: { dugIn?: (u: Unit) => boolean; by?: number } = {},
 ): FrontTurnOutcome {
-  const before = front.col;
   advanceFront(front, opts.by ?? FRONT_ADVANCE_PER_TURN);
-  const newlyEngulfed: number[] = [];
-  for (let c = front.col; c < before; c++) newlyEngulfed.push(c);
 
   const exposed = units
-    .filter((u) => u.side === "player" && u.alive && !u.captured && inDangerZone(u.pos.col, front))
-    .sort((a, b) => b.pos.col - a.pos.col || a.pos.row - b.pos.row || a.id.localeCompare(b.id));
+    .filter((u) => u.side === "player" && u.alive && !u.captured && inDangerZone(u.pos, front))
+    .sort(
+      (a, b) =>
+        stepDistance(a.pos, front.origin) - stepDistance(b.pos, front.origin) ||
+        a.pos.row - b.pos.row ||
+        a.id.localeCompare(b.id),
+    );
 
   const rolled: Unit[] = [];
   let captured: Unit | null = null;
   let remaining = units.filter((u) => u.side === "player" && !u.captured).length;
   for (const u of exposed) {
-    if (remaining <= 1) break; // never net the party's last fighter
+    if (remaining <= 1) break; // never catch the party's last fighter
     rolled.push(u);
     const dugIn = opts.dugIn?.(u) ?? false;
-    if (rng.chance(frontCaptureChance(u, front, { moraleDepthBonus: opts.moraleDepthBonus, dugIn }))) {
+    if (rng.chance(frontCaptureChance(u, front, { dugIn }))) {
       captureUnit(u);
       captured = u;
       remaining -= 1;
-      break; // first capture raises the alarm → combat begins
+      break; // first catch raises the alarm → combat begins
     }
   }
-  return { advancedTo: front.col, newlyEngulfed, captured, rolled, alarm: captured !== null };
+  return { advancedTo: front.radius, captured, rolled, alarm: captured !== null };
+}
+
+/** True while any walkable tile is still safe ground (else the danger has overrun). */
+export function safeGroundRemains(grid: TileGrid, camp: DeploySource, front: DeploySource): boolean {
+  for (let row = 0; row < grid.rows; row++) {
+    for (let col = 0; col < grid.cols; col++) {
+      const t = { col, row };
+      if (grid.isWalkable(t) && inSafeZone(t, camp, front)) return true;
+    }
+  }
+  return false;
 }
 
 /** Whose turn it is in the deployment clock — a player unit, or the front. */

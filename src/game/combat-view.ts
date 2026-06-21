@@ -348,11 +348,25 @@ export class CombatView {
    * up. Pooled across refreshes so the HUD doesn't churn objects. Replaces the old
    * monospace "CT order" text list, shared so both scenes read identically.
    */
-  drawInitiative(units: readonly Unit[], x: number, y: number, isCharging: (u: Unit) => boolean): void {
+  /**
+   * Draw the initiative rail at `(x, y)`, chips sorted by charge time (soonest
+   * first), then the fallen. Pass `limit` to render only the first N rows (the
+   * collapsed rail) — the scene layers a chevron to expand. Returns the layout so
+   * the caller can place that chevron: total rows, how many were shown, and the y
+   * just below the last chip.
+   */
+  drawInitiative(
+    units: readonly Unit[],
+    x: number,
+    y: number,
+    isCharging: (u: Unit) => boolean,
+    limit?: number,
+  ): { total: number; shown: number; bottomY: number } {
     const live = units.filter((u) => u.alive && !u.captured && !u.hidden).sort((a, b) => b.ct - a.ct);
     const fallen = units.filter((u) => !u.alive && !u.captured && !u.hidden);
     const rows = [...live.map((u) => ({ u, dead: false })), ...fallen.map((u) => ({ u, dead: true }))];
-    rows.forEach((r, i) => {
+    const shown = limit === undefined ? rows.length : Math.min(rows.length, Math.max(0, limit));
+    rows.slice(0, shown).forEach((r, i) => {
       const chip = this.ctChips[i] ?? this.makeCtChip();
       this.ctChips[i] = chip;
       const top = y + i * CombatView.CHIP_STEP;
@@ -376,7 +390,8 @@ export class CombatView {
       const helpful = r.u.statuses.some((st) => st.kind === "buff");
       chip.status.setPosition(x + CombatView.CHIP_W - 7, mid + 6).setText(r.dead ? "" : glyphs).setColor(harmful ? INK.danger : helpful ? INK.success : INK.muted).setVisible(!r.dead && glyphs.length > 0);
     });
-    for (let i = rows.length; i < this.ctChips.length; i++) this.hideCtChip(this.ctChips[i]);
+    for (let i = shown; i < this.ctChips.length; i++) this.hideCtChip(this.ctChips[i]);
+    return { total: rows.length, shown, bottomY: y + shown * CombatView.CHIP_STEP };
   }
 
   /** Hide the whole initiative rail (between encounters / on non-battle beats). */

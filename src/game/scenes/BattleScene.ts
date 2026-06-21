@@ -152,6 +152,10 @@ export class BattleScene extends Phaser.Scene {
   /** Active-unit focus card (left, the decision zone) + the peripheral camp-state card. */
   private focusCard!: MiniCard;
   private campCard!: MiniCard;
+  /** Initiative rail collapse (D-UX): show the soonest few, chevron to reveal the rest. */
+  private static readonly RAIL_COLLAPSED = 3;
+  private railExpanded = false;
+  private railChevron?: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
   /** The always-on board colour key (safe/danger washes), set per phase. */
   private legendStrip!: LegendStrip;
@@ -1633,6 +1637,7 @@ export class BattleScene extends Phaser.Scene {
     this.phase = "resolution";
     this.legendStrip.setItems([]); // board key is meaningless under the result overlay
     this.focusCard.hide();
+    this.railChevron?.setVisible(false);
     this.highlightTile(null);
     this.clearActionButtons();
 
@@ -1791,10 +1796,35 @@ export class BattleScene extends Phaser.Scene {
     // the acting unit lit, each carrying side/role, HP and the CT readout. Docked
     // right (the timing/history column) so the left can host the focus card.
     this.orderText.setText("Turn order");
-    this.view.drawInitiative(this.battle.units, this.scale.width - 158, 118, (u) => this.battle.clock.isCharging(u));
+    const limit = this.railExpanded ? undefined : BattleScene.RAIL_COLLAPSED;
+    const rail = this.view.drawInitiative(this.battle.units, this.scale.width - 158, 118, (u) => this.battle.clock.isCharging(u), limit);
+    this.layoutRailChevron(rail);
     this.refreshHp();
     this.refreshObjectiveText();
     this.refreshFocusCard();
+  }
+
+  /**
+   * Place the rail's expand/collapse chevron just below the last shown chip. Shown
+   * only when the rail actually overflows the collapsed cap (or is expanded past it);
+   * clicking toggles {@link railExpanded} and redraws. The chevron lives off-board on
+   * the right, so the scene's board click-router no-ops on it.
+   */
+  private layoutRailChevron(rail: { total: number; shown: number; bottomY: number }): void {
+    const hidden = rail.total - rail.shown;
+    const collapsible = rail.total > BattleScene.RAIL_COLLAPSED;
+    if (!collapsible) return void this.railChevron?.setVisible(false);
+    if (!this.railChevron) {
+      this.railChevron = this.add
+        .text(0, 0, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption })
+        .setDepth(10)
+        .setInteractive({ useHandCursor: true });
+      this.railChevron.on(Phaser.Input.Events.POINTER_DOWN, () => { this.railExpanded = !this.railExpanded; this.refreshHud(); });
+      this.railChevron.on(Phaser.Input.Events.POINTER_OVER, () => this.railChevron?.setColor(INK.bright));
+      this.railChevron.on(Phaser.Input.Events.POINTER_OUT, () => this.railChevron?.setColor(INK.muted));
+    }
+    const label = this.railExpanded ? "▴  less" : `▾  ${hidden} more`;
+    this.railChevron.setText(label).setPosition(this.scale.width - 158, rail.bottomY + 3).setVisible(true);
   }
 
   /**

@@ -131,6 +131,16 @@ async function main() {
       check("the battle progressed without wedging", end.phase === "battle" || reachedResolution);
       await shot("battle-driven");
 
+      // --- Stage: the initiative rail expands past its collapsed cap -----------
+      const collapsed = await g.bsEval(`return s.view.ctChips.filter(c => c.bg.visible).length;`);
+      await g.bsEval(`s.railExpanded = true; s.refreshHud();`);
+      await sleep(120);
+      const expanded = await g.bsEval(`return s.view.ctChips.filter(c => c.bg.visible).length;`);
+      console.log("• Initiative rail expand/collapse");
+      check("collapsed rail caps the visible chips", collapsed <= 3);
+      check("expanding reveals more chips", expanded > collapsed);
+      await shot("battle-rail-expanded");
+
       assertNoProblems(g.problems);
     } catch (err) {
       // Capture the board at the point of failure to make the break diagnosable.

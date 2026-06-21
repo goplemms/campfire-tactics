@@ -238,19 +238,33 @@ describe("Battle — deployment verbs (D63)", () => {
     battle.setStash(stash);
 
     const res = battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0");
-    expect(res?.trap).toBeDefined();
+    expect(res.ok && res.trap).toBeTruthy();
     expect(countOf(stash, "trap-kit")).toBe(1); // one kit spent
     expect(battle.entities.all().some((e) => e.id === "ptrap-0")).toBe(true);
     expect(battle.log[battle.log.length - 1]).toMatchObject({ kind: "placeTrap", unit: "t", id: "ptrap-0" });
+  });
+
+  it("undoing a placeTrap refunds the kit and removes the entity", () => {
+    const grid = new TileGrid(6, 1);
+    const trapper = at("t", "player", 0, 0);
+    const battle = new Battle(grid, [trapper]);
+    const stash = createInventory(6, { "trap-kit": 1 });
+    battle.setStash(stash);
+    battle.beginUndo();
+    battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0");
+    expect(countOf(stash, "trap-kit")).toBe(0);
+    battle.undo();
+    expect(countOf(stash, "trap-kit")).toBe(1); // kit refunded
+    expect(battle.entities.all().some((e) => e.id === "ptrap-0")).toBe(false);
   });
 
   it("placeTrap refuses with no stash wired and with no kit", () => {
     const grid = new TileGrid(6, 1);
     const trapper = at("t", "player", 0, 0);
     const battle = new Battle(grid, [trapper]);
-    expect(battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "x")).toBeNull(); // no stash
+    expect(battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "x").ok).toBe(false); // no stash
     battle.setStash(createInventory(6, {})); // empty
-    expect(battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "x")).toBeNull(); // no kit
+    expect(battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "x").ok).toBe(false); // no kit
     expect(battle.log.length).toBe(0); // a refused action never logs
   });
 

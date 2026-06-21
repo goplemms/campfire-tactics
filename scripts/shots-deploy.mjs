@@ -72,7 +72,7 @@ const STEPS = [
       `const f=s.front;` +
       `const u=s.battle.units.find(x=>x.side==="player"&&!x.captured&&!x.hidden);` +
       `u.pos={col:Math.max(0,f.origin.col-f.radius),row:f.origin.row};s.placeView(u);` +
-      `s.beginDeployTurn(u);s.dugIn.add(u.id);s.deployActed=true;s.refreshDeployButtons();s.refreshDeployStatus();`,
+      `s.beginDeployTurn(u);s.battle.digIn(u);s.deployActed=true;s.refreshDeployButtons();s.refreshDeployStatus();`,
     ),
   },
 
@@ -86,7 +86,7 @@ const STEPS = [
       `const players=s.battle.units.filter(x=>x.side==="player"&&!x.captured&&!x.hidden);` +
       `const v=players.find(p=>p.pos.row===f.origin.row)||players[0];` +
       `v.pos={col:Math.max(0,f.origin.col-Math.max(1,f.radius-1)),row:f.origin.row};` +
-      `v.captured=true;v.ct=0;s.placeView(v);s.tintCaptured(v,true);s.dropNet(v);` +
+      `s.battle.capture(v);s.placeView(v);s.tintCaptured(v,true);s.dropNet(v);` +
       `s.deployActor=null;s.drawZones();s.highlightTile(null);s.clearActionButtons();` +
       `s.titleText.setText("Deployment — "+v.name+" SNARED — alarm raised · enemy reach "+f.radius);` +
       `s.setHint(v.name+" was snared as the danger closed in — the alarm goes up! Battle begins.");`,

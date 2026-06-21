@@ -66,7 +66,6 @@ import {
   disarmTrap,
   canDisarm,
   playerTrapSkill,
-  placePlayerTrap,
   type ConcealedTrap,
   type PlaceTrapEffect,
   bribeEnemy,
@@ -164,7 +163,6 @@ export class BattleScene extends Phaser.Scene {
   /** On-board source markers (campfire + enemy), cleared when battle begins. */
   private deployMarkers: Phaser.GameObjects.GameObject[] = [];
   private deployClock!: DeployClock;
-  private dugIn = new Set<string>();
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
@@ -342,11 +340,13 @@ export class BattleScene extends Phaser.Scene {
     this.trapSeq = 0;
     // The party's Set Trap spec (damage + snare status) — resolved once in core (D11).
     this.trapEffect = playerTrapSkill(this.run.party);
+    // Deploy verbs flow through the one interpreter now (D63): wire the run stash so
+    // Battle's placeTrap action can spend kits, undoably, on the shared log.
+    this.battle.setStash(this.run.inventory);
     // D63 — the closing net: the enemy is a single danger front that marches in from
     // its edge, with a Speed leaning toward the camp's fastest scout. Player units and
     // the front share one deployment CT clock, so a quick party earns more positioning
-    // turns between net-closings.
-    this.dugIn.clear();
+    // turns between net-closings. (Dig-in is unit state now, reset at staging.)
     const enemies = this.battle.units.filter((u) => u.side === "enemy");
     // The campfire's safe radius comes from party presence (D63), widened by the
     // morale/intel deploy edge (D8/D10) — a confident, well-scouted camp holds more.
@@ -378,6 +378,9 @@ export class BattleScene extends Phaser.Scene {
   private beginDeployTurn(unit: Unit): void {
     this.deployMoved = false;
     this.deployActed = false;
+    // Arm the shared action-log undo for the deploy turn (D63) — each move/dig-in/
+    // trap becomes undoable back to the turn's start, exactly like a combat turn.
+    this.battle.beginUndo();
     this.selectDeployActor(unit);
     this.setPrimary("End Turn");
     this.setHint(
@@ -403,9 +406,8 @@ export class BattleScene extends Phaser.Scene {
    * begins anyway. Otherwise the clock rests on the player until the next Advance.
    */
   private runFrontTurn(): void {
-    const out = resolveFrontTurn(this.front, this.battle.units, this.deployRng, {
-      dugIn: (u) => this.dugIn.has(u.id),
-    });
+    // resolveFrontTurn reads each unit's dugIn stance by default (D63).
+    const out = resolveFrontTurn(this.front, this.battle.units, this.deployRng);
     this.deployClock.spendFront();
     this.deployActor = null;
     this.clearActionButtons();
@@ -414,7 +416,9 @@ export class BattleScene extends Phaser.Scene {
 
     if (out.captured) {
       const caught = out.captured;
-      this.dugIn.delete(caught.id);
+      // The net's turn is the deploy "enemy turn": bind the catch through the one
+      // interpreter (logged), mirroring how a combat enemy turn flows through apply.
+      this.battle.capture(caught);
       this.dropNet(caught);
       this.placeView(caught);
       this.tintCaptured(caught, true);
@@ -440,15 +444,51 @@ export class BattleScene extends Phaser.Scene {
 
   /** End the active unit's deployment turn and spend its CT (no auto-advance). */
   private endDeployTurn(unit: Unit): void {
+    this.battle.endUndo(); // the deploy turn commits — no take-back across the boundary
     this.deployClock.spend(unit, { moved: this.deployMoved, acted: this.deployActed });
     this.enterDeployIdle(`${unit.name}'s turn ends — Advance Clock (Space) to step the net, or Start Battle.`);
+  }
+
+  /**
+   * Undo **this unit's whole deploy turn** (D63 — the deploy twin of the combat
+   * D60 take-back): roll the battle back through the shared action log to where the
+   * turn began — repositions, dig-in, and any placed trap (its kit refunded, its
+   * entity dropped) — then resync the board. The clock/RNG/log revert in core
+   * ({@link "../../core/turn".Battle.undoAll}); the render re-reads the result.
+   */
+  private undoDeployTurn(actor: Unit): void {
+    if (this.busy || this.deployActor !== actor || !this.battle.canUndo()) return;
+    this.battle.undoAll();
+    this.deployMoved = false;
+    this.deployActed = false;
+    // Resync token positions + captured tint, then drop markers for any undone trap.
+    for (const u of this.battle.units) {
+      this.placeView(u);
+      if (u.side === "player") this.tintCaptured(u, u.captured);
+    }
+    this.syncPlayerTrapMarkers();
+    this.refreshCampText();
+    this.highlightTile(actor.pos);
+    this.refreshDeployButtons();
+    this.refreshDeployStatus();
+    this.setHint(`${actor.name}'s deploy turn reset — reposition, Dig In, place a trap, or End Turn (Space).`);
+  }
+
+  /** Destroy board markers for player traps no longer registered (after an undo). */
+  private syncPlayerTrapMarkers(): void {
+    for (const [id, m] of this.playerTrapMarkers) {
+      if (!this.battle.entities.all().some((e) => e.id === id)) {
+        m.destroy();
+        this.playerTrapMarkers.delete(id);
+      }
+    }
   }
 
   /** Dig In (D63): hunker on this tile for a sharply reduced capture chance. */
   private digIn(): void {
     const actor = this.deployActor;
     if (!actor || actor.captured || this.busy || this.deployActed) return;
-    this.dugIn.add(actor.id);
+    this.battle.digIn(actor); // logged + undoable through the one interpreter (D63)
     this.deployActed = true;
     this.refreshDeployButtons();
     this.refreshDeployStatus();
@@ -490,6 +530,15 @@ export class BattleScene extends Phaser.Scene {
   private refreshDeployButtons(): void {
     const actor = this.deployActor;
     const specs: { text: string; description?: string; onClick: () => void }[] = [];
+    // Undo leads when this deploy turn has anything to take back (D63) — moves, a
+    // dig-in, or a placed trap (kit refunded), back to the turn's start, like combat.
+    if (actor && !actor.captured && this.battle.canUndo()) {
+      specs.push({
+        text: "Undo",
+        description: "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc).",
+        onClick: () => this.undoDeployTurn(actor),
+      });
+    }
     // The act (Dig In / Place Trap) is the unit's one action this turn — surfaced
     // only until it's spent; movement is a separate, click-to-move budget.
     if (actor && !actor.captured && !this.deployActed) {
@@ -524,7 +573,7 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     const inDanger = this.front && inDangerZone(actor.pos, this.front);
-    const dug = this.dugIn.has(actor.id);
+    const dug = actor.dugIn === true;
     const safe = this.front && this.campfire && inSafeZone(actor.pos, this.campfire, this.front);
     const tag = actor.captured
       ? " — CAPTURED"
@@ -681,8 +730,9 @@ export class BattleScene extends Phaser.Scene {
       this.setHint("Can't stop there — an ally holds the only tile in reach.");
       return;
     }
-    actor.pos = { ...steps[steps.length - 1] };
-    this.dugIn.delete(actor.id); // moving breaks the dig-in stance
+    // Route the reposition through the one interpreter (D63): it walks the path
+    // (logged + undoable), springs any entity crossed, and breaks the dig-in stance.
+    this.battle.deployMove(actor, steps);
     this.deployMoved = true;
     this.busy = true;
     this.animateMove(actor, steps, () => {
@@ -703,10 +753,11 @@ export class BattleScene extends Phaser.Scene {
   private placeTrap(): void {
     const actor = this.deployActor;
     if (!actor || actor.captured || this.busy || !this.trapEffect) return;
-    // The rules (kit cost, tile clear, entity registration, use-XP) live in core
-    // (placePlayerTrap); the scene keeps only the board marker, keyed by entity id.
+    // The rules (kit cost, tile clear, entity registration, use-XP) run through the
+    // one interpreter now (D63: Battle.placeTrap → the logged, undoable placeTrap
+    // action); the scene keeps only the board marker, keyed by entity id.
     const id = `ptrap-${this.trapSeq++}`;
-    const res = placePlayerTrap(this.run.inventory, this.battle.entities, actor, actor.pos, this.trapEffect, id);
+    const res = this.battle.placeTrap(actor, actor.pos, this.trapEffect, id);
     if (!res.ok) {
       this.setHint(res.reason ?? "Can't place a trap here.");
       return;
@@ -1278,6 +1329,8 @@ export class BattleScene extends Phaser.Scene {
       // Back out of an armed target first; otherwise take back this turn's actions.
       if (this.armedSkill || this.bribeArmed || this.pendingHerb) return this.cancelArmed();
       if (this.phase === "battle" && !this.turnLocked && this.waitingFor && !this.busy && this.battle.canUndo()) return this.undoTurn(this.waitingFor);
+      // Deploy turn take-back (D63) — the deploy twin of the combat undo.
+      if (this.phase === "deployment" && this.deployActor && !this.busy && this.battle.canUndo()) return this.undoDeployTurn(this.deployActor);
       return;
     }
 

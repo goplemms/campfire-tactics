@@ -78,6 +78,8 @@ interface BattleCheckpoint {
   units: Map<UnitId, UnitSnapshot>;
   clock: ClockSnapshot;
   entities: EntitySnapshot;
+  /** Shared-stash counts by value (D63) — so undoing a `placeTrap` refunds its kit. */
+  stash?: Record<string, number>;
 }
 
 /** Capture a unit's undoable mutable state by value. */
@@ -299,6 +301,7 @@ export class Battle {
       units,
       clock: this.clock.snapshot(),
       entities: this.entities.snapshot(),
+      stash: this.stash ? { ...this.stash.counts } : undefined,
     };
   }
 
@@ -310,6 +313,7 @@ export class Battle {
     }
     this.clock.restore(cp.clock);
     this.entities.restore(cp.entities);
+    if (cp.stash && this.stash) this.stash.counts = { ...cp.stash };
     this.drawCount = cp.drawCount;
     this._log.length = cp.logLen; // drop the actions taken since the checkpoint
     // Positions reverted → re-derive the position-dependent tarpit aura (D40). The
@@ -604,12 +608,12 @@ export class Battle {
 
   /**
    * Lay a player trap on `pos`, consuming one kit from the wired stash (D11/D63).
-   * Returns the registered entity + any character levels gained, or `null` if it was
-   * refused (no kit, tile taken, or no stash wired).
+   * On success returns the registered entity + any character levels gained; on a
+   * refusal (no kit, tile taken, or no stash wired) returns the reason for the hint.
    */
-  placeTrap(unit: Unit, pos: GridCoord, effect: PlaceTrapEffect, id: string): { trap?: RecoverableEntity; levels: number } | null {
+  placeTrap(unit: Unit, pos: GridCoord, effect: PlaceTrapEffect, id: string): { ok: true; trap?: RecoverableEntity; levels: number } | { ok: false; reason: string } {
     const r = this.apply({ kind: "placeTrap", unit: unit.id, pos, effect, id });
-    return r.ok ? { trap: r.trap, levels: r.levels ?? 0 } : null;
+    return r.ok ? { ok: true, trap: r.trap, levels: r.levels ?? 0 } : { ok: false, reason: r.reason };
   }
 
   /** Bind a unit captured by the closing net (D7/D63) — the deploy "enemy turn" outcome. */

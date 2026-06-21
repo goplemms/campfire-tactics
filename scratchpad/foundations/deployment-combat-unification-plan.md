@@ -36,12 +36,18 @@ substrate, implemented twice.
    (`tickUntilReady`/`byReadiest` in `clock.ts`); each clock keeps only its own
    actor policy (the front's strict-lead tie rule is intentional, so it stays a
    distinct actor).
-2. **Deployment bypasses `Battle.apply`** — move/dig-in/place-trap/capture mutate
-   state directly, so deployment has **no replay and no undo** (combat has both).
-3. **Separate RNG** — `streamFor(run.seed,"deploy")` drawn in the scene, not via
-   `Battle.roll(label)`'s draw-counter seam.
+2. ~~**Deployment bypasses `Battle.apply`**~~ — *Phase 3:* deploy verbs
+   (`deployMove`/`digIn`/`placeTrap`/`capture`) now lower through the one interpreter,
+   sharing combat's log + undo; the deploy turn has **Undo** like the combat turn,
+   and `replay()` reconstructs across the phase boundary.
+3. **Separate RNG** — `streamFor(run.seed,"deploy")` is drawn live in the scene; the
+   capture *outcome* is recorded by the logged `capture` action, so replay needs no
+   re-keying. (Left as-is by design — see the Phase 3 RNG note.)
 4. **Parallel scene orchestration** — `deployNextActor`/`beginDeployTurn`/
    `endDeployTurn`/`runFrontTurn` beside `onAdvance`/`beginPlayerTurn`/`endPlayerTurn`.
+   Still distinct (the deploy clock is the front-aware `DeployClock`); the *verbs*
+   underneath are now unified. Folding the orchestration itself is a possible future
+   pass, not required for the action-path unification.
 
 ## Drift to fix regardless of refactor
 
@@ -81,14 +87,30 @@ substrate, implemented twice.
   `deployNextActor`/`beginDeployTurn`/`endDeployTurn` vs
   `onAdvance`/`beginPlayerTurn`/`endPlayerTurn` orchestration.
 
-### Phase 3 — One action log (deploy verbs through `Battle.apply`)
-- Add `CombatAction` variants (or a sibling `DeployAction` set) for deploy
-  move / dig-in / place-trap / capture; lower them through the one interpreter.
-- Route deploy RNG through `Battle.roll(label)` so the deploy sub-phase is
-  replayable; bring **undo** to deployment for parity with the D60 free-move turn.
-- This is the audit's `#7` graph→replay item (higher risk) — land it last, one
-  verb at a time, each suite-green.
-- Gate: a replay test over a deploy+battle log; undo works in the deploy phase.
+### Phase 3 — One action log (deploy verbs through `Battle.apply`) ✅
+- **Shipped (the audit's `#7` graph→replay item):** the deploy verbs now lower to
+  `CombatAction`s — `deployMove` / `digIn` / `placeTrap` / `capture` — through the
+  single `Battle.apply` interpreter, sharing combat's log + undo stack.
+  - `unit.dugIn` is now battle state (snapshotted for undo, reset at staging,
+    broken by moving); the scene's `dugIn` Set is gone.
+  - `placeTrap` draws from a wired `stash`; the undo checkpoint snapshots the stash
+    counts **and** entity membership, so undoing a trap **refunds the kit and drops
+    the entity** (extended `EntityRegistry.snapshot/restore` to carry membership,
+    previously flags-only).
+  - `resolveFrontTurn` now *decides* the catch; the interpreter's `capture` action
+    binds the unit — one mutation path.
+  - `replay()` drains the (always-leading, discriminable) deploy prelude before
+    seeding + driving the combat loop, so `replay(initial, log) === state` holds
+    across the phase boundary.
+- **Feature delivered:** the deploy turn has the same **Undo** (button + Esc) as the
+  combat free-move turn — take back repositions, dig-in, and trap placement.
+- **RNG note:** the front capture *outcome* is recorded by the logged `capture`
+  action, so replay reproduces it from the log — no need to re-key the live
+  `deployRng` to `Battle.roll` (that would only matter for a re-rolling replay,
+  which the logged decision makes unnecessary).
+- Gate met: core suite green (585, +7 deploy-verb/undo/replay tests); typecheck +
+  `vite build` clean; **`shots:deploy` and `shots:mill` walkthroughs render with no
+  page errors** (the only way to exercise the Phaser deploy scene headlessly).
 
 ## Invariants honoured throughout
 - core/render split; core has no `Math.random` (`rng.test.ts`).

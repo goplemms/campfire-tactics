@@ -183,6 +183,12 @@ export interface Unit extends UnitStats {
    * initiative seed, but still "alive" — a rescuable sub-objective.
    */
   captured: boolean;
+  /**
+   * Dug in (D63): hunkered during Deployment for a reduced capture chance when the
+   * net's turn comes. A deployment-phase transient — set by the `digIn` action,
+   * cleared by moving or capture, and reset between encounters. Combat never sets it.
+   */
+  dugIn?: boolean;
   /** Active statuses (D12); ticked on the unit's turn start. */
   statuses: StatusInstance[];
   /** Generic per-unit counters, e.g. a capture meter (D12). */
@@ -230,6 +236,7 @@ export function createUnit(spec: UnitSpec): Unit {
     role: spec.role,
     hidden: false,
     captured: false,
+    dugIn: false,
     speed: spec.speed,
     attack: spec.attack,
     defense: spec.defense,

@@ -74,6 +74,7 @@ function resetForBattle(u: Unit): void {
   u.ct = 0;
   u.statuses = [];
   u.captured = false;
+  u.dugIn = false;
 }
 
 /**

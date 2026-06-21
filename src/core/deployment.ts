@@ -391,6 +391,11 @@ export interface FrontTurnOutcome {
  * The party's **last un-captured fighter is never caught**, and the **first** catch
  * stops the rolls and raises the alarm. All rolls take the seeded `rng`, so the
  * whole turn is reproducible.
+ *
+ * This **decides** the catch; it no longer binds the unit itself — the caller
+ * applies the capture through the one interpreter ({@link "./turn".Battle.apply}'s
+ * `capture` action, D63 unification) so the deploy "enemy turn" lands in the same
+ * log/undo path as combat. (`opts.dugIn` reads {@link Unit.dugIn} by default.)
  */
 export function resolveFrontTurn(
   front: DeployFront,
@@ -399,6 +404,7 @@ export function resolveFrontTurn(
   opts: { dugIn?: (u: Unit) => boolean; by?: number } = {},
 ): FrontTurnOutcome {
   advanceFront(front, opts.by ?? FRONT_ADVANCE_PER_TURN);
+  const isDugIn = opts.dugIn ?? ((u: Unit) => u.dugIn === true);
 
   const exposed = units
     .filter((u) => u.side === "player" && u.alive && !u.captured && inDangerZone(u.pos, front))
@@ -415,9 +421,7 @@ export function resolveFrontTurn(
   for (const u of exposed) {
     if (remaining <= 1) break; // never catch the party's last fighter
     rolled.push(u);
-    const dugIn = opts.dugIn?.(u) ?? false;
-    if (rng.chance(frontCaptureChance(u, front, { dugIn }))) {
-      captureUnit(u);
+    if (rng.chance(frontCaptureChance(u, front, { dugIn: isDugIn(u) }))) {
       captured = u;
       remaining -= 1;
       break; // first catch raises the alarm → combat begins

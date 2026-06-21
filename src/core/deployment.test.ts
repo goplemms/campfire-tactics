@@ -393,7 +393,9 @@ describe("D63 resolveFrontTurn — grow then roll the swallowed", () => {
     }
     expect(out.alarm).toBe(true);
     expect(out.captured).not.toBeNull();
-    expect(out.captured!.captured).toBe(true);
+    // resolveFrontTurn now *decides* the catch; the interpreter binds the unit
+    // (Battle.apply's `capture` action, D63 unification) — so the decision flags
+    // the alarm without mutating `captured` here.
   });
 
   it("never catches the party's last un-captured fighter", () => {

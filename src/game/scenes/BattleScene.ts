@@ -24,7 +24,7 @@ import {
   canSee,
   // M5b/D11 — deployment: the shared stealth-alert model
   countOf,
-  campReadoutLine,
+  campChipLine,
   freeCaptive,
   streamFor,
   // D63 — the closing net: two radial influence sources. The party's campfire
@@ -95,6 +95,7 @@ import type { RunHandoff } from "./OverworldScene";
 import { Button } from "../button";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
+import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
 import { dropNet as dropNetCage } from "../deploy-fx";
 import { ICON } from "../icons";
 
@@ -149,6 +150,8 @@ export class BattleScene extends Phaser.Scene {
   private objectiveText!: Phaser.GameObjects.Text;
   private orderText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
+  /** The always-on board colour key (safe/danger washes), set per phase. */
+  private legendStrip!: LegendStrip;
   private lastHint = "";
   private primary!: Button;
   private actionButtons: Phaser.GameObjects.GameObject[] = [];
@@ -248,12 +251,18 @@ export class BattleScene extends Phaser.Scene {
     addVignette(this);
     // Persistent UI.
     this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
-    this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
+    // The camp/economy readout is reference, not a decision input, during a mission —
+    // demoted (muted + caption) and condensed (campChipLine) so the tactical title +
+    // intel lines lead. The full readout lives on the overworld camp where it's spent.
+    this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(10);
     this.intelText = this.add.text(this.scale.width / 2, 60, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
     this.orderText = this.add.text(10, 68, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
     // Objective banner — a generic readout (label + gauge) under the intel line.
     this.objectiveText = this.add.text(this.scale.width / 2, 76, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
     this.hintPanel = new HintPanel(this);
+    // The persistent board colour key — the same component carries across phases,
+    // re-keyed in enterDeploy / startBattle so the wash language is always legible.
+    this.legendStrip = new LegendStrip(this);
     this.threatGfx = this.add.graphics().setDepth(0.36);
     this.preview = this.add.graphics().setDepth(0.4);
     this.highlight = this.add.graphics().setDepth(0.5);
@@ -338,6 +347,7 @@ export class BattleScene extends Phaser.Scene {
 
   private enterDeploy(): void {
     this.phase = "deployment";
+    this.legendStrip.setItems(DEPLOY_LEGEND);
     this.deployRng = streamFor(this.run.seed, "deploy");
     this.spotRng = streamFor(this.run.seed, "trap-spot");
     this.trapMarkers.clear();
@@ -789,6 +799,7 @@ export class BattleScene extends Phaser.Scene {
   private startBattle(): void {
     this.phase = "battle";
     this.titleText.setText("Battle");
+    this.legendStrip.setItems(BATTLE_LEGEND);
     this.clearActionButtons();
     this.theftAttempts.clear();
     this.goldStolen = 0;
@@ -1621,6 +1632,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.over) return;
     this.over = true;
     this.phase = "resolution";
+    this.legendStrip.setItems([]); // board key is meaningless under the result overlay
     this.highlightTile(null);
     this.clearActionButtons();
 
@@ -1824,8 +1836,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private refreshCampText(): void {
-    // Format owned by core (campReadoutLine) — the battle HUD adds only the Night prefix.
-    this.campText.setText(campReadoutLine(this.run, { night: this.run.night + 1 }));
+    // Format owned by core (campChipLine) — the demoted, condensed tactical readout;
+    // the camp-time levers (Kits/RP/Upkeep) surface where they're spent, not here.
+    this.campText.setText(campChipLine(this.run, { night: this.run.night + 1 }));
   }
 
   private refreshIntelText(): void {
@@ -1838,9 +1851,12 @@ export class BattleScene extends Phaser.Scene {
     if (r.types) parts.push(`types: ${r.types.join(", ")}`);
     if (r.count !== undefined) parts.push(`count: ${r.count}`);
     if (r.grantsVision) parts.push("starting vision");
+    // Show the *tactical* encounter shape (open-field vs. fortified = pre-placed
+    // hazards, D12) for procedural fights; an authored set-piece reveals no such
+    // banner, so we drop the parenthetical rather than leak the "authored" dev tag.
     const def = currentEncounter(this.run);
-    const shape = isAuthoredEncounter(def) ? "authored" : def.type;
-    this.intelText.setText(`${parts.join("  ·  ")}   (${shape})`);
+    const shape = isAuthoredEncounter(def) ? undefined : def.type;
+    this.intelText.setText(parts.join("  ·  ") + (shape ? `   (${shape})` : ""));
   }
 
   private setHint(text: string): void {

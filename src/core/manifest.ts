@@ -96,6 +96,21 @@ export function campReadoutLine(run: RunState, opts: { night?: number } = {}): s
   );
 }
 
+/**
+ * A **condensed** camp readout for the tactical phases (Deployment + Battle), where
+ * the full {@link campReadoutLine} is reference noise: only the mid-mission
+ * essentials — purse, morale, storage — stay, demoted from the prominent line. The
+ * camp-time levers it drops (Kits, RP, Upkeep) surface where they're actually
+ * spent: trap kits on the deploy status line (placed here), RP and Upkeep on the
+ * overworld camp (paid there). Format owned by core, like its sibling, so the two
+ * phases can't drift. Pass `night` to prefix `Night N · `.
+ */
+export function campChipLine(run: RunState, opts: { night?: number } = {}): string {
+  const r = campReadout(run);
+  const prefix = opts.night !== undefined ? `Night ${opts.night}  ·  ` : "";
+  return prefix + `Purse ${r.purse}g  ·  Morale ${r.moraleTier}  ·  Storage ${r.storageUsed}/${r.storageCap}`;
+}
+
 /** A concise player-facing effect blurb for a material (data-driven where it can be). */
 export function itemEffect(mat: MaterialDef): string {
   if (mat.damage != null) return `Deployable trap · ${mat.damage} dmg`;

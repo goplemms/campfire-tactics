@@ -815,6 +815,7 @@ export class BattleScene extends Phaser.Scene {
   private startBattle(): void {
     this.phase = "battle";
     this.titleText.setText("Battle");
+    this.refreshIntelText(); // re-style the roster line down to passive reference (D-UX)
     this.legendStrip.setItems(BATTLE_LEGEND);
     this.clearActionButtons();
     this.theftAttempts.clear();
@@ -1959,16 +1960,28 @@ export class BattleScene extends Phaser.Scene {
       this.intelText.setText("");
       return;
     }
-    const parts = [`Intel T${r.tier}`];
+    // Intel drives the *deployment* decision — where to stand against the scouted
+    // roster — so it leads there: gold and prominent. Once the fight is joined the
+    // foes are on the board and there's no re-scouting; it becomes passive reference,
+    // so in Battle it recedes (muted, caption-sized) and sheds the deploy-only tier /
+    // vision / encounter-shape, keeping just the roster as a quiet recap (D-UX rule:
+    // prominence follows whether you can act on the info in this phase).
+    const battle = this.phase === "battle";
+    const parts: string[] = [];
+    if (!battle) parts.push(`Intel T${r.tier}`);
     if (r.count !== undefined) parts.push(`${r.count} foe${r.count === 1 ? "" : "s"}`);
     if (r.types && r.types.length) parts.push(compactFoeTypes(r.types));
-    if (r.grantsVision) parts.push("vision");
+    if (!battle && r.grantsVision) parts.push("vision");
     // Show the *tactical* encounter shape (open-field vs. fortified = pre-placed
-    // hazards, D12) for procedural fights; an authored set-piece reveals no such
-    // banner, so we drop the parenthetical rather than leak the "authored" dev tag.
+    // hazards, D12) only in Deployment, where it informs placement; an authored
+    // set-piece reveals no such banner, so we drop the parenthetical rather than leak
+    // the "authored" dev tag.
     const def = currentEncounter(this.run);
-    const shape = isAuthoredEncounter(def) ? undefined : def.type;
-    this.intelText.setText(parts.join("  ·  ") + (shape ? `   (${shape})` : ""));
+    const shape = !battle && !isAuthoredEncounter(def) ? def.type : undefined;
+    this.intelText
+      .setText(parts.join("  ·  ") + (shape ? `   (${shape})` : ""))
+      .setColor(battle ? INK.muted : INK.gold)
+      .setFontSize(battle ? FONT.caption : FONT.label);
   }
 
   private setHint(text: string): void {

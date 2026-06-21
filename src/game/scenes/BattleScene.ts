@@ -272,12 +272,14 @@ export class BattleScene extends Phaser.Scene {
     // The campfire glow — a warm vignette over the board, beneath the tokens/HUD.
     addVignette(this);
     // Persistent UI.
-    // Top strip = "the situation": phase title + intel, centred and uncluttered now
-    // that the camp/economy readout has moved to its own peripheral card (below).
+    // Top strip = "the situation": a prominent heading (phase + whose turn) over a
+    // single secondary line that composes the objective (the goal — leads) and the
+    // intel recap (passive reference — trails), laid out together by layoutSituationLine
+    // so the band stays two lines instead of three (D-UX compactness).
     this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
     this.intelText = this.add.text(this.scale.width / 2, 42, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
-    // Objective banner — a generic readout (label + gauge) under the intel line.
-    this.objectiveText = this.add.text(this.scale.width / 2, 60, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
+    // Objective readout (label + gauge) — shares the secondary line, ahead of intel.
+    this.objectiveText = this.add.text(this.scale.width / 2, 42, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
     // Right column = "timing/history": the turn-order rail (drawn by CombatView) and
     // its label move here, off the left so the left can host the focus card. The label
     // sits below the camp card (above the rail) so it isn't occluded by it.
@@ -1863,6 +1865,33 @@ export class BattleScene extends Phaser.Scene {
       else parts.push(`• ${o.spec.label}`);
     }
     this.objectiveText.setText(parts.join("    "));
+    this.layoutSituationLine();
+  }
+
+  /**
+   * Lay the **secondary situation line** (D-UX merge): the objective readout and the
+   * intel recap share one centred row at y=42 instead of stacking. The objective —
+   * the actionable goal — leads (left); the passive intel recap trails. With only one
+   * present the surviving piece simply centres; this keeps the top band two lines
+   * (heading + situation) however many of the pieces are live.
+   */
+  private layoutSituationLine(): void {
+    const cx = this.scale.width / 2;
+    const y = 42;
+    const obj = this.objectiveText;
+    const intel = this.intelText;
+    const hasObj = obj.text.length > 0;
+    const hasIntel = intel.text.length > 0;
+    const gap = 18; // the " · " of breathing room between goal and recap
+    if (hasObj && hasIntel) {
+      const left = cx - (obj.width + gap + intel.width) / 2;
+      obj.setOrigin(0, 0.5).setPosition(left, y);
+      intel.setOrigin(0, 0.5).setPosition(left + obj.width + gap, y);
+    } else if (hasObj) {
+      obj.setOrigin(0.5, 0.5).setPosition(cx, y);
+    } else {
+      intel.setOrigin(0.5, 0.5).setPosition(cx, y);
+    }
   }
 
   /** True once the staged encounter has reached a graded terminal (D50/D51). */
@@ -1982,6 +2011,7 @@ export class BattleScene extends Phaser.Scene {
       .setText(parts.join("  ·  ") + (shape ? `   (${shape})` : ""))
       .setColor(battle ? INK.muted : INK.gold)
       .setFontSize(battle ? FONT.caption : FONT.label);
+    this.layoutSituationLine();
   }
 
   private setHint(text: string): void {

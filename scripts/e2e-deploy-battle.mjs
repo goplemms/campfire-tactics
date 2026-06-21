@@ -118,6 +118,7 @@ async function main() {
         const cur = await snap();
         if (cur.phase === "resolution") { reachedResolution = true; break; }
         if (cur.waiting) {
+          if (!sawPlayerTurn) await shot("battle-player-turn"); // action row + focus card, live
           sawPlayerTurn = true;
           await g.key(" "); // Space = End Turn while a player unit is active (D60)
         } else {
@@ -130,6 +131,16 @@ async function main() {
       const end = await snap();
       check("the battle progressed without wedging", end.phase === "battle" || reachedResolution);
       await shot("battle-driven");
+
+      // --- Stage: the initiative rail expands past its collapsed cap -----------
+      const collapsed = await g.bsEval(`return s.view.ctChips.filter(c => c.bg.visible).length;`);
+      await g.bsEval(`s.railExpanded = true; s.refreshHud();`);
+      await sleep(120);
+      const expanded = await g.bsEval(`return s.view.ctChips.filter(c => c.bg.visible).length;`);
+      console.log("• Initiative rail expand/collapse");
+      check("collapsed rail caps the visible chips", collapsed <= 3);
+      check("expanding reveals more chips", expanded > collapsed);
+      await shot("battle-rail-expanded");
 
       assertNoProblems(g.problems);
     } catch (err) {

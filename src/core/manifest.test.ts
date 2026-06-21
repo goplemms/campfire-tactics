@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import { createCamp } from "./camp";
 import { createInventory } from "./inventory";
-import { projectManifest, itemEffect } from "./manifest";
+import { projectManifest, itemEffect, campReadoutLine, campChipLine } from "./manifest";
 import { MATERIALS } from "./inventory";
 import type { RunState } from "./run";
 
@@ -61,5 +61,31 @@ describe("projectManifest (caravan inventory projection — pure read)", () => {
     expect(itemEffect(MATERIALS.salve)).toMatch(/restores HP/);
     expect(itemEffect(MATERIALS.antidote)).toMatch(/cleanses/);
     expect(itemEffect(MATERIALS["rune-reagent"])).toMatch(/Rune/);
+  });
+});
+
+describe("campChipLine (condensed tactical HUD readout)", () => {
+  const run = mkRun([mkUnit("a")], createInventory(8, { "trap-kit": 2 }), 110);
+
+  it("keeps the mid-mission essentials — purse, morale, storage", () => {
+    const line = campChipLine(run);
+    expect(line).toMatch(/Purse 110g/);
+    expect(line).toMatch(/Morale/);
+    expect(line).toMatch(/Storage 2\/8/);
+  });
+
+  it("drops the camp-time levers the full readout carries (Kits, RP, Upkeep)", () => {
+    const chip = campChipLine(run);
+    expect(chip).not.toMatch(/Kits/);
+    expect(chip).not.toMatch(/RP/);
+    expect(chip).not.toMatch(/Upkeep/);
+    // The full line still carries them — the chip is a strict demotion, not a rename.
+    const full = campReadoutLine(run);
+    expect(full).toMatch(/Kits/);
+    expect(full).toMatch(/Upkeep/);
+  });
+
+  it("prefixes the night when asked", () => {
+    expect(campChipLine(run, { night: 3 })).toMatch(/^Night 3/);
   });
 });

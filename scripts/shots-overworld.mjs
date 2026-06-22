@@ -61,6 +61,9 @@ const STEPS = BOOT === "battle"
   : [
       { name: "01-map-fog", minMs: 700, eval: `void 0;` }, // initial: the map with fog
       { name: "02-make-camp", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);`) },
+      // The gated Market overlay (D61): buy trap kits + herbs in bulk (the +/− stepper),
+      // sell salvage. Bump the trap-kit quantity so the bulk control shows.
+      { name: "02b-market", eval: wrap(`s.openMarket(()=>s.renderCamp());s.marketQty['trap-kit']=3;s.renderMarket();`) },
       { name: "03-ledger", eval: wrap(`s.openTent(()=>s.renderCamp(),"ledger");`) },
       { name: "04-ledger-skip-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
       { name: "04b-ledger-skip-both", eval: wrap(`s.toggleSkip("repairs",()=>{});`) },

@@ -8,6 +8,7 @@ import {
   RunLoop,
   previewNode,
   countOf,
+  canAdd,
   campReadoutLine,
   // M8 — the overworld action economy (D35)
   getAbility,
@@ -84,6 +85,9 @@ export interface RunHandoff {
   demoIntro?: boolean;
 }
 
+/** Buyable Market stock (D61) — trap kits first (the headline), then the Medic's herbs. */
+const MARKET_STOCK = ["trap-kit", "salve", "stimulant", "antidote"];
+
 /** One action row inside a collapsible camp category drawer (Recovery/Intel/Economy). */
 interface CampAction {
   /** The button label — already tagged with the acting member (` · Name`). */
@@ -142,6 +146,11 @@ export class OverworldScene extends Phaser.Scene {
   private tentTab: TentTab = "party";
   private tentReturn: (() => void) | null = null;
   private tentDossier?: PartyDossierView;
+
+  // The Market overlay (the gated supply shop, D61): the beat to return to on close,
+  // and the per-item buy quantity the +/− steppers drive (reset each time it opens).
+  private marketReturn: (() => void) | null = null;
+  private marketQty: Record<string, number> = {};
 
   private titleText!: Phaser.GameObjects.Text;
   private campText!: Phaser.GameObjects.Text;
@@ -471,7 +480,7 @@ export class OverworldScene extends Phaser.Scene {
     const rowH = 30;
 
     // --- Left column: the action drawers --------------------------------------
-    const actionsBottom = this.renderCampActions(node, colX, top, rowH);
+    const actionsBottom = this.renderCampActions(colX, top, rowH);
 
     // --- Right column: the "different areas" (D58) ----------------------------
     // Deep-links to the Captain's Tent tabs and the route map — the *places you go*,
@@ -511,23 +520,34 @@ export class OverworldScene extends Phaser.Scene {
    */
   private renderAreaLinks(tx: number, top: number, rerender: () => void): number {
     const w = 240;
-    this.campButton(tx, top, w, 24, this.tentButtonLabel(), true, () => this.openTent(rerender, "party"), "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured.");
-    this.campButton(tx, top + 30, w, 24, "Stores", true, () => this.openTent(rerender, "stores"), "Caravan stores — party & storage caps, carried traps and herbs (with slots), and the purse (a Captain's Tent tab).");
-    this.campButton(tx, top + 60, w, 24, "Ledger", true, () => this.openTent(rerender, "ledger"), "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here (a Captain's Tent tab).");
-    this.campButton(tx, top + 90, w, 24, "Review Route Map", true, () => this.reviewMap(rerender), "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return.");
-    return top + 90;
+    const links: { label: string; onClick: () => void; tip: string }[] = [
+      { label: this.tentButtonLabel(), onClick: () => this.openTent(rerender, "party"), tip: "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured." },
+    ];
+    // Market — a *place you visit*, listed only when you have access (a market node or a
+    // Merchant in the party). Hidden otherwise, so trap-kit/herb restock is a real
+    // logistics gate: no access ⇒ no buying, lean on what you carry and looted.
+    if (effectiveMarketTier(this.campNode ?? currentNode(this.run), this.run.party) !== "none") {
+      links.push({ label: "Market", onClick: () => this.openMarket(rerender), tip: "Buy supplies (trap kits, herbs) and sell salvage. Only open with market access — a market node, or a Merchant who opens one anywhere. Stock up: you may not pass a market again soon." });
+    }
+    links.push(
+      { label: "Stores", onClick: () => this.openTent(rerender, "stores"), tip: "Caravan stores — party & storage caps, carried traps and herbs (with slots), and the purse (a Captain's Tent tab)." },
+      { label: "Ledger", onClick: () => this.openTent(rerender, "ledger"), tip: "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here (a Captain's Tent tab)." },
+      { label: "Review Route Map", onClick: () => this.reviewMap(rerender), tip: "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return." },
+    );
+    links.forEach((l, i) => this.campButton(tx, top + i * 30, w, 24, l.label, true, l.onClick, l.tip));
+    return top + (links.length - 1) * 30;
   }
 
   /**
    * The camp actions, grouped into collapsible **category drawers**: Recovery (cook /
-   * heal) then Economy (market + the nested Banker/Noble finance). Each drawer shows a
-   * count and hides entirely when it holds nothing the party can do. Returns the `y`
-   * past the last row.
+   * heal) then Economy (the Banker/Noble finance verbs). Each drawer shows a count and
+   * hides entirely when it holds nothing the party can do. (Market trade lives in the
+   * gated Market overlay, reached from the areas column.) Returns the `y` past the last row.
    */
-  private renderCampActions(node: MapNode, colX: number, top: number, rowH: number): number {
+  private renderCampActions(colX: number, top: number, rowH: number): number {
     let y = top;
     y = this.renderDrawer("recovery", "Recovery", colX, y, rowH, this.campRecoveryActions(), () => this.renderCamp());
-    y = this.renderEconomyDrawer(node, colX, y, rowH);
+    y = this.renderEconomyDrawer(colX, y, rowH);
     return y + 8;
   }
 
@@ -564,40 +584,21 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The **Economy** drawer on the camp beat: the everyday market verbs (Buy Trap Kit /
-   * Sell Valuables — greyed when there's no market, since that's a route fix not a job
-   * lock) and the Banker/Noble finance verbs (each shown only when that specialist is
-   * aboard). All sit **directly** under Economy — one level of nesting, no sub-drawer.
-   * The header count is every economy action available. Returns the `y` past it.
+   * The **Economy** drawer on the camp beat: the Banker's purse-finance verbs and the
+   * Noble's Patronize — each shown only when that specialist is aboard, tagged with who
+   * works it (single nesting, no sub-drawer). The everyday market trade (buy supplies /
+   * sell salvage) lives in the gated **Market** overlay, not here. Hidden entirely when
+   * the party fields no financier. Returns the `y` past it.
    */
-  private renderEconomyDrawer(node: MapNode, colX: number, y: number, rowH: number): number {
+  private renderEconomyDrawer(colX: number, y: number, rowH: number): number {
     const banker = this.jobActor("banker");
     const noble = this.jobActor("noble");
-    const count = 2 + (banker ? 3 : 0) + (noble ? 1 : 0);
+    if (!banker && !noble) return y;
+    const count = (banker ? 3 : 0) + (noble ? 1 : 0);
     y = this.drawerHeader(colX, y, 360, "economy", "Economy", count, () => this.renderCamp());
     if (!this.campDrawers.economy) return y;
     const childX = colX + 14;
     const childW = 346;
-    // One trap-kit buy (D61): priced by — and gated on — this node's market access.
-    const tier = effectiveMarketTier(node, this.run.party);
-    const kitPrice = merchantPrice(tier);
-    const buyTip = tier === "none"
-      ? "No market here. Route to a town/rest node, or bring a Merchant to broker an impromptu market."
-      : `Buy a Trap Kit into storage (1 slot) at the ${tier} market. A town or a Merchant buys cheaper.`;
-    const buyLabel = tier === "none" ? "Buy Trap Kit (no market)" : `Buy Trap Kit (${kitPrice}g)`;
-    this.campButton(childX, y, childW, 24, buyLabel, tier !== "none", () => this.merchantBuyKit(), buyTip);
-    y += rowH;
-    // Sell valuables (D61): liquidate looted salvage into purse gold at this node's market.
-    const valCount = countOf(this.run.inventory, "valuables");
-    const unitPrice = sellPrice(getMaterial("valuables")!, tier);
-    const canSell = valCount > 0 && unitPrice > 0;
-    const sellTip = valCount === 0
-      ? "No valuables to sell — win fights to find salvage worth hauling to a market."
-      : unitPrice === 0
-        ? "No market here. Route to a town/rest node, or bring a Merchant to broker an impromptu sale."
-        : `Sell all ${valCount} valuables at the ${tier} market (${unitPrice}g each).`;
-    this.campButton(childX, y, childW, 24, `Sell Valuables (${valCount} · ${unitPrice}g ea)`, canSell, () => this.sellValuables(), sellTip);
-    y += rowH;
     // The Banker's purse-finance verbs (D30) — directly under Economy (single nesting),
     // tagged with the Banker who works them; shown only when one is aboard.
     if (banker) {
@@ -942,7 +943,7 @@ export class OverworldScene extends Phaser.Scene {
     y += 16;
     this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
     if (ledger.marketReady) {
-      this.overlay.push(this.makeTextButton(leftX + 90, b.bottom - 16, 170, 28, "Jump to Market", COLOR.btnFill, COLOR.gold, () => { this.merchantBuyKit(); this.renderTent(); }).setDepth(26));
+      this.overlay.push(this.makeTextButton(leftX + 90, b.bottom - 16, 170, 28, "Open Market", COLOR.btnFill, COLOR.gold, () => { this.tentDossier?.destroy(); this.tentDossier = undefined; const back = this.tentReturn ?? (() => this.renderCamp()); this.tentReturn = null; this.openMarket(back); }).setDepth(26));
     }
   }
 
@@ -966,7 +967,7 @@ export class OverworldScene extends Phaser.Scene {
       sold += 1;
       levels += res.levels ?? 0;
     }
-    this.renderCamp();
+    this.renderMarket();
     const lvl = levels > 0 ? ` (Merchant +${levels} level${levels === 1 ? "" : "s"})` : "";
     this.setHint(sold > 0 ? `Sold ${sold} valuables for ${total}g.${lvl}` : "Can't sell here.");
   }
@@ -984,13 +985,113 @@ export class OverworldScene extends Phaser.Scene {
     this.setHint(`${healer.name} triaged +${res.healed} HP — worn out (+${res.fatigueSpent} fatigue).`);
   }
 
-  // --- The gold economy verbs (M10, D30/D34) --------------------------------
+  // --- The Market overlay (D61): the gated supply shop ----------------------
 
-  private merchantBuyKit(): void {
-    const node = this.campNode ?? currentNode(this.run);
-    const res = merchantBuy(this.run, "trap-kit", effectiveMarketTier(node, this.run.party));
-    this.renderCamp();
-    this.setHint(res.applied ? `${res.detail}` : `Can't: ${res.reason}`);
+  /** Open the Market overlay over the current beat; `returnTo` redraws it on close. */
+  private openMarket(returnTo: () => void): void {
+    this.marketReturn = returnTo;
+    this.marketQty = {};
+    this.setHint("Market — buy supplies & sell salvage. Stock up: you may not pass a market again soon. Close (or Esc) returns.");
+    this.input.keyboard?.once("keydown-ESC", () => this.closeMarket());
+    this.renderMarket();
+  }
+
+  /** Tear down the Market and hand control back to whoever opened it (camp / survey). */
+  private closeMarket(): void {
+    clearLayer(this.overlay);
+    const back = this.marketReturn;
+    this.marketReturn = null;
+    back?.();
+  }
+
+  /** Buy `qty` of `id` at the node's tier (stops early if gold/storage runs out). */
+  private marketBuy(id: string, qty: number): void {
+    const tier = effectiveMarketTier(this.campNode ?? currentNode(this.run), this.run.party);
+    let bought = 0;
+    let reason = "";
+    for (let i = 0; i < qty; i++) {
+      const res = merchantBuy(this.run, id, tier);
+      if (!res.applied) { reason = res.reason ?? ""; break; }
+      bought++;
+    }
+    if (bought > 0) this.marketQty[id] = 1;
+    this.renderMarket();
+    this.setHint(bought > 0 ? `Bought ${bought}× ${getMaterial(id)?.name ?? id}.` : `Can't: ${reason}`);
+  }
+
+  /**
+   * (Re)draw the **Market** overlay (D61): a gated supply shop. Buy trap kits + the
+   * Medic's herbs in bulk (a +/− stepper per row, capped by gold), and sell looted
+   * salvage — all at the node's effective market tier. Access (a market node or a
+   * Merchant) is the gate; with none it shows why and offers only Close. Mirrors the
+   * Tent overlay's frame/teardown so the two read as siblings.
+   */
+  private renderMarket(): void {
+    clearLayer(this.overlay);
+    const tier = effectiveMarketTier(this.campNode ?? currentNode(this.run), this.run.party);
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+    const w = 560;
+    const h = 400;
+    const left = cx - w / 2;
+    const top = cy - h / 2;
+
+    const backdrop = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(22).setInteractive();
+    this.overlay.push(
+      backdrop,
+      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
+      this.add.text(left + 24, top + 24, "Market", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(left + 122, top + 26, `· ${tier === "none" ? "no market" : `${tier} market`}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
+    );
+    this.overlay.push(this.makeTextButton(left + w - 60, top + 26, 96, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => this.closeMarket()).setDepth(26));
+
+    const leftX = left + 24;
+    if (tier === "none") {
+      this.overlay.push(this.add.text(leftX, top + 80, "No market here — route to a market node, or bring a Merchant to open one anywhere.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 4, wordWrap: { width: w - 48 } }).setOrigin(0, 0).setDepth(25));
+      return;
+    }
+
+    const price = merchantPrice(tier);
+    let y = top + 64;
+    this.overlay.push(this.add.text(leftX, y, `Buy  ·  ${price}g each`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+    y += 28;
+    for (const id of MARKET_STOCK) {
+      const mat = getMaterial(id);
+      if (!mat) continue;
+      const owned = countOf(this.run.inventory, id);
+      const room = canAdd(this.run.inventory, id);
+      const affordable = Math.floor(this.run.camp.gold / price);
+      const buyable = room && affordable >= 1;
+      this.overlay.push(
+        this.add.text(leftX, y, mat.name, { color: buyable ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
+        this.add.text(leftX + 150, y, `own ${owned}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
+      );
+      if (!buyable) {
+        this.overlay.push(this.add.text(leftX + 244, y, room ? `need ${price}g` : "storage full", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25));
+      } else {
+        const qty = Math.min(affordable, Math.max(1, this.marketQty[id] ?? 1));
+        this.overlay.push(this.makeTextButton(leftX + 268, y, 22, 22, "−", COLOR.surfaceRaised, COLOR.border, () => { this.marketQty[id] = Math.max(1, qty - 1); this.renderMarket(); }).setDepth(26));
+        this.overlay.push(this.add.text(leftX + 292, y, `${qty}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5, 0.5).setDepth(25));
+        this.overlay.push(this.makeTextButton(leftX + 316, y, 22, 22, "+", COLOR.surfaceRaised, COLOR.border, () => { this.marketQty[id] = Math.min(affordable, qty + 1); this.renderMarket(); }).setDepth(26));
+        this.overlay.push(this.makeTextButton(leftX + 392, y, 84, 22, `Buy ×${qty}`, COLOR.btnFill, COLOR.gold, () => this.marketBuy(id, qty)).setDepth(26));
+      }
+      y += 30;
+    }
+
+    y += 8;
+    this.overlay.push(this.add.text(leftX, y, "Sell", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+    y += 28;
+    const valCount = countOf(this.run.inventory, "valuables");
+    const unitSell = sellPrice(getMaterial("valuables")!, tier);
+    if (valCount > 0 && unitSell > 0) {
+      this.overlay.push(this.add.text(leftX, y, `Valuables  ·  ×${valCount} at ${unitSell}g each`, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+      this.overlay.push(this.makeTextButton(leftX + 392, y, 84, 22, "Sell all", COLOR.btnFill, COLOR.gold, () => this.sellValuables()).setDepth(26));
+    } else {
+      this.overlay.push(this.add.text(leftX, y, valCount === 0 ? "No salvage to sell." : "Salvage can't be sold here.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+    }
+
+    const m = projectManifest(this.run, this.caravanInfo());
+    this.overlay.push(this.add.text(leftX, top + h - 22, `Purse ${m.purse}g     ·     Storage ${m.storageUsed}/${m.storageCap}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
   }
 
   private bankerInterest(): void {

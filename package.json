@@ -17,6 +17,7 @@
     "shots:inventory": "node scripts/shots-inventory.mjs",
     "shots:guild": "node scripts/shots-guild.mjs",
     "shots:deploy": "node scripts/shots-deploy.mjs",
+    "shots:telegraph": "node scripts/shots-telegraph.mjs",
     "sim": "vitest run src/core/sim.test.ts",
     "verify": "npm run test && npm run build && npm run shots:mill"
   },

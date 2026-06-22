@@ -85,11 +85,14 @@ import {
   type DeployFront,
   type DeploySource,
   type Rng,
+  forecastSkill,
+  aimInRange,
   type GridCoord,
   type Unit,
   type Side,
   type SkillDef,
   type TheftAttempt,
+  type AbilityForecast,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
 import { Button } from "../button";
@@ -185,6 +188,8 @@ export class BattleScene extends Phaser.Scene {
   /** The danger-zone overlay (toggle with T) and whether it's on. */
   private threatGfx!: Phaser.GameObjects.Graphics;
   private showThreat = false;
+  /** The persistent tarpit-aura ring (Heavy Knight) — drawn in both Deployment and Battle (D64). */
+  private auraGfx!: Phaser.GameObjects.Graphics;
   private boardObjects: Phaser.GameObjects.GameObject[] = [];
   private originX = 0;
   private originY = 0;
@@ -199,6 +204,8 @@ export class BattleScene extends Phaser.Scene {
   /** Active-unit focus card (left, the decision zone) + the peripheral camp-state card. */
   private focusCard!: MiniCard;
   private campCard!: MiniCard;
+  /** The armed-ability **forecast box** (D64) — docked under the focus card, shown only while a skill is armed. */
+  private forecastCard!: MiniCard;
   /** Initiative rail collapse (D-UX): show the soonest few, chevron to reveal the rest. */
   private static readonly RAIL_COLLAPSED = 3;
   private railExpanded = false;
@@ -263,6 +270,8 @@ export class BattleScene extends Phaser.Scene {
   private reachByKey = new Map<string, ReturnType<typeof reachableTiles>[number]>();
   /** The tile under the cursor whose route is lit (FE path read), or null. */
   private hoverTile: GridCoord | null = null;
+  /** While a skill is armed: the hovered/aimed tile that drives its footprint + forecast box (D64). */
+  private armedAim: GridCoord | null = null;
   /** Animation speed multiplier for moves (F cycles 1×/2×/4×) — playtest pacing (D55). */
   private turnSpeed = 1;
   /** A herb picked for the medic's med-heal, pending a target (D44 flow). */
@@ -319,12 +328,18 @@ export class BattleScene extends Phaser.Scene {
     // Left column = "you" (the decision zone): the active-unit focus card. Camp-state —
     // passive reference — is tucked top-right, clear below the Tips chip.
     this.focusCard = new MiniCard(this, 8, 82, { w: 150, hp: true }).hide();
+    // The armed-ability forecast box (D64) — docked just under the focus card, surfaced
+    // only while a skill is armed; switches on the tagged AbilityForecast kind.
+    this.forecastCard = new MiniCard(this, 8, 184, { w: 150 }).hide();
     this.campCard = new MiniCard(this, this.scale.width - 158, 42, { w: 150 });
     this.hintPanel = new HintPanel(this);
     // The persistent board colour key — the same component carries across phases,
     // re-keyed in enterDeploy / startBattle so the wash language is always legible.
     this.legendStrip = new LegendStrip(this);
     this.threatGfx = this.add.graphics().setDepth(0.36);
+    // The tarpit-aura ring (D64) sits just above the zone washes but below the move/
+    // footprint preview, so a Heavy Knight's taxed tiles read in both phases.
+    this.auraGfx = this.add.graphics().setDepth(0.38);
     this.preview = this.add.graphics().setDepth(0.4);
     this.highlight = this.add.graphics().setDepth(0.5);
     this.primary = this.makeTextButton(MENU_CX, this.scale.height - 40, MENU_BW, MENU_BH, "", COLOR.successDeep, COLOR.success, () => this.onPrimary());
@@ -696,6 +711,8 @@ export class BattleScene extends Phaser.Scene {
     this.strokeZoneOutline(this.safeZoneGfx, "safe", COLOR.success);
     this.strokeZoneOutline(this.dangerZoneGfx, "warning", COLOR.accent);
     this.strokeZoneOutline(this.dangerZoneGfx, "danger", COLOR.danger);
+    // The tarpit ring renders in Deployment too (D64) — position around the tax.
+    this.refreshAuras();
   }
 
   /** Which deployment band a walkable tile falls in (drives both fill and outline). */
@@ -807,6 +824,7 @@ export class BattleScene extends Phaser.Scene {
     this.animateMove(actor, steps, () => {
       this.busy = false;
       this.highlightTile(actor.pos);
+      this.refreshAuras(); // a repositioned Heavy Knight drags its tarpit ring (D64)
       this.refreshDeployButtons();
       this.refreshDeployStatus();
       this.setHint(`${actor.name} repositioned. Dig In, place a trap, or End Turn (Space) to advance the net.`);
@@ -965,6 +983,7 @@ export class BattleScene extends Phaser.Scene {
     // the unit makes becomes undoable back to this point, until the turn commits.
     this.battle.beginUndo();
     this.hoverTile = null;
+    this.armedAim = null;
     this.recomputeReach(actor);
     // The active unit looks around — an Awareness roll may spot nearby traps (D12).
     this.spotTrapsForActor(actor);
@@ -1044,6 +1063,7 @@ export class BattleScene extends Phaser.Scene {
     this.clearActionButtons();
     this.highlightTile(null);
     this.hoverTile = null;
+    this.armedAim = null;
     this.focusCard.hide();
     this.battle.endTurn(actor, { moved: this.movedThisTurn, acted: this.actCharged });
     this.afterTurn();
@@ -1175,6 +1195,7 @@ export class BattleScene extends Phaser.Scene {
     this.clearActionButtons();
     this.highlightTile(null);
     this.hoverTile = null;
+    this.armedAim = null;
     this.noteAct();
     this.afterActionContinue(actor);
   }
@@ -1190,6 +1211,7 @@ export class BattleScene extends Phaser.Scene {
     this.clearActionButtons();
     this.highlightTile(null);
     this.hoverTile = null;
+    this.armedAim = null;
     this.noteAct();
     this.afterActionContinue(actor);
     this.setHint(res.harvested
@@ -1263,6 +1285,7 @@ export class BattleScene extends Phaser.Scene {
     this.clearActionButtons();
     this.highlightTile(null);
     this.hoverTile = null;
+    this.armedAim = null;
     this.noteAct();
     this.refreshHud();
     this.afterActionContinue(actor);
@@ -1287,6 +1310,7 @@ export class BattleScene extends Phaser.Scene {
           onClick: () => {
             this.pendingHerb = h;
             this.armedSkill = skill;
+            this.armedAim = null;
             this.setHint(`Heal (${h}): click a wounded ally (or click ${actor.name} to cancel).`);
             this.drawPreview();
           },
@@ -1296,6 +1320,7 @@ export class BattleScene extends Phaser.Scene {
     }
     if (skill.target === "self") return this.commitSkill(actor, skill, actor);
     this.armedSkill = skill;
+    this.armedAim = null;
     this.setHint(`${skill.name}: click a valid target (or click ${actor.name} to cancel).`);
     this.drawPreview();
   }
@@ -1308,6 +1333,7 @@ export class BattleScene extends Phaser.Scene {
     this.clearActionButtons();
     this.highlightTile(null);
     this.hoverTile = null;
+    this.armedAim = null;
     let verb: string;
     if (skill.effect.kind === "med-heal" && herb) {
       // Spend the chosen herb on the target (D44 medic flow) — turn left open (D60).
@@ -1420,6 +1446,7 @@ export class BattleScene extends Phaser.Scene {
     if (!this.armedSkill && !this.bribeArmed && !this.pendingHerb) return;
     const actor = this.waitingFor;
     this.armedSkill = null;
+    this.armedAim = null;
     this.bribeArmed = false;
     this.pendingHerb = null;
     if (actor) {
@@ -1508,6 +1535,8 @@ export class BattleScene extends Phaser.Scene {
     if (this.armedSkill) {
       if (clicked === actor) {
         this.armedSkill = null;
+        this.armedAim = null;
+        this.pendingHerb = null;
         this.setHint(this.turnHint(actor));
         this.drawPreview();
         return;
@@ -1530,10 +1559,21 @@ export class BattleScene extends Phaser.Scene {
    */
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
     if (this.phase !== "battle" || this.busy || this.over || !this.waitingFor) return;
-    if (this.armedSkill || this.bribeArmed || this.pendingHerb) return;
+    if (this.bribeArmed) return;
     const tile = this.grid?.inBounds(this.worldToTile(pointer.worldX, pointer.worldY))
       ? this.worldToTile(pointer.worldX, pointer.worldY)
       : null;
+    // Armed (skill or herb-picked med-heal): track the aimed tile so the footprint +
+    // forecast box recompute as the cursor moves (D64). The aim isn't gated by reach —
+    // an out-of-range aim still telegraphs (the box can grey it); the legal-target wash
+    // shows what's valid.
+    if (this.armedSkill || this.pendingHerb) {
+      if ((tile?.col ?? -1) === (this.armedAim?.col ?? -1) && (tile?.row ?? -1) === (this.armedAim?.row ?? -1)) return;
+      this.armedAim = tile;
+      this.highlightTile(tile ?? this.waitingFor.pos);
+      this.drawPreview();
+      return;
+    }
     const reachable = tile ? this.reachByKey.get(`${tile.col},${tile.row}`) : undefined;
     const next = reachable && reachable.path.length > 0 ? tile : null;
     if ((next?.col ?? -1) === (this.hoverTile?.col ?? -1) && (next?.row ?? -1) === (this.hoverTile?.row ?? -1)) return;
@@ -1556,6 +1596,7 @@ export class BattleScene extends Phaser.Scene {
     this.clearActionButtons();
     this.highlightTile(null);
     this.hoverTile = null;
+    this.armedAim = null;
     freeCaptive(captive);
     this.tintCaptured(captive, false);
     this.noteAct();
@@ -1580,6 +1621,7 @@ export class BattleScene extends Phaser.Scene {
     this.clearActionButtons();
     this.highlightTile(null);
     this.hoverTile = null;
+    this.armedAim = null;
     this.battle.attack(actor, foe);
     this.noteAct();
     this.flashAttack(actor, foe);
@@ -1609,6 +1651,7 @@ export class BattleScene extends Phaser.Scene {
     this.clearActionButtons();
     this.highlightTile(null);
     this.hoverTile = null;
+    this.armedAim = null;
     this.battle.moveUnit(actor, r.path);
     this.movedThisTurn = true;
     this.moveBudget -= r.cost;
@@ -1665,6 +1708,7 @@ export class BattleScene extends Phaser.Scene {
     this.actCharged = false;
     this.turnLocked = false;
     this.hoverTile = null;
+    this.armedAim = null;
     this.reach = [];
     this.reachByKey.clear();
     this.resolveTheftDeaths();
@@ -2108,17 +2152,112 @@ export class BattleScene extends Phaser.Scene {
     if (!actor || this.busy || this.over || this.phase !== "battle") {
       this.view.clearPreview(this.preview);
       this.threatGfx.clear();
+      this.refreshAuras();
+      this.forecastCard.hide();
       return;
     }
     if (this.showThreat) this.view.drawThreatZone(this.threatGfx, this.battle.units, this.grid, "player");
     else this.threatGfx.clear();
+    this.refreshAuras();
     const hoverPath = this.hoverTile ? this.reachByKey.get(`${this.hoverTile.col},${this.hoverTile.row}`)?.path : undefined;
     this.view.drawPreview(this.preview, actor, this.battle.units, this.grid, {
       armed: this.armedSkill ?? undefined,
+      armedAim: this.armedAim ?? undefined,
+      intoTrap: (c) => this.trapAt(c),
       moveBudget: this.moveBudget,
       acted: this.acted,
       hoverPath,
     });
+    this.refreshForecastCard(actor);
+  }
+
+  /** Re-paint the persistent tarpit aura — drawn in Deployment and Battle alike (D64). */
+  private refreshAuras(): void {
+    if (this.over || (this.phase !== "battle" && this.phase !== "deployment") || !this.grid || !this.battle) {
+      this.auraGfx?.clear();
+      return;
+    }
+    this.view.drawAuras(this.auraGfx, this.battle.units, this.grid);
+  }
+
+  /** Does an *armed* (un-sprung) trap stand on this tile? — the push-into-trap read (D64 follow-up #2). */
+  private trapAt(c: GridCoord): boolean {
+    return this.battle.entities.at(c).some((e) => isConcealedTrap(e) && !e.sprung);
+  }
+
+  /**
+   * The armed-ability **forecast box** (D64): build a {@link ForecastCtx} from live
+   * state — the hovered target, the roster (flank-aware), the run inventory (herb
+   * gating), and camp morale — call the pure {@link forecastSkill}, and render the
+   * docked {@link MiniCard}, switching on the tagged {@link AbilityForecast} kind.
+   * Hidden when no skill is armed; recomputed every frame (HP/stacks change live).
+   */
+  private refreshForecastCard(actor: Unit): void {
+    const skill = this.armedSkill;
+    if (!skill) {
+      this.forecastCard.hide();
+      return;
+    }
+    const target = this.armedAim
+      ? this.battle.units.find((u) => u.alive && u.pos.col === this.armedAim!.col && u.pos.row === this.armedAim!.row)
+      : undefined;
+    const fc = forecastSkill(skill, actor, {
+      target,
+      units: this.battle.units,
+      inventory: this.run.inventory,
+      morale: this.run.camp.morale,
+    });
+    const rows = this.forecastRows(fc);
+    this.forecastCard.set(skill.name, rows);
+    // Range-gate the read (D64): an out-of-range aim still telegraphs its footprint,
+    // but the forecast box dims to say "not from here" — the legal-target wash shows
+    // where it *would* land. Self/party/camp skills are anchor-free (always in range).
+    const inRange = !this.armedAim || aimInRange(skill, actor, this.armedAim);
+    this.forecastCard.setAlpha(inRange ? 1 : 0.4);
+  }
+
+  /** Map a tagged {@link AbilityForecast} to the forecast box's label→value rows (D64). */
+  private forecastRows(fc: AbilityForecast): CardRow[] {
+    const glyphs = (g?: { lethal?: boolean }) => (g?.lethal ? ` ${ICON.lethal.glyph}` : "");
+    switch (fc.kind) {
+      case "immediate":
+      case "computed":
+        return [{ label: fc.label, value: `${fc.value}${glyphs(fc.glyphs)}`, color: fc.glyphs?.lethal ? INK.ember : INK.secondary, emphasize: true }];
+      case "conditional":
+        // "Damage 12 (vs debuffed +4)" / "Trap — if a foe enters: 12".
+        return fc.value > 0
+          ? [
+              { label: fc.label, value: `${fc.value}${glyphs(fc.glyphs)}`, emphasize: true },
+              { label: fc.condition, value: `+${fc.bonus}`, color: INK.gold },
+            ]
+          : [{ label: fc.label, value: `${fc.condition}: ${fc.bonus}`, color: INK.ember }];
+      case "deferred": {
+        // "Mark Prey — 0 now → +2/hit (cap +8)".
+        const parts: string[] = [`${fc.now} now`];
+        if (fc.perHit !== undefined) parts.push(`+${fc.perHit}/hit`);
+        if (fc.cap !== undefined) parts.push(`(cap +${fc.cap})`);
+        if (fc.etaTurns !== undefined) parts.push(`in ~${fc.etaTurns}t`);
+        return [{ label: fc.label, value: parts.join(" "), color: INK.ember }];
+      }
+      case "banked":
+        return [{ label: fc.label, value: `+${fc.value} party · next battle`, color: INK.success }];
+      case "tiered": {
+        // "Morale Neutral → High" + a couple of headline modifiers from the bundle.
+        const rows: CardRow[] = [{ label: fc.label, value: `${fc.from} → ${fc.to}`, color: INK.success, emphasize: true }];
+        const m = fc.modifiers;
+        if (m.initiativeBonus) rows.push({ label: "Initiative", value: `+${m.initiativeBonus}`, color: INK.gold });
+        if (m.safeDepthBonus) rows.push({ label: "Safe depth", value: `+${m.safeDepthBonus}`, color: INK.gold });
+        if (fc.banked) rows.push({ label: "Banked heal", value: `+${fc.banked} · next battle`, color: INK.success });
+        return rows;
+      }
+      case "branching":
+        // One row per herb, greyed when unavailable, the rider tag appended (D64).
+        return fc.rows.map((r) => ({
+          label: r.label,
+          value: `+${r.value}${r.rider ? ` ${r.rider}` : ""}`,
+          color: r.available ? INK.secondary : INK.disabled,
+        }));
+    }
   }
 
   private highlightTile(coord: GridCoord | null): void {

@@ -12,6 +12,10 @@ import {
   manhattan,
   computeDamage,
   computeFlankBonus,
+  abilityFootprint,
+  PASSIVE,
+  isActive,
+  orthoNeighbors,
   TILE_WIDTH,
   TILE_HEIGHT,
   type TileGrid,
@@ -231,17 +235,30 @@ export class CombatView {
     actor: Unit,
     units: readonly Unit[],
     grid: TileGrid,
-    opts: { armed?: SkillDef; moveBudget: number; acted: boolean; hoverPath?: readonly GridCoord[] },
+    opts: {
+      armed?: SkillDef;
+      /** The hovered/aimed tile when a skill is armed — drives the footprint overlay (D64). */
+      armedAim?: GridCoord;
+      /** "Does a trap stand on this tile?" — the scene's entity read, for the push-into-trap badge (D64 follow-up #2). */
+      intoTrap?: (c: GridCoord) => boolean;
+      moveBudget: number;
+      acted: boolean;
+      hoverPath?: readonly GridCoord[];
+    },
   ): void {
     g.clear();
     this.clearForecast();
-    const { armed, moveBudget, acted, hoverPath } = opts;
+    const { armed, armedAim, intoTrap, moveBudget, acted, hoverPath } = opts;
     if (armed) {
+      // The *legal target set*, kept faintly so the player still sees where the skill can
+      // land while the footprint highlights the current aim (D64: keep the valid-target read).
       for (const u of units) {
         if (!u.alive || u.hidden || !isValidSkillTarget(armed, actor, u)) continue;
         const ally = u.side === actor.side;
-        this.fillTile(g, u.pos, ally ? COLOR.success : COLOR.danger, 0.22, ally ? COLOR.accent : COLOR.threat);
+        this.fillTile(g, u.pos, ally ? COLOR.success : COLOR.danger, 0.12);
       }
+      // The footprint overlay (D64): paint what the armed ability affects, given the aim.
+      if (armedAim) this.drawFootprint(g, armed, actor, armedAim, grid, units, intoTrap);
       return;
     }
     // Reach wash for the movement still in the budget this turn — the set of tiles a
@@ -273,6 +290,114 @@ export class CombatView {
     // turn, draw a threat link to its mark and the incoming damage — read the
     // counter-attack before you commit.
     this.drawIntents(g, actor, units, grid);
+  }
+
+  /**
+   * Paint the **footprint** of an armed ability given the current aim (D64) — the
+   * geometry half of the telegraph. Reads the pure {@link abilityFootprint} and
+   * switches on its `kind`:
+   *
+   * - `single` — outline the aimed tile (the legal set still shows faintly).
+   * - `arc` — wash the Cleave arc + outline each foe caught.
+   * - `push` — an arrow from target → landing, flagged on a blocker / a trap at the
+   *   landing (`intoTrap`, the scene's entity read for the D19 push-into-trap combo).
+   * - `placement` — outline the claimed tile (Set Trap, Deployment).
+   * - `self` — highlight the caster's tile.
+   * - `none` — nothing on the board (the forecast box still shows).
+   */
+  private drawFootprint(
+    g: Phaser.GameObjects.Graphics,
+    skill: SkillDef,
+    caster: Unit,
+    aim: GridCoord,
+    grid: TileGrid,
+    units: readonly Unit[],
+    intoTrap?: (c: GridCoord) => boolean,
+  ): void {
+    const fp = abilityFootprint(skill, caster, aim, grid, units);
+    switch (fp.kind) {
+      case "single":
+        this.fillTile(g, fp.tile, COLOR.danger, 0.26, COLOR.accent);
+        break;
+      case "arc": {
+        for (const t of fp.tiles) this.fillTile(g, t, COLOR.threat, 0.24);
+        for (const foe of fp.units) this.outlineTile(g, foe.pos, COLOR.danger);
+        break;
+      }
+      case "push": {
+        // Arrow from the target tile toward where it lands (the displacement).
+        const from = this.tileToWorld(fp.target);
+        const to = this.tileToWorld(fp.landing);
+        const onTrap = intoTrap ? intoTrap(fp.landing) : false;
+        const col = onTrap ? COLOR.danger : fp.blocked ? COLOR.threat : COLOR.accent;
+        this.drawArrow(g, from.x, from.y - TILE_HEIGHT / 2, to.x, to.y - TILE_HEIGHT / 2, col);
+        // Flag the landing: a danger ring + a tag for "blocked short" or "into trap".
+        this.fillTile(g, fp.landing, onTrap ? COLOR.danger : COLOR.reach, 0.22, col);
+        if (onTrap || fp.blocked) {
+          const tag = onTrap ? `${ICON.trapArmed.glyph} trap` : "blocked";
+          this.floatTag(fp.landing, tag, onTrap ? "#ff7a3a" : INK.danger);
+        }
+        break;
+      }
+      case "placement":
+        // The claimed Set Trap tile (Deployment) — outline + a trap glyph badge.
+        this.fillTile(g, fp.tile, COLOR.gold, 0.2, COLOR.gold);
+        this.floatTag(fp.tile, ICON.trapMine.glyph, INK.ember);
+        break;
+      case "self":
+        this.fillTile(g, fp.tile, COLOR.success, 0.24, COLOR.accent);
+        break;
+      case "none":
+        break; // a party/camp meta skill — no board anchor; the forecast box carries it.
+    }
+  }
+
+  /** A short floating tag centred over a tile (footprint annotations — "trap", "blocked"). */
+  private floatTag(tile: GridCoord, text: string, color: string): void {
+    const { x, y } = this.tileToWorld(tile);
+    const label = this.scene.add
+      .text(x, y - TILE_HEIGHT / 2 - 14, text, { color, fontFamily: FONT.family, fontSize: FONT.caption, fontStyle: WEIGHT.bold })
+      .setOrigin(0.5)
+      .setDepth(6)
+      .setStroke("#1a0d05", 3);
+    this.forecastLabels.add(label);
+  }
+
+  /** A straight push arrow with a chevron head, drawn onto `g` (the forced-move telegraph). */
+  private drawArrow(g: Phaser.GameObjects.Graphics, x1: number, y1: number, x2: number, y2: number, color: number): void {
+    g.lineStyle(3, color, 0.95);
+    g.lineBetween(x1, y1, x2, y2);
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const head = 9;
+    for (const da of [Math.PI * 0.82, -Math.PI * 0.82]) {
+      g.lineBetween(x2, y2, x2 - head * Math.cos(ang + da), y2 - head * Math.sin(ang + da));
+    }
+  }
+
+  /**
+   * Draw the **tarpit aura** (D40) onto `g`: a persistent ring on the tiles
+   * orthogonally adjacent to every active unit whose job carries
+   * {@link PASSIVE.tarpit} (the Heavy Knight). Shown in **both** Deployment and
+   * Battle so the player can position around the speed-1 tax (the original audit
+   * gap). Drawn **outline-only** in the pale capture-net bone (`COLOR.net`) — a
+   * restraint hue that reads as a tax ring and, crucially, overlays *on top of* the
+   * Deployment safe/warning/danger zone washes without competing with their fills
+   * (the gold wash it replaced collided with the amber warning zone). Clears `g`
+   * first so the scene just re-invokes it.
+   */
+  drawAuras(g: Phaser.GameObjects.Graphics, units: readonly Unit[], grid: TileGrid): void {
+    g.clear();
+    const seen = new Set<string>();
+    for (const u of units) {
+      if (!isActive(u) || u.hidden || !u.passives[PASSIVE.tarpit]) continue;
+      for (const t of orthoNeighbors(u.pos)) {
+        if (!grid.inBounds(t)) continue;
+        const key = `${t.col},${t.row}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        this.outlineTile(g, t, COLOR.net);
+      }
+    }
   }
 
   /** Threat links from each enemy to the ally it intends to hit next turn (+ incoming damage). */

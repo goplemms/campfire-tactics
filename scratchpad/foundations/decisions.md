@@ -1941,4 +1941,20 @@ trail of reasoning stays intact.
      can be a real core read by passing an entity predicate into `abilityFootprint`
      (mirroring its existing `isWalkable`/`occupied` predicates), keeping the D19
      push-into-trap payoff in core rather than re-derived in render.
+  3. **No deploy-phase "aim a trap" arming flow.** The `placement` footprint is built
+     and tested, but Deployment's "Place Trap Here" drops on the actor's own tile —
+     there's no hovered-aim arming step, so the Survivalist/Scout placement telegraph
+     isn't reachable in real play yet (the other footprints are live). Needs a
+     deploy-phase aim-and-confirm flow to surface it.
+  4. **Timing readout not in the forecast box.** charge/cooldown/`usesPerNode` state
+     (`clock.scheduledProgress` / `onSkillCooldown`, which `showSkillButtons` already
+     reads) isn't yet surfaced as "charging ~Nt / cooling ~Nt / 1 use left" beside the
+     outcome — the natural next addition to `forecastRows`.
+- **Build (render layer landed):** `combat-view.ts` (`drawFootprint` over the footprint
+  kinds + push arrow + `drawAuras` tarpit ring; additive `drawPreview` opts `armedAim`/
+  `intoTrap`), `BattleScene.ts` (aim threading, `ForecastCtx` build, the forecast
+  `MiniCard` switching on the tagged outcomes, aura in both phases, range-gated dim via
+  `aimInRange`), `scripts/shots-telegraph.mjs` (headless capture). Tarpit aura recoloured
+  to the bone capture-net tone so it overlays the deploy zone washes legibly. Green:
+  632 tests, build clean. Follow-ups 1–4 above remain.
 - **Superseded by:** —

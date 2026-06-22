@@ -43,6 +43,7 @@ import {
   type UnitId,
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
+import { cleaveArc, shoveLanding } from "./ability-forecast";
 import { captureUnit } from "./deployment";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
@@ -517,17 +518,21 @@ export class Battle {
    * shove hit. Returns how far it actually moved + any damage.
    */
   resolveShove(caster: Unit, target: Unit, tiles: number, bonusAttack = 0): SkillOutcome {
+    // Walk the shove one tile at a time toward the landing the pure `shoveLanding`
+    // core computes (D64 single-source-of-truth: the telegraph reads the *same*
+    // geometry the resolver does, so the push arrow and into-trap read can't
+    // drift). Each step goes through `moveUnit` so entities (traps) fire en route.
     const dc = Math.sign(target.pos.col - caster.pos.col);
     const dr = Math.sign(target.pos.row - caster.pos.row);
-    let moved = 0;
-    for (let i = 0; i < tiles; i++) {
-      const next = { col: target.pos.col + dc, row: target.pos.row + dr };
-      if (!this.grid.isWalkable(next)) break; // wall / off-map blocker
-      if (this.units.some((u) => u.alive && u !== target && u.pos.col === next.col && u.pos.row === next.row)) {
-        break; // another body blocks the push
-      }
-      this.moveUnit(target, [next], true);
-      moved += 1;
+    const { moved } = shoveLanding(
+      caster.pos,
+      target.pos,
+      tiles,
+      (c) => this.grid.isWalkable(c),
+      (c) => this.units.some((u) => u.alive && u !== target && u.pos.col === c.col && u.pos.row === c.row),
+    );
+    for (let i = 0; i < moved; i++) {
+      this.moveUnit(target, [{ col: target.pos.col + dc, row: target.pos.row + dr }], true);
     }
     const out: SkillOutcome = {};
     if (bonusAttack !== 0 && target.alive) {
@@ -551,11 +556,9 @@ export class Battle {
   /** The raw arc resolution (the cleave-action body) — hit every foe in the 90° arc. */
   private execCleave(caster: Unit, skill: SkillDef, dir: GridCoord): { hits: number; damage: number } {
     const bonus = skill.effect.kind === "cleave" ? skill.effect.bonusAttack : 0;
-    const c = caster.pos;
-    const arc: GridCoord[] =
-      dir.col !== 0
-        ? [{ col: c.col + dir.col, row: c.row }, { col: c.col + dir.col, row: c.row - 1 }, { col: c.col + dir.col, row: c.row + 1 }]
-        : [{ col: c.col, row: c.row + dir.row }, { col: c.col - 1, row: c.row + dir.row }, { col: c.col + 1, row: c.row + dir.row }];
+    // The arc geometry comes from the shared `cleaveArc` core (D64) so the
+    // telegraph washes exactly the tiles this resolver sweeps — one source of truth.
+    const arc: GridCoord[] = cleaveArc(caster.pos, dir);
     const key = (g: GridCoord) => `${g.col},${g.row}`;
     const arcKeys = new Set(arc.map(key));
     let hits = 0;

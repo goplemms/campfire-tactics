@@ -1928,4 +1928,17 @@ trail of reasoning stays intact.
 - **Reuses / consistent with:** D48 route Forecast (cost/outcome knowable before
   commit), D18 Vision (telegraphs gated by perception), D19 forced-move + entities
   (push-into-trap read), D60 strike-badge vocabulary, D2 core/render split.
+- **Follow-ups (filed, not yet done):**
+  1. **Cleave's `reach` is dead data.** The `cleave` effect declares `reach: 3` but
+     `turn.ts:execCleave` ignores it and always sweeps a fixed 3-tile 90° arc. The
+     core forecast made the footprint match the *resolver* (so forecast==resolution
+     holds), which leaves `reach` doing nothing. Decide: have `execCleave` honor
+     `reach` (deepen the arc) — footprint follows for free — or strip `reach` as
+     misleading. A pre-existing latent bug the telegraph work surfaced.
+  2. **Push "into-trap" flag stubbed `false`.** `abilityFootprint`'s `push` result
+     carries `ontoEntity`, but it's hard-coded `false` — the core layer didn't thread
+     the entity registry in. `EntityRegistry` *is* core (`Battle.entities`), so this
+     can be a real core read by passing an entity predicate into `abilityFootprint`
+     (mirroring its existing `isWalkable`/`occupied` predicates), keeping the D19
+     push-into-trap payoff in core rather than re-derived in render.
 - **Superseded by:** —

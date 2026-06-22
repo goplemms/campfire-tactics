@@ -34,6 +34,7 @@ export * from "./overworld";
 export * from "./overworld-actions";
 export * from "./fog";
 export * from "./forecast";
+export * from "./ability-forecast";
 export * from "./ledger";
 export * from "./leveling";
 export * from "./dossier";

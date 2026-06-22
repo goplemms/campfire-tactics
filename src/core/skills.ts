@@ -224,12 +224,51 @@ export const MED_HEAL = {
   stimulantDuration: 1,
 } as const;
 
+/** The rider the herb-keyed {@link MedHealEffect} applies on top of the heal. */
+export type MedHealRider =
+  | { kind: "none" }
+  /** A Hastened status applied to the target (the stimulant rider). */
+  | { kind: "hasten"; duration: number }
+  /** Cleanse one debuff off the target (the antidote rider). */
+  | { kind: "cleanse" };
+
+/**
+ * The Medic's **Heal** predict-core (D64 single-source-of-truth): the exact HP a
+ * Heal would restore to `target`, plus the {@link MedHealRider} the chosen herb
+ * applies — **pure, no mutation, no herb consumption**. Both the resolver
+ * ({@link resolveMedHeal}) and the telegraph forecaster
+ * ({@link "./ability-forecast".forecastSkill}) call this, so the previewed figure
+ * is *byte-identical* to what resolution applies (the resolver never re-derives
+ * the math; the forecast never duplicates it). Base scales with the Medic's job
+ * level ({@link abilityScaleBonus}) and Triage passive (more missing HP → more
+ * healing); salve adds {@link MED_HEAL.salveBonus}. The returned `amount` is the
+ * *requested* heal before the maxHp cap — {@link applyHeal} clamps it, so callers
+ * wanting the realized figure clamp to `target.maxHp - target.hp`.
+ */
+export function medHealAmount(
+  medic: Unit,
+  target: Unit,
+  herbId: string,
+): { amount: number; rider: MedHealRider } {
+  const triage = medic.passives[PASSIVE.triage] ?? 0;
+  const missing = target.maxHp - target.hp;
+  let amount = MED_HEAL.base + abilityScaleBonus(medic) + Math.floor(triage * missing);
+  if (herbId === "salve") amount += MED_HEAL.salveBonus;
+
+  let rider: MedHealRider = { kind: "none" };
+  if (herbId === "stimulant") rider = { kind: "hasten", duration: MED_HEAL.stimulantDuration };
+  else if (herbId === "antidote") rider = { kind: "cleanse" };
+  return { amount, rider };
+}
+
 /**
  * The Medic's **Heal** (D40 combat↔logistics bridge): consume one medical herb
  * from the shared stash and heal `target`, with a **rider keyed by the herb**:
  * salve → bigger heal; stimulant → Hastened; antidote → cleanse a debuff. Base
  * heal scales with the Medic's Triage passive (more wounded → more healing).
- * Returns an empty outcome (no heal) if the herb isn't carried.
+ * Returns an empty outcome (no heal) if the herb isn't carried. The heal figure +
+ * rider come from the pure {@link medHealAmount} predict-core (D64) — this
+ * resolver only *applies* them (consume herb, heal, apply the rider).
  */
 export function resolveMedHeal(
   medic: Unit,
@@ -241,19 +280,38 @@ export function resolveMedHeal(
   if (countOf(inv, herbId) < 1) return {};
   removeItem(inv, herbId, 1);
 
-  const triage = medic.passives[PASSIVE.triage] ?? 0;
-  const missing = target.maxHp - target.hp;
-  let amount = MED_HEAL.base + abilityScaleBonus(medic) + Math.floor(triage * missing);
-  if (herbId === "salve") amount += MED_HEAL.salveBonus;
-
+  const { amount, rider } = medHealAmount(medic, target, herbId);
   const out: SkillOutcome = applyHeal(medic, target, amount, bus);
-  if (herbId === "stimulant") {
-    applyStatus(target, hastened(MED_HEAL.stimulantDuration));
+  if (rider.kind === "hasten") {
+    applyStatus(target, hastened(rider.duration));
     out.status = "hastened";
-  } else if (herbId === "antidote") {
+  } else if (rider.kind === "cleanse") {
     out.cleansed = cleanseOne(target)?.id;
   }
   return out;
+}
+
+/**
+ * Predict-core for a plain {@link HealEffect} (D64): the HP a heal of `base` would
+ * request, after the caster's job-level scaling ({@link abilityScaleBonus}). Pure;
+ * shared by the `heal` resolver and the forecaster so the two never drift. Like
+ * {@link medHealAmount} this is the *requested* amount before the maxHp cap.
+ */
+export function healAmount(caster: Unit, base: number): number {
+  return base + abilityScaleBonus(caster);
+}
+
+/**
+ * Predict-core for a {@link TriageHealEffect} (D64): a {@link healAmount} that
+ * **also scales with the target's missing HP** when the caster has the Medic's
+ * Triage passive — heals `base` + level-scale + ⌊triage × missingHP⌋. With no
+ * Triage it's a plain `healAmount`. Pure; shared by the `triage-heal` resolver and
+ * the forecaster (the spec's "computed" outcome reads exactly this).
+ */
+export function triageHealAmount(caster: Unit, target: Unit, base: number): number {
+  const triage = caster.passives[PASSIVE.triage] ?? 0;
+  const missing = target.maxHp - target.hp;
+  return healAmount(caster, base) + Math.floor(triage * missing);
 }
 
 /** Restore HP to a target (capped at maxHp), firing `unitHealed`. */
@@ -332,15 +390,12 @@ const BATTLE_EFFECT_HANDLERS: {
     return out;
   },
   heal: (effect, { caster, target, bus }) =>
-    applyHeal(caster, target, effect.amount + abilityScaleBonus(caster), bus),
-  "triage-heal": (effect, { caster, target, bus }) => {
+    applyHeal(caster, target, healAmount(caster, effect.amount), bus),
+  "triage-heal": (effect, { caster, target, bus }) =>
     // Triage (D40): heal more the more wounded the target is. Without the
-    // passive it's a plain heal of `amount`. Scales with job level (D39).
-    const triage = caster.passives[PASSIVE.triage] ?? 0;
-    const missing = target.maxHp - target.hp;
-    const amount = effect.amount + abilityScaleBonus(caster) + Math.floor(triage * missing);
-    return applyHeal(caster, target, amount, bus);
-  },
+    // passive it's a plain heal of `amount`. Scales with job level (D39). The
+    // figure comes from the shared predict-core so forecast == resolution (D64).
+    applyHeal(caster, target, triageHealAmount(caster, target, effect.amount), bus),
   status: (effect, { target }) => {
     applyStatus(target, { ...effect.status });
     return { status: effect.status.id };

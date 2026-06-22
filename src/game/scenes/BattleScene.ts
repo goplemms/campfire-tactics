@@ -18,6 +18,8 @@ import {
   Battle,
   unitSkills,
   unlockedSkills,
+  getJob,
+  primaryJobOf,
   onSkillCooldown,
   DEFEND,
   isValidSkillTarget,
@@ -76,7 +78,6 @@ import {
   bribeEnemy,
   bribeCost,
   bribeChance,
-  hasNoble,
   influenceTier,
   recruitToRoster,
   type RunState,
@@ -1123,15 +1124,18 @@ export class BattleScene extends Phaser.Scene {
       // (D62) to sway an enemy. Job-gated (D62) — only surfaced when a Noble is in the
       // party to broker it (the standing-bearer backs the offer, even from camp). A
       // permanent recruit still banks to the guild roster.
-      if (this.guild && hasNoble(this.run.party) && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
+      const noble = this.run.party.find((u) => u.alive && !u.captured && primaryJobOf(u) === "noble");
+      if (this.guild && noble && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
         const tier = influenceTier(this.run.overworld.influence);
         const cost = bribeCost(this.currentPreview(), tier);
         const chance = Math.round(bribeChance(tier) * 100);
         const affordable = this.run.overworld.influence >= cost;
+        // Tag the verb with the Noble: unlike the other Acts this isn't the *active* unit's
+        // own skill — it's brokered by the party's standing-bearer (D62), so name them.
         specs.push({
-          text: "Bribe",
+          text: `Bribe · ${noble.name}`,
           description: affordable
-            ? `Sway an enemy for ${cost} Influence — ~${chance}% at ${tier} standing (a failed roll still spends the Influence and the Act). A generic turns coat for the fight; an authored one joins the guild permanently.`
+            ? `${noble.name} (Noble) sways an enemy for ${cost} Influence — ~${chance}% at ${tier} standing (a failed roll still spends the Influence and the Act). A generic turns coat for the fight; an authored one joins the guild permanently.`
             : `Not enough Influence to bribe (need ${cost}).`,
           onClick: () => {
             if (!affordable) return this.setHint(`Not enough Influence to bribe (need ${cost}).`);
@@ -2075,6 +2079,11 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     const rows: CardRow[] = [];
+    // Lead with the unit's job: the action menu lists *this unit's* job verbs, so naming
+    // the job is what makes "which ability is enabled by who" legible. The job level rides
+    // along because it's *why* a unit has one active vs. two (the 2nd unlocks at L2, D39).
+    const job = getJob(primaryJobOf(actor));
+    if (job) rows.push({ label: "Role", value: `${job.name} L${jobLevelOf(actor, primaryJobOf(actor))}`, color: INK.secondary });
     if (this.phase === "deployment") {
       const dug = actor.dugIn === true;
       const inDanger = this.front && inDangerZone(actor.pos, this.front);

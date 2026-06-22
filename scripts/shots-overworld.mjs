@@ -44,9 +44,10 @@ const STEPS = BOOT === "battle"
   ? [
       { name: "01-deploy", minMs: 900, eval: `void 0;` }, // the enlarged deployment board
       { name: "02-battle", minMs: 700, eval: `(()=>{const s=${BS};if(s.phase==="deployment")s.onPrimary();for(let i=0;i<16&&!s.waitingFor;i++){s.busy=false;s.over=false;s.onAdvance();}})()` },
-      // The Noble's BRIBE by standing (D62): give the run some Influence and render the
-      // action row → the Bribe button shows its live cost + success chance for the band.
-      { name: "03-bribe-by-standing", minMs: 500, eval: `(()=>{const s=${BS};s.run.overworld.influence=16;s.busy=false;if(s.waitingFor)s.showSkillButtons(s.waitingFor);})()` },
+      // The Noble's BRIBE by standing (D62): field the real Noble from the roster (the
+      // job-gate that backs the offer), give the run some Influence and render the action
+      // row → the Bribe button shows the broking Noble + its live cost + success chance.
+      { name: "03-bribe-by-standing", minMs: 500, eval: `(()=>{const s=${BS};const n=(s.guild?s.guild.roster:[]).find(u=>u.jobId==='noble');if(n&&!s.run.party.includes(n))s.run.party.push(n);s.run.overworld.influence=16;s.busy=false;if(s.waitingFor)s.showSkillButtons(s.waitingFor);})()` },
     ]
   : BOOT === "expedition"
   ? [
@@ -66,9 +67,10 @@ const STEPS = BOOT === "battle"
       { name: "04c-ledger-restore-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
       { name: "05-survey", eval: wrap(`${clearOverlay}s.showSurvey();`) },
       { name: "06-after-inplace-rest", eval: wrap(`s.run.party.forEach(u=>{u.hp=Math.max(1,Math.floor(u.maxHp*0.4));});s.doInPlaceRest();`) },
-      // The Noble's Influence (D62): field a Noble (Int>=3), give some standing + gold,
-      // and expand the Advanced economy panel → the Patronize verb + Standing readout.
-      { name: "06d-influence-patronize", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);s.run.party[0].intelligence=5;s.run.camp.gold=120;s.run.overworld.influence=16;s.campAdvanced=true;s.renderCamp();`) },
+      // The economy classes (D62/D30): field the real Noble + Banker from the roster (the
+      // job-gate that replaced the old Int>=3 proxy), give some standing + gold, and expand
+      // the Advanced panel → its verbs, each tagged with the specialist who works them.
+      { name: "06d-influence-patronize", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);for(const jid of ['noble','banker']){const m=(s.guild?s.guild.roster:[]).find(u=>u.jobId===jid);if(m&&!s.run.party.includes(m))s.run.party.push(m);}s.run.camp.gold=120;s.run.overworld.influence=16;s.campAdvanced=true;s.renderCamp();`) },
       { name: "07-break-camp-gate", eval: wrap(`s.run.camp.gold=0;s.run.overworld.debt=30;s.breakCampToMap();`) },
     ];
 

@@ -35,10 +35,8 @@ import {
   bankerEngageInterest,
   bankerBorrow,
   bankerProtect,
-  hasBanker,
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
   patronize,
-  hasNoble,
   primaryJobOf,
   influenceTier,
   ECONOMY,
@@ -510,7 +508,10 @@ export class OverworldScene extends Phaser.Scene {
         // and badge the label with the uses left so the limiter is legible.
         const left = campSkillUsesLeft(this.run.overworld, skill);
         const capped = Number.isFinite(left);
-        const label = capped && skill.usesPerNode! > 1 ? `${u.name}: ${skill.name}  (${left} left)` : `${u.name}: ${skill.name}`;
+        // Attribute the verb to the member who performs it (` · Name`) — the consistent
+        // "who acts" tag the economy/recon verbs below also wear.
+        const usesTag = capped && skill.usesPerNode! > 1 ? `  (${left} left)` : "";
+        const label = `${skill.name} · ${u.name}${usesTag}`;
         const tip = capped
           ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Break Camp.)`
           : `${skill.name} — ${skill.description}`;
@@ -540,18 +541,18 @@ export class OverworldScene extends Phaser.Scene {
     this.campButton(colX, y, 360, 24, `Sell Valuables (${valCount} · ${unitPrice}g ea)`, canSell, () => this.sellValuables(), sellTip);
     y += rowH;
     // Triage (the audit pass): the healer's own fatigue-fuelled heal — distinct from the
-    // universal Rest (RP/rations). Job-gated to a healer; disabled with a hint when none.
+    // universal Rest (RP/rations). Job-gated to a healer; hidden entirely when none is
+    // aboard (a verb the party can't perform isn't shown). Tagged with the healer who tires.
     const healer = this.triageActor();
-    const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
-    if (!healer) {
-      this.campButton(colX, y, 360, 24, "Triage — needs a Medic", false, () => {}, "No healer in the party. Bring a Medic to triage — spend the healer's own stamina (fatigue, worn out) to mend the worst-wounded fighter for more than a Rest.");
-    } else {
+    if (healer) {
+      const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
       const tip = someoneWounded
         ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
         : "No wounded fighter to triage.";
-      this.campButton(colX, y, 360, 24, `Triage (${healer.name} · fatigue)`, someoneWounded, () => this.doTriage(healer), tip);
+      this.campButton(colX, y, 360, 24, `Triage · ${healer.name} (fatigue)`, someoneWounded, () => this.doTriage(healer), tip);
+      y += rowH;
     }
-    y += rowH + 8;
+    y += 8;
     return y;
   }
 
@@ -606,39 +607,43 @@ export class OverworldScene extends Phaser.Scene {
    * Banker's purse-state readout. Returns the `y` past the last row drawn.
    */
   private renderAdvancedEconomy(colX: number, startY: number, rowH: number): number {
+    // Job-gated to its specialist: the Banker's purse-finance verbs (D30) and the Noble's
+    // Patronize (D62) are shown only when that member is aboard to perform them. With no
+    // economy specialist at all there's nothing here to do, so the whole section is hidden.
+    const banker = this.jobActor("banker");
+    const noble = this.jobActor("noble");
+    if (!banker && !noble) return startY;
+
     let y = startY;
-    this.campButton(colX, y, 360, 24, `${this.campAdvanced ? ICON.collapse.glyph : ICON.expand.glyph}  Advanced — Banker · Noble`, true, () => { this.campAdvanced = !this.campAdvanced; this.renderCamp(); }, "Optional economy verbs: interest, borrowing, theft protection, and influence. Safe to leave alone while you learn the loop.");
+    const present = [banker && "Banker", noble && "Noble"].filter(Boolean).join(" · ");
+    this.campButton(colX, y, 360, 24, `${this.campAdvanced ? ICON.collapse.glyph : ICON.expand.glyph}  Advanced — ${present}`, true, () => { this.campAdvanced = !this.campAdvanced; this.renderCamp(); }, "Optional economy verbs: interest, borrowing, theft protection, and influence. Safe to leave alone while you learn the loop.");
     y += rowH;
     if (this.campAdvanced) {
       const subX = colX + 16;
       const subW = 344;
-      // The Banker's purse-finance verbs (D30) are job-gated — they need a Banker in the
-      // party (the financier who works them), mirroring the Noble's Patronize below.
-      const bankerPresent = hasBanker(this.run.party);
-      const noBanker = "No Banker in the party. Bring a Banker to work the purse — interest, loans, and theft protection.";
-      this.campButton(subX, y, subW, 24, "Invest the Purse", bankerPresent, () => this.bankerInterest(), bankerPresent ? "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury." : noBanker);
-      y += rowH;
-      this.campButton(subX, y, subW, 24, "Borrow 40g", bankerPresent, () => this.bankerBorrow40(), bankerPresent ? "Banker: overspend now; auto-repaid from incoming run gold." : noBanker);
-      y += rowH;
-      this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g)`, bankerPresent && this.run.camp.gold >= ECONOMY.banker.protectionCost, () => this.bankerProtect(), bankerPresent ? "Banker: blunt a thief's skim — battle thief and event node alike." : noBanker);
-      y += rowH;
-      // Patronize (D62): the Noble courts patrons — gold → Influence, once per node.
-      // Needs a Noble in the party (the one building rapport); passive presence accrual
-      // adds to it each node-step on the road.
-      const noblePresent = hasNoble(this.run.party);
-      const patronCost = ECONOMY.noble.patronizeCost;
-      const patronTip = noblePresent
-        ? `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`
-        : "No Noble in the party. Bring a Noble to build Influence — passively on the road and via Patronize — and to broker mid-battle bribes.";
-      this.campButton(subX, y, subW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence)`, noblePresent && this.run.camp.gold >= patronCost, () => this.patronize(), patronTip);
-      y += rowH;
+      if (banker) {
+        this.campButton(subX, y, subW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
+        y += rowH;
+        this.campButton(subX, y, subW, 24, `Borrow 40g · ${banker.name}`, true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.");
+        y += rowH;
+        this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g) · ${banker.name}`, this.run.camp.gold >= ECONOMY.banker.protectionCost, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.");
+        y += rowH;
+      }
+      // Patronize (D62): the Noble courts patrons — gold → Influence, once per node. Passive
+      // presence accrual adds to it each node-step on the road.
+      if (noble) {
+        const patronCost = ECONOMY.noble.patronizeCost;
+        const patronTip = `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`;
+        this.campButton(subX, y, subW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence) · ${noble.name}`, this.run.camp.gold >= patronCost, () => this.patronize(), patronTip);
+        y += rowH;
+      }
       // The Banker's purse-state, moved off the always-on HUD line into context (D58).
       const eco = this.run.overworld;
       const bank: string[] = [];
       if (eco.interestPerStep > 0) bank.push(`Interest +${eco.interestPerStep}g/step`);
       if (eco.debt > 0) bank.push(`Debt ${eco.debt}g`);
       if (eco.protection > 0) bank.push(`Protection ${Math.round(eco.protection * 100)}%`);
-      if (eco.influence > 0 || noblePresent) bank.push(`Influence ${eco.influence} (${influenceTier(eco.influence)})`);
+      if (eco.influence > 0 || noble) bank.push(`Influence ${eco.influence} (${influenceTier(eco.influence)})`);
       if (bank.length) {
         this.campObjects.push(this.add.text(subX, y, bank.join("   ·   "), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11));
         y += rowH;
@@ -674,6 +679,16 @@ export class OverworldScene extends Phaser.Scene {
   /** Units that can act on the overworld — alive and not bound (D7). */
   private activeUnits(): Unit[] {
     return this.run.party.filter((u) => u.alive && !u.captured);
+  }
+
+  /**
+   * The active party member whose **primary job** is `jobId` — the one who performs (and,
+   * for a fatigue-priced verb, tires from) that job's action. The render tags the button
+   * with *who* acts and, when this returns `undefined`, hides the action entirely: a verb
+   * the party can't field a job for isn't a greyed tease, it simply isn't shown.
+   */
+  private jobActor(jobId: string): Unit | undefined {
+    return this.activeUnits().find((u) => primaryJobOf(u) === jobId);
   }
 
   /**
@@ -1185,16 +1200,15 @@ export class OverworldScene extends Phaser.Scene {
     y += rowH;
 
     // Survey a reachable node — raises its intel, tightening the forecast (D48). Job-gated
-    // to the Scout class (the recon specialist); disabled with a hint when none is aboard.
-    const survey = getAbility("survey")!;
+    // to the Scout class (the recon specialist); hidden entirely when none is aboard. Each
+    // row is tagged with the surveying Scout, whose fatigue the cost readout also shows —
+    // so you can see who's wearing down across a string of surveys.
     const surveyor = this.surveyActor();
-    if (!surveyor) {
-      this.campButton(colX, y, 360, 24, "Survey → needs a Scout", false, () => {}, "No Scout in the party. Bring a Scout to survey nodes ahead — raising their intel preview and tightening the route forecast.");
-      y += rowH;
-    } else {
+    if (surveyor) {
+      const survey = getAbility("survey")!;
       for (const target of this.loop.reachable()) {
         const refusal = this.refusal(survey, surveyor);
-        this.campButton(colX, y, 360, 24, `Survey → ${target.id} (${this.costReadout(survey, surveyor)})`, !refusal, () => { this.loop.overworldAction(surveyor, "survey", { targetNodeId: target.id }); this.showSurvey(); }, refusal ?? survey.description);
+        this.campButton(colX, y, 360, 24, `Survey → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, !refusal, () => { this.loop.overworldAction(surveyor, "survey", { targetNodeId: target.id }); this.showSurvey(); }, refusal ?? survey.description);
         y += rowH;
       }
     }

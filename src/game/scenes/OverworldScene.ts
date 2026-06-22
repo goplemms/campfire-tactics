@@ -21,9 +21,8 @@ import {
   projectManifest,
   getVessel,
   unitSkills,
-  triageHeal,
-  chunkHp,
-  runDifficulty,
+  triage,
+  isHealer,
   combatRoster,
   // M10 — the gold economy verbs (D30/D34) + theft (D30)
   merchantBuy,
@@ -540,7 +539,18 @@ export class OverworldScene extends Phaser.Scene {
         : `Sell all ${valCount} valuables at the ${tier} market (${unitPrice}g each).`;
     this.campButton(colX, y, 360, 24, `Sell Valuables (${valCount} · ${unitPrice}g ea)`, canSell, () => this.sellValuables(), sellTip);
     y += rowH;
-    this.campButton(colX, y, 360, 24, "Triage Heal", true, () => this.triage(), "Spend Rest Points to heal the most-wounded fighter one chunk.");
+    // Triage (the audit pass): the healer's own fatigue-fuelled heal — distinct from the
+    // universal Rest (RP/rations). Job-gated to a healer; disabled with a hint when none.
+    const healer = this.triageActor();
+    const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
+    if (!healer) {
+      this.campButton(colX, y, 360, 24, "Triage — needs a Medic", false, () => {}, "No healer in the party. Bring a Medic to triage — spend the healer's own stamina (fatigue, worn out) to mend the worst-wounded fighter for more than a Rest.");
+    } else {
+      const tip = someoneWounded
+        ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
+        : "No wounded fighter to triage.";
+      this.campButton(colX, y, 360, 24, `Triage (${healer.name} · fatigue)`, someoneWounded, () => this.doTriage(healer), tip);
+    }
     y += rowH + 8;
     return y;
   }
@@ -894,17 +904,17 @@ export class OverworldScene extends Phaser.Scene {
     this.setHint(sold > 0 ? `Sold ${sold} valuables for ${total}g.${lvl}` : "Can't sell here.");
   }
 
-  private triage(): void {
-    const policy = runDifficulty(this.run);
-    const wounded = combatRoster(this.run)
-      .filter((u) => u.hp < u.maxHp)
-      .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
-    if (!wounded) return this.setHint("No wounded fighters to heal.");
-    if (this.run.rp < policy.rpPerChunk) return this.setHint(`Not enough RP (need ${policy.rpPerChunk} for a ${chunkHp(wounded)} HP chunk).`);
-    const res = triageHeal(wounded, policy.rpPerChunk, policy);
-    this.run.rp -= res.rpSpent;
+  /** An active healer (the Triage job gate) — a Medic-class member, or undefined if none. */
+  private triageActor(): Unit | undefined {
+    return this.activeUnits().find((u) => isHealer(u));
+  }
+
+  /** The healer spends fatigue (worn out) to mend the most-wounded fighter (the audit pass). */
+  private doTriage(healer: Unit): void {
+    const res = triage(this.run, healer);
     this.renderCamp();
-    this.setHint(`Triaged ${wounded.name}: +${res.hpHealed} HP for ${res.rpSpent} RP.`);
+    if (!res.applied) return this.setHint(`Can't triage: ${res.reason}`);
+    this.setHint(`${healer.name} triaged +${res.healed} HP — worn out (+${res.fatigueSpent} fatigue).`);
   }
 
   // --- The gold economy verbs (M10, D30/D34) --------------------------------

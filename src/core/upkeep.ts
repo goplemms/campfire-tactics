@@ -207,25 +207,26 @@ export function chunkHp(unit: Unit): number {
   return Math.max(1, Math.ceil(unit.maxHp * CHUNK_FRACTION));
 }
 
-/** The result of a triage allocation. */
-export interface TriageResult {
+/** The result of a rest-heal allocation. */
+export interface RestHealResult {
   rpSpent: number;
   chunks: number;
   hpHealed: number;
 }
 
 /**
- * Triage-heal one unit from a Rest-Point pool (D9): spend whole chunks
+ * **Rest-heal** one unit from a Rest-Point pool (D9): spend whole chunks
  * (`policy.rpPerChunk` RP each → `CHUNK_FRACTION` max HP), capped by available RP
  * and the unit's missing HP. Difficulty scales `rpPerChunk` *only*. Mutates the
- * unit's HP; returns RP spent and HP healed. (A downed/dying unit isn't a triage
- * target — that's the cleric's job.)
+ * unit's HP; returns RP spent and HP healed. (A downed/dying unit isn't a rest-heal
+ * target — that's the cleric's job.) This is the **universal Rest's** heal — distinct
+ * from the healer-owned {@link "./overworld-actions".triage} (fatigue-fuelled, bigger).
  */
-export function triageHeal(
+export function restHeal(
   unit: Unit,
   availableRp: number,
   policy: DifficultyPolicy,
-): TriageResult {
+): RestHealResult {
   if (!unit.alive || unit.hp >= unit.maxHp) {
     return { rpSpent: 0, chunks: 0, hpHealed: 0 };
   }

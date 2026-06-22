@@ -28,9 +28,11 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { primaryJobOf, type Unit } from "./units";
+import { healUnit, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
+import { getJob } from "./jobs";
+import { PASSIVE } from "./combat";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
 import { decayCounters, bumpCounter } from "./num";
 import { earn, spend } from "./purse-journal";
@@ -458,6 +460,82 @@ export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): 
   if (outcome.bankedHeal) parts.push(`banked +${outcome.bankedHeal} HP/unit`);
   if (outcome.levels > 0) parts.push(`${unit.name} reached L${unit.level}!`);
   return { applied: true, outcome, detail: `${skill.name}: ${parts.join(", ")}.` };
+}
+
+// --- Triage — the healer's fatigue-fuelled camp heal (the audit pass) --------
+
+/** Triage tuning — the healer's between-nodes heal, all data. */
+export const TRIAGE = {
+  /**
+   * Fatigue the healer spends per Triage — a **demanding** cost (≥ the
+   * {@link "./fatigue".fatiguePenalty} lock threshold), so a worn-out healer can't
+   * keep triaging until they rest. *Being worn out* is the whole limiter (pure
+   * fatigue — no RP, the Rest's currency).
+   */
+  fatigue: 2,
+  /** Flat HP floor a Triage restores before the Triage-scaling on missing HP. */
+  base: 6,
+} as const;
+
+/**
+ * True if `unit` is a **healing class** — a job stamped with the Medic's Triage
+ * passive ({@link "./combat".PASSIVE.triage}). The capability gate for {@link triage}
+ * (the {@link "./traps".canDisarm} pattern: own the capability, not a hard-coded job
+ * id), so it **auto-extends to any future healer** that carries the passive. Reads the
+ * **job def** (not `unit.passives`, which is only stamped at battle setup), so it's
+ * valid in camp.
+ */
+export function isHealer(unit: Unit): boolean {
+  return (getJob(primaryJobOf(unit))?.passives?.[PASSIVE.triage] ?? 0) > 0;
+}
+
+/** What a camp {@link triage} produced. */
+export interface TriageResult extends ActionOutcome {
+  /** HP restored to the treated fighter. */
+  healed?: number;
+  /** The treated unit's id. */
+  targetId?: string;
+  /** Fatigue spent on the healer (base + any over-extension surcharge). */
+  fatigueSpent?: number;
+}
+
+/**
+ * **Triage** (the audit pass) — the **healer's** camp heal, distinct from the universal
+ * Rest ({@link "./upkeep".restHeal}, RP/rations): a healing class spends **their own
+ * fatigue** (worn out) to mend the party's **most-wounded** fighter for *more* than a
+ * Rest — scaling with the Medic's Triage (heal harder the worse the wound). Job-gated to
+ * a {@link isHealer} (only a healer can triage); the fatigue rides the shared
+ * {@link checkOverworldCost} gate, so a worn-out healer's Triage **locks** until they
+ * rest. Pure fatigue — no RP. Refuses (spending nothing) without a healer, with no one
+ * wounded, or when the healer is too worn out.
+ */
+export function triage(run: RunState, healer: Unit): TriageResult {
+  if (!isHealer(healer)) {
+    return { applied: false, reason: `${healer.name} can't triage — only a healer can.` };
+  }
+  // Triage treats the worst first: the most-wounded living, uncaptured ally.
+  const wounded = run.party
+    .filter((u) => u.alive && !u.captured && u.hp < u.maxHp)
+    .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+  if (!wounded) return { applied: false, reason: "No wounded fighter to triage." };
+
+  const cost: OverworldCost = { fatigue: TRIAGE.fatigue };
+  const check = checkOverworldCost(run, "triage", cost, "Triage", healer);
+  if (!check.ok) return { applied: false, reason: check.reason };
+
+  // Heal scales with the healer's Triage (read from the job def — camp units aren't
+  // stamped) and the wound's depth: more missing HP → more healing.
+  const triageVal = getJob(primaryJobOf(healer))?.passives?.[PASSIVE.triage] ?? 0;
+  const amount = TRIAGE.base + Math.floor(triageVal * (wounded.maxHp - wounded.hp));
+  const healed = healUnit(wounded, amount);
+  commitOverworldCost(run, "triage", cost, check.fatigueSpend, healer);
+  return {
+    applied: true,
+    healed,
+    targetId: wounded.id,
+    fatigueSpent: check.fatigueSpend,
+    detail: `Triaged ${wounded.name}: +${healed} HP (${healer.name} worn out).`,
+  };
 }
 
 /** Apply an ability's effect; returns success + a detail string, or a refusal. */

@@ -16,6 +16,9 @@ import {
   hasPrice,
   OVERWORLD_ABILITIES,
   SURVEY,
+  triage,
+  isHealer,
+  TRIAGE,
 } from "./overworld-actions";
 import { getJob } from "./jobs";
 import type { SkillDef } from "./skills";
@@ -159,6 +162,71 @@ describe("overworld-actions — Survey raises a reachable node's preview tier", 
     const run = newRun("scout-notarget");
     const res = takeOverworldAction(run, run.party[0], "survey");
     expect(res.applied).toBe(false);
+  });
+});
+
+describe("overworld-actions — Triage is the healer's fatigue-fuelled camp heal (audit)", () => {
+  /** A Medic — the healing class (its job def carries the Triage passive). */
+  function medic(): Unit {
+    return createUnit({ id: "Mreni", side: "player", pos: { col: -1, row: -1 }, jobId: "medic", speed: 9, maxHp: 20, attack: 4, defense: 2, moveRange: 3, sightRadius: 4 });
+  }
+
+  it("isHealer recognises the Medic (Triage passive) and not a plain fighter", () => {
+    expect(isHealer(medic())).toBe(true);
+    expect(isHealer(run0Party())).toBe(false); // a Scout — no Triage passive
+  });
+  function run0Party(): Unit {
+    return createUnit({ id: "grunt", side: "player", pos: { col: -1, row: -1 }, jobId: "soldier", speed: 10, maxHp: 20, attack: 6, defense: 2, moveRange: 4, sightRadius: 4 });
+  }
+
+  it("a healer spends FATIGUE (not RP) to mend the most-wounded for more than the flat base", () => {
+    const run = newRun("triage-heal");
+    const doc = medic();
+    run.party.push(doc);
+    const hurt = run.party[0]; // the Scout
+    hurt.hp = 1; // deeply wounded → the Triage-scaling on missing HP kicks in
+    const rpBefore = run.rp;
+
+    const res = triage(run, doc);
+    expect(res.applied).toBe(true);
+    expect(res.targetId).toBe(hurt.id);
+    expect(res.healed!).toBeGreaterThan(TRIAGE.base); // base + triage×missing
+    expect(hurt.hp).toBeGreaterThan(1);
+    // Pure fatigue: the healer is worn out, the RP pool is untouched.
+    expect(doc.fatigue).toBeGreaterThanOrEqual(TRIAGE.fatigue);
+    expect(res.fatigueSpent!).toBeGreaterThanOrEqual(TRIAGE.fatigue);
+    expect(run.rp).toBe(rpBefore);
+  });
+
+  it("refuses (spending nothing) without a healer in the party", () => {
+    const run = newRun("triage-nohealer");
+    run.party[0].hp = 1; // wounded, but no Medic to treat them
+    const res = triage(run, run.party[0]); // a Scout can't triage
+    expect(res.applied).toBe(false);
+    expect(res.reason).toMatch(/only a healer/i);
+    expect(run.party[0].hp).toBe(1);
+  });
+
+  it("refuses when no one is wounded (no empty drain)", () => {
+    const run = newRun("triage-fullhp");
+    const doc = medic();
+    run.party.push(doc);
+    const res = triage(run, doc);
+    expect(res.applied).toBe(false);
+    expect(res.reason).toMatch(/no wounded/i);
+    expect(doc.fatigue).toBe(0); // nothing spent
+  });
+
+  it("a worn-out healer's Triage locks until they rest (the fatigue limiter)", () => {
+    const run = newRun("triage-exhausted");
+    const doc = medic();
+    doc.fatigue = FATIGUE.exhausted; // too worn out for a demanding action
+    run.party.push(doc);
+    run.party[0].hp = 1;
+    const res = triage(run, doc);
+    expect(res.applied).toBe(false);
+    expect(res.reason).toMatch(/exhausted|worn|rest/i);
+    expect(run.party[0].hp).toBe(1);
   });
 });
 

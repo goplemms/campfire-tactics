@@ -112,3 +112,13 @@ framing means **permadeath**: fallen and unrescued-captured units do not come ba
   tuning values (illustrative in these docs).
 - Enemy AI on a continuous clock is meaningfully harder than round-based AI; this
   is an accepted cost of the FFT model (decision D5).
+- **Revisit the two-step turn close (End Turn → Advance Clock).** The clock only
+  steps on an explicit **Advance Clock** press, kept separate from the **End Turn**
+  that closes a unit's turn (D60); in both Combat and Deployment (D63) a full cycle is
+  two deliberate inputs. The split buys a board-reading beat between turns and gates
+  Deployment's closing net behind intent — but it reads as "end turn twice" and is a
+  known point of confusion (see the glossary's *End Turn vs Advance Clock* note). Open
+  question: should **End Turn** auto-advance to the next actor (one press), reserving a
+  manual **Advance Clock** only where stepping the clock is itself the decision (the
+  growing net, or watching a charge land)? A UX/tuning pass — the CT model is
+  unaffected either way.

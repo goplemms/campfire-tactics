@@ -28,7 +28,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit } from "./units";
+import { primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
@@ -106,8 +106,8 @@ export function validateOverworldCost(label: string, cost: OverworldCost): void 
 }
 
 /** Raise a chosen reachable node's intel preview tier (leans on {@link "./intel"}). */
-export interface ScoutEffect {
-  kind: "scout";
+export interface SurveyEffect {
+  kind: "survey";
   /** How many tiers to bump the target node's preview by. */
   tierBump: number;
 }
@@ -119,7 +119,7 @@ export interface ScoutEffect {
  * {@link "./economy-actions".merchantBuy}/{@link "./economy-actions".merchantSell}
  * verbs, not a cooldown ability.)
  */
-export type OverworldEffect = ScoutEffect;
+export type OverworldEffect = SurveyEffect;
 
 /** An overworld ability — pure data (D29), the overworld twin of a {@link "./skills".SkillDef}. */
 export interface OverworldAbility {
@@ -129,8 +129,11 @@ export interface OverworldAbility {
   effect: OverworldEffect;
   cost: OverworldCost;
   /**
-   * Job ids that thematically perform this (render hint for picking an actor).
-   * The resolver does **not** enforce it — the economy stays loose. Omitted = any.
+   * The job ids **allowed to perform** this ability — an *enforced* allowlist: the
+   * actor's {@link "./units".primaryJobOf | primary job} must be one of these or
+   * {@link takeOverworldAction} refuses. The render uses it to pick an eligible actor
+   * and to disable the action when the party fields none. **Omitted = any job.**
+   * Extensible: widen who can act by adding a job id (e.g. Survey is `["scout"]` today).
    */
   jobIds?: string[];
 }
@@ -138,20 +141,24 @@ export interface OverworldAbility {
 // --- The registry (jobs.ts/skills.ts spirit) --------------------------------
 
 /**
- * **Scout** — raise a reachable node's banded intel preview by a tier (D24). The
- * cheap, frequent action: a short cooldown and light fatigue, available to anyone.
+ * **Survey** — the Scout class's overworld recon action: raise a reachable node's banded
+ * intel preview by a tier (D24). The cheap, frequent action — a short cooldown and light
+ * fatigue — **job-gated to the Scout** ({@link OverworldAbility.jobIds}). Renamed from the
+ * former "scout" ability so the *action* (id `survey`) no longer collides with the *class*
+ * (jobId `scout`); the shared name is now intentional (the Scout surveys).
  */
-export const SCOUT: OverworldAbility = {
-  id: "scout",
-  name: "Scout",
-  description: "Survey a node ahead — raise its intel preview by one tier.",
-  effect: { kind: "scout", tierBump: 1 },
+export const SURVEY: OverworldAbility = {
+  id: "survey",
+  name: "Survey",
+  description: "Survey a node ahead — raise its intel preview by one tier (the Scout's recon).",
+  effect: { kind: "survey", tierBump: 1 },
   cost: { cooldown: 2, fatigue: 1 },
+  jobIds: ["scout"],
 };
 
 /** The overworld-ability registry — the single source abilities load from. */
 export const OVERWORLD_ABILITIES: Record<string, OverworldAbility> = {
-  [SCOUT.id]: SCOUT,
+  [SURVEY.id]: SURVEY,
 };
 
 // Enforce the two-axis invariant (D61) at load: no registered ability may be both
@@ -387,6 +394,13 @@ export function takeOverworldAction(
   const ability = getAbility(abilityId);
   if (!ability) return { applied: false, reason: `Unknown overworld ability "${abilityId}".` };
 
+  // Job gate (the audit pass): an ability with a `jobIds` allowlist may only be performed
+  // by an actor whose primary job is on it (omitted ⇒ any). The render picks an eligible
+  // actor; this is the enforcement backstop so the rule can't be bypassed.
+  if (ability.jobIds && !ability.jobIds.includes(primaryJobOf(unit) ?? "")) {
+    return { applied: false, reason: `${unit.name} can't ${ability.name} — only ${ability.jobIds.join(", ")} can.` };
+  }
+
   const check = checkOverworldCost(run, abilityId, ability.cost, ability.name, unit);
   if (!check.ok) return { applied: false, reason: check.reason };
 
@@ -454,15 +468,15 @@ function applyEffect(
 ): { ok: true; detail: string } | { ok: false; reason: string } {
   const effect = ability.effect;
   switch (effect.kind) {
-    case "scout": {
+    case "survey": {
       const targetId = opts.targetNodeId;
-      if (!targetId) return { ok: false, reason: "Scout needs a node to survey." };
+      if (!targetId) return { ok: false, reason: "Survey needs a node to read." };
       const reachable = reachableFrom(run.map, run.mapNodeId);
       if (!reachable.some((n) => n.id === targetId)) {
-        return { ok: false, reason: "That node isn't reachable to scout." };
+        return { ok: false, reason: "That node isn't reachable to survey." };
       }
       bumpCounter(run.overworld.scouted, targetId, effect.tierBump);
-      return { ok: true, detail: `Scouted ${targetId} — preview raised ${effect.tierBump} tier.` };
+      return { ok: true, detail: `Surveyed ${targetId} — preview raised ${effect.tierBump} tier.` };
     }
   }
   // Guard (D61): a new OverworldEffect kind that's not handled above throws a clear

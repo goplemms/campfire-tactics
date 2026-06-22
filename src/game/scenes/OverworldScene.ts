@@ -40,6 +40,7 @@ import {
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
   patronize,
   hasNoble,
+  primaryJobOf,
   influenceTier,
   ECONOMY,
   // M11 — the data-driven event-node registry (D4/D23)
@@ -197,7 +198,7 @@ export class OverworldScene extends Phaser.Scene {
     const bullets = [
       "The map is fogged — deeper nodes hide until your intel reaches them.",
       "Pick a node to Make Camp, then End the Night to face it (fight · rest · event).",
-      "After it resolves, Survey: read the forecast, rest in place, scout — then Break Camp.",
+      "After it resolves, Survey: read the forecast, rest in place, survey ahead — then Break Camp.",
       "Open the Ledger anytime: cross a line off to skip it and free its gold.",
       "Tolls are known, loot is fogged — route to a rest node to fully recover.",
     ];
@@ -665,10 +666,16 @@ export class OverworldScene extends Phaser.Scene {
     return this.run.party.filter((u) => u.alive && !u.captured);
   }
 
-  /** The acting unit for Scout: the highest-Intelligence active member (a survey skill). */
-  private scoutActor(): Unit {
-    const active = this.activeUnits();
-    return active.reduce((best, u) => (u.intelligence > best.intelligence ? u : best), active[0] ?? this.run.party[0]);
+  /**
+   * The acting unit for Survey: an active **Scout** (the ability's job gate, D-audit),
+   * the highest-Intelligence among them. `undefined` when the party fields no Scout — the
+   * render then disables the action and explains why.
+   */
+  private surveyActor(): Unit | undefined {
+    const jobIds = getAbility("survey")?.jobIds;
+    const eligible = this.activeUnits().filter((u) => !jobIds || jobIds.includes(primaryJobOf(u) ?? ""));
+    if (eligible.length === 0) return undefined;
+    return eligible.reduce((best, u) => (u.intelligence > best.intelligence ? u : best), eligible[0]);
   }
 
   /** The camp "Party" button label, badged with the count needing a look (⚠N). */
@@ -1147,7 +1154,7 @@ export class OverworldScene extends Phaser.Scene {
     this.refreshCampText();
 
     this.titleText.setText(`Survey — Night ${this.run.night} · plan your route`);
-    this.setHint("Survey: read the forecast, rest in place (a night's rations, repeatable), scout ahead — then Break Camp to the map.");
+    this.setHint("Survey: read the forecast, rest in place (a night's rations, repeatable), survey ahead — then Break Camp to the map.");
 
     const cx = this.scale.width / 2;
     const panelW = 760;
@@ -1167,13 +1174,19 @@ export class OverworldScene extends Phaser.Scene {
     this.campButton(colX, y, 360, 24, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail);
     y += rowH;
 
-    // Scout a reachable node — raises its intel, tightening the forecast (D48).
-    const scout = getAbility("scout")!;
-    for (const target of this.loop.reachable()) {
-      const actor = this.scoutActor();
-      const refusal = this.refusal(scout, actor);
-      this.campButton(colX, y, 360, 24, `Scout → ${target.id} (${this.costReadout(scout, actor)})`, !refusal, () => { this.loop.overworldAction(actor, "scout", { targetNodeId: target.id }); this.showSurvey(); }, refusal ?? scout.description);
+    // Survey a reachable node — raises its intel, tightening the forecast (D48). Job-gated
+    // to the Scout class (the recon specialist); disabled with a hint when none is aboard.
+    const survey = getAbility("survey")!;
+    const surveyor = this.surveyActor();
+    if (!surveyor) {
+      this.campButton(colX, y, 360, 24, "Survey → needs a Scout", false, () => {}, "No Scout in the party. Bring a Scout to survey nodes ahead — raising their intel preview and tightening the route forecast.");
       y += rowH;
+    } else {
+      for (const target of this.loop.reachable()) {
+        const refusal = this.refusal(survey, surveyor);
+        this.campButton(colX, y, 360, 24, `Survey → ${target.id} (${this.costReadout(survey, surveyor)})`, !refusal, () => { this.loop.overworldAction(surveyor, "survey", { targetNodeId: target.id }); this.showSurvey(); }, refusal ?? survey.description);
+        y += rowH;
+      }
     }
 
     this.campButton(colX, y, 360, 24, this.tentButtonLabel(), true, () => this.openTent(() => this.showSurvey(), "party"), "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured.");

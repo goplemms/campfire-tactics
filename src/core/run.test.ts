@@ -18,12 +18,13 @@ import {
 import { generateOverworld, getNode } from "./overworld";
 import { isAuthoredEncounter } from "./staging";
 import { RunLoop } from "./runloop";
-import { takeOverworldAction, cooldownRemaining, SCOUT } from "./overworld-actions";
+import { takeOverworldAction, cooldownRemaining, SURVEY } from "./overworld-actions";
 
 /** A small fightable roster (Soldiers so they have battle skills too). */
 function roster(): Unit[] {
   return [
-    createUnit({ id: "Rook", side: "player", pos: { col: 0, row: 1 }, jobId: "soldier", speed: 12, maxHp: 30, attack: 9, defense: 3, moveRange: 4, sightRadius: 5, awareness: 4, intelligence: 4 }),
+    // Rook is a Scout so it can perform the job-gated Survey ability (jobIds: ["scout"]).
+    createUnit({ id: "Rook", side: "player", pos: { col: 0, row: 1 }, jobId: "scout", speed: 12, maxHp: 30, attack: 9, defense: 3, moveRange: 4, sightRadius: 5, awareness: 4, intelligence: 4 }),
     createUnit({ id: "Vale", side: "player", pos: { col: 0, row: 4 }, jobId: "survivalist", speed: 10, maxHp: 24, attack: 11, defense: 2, moveRange: 4, sightRadius: 5, awareness: 2 }),
   ];
 }
@@ -215,14 +216,14 @@ describe("run — the overworld economy round-trips & replays deterministically 
   it("snapshotRun captures the overworld cooldown/scout state (a deep copy)", () => {
     const run = newRun("eco-snap");
     const target = reachableNodes(run)[0];
-    takeOverworldAction(run, run.party[0], "scout", { targetNodeId: target.id });
-    expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown);
+    takeOverworldAction(run, run.party[0], "survey", { targetNodeId: target.id });
+    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown);
 
     const snap = snapshotRun(run);
     expect(snap.overworld).toEqual(run.overworld);
     // It's a copy, not the live reference — mutating the run doesn't touch the snap.
-    run.overworld.cooldowns["scout"] = 0;
-    expect(snap.overworld.cooldowns["scout"]).toBe(SCOUT.cost.cooldown);
+    run.overworld.cooldowns["survey"] = 0;
+    expect(snap.overworld.cooldowns["survey"]).toBe(SURVEY.cost.cooldown);
   });
 
   it("same seed + same choices + same actions ⇒ identical cooldown/fatigue trace", () => {
@@ -237,7 +238,7 @@ describe("run — the overworld economy round-trips & replays deterministically 
         if (next.length === 0) break;
         loop.choose(next[0].id);
         const ahead = loop.reachable()[0];
-        if (ahead) loop.overworldAction(run.party[0], "scout", { targetNodeId: ahead.id });
+        if (ahead) loop.overworldAction(run.party[0], "survey", { targetNodeId: ahead.id });
         loop.playCurrentNode();
       }
       return {

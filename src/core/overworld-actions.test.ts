@@ -15,7 +15,7 @@ import {
   hasPacing,
   hasPrice,
   OVERWORLD_ABILITIES,
-  SCOUT,
+  SURVEY,
 } from "./overworld-actions";
 import { getJob } from "./jobs";
 import type { SkillDef } from "./skills";
@@ -24,7 +24,8 @@ import { FATIGUE } from "./fatigue";
 
 function roster(): Unit[] {
   return [
-    createUnit({ id: "Rook", side: "player", pos: { col: 0, row: 1 }, jobId: "soldier", speed: 12, maxHp: 30, attack: 9, defense: 3, moveRange: 4, sightRadius: 5, awareness: 4, intelligence: 1 }),
+    // Rook is a Scout so it can perform the job-gated Survey ability (jobIds: ["scout"]).
+    createUnit({ id: "Rook", side: "player", pos: { col: 0, row: 1 }, jobId: "scout", speed: 12, maxHp: 30, attack: 9, defense: 3, moveRange: 4, sightRadius: 5, awareness: 4, intelligence: 1 }),
     createUnit({ id: "Coin", side: "player", pos: { col: -1, row: -1 }, jobId: "merchant", speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }),
   ];
 }
@@ -33,7 +34,7 @@ function newRun(seed: string): RunState {
   return createRun(seed, { party: roster(), difficultyId: "normal", gold: 200, storageCap: 6 });
 }
 
-/** An acting party member (any unit will do for the fatigue/cap mechanics). */
+/** The acting party member — party[0] is the Scout, so it may perform Survey (the fatigue/cap mechanics don't care which job). */
 function actor(run: RunState): Unit {
   return run.party[0];
 }
@@ -45,10 +46,10 @@ function cookSkill(): SkillDef {
 
 describe("overworld-actions — registry (D29)", () => {
   it("abilities are data with a cost menu (cooldown + optional fatigue/gold)", () => {
-    expect(getAbility("scout")).toBe(SCOUT);
+    expect(getAbility("survey")).toBe(SURVEY);
     expect(getAbility("nope")).toBeUndefined();
     // The cooldown spine is always present.
-    expect(SCOUT.cost.cooldown).toBeGreaterThan(0);
+    expect(SURVEY.cost.cooldown).toBeGreaterThan(0);
   });
 });
 
@@ -57,20 +58,20 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
     const run = newRun("cd-arm");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    const res = takeOverworldAction(run, actor, "scout", { targetNodeId: target.id });
+    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent).toBe(SCOUT.cost.fatigue);
-    expect(actor.fatigue).toBe(SCOUT.cost.fatigue);
-    expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown);
+    expect(res.fatigueSpent).toBe(SURVEY.cost.fatigue);
+    expect(actor.fatigue).toBe(SURVEY.cost.fatigue);
+    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown);
   });
 
   it("refuses while on cooldown, with a reason", () => {
     const run = newRun("cd-refuse");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    takeOverworldAction(run, actor, "scout", { targetNodeId: target.id });
-    const again = takeOverworldAction(run, actor, "scout", { targetNodeId: target.id });
+    takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    const again = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
 
     expect(again.applied).toBe(false);
     expect(again.reason).toMatch(/cooldown/i);
@@ -78,28 +79,28 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
 
   it("cooldowns tick per node-step; reaching 0 re-enables", () => {
     const eco = createOverworldEconomy();
-    eco.cooldowns["scout"] = 2;
+    eco.cooldowns["survey"] = 2;
     tickCooldowns(eco);
-    expect(cooldownRemaining(eco, "scout")).toBe(1);
+    expect(cooldownRemaining(eco, "survey")).toBe(1);
     tickCooldowns(eco);
-    expect(cooldownRemaining(eco, "scout")).toBe(0);
+    expect(cooldownRemaining(eco, "survey")).toBe(0);
     // Idle ticks never go negative.
     tickCooldowns(eco);
-    expect(cooldownRemaining(eco, "scout")).toBe(0);
+    expect(cooldownRemaining(eco, "survey")).toBe(0);
   });
 
   it("departing a node (breakCamp) ticks the spine — the node-step fires at departure (D46)", () => {
     const run = newRun("cd-node-tick");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    takeOverworldAction(run, actor, "scout", { targetNodeId: target.id });
-    expect(cooldownRemaining(run.overworld, "scout")).toBe(SCOUT.cost.cooldown!);
+    takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown!);
 
     // Break Camp is the node-step that ticks cooldowns — at departure, not the event.
-    for (let i = 0; i < SCOUT.cost.cooldown!; i++) {
+    for (let i = 0; i < SURVEY.cost.cooldown!; i++) {
       breakCamp(run);
     }
-    expect(cooldownRemaining(run.overworld, "scout")).toBe(0);
+    expect(cooldownRemaining(run.overworld, "survey")).toBe(0);
   });
 });
 
@@ -113,7 +114,7 @@ describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
     // (The demanding-action *lock* itself is unit-tested in fatigue.test via
     // fatiguePenalty; no demanding overworld ability exists post-D61.)
     const target = reachableNodes(run)[0];
-    const scout = takeOverworldAction(run, a, "scout", { targetNodeId: target.id });
+    const scout = takeOverworldAction(run, a, "survey", { targetNodeId: target.id });
     expect(scout.applied).toBe(true);
   });
 
@@ -123,24 +124,24 @@ describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
     actor.fatigue = FATIGUE.floor + 1; // just over the floor → surcharge of 1
     const target = reachableNodes(run)[0];
     const before = actor.fatigue;
-    const res = takeOverworldAction(run, actor, "scout", { targetNodeId: target.id });
+    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent!).toBeGreaterThan(SCOUT.cost.fatigue!); // base + surcharge
+    expect(res.fatigueSpent!).toBeGreaterThan(SURVEY.cost.fatigue!); // base + surcharge
     expect(actor.fatigue).toBe(before + res.fatigueSpent!);
   });
 });
 
-describe("overworld-actions — Scout raises a reachable node's preview tier", () => {
+describe("overworld-actions — Survey raises a reachable node's preview tier", () => {
   it("scouting a reachable node bumps its banded intel preview", () => {
     const run = newRun("scout-tier");
     const actor = run.party[0];
     const target = reachableNodes(run).find((n) => n.kind === "combat")!;
 
     const before = previewNode(run, target.id, scoutedTier(run.overworld, target.id));
-    const res = takeOverworldAction(run, actor, "scout", { targetNodeId: target.id });
+    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
     expect(res.applied).toBe(true);
-    expect(scoutedTier(run.overworld, target.id)).toBe(SCOUT.effect.kind === "scout" ? SCOUT.effect.tierBump : 0);
+    expect(scoutedTier(run.overworld, target.id)).toBe(SURVEY.effect.kind === "survey" ? SURVEY.effect.tierBump : 0);
 
     const after = previewNode(run, target.id, scoutedTier(run.overworld, target.id));
     expect(after.intel!.tier).toBeGreaterThan(before.intel!.tier);
@@ -149,14 +150,14 @@ describe("overworld-actions — Scout raises a reachable node's preview tier", (
   it("refuses to scout an unreachable node", () => {
     const run = newRun("scout-unreach");
     const actor = run.party[0];
-    const res = takeOverworldAction(run, actor, "scout", { targetNodeId: run.map.finalIds[0] });
+    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: run.map.finalIds[0] });
     expect(res.applied).toBe(false);
     expect(res.reason).toMatch(/reachable/i);
   });
 
   it("refuses with no target node", () => {
     const run = newRun("scout-notarget");
-    const res = takeOverworldAction(run, run.party[0], "scout");
+    const res = takeOverworldAction(run, run.party[0], "survey");
     expect(res.applied).toBe(false);
   });
 });

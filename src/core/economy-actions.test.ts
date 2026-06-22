@@ -34,6 +34,14 @@ function merchant(): Unit {
   });
 }
 
+/** A Noble party member — the standing-bearer that enables Influence, Patronize, and the bribe (D62). */
+function noble(): Unit {
+  return createUnit({
+    id: `noble-${nextId++}`, side: "player", pos: { col: -1, row: -1 },
+    jobId: "noble", speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4, intelligence: 4,
+  });
+}
+
 let nextId = 0;
 function fighter(name: string): Unit {
   return createUnit({
@@ -54,7 +62,10 @@ function fighter(name: string): Unit {
 }
 
 function newRun(seed: string, gold = 200): RunState {
-  return createRun(seed, { party: [fighter("Rook")], difficultyId: "normal", gold, storageCap: 8 });
+  // The default party fields a Noble so the Influence verbs (Patronize, bribe — both
+  // now job-gated on hasNoble, D62) are available; tests for the no-Noble path build
+  // their own commoner-only run below.
+  return createRun(seed, { party: [fighter("Rook"), noble()], difficultyId: "normal", gold, storageCap: 8 });
 }
 
 function guildWith(seed: string, treasury = 500): Guild {
@@ -198,14 +209,14 @@ describe("economy-actions — Banker TIME-SHIFT + SECURE (purse only) (D30/D34)"
   });
 });
 
-/** A commoner — no Intelligence, so not a Noble (the presence proxy, D62). */
+/** A commoner — a plain fighter, not the Noble job, so the party fields no Noble (D62). */
 function commoner(seed: string): Unit {
   return createUnit({ id: `grunt-${seed}`, side: "player", pos: { col: -1, row: -1 }, jobId: "soldier", speed: 10, maxHp: 20, attack: 6, defense: 2, moveRange: 4, sightRadius: 4, intelligence: 0 });
 }
 
 describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => {
   it("a Noble in the party accrues passive Influence each node-step", () => {
-    const run = newRun("noble-passive"); // the default fighter has Intelligence 3 → a Noble
+    const run = newRun("noble-passive"); // newRun's party fields a Noble (the standing-bearer)
     expect(hasNoble(run.party)).toBe(true);
     const before = run.overworld.influence;
     const gained = accrueNobleInfluence(run);

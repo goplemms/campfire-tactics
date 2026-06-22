@@ -76,6 +76,7 @@ import {
   bribeEnemy,
   bribeCost,
   bribeChance,
+  hasNoble,
   influenceTier,
   recruitToRoster,
   type RunState,
@@ -1119,8 +1120,10 @@ export class BattleScene extends Phaser.Scene {
         });
       });
       // The Noble's mid-combat BRIBE (D30/D33): spend the run's per-expedition Influence
-      // (D62) to sway an enemy. A permanent recruit still banks to the guild roster.
-      if (this.guild && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
+      // (D62) to sway an enemy. Job-gated (D62) — only surfaced when a Noble is in the
+      // party to broker it (the standing-bearer backs the offer, even from camp). A
+      // permanent recruit still banks to the guild roster.
+      if (this.guild && hasNoble(this.run.party) && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
         const tier = influenceTier(this.run.overworld.influence);
         const cost = bribeCost(this.currentPreview(), tier);
         const chance = Math.round(bribeChance(tier) * 100);

@@ -175,6 +175,25 @@ export const MERCHANT: JobDef = {
   skills: [],
 };
 
+/**
+ * The Noble — the signature **Influence** economy job (D62). A standing-bearer who
+ * works the *political* economy rather than the field: their **presence** accrues
+ * Influence as the caravan travels, **Patronize** courts patrons (gold → standing),
+ * and that per-expedition standing backs the mid-battle **bribe** that sways an enemy
+ * ({@link "./economy-actions".bribeEnemy}, D30/D33). Like the Merchant it's
+ * **noncombat** — it carries no battle skills; its verbs *are* the Influence economy.
+ * Fielding a Noble is what {@link "./economy-actions".hasNoble} keys off, the real-job
+ * gate that replaced the interim Intelligence-≥-3 proxy ("a Noble is present" is at
+ * last a job, not a stat threshold). Hence **no combat/meta skill** here.
+ */
+export const NOBLE: JobDef = {
+  id: "noble",
+  name: "Noble",
+  description: "Works the standing economy: courts patrons for Influence and sways enemies with bribes.",
+  noncombat: true,
+  skills: [],
+};
+
 // --- The M12 combat-depth roster (D40) — 2 active + 1 passive each ----------
 //
 // The passive is each class's identity anchor (stamped onto the bearer by
@@ -398,6 +417,7 @@ export const JOBS = {
   survivalist: SURVIVALIST,
   chef: CHEF,
   merchant: MERCHANT,
+  noble: NOBLE,
   "heavy-knight": HEAVY_KNIGHT,
   hunter: HUNTER,
   scout: SCOUT_JOB,

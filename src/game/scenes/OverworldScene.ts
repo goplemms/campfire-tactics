@@ -613,7 +613,7 @@ export class OverworldScene extends Phaser.Scene {
       const patronCost = ECONOMY.noble.patronizeCost;
       const patronTip = noblePresent
         ? `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`
-        : "No Noble in the party. Field a Noble (high Intelligence) to build Influence — passively on the road and via Patronize.";
+        : "No Noble in the party. Bring a Noble to build Influence — passively on the road and via Patronize — and to broker mid-battle bribes.";
       this.campButton(subX, y, subW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence)`, noblePresent && this.run.camp.gold >= patronCost, () => this.patronize(), patronTip);
       y += rowH;
       // The Banker's purse-state, moved off the always-on HUD line into context (D58).

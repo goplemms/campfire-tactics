@@ -27,7 +27,7 @@
  */
 
 import type { RunState } from "./run";
-import type { Unit } from "./units";
+import { primaryJobOf, type Unit } from "./units";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
 import { checkOverworldCost, commitOverworldCost, type OverworldCost, type ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
@@ -68,12 +68,6 @@ export const ECONOMY = {
   noble: {
     /** Influence accrued **per node-step** by a Noble's presence — the passive faucet (D62). */
     incomePerStep: 1,
-    /**
-     * Intelligence that marks a party member a **Noble** for presence accrual + Patronize
-     * (D62). Intelligence is the Noble's stat (it drives the intel floor); this is an
-     * interim proxy for "a Noble is present" until a dedicated Noble job lands.
-     */
-    presenceIntelligence: 3,
     /** Patronize (D62): purse gold spent to court patrons... */
     patronizeCost: 12,
     /** ...for this much Influence in return (gold → standing, once per node). */
@@ -247,13 +241,15 @@ export function bankerProtect(run: RunState): BankerProtectResult {
 // --- Noble — INFLUENCE (a walled-off, per-expedition currency, D62) ----------
 
 /**
- * True if the party fields a **Noble** — a member whose Intelligence (the Noble's
- * stat, D62) marks them a standing-bearer. The presence that accrues Influence and
- * works the Patronize verb, mirroring {@link "./overworld".merchantFloor}. (Interim
- * proxy for a Noble until a dedicated Noble job lands.)
+ * True if the party fields a **Noble** — the {@link "./jobs".NOBLE} job (D62), the
+ * standing-bearer whose presence accrues Influence, works the Patronize verb, and
+ * backs the mid-battle bribe ({@link bribeEnemy}). Mirrors {@link
+ * "./overworld".merchantFloor}: a class in the party unlocks that class's economy.
+ * This is the real-job gate that **replaced the interim Intelligence-≥-3 proxy** —
+ * "a Noble is present" is now job-specific, not a stat threshold any member can clear.
  */
 export function hasNoble(party: readonly Unit[]): boolean {
-  return party.some((u) => u.alive && !u.captured && (u.intelligence ?? 0) >= ECONOMY.noble.presenceIntelligence);
+  return party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "noble");
 }
 
 /** Influence the party's Noble accrues per node-step (0 with no Noble present, D62). */
@@ -349,6 +345,11 @@ export function bribeChance(tier: InfluenceTier): number {
  * when the run can't afford the cost. Spends the run's per-expedition standing, not the guild.
  */
 export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | "name">, preview?: NodePreview): BribeResult {
+  // Job-gated like Patronize (D62): the bribe is the Noble's verb — without a Noble in
+  // the party there is no standing-bearer to broker the sway (refuses, spending nothing).
+  if (!hasNoble(run.party)) {
+    return { applied: false, reason: "No Noble in the party to broker a bribe." };
+  }
   const tier = influenceTier(run.overworld.influence);
   const cost = bribeCost(preview, tier);
   if (!spendInfluence(run.overworld, cost)) {

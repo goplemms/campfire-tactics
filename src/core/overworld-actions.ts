@@ -28,9 +28,11 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit } from "./units";
+import { healUnit, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
+import { getJob } from "./jobs";
+import { PASSIVE } from "./combat";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
 import { decayCounters, bumpCounter } from "./num";
 import { earn, spend } from "./purse-journal";
@@ -106,8 +108,8 @@ export function validateOverworldCost(label: string, cost: OverworldCost): void 
 }
 
 /** Raise a chosen reachable node's intel preview tier (leans on {@link "./intel"}). */
-export interface ScoutEffect {
-  kind: "scout";
+export interface SurveyEffect {
+  kind: "survey";
   /** How many tiers to bump the target node's preview by. */
   tierBump: number;
 }
@@ -119,7 +121,7 @@ export interface ScoutEffect {
  * {@link "./economy-actions".merchantBuy}/{@link "./economy-actions".merchantSell}
  * verbs, not a cooldown ability.)
  */
-export type OverworldEffect = ScoutEffect;
+export type OverworldEffect = SurveyEffect;
 
 /** An overworld ability — pure data (D29), the overworld twin of a {@link "./skills".SkillDef}. */
 export interface OverworldAbility {
@@ -129,8 +131,11 @@ export interface OverworldAbility {
   effect: OverworldEffect;
   cost: OverworldCost;
   /**
-   * Job ids that thematically perform this (render hint for picking an actor).
-   * The resolver does **not** enforce it — the economy stays loose. Omitted = any.
+   * The job ids **allowed to perform** this ability — an *enforced* allowlist: the
+   * actor's {@link "./units".primaryJobOf | primary job} must be one of these or
+   * {@link takeOverworldAction} refuses. The render uses it to pick an eligible actor
+   * and to disable the action when the party fields none. **Omitted = any job.**
+   * Extensible: widen who can act by adding a job id (e.g. Survey is `["scout"]` today).
    */
   jobIds?: string[];
 }
@@ -138,20 +143,24 @@ export interface OverworldAbility {
 // --- The registry (jobs.ts/skills.ts spirit) --------------------------------
 
 /**
- * **Scout** — raise a reachable node's banded intel preview by a tier (D24). The
- * cheap, frequent action: a short cooldown and light fatigue, available to anyone.
+ * **Survey** — the Scout class's overworld recon action: raise a reachable node's banded
+ * intel preview by a tier (D24). The cheap, frequent action — a short cooldown and light
+ * fatigue — **job-gated to the Scout** ({@link OverworldAbility.jobIds}). Renamed from the
+ * former "scout" ability so the *action* (id `survey`) no longer collides with the *class*
+ * (jobId `scout`); the shared name is now intentional (the Scout surveys).
  */
-export const SCOUT: OverworldAbility = {
-  id: "scout",
-  name: "Scout",
-  description: "Survey a node ahead — raise its intel preview by one tier.",
-  effect: { kind: "scout", tierBump: 1 },
+export const SURVEY: OverworldAbility = {
+  id: "survey",
+  name: "Survey",
+  description: "Survey a node ahead — raise its intel preview by one tier (the Scout's recon).",
+  effect: { kind: "survey", tierBump: 1 },
   cost: { cooldown: 2, fatigue: 1 },
+  jobIds: ["scout"],
 };
 
 /** The overworld-ability registry — the single source abilities load from. */
 export const OVERWORLD_ABILITIES: Record<string, OverworldAbility> = {
-  [SCOUT.id]: SCOUT,
+  [SURVEY.id]: SURVEY,
 };
 
 // Enforce the two-axis invariant (D61) at load: no registered ability may be both
@@ -387,6 +396,13 @@ export function takeOverworldAction(
   const ability = getAbility(abilityId);
   if (!ability) return { applied: false, reason: `Unknown overworld ability "${abilityId}".` };
 
+  // Job gate (the audit pass): an ability with a `jobIds` allowlist may only be performed
+  // by an actor whose primary job is on it (omitted ⇒ any). The render picks an eligible
+  // actor; this is the enforcement backstop so the rule can't be bypassed.
+  if (ability.jobIds && !ability.jobIds.includes(primaryJobOf(unit) ?? "")) {
+    return { applied: false, reason: `${unit.name} can't ${ability.name} — only ${ability.jobIds.join(", ")} can.` };
+  }
+
   const check = checkOverworldCost(run, abilityId, ability.cost, ability.name, unit);
   if (!check.ok) return { applied: false, reason: check.reason };
 
@@ -446,6 +462,82 @@ export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): 
   return { applied: true, outcome, detail: `${skill.name}: ${parts.join(", ")}.` };
 }
 
+// --- Triage — the healer's fatigue-fuelled camp heal (the audit pass) --------
+
+/** Triage tuning — the healer's between-nodes heal, all data. */
+export const TRIAGE = {
+  /**
+   * Fatigue the healer spends per Triage — a **demanding** cost (≥ the
+   * {@link "./fatigue".fatiguePenalty} lock threshold), so a worn-out healer can't
+   * keep triaging until they rest. *Being worn out* is the whole limiter (pure
+   * fatigue — no RP, the Rest's currency).
+   */
+  fatigue: 2,
+  /** Flat HP floor a Triage restores before the Triage-scaling on missing HP. */
+  base: 6,
+} as const;
+
+/**
+ * True if `unit` is a **healing class** — a job stamped with the Medic's Triage
+ * passive ({@link "./combat".PASSIVE.triage}). The capability gate for {@link triage}
+ * (the {@link "./traps".canDisarm} pattern: own the capability, not a hard-coded job
+ * id), so it **auto-extends to any future healer** that carries the passive. Reads the
+ * **job def** (not `unit.passives`, which is only stamped at battle setup), so it's
+ * valid in camp.
+ */
+export function isHealer(unit: Unit): boolean {
+  return (getJob(primaryJobOf(unit))?.passives?.[PASSIVE.triage] ?? 0) > 0;
+}
+
+/** What a camp {@link triage} produced. */
+export interface TriageResult extends ActionOutcome {
+  /** HP restored to the treated fighter. */
+  healed?: number;
+  /** The treated unit's id. */
+  targetId?: string;
+  /** Fatigue spent on the healer (base + any over-extension surcharge). */
+  fatigueSpent?: number;
+}
+
+/**
+ * **Triage** (the audit pass) — the **healer's** camp heal, distinct from the universal
+ * Rest ({@link "./upkeep".restHeal}, RP/rations): a healing class spends **their own
+ * fatigue** (worn out) to mend the party's **most-wounded** fighter for *more* than a
+ * Rest — scaling with the Medic's Triage (heal harder the worse the wound). Job-gated to
+ * a {@link isHealer} (only a healer can triage); the fatigue rides the shared
+ * {@link checkOverworldCost} gate, so a worn-out healer's Triage **locks** until they
+ * rest. Pure fatigue — no RP. Refuses (spending nothing) without a healer, with no one
+ * wounded, or when the healer is too worn out.
+ */
+export function triage(run: RunState, healer: Unit): TriageResult {
+  if (!isHealer(healer)) {
+    return { applied: false, reason: `${healer.name} can't triage — only a healer can.` };
+  }
+  // Triage treats the worst first: the most-wounded living, uncaptured ally.
+  const wounded = run.party
+    .filter((u) => u.alive && !u.captured && u.hp < u.maxHp)
+    .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+  if (!wounded) return { applied: false, reason: "No wounded fighter to triage." };
+
+  const cost: OverworldCost = { fatigue: TRIAGE.fatigue };
+  const check = checkOverworldCost(run, "triage", cost, "Triage", healer);
+  if (!check.ok) return { applied: false, reason: check.reason };
+
+  // Heal scales with the healer's Triage (read from the job def — camp units aren't
+  // stamped) and the wound's depth: more missing HP → more healing.
+  const triageVal = getJob(primaryJobOf(healer))?.passives?.[PASSIVE.triage] ?? 0;
+  const amount = TRIAGE.base + Math.floor(triageVal * (wounded.maxHp - wounded.hp));
+  const healed = healUnit(wounded, amount);
+  commitOverworldCost(run, "triage", cost, check.fatigueSpend, healer);
+  return {
+    applied: true,
+    healed,
+    targetId: wounded.id,
+    fatigueSpent: check.fatigueSpend,
+    detail: `Triaged ${wounded.name}: +${healed} HP (${healer.name} worn out).`,
+  };
+}
+
 /** Apply an ability's effect; returns success + a detail string, or a refusal. */
 function applyEffect(
   run: RunState,
@@ -454,15 +546,15 @@ function applyEffect(
 ): { ok: true; detail: string } | { ok: false; reason: string } {
   const effect = ability.effect;
   switch (effect.kind) {
-    case "scout": {
+    case "survey": {
       const targetId = opts.targetNodeId;
-      if (!targetId) return { ok: false, reason: "Scout needs a node to survey." };
+      if (!targetId) return { ok: false, reason: "Survey needs a node to read." };
       const reachable = reachableFrom(run.map, run.mapNodeId);
       if (!reachable.some((n) => n.id === targetId)) {
-        return { ok: false, reason: "That node isn't reachable to scout." };
+        return { ok: false, reason: "That node isn't reachable to survey." };
       }
       bumpCounter(run.overworld.scouted, targetId, effect.tierBump);
-      return { ok: true, detail: `Scouted ${targetId} — preview raised ${effect.tierBump} tier.` };
+      return { ok: true, detail: `Surveyed ${targetId} — preview raised ${effect.tierBump} tier.` };
     }
   }
   // Guard (D61): a new OverworldEffect kind that's not handled above throws a clear

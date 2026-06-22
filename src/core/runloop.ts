@@ -51,7 +51,7 @@ import { freeCaptive } from "./deployment";
 import { recoverMaterials } from "./resolution";
 import { addItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
-import { rpPerNight, payUpkeep, triageHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
+import { rpPerNight, payUpkeep, restHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import { restoreFatigue } from "./fatigue";
@@ -262,12 +262,12 @@ export class RunLoop {
       }
     }
 
-    // Auto-triage: heal the worst-off fighters first, spending the RP pool down.
+    // Auto rest-heal: mend the worst-off fighters first, spending the RP pool down.
     const healed: { unitId: string; hp: number }[] = [];
     const wounded = woundedBySeverity(combatRoster(this.run));
     for (const u of wounded) {
       if (this.run.rp < policy.rpPerChunk) break;
-      const res = triageHeal(u, this.run.rp, policy);
+      const res = restHeal(u, this.run.rp, policy);
       if (res.rpSpent > 0) {
         this.run.rp -= res.rpSpent;
         healed.push({ unitId: u.id, hp: res.hpHealed });
@@ -301,7 +301,7 @@ export class RunLoop {
    * **In-place rest** (D47) — the lesser, repeatable recovery tier: a costed lever
    * at any *finished* node (the D46 Survey beat). Pays a night's Upkeep → banks the
    * night's Rest Points (support classes boost it via `rpPerNight` — *that is* the
-   * class boost, already in the model) → a **small** triage heal of the
+   * class boost, already in the model) → a **small** rest-heal of the
    * most-wounded, **floored at ≥1** so a paid rest never reads "healed 0" like a
    * bug. **Each rest is a full node-step**: it Breaks Camp (ticks cooldowns +
    * accrues interest, D35) and a night passes — a deliberate lever: *buy HP **and**
@@ -334,14 +334,14 @@ export class RunLoop {
     const rpAdded = rpPerNight(this.run.party);
     this.run.rp += rpAdded;
 
-    // Small heal: triage the single most-wounded down the pool, capped at a small
+    // Small heal: rest-heal the single most-wounded down the pool, capped at a small
     // number of chunks (rate-limited by the night's RP), then floor it at ≥1.
     const healed: { unitId: string; hp: number }[] = [];
     let hpHealed = 0;
     const target = wounded[0];
     const budget = Math.min(this.run.rp, RECOVERY.inPlaceChunks * policy.rpPerChunk);
     if (budget >= policy.rpPerChunk) {
-      const res = triageHeal(target, budget, policy);
+      const res = restHeal(target, budget, policy);
       if (res.rpSpent > 0) {
         this.run.rp -= res.rpSpent;
         hpHealed = res.hpHealed;

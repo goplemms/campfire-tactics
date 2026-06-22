@@ -21,9 +21,8 @@ import {
   projectManifest,
   getVessel,
   unitSkills,
-  triageHeal,
-  chunkHp,
-  runDifficulty,
+  triage,
+  isHealer,
   combatRoster,
   // M10 — the gold economy verbs (D30/D34) + theft (D30)
   merchantBuy,
@@ -36,9 +35,11 @@ import {
   bankerEngageInterest,
   bankerBorrow,
   bankerProtect,
+  hasBanker,
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
   patronize,
   hasNoble,
+  primaryJobOf,
   influenceTier,
   ECONOMY,
   // M11 — the data-driven event-node registry (D4/D23)
@@ -196,7 +197,7 @@ export class OverworldScene extends Phaser.Scene {
     const bullets = [
       "The map is fogged — deeper nodes hide until your intel reaches them.",
       "Pick a node to Make Camp, then End the Night to face it (fight · rest · event).",
-      "After it resolves, Survey: read the forecast, rest in place, scout — then Break Camp.",
+      "After it resolves, Survey: read the forecast, rest in place, survey ahead — then Break Camp.",
       "Open the Ledger anytime: cross a line off to skip it and free its gold.",
       "Tolls are known, loot is fogged — route to a rest node to fully recover.",
     ];
@@ -538,7 +539,18 @@ export class OverworldScene extends Phaser.Scene {
         : `Sell all ${valCount} valuables at the ${tier} market (${unitPrice}g each).`;
     this.campButton(colX, y, 360, 24, `Sell Valuables (${valCount} · ${unitPrice}g ea)`, canSell, () => this.sellValuables(), sellTip);
     y += rowH;
-    this.campButton(colX, y, 360, 24, "Triage Heal", true, () => this.triage(), "Spend Rest Points to heal the most-wounded fighter one chunk.");
+    // Triage (the audit pass): the healer's own fatigue-fuelled heal — distinct from the
+    // universal Rest (RP/rations). Job-gated to a healer; disabled with a hint when none.
+    const healer = this.triageActor();
+    const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
+    if (!healer) {
+      this.campButton(colX, y, 360, 24, "Triage — needs a Medic", false, () => {}, "No healer in the party. Bring a Medic to triage — spend the healer's own stamina (fatigue, worn out) to mend the worst-wounded fighter for more than a Rest.");
+    } else {
+      const tip = someoneWounded
+        ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
+        : "No wounded fighter to triage.";
+      this.campButton(colX, y, 360, 24, `Triage (${healer.name} · fatigue)`, someoneWounded, () => this.doTriage(healer), tip);
+    }
     y += rowH + 8;
     return y;
   }
@@ -600,11 +612,15 @@ export class OverworldScene extends Phaser.Scene {
     if (this.campAdvanced) {
       const subX = colX + 16;
       const subW = 344;
-      this.campButton(subX, y, subW, 24, "Invest the Purse", true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
+      // The Banker's purse-finance verbs (D30) are job-gated — they need a Banker in the
+      // party (the financier who works them), mirroring the Noble's Patronize below.
+      const bankerPresent = hasBanker(this.run.party);
+      const noBanker = "No Banker in the party. Bring a Banker to work the purse — interest, loans, and theft protection.";
+      this.campButton(subX, y, subW, 24, "Invest the Purse", bankerPresent, () => this.bankerInterest(), bankerPresent ? "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury." : noBanker);
       y += rowH;
-      this.campButton(subX, y, subW, 24, "Borrow 40g", true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.");
+      this.campButton(subX, y, subW, 24, "Borrow 40g", bankerPresent, () => this.bankerBorrow40(), bankerPresent ? "Banker: overspend now; auto-repaid from incoming run gold." : noBanker);
       y += rowH;
-      this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.");
+      this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g)`, bankerPresent && this.run.camp.gold >= ECONOMY.banker.protectionCost, () => this.bankerProtect(), bankerPresent ? "Banker: blunt a thief's skim — battle thief and event node alike." : noBanker);
       y += rowH;
       // Patronize (D62): the Noble courts patrons — gold → Influence, once per node.
       // Needs a Noble in the party (the one building rapport); passive presence accrual
@@ -613,7 +629,7 @@ export class OverworldScene extends Phaser.Scene {
       const patronCost = ECONOMY.noble.patronizeCost;
       const patronTip = noblePresent
         ? `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`
-        : "No Noble in the party. Field a Noble (high Intelligence) to build Influence — passively on the road and via Patronize.";
+        : "No Noble in the party. Bring a Noble to build Influence — passively on the road and via Patronize — and to broker mid-battle bribes.";
       this.campButton(subX, y, subW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence)`, noblePresent && this.run.camp.gold >= patronCost, () => this.patronize(), patronTip);
       y += rowH;
       // The Banker's purse-state, moved off the always-on HUD line into context (D58).
@@ -660,10 +676,16 @@ export class OverworldScene extends Phaser.Scene {
     return this.run.party.filter((u) => u.alive && !u.captured);
   }
 
-  /** The acting unit for Scout: the highest-Intelligence active member (a survey skill). */
-  private scoutActor(): Unit {
-    const active = this.activeUnits();
-    return active.reduce((best, u) => (u.intelligence > best.intelligence ? u : best), active[0] ?? this.run.party[0]);
+  /**
+   * The acting unit for Survey: an active **Scout** (the ability's job gate, D-audit),
+   * the highest-Intelligence among them. `undefined` when the party fields no Scout — the
+   * render then disables the action and explains why.
+   */
+  private surveyActor(): Unit | undefined {
+    const jobIds = getAbility("survey")?.jobIds;
+    const eligible = this.activeUnits().filter((u) => !jobIds || jobIds.includes(primaryJobOf(u) ?? ""));
+    if (eligible.length === 0) return undefined;
+    return eligible.reduce((best, u) => (u.intelligence > best.intelligence ? u : best), eligible[0]);
   }
 
   /** The camp "Party" button label, badged with the count needing a look (⚠N). */
@@ -882,17 +904,17 @@ export class OverworldScene extends Phaser.Scene {
     this.setHint(sold > 0 ? `Sold ${sold} valuables for ${total}g.${lvl}` : "Can't sell here.");
   }
 
-  private triage(): void {
-    const policy = runDifficulty(this.run);
-    const wounded = combatRoster(this.run)
-      .filter((u) => u.hp < u.maxHp)
-      .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
-    if (!wounded) return this.setHint("No wounded fighters to heal.");
-    if (this.run.rp < policy.rpPerChunk) return this.setHint(`Not enough RP (need ${policy.rpPerChunk} for a ${chunkHp(wounded)} HP chunk).`);
-    const res = triageHeal(wounded, policy.rpPerChunk, policy);
-    this.run.rp -= res.rpSpent;
+  /** An active healer (the Triage job gate) — a Medic-class member, or undefined if none. */
+  private triageActor(): Unit | undefined {
+    return this.activeUnits().find((u) => isHealer(u));
+  }
+
+  /** The healer spends fatigue (worn out) to mend the most-wounded fighter (the audit pass). */
+  private doTriage(healer: Unit): void {
+    const res = triage(this.run, healer);
     this.renderCamp();
-    this.setHint(`Triaged ${wounded.name}: +${res.hpHealed} HP for ${res.rpSpent} RP.`);
+    if (!res.applied) return this.setHint(`Can't triage: ${res.reason}`);
+    this.setHint(`${healer.name} triaged +${res.healed} HP — worn out (+${res.fatigueSpent} fatigue).`);
   }
 
   // --- The gold economy verbs (M10, D30/D34) --------------------------------
@@ -1142,7 +1164,7 @@ export class OverworldScene extends Phaser.Scene {
     this.refreshCampText();
 
     this.titleText.setText(`Survey — Night ${this.run.night} · plan your route`);
-    this.setHint("Survey: read the forecast, rest in place (a night's rations, repeatable), scout ahead — then Break Camp to the map.");
+    this.setHint("Survey: read the forecast, rest in place (a night's rations, repeatable), survey ahead — then Break Camp to the map.");
 
     const cx = this.scale.width / 2;
     const panelW = 760;
@@ -1162,13 +1184,19 @@ export class OverworldScene extends Phaser.Scene {
     this.campButton(colX, y, 360, 24, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail);
     y += rowH;
 
-    // Scout a reachable node — raises its intel, tightening the forecast (D48).
-    const scout = getAbility("scout")!;
-    for (const target of this.loop.reachable()) {
-      const actor = this.scoutActor();
-      const refusal = this.refusal(scout, actor);
-      this.campButton(colX, y, 360, 24, `Scout → ${target.id} (${this.costReadout(scout, actor)})`, !refusal, () => { this.loop.overworldAction(actor, "scout", { targetNodeId: target.id }); this.showSurvey(); }, refusal ?? scout.description);
+    // Survey a reachable node — raises its intel, tightening the forecast (D48). Job-gated
+    // to the Scout class (the recon specialist); disabled with a hint when none is aboard.
+    const survey = getAbility("survey")!;
+    const surveyor = this.surveyActor();
+    if (!surveyor) {
+      this.campButton(colX, y, 360, 24, "Survey → needs a Scout", false, () => {}, "No Scout in the party. Bring a Scout to survey nodes ahead — raising their intel preview and tightening the route forecast.");
       y += rowH;
+    } else {
+      for (const target of this.loop.reachable()) {
+        const refusal = this.refusal(survey, surveyor);
+        this.campButton(colX, y, 360, 24, `Survey → ${target.id} (${this.costReadout(survey, surveyor)})`, !refusal, () => { this.loop.overworldAction(surveyor, "survey", { targetNodeId: target.id }); this.showSurvey(); }, refusal ?? survey.description);
+        y += rowH;
+      }
     }
 
     this.campButton(colX, y, 360, 24, this.tentButtonLabel(), true, () => this.openTent(() => this.showSurvey(), "party"), "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured.");

@@ -23,6 +23,8 @@ const JOB_COLORS: Record<JobId, number> = {
   medic: ROLE.medic, //          cyan  — sustain
   chef: ROLE.chef, //           orange — support
   merchant: ROLE.merchant, //       gold  — economy
+  noble: ROLE.noble, //          violet — standing / Influence
+  banker: ROLE.banker, //         blue  — purse / finance
   survivalist: ROLE.survivalist, //    leaf  — traps
   "snare-trapper": ROLE.trapper, // teal  — debuffer
 };

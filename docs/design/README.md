@@ -113,6 +113,9 @@ reference them rather than re-explain:
   fatigue) (decisions D22–D24, D28–D30, D34–D35).
 - **[Action economy](systems/action-economy.md)** — the CT clock and charged
   abilities (combat).
+- **[Action catalogue](systems/actions.md)** — a snapshot glossary of **every player
+  verb and who owns it** (class / capability / stat / access / universal) — the audit
+  view for design.
 - **[Magic](systems/magic.md)** — Vancian spells (scribed castings, scrolls, runes, a
   default spell); magic as a logistics axis (decision D17).
 - **[Field entities & the trigger bus](systems/field-entities.md)** — the single

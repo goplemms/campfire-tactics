@@ -7,7 +7,7 @@ import {
   computeUpkeep,
   payUpkeep,
   rpPerNight,
-  triageHeal,
+  restHeal,
   clericRevive,
   chunkHp,
   CLERIC_COST,
@@ -128,29 +128,29 @@ describe("recovery — Rest Points (D9)", () => {
     expect(rpPerNight([member("chef", "chef")])).toBeGreaterThan(0);
   });
 
-  it("triage spends whole chunks of RP to heal a unit", () => {
+  it("rest-heal spends whole chunks of RP to heal a unit", () => {
     const u = member("hurt");
     u.hp = 4;
     const policy = DIFFICULTIES.normal;
     const before = u.hp;
-    const res = triageHeal(u, policy.rpPerChunk * 2, policy);
+    const res = restHeal(u, policy.rpPerChunk * 2, policy);
     expect(res.chunks).toBeGreaterThan(0);
     expect(res.rpSpent).toBe(res.chunks * policy.rpPerChunk);
     expect(u.hp).toBe(before + res.chunks * chunkHp(u));
   });
 
-  it("triage heals nothing with insufficient RP or a full unit", () => {
+  it("rest-heal heals nothing with insufficient RP or a full unit", () => {
     const u = member("full");
-    expect(triageHeal(u, 999, DIFFICULTIES.normal).hpHealed).toBe(0); // already full
+    expect(restHeal(u, 999, DIFFICULTIES.normal).hpHealed).toBe(0); // already full
     u.hp = 1;
-    expect(triageHeal(u, 0, DIFFICULTIES.normal).hpHealed).toBe(0); // no RP
+    expect(restHeal(u, 0, DIFFICULTIES.normal).hpHealed).toBe(0); // no RP
   });
 
   it("difficulty scales RP per chunk (one dial)", () => {
     const u = member("x");
     u.hp = 1;
-    const easy = triageHeal({ ...u, hp: 1, counters: {}, statuses: [] } as Unit, 100, DIFFICULTIES.easy);
-    const hard = triageHeal({ ...u, hp: 1, counters: {}, statuses: [] } as Unit, 100, DIFFICULTIES.hardest);
+    const easy = restHeal({ ...u, hp: 1, counters: {}, statuses: [] } as Unit, 100, DIFFICULTIES.easy);
+    const hard = restHeal({ ...u, hp: 1, counters: {}, statuses: [] } as Unit, 100, DIFFICULTIES.hardest);
     // The same 100 RP buys more chunks on Easy than on Hardest.
     expect(easy.chunks).toBeGreaterThanOrEqual(hard.chunks);
   });

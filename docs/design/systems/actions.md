@@ -15,6 +15,12 @@ player do, on which surface, at what cost, and which class (if any) gates it.*
 > drift inconvenient; don't treat a stale row as a bug. Code is the source of truth;
 > the file/symbol in the **Code** column is where to confirm the current detail.
 
+> **Scope:** verbs that **change game state by player intent**. Deliberately **out of
+> scope**: pure UI/flow controls that carry no game decision — *Undo*, *Advance Clock*,
+> *Start Battle*, animation-speed, and panel navigation (*Stores / Ledger / Review Route
+> Map / Back*). The state-changing **commit gates** (*End the Night*, *Break Camp*) *are*
+> included, under Lifecycle.
+
 ## The ownership model (gate types)
 
 Every verb sits in exactly one of these gate categories — the spine of the audit:
@@ -34,6 +40,17 @@ Every verb sits in exactly one of these gate categories — the spine of the aud
 > economy verb that needs a *place* is **Access**.
 
 ---
+
+## Lifecycle & run flow (overworld)
+
+The outer loop's **flow commands** — not owned by anyone, but they *are* player
+actions (route choice + the advance gates). They frame every other surface.
+
+| Verb | Gate | Effect | Code |
+|---|---|---|---|
+| **Make Camp** | Universal | Select a reachable node to settle on (the prep surface opens) | `OverworldScene` → `runloop.choose` / `run.chooseNode` |
+| **End the Night** | Universal | The commit gate — branches by node kind: *Begin Mission* (combat) · *Approach the Event* · *Rest* (D46) | `OverworldScene` → `runloop` (`startEncounter`/`eventNode`/`restNode`) |
+| **Break Camp** | Universal | Depart back to the map (the soft, intent-aware gate; ticks the node-step) | `OverworldScene.breakCampToMap` → `run.breakCamp` |
 
 ## Combat actions (Battle phase)
 
@@ -88,6 +105,7 @@ The between-battle surface (`OverworldScene` Survey screen + the camp panel).
 | **Cook Stew** | **Class** | Chef | 1×/node | +1 morale, bank +8 HP/unit next battle | `jobs.ts` `CHEF` → `camp.ts` |
 | **Rest** (in-place / node) | Universal | — | rations (gold) + RP | Small party heal (node = full recovery + fatigue wipe + debt clear) | `runloop.ts` `inPlaceRest`/`restNode` → `upkeep.ts` `restHeal` |
 | **Triage** | **Capability** (Triage passive) | Medic | the healer's **fatigue** (worn out) | Heal the most-wounded for *more* than Rest, scaling with the wound | `overworld-actions.ts` `triage` / `isHealer` |
+| **Skip an Upkeep line** | Universal | — | — | Cross a Food/Repairs line off the Ledger to free its gold — a deliberate gamble (hunger / worn-gear debt) | `OverworldScene.toggleSkip` → `camp.skippedUpkeep` |
 
 > **Rest ≠ Triage** (a deliberate split): Rest is the *universal* RP/rations floor;
 > Triage is the *healer's* push, paid in their own fatigue. Pure fatigue, no RP.
@@ -126,6 +144,26 @@ all **purse-scoped** — never the guild treasury (D34).
 
 ---
 
+## Event-node choices (`core/node-events.ts`)
+
+At an **event node**, the player picks among the event's **choices** — situational,
+**data-driven** decisions (new events are new records), not standing verbs. Gate is
+**Universal / situational**: availability can be gated by standing (a patron event
+needs Influence) or resources, but no *class* owns them. Resolved by `chooseEventOption`.
+
+| Event | Choices (shape) |
+|---|---|
+| Wounded traveler | **help** (spend, maybe recruit) · **pass** |
+| Abandoned shrine | **offer** (pay for a boon) · **loot** (take, risk) |
+| Recruiter | **hire** (gold → roster) · **decline** |
+| Shop | **buy** offered supplies · leave |
+| Toll | **pay** · refuse |
+| Patron's Welcome | accept the boon *(standing-gated)* |
+
+> These reuse economy outcomes (hire, buy, pay) but as **one-off node options**, not
+> the standalone Economy verbs above. The list is illustrative — the registry is the
+> source of truth and grows.
+
 ## Guild / meta actions (the player's, not a class')
 
 Guild-hall management (`game/scenes/GuildScene.ts`, `core/guild.ts`) — the guild-master
@@ -134,9 +172,9 @@ acts, no job gates.
 | Verb | Effect |
 |---|---|
 | **Hire** | Recruit a mercenary from the pool into the roster |
-| **Assign** | Slot a roster member onto a caravan (capped by vessel capacity) |
-| **Equip** | Issue armory gear to a member |
-| **Dispatch** | Send an assembled caravan onto the board (starts a run) |
+| **Assign / Unassign** | Slot a roster member onto a caravan (capped by vessel capacity), or pull them off |
+| **Lock / Unlock gear** | Commit armory gear to a caravan (locked out of the shared stock), or release it — gear is per-caravan, not per-member |
+| **Dispatch** | Send an assembled caravan to a chosen board destination (starts a run) |
 | **Rebuild** | Reset to a fresh starting guild |
 
 ---

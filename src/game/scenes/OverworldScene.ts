@@ -131,11 +131,11 @@ export class OverworldScene extends Phaser.Scene {
   private campNode?: MapNode;
   /**
    * Per-category drawer open-state on the camp/survey beats (the collapsible action
-   * groups). Categories default **open** so the everyday verbs are one glance away; the
-   * nested Banker/Noble `advanced` drawer defaults **closed** (the optional economy stays
-   * tucked away each camp, D58). Keyed by drawer id; persists across re-renders.
+   * groups): Recovery, Intel, Economy. Each verb sits **directly** in its category — one
+   * level of nesting, no sub-drawers. Default **open** so the everyday verbs are one
+   * glance away. Keyed by drawer id; persists across re-renders.
    */
-  private campDrawers: Record<string, boolean> = { recovery: true, intel: true, economy: true, advanced: false };
+  private campDrawers: Record<string, boolean> = { recovery: true, intel: true, economy: true };
 
   // The Captain's Tent (D58): the one deep-info hub, an in-scene overlay. The active
   // tab, where to return on close, and the embedded dossier view (so it tears down).
@@ -446,7 +446,6 @@ export class OverworldScene extends Phaser.Scene {
     this.clearMap();
     this.loop.choose(node.id);
     this.campNode = node;
-    this.campDrawers.advanced = false; // every camp opens with the economy tucked away (D58)
     this.renderCamp();
   }
 
@@ -566,10 +565,10 @@ export class OverworldScene extends Phaser.Scene {
 
   /**
    * The **Economy** drawer on the camp beat: the everyday market verbs (Buy Trap Kit /
-   * Sell Valuables — always present, greyed when there's no market, since that's a route
-   * fix not a job lock) plus the nested **Advanced** Banker/Noble finance drawer (shown
-   * only when one of those specialists is aboard). The header count is every economy
-   * action available, the nested ones included. Returns the `y` past it.
+   * Sell Valuables — greyed when there's no market, since that's a route fix not a job
+   * lock) and the Banker/Noble finance verbs (each shown only when that specialist is
+   * aboard). All sit **directly** under Economy — one level of nesting, no sub-drawer.
+   * The header count is every economy action available. Returns the `y` past it.
    */
   private renderEconomyDrawer(node: MapNode, colX: number, y: number, rowH: number): number {
     const banker = this.jobActor("banker");
@@ -599,8 +598,34 @@ export class OverworldScene extends Phaser.Scene {
         : `Sell all ${valCount} valuables at the ${tier} market (${unitPrice}g each).`;
     this.campButton(childX, y, childW, 24, `Sell Valuables (${valCount} · ${unitPrice}g ea)`, canSell, () => this.sellValuables(), sellTip);
     y += rowH;
-    // The Banker/Noble finance verbs, nested one drawer deeper (the optional economy, D58).
-    y = this.renderAdvancedEconomy(childX, y, rowH, banker, noble);
+    // The Banker's purse-finance verbs (D30) — directly under Economy (single nesting),
+    // tagged with the Banker who works them; shown only when one is aboard.
+    if (banker) {
+      this.campButton(childX, y, childW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
+      y += rowH;
+      this.campButton(childX, y, childW, 24, `Borrow 40g · ${banker.name}`, true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.");
+      y += rowH;
+      this.campButton(childX, y, childW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g) · ${banker.name}`, this.run.camp.gold >= ECONOMY.banker.protectionCost, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.");
+      y += rowH;
+    }
+    // The Noble's Patronize (D62) — gold → Influence, once per node; tagged with the Noble.
+    if (noble) {
+      const patronCost = ECONOMY.noble.patronizeCost;
+      const patronTip = `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`;
+      this.campButton(childX, y, childW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence) · ${noble.name}`, this.run.camp.gold >= patronCost, () => this.patronize(), patronTip);
+      y += rowH;
+    }
+    // The Banker's purse-state, surfaced in context (D58).
+    const eco = this.run.overworld;
+    const bank: string[] = [];
+    if (eco.interestPerStep > 0) bank.push(`Interest +${eco.interestPerStep}g/step`);
+    if (eco.debt > 0) bank.push(`Debt ${eco.debt}g`);
+    if (eco.protection > 0) bank.push(`Protection ${Math.round(eco.protection * 100)}%`);
+    if (eco.influence > 0 || noble) bank.push(`Influence ${eco.influence} (${influenceTier(eco.influence)})`);
+    if (bank.length) {
+      this.campObjects.push(this.add.text(childX, y, bank.join("   ·   "), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11));
+      y += rowH;
+    }
     return y;
   }
 
@@ -677,54 +702,6 @@ export class OverworldScene extends Phaser.Scene {
           ? `${c.subject} is still in enemy hands — ${nights(c.value)} to mount the rescue.`
           : `${c.subject} is still in enemy hands — they're counting on a rescue.`;
     }
-  }
-
-  /**
-   * The nested **Advanced** finance drawer inside Economy (D58/D30/D62): the Banker's
-   * purse verbs and the Noble's Patronize, each tagged with the specialist who works it.
-   * Hidden when neither is aboard; **collapsed by default** so the optional economy stays
-   * out of the way. `x` is the indent of the parent Economy drawer's child column.
-   * Returns the `y` past the last row drawn.
-   */
-  private renderAdvancedEconomy(x: number, startY: number, rowH: number, banker: Unit | undefined, noble: Unit | undefined): number {
-    if (!banker && !noble) return startY;
-
-    let y = startY;
-    const present = [banker && "Banker", noble && "Noble"].filter(Boolean).join(" · ");
-    const count = (banker ? 3 : 0) + (noble ? 1 : 0);
-    y = this.drawerHeader(x, y, 346, "advanced", `Advanced — ${present}`, count, () => this.renderCamp());
-    if (this.campDrawers.advanced) {
-      const subX = x + 14;
-      const subW = 332;
-      if (banker) {
-        this.campButton(subX, y, subW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
-        y += rowH;
-        this.campButton(subX, y, subW, 24, `Borrow 40g · ${banker.name}`, true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.");
-        y += rowH;
-        this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g) · ${banker.name}`, this.run.camp.gold >= ECONOMY.banker.protectionCost, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.");
-        y += rowH;
-      }
-      // Patronize (D62): the Noble courts patrons — gold → Influence, once per node. Passive
-      // presence accrual adds to it each node-step on the road.
-      if (noble) {
-        const patronCost = ECONOMY.noble.patronizeCost;
-        const patronTip = `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`;
-        this.campButton(subX, y, subW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence) · ${noble.name}`, this.run.camp.gold >= patronCost, () => this.patronize(), patronTip);
-        y += rowH;
-      }
-      // The Banker's purse-state, moved off the always-on HUD line into context (D58).
-      const eco = this.run.overworld;
-      const bank: string[] = [];
-      if (eco.interestPerStep > 0) bank.push(`Interest +${eco.interestPerStep}g/step`);
-      if (eco.debt > 0) bank.push(`Debt ${eco.debt}g`);
-      if (eco.protection > 0) bank.push(`Protection ${Math.round(eco.protection * 100)}%`);
-      if (eco.influence > 0 || noble) bank.push(`Influence ${eco.influence} (${influenceTier(eco.influence)})`);
-      if (bank.length) {
-        this.campObjects.push(this.add.text(subX, y, bank.join("   ·   "), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11));
-        y += rowH;
-      }
-    }
-    return y;
   }
 
   /** A human-readable cost line for an overworld ability (cooldown + fatigue + gold). */

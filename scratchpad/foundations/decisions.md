@@ -1892,18 +1892,39 @@ trail of reasoning stays intact.
   reads: a **footprint** (the tiles/units an armed action affects given the current
   aim — arc, push destination, single target, aura) and a **forecast** (the
   non-mutating predicted outcome). The keystone is a **`FORECAST_HANDLERS` registry
-  that mirrors `BATTLE_EFFECT_HANDLERS`** — the same compile-time-exhaustive mapped
-  type over the same effect kinds, so adding an ability effect *forces* a telegraph or
-  the build breaks. This makes coverage structural (the same guarantee the job-roster↔
+  that mirrors the resolver** — a compile-time-exhaustive mapped type over the effect
+  kinds (the *full* `SkillEffect` union; see the hardening note below), so adding an
+  ability effect *forces* a telegraph or the build breaks. This makes coverage structural (the same guarantee the job-roster↔
   palette type gives), so the telegraph can't fall out of sync with the ability roster
   — and it lights up every class at once (Cleave/Shove/Mark/Heal/snare/morale/enemy
   intent), not just the Heavy Knight. Spec: `docs/design/systems/telegraph.md`.
 - **Why not (a):** the audit showed the gap is the resolver/preview *seam*, not one
   class; a per-class fix re-pays the cost for every future ability and drifts.
-- **Build:** not yet started — design only (this record + the system doc). Planned as
-  three layers behind a user-testable gate: **core** (`abilityFootprint` +
-  `forecastSkill` with vitest coverage, no Phaser), **render** (extend `drawPreview`'s
-  armed branch + a passive-aura draw), **HUD** (an armed-ability forecast `MiniCard`).
+- **Spec hardened by a 5-job trace (HK + Hunter, Medic, Survivalist, Chef).** Tracing
+  four more jobs before writing code corrected/extended the design:
+  - **Registry scope (a real bug in the first draft):** the forecast registry must key
+    on the **whole `SkillEffect` union** (Battle/Field/Camp/Deployment partitions), not
+    just `BATTLE_EFFECT_HANDLERS` — 3 of 5 jobs act through a non-battle partition
+    (`placeTrap`, `morale`, `cleave`/`forced-move`).
+  - **A forecast is a tagged outcome, not a number:** immediate / computed / conditional
+    / deferred / banked / tiered / branching (Deadeye conditional, Mark deferred, Triage
+    computed, trap conditional+deferred, Chef banked+tiered, Medic herb branching).
+  - **Read-only + single source of truth:** the forecast reuses the resolver's *pure*
+    predict-core (extracted where the resolver fuses compute+mutate, e.g. a pure
+    `medHealAmount`); it never mutates and never re-implements the math.
+  - **Footprint variety** beyond static board sets: tile/placement, mutable reach (Swift),
+    dual move-vs-strike (ranged), persistent hazard (placed trap), none (party/meta).
+  - **Availability is part of the telegraph:** charge/cooldown/`usesPerNode`/inventory
+    shown in-preview, read from the same gate the action uses.
+  - **Non-goal sharpened:** *label* deferred/conditional outcomes; do **not** simulate
+    them (no AI-path or downstream-morale projection).
+- **Build:** not yet started — design only (this record + the system doc, now hardened).
+  Planned as three layers behind a user-testable gate: **core** (`abilityFootprint` +
+  a `forecastSkill` registry over the full union, plus extracting pure predict-cores so
+  forecast == resolver math; vitest coverage, no Phaser), **render** (extend
+  `drawPreview`'s armed branch: arc/push/placement footprints, mutable+dual reach,
+  persistent-hazard + aura draws), **HUD** (an armed-ability forecast `MiniCard` covering
+  the tagged outcome kinds + availability state).
 - **Reuses / consistent with:** D48 route Forecast (cost/outcome knowable before
   commit), D18 Vision (telegraphs gated by perception), D19 forced-move + entities
   (push-into-trap read), D60 strike-badge vocabulary, D2 core/render split.

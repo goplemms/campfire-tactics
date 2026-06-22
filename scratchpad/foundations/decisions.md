@@ -1871,3 +1871,90 @@ trail of reasoning stays intact.
   reference), `scenes/BattleScene.ts` (the `phase:"deployment"` driver), and
   `deployment.test.ts` (74 cases). The convergence phases 2–3 are tracked in the plan.
 - **Superseded by:** —
+
+## D64 — Telegraph & action forecast (preview-before-commit)
+
+- **Status:** Decided
+- **Context:** A start-to-end "resource & action" audit of one job (the **Heavy
+  Knight**, traced across every screen) surfaced a general gap, not a class-specific
+  one: the game **resolves actions without showing the player what they will do
+  first.** The board already telegraphs *some* of this — a lit path to the hovered
+  tile, an in-place strike badge, enemy-intent links (`combat-view.ts:drawPreview`/
+  `drawIntents`) — but the moment a skill is **armed** the preview collapses to "these
+  tiles are legal targets" and shows nothing about the effect: Cleave's arc, Shove's
+  push direction + "into a trap" payoff, and the tarpit aura are all invisible. The
+  unit's identity (geometry/proximity) is exactly the category the UI doesn't surface.
+- **Options considered:** (a) **fix the Heavy Knight's previews** as a one-off in the
+  scene / (b) a **telegraph *system*** — a pure footprint + a forecast registry
+  parallel to the resolver, read by the render layer / (c) defer (keep discovering
+  effects empirically in battle).
+- **Decision: (b), a telegraph system.** Two pure-`core` halves the render layer
+  reads: a **footprint** (the tiles/units an armed action affects given the current
+  aim — arc, push destination, single target, aura) and a **forecast** (the
+  non-mutating predicted outcome). The keystone is a **`FORECAST_HANDLERS` registry
+  that mirrors the resolver** — a compile-time-exhaustive mapped type over the effect
+  kinds (the *full* `SkillEffect` union; see the hardening note below), so adding an
+  ability effect *forces* a telegraph or the build breaks. This makes coverage structural (the same guarantee the job-roster↔
+  palette type gives), so the telegraph can't fall out of sync with the ability roster
+  — and it lights up every class at once (Cleave/Shove/Mark/Heal/snare/morale/enemy
+  intent), not just the Heavy Knight. Spec: `docs/design/systems/telegraph.md`.
+- **Why not (a):** the audit showed the gap is the resolver/preview *seam*, not one
+  class; a per-class fix re-pays the cost for every future ability and drifts.
+- **Spec hardened by a 5-job trace (HK + Hunter, Medic, Survivalist, Chef).** Tracing
+  four more jobs before writing code corrected/extended the design:
+  - **Registry scope (a real bug in the first draft):** the forecast registry must key
+    on the **whole `SkillEffect` union** (Battle/Field/Camp/Deployment partitions), not
+    just `BATTLE_EFFECT_HANDLERS` — 3 of 5 jobs act through a non-battle partition
+    (`placeTrap`, `morale`, `cleave`/`forced-move`).
+  - **A forecast is a tagged outcome, not a number:** immediate / computed / conditional
+    / deferred / banked / tiered / branching (Deadeye conditional, Mark deferred, Triage
+    computed, trap conditional+deferred, Chef banked+tiered, Medic herb branching).
+  - **Read-only + single source of truth:** the forecast reuses the resolver's *pure*
+    predict-core (extracted where the resolver fuses compute+mutate, e.g. a pure
+    `medHealAmount`); it never mutates and never re-implements the math.
+  - **Footprint variety** beyond static board sets: tile/placement, mutable reach (Swift),
+    dual move-vs-strike (ranged), persistent hazard (placed trap), none (party/meta).
+  - **Availability is part of the telegraph:** charge/cooldown/`usesPerNode`/inventory
+    shown in-preview, read from the same gate the action uses.
+  - **Non-goal sharpened:** *label* deferred/conditional outcomes; do **not** simulate
+    them (no AI-path or downstream-morale projection).
+- **Build:** not yet started — design only (this record + the system doc, now hardened).
+  Planned as three layers behind a user-testable gate: **core** (`abilityFootprint` +
+  a `forecastSkill` registry over the full union, plus extracting pure predict-cores so
+  forecast == resolver math; vitest coverage, no Phaser), **render** (extend
+  `drawPreview`'s armed branch: arc/push/placement footprints, mutable+dual reach,
+  persistent-hazard + aura draws), **HUD** (an armed-ability forecast `MiniCard` covering
+  the tagged outcome kinds + availability state).
+- **Reuses / consistent with:** D48 route Forecast (cost/outcome knowable before
+  commit), D18 Vision (telegraphs gated by perception), D19 forced-move + entities
+  (push-into-trap read), D60 strike-badge vocabulary, D2 core/render split.
+- **Follow-ups (filed, not yet done):**
+  1. **Cleave's `reach` is dead data.** The `cleave` effect declares `reach: 3` but
+     `turn.ts:execCleave` ignores it and always sweeps a fixed 3-tile 90° arc. The
+     core forecast made the footprint match the *resolver* (so forecast==resolution
+     holds), which leaves `reach` doing nothing. Decide: have `execCleave` honor
+     `reach` (deepen the arc) — footprint follows for free — or strip `reach` as
+     misleading. A pre-existing latent bug the telegraph work surfaced.
+  2. **Push "into-trap" flag stubbed `false`.** `abilityFootprint`'s `push` result
+     carries `ontoEntity`, but it's hard-coded `false` — the core layer didn't thread
+     the entity registry in. `EntityRegistry` *is* core (`Battle.entities`), so this
+     can be a real core read by passing an entity predicate into `abilityFootprint`
+     (mirroring its existing `isWalkable`/`occupied` predicates), keeping the D19
+     push-into-trap payoff in core rather than re-derived in render.
+  3. **No deploy-phase "aim a trap" arming flow.** The `placement` footprint is built
+     and tested, but Deployment's "Place Trap Here" drops on the actor's own tile —
+     there's no hovered-aim arming step, so the Survivalist/Scout placement telegraph
+     isn't reachable in real play yet (the other footprints are live). Needs a
+     deploy-phase aim-and-confirm flow to surface it.
+  4. **Timing readout not in the forecast box.** charge/cooldown/`usesPerNode` state
+     (`clock.scheduledProgress` / `onSkillCooldown`, which `showSkillButtons` already
+     reads) isn't yet surfaced as "charging ~Nt / cooling ~Nt / 1 use left" beside the
+     outcome — the natural next addition to `forecastRows`.
+- **Build (render layer landed):** `combat-view.ts` (`drawFootprint` over the footprint
+  kinds + push arrow + `drawAuras` tarpit ring; additive `drawPreview` opts `armedAim`/
+  `intoTrap`), `BattleScene.ts` (aim threading, `ForecastCtx` build, the forecast
+  `MiniCard` switching on the tagged outcomes, aura in both phases, range-gated dim via
+  `aimInRange`), `scripts/shots-telegraph.mjs` (headless capture). Tarpit aura recoloured
+  to the bone capture-net tone so it overlays the deploy zone washes legibly. Green:
+  632 tests, build clean. Follow-ups 1–4 above remain.
+- **Superseded by:** —

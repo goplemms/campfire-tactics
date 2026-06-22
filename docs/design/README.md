@@ -124,6 +124,9 @@ reference them rather than re-explain:
   (Intelligence stat / scouting / the Seer's divination) (decision D10).
 - **[Vision & fog of war](systems/vision.md)** — symmetric in-battle fog on a
   Hidden→Pinged→Seen ladder; the in-battle twin of Intel (decision D18).
+- **[Telegraph & action forecast](systems/telegraph.md)** — preview-before-commit:
+  an armed ability's footprint (arc/push/aura) + its forecasted outcome, via a
+  forecast registry that mirrors the resolver (decision D64).
 - **[Morale](systems/morale.md)** — a passive, tiered bundle of minor modifiers
   the Chef feeds (decision D8).
 - **[Mortality, recovery & difficulty](systems/mortality-recovery.md)** — how units

@@ -366,11 +366,63 @@ export function frontCaptureChance(
   front: DeploySource,
   opts: { dugIn?: boolean } = {},
 ): number {
-  if (!inDangerZone(unit.pos, front)) return 0;
-  const depth = front.radius - stepDistance(unit.pos, front.origin) + 1; // >= 1 once inside
+  return captureChanceAt(unit.pos, front, opts);
+}
+
+/**
+ * The capture chance at an arbitrary `coord` — the position-only core of
+ * {@link frontCaptureChance}, so a forecast can score *hypothetical* tiles (where a
+ * unit could step) without cloning the unit. Same maths: zero outside the danger,
+ * else depth-scaled and dig-in-slashed, capped.
+ */
+export function captureChanceAt(
+  coord: GridCoord,
+  front: DeploySource,
+  opts: { dugIn?: boolean } = {},
+): number {
+  if (!inDangerZone(coord, front)) return 0;
+  const depth = front.radius - stepDistance(coord, front.origin) + 1; // >= 1 once inside
   let chance = Math.min(CAPTURE_CHANCE_MAX, depth * CAPTURE_PER_DEPTH * FRONT_DANGER_MULTIPLIER);
   if (opts.dugIn) chance *= DIG_IN_CAPTURE_FACTOR;
   return chance;
+}
+
+/**
+ * A per-choice **capture-risk forecast** for the unit whose deploy turn it is — the
+ * decision the focus card poses, scored as pure numbers (mirrors the D48 route
+ * forecast). Each field is the risk that choice would leave the unit at:
+ *  - `hold` — end the turn where it stands, in its current stance (the baseline).
+ *  - `digIn` — hunker on this tile (risk × the dig-in factor); `null` when already
+ *    dug in, since there's no further improvement to offer.
+ *  - `move` — the *best* (lowest) risk reachable by repositioning this turn; `null`
+ *    when standing pat is already at least as safe as anywhere it can step. Moving
+ *    breaks the dig-in stance, so candidate tiles are scored un-dug.
+ *
+ * `reachable` is the set of tiles the unit could step to this turn (empty once it's
+ * already repositioned, or for a captured unit) — the caller owns pathing/budget.
+ */
+export interface DeployForecast {
+  hold: number;
+  digIn: number | null;
+  move: number | null;
+}
+
+export function deployForecast(
+  unit: Unit,
+  front: DeploySource,
+  reachable: readonly GridCoord[] = [],
+  opts: { dugIn?: boolean } = {},
+): DeployForecast {
+  const dugIn = opts.dugIn ?? unit.dugIn === true;
+  const hold = captureChanceAt(unit.pos, front, { dugIn });
+  const digIn = dugIn ? null : captureChanceAt(unit.pos, front, { dugIn: true });
+  let best: number | null = null;
+  for (const coord of reachable) {
+    const risk = captureChanceAt(coord, front, { dugIn: false });
+    if (best === null || risk < best) best = risk;
+  }
+  const move = best !== null && best < hold ? best : null;
+  return { hold, digIn, move };
 }
 
 /** The resolved outcome of one enemy-source turn — the radius grows, then capture. */

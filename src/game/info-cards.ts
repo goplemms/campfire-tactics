@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { COLOR, FONT, INK, WEIGHT } from "./theme";
-import { hpColor } from "./unit-readout";
+import { hpColor, hex } from "./unit-readout";
 
 /**
  * One label→value line in a {@link MiniCard}. `emphasize` promotes the value to a
@@ -27,6 +27,7 @@ export interface CardRow {
 export class MiniCard extends Phaser.GameObjects.Container {
   private readonly bg: Phaser.GameObjects.Rectangle;
   private readonly titleText: Phaser.GameObjects.Text;
+  private readonly hpNumText?: Phaser.GameObjects.Text;
   private readonly hpBarBg?: Phaser.GameObjects.Rectangle;
   private readonly hpBarFill?: Phaser.GameObjects.Rectangle;
   private rowObjs: Phaser.GameObjects.GameObject[] = [];
@@ -41,16 +42,22 @@ export class MiniCard extends Phaser.GameObjects.Container {
     this.titleText = scene.add.text(8, 6, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0);
     this.add([this.bg, this.titleText]);
     if (this.withHp) {
+      // Absolute HP on the title row, right-aligned (e.g. "18/20") — the bar shows the
+      // ratio at a glance, the number the exact margin. Tinted by fraction like the bar.
+      this.hpNumText = scene.add.text(this.cardW - 8, 6, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0);
       this.hpBarBg = scene.add.rectangle(8, 0, this.cardW - 16, 4, COLOR.bg).setOrigin(0, 0.5);
       this.hpBarFill = scene.add.rectangle(8, 0, this.cardW - 16, 4, COLOR.success).setOrigin(0, 0.5);
-      this.add([this.hpBarBg, this.hpBarFill]);
+      this.add([this.hpBarBg, this.hpBarFill, this.hpNumText]);
     }
     this.setDepth(11);
     scene.add.existing(this);
   }
 
-  /** Replace the card's content and re-fit its height. `hp` draws the bar when enabled. */
-  set(title: string, rows: CardRow[], hp?: { frac: number }): this {
+  /**
+   * Replace the card's content and re-fit its height. `hp` draws the bar when enabled;
+   * `cur`/`max`, when given, also print the absolute HP on the title row.
+   */
+  set(title: string, rows: CardRow[], hp?: { frac: number; cur?: number; max?: number }): this {
     this.titleText.setText(title);
     for (const o of this.rowObjs) o.destroy();
     this.rowObjs = [];
@@ -64,6 +71,10 @@ export class MiniCard extends Phaser.GameObjects.Container {
         this.hpBarBg.setPosition(8, y);
         this.hpBarFill.setPosition(8, y).setSize((this.cardW - 16) * frac, 4).setFillStyle(hpColor(frac));
         y += 10;
+        const num = hp.cur !== undefined && hp.max !== undefined ? `${hp.cur}/${hp.max}` : "";
+        this.hpNumText?.setText(num).setColor(hex(hpColor(frac))).setVisible(num !== "");
+      } else {
+        this.hpNumText?.setVisible(false);
       }
     }
     for (const r of rows) {

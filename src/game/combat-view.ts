@@ -117,6 +117,13 @@ export class CombatView {
   /** The combat log's rolling message buffer (oldest first) + its pooled text lines. */
   private readonly logBuffer: { text: string; color: string }[] = [];
   private readonly logLines: Phaser.GameObjects.Text[] = [];
+  /**
+   * A turn header held back until that turn actually logs something (D-UX): quiet
+   * move/defend turns never flush it, so the feed carries *events* (who hit whom, who
+   * fell), not a column of empty "— Name —" lines. Flushed by the first event of the
+   * turn; replaced (unshown) by the next turn's header.
+   */
+  private pendingHeader: { text: string; color: string } | null = null;
   /** The unit taking its turn / under the cursor — both reveal a nameplate. */
   activeUnitId: string | null = null;
   hoveredUnitId: string | null = null;
@@ -430,14 +437,24 @@ export class CombatView {
   /**
    * Append a line to the **combat log** — the rolling bottom-left feed that
    * narrates the exchange (who hit whom, who fell) so fast enemy turns don't blur
-   * past. Keeps the last {@link LOG_LINES}, newest at the bottom. The typed
-   * helpers ({@link logDamage}/{@link logHeal}/{@link logDefeat}) format the
-   * common bus events; this is the raw entry point.
+   * past. Keeps the last {@link LOG_LINES}, newest at the bottom. A {@link pendingHeader}
+   * (the turn boundary) is flushed *first*, so a header only appears once its turn
+   * has something to say. The typed helpers ({@link logDamage}/{@link logHeal}/
+   * {@link logDefeat}) format the common bus events; this is the raw entry point.
    */
   logEvent(text: string, color: string = INK.secondary): void {
-    this.logBuffer.push({ text, color });
-    if (this.logBuffer.length > CombatView.LOG_LINES) this.logBuffer.shift();
+    if (this.pendingHeader) {
+      this.pushLine(this.pendingHeader);
+      this.pendingHeader = null;
+    }
+    this.pushLine({ text, color });
     this.renderLog();
+  }
+
+  /** Buffer one line, evicting the oldest past {@link LOG_LINES}. (Caller renders.) */
+  private pushLine(entry: { text: string; color: string }): void {
+    this.logBuffer.push(entry);
+    if (this.logBuffer.length > CombatView.LOG_LINES) this.logBuffer.shift();
   }
 
   /** Log "Attacker hits Target −N" (or "Target takes N" for a sourceless trap/rune). */
@@ -457,30 +474,38 @@ export class CombatView {
     this.logEvent(`${shortName(unit.name)} is defeated`, INK.ember);
   }
 
-  /** Log a turn-boundary header — "— Name —" — so the feed reads grouped by whose turn it is. */
+  /**
+   * Note a turn-boundary header — "— Name —" — so the feed reads grouped by whose turn
+   * it is. Held back ({@link pendingHeader}), not shown, until the turn logs an event:
+   * a unit that only repositions or defends adds nothing, keeping the feed to what
+   * actually happened. The next turn's header supersedes an un-flushed one.
+   */
   logTurn(unit: Unit): void {
-    this.logEvent(`— ${shortName(unit.name)} —`, unit.side === "player" ? INK.gold : INK.muted);
+    this.pendingHeader = { text: `— ${shortName(unit.name)} —`, color: unit.side === "player" ? INK.gold : INK.muted };
   }
 
   /** Clear the log (between encounters). */
   clearLog(): void {
     this.logBuffer.length = 0;
+    this.pendingHeader = null;
     for (const l of this.logLines) l.setVisible(false);
   }
 
-  /** Re-lay the pooled log lines bottom-anchored above the action row, newest last. */
+  /** Re-lay the pooled log lines bottom-anchored in the bottom-right, newest last. */
   private renderLog(): void {
     const step = 14;
-    // Sit above the persistent board key (bottom-left, ≈ height − 98) so the two
-    // bottom-left readouts stack instead of overprinting (D-UX zone separation).
-    const bottomY = this.scene.scale.height - 120;
+    // Bottom-right column (left-aligned text), sitting above the vertical board key so
+    // the two right-side readouts stack instead of overprinting — the bottom-left is
+    // now the command box (D-UX zone separation).
+    const x = this.scene.scale.width - 244;
+    const bottomY = this.scene.scale.height - 108;
     const n = this.logBuffer.length;
     this.logBuffer.forEach((entry, i) => {
       const line = this.logLines[i] ?? this.scene.add.text(0, 0, "", { fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
       this.logLines[i] = line;
       // Older lines fade toward the top — the eye lands on the freshest.
       const age = n - 1 - i;
-      line.setPosition(10, bottomY - age * step).setText(entry.text).setColor(entry.color).setAlpha(1 - age * 0.13).setVisible(true);
+      line.setPosition(x, bottomY - age * step).setText(entry.text).setColor(entry.color).setAlpha(1 - age * 0.13).setVisible(true);
     });
     for (let i = n; i < this.logLines.length; i++) this.logLines[i].setVisible(false);
   }
@@ -747,6 +772,7 @@ export class CombatView {
     for (const l of this.logLines) l.destroy();
     this.logLines.length = 0;
     this.logBuffer.length = 0;
+    this.pendingHeader = null;
     this.deadSeen.clear();
     this.lastHit.clear();
     this.activeUnitId = null;

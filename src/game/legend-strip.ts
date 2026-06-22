@@ -14,52 +14,54 @@ export interface LegendItem {
 }
 
 /**
- * An always-on, horizontal **board colour key** — the persistent twin of the full
- * `L` legend, so the green/amber/red wash language is self-teaching without a
- * keypress. It's a thin shared component, not a phase-specific one: each scene/phase
- * just calls {@link setItems} with the swatches that match what it paints, so the
- * **same key, in the same corner** carries across Deployment and Battle (and any
- * future scene that washes tiles).
+ * An always-on **board colour key** — the persistent twin of the full `L` legend, so
+ * the green/amber/red wash language is self-teaching without a keypress. It's a thin
+ * shared component, not a phase-specific one: each scene/phase just calls
+ * {@link setItems} with the swatches that match what it paints, so the **same key, in
+ * the same corner** carries across Deployment and Battle (and any future scene that
+ * washes tiles).
  *
- * Docked bottom-left by default — clear of the centred action row and the
- * bottom-right session log — it lays its items left-to-right and sizes itself to the
- * content. Empty items hide it entirely (e.g. during a resolution overlay).
+ * Docked **bottom-right**, stacked vertically and anchored by its bottom edge so it
+ * sits clear above the Session-log chip — out of the bottom-left command box and the
+ * combat log. Sizes itself to its items; an empty list hides it (e.g. under a
+ * resolution overlay).
  */
 export class LegendStrip extends Phaser.GameObjects.Container {
-  /** Swatch edge length (a small square), and the gap rules around it. */
+  /** Swatch edge length (a small square), the swatch→label gap, and the row pitch. */
   private static readonly SWATCH = 11;
   private static readonly GAP = 6; // swatch → label
-  private static readonly PAD = 16; // item → item
+  private static readonly ROW = 16; // row → row
 
   private objs: Phaser.GameObjects.GameObject[] = [];
 
-  constructor(scene: Phaser.Scene, x = 12, y = scene.scale.height - 98) {
-    // Docked low-left but *above* the centred action row (≈ height − 66) so the key
-    // never runs under the End Turn / verb buttons, and clear of the board's lower
-    // vertex and the bottom-right session log.
+  constructor(scene: Phaser.Scene, x = scene.scale.width - 198, y = scene.scale.height - 56) {
+    // Bottom-right, with the container's y as the *bottom* row's centre: rows stack
+    // upward from here, so the block grows up and never runs under the Session-log
+    // chip (fixed at the very bottom-right corner) or the centred action row.
     super(scene, x, y);
     this.setDepth(11);
     scene.add.existing(this);
   }
 
-  /** Replace the key with `items` (or clear it when empty). Re-lays out from the left. */
+  /** Replace the key with `items` (or clear it when empty). Stacks them bottom-up. */
   setItems(items: LegendItem[]): this {
     for (const o of this.objs) o.destroy();
     this.objs = [];
     const s = LegendStrip.SWATCH;
-    let cx = 0;
-    for (const item of items) {
+    const n = items.length;
+    items.forEach((item, i) => {
+      // First item on top, last flush with the bottom anchor (relative y 0).
+      const ry = -(n - 1 - i) * LegendStrip.ROW;
       const swatch = item.outline
-        ? this.scene.add.rectangle(cx, 0, s, s).setStrokeStyle(2, item.color, item.alpha ?? 1).setOrigin(0, 0.5)
-        : this.scene.add.rectangle(cx, 0, s, s, item.color, item.alpha ?? 1).setStrokeStyle(1, item.color, 1).setOrigin(0, 0.5);
+        ? this.scene.add.rectangle(0, ry, s, s).setStrokeStyle(2, item.color, item.alpha ?? 1).setOrigin(0, 0.5)
+        : this.scene.add.rectangle(0, ry, s, s, item.color, item.alpha ?? 1).setStrokeStyle(1, item.color, 1).setOrigin(0, 0.5);
       const text = this.scene.add
-        .text(cx + s + LegendStrip.GAP, 0, item.label, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption })
+        .text(s + LegendStrip.GAP, ry, item.label, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption })
         .setOrigin(0, 0.5);
       this.add([swatch, text]);
       this.objs.push(swatch, text);
-      cx += s + LegendStrip.GAP + text.width + LegendStrip.PAD;
-    }
-    this.setVisible(items.length > 0);
+    });
+    this.setVisible(n > 0);
     return this;
   }
 }

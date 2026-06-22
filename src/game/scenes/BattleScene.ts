@@ -37,7 +37,7 @@ import {
   inDangerZone,
   inSafeZone,
   stepDistance,
-  frontCaptureChance,
+  deployForecast,
   // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
   // tested), so the scene renders the choices instead of making them.
   frontTurnStage,
@@ -98,7 +98,7 @@ import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
 import { MiniCard, type CardRow } from "../info-cards";
 import { dropNet as dropNetCage } from "../deploy-fx";
-import { ICON } from "../icons";
+import { ICON, type IconKey, type IconSpec } from "../icons";
 
 /**
  * Board zoom for the real combat field (D-UX): enlarge tiles + tokens so details
@@ -121,6 +121,38 @@ function compactFoeTypes(types: readonly string[]): string {
   if (!shareLead) return types.join(", ");
   return `${lead}: ${types.map((t) => t.slice(lead.length).trim()).join(", ")}`;
 }
+
+/** One icon-led line in a resolution section — an outcome and the colour it reads as. */
+interface ReportRow {
+  /** Registry icon keying the row's glyph + default tint; omit for a plain bullet. */
+  icon?: IconKey;
+  text: string;
+  /** Text colour override (the row's valence), else the section default. */
+  color?: string;
+}
+
+/** A titled group of {@link ReportRow}s — dropped entirely when it has no rows. */
+interface ReportSection {
+  heading: string;
+  rows: ReportRow[];
+}
+
+/** The full after-action report: a toned headline + subtitle over grouped sections. */
+interface ResolutionReport {
+  title: string;
+  good: boolean;
+  subtitle: string;
+  sections: ReportSection[];
+}
+
+/** Command-menu geometry (the bottom-left stacked action box) — shared so the docked
+ *  primary and the verb stack agree on width/pitch/anchor. */
+const MENU_BW = 150;
+const MENU_BH = 28;
+const MENU_PITCH = 31;
+const MENU_PAD = 7;
+const MENU_LEFT = 12; // box left margin
+const MENU_CX = MENU_LEFT + MENU_PAD + MENU_BW / 2; // button centre x (bottom-left)
 
 /**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
@@ -272,12 +304,14 @@ export class BattleScene extends Phaser.Scene {
     // The campfire glow — a warm vignette over the board, beneath the tokens/HUD.
     addVignette(this);
     // Persistent UI.
-    // Top strip = "the situation": phase title + intel, centred and uncluttered now
-    // that the camp/economy readout has moved to its own peripheral card (below).
+    // Top strip = "the situation": a prominent heading (phase + whose turn) over a
+    // single secondary line that composes the objective (the goal — leads) and the
+    // intel recap (passive reference — trails), laid out together by layoutSituationLine
+    // so the band stays two lines instead of three (D-UX compactness).
     this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
     this.intelText = this.add.text(this.scale.width / 2, 42, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
-    // Objective banner — a generic readout (label + gauge) under the intel line.
-    this.objectiveText = this.add.text(this.scale.width / 2, 60, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
+    // Objective readout (label + gauge) — shares the secondary line, ahead of intel.
+    this.objectiveText = this.add.text(this.scale.width / 2, 42, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
     // Right column = "timing/history": the turn-order rail (drawn by CombatView) and
     // its label move here, off the left so the left can host the focus card. The label
     // sits below the camp card (above the rail) so it isn't occluded by it.
@@ -293,7 +327,7 @@ export class BattleScene extends Phaser.Scene {
     this.threatGfx = this.add.graphics().setDepth(0.36);
     this.preview = this.add.graphics().setDepth(0.4);
     this.highlight = this.add.graphics().setDepth(0.5);
-    this.primary = this.makeTextButton(this.scale.width / 2, this.scale.height - 26, 200, 34, "", COLOR.successDeep, COLOR.success, () => this.onPrimary());
+    this.primary = this.makeTextButton(MENU_CX, this.scale.height - 40, MENU_BW, MENU_BH, "", COLOR.successDeep, COLOR.success, () => this.onPrimary());
     this.primary.setDepth(12);
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
     // Hover routing (D60): light the path to the tile under the cursor as it moves.
@@ -607,7 +641,7 @@ export class BattleScene extends Phaser.Scene {
         onClick: () => { if (!this.busy) this.startBattle(); },
       },
     };
-    this.layoutActionRow(ids.map((id) => make[id]));
+    this.layoutActionMenu(ids.map((id) => make[id]));
   }
 
   private refreshDeployStatus(): void {
@@ -815,6 +849,7 @@ export class BattleScene extends Phaser.Scene {
   private startBattle(): void {
     this.phase = "battle";
     this.titleText.setText("Battle");
+    this.refreshIntelText(); // re-style the roster line down to passive reference (D-UX)
     this.legendStrip.setItems(BATTLE_LEGEND);
     this.clearActionButtons();
     this.theftAttempts.clear();
@@ -1106,7 +1141,7 @@ export class BattleScene extends Phaser.Scene {
     }
     // The turn's explicit close is the prominent green primary button (plus Space and
     // W) — so the action row carries only the unit's *verbs*, not a second End Turn.
-    this.layoutActionRow(specs);
+    this.layoutActionMenu(specs);
   }
 
   // --- Trap-field: spotting, searching, disarming (D12) ----------------------
@@ -1245,7 +1280,7 @@ export class BattleScene extends Phaser.Scene {
     if (skill.effect.kind === "med-heal") {
       const herbs = ["salve", "stimulant", "antidote"].filter((h) => countOf(this.run.inventory, h) > 0);
       if (herbs.length === 0) return this.setHint("No herbs carried — provision some at camp.");
-      this.layoutActionRow(
+      this.layoutActionMenu(
         herbs.map((h) => ({
           text: `${h} (${countOf(this.run.inventory, h)})`,
           description: `Heal with ${h}.`,
@@ -1666,9 +1701,9 @@ export class BattleScene extends Phaser.Scene {
     // Re-tint any freed allies.
     for (const u of this.run.party) if (!u.captured) this.tintCaptured(u, false);
 
-    const { title, good, lines } = this.buildResolutionSummary(res, goldEscaped, recruited);
-    this.showOverlay(title, lines.join("\n"), good, 480, 200);
-    this.setHint(`Resolution — ${lines.join("  ")}`);
+    const report = this.buildResolutionSummary(res, goldEscaped, recruited);
+    this.showResolutionReport(report);
+    this.setHint(`Resolution — ${report.title}. ${report.subtitle}`);
     // On any terminal (wipe / loss / run-complete) the overworld shows the end
     // screen; otherwise the player returns to the map to pick the next node.
     this.setPrimary(res.over ? (this.loop.isComplete() ? "See Results" : "Run Over") : "Return to Map");
@@ -1702,53 +1737,72 @@ export class BattleScene extends Phaser.Scene {
 
   /**
    * Build the three-way graded terminal (D50/D51) — win / objective-failure / wipe —
-   * as a title, tone, and the body lines (rewards, casualties, level-ups, theft +
-   * recruitment outcomes). Pure assembly off the resolved result; shows nothing.
+   * as a structured **after-action report**: a titled, toned headline and grouped,
+   * icon-led sections (Spoils, The party, Advancement, Aftermath). Pure assembly off
+   * the resolved result; empty sections are dropped by the renderer. The grouping
+   * follows the D-UX rule — the payoff (spoils, level-ups) and the costs (casualties,
+   * captures) read as distinct, colour-coded blocks instead of one grey wall.
    */
   private buildResolutionSummary(
     res: ResolveResult,
     goldEscaped: number,
     recruited: string[],
-  ): { title: string; good: boolean; lines: string[] } {
+  ): ResolutionReport {
     const won = res.result === "win";
     const title = won ? "Victory!" : res.result === "objective-failure" ? "Objective Failed — Retreat" : "Defeat";
-    const lines: string[] = [];
+    const subtitle = won
+      ? "The field is won — gather the spoils and move on."
+      : res.result === "objective-failure"
+        ? "The objective was lost — the party retreats alive, the prize forfeited."
+        : "The party was overwhelmed.";
+    const nameOf = (id: string) => this.battle.units.find((u) => u.id === id)?.name ?? id;
+
+    const spoils: ReportRow[] = [];
     if (won) {
-      lines.push(`+${res.goldEarned} gold.`);
-      if (res.rescued.length) lines.push(`Auto-rescued ${res.rescued.join(", ")} (won the field).`);
-      lines.push(res.recovered.length ? `Recovered ${res.recovered.length} unsprung trap kit(s).` : "No unsprung materials.");
-    } else if (res.result === "objective-failure") {
-      lines.push("The objective was lost — the party retreats alive, the prize forfeited.");
-    } else {
-      lines.push("The party was overwhelmed.");
+      spoils.push({ icon: "spoils", text: `+${res.goldEarned} gold`, color: INK.gold });
+      spoils.push(
+        res.recovered.length
+          ? { icon: "loot", text: `Recovered ${res.recovered.length} unsprung trap kit${res.recovered.length === 1 ? "" : "s"}` }
+          : { text: "No unsprung materials to recover.", color: INK.muted },
+      );
     }
-    // Casualties apply on either survivable outcome (D51).
+
+    // The party (D51): rescues and casualties apply on either survivable outcome.
+    const party: ReportRow[] = [];
+    if (res.rescued.length) party.push({ icon: "rescued", text: `Freed by winning the field: ${res.rescued.join(", ")}`, color: INK.success });
     if (res.result !== "wipe") {
-      if (res.downed.length) lines.push(`Downed: ${res.downed.map((d) => `${d.unitId} (${d.resolution})`).join(", ")}.`);
-      if (res.permadeaths.length) lines.push(`Lost forever: ${res.permadeaths.join(", ")}.`);
+      if (res.downed.length) party.push({ icon: "fallen", text: `Downed: ${res.downed.map((d) => `${nameOf(d.unitId)} (${d.resolution})`).join(", ")}`, color: INK.ember });
+      if (res.permadeaths.length) party.push({ icon: "lost", text: `Lost forever: ${res.permadeaths.map(nameOf).join(", ")}`, color: INK.danger });
     }
     // Captives left behind become rescue follow-ups (D9/D21) — name them so the
     // abandonment isn't silently dropped; the Captain's Journal keeps nagging after.
-    if (res.rescueQuests.length) {
-      lines.push(`Captured — needs rescue: ${res.rescueQuests.map((q) => q.unitId).join(", ")}.`);
-    }
-    // Level-up feedback (D53): who reached a new job level, with their new actives.
+    if (res.rescueQuests.length) party.push({ icon: "captive", text: `Captured — needs rescue: ${res.rescueQuests.map((q) => nameOf(q.unitId)).join(", ")}`, color: INK.ember });
+
+    // Advancement (D53): who reached a new job level, with their new actives.
+    const advancement: ReportRow[] = [];
     for (const u of this.battle.units) {
       if (u.side !== "player") continue;
       const was = this.preBattleJobLevels.get(u.id) ?? jobLevelOf(u, u.primaryJob);
       const now = jobLevelOf(u, u.primaryJob);
       if (now > was) {
         const actives = unlockedSkills(u, "battle").map((s) => s.name).join(", ");
-        lines.push(`${u.name} reached job L${now} — actives: ${actives || "—"}.`);
+        advancement.push({ icon: "levelUp", text: `${u.name} reached job L${now}${actives ? ` — ${actives}` : ""}`, color: INK.gold });
       }
     }
-    if (won && this.loop.isComplete()) lines.push("The final mission is cleared — the run is complete!");
-    // Theft + recruitment outcomes (M10).
-    if (this.goldStolen > 0) {
-      lines.push(`Thieves skimmed ${this.goldStolen}g — recovered ${this.goldRecovered}g${goldEscaped > 0 ? `, ${goldEscaped}g escaped` : ""}.`);
-    }
-    if (recruited.length) lines.push(`Swayed to the guild (permanent): ${recruited.join(", ")}.`);
-    return { title, good: won, lines };
+
+    // Aftermath (M10): theft, recruitment, and the run-complete flourish.
+    const aftermath: ReportRow[] = [];
+    if (this.goldStolen > 0) aftermath.push({ icon: "theft", text: `Thieves skimmed ${this.goldStolen}g — recovered ${this.goldRecovered}g${goldEscaped > 0 ? `, ${goldEscaped}g escaped` : ""}`, color: INK.ember });
+    if (recruited.length) aftermath.push({ icon: "recruited", text: `Swayed to the guild (permanent): ${recruited.join(", ")}`, color: INK.cyan });
+    if (won && this.loop.isComplete()) aftermath.push({ icon: "levelUp", text: "The final mission is cleared — the run is complete!", color: INK.gold });
+
+    const sections: ReportSection[] = [
+      { heading: "Spoils", rows: spoils },
+      { heading: "The party", rows: party },
+      { heading: "Advancement", rows: advancement },
+      { heading: "Aftermath", rows: aftermath },
+    ];
+    return { title, good: won, subtitle, sections };
   }
 
   /** Hand the run back to the overworld so the player can pick the next node. */
@@ -1756,15 +1810,47 @@ export class BattleScene extends Phaser.Scene {
     this.scene.start("OverworldScene", { run: this.run, loop: this.loop, guild: this.guild, caravanId: this.caravanId } as RunHandoff);
   }
 
-  private showOverlay(title: string, body: string, good: boolean, w = 480, h = 170): void {
+  /**
+   * Render the {@link ResolutionReport} as a centred after-action card: a toned
+   * headline + subtitle over icon-led, colour-coded sections. Self-sizes to its
+   * content (empty sections skipped, long rows wrap) and is built in a Container so a
+   * single clearLayer tears the whole report down on Return to Map.
+   */
+  private showResolutionReport(r: ResolutionReport): void {
     clearLayer(this.overlay);
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.92).setStrokeStyle(2, good ? COLOR.success : COLOR.danger).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 28, title, { color: good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy + 14, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(21),
-    );
+    const w = 484;
+    const padX = 26;
+    const leftX = -w / 2 + padX;
+    const accent = r.good ? COLOR.success : COLOR.danger;
+    const card = this.add.container(this.scale.width / 2, 0).setDepth(20);
+
+    let y = 22;
+    card.add(this.add.text(0, y, r.title, { color: r.good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5, 0));
+    y += 36;
+    const sub = this.add.text(0, y, r.subtitle, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body, align: "center", wordWrap: { width: w - 2 * padX } }).setOrigin(0.5, 0);
+    card.add(sub);
+    y += sub.height + 12;
+
+    for (const sec of r.sections) {
+      if (sec.rows.length === 0) continue;
+      card.add(this.add.text(leftX, y, sec.heading.toUpperCase(), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0));
+      card.add(this.add.rectangle(leftX, y + 15, w - 2 * padX, 1, COLOR.borderSoft).setOrigin(0, 0.5));
+      y += 22;
+      for (const row of sec.rows) {
+        const spec: IconSpec | undefined = row.icon ? ICON[row.icon] : undefined;
+        const glyph = this.add.text(leftX, y, spec?.glyph ?? "·", { color: spec?.color ?? INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0);
+        const text = this.add.text(leftX + 20, y, row.text, { color: row.color ?? INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, wordWrap: { width: w - 2 * padX - 20 } }).setOrigin(0, 0);
+        card.add([glyph, text]);
+        y += Math.max(text.height, 17) + 4;
+      }
+      y += 10;
+    }
+
+    const totalH = y + 6;
+    const bg = this.add.rectangle(0, totalH / 2, w, totalH, COLOR.bg, 0.96).setStrokeStyle(2, accent);
+    card.addAt(bg, 0);
+    card.setY(Math.max(8, this.scale.height / 2 - totalH / 2));
+    this.overlay.push(card);
   }
 
   // --- Drawing helpers -------------------------------------------------------
@@ -1862,6 +1948,33 @@ export class BattleScene extends Phaser.Scene {
       else parts.push(`• ${o.spec.label}`);
     }
     this.objectiveText.setText(parts.join("    "));
+    this.layoutSituationLine();
+  }
+
+  /**
+   * Lay the **secondary situation line** (D-UX merge): the objective readout and the
+   * intel recap share one centred row at y=42 instead of stacking. The objective —
+   * the actionable goal — leads (left); the passive intel recap trails. With only one
+   * present the surviving piece simply centres; this keeps the top band two lines
+   * (heading + situation) however many of the pieces are live.
+   */
+  private layoutSituationLine(): void {
+    const cx = this.scale.width / 2;
+    const y = 42;
+    const obj = this.objectiveText;
+    const intel = this.intelText;
+    const hasObj = obj.text.length > 0;
+    const hasIntel = intel.text.length > 0;
+    const gap = 18; // the " · " of breathing room between goal and recap
+    if (hasObj && hasIntel) {
+      const left = cx - (obj.width + gap + intel.width) / 2;
+      obj.setOrigin(0, 0.5).setPosition(left, y);
+      intel.setOrigin(0, 0.5).setPosition(left + obj.width + gap, y);
+    } else if (hasObj) {
+      obj.setOrigin(0.5, 0.5).setPosition(cx, y);
+    } else {
+      intel.setOrigin(0.5, 0.5).setPosition(cx, y);
+    }
   }
 
   /** True once the staged encounter has reached a graded terminal (D50/D51). */
@@ -1922,9 +2035,16 @@ export class BattleScene extends Phaser.Scene {
       const band = actor.captured ? "Captured" : inDanger ? "In danger" : dug ? "Dug in" : safe ? "Safe" : "Exposed";
       const bandColor = actor.captured || inDanger ? INK.danger : safe || dug ? INK.success : INK.muted;
       rows.push({ label: "Position", value: band, color: bandColor });
-      if (inDanger && !actor.captured) {
-        const pct = Math.round(frontCaptureChance(actor, this.front, { dugIn: dug }) * 100);
-        rows.push({ label: "Capture risk", value: `${pct}%`, color: INK.danger, emphasize: true });
+      if (inDanger && this.front && !actor.captured) {
+        // Hot decision: forecast each choice's capture risk (D48 route-forecast ethos),
+        // so the card answers "what should this unit do *now*", not just "how bad is it".
+        // Repositioning is only on the table before the unit has moved this turn.
+        const reach = this.deployMoved ? [] : reachableTiles(actor, this.battle.units, this.grid, actor.moveRange).map((r) => r.tile);
+        const fc = deployForecast(actor, this.front, reach, { dugIn: dug });
+        const pct = (n: number) => `${Math.round(n * 100)}%`;
+        rows.push({ label: "Hold", value: pct(fc.hold), color: INK.danger, emphasize: true });
+        if (fc.digIn !== null) rows.push({ label: "Dig in", value: pct(fc.digIn), color: INK.success });
+        if (fc.move !== null) rows.push({ label: "Move", value: fc.move <= 0 ? "safe" : pct(fc.move), color: INK.success });
       } else if (!actor.captured) {
         rows.push({ label: "Capture risk", value: dug ? "low (dug in)" : safe ? "none" : "if net reaches", color: bandColor });
       }
@@ -1943,7 +2063,7 @@ export class BattleScene extends Phaser.Scene {
         });
       }
     }
-    this.focusCard.set(actor.name, rows, { frac: actor.maxHp > 0 ? actor.hp / actor.maxHp : 0 });
+    this.focusCard.set(actor.name, rows, { frac: actor.maxHp > 0 ? actor.hp / actor.maxHp : 0, cur: actor.hp, max: actor.maxHp });
   }
 
   private refreshIntelText(): void {
@@ -1952,16 +2072,29 @@ export class BattleScene extends Phaser.Scene {
       this.intelText.setText("");
       return;
     }
-    const parts = [`Intel T${r.tier}`];
+    // Intel drives the *deployment* decision — where to stand against the scouted
+    // roster — so it leads there: gold and prominent. Once the fight is joined the
+    // foes are on the board and there's no re-scouting; it becomes passive reference,
+    // so in Battle it recedes (muted, caption-sized) and sheds the deploy-only tier /
+    // vision / encounter-shape, keeping just the roster as a quiet recap (D-UX rule:
+    // prominence follows whether you can act on the info in this phase).
+    const battle = this.phase === "battle";
+    const parts: string[] = [];
+    if (!battle) parts.push(`Intel T${r.tier}`);
     if (r.count !== undefined) parts.push(`${r.count} foe${r.count === 1 ? "" : "s"}`);
     if (r.types && r.types.length) parts.push(compactFoeTypes(r.types));
-    if (r.grantsVision) parts.push("vision");
+    if (!battle && r.grantsVision) parts.push("vision");
     // Show the *tactical* encounter shape (open-field vs. fortified = pre-placed
-    // hazards, D12) for procedural fights; an authored set-piece reveals no such
-    // banner, so we drop the parenthetical rather than leak the "authored" dev tag.
+    // hazards, D12) only in Deployment, where it informs placement; an authored
+    // set-piece reveals no such banner, so we drop the parenthetical rather than leak
+    // the "authored" dev tag.
     const def = currentEncounter(this.run);
-    const shape = isAuthoredEncounter(def) ? undefined : def.type;
-    this.intelText.setText(parts.join("  ·  ") + (shape ? `   (${shape})` : ""));
+    const shape = !battle && !isAuthoredEncounter(def) ? def.type : undefined;
+    this.intelText
+      .setText(parts.join("  ·  ") + (shape ? `   (${shape})` : ""))
+      .setColor(battle ? INK.muted : INK.gold)
+      .setFontSize(battle ? FONT.caption : FONT.label);
+    this.layoutSituationLine();
   }
 
   private setHint(text: string): void {
@@ -2012,19 +2145,47 @@ export class BattleScene extends Phaser.Scene {
     this.primary.setLabel(text).setVisible(visible);
   }
 
-  private clearActionButtons(): void {
-    clearLayer(this.actionButtons);
+  /** The resting Y of the End Turn / Advance Clock primary — the box's bottom slot. */
+  private primaryRestY(): number {
+    return this.scale.height - 40;
   }
 
-  private layoutActionRow(specs: { text: string; description?: string; onClick: () => void }[]): void {
+  private clearActionButtons(): void {
+    clearLayer(this.actionButtons);
+    // With no command menu up, the primary (End Turn / Advance Clock / …) stands alone,
+    // bottom-left; layoutActionMenu re-docks it into the box's bottom slot.
+    this.primary?.setPosition(MENU_CX, this.primaryRestY());
+  }
+
+  /**
+   * Lay the unit's verbs as a **vertical command menu** (D-UX): a translucent box of
+   * stacked, full-width buttons docked **bottom-left**, with the green End Turn /
+   * Advance Clock primary **docked as the bottom entry** so the whole command cluster —
+   * verbs and the turn's close — sits in one place and the pointer barely travels
+   * between choices (the traditional tactics command box, vs. the old wide row). Reads
+   * top to bottom in the order the callers build them. Shared by both phases and the
+   * herb submenu, so every in-combat menu looks and sits the same. The backing box is
+   * tracked with the buttons; {@link clearActionButtons} tears it down and floats the
+   * primary back to its lone resting spot.
+   */
+  private layoutActionMenu(specs: { text: string; description?: string; onClick: () => void }[]): void {
     this.clearActionButtons();
     if (specs.length === 0) return;
-    const y = this.scale.height - 66;
-    const gap = Math.min(150, 720 / specs.length);
-    const startX = this.scale.width / 2 - ((specs.length - 1) * gap) / 2;
+    const cx = MENU_CX;
+    const dockPrimary = this.primary.visible;
+    // The primary docks as the bottom slot; the verbs stack above it.
+    const slots = specs.length + (dockPrimary ? 1 : 0);
+    const bottomY = this.primaryRestY();
+    const topY = bottomY - (slots - 1) * MENU_PITCH;
+    const box = this.add
+      .rectangle(cx, (topY + bottomY) / 2, MENU_BW + 2 * MENU_PAD, (slots - 1) * MENU_PITCH + MENU_BH + 2 * MENU_PAD, COLOR.surface, 0.85)
+      .setStrokeStyle(1, COLOR.borderSoft)
+      .setDepth(11);
+    this.actionButtons.push(box);
     specs.forEach((spec, i) => {
-      this.actionButtons.push(this.makeTextButton(startX + i * gap, y, gap - 12, 30, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
+      this.actionButtons.push(this.makeTextButton(cx, topY + i * MENU_PITCH, MENU_BW, MENU_BH, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
     });
+    if (dockPrimary) this.primary.setPosition(cx, topY + specs.length * MENU_PITCH);
   }
 
   // --- Animation -------------------------------------------------------------

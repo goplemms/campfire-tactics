@@ -240,7 +240,8 @@ read it everywhere.
 | Canonical | Means | Banned in labels |
 |---|---|---|
 | **CT clock** / **Charge-Time** | The continuous initiative clock (no rounds). | "ATB"; "initiative bar"; "timeline" (in labels) |
-| **Advance Clock** | The button that ticks the clock to the next turn. | "Next turn"; "End turn"; "Tick" |
+| **Advance Clock** | The button that ticks the clock to the next turn (time only passes here). | "Next turn"; "End turn"; "Tick" |
+| **End Turn** | Close the **active unit's** turn, spending its CT (Act costs more than Move) — distinct from **Advance Clock**. | "Done"; "End round"; calling the *clock-step* "End turn" |
 | **Turn order** | The rail showing who acts next. | "initiative"; "queue" |
 | **Speed** | The stat governing how fast CT fills. | "AGI"; "initiative" |
 | **active turn** = **Move** + **Act** | One unit's turn: move and act, either order. | "action"; "AP" (no action-point pool) |
@@ -249,6 +250,13 @@ read it everywhere.
 | **Defend** | The universal brace action (applies the **Guarded** status). | "Brace"/"Block" as the *button*; "Guard" (that's the Banker verb) |
 | **Wait** | Pass the turn without acting. | "Skip"; "Pass"; "Hold" |
 | **Bribe** | The Noble's mid-combat **Influence** verb (sway an enemy). A **roll** scaled by **Standing** (D62): higher band = cheaper + likelier; a failed sway still spends the Influence and the Act. | "Sway"/"Charm" as the button; abbreviating `Influence` to `Inf` |
+
+> **End Turn vs Advance Clock — one button, two jobs.** The green primary reads
+> **End Turn** while *your* unit is up and **Advance Clock** between turns. **End Turn**
+> closes the active unit's turn and spends its CT (setting when it next acts); **Advance
+> Clock** then runs the clock forward — accruing CT, burning cooldowns, ticking statuses
+> and **Charged** abilities, and taking enemy turns — until the next unit is ready. Time
+> only passes on Advance Clock; End Turn just hands the clock back.
 
 **Status-effect lexicon** — fixed labels, one word each, never re-skinned:
 **Immobilized · Slowed · Exposed · Hastened · Guarded · Swift · Marked Prey · Flanked**.

@@ -173,6 +173,7 @@ export const ROLE = {
   chef: 0xe0903a, //        orange — support
   merchant: 0xd6c24a, //    gold   — economy
   noble: 0xb070d0, //       regal violet — standing / Influence
+  banker: 0x4a8fd6, //      deep blue — purse / finance
   survivalist: 0x9bd66f, // leaf   — traps
   trapper: 0x4fb0a0, //     teal   — debuffer (job + foe)
   captain: 0xf0c060, //     bright — the leader

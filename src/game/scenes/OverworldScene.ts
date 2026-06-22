@@ -36,6 +36,7 @@ import {
   bankerEngageInterest,
   bankerBorrow,
   bankerProtect,
+  hasBanker,
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
   patronize,
   hasNoble,
@@ -600,11 +601,15 @@ export class OverworldScene extends Phaser.Scene {
     if (this.campAdvanced) {
       const subX = colX + 16;
       const subW = 344;
-      this.campButton(subX, y, subW, 24, "Invest the Purse", true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
+      // The Banker's purse-finance verbs (D30) are job-gated — they need a Banker in the
+      // party (the financier who works them), mirroring the Noble's Patronize below.
+      const bankerPresent = hasBanker(this.run.party);
+      const noBanker = "No Banker in the party. Bring a Banker to work the purse — interest, loans, and theft protection.";
+      this.campButton(subX, y, subW, 24, "Invest the Purse", bankerPresent, () => this.bankerInterest(), bankerPresent ? "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury." : noBanker);
       y += rowH;
-      this.campButton(subX, y, subW, 24, "Borrow 40g", true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.");
+      this.campButton(subX, y, subW, 24, "Borrow 40g", bankerPresent, () => this.bankerBorrow40(), bankerPresent ? "Banker: overspend now; auto-repaid from incoming run gold." : noBanker);
       y += rowH;
-      this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g)`, true, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.");
+      this.campButton(subX, y, subW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g)`, bankerPresent && this.run.camp.gold >= ECONOMY.banker.protectionCost, () => this.bankerProtect(), bankerPresent ? "Banker: blunt a thief's skim — battle thief and event node alike." : noBanker);
       y += rowH;
       // Patronize (D62): the Noble courts patrons — gold → Influence, once per node.
       // Needs a Noble in the party (the one building rapport); passive presence accrual

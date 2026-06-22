@@ -181,12 +181,24 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
 // --- Banker — TIME-SHIFT + SECURE (purse only, never the treasury) ----------
 
 /**
+ * True if the party fields a **Banker** — the {@link "./jobs".BANKER} job (D30), the
+ * financier whose verbs (Invest / Borrow / Guard the Purse) work the carried purse.
+ * The third economy class's twin of {@link hasNoble} / {@link "./overworld".merchantFloor}:
+ * a class in the party unlocks that class's economy. No Banker present ⇒ no purse-finance.
+ */
+export function hasBanker(party: readonly Unit[]): boolean {
+  return party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "banker");
+}
+
+/**
  * **Banker TIME-SHIFT** (D30): engage flat purse **interest**. Sets a per-node-step
  * credit of `ceil(purse × rate)` (at least 1 when the purse is non-empty), accrued
  * by {@link "./overworld-actions".accruePurseInterest} as the caravan advances.
- * Purse-only — it never touches the treasury (D34). Returns the per-step amount.
+ * Purse-only — it never touches the treasury (D34). Job-gated (the Banker's verb):
+ * **no Banker ⇒ a no-op returning 0** (nothing engaged). Returns the per-step amount.
  */
 export function bankerEngageInterest(run: RunState): number {
+  if (!hasBanker(run.party)) return 0;
   const perStep = run.camp.gold > 0 ? Math.max(1, Math.ceil(run.camp.gold * ECONOMY.banker.interestRate)) : 0;
   run.overworld.interestPerStep = perStep;
   return perStep;
@@ -207,6 +219,7 @@ export interface BankerBorrowResult extends VerbResult {
  * + debt only — the treasury is never involved (D34).
  */
 export function bankerBorrow(run: RunState, amount: number): BankerBorrowResult {
+  if (!hasBanker(run.party)) return { applied: false, reason: "No Banker in the party to advance a loan." };
   const borrowed = nonNegInt(amount);
   if (borrowed <= 0) return { applied: false, reason: "Nothing to borrow." };
   earn(run.camp, borrowed, "banker", "Banker loan", { nodeId: run.mapNodeId, night: run.night });
@@ -229,6 +242,7 @@ export interface BankerProtectResult extends VerbResult {
  * treasury (D34).
  */
 export function bankerProtect(run: RunState): BankerProtectResult {
+  if (!hasBanker(run.party)) return { applied: false, reason: "No Banker in the party to guard the purse." };
   // Gold-priced through the shared gate (D61) — same path as Patronize / the Merchant buy.
   const cost: OverworldCost = { gold: ECONOMY.banker.protectionCost };
   const check = checkOverworldCost(run, "banker-protect", cost, "theft protection");

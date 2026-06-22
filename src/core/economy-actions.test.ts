@@ -11,6 +11,7 @@ import {
   bankerEngageInterest,
   bankerBorrow,
   bankerProtect,
+  hasBanker,
   patronize,
   hasNoble,
   nobleInfluencePerStep,
@@ -42,6 +43,14 @@ function noble(): Unit {
   });
 }
 
+/** A Banker party member — the financier that enables the purse-finance verbs (D30). */
+function banker(): Unit {
+  return createUnit({
+    id: `banker-${nextId++}`, side: "player", pos: { col: -1, row: -1 },
+    jobId: "banker", speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4,
+  });
+}
+
 let nextId = 0;
 function fighter(name: string): Unit {
   return createUnit({
@@ -62,10 +71,11 @@ function fighter(name: string): Unit {
 }
 
 function newRun(seed: string, gold = 200): RunState {
-  // The default party fields a Noble so the Influence verbs (Patronize, bribe — both
-  // now job-gated on hasNoble, D62) are available; tests for the no-Noble path build
-  // their own commoner-only run below.
-  return createRun(seed, { party: [fighter("Rook"), noble()], difficultyId: "normal", gold, storageCap: 8 });
+  // The default party fields a Noble *and* a Banker so the job-gated economy verbs are
+  // available — the Influence verbs (Patronize, bribe — hasNoble, D62) and the purse-
+  // finance verbs (Invest/Borrow/Guard — hasBanker, D30). Tests for the no-Noble /
+  // no-Banker paths build their own commoner-only run below.
+  return createRun(seed, { party: [fighter("Rook"), noble(), banker()], difficultyId: "normal", gold, storageCap: 8 });
 }
 
 function guildWith(seed: string, treasury = 500): Guild {
@@ -206,6 +216,33 @@ describe("economy-actions — Banker TIME-SHIFT + SECURE (purse only) (D30/D34)"
     bankerProtect(run);
     // The Banker is purse-scoped — the vault is untouched.
     expect(g.treasury).toBe(treasuryBefore);
+  });
+
+  it("the purse-finance verbs are job-gated: with no Banker they refuse, engaging/spending nothing (D30)", () => {
+    // A party with gold but no Banker — the financier who works the purse is absent.
+    const run = createRun("banker-none", { party: [commoner("nb")], difficultyId: "normal", gold: 200, storageCap: 8 });
+    expect(hasBanker(run.party)).toBe(false);
+
+    // Invest: a no-op (returns 0, nothing engaged) despite a non-empty purse.
+    expect(bankerEngageInterest(run)).toBe(0);
+    expect(run.overworld.interestPerStep).toBe(0);
+    // Borrow: refuses, advancing no gold and no debt.
+    const borrow = bankerBorrow(run, 40);
+    expect(borrow.applied).toBe(false);
+    expect(run.overworld.debt).toBe(0);
+    expect(run.camp.gold).toBe(200);
+    // Guard the Purse: refuses, spending nothing and engaging no protection.
+    const protect = bankerProtect(run);
+    expect(protect.applied).toBe(false);
+    expect(run.overworld.protection).toBe(0);
+    expect(run.camp.gold).toBe(200);
+
+    // Field a Banker → the same verbs now work.
+    run.party.push(banker());
+    expect(hasBanker(run.party)).toBe(true);
+    expect(bankerEngageInterest(run)).toBeGreaterThan(0);
+    expect(bankerBorrow(run, 40).applied).toBe(true);
+    expect(bankerProtect(run).applied).toBe(true);
   });
 });
 

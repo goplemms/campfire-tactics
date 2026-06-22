@@ -194,6 +194,23 @@ export const NOBLE: JobDef = {
   skills: [],
 };
 
+/**
+ * The Banker — the third **economy** class (D30, the goods·time·reputation triad with
+ * Merchant and Noble). A **noncombat** financier whose verbs work the **carried purse**
+ * and never the guild treasury (D34): **Invest** (the purse accrues flat interest each
+ * node-step), **Borrow** (buy-on-debt, auto-repaid from incoming loot), and **Guard the
+ * Purse** (theft protection that blunts a thief's skim). The verbs live in
+ * {@link "./economy-actions"}; like the Merchant and Noble it carries no battle skill —
+ * fielding a Banker is what {@link "./economy-actions".hasBanker} keys off to unlock them.
+ */
+export const BANKER: JobDef = {
+  id: "banker",
+  name: "Banker",
+  description: "Works the purse economy: interest on the carried purse, loans against future loot, and theft protection.",
+  noncombat: true,
+  skills: [],
+};
+
 // --- The M12 combat-depth roster (D40) — 2 active + 1 passive each ----------
 //
 // The passive is each class's identity anchor (stamped onto the bearer by
@@ -418,6 +435,7 @@ export const JOBS = {
   chef: CHEF,
   merchant: MERCHANT,
   noble: NOBLE,
+  banker: BANKER,
   "heavy-knight": HEAVY_KNIGHT,
   hunter: HUNTER,
   scout: SCOUT_JOB,

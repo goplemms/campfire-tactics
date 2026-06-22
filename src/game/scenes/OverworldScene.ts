@@ -471,10 +471,12 @@ export class OverworldScene extends Phaser.Scene {
         ? `Event — ${this.loop.eventDef().name}`
         : "Rest";
     this.titleText.setText(`Make Camp — Night ${this.run.night + 1} · ${kindLabel}`);
-    this.setHint("Make Camp: provision, heal, glance the ledger — then End the Night. The Banker/Noble economy lives under ‘Advanced’; safe to ignore early.");
+    this.setHint("Make Camp: provision, heal, visit the Market, glance the ledger — then End the Night.");
 
     const cx = this.scale.width / 2;
-    const panelW = 720;
+    const panelW = this.scale.width - 40; //  ~760 — nearly full width
+    const panelTop = 60;
+    const panelBottom = this.scale.height - 16; // ~584 — nearly full height
     const top = 90;
     const colX = cx - panelW / 2 + 30;
     const rowH = 30;
@@ -483,16 +485,15 @@ export class OverworldScene extends Phaser.Scene {
     const actionsBottom = this.renderCampActions(colX, top, rowH);
 
     // --- Right column: the "different areas" (D58) ----------------------------
-    // Deep-links to the Captain's Tent tabs and the route map — the *places you go*,
-    // kept on the right, apart from the left column's *actions you take here*, so the
-    // two purposes read distinctly at a glance.
+    // Deep-links to the Captain's Tent tabs, the Market and the route map — the *places
+    // you go*, kept on the right, apart from the left column's *actions you take here*, so
+    // the two purposes read distinctly at a glance.
     const areasBottom = this.renderAreaLinks(cx + 60, top + 8, () => this.renderCamp());
 
     // The captain's running to-do spans the full width, so it sits below *both* columns.
-    const y = this.renderCaptainsJournal(colX, Math.max(actionsBottom, areasBottom) + 12, panelW - 60);
+    this.renderCaptainsJournal(colX, Math.max(actionsBottom, areasBottom) + 12, panelW - 60);
 
-    // --- End the Night — the prep→event gate (D46); placed below all content ---
-    const contentBottom = y;
+    // --- End the Night — the prep→event gate (D46); anchored to the panel's bottom ---
     // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
     // Mission" (D45 fork 2); rest/event "End the Night" into their payload.
     const commitLabel = isCombat
@@ -500,12 +501,11 @@ export class OverworldScene extends Phaser.Scene {
       : node.kind === "event"
         ? "End the Night — Approach the Event"
         : "End the Night — Rest";
-    const commit = this.makeTextButton(cx, contentBottom + 26, 260, 34, commitLabel, COLOR.successDeep, COLOR.success, () => this.commit());
+    const commit = this.makeTextButton(cx, panelBottom - 30, 260, 34, commitLabel, COLOR.successDeep, COLOR.success, () => this.commit());
     this.campObjects.push(commit);
 
-    // Backdrop sized to the actual content (added last; its low depth keeps it behind).
-    const panelTop = top - 22;
-    const panelBottom = contentBottom + 50;
+    // A near-full-screen box so the camp doesn't read as cramped: content sits at the top,
+    // the turn-close primary anchors the bottom. Added last; its low depth keeps it behind.
     this.campObjects.push(
       this.add.rectangle(cx, (panelTop + panelBottom) / 2, panelW, panelBottom - panelTop, COLOR.surface, 0.96).setStrokeStyle(2, COLOR.border).setDepth(8),
     );
@@ -1335,7 +1335,9 @@ export class OverworldScene extends Phaser.Scene {
     this.setHint("Survey: read the forecast, rest in place (a night's rations, repeatable), survey ahead — then Break Camp to the map.");
 
     const cx = this.scale.width / 2;
-    const panelW = 760;
+    const panelW = this.scale.width - 40; //  ~760 — nearly full width
+    const panelTop = 60;
+    const panelBottom = this.scale.height - 16; // ~584 — nearly full height
     const top = 92;
     const colX = cx - panelW / 2 + 30;
     const rowH = 30;
@@ -1372,18 +1374,17 @@ export class OverworldScene extends Phaser.Scene {
 
     const leftBottom = y;
 
-    // Right column: the "different areas" — Tent tabs + route map — kept apart from the
-    // left-column actions (the same right-hand cluster the Make Camp beat uses).
+    // Right column: the "different areas" — Tent tabs, the Market and the route map —
+    // kept apart from the left-column actions (the same right-hand cluster Make Camp uses).
     const areasBottom = this.renderAreaLinks(cx + 60, colTop, () => this.showSurvey());
 
     // The captain's running to-do spans the full width, so it sits below *both* columns.
-    const contentBottom = this.renderCaptainsJournal(colX, Math.max(leftBottom, areasBottom) + 12, panelW - 60);
+    this.renderCaptainsJournal(colX, Math.max(leftBottom, areasBottom) + 12, panelW - 60);
 
-    const breakBtn = this.makeTextButton(cx, contentBottom + 20, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
+    // Break Camp anchors the bottom of the near-full-screen box (matching Make Camp).
+    const breakBtn = this.makeTextButton(cx, panelBottom - 30, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
     this.campObjects.push(breakBtn);
 
-    const panelTop = top - 22;
-    const panelBottom = contentBottom + 48;
     this.campObjects.push(
       this.add.rectangle(cx, (panelTop + panelBottom) / 2, panelW, panelBottom - panelTop, COLOR.surface, 0.96).setStrokeStyle(2, COLOR.border).setDepth(8),
     );

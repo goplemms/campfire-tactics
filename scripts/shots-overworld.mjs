@@ -70,7 +70,7 @@ const STEPS = BOOT === "battle"
       // The economy classes (D62/D30): field the real Noble + Banker from the roster (the
       // job-gate that replaced the old Int>=3 proxy), give some standing + gold, and expand
       // the Advanced panel → its verbs, each tagged with the specialist who works them.
-      { name: "06d-influence-patronize", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);for(const jid of ['noble','banker']){const m=(s.guild?s.guild.roster:[]).find(u=>u.jobId===jid);if(m&&!s.run.party.includes(m))s.run.party.push(m);}s.run.camp.gold=120;s.run.overworld.influence=16;s.campAdvanced=true;s.renderCamp();`) },
+      { name: "06d-influence-patronize", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);for(const jid of ['noble','banker']){const m=(s.guild?s.guild.roster:[]).find(u=>u.jobId===jid);if(m&&!s.run.party.includes(m))s.run.party.push(m);}s.run.camp.gold=120;s.run.overworld.influence=16;s.campDrawers.advanced=true;s.renderCamp();`) },
       { name: "07-break-camp-gate", eval: wrap(`s.run.camp.gold=0;s.run.overworld.debt=30;s.breakCampToMap();`) },
     ];
 

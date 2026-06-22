@@ -84,6 +84,17 @@ export interface RunHandoff {
   demoIntro?: boolean;
 }
 
+/** One action row inside a collapsible camp category drawer (Recovery/Intel/Economy). */
+interface CampAction {
+  /** The button label — already tagged with the acting member (` · Name`). */
+  label: string;
+  /** False greys the row (e.g. a market verb with no market, an unaffordable cost). */
+  enabled: boolean;
+  onClick: () => void;
+  /** The hover hint explaining what it does (and why it's greyed, when it is). */
+  tip: string;
+}
+
 /**
  * The **overworld** screen — the seeded, branching run map (D22) and, since M8,
  * the **unified overworld camp** (D35). It owns the run + {@link RunLoop} and is
@@ -118,9 +129,13 @@ export class OverworldScene extends Phaser.Scene {
   // The unified overworld camp (D35): objects + the node currently camped at.
   private campObjects: Phaser.GameObjects.GameObject[] = [];
   private campNode?: MapNode;
-  /** Camp progressive disclosure (D58): the optional Banker/Noble/Market economy is
-   *  collapsed by default so the everyday camp reads as a few obvious actions. */
-  private campAdvanced = false;
+  /**
+   * Per-category drawer open-state on the camp/survey beats (the collapsible action
+   * groups). Categories default **open** so the everyday verbs are one glance away; the
+   * nested Banker/Noble `advanced` drawer defaults **closed** (the optional economy stays
+   * tucked away each camp, D58). Keyed by drawer id; persists across re-renders.
+   */
+  private campDrawers: Record<string, boolean> = { recovery: true, intel: true, economy: true, advanced: false };
 
   // The Captain's Tent (D58): the one deep-info hub, an in-scene overlay. The active
   // tab, where to return on close, and the embedded dossier view (so it tears down).
@@ -431,7 +446,7 @@ export class OverworldScene extends Phaser.Scene {
     this.clearMap();
     this.loop.choose(node.id);
     this.campNode = node;
-    this.campAdvanced = false; // every camp opens with the economy tucked away (D58)
+    this.campDrawers.advanced = false; // every camp opens with the economy tucked away (D58)
     this.renderCamp();
   }
 
@@ -456,9 +471,8 @@ export class OverworldScene extends Phaser.Scene {
     const colX = cx - panelW / 2 + 30;
     const rowH = 30;
 
-    // --- Camp actions + the optional Advanced economy (D58) -------------------
+    // --- Camp actions, grouped into collapsible category drawers --------------
     let y = this.renderCampActions(node, colX, top, rowH);
-    y = this.renderAdvancedEconomy(colX, y, rowH);
     y = this.renderCaptainsJournal(colX, y + 14, panelW - 60);
     const leftBottom = y + 8;
 
@@ -494,31 +508,65 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The Camp column — the signature non-combat job actions (meta skills) plus the
-   * everyday provisioning (trap-kit buy, triage). Returns the `y` past the last row.
+   * The camp actions, grouped into collapsible **category drawers**: Recovery (cook /
+   * heal) then Economy (market + the nested Banker/Noble finance). Each drawer shows a
+   * count and hides entirely when it holds nothing the party can do. Returns the `y`
+   * past the last row.
    */
   private renderCampActions(node: MapNode, colX: number, top: number, rowH: number): number {
-    this.campObjects.push(
-      this.add.text(colX - 10, top - 6, "Camp", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
-    );
-    let y = top + 22;
+    let y = top;
+    y = this.renderDrawer("recovery", "Recovery", colX, y, rowH, this.campRecoveryActions(), () => this.renderCamp());
+    y = this.renderEconomyDrawer(node, colX, y, rowH);
+    return y + 8;
+  }
+
+  /**
+   * The **Recovery** actions on the camp beat: each meta camp skill (the Chef's Cook
+   * Stew — morale + a banked heal) and the healer's fatigue-fuelled Triage (distinct
+   * from the universal Rest). Job-gated verbs are simply absent when no member can
+   * perform them; each is tagged with the member who acts (and, for Triage, tires).
+   */
+  private campRecoveryActions(): CampAction[] {
+    const out: CampAction[] = [];
     for (const u of this.run.party) {
       for (const skill of unitSkills(u, "meta")) {
-        // Costless signature actions are per-node capped (D35) — disable when spent,
-        // and badge the label with the uses left so the limiter is legible.
+        // Costless signature actions are per-node capped (D35) — disable when spent, and
+        // badge the label with the uses left so the limiter is legible.
         const left = campSkillUsesLeft(this.run.overworld, skill);
         const capped = Number.isFinite(left);
-        // Attribute the verb to the member who performs it (` · Name`) — the consistent
-        // "who acts" tag the economy/recon verbs below also wear.
         const usesTag = capped && skill.usesPerNode! > 1 ? `  (${left} left)` : "";
-        const label = `${skill.name} · ${u.name}${usesTag}`;
         const tip = capped
           ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Break Camp.)`
           : `${skill.name} — ${skill.description}`;
-        this.campButton(colX, y, 360, 24, label, left > 0, () => this.useCampSkill(u, skill), tip);
-        y += rowH;
+        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip });
       }
     }
+    const healer = this.triageActor();
+    if (healer) {
+      const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
+      const tip = someoneWounded
+        ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
+        : "No wounded fighter to triage.";
+      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip });
+    }
+    return out;
+  }
+
+  /**
+   * The **Economy** drawer on the camp beat: the everyday market verbs (Buy Trap Kit /
+   * Sell Valuables — always present, greyed when there's no market, since that's a route
+   * fix not a job lock) plus the nested **Advanced** Banker/Noble finance drawer (shown
+   * only when one of those specialists is aboard). The header count is every economy
+   * action available, the nested ones included. Returns the `y` past it.
+   */
+  private renderEconomyDrawer(node: MapNode, colX: number, y: number, rowH: number): number {
+    const banker = this.jobActor("banker");
+    const noble = this.jobActor("noble");
+    const count = 2 + (banker ? 3 : 0) + (noble ? 1 : 0);
+    y = this.drawerHeader(colX, y, 360, "economy", "Economy", count, () => this.renderCamp());
+    if (!this.campDrawers.economy) return y;
+    const childX = colX + 14;
+    const childW = 346;
     // One trap-kit buy (D61): priced by — and gated on — this node's market access.
     const tier = effectiveMarketTier(node, this.run.party);
     const kitPrice = merchantPrice(tier);
@@ -526,10 +574,9 @@ export class OverworldScene extends Phaser.Scene {
       ? "No market here. Route to a town/rest node, or bring a Merchant to broker an impromptu market."
       : `Buy a Trap Kit into storage (1 slot) at the ${tier} market. A town or a Merchant buys cheaper.`;
     const buyLabel = tier === "none" ? "Buy Trap Kit (no market)" : `Buy Trap Kit (${kitPrice}g)`;
-    this.campButton(colX, y, 360, 24, buyLabel, tier !== "none", () => this.merchantBuyKit(), buyTip);
+    this.campButton(childX, y, childW, 24, buyLabel, tier !== "none", () => this.merchantBuyKit(), buyTip);
     y += rowH;
-    // Sell valuables (D61): liquidate looted salvage into purse gold at this node's
-    // market — gated by market access (none = can't sell; a Merchant unlocks it anywhere).
+    // Sell valuables (D61): liquidate looted salvage into purse gold at this node's market.
     const valCount = countOf(this.run.inventory, "valuables");
     const unitPrice = sellPrice(getMaterial("valuables")!, tier);
     const canSell = valCount > 0 && unitPrice > 0;
@@ -538,21 +585,40 @@ export class OverworldScene extends Phaser.Scene {
       : unitPrice === 0
         ? "No market here. Route to a town/rest node, or bring a Merchant to broker an impromptu sale."
         : `Sell all ${valCount} valuables at the ${tier} market (${unitPrice}g each).`;
-    this.campButton(colX, y, 360, 24, `Sell Valuables (${valCount} · ${unitPrice}g ea)`, canSell, () => this.sellValuables(), sellTip);
+    this.campButton(childX, y, childW, 24, `Sell Valuables (${valCount} · ${unitPrice}g ea)`, canSell, () => this.sellValuables(), sellTip);
     y += rowH;
-    // Triage (the audit pass): the healer's own fatigue-fuelled heal — distinct from the
-    // universal Rest (RP/rations). Job-gated to a healer; hidden entirely when none is
-    // aboard (a verb the party can't perform isn't shown). Tagged with the healer who tires.
-    const healer = this.triageActor();
-    if (healer) {
-      const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
-      const tip = someoneWounded
-        ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
-        : "No wounded fighter to triage.";
-      this.campButton(colX, y, 360, 24, `Triage · ${healer.name} (fatigue)`, someoneWounded, () => this.doTriage(healer), tip);
-      y += rowH;
+    // The Banker/Noble finance verbs, nested one drawer deeper (the optional economy, D58).
+    y = this.renderAdvancedEconomy(childX, y, rowH, banker, noble);
+    return y;
+  }
+
+  /**
+   * A collapsible **category drawer** header: a ▾/▸ chevron, the category name, and a
+   * count of the actions inside. Returns the `y` past the header; the caller renders the
+   * child rows only when the drawer is open. `rerender` redraws the owning beat (camp or
+   * survey) when the drawer is toggled.
+   */
+  private drawerHeader(x: number, y: number, w: number, id: string, label: string, count: number, rerender: () => void): number {
+    const open = this.campDrawers[id] ?? true;
+    const glyph = open ? ICON.collapse.glyph : ICON.expand.glyph;
+    this.campButton(x, y, w, 24, `${glyph}  ${label}  (${count})`, true, () => { this.campDrawers[id] = !open; rerender(); }, `${label}: ${count} action${count === 1 ? "" : "s"} here — click to ${open ? "collapse" : "expand"}.`);
+    return y + 30;
+  }
+
+  /**
+   * Render a collapsible category drawer of simple action rows (the shared path for
+   * Recovery and Intel). Draws **nothing** when the category is empty — an action the
+   * party can't field is no drawer at all. Returns the `y` past it.
+   */
+  private renderDrawer(id: string, label: string, colX: number, y: number, rowH: number, actions: CampAction[], rerender: () => void): number {
+    if (actions.length === 0) return y;
+    y = this.drawerHeader(colX, y, 360, id, label, actions.length, rerender);
+    if (this.campDrawers[id] ?? true) {
+      for (const a of actions) {
+        this.campButton(colX + 14, y, 346, 24, a.label, a.enabled, a.onClick, a.tip);
+        y += rowH;
+      }
     }
-    y += 8;
     return y;
   }
 
@@ -602,25 +668,22 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The optional gold economy (Banker · Noble · Market), collapsed by default (D58).
-   * Draws the Advanced toggle and, when expanded, its sub-panel of verbs + the
-   * Banker's purse-state readout. Returns the `y` past the last row drawn.
+   * The nested **Advanced** finance drawer inside Economy (D58/D30/D62): the Banker's
+   * purse verbs and the Noble's Patronize, each tagged with the specialist who works it.
+   * Hidden when neither is aboard; **collapsed by default** so the optional economy stays
+   * out of the way. `x` is the indent of the parent Economy drawer's child column.
+   * Returns the `y` past the last row drawn.
    */
-  private renderAdvancedEconomy(colX: number, startY: number, rowH: number): number {
-    // Job-gated to its specialist: the Banker's purse-finance verbs (D30) and the Noble's
-    // Patronize (D62) are shown only when that member is aboard to perform them. With no
-    // economy specialist at all there's nothing here to do, so the whole section is hidden.
-    const banker = this.jobActor("banker");
-    const noble = this.jobActor("noble");
+  private renderAdvancedEconomy(x: number, startY: number, rowH: number, banker: Unit | undefined, noble: Unit | undefined): number {
     if (!banker && !noble) return startY;
 
     let y = startY;
     const present = [banker && "Banker", noble && "Noble"].filter(Boolean).join(" · ");
-    this.campButton(colX, y, 360, 24, `${this.campAdvanced ? ICON.collapse.glyph : ICON.expand.glyph}  Advanced — ${present}`, true, () => { this.campAdvanced = !this.campAdvanced; this.renderCamp(); }, "Optional economy verbs: interest, borrowing, theft protection, and influence. Safe to leave alone while you learn the loop.");
-    y += rowH;
-    if (this.campAdvanced) {
-      const subX = colX + 16;
-      const subW = 344;
+    const count = (banker ? 3 : 0) + (noble ? 1 : 0);
+    y = this.drawerHeader(x, y, 346, "advanced", `Advanced — ${present}`, count, () => this.renderCamp());
+    if (this.campDrawers.advanced) {
+      const subX = x + 14;
+      const subW = 332;
       if (banker) {
         this.campButton(subX, y, subW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
         y += rowH;
@@ -1194,24 +1257,27 @@ export class OverworldScene extends Phaser.Scene {
     );
     let y = top + 26 + (forecast.perEdge.length + 1) * 18 + 14;
 
-    // In-place rest (D47): a repeatable, costed heal — greys at full / when broke.
+    // Recovery drawer: the route-planning heal (in-place rest — repeatable, costed; greys
+    // at full HP / when broke). The same category vocabulary as the camp beat.
     const rest = this.inPlaceRestReadout();
-    this.campButton(colX, y, 360, 24, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail);
-    y += rowH;
+    const recovery: CampAction[] = [
+      { label: `Rest in place — ${rest.label}`, enabled: rest.enabled, onClick: () => this.doInPlaceRest(), tip: rest.detail },
+    ];
+    y = this.renderDrawer("recovery", "Recovery", colX, y, rowH, recovery, () => this.showSurvey());
 
-    // Survey a reachable node — raises its intel, tightening the forecast (D48). Job-gated
-    // to the Scout class (the recon specialist); hidden entirely when none is aboard. Each
-    // row is tagged with the surveying Scout, whose fatigue the cost readout also shows —
-    // so you can see who's wearing down across a string of surveys.
+    // Intel drawer: survey a reachable node — raises its preview, tightening the forecast
+    // (D48). Job-gated to the Scout; the whole drawer is absent when none is aboard. Each
+    // row tags the surveying Scout, whose fatigue the cost readout shows (who's wearing down).
     const surveyor = this.surveyActor();
+    const intel: CampAction[] = [];
     if (surveyor) {
       const survey = getAbility("survey")!;
       for (const target of this.loop.reachable()) {
         const refusal = this.refusal(survey, surveyor);
-        this.campButton(colX, y, 360, 24, `Survey → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, !refusal, () => { this.loop.overworldAction(surveyor, "survey", { targetNodeId: target.id }); this.showSurvey(); }, refusal ?? survey.description);
-        y += rowH;
+        intel.push({ label: `Survey → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.overworldAction(surveyor, "survey", { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description });
       }
     }
+    y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());
 
     this.campButton(colX, y, 360, 24, this.tentButtonLabel(), true, () => this.openTent(() => this.showSurvey(), "party"), "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured.");
     y += rowH;

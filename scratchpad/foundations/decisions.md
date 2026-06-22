@@ -1871,3 +1871,40 @@ trail of reasoning stays intact.
   reference), `scenes/BattleScene.ts` (the `phase:"deployment"` driver), and
   `deployment.test.ts` (74 cases). The convergence phases 2–3 are tracked in the plan.
 - **Superseded by:** —
+
+## D64 — Telegraph & action forecast (preview-before-commit)
+
+- **Status:** Decided
+- **Context:** A start-to-end "resource & action" audit of one job (the **Heavy
+  Knight**, traced across every screen) surfaced a general gap, not a class-specific
+  one: the game **resolves actions without showing the player what they will do
+  first.** The board already telegraphs *some* of this — a lit path to the hovered
+  tile, an in-place strike badge, enemy-intent links (`combat-view.ts:drawPreview`/
+  `drawIntents`) — but the moment a skill is **armed** the preview collapses to "these
+  tiles are legal targets" and shows nothing about the effect: Cleave's arc, Shove's
+  push direction + "into a trap" payoff, and the tarpit aura are all invisible. The
+  unit's identity (geometry/proximity) is exactly the category the UI doesn't surface.
+- **Options considered:** (a) **fix the Heavy Knight's previews** as a one-off in the
+  scene / (b) a **telegraph *system*** — a pure footprint + a forecast registry
+  parallel to the resolver, read by the render layer / (c) defer (keep discovering
+  effects empirically in battle).
+- **Decision: (b), a telegraph system.** Two pure-`core` halves the render layer
+  reads: a **footprint** (the tiles/units an armed action affects given the current
+  aim — arc, push destination, single target, aura) and a **forecast** (the
+  non-mutating predicted outcome). The keystone is a **`FORECAST_HANDLERS` registry
+  that mirrors `BATTLE_EFFECT_HANDLERS`** — the same compile-time-exhaustive mapped
+  type over the same effect kinds, so adding an ability effect *forces* a telegraph or
+  the build breaks. This makes coverage structural (the same guarantee the job-roster↔
+  palette type gives), so the telegraph can't fall out of sync with the ability roster
+  — and it lights up every class at once (Cleave/Shove/Mark/Heal/snare/morale/enemy
+  intent), not just the Heavy Knight. Spec: `docs/design/systems/telegraph.md`.
+- **Why not (a):** the audit showed the gap is the resolver/preview *seam*, not one
+  class; a per-class fix re-pays the cost for every future ability and drifts.
+- **Build:** not yet started — design only (this record + the system doc). Planned as
+  three layers behind a user-testable gate: **core** (`abilityFootprint` +
+  `forecastSkill` with vitest coverage, no Phaser), **render** (extend `drawPreview`'s
+  armed branch + a passive-aura draw), **HUD** (an armed-ability forecast `MiniCard`).
+- **Reuses / consistent with:** D48 route Forecast (cost/outcome knowable before
+  commit), D18 Vision (telegraphs gated by perception), D19 forced-move + entities
+  (push-into-trap read), D60 strike-badge vocabulary, D2 core/render split.
+- **Superseded by:** —

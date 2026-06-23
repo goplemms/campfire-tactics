@@ -2111,3 +2111,19 @@ trail of reasoning stays intact.
   (channel / Mark Prey), D5 (CT action economy).
 - **Build:** not yet started — **design only**.
 - **Superseded by:** —
+
+---
+
+## Roadmap — queued (not yet authored decisions)
+
+> Forward pointer so a fresh session knows what comes next. These are **not** decided
+> records yet — each is authored as a full `## D##` entry when its build starts.
+
+- **D67 — Deployment ↔ Combat substrate unification + a game-wide skill `usableContext` axis.**
+  *Finishes D63's phase 2* (fold `DeployClock` into `CTClock`, the front as a strict-lead
+  tempo source) and widens skill-surfacing so overworld / guild / pre-combat / combat all
+  project from one `availableSkills(unit, context)`. Permissive sharing ("share all but
+  engagement"). **Ready to dispatch** — full build brief:
+  [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md).
+- **D68 — Scout per-class pass** (passive "Quiet Footsteps", "Set Trap", a dual-context
+  "Dash"). Builds *on top of* D67's substrate; do not start before D67 lands.

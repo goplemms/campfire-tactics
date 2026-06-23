@@ -25,6 +25,7 @@ import {
   SLOWED,
   SWIFT,
   STATUS_TUNING,
+  isImmobilized,
 } from "./status";
 
 /** Manhattan distance — matches the grid's 4-connected movement. */
@@ -104,6 +105,15 @@ export const PASSIVE_INFO: Record<string, { label: string; description: string }
 /** A unit's **effective** move this turn: base move + the Swift buff (Dash). */
 export function effectiveMove(unit: Unit): number {
   return unit.moveRange + statusAmount(unit, SWIFT);
+}
+
+/**
+ * The tiles a unit may move this turn — the **one** budget read shared by combat and
+ * pre-combat (D67): zero while Immobilized, else {@link effectiveMove} (so Swift extends
+ * reach in both phases). Collapses the `isImmobilized(u) ? 0 : effectiveMove(u)` ternary.
+ */
+export function moveBudget(unit: Unit): number {
+  return isImmobilized(unit) ? 0 : effectiveMove(unit);
 }
 
 /**

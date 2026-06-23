@@ -3,7 +3,7 @@ import { tileKey, type GridCoord } from "./iso";
 import type { TileGrid } from "./grid";
 import { occupiedGrid, reachableTiles } from "./ai";
 import { findPath } from "./pathfinding";
-import { inAttackRange, effectiveMove, manhattan, computeDamage, computeFlankBonus } from "./combat";
+import { inAttackRange, effectiveMove, moveBudget, manhattan, computeDamage, computeFlankBonus } from "./combat";
 import { isImmobilized } from "./status";
 
 /**
@@ -36,7 +36,7 @@ export function planMove(actor: Unit, tile: GridCoord, units: readonly Unit[], g
   const nav = occupiedGrid(grid, units, [actor], actor.side); // route through friendly bodies (D55)
   const path = findPath(nav, actor.pos, tile);
   if (!path || path.length < 2) return null;
-  const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+  const budget = moveBudget(actor);
   const steps = stoppablePrefix(path.slice(1).slice(0, budget), units, actor);
   return steps.length > 0 ? steps : null;
 }
@@ -52,7 +52,7 @@ export function planAttack(actor: Unit, foe: Unit, units: readonly Unit[], grid:
   const nav = occupiedGrid(grid, units, [actor, foe], actor.side); // route through friendly bodies (D55)
   const path = findPath(nav, actor.pos, foe.pos);
   if (!path || path.length < 2) return null;
-  const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+  const budget = moveBudget(actor);
   const approach = stoppablePrefix(path.slice(1, -1).slice(0, budget), units, actor);
   const dest = approach.length > 0 ? approach[approach.length - 1] : actor.pos;
   return { path: approach, attackTarget: manhattan(dest, foe.pos) <= actor.attackRange ? foe : null };

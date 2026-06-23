@@ -17,8 +17,7 @@ import type { TileGrid } from "./grid";
 import type { EntityRegistry, ConcealedTrap } from "./entities";
 import { isConcealedTrap } from "./entities";
 import { chebyshev } from "./iso";
-import { isAdjacent, effectiveMove } from "./combat";
-import { isImmobilized } from "./status";
+import { isAdjacent, moveBudget } from "./combat";
 import { reachableTiles } from "./ai";
 import { forecastAttack } from "./planning";
 import { unlockedSkills } from "./leveling";
@@ -70,7 +69,7 @@ export interface ActionScanContext {
  */
 export function noActionsAvailable(ctx: ActionScanContext): boolean {
   const { actor, units, grid, entities, hasGuild } = ctx;
-  const budget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+  const budget = moveBudget(actor);
   if (reachableTiles(actor, units, grid, budget).some((r) => r.tile.col !== actor.pos.col || r.tile.row !== actor.pos.row)) return false;
   if (units.some((u) => u.alive && !u.captured && u.side !== actor.side && forecastAttack(actor, u, units, grid))) return false;
   if (units.some((u) => u.captured && u.side === actor.side && u !== actor && isAdjacent(actor.pos, u.pos))) return false;

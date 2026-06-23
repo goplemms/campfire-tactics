@@ -71,7 +71,6 @@ import {
   revealTrapsNear,
   disarmTrap,
   canDisarm,
-  playerTrapSkill,
   type ConcealedTrap,
   type PlaceTrapEffect,
   bribeEnemy,
@@ -237,7 +236,6 @@ export class BattleScene extends Phaser.Scene {
   private deployMoved = false;
   private deployActed = false;
   /** The party's Set Trap spec (damage + snare status), resolved at deploy; undefined = no trapper. */
-  private trapEffect?: PlaceTrapEffect;
   /** Board markers for the player's own placed traps, keyed by the registered entity id. */
   private playerTrapMarkers = new Map<string, Phaser.GameObjects.Text>();
   private trapSeq = 0;
@@ -430,8 +428,6 @@ export class BattleScene extends Phaser.Scene {
     this.trapMarkers.clear();
     this.playerTrapMarkers.clear();
     this.trapSeq = 0;
-    // The party's Set Trap spec (damage + snare status) — resolved once in core (D11).
-    this.trapEffect = playerTrapSkill(this.run.party);
     // Deploy verbs flow through the one interpreter now (D63): wire the run stash so
     // Battle's placeTrap action can spend kits, undoably, on the shared log.
     this.battle.setStash(this.run.inventory);
@@ -659,10 +655,7 @@ export class BattleScene extends Phaser.Scene {
    */
   private onDeploySkillButton(actor: Unit, skill: SkillDef): void {
     if (this.busy || this.deployActor !== actor || actor.captured || this.deployActed) return;
-    if (skill.effect.kind === "placeTrap") {
-      this.trapEffect = skill.effect;
-      return this.placeTrap();
-    }
+    if (skill.effect.kind === "placeTrap") return this.placeTrap(skill.effect);
     if (skill.id === "dig-in") return this.digIn();
     if (skill.target === "self") return this.castDeploySkill(actor, skill, actor);
     this.armedSkill = skill;
@@ -865,14 +858,14 @@ export class BattleScene extends Phaser.Scene {
     this.boardObjects.push(dropNetCage(this, x, y - this.view.halfH()));
   }
 
-  private placeTrap(): void {
+  private placeTrap(effect: PlaceTrapEffect): void {
     const actor = this.deployActor;
-    if (!actor || actor.captured || this.busy || !this.trapEffect) return;
+    if (!actor || actor.captured || this.busy) return;
     // The rules (kit cost, tile clear, entity registration, use-XP) run through the
     // one interpreter now (D63: Battle.placeTrap → the logged, undoable placeTrap
     // action); the scene keeps only the board marker, keyed by entity id.
     const id = `ptrap-${this.trapSeq++}`;
-    const res = this.battle.placeTrap(actor, actor.pos, this.trapEffect, id);
+    const res = this.battle.placeTrap(actor, actor.pos, effect, id);
     if (!res.ok) {
       this.setHint(res.reason ?? "Can't place a trap here.");
       return;

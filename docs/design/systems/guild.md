@@ -5,7 +5,7 @@
 > Decisions: **D25** (three-tier stack & caravans), **D26** (run model & parallel
 > adventures), **D27** (stakes/lords/endings), **D32** (secondary classes & leveling),
 > **D33** (recruitment / three-tier roster), **D34** (treasury vs. run purse),
-> **D35** (the two clean camp tiers).
+> **D35** (the two clean camp tiers), **D65** (job-growth framework; refines D33).
 
 ## Why this layer exists
 
@@ -143,12 +143,12 @@ mercenaries + an authored cast):
 | Tier | Source | Identity | Stakes |
 |---|---|---|---|
 | **Mercenaries** | gold-hired from a **refreshing pool** (guild hall + future recruiter nodes) | **randomized** (rolled stats/class) | fully **expendable** — the rebuild-after-wipe valve (D27) |
-| **Companions** | **conversation, quests, mid-combat** — *not* gold | **authored**: named, fixed class/identity | permadeath, **earned not bought** |
+| **Companions** | **conversation, quests, mid-combat** — *not* gold | **authored**: named, fixed identity; starting class authored-but-flexible (D65) | permadeath, **earned not bought** |
 | **Lords** | authored, campaign-critical | named, the **2–3** of D27 | death = **game-over** |
 
 "Authored cast" is a **spectrum**: lords → other named companions → mercenaries. Authored
-characters have fixed identities but **level like anyone** (D32); mercenaries are the
-rolled ones.
+characters have a **fixed *identity*** — but an **authored-but-flexible class** (D65) — and
+**level like anyone** (D32); mercenaries are the rolled ones.
 
 - **"Guild conversation"** is the guild-hall form of the *interactable-camp* idea — you
   recruit some companions by talking to them at the hall (keep it visually distinct from

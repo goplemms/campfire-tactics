@@ -757,7 +757,8 @@ trail of reasoning stays intact.
   - **Tier 1 — Mercenaries:** *randomized* (rolled stats/class), **gold-hired** from a
     **refreshing pool** (guild hall + future recruiter nodes, D23). Fully **expendable** —
     the literal **rebuild-after-wipe valve** that keeps the guild unkillable (D27).
-  - **Tier 2 — Companions:** *authored*, **named, distinct, fixed class/identity**, gained
+  - **Tier 2 — Companions:** *authored*, **named, distinct, fixed *identity*** — an **authored
+    (not rolled) starting class, flexible thereafter** (refined by D65) — gained
     **not with gold** but through **guild conversation, special quests, and mid-combat**.
     They still **level like anyone** (D32). Permadeath stakes, but **earned, not bought**.
   - **Tier 3 — Lords:** the **apex of the authored tier** — the **2–3** whose death is
@@ -1957,4 +1958,102 @@ trail of reasoning stays intact.
   `aimInRange`), `scripts/shots-telegraph.mjs` (headless capture). Tarpit aura recoloured
   to the bone capture-net tone so it overlays the deploy zone washes legibly. Green:
   632 tests, build clean. Follow-ups 1–4 above remain.
+- **Superseded by:** —
+
+## D65 — The job-growth framework (breadth × depth, one grant seam, emergent non-combat)
+
+- **Status:** Decided (job-system design pass, 2026-06-23) · builds on D32/D38/D39/D40, refines D33
+- **Context:** The job system is the game's headline **build-decision point**, and the
+  substrate is already deep — every unit has a **primary + held jobs** with borrowed loadout
+  slots (D38), **per-job levels** with permanent stat gains and `unlockLevel` gating (D39), and
+  a **2-active + 1-passive** roster where the passive is the identity anchor (D40). What was
+  never settled is the **growth *shape*** on top: how a unit comes to **hold more jobs**, how a
+  job **grows into a successor** (the Fire-Emblem prestige fantasy), and what "combat vs.
+  non-combat" actually *is*. The seam was explicitly reserved —
+  `leveling.ts:applyCharacterBoons` notes *"future job evolutions / advanced-job gating hang
+  here too."* This decision cashes that seam **at the framework level only**; per-class content
+  is a deliberate later pass (see Deferred).
+- **Decision — two orthogonal axes.** Character growth runs on two axes that must not blur:
+  - **Breadth** (the character axis, D38): character level → **loadout slots** → *how many*
+    jobs' abilities you mix. Gaining a job **adds** kit parts. The generalist direction.
+  - **Depth** (the job axis, D39): job level → ability scaling + unlock gates → **prestige** as
+    the capstone. Prestige **replaces in place**. The specialist direction.
+
+  Keeping them orthogonal is the legibility guarantee: **prestige never widens breadth, and
+  gaining a job never deepens a kit in place.**
+- **Decision — prestige = replace-in-place, a *diff* on the base kit.** A prestige job occupies
+  the **same slot** its base did (it does **not** become a second held job — confirmed: replace,
+  not stack) and is authored as a **diff**: replace **≥1 kit element** (an active or the
+  passive), keep the rest. So `rogue → assassin` and `rogue → thief` are **sibling diffs** that
+  share a spine but swap the edge — and the kit **count stays flat**, so the D40 *1–2 active + 1
+  passive* guideline survives prestige automatically. **Chains are supported**: a prestige job is
+  itself a job with its own optional branch, so tier-1 → tier-2 → tier-3 is recursion on the same
+  seam (pacing is per-class tuning). **Non-combat prestige deepens *verbs*** (the economy-actions
+  gated by `hasBanker`/`hasNoble`), not a battle kit — same replace-in-place spirit, different
+  plumbing.
+- **Decision — one grant seam (`predicate → effect`).** Both **base-job acquisition** and
+  **prestige triggering** are the *same* machinery: an **eligibility predicate** guarding an
+  **effect** ∈ { **add a held job**, **prestige `from → into`** }. The predicate kinds compose,
+  default-open:
+  - `jobLevel ≥ N` — the **default** prestige trigger.
+  - `charLevel ≥ N` — authored coming-of-age (the nomad who joins the hunt at L5).
+  - `holdsItem(x)` — the Master-Seal pattern (a **recipe book** grants Chef; consumed on use).
+  - `atNode(x)` / **event-choice** — a special node or interaction (the thieves'-guild invite).
+  - `unitId(x)` / **story-flag** — **"special prestige for select characters"**: a predicate keyed
+    on **identity** or a **story flag**. This is the *whole* mechanism for one-off / story-gated
+    jobs — **zero new machinery.**
+- **Decision — symmetric system; power attaches to *story*, not *tier*.** The **entire** growth
+  tree (jobs, prestige, chains, stat ceilings, flexibility) is **available to mercenaries and the
+  authored cast alike** — consistent with **uniform slots** (`guild.md`: any character fits any
+  slot). Authored distinctiveness is **narrative** (a fixed identity + story quests), **never
+  mechanical superiority**: a rolled merc the player bonds with is a **first-class win**, not a
+  consolation prize. The `unitId` / story predicate is **power-neutral plumbing**; it may host a
+  *genuinely powerful* one-off **only when a story earns it** — that is the guardrail that keeps
+  the exclusivity hook from sliding back into "authored are simply stronger."
+- **Decision — acquisition is diegetic (and *is* the attachment engine).** Jobs arrive **through
+  play**, not a menu: find the book, help the beggar then get invited to the guild, come of age.
+  A unit's job sheet thus becomes a **history of what it did** — and history is exactly what the
+  D33 re-authoring (below) makes the source of "special." So the acquisition model **manufactures
+  the attachment** the symmetric philosophy depends on; it compounds with **permadeath (D27)**,
+  which only bites when you're invested.
+- **Decision — non-combat is *emergent*, not an authored flag.** The current `noncombat: boolean`
+  (`jobs.ts`) conflates two things — a **descriptor** (this kit isn't a battle kit) and a
+  **permission** (this unit can't take the map) — which is why it's set on the pure-meta economy
+  classes but **not** on the **Survivalist**, whose kit is non-combat yet is *fielded in
+  Deployment*. Split them: **derive the descriptor** — a job with no `battle`-phase skills *is*
+  non-combat (every skill carries a `phase`), a **center-of-gravity** read consistent with
+  uniform slots and the **universal Defend/move/attack** (`jobs.ts:DEFEND`) — and treat the
+  **permission** as a separate **open call (parked):** keep the current **hard fielding ban**, or
+  go **fully emergent** (anyone can be placed; a Banker simply has nothing useful to do). The
+  latter is more consistent with uniform slots but needs an **audit of every flag consumer**
+  (upkeep / Rest-Point / morale, deploy filtering).
+- **One new substrate:** **per-unit persistent memory** — a cross-node **flag bag on the unit** so
+  a later event can read what an earlier one wrote (help-the-beggar → invited-to-the-guild).
+  Everything else reuses existing seams; this is the only genuinely new data the framework needs.
+- **Refines D33 — unweld *identity* from *class*.** The "Tier-2 companions have **fixed
+  class/identity**" wording over-claimed. The D33 axis is **authored vs. rolled** (a merc's class
+  is *rolled*, a companion's is *hand-picked*), **not** mutable vs. frozen — and D33 already says
+  companions *"level like anyone."* So: **identity** (name, portrait, story role) is **fixed
+  forever**; **class** is **authored at the start** (not rolled) but **flexible thereafter**,
+  growing like anyone's. `decisions.md` (D33) and `guild.md` re-authored accordingly.
+- **Spec:** [`docs/design/systems/jobs.md`](../../docs/design/systems/jobs.md).
+- **Deferred (per discussion) — the later one-at-a-time per-class pass:**
+  - each class's **actual prestige branches**, and the **Soldier** 3-active/0-passive → 2+1
+    **retrofit**;
+  - **non-combat prestige shapes** (Banker / Merchant / Noble verb deepening), thought through
+    individually;
+  - **chain pacing** (job levels between hops so a tier-3 capstone feels earned);
+  - the **agency model** for acquisition — authored beats may **auto-fire** on a threshold, but
+    generic acquisition should usually **cost a choice or an item** so the *ownership* (and the
+    attachment) accrues;
+  - the **per-unit-memory data shape** + its persistence across nodes / runs;
+  - whether an **acquired job arrives at job-level 1** (assumed yes — you just started);
+  - the **fielding-permission call** above + the flag-consumer audit;
+  - a **Prestige** glossary keyword (one word per concept).
+- **Reuses / consistent with:** D32 (the leveling seam this realizes), D38 (the FFT job model —
+  primary + heldJobs + loadout slots), D39 (hybrid leveling — per-job stat gains, `unlockLevel`,
+  ability scaling, loadout boons), D40 (2-active+1-passive roster + passive identity), D33
+  (recruitment tiers — refined here), D25 (uniform slots), D27 (permadeath → the attachment
+  stakes), the reserved `leveling.ts:applyCharacterBoons` hook.
+- **Build:** not yet started — **design only** (this record + the system doc).
 - **Superseded by:** —

@@ -1603,10 +1603,10 @@ trail of reasoning stays intact.
 
 ## D61 — The overworld action-economy limiter model + the market-access axis (Merchant rework)
 
-- **Status:** Decided (2026-06-19) · design pass, **not yet built** beyond the interim
-  stopgap below; reworks parts of **D30** (the gold economy / Merchant role) and **D35**
-  (the overworld action-economy spine), and opens a new **map axis** on **D22**'s `MapNode`.
-  Sub-items flagged **Open**/**Deferred** inline.
+- **Status:** **Decided + Built** (2026-06-19) · the limiter model + market-access axis shipped
+  (see the **build-progress** notes below); any remaining sub-items flagged **Open**/**Deferred**
+  inline. Reworks parts of **D30** (the gold economy / Merchant role) and **D35** (the overworld
+  action-economy spine), and opens a new **map axis** on **D22**'s `MapNode`.
 - **Context:** Playtesting flagged that **camp actions could be used an unlimited number of
   times**. The investigation found this was not one rogue action but a **limiter patchwork**:
   the signature job meta-skills (Chef **Cook Stew**, Merchant **Trade**) flowed through
@@ -1819,12 +1819,16 @@ trail of reasoning stays intact.
 
 ## D63 — Deployment as the closing net (retires the retreat-gamble) + the combat convergence
 
-- **Status:** **Decided + Built** (deployment retro-documented; the
-  Deployment↔Combat unification is **in progress** on branch
-  `claude/combat-predeployment-refactor-h3v2cf`). Refines **D7/D11** (the deployment
-  gamble) and leans on **D5** (the CT clock). Spec:
-  [`docs/design/02-deployment.md`](../../docs/design/02-deployment.md); plan:
-  [`deployment-combat-unification-plan.md`](deployment-combat-unification-plan.md).
+- **Status:** **Decided + Built** (the closing-net deployment model shipped). The convergence
+  plan's **phase 1** (truth reconciliation) and **phase 3** (one action log — deploy verbs through
+  `Battle.apply`, with undo + replay) are complete and merged. **Phase 2 — the actual
+  `DeployClock`→`CTClock` fold — was *not* done:** the plan shipped a shared stepping engine
+  (`tickUntilReady` / `byReadiest`) but kept two clocks. The genuine fold (the front as a
+  strict-lead tempo source on the one clock), plus a game-wide skill `usableContext` axis, is
+  carried by **D67**. Refines **D7/D11** (the deployment gamble) and leans on **D5** (the CT
+  clock). Spec: [`docs/design/02-deployment.md`](../../docs/design/02-deployment.md); plan:
+  [`deployment-combat-unification-plan.md`](deployment-combat-unification-plan.md) (historical);
+  continuation: [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md).
 - **Context:** Two pressures converged. (1) The D11 *"safe period → auto-retreat at
   the buzzer → per-step capture roll"* model was specced but **never built**; when
   Deployment was actually implemented it became something cleaner and more legible.
@@ -1875,7 +1879,9 @@ trail of reasoning stays intact.
 
 ## D64 — Telegraph & action forecast (preview-before-commit)
 
-- **Status:** Decided
+- **Status:** **Decided · render layer built** (the forecast/telegraph render landed — see the
+  *Build (render layer landed)* note below; ~632 tests at the time. The pure-core forecast
+  extraction + HUD follow-ups remain.)
 - **Context:** A start-to-end "resource & action" audit of one job (the **Heavy
   Knight**, traced across every screen) surfaced a general gap, not a class-specific
   one: the game **resolves actions without showing the player what they will do
@@ -1919,7 +1925,9 @@ trail of reasoning stays intact.
     shown in-preview, read from the same gate the action uses.
   - **Non-goal sharpened:** *label* deferred/conditional outcomes; do **not** simulate
     them (no AI-path or downstream-morale projection).
-- **Build:** not yet started — design only (this record + the system doc, now hardened).
+- **Build:** core (pure forecast) not yet started; **the render layer has since landed** (see the
+  *Build (render layer landed)* note below). (Originally: design only — this record + the system
+  doc, now hardened.)
   Planned as three layers behind a user-testable gate: **core** (`abilityFootprint` +
   a `forecastSkill` registry over the full union, plus extracting pure predict-cores so
   forecast == resolver math; vitest coverage, no Phaser), **render** (extend

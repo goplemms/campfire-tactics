@@ -2057,3 +2057,55 @@ trail of reasoning stays intact.
   stakes), the reserved `leveling.ts:applyCharacterBoons` hook.
 - **Build:** not yet started — **design only** (this record + the system doc).
 - **Superseded by:** —
+
+## D66 — The Soldier: first per-class pass (formation anchor) + the channeled-aura model
+
+- **Status:** Decided (job-system per-class pass 1, 2026-06-23) · realizes D65, retrofits D40
+- **Context:** D65 deferred per-class content to one-at-a-time passes. The **Soldier** is pass 1 —
+  and the **D40 retrofit** (the legacy Soldier is 3 actives / 0 passives, predating the
+  2-active+1-passive house style). Designing it surfaced a reusable combat mechanic — the
+  **channeled aura** — worth recording beyond the one class.
+- **Decision — the Soldier as a "formation anchor."** Identity: the Soldier is better **in a
+  line** — every piece is a **team multiplier**, making it the clean **inverse of the Scout**
+  (isolate + solo-flank) and a complement to the **Heavy Knight** (controls *enemy* spacing).
+  Kit (the D40 2-active+1-passive shape):
+  - **Brother-in-arms** (passive) — **+1 attack damage per adjacent ally, max 3**. A new
+    `PASSIVE` key read in `resolveAttack`, mirroring Deadeye (the flank code already counts
+    adjacent bodies). Formation *offense*.
+  - **Turtle Formation** (Act) — adjacent allies gain **Guarded** (≈+2 def) **until the
+    Soldier's next turn**: "AoE Defend for the line." A **one-turn aura** (below); cost is
+    implicit (turtling ≠ attacking). Formation *defense*.
+  - **Debilitating Strike** (Act) — **+3 damage and Exposed** (clears on the **target's** next
+    turn) — the Expose pattern (`damage` + `onHit` status), **reusing the Scout's Exposed
+    keyword** as intentional shared synergy (Soldier = the heavy applier, Scout = the fast one).
+    Formation *target-priority*.
+  - **Baseline/growth:** a sturdy mid-armor melee **anchor** (HP/attack-weighted, range 1) — a
+    numbers pass.
+  - **Replaces** the legacy Power Strike / Hamstring / Second Wind; dropping the self-heal makes
+    the Soldier **lean on the squad/Medic** for sustain — on theme.
+- **Decision — the channeled-aura model (the reusable mechanic).** Auras maintained on a
+  **commitment ladder** of *what the unit gives up to project them*:
+  - **One-turn aura** (Turtle): cast (Act) → live **until the caster's next turn** → the value
+    pays off **outside** the caster's turn (foes act in the CT gap). Re-cast to maintain; the
+    only cost is the Act (**offense xor defense**, each turn). Reuses **Guarded** + the tarpit's
+    recompute-on-movement (`refreshAuras`), anchored to the caster, cleared at its next
+    turn-start. **No new primitive.**
+  - **Persistent stance** (reserved — built with the prestige): cast-once, **hold-until-broken**,
+    at a commitment cost — **free** (= Mark Prey today) / **rooted** (no move) / **locked** (no
+    other action). The dial **scales cost to aura strength**; **displacement breaks it** (the
+    Heavy Knight's Shove is the anti-formation counter); death / explicit drop end it. The
+    natural **Sentinel-prestige** payoff (Turtle: one-turn re-cast → **persistent rooted**,
+    freeing the Act to attack) — replace-in-place that changes the *model*, not the numbers.
+  - **Unifies the existing auras:** **tarpit** = the always-on passive end, **Mark** = the free
+    channel, **Turtle** = the one-turn rung.
+- **Spec:** [`docs/design/systems/jobs.md`](../../docs/design/systems/jobs.md) (Worked example — the Soldier).
+- **Open / next:** the Soldier's **prestige fork** — **Sentinel** (defensive; Turtle → persistent
+  stance) vs **Banner** (offensive; Brother-in-arms scales the party) — to be designed; the
+  persistent-stance primitive lands with it. The **numbers pass** (baseline/growth, magnitudes).
+  The card already surfaces the kit (Brother-in-arms needs a `PASSIVE_INFO` entry; actives carry
+  their own text).
+- **Reuses / consistent with:** D65 (per-class pass), D40 (2+1 + passive identity; the tarpit
+  aura), D36 (flanking — kept the Scout's lane), D41 (statuses — Guarded/Exposed reuse), D37
+  (channel / Mark Prey), D5 (CT action economy).
+- **Build:** not yet started — **design only**.
+- **Superseded by:** —

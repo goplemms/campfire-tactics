@@ -185,11 +185,56 @@ So, unwelded:
   to *start* with more than one job, or a head start on a path; that is an **endowment of
   starting material**, not a lock.
 
+## Worked example — the Soldier (per-class pass 1)
+
+The first per-class pass under this framework — and the D40 retrofit (the legacy Soldier
+predates the 2-active + 1-passive house style, with 3 actives and no passive). Decision: **D66**.
+
+**Identity — the formation anchor.** The Soldier is better **in a line**: every piece of the
+kit is a **team multiplier**, which makes it the clean **inverse of the Scout** (isolate +
+solo-flank) and a complement to the **Heavy Knight** (who controls *enemy* spacing). The Scout
+is the lone playmaker; the Soldier is the **anchor of the group**.
+
+**Kit (2 active + 1 passive):**
+
+- **Brother-in-arms** *(passive)* — **+1 attack damage per adjacent ally, max 3**. Formation
+  *offense*. A new passive read in `resolveAttack`, mirroring the Hunter's Deadeye.
+- **Turtle Formation** *(Act)* — adjacent allies gain **Guarded** (≈+2 def) **until your next
+  turn**: "AoE Defend for the line." Formation *defense*. A **one-turn aura** (below); the cost
+  is implicit — turtling is not attacking.
+- **Debilitating Strike** *(Act)* — **+3 damage** and applies **Exposed** (clears on the
+  target's next turn). Formation *target-priority*: crack the guard so the clustered line grinds
+  them down. **Reuses the Scout's Exposed** as intentional shared synergy (the Soldier is the
+  heavy applier, the Scout the fast one).
+
+It **replaces** the legacy Power Strike / Hamstring / Second Wind; dropping the self-heal makes
+the Soldier **lean on the squad** for sustain — on theme.
+
+**The channeled-aura model.** Turtle introduced a reusable mechanic: auras maintained on a
+**commitment ladder** of *what you give up to project them*.
+
+- **One-turn aura** (Turtle): cast → live **until your next turn** → the value lands **outside**
+  your turn (foes act in the CT gap before you come up again). Re-cast to maintain; the cost is
+  the Act — **brace the line *or* strike, each turn**. Reuses **Guarded** + the tarpit's
+  recompute-on-movement (`refreshAuras`).
+- **Persistent stance** (reserved for prestige): cast-once, **hold-until-broken**, at a cost —
+  **free** (= Mark Prey) / **rooted** (no move) / **locked** (no other action). The dial scales
+  cost to strength; **displacement breaks it** (the Heavy Knight's Shove is the counter). The
+  natural **Sentinel** payoff — Turtle goes one-turn → **persistent rooted**, freeing your Act
+  to attack.
+
+Among the auras you already have: **tarpit** is the always-on passive end, **Mark Prey** the
+free channel, **Turtle** the one-turn rung.
+
+**Next:** the Soldier's prestige fork — **Sentinel** (deepen the defense) vs **Banner** (deepen
+the offense) — designed in a following pass, with the persistent-stance primitive landing
+alongside it.
+
 ## Open questions / future scope
 
-- **The per-class design pass (one at a time)** — each class's **actual prestige branches**, the
-  **Soldier** 3-active/0-passive → **2+1 retrofit**, and the **non-combat prestige verb
-  shapes** (Banker / Merchant / Noble), each thought through individually.
+- **The per-class design pass (one at a time)** — **Soldier = pass 1** (the formation kit above,
+  D66; its prestige fork still pending). Still ahead: the other classes' **prestige branches**
+  and the **non-combat prestige verb shapes** (Banker / Merchant / Noble).
 - **Chain pacing** — job levels between hops so a tier-3 capstone feels earned.
 - **The acquisition agency model** — automatic (authored beats) vs. choice/item (generics).
 - **The per-unit-memory data shape** — contents + persistence scope (node / run / guild).

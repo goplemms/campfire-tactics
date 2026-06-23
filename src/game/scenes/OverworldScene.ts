@@ -21,7 +21,7 @@ import {
   captainsJournal,
   projectManifest,
   getVessel,
-  unitSkills,
+  availableSkills,
   triage,
   isHealer,
   combatRoster,
@@ -560,7 +560,7 @@ export class OverworldScene extends Phaser.Scene {
   private campRecoveryActions(): CampAction[] {
     const out: CampAction[] = [];
     for (const u of this.run.party) {
-      for (const skill of unitSkills(u, "meta")) {
+      for (const skill of availableSkills(u, "overworld")) {
         // Costless signature actions are per-node capped (D35) — disable when spent, and
         // badge the label with the uses left so the limiter is legible.
         const left = campSkillUsesLeft(this.run.overworld, skill);

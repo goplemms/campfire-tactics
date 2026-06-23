@@ -246,6 +246,10 @@ export interface SkillDef {
  */
 export function skillContexts(skill: SkillDef): UsableContext[] {
   if (skill.usableContext) return skill.usableContext;
+  // A charged ability commits now and resolves *later on the CT clock* (D37) — a
+  // combat-clock mechanic with no deploy-clock equivalent, so it's combat-only whatever
+  // its effect shape (e.g. the Medic's charged Mend).
+  if (skill.cost?.charge) return ["combat"];
   // A movement ability — spends the move budget to self-buff: shared by nature.
   if (skill.spend === "move" && skill.target === "self") return ["pre-combat", "combat"];
   const e = skill.effect;
@@ -254,6 +258,10 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
       return ["pre-combat"];
     case "morale":
       return ["overworld"];
+    case "med-heal":
+      // The herb-stash heal (D40) is a combat/logistics bridge: its stash pick + inventory
+      // spend belong to the engagement, and it has no drained deploy resolver. Combat-only.
+      return ["combat"];
     case "damage":
     case "cleave":
     case "forced-move":
@@ -263,7 +271,6 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
       // Friend/foe split: an enemy debuff is engagement; a self/ally buff is shareable.
       return skill.target === "enemy" ? ["combat"] : ["pre-combat", "combat"];
     case "heal":
-    case "med-heal":
     case "triage-heal":
     case "cleanse":
     case "guard-allies":

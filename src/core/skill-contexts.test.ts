@@ -39,12 +39,20 @@ describe("skillContexts — engagement is combat-only", () => {
     const debuff = mk({ target: "enemy", effect: { kind: "status", status: { id: "exposed", name: "Exposed", duration: 2 } } });
     expect(skillContexts(debuff)).toEqual(["combat"]);
   });
+
+  it("the herb-stash med-heal ⇒ combat only (its stash pick + inventory spend are engagement-bound, D67 increment 6c)", () => {
+    expect(skillContexts(mk({ target: "ally", effect: { kind: "med-heal" } }))).toEqual(["combat"]);
+  });
+
+  it("a charged ability ⇒ combat only (it resolves later on the CT clock, no deploy equivalent)", () => {
+    const charged = mk({ target: "ally", cost: { charge: 50 }, effect: { kind: "heal", amount: 16 } });
+    expect(skillContexts(charged)).toEqual(["combat"]);
+  });
 });
 
 describe("skillContexts — support and self/ally buffs are shared across both board phases", () => {
   it.each<[string, Partial<SkillDef> & { effect: SkillEffect }]>([
     ["heal", { target: "ally", effect: { kind: "heal", amount: 5 } }],
-    ["med-heal", { target: "ally", effect: { kind: "med-heal" } }],
     ["triage-heal", { target: "ally", effect: { kind: "triage-heal", amount: 5 } }],
     ["cleanse", { target: "ally", effect: { kind: "cleanse" } }],
     ["guard-allies", { target: "self", effect: { kind: "guard-allies", amount: 1 } }],
@@ -147,5 +155,16 @@ describe("availableSkills — the guild context is a wired placeholder (D67 incr
     for (const jobId of Object.keys(JOBS) as JobId[]) {
       expect(availableSkills(jobUnit(jobId), "guild")).toEqual([]);
     }
+  });
+});
+
+describe("availableSkills — combat-bound abilities don't leak into the deploy surface (D67 increment 6c)", () => {
+  it("the Medic's herb Heal surfaces in combat but NOT pre-combat (its stash pick is engagement-bound); Dig In / Defend remain pre-combat", () => {
+    const medic = jobUnit("medic");
+    const pre = availableSkills(medic, "pre-combat").map((s) => s.id);
+    const combat = availableSkills(medic, "combat").map((s) => s.id);
+    expect(combat).toContain("heal"); // the med-heal "Heal" is a combat skill
+    expect(pre).not.toContain("heal"); // ...but never offered pre-combat (would crash the drained verb)
+    expect(pre).toEqual(expect.arrayContaining(["dig-in", "defend"]));
   });
 });

@@ -43,6 +43,16 @@ describe("deploySkill verb (D67 increment 5)", () => {
     expect(battle.log[battle.log.length - 1]).toMatchObject({ kind: "deploySkill", unit: "scout" });
   });
 
+  it("resolves an ally-target heal cast pre-combat (D67 6c: the substrate supports heals/cleanse off the deploy clock; only the herb-stash + charged variants stay combat-bound)", () => {
+    const battle = new Battle(new TileGrid(8, 1), [pawn("medic", 0), pawn("hurt", 1)]);
+    const [medic, hurt] = battle.units;
+    hurt.hp = 5;
+    const PLAIN_HEAL: SkillDef = { id: "mend", name: "Mend", description: "", phase: "battle", target: "ally", range: 2, spend: "act", effect: { kind: "heal", amount: 10 } };
+    battle.deploySkill(medic, PLAIN_HEAL, hurt);
+    expect(hurt.hp).toBeGreaterThan(5); // healed, off the deploy clock
+    expect(battle.log[battle.log.length - 1]).toMatchObject({ kind: "deploySkill", target: "hurt" });
+  });
+
   it("replays byte-identically with a deploySkill in the deploy prelude (the drain holds)", () => {
     const grid = new TileGrid(8, 1);
     const battle = new Battle(grid, [pawn("a", 0), pawn("b", 6, "enemy")]);

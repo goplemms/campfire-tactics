@@ -103,9 +103,9 @@ function jobUnit(jobId: JobId): Unit {
 describe("availableSkills — parity with today's surfacing + the dual-context win (D67 increment 3)", () => {
   const jobIds = Object.keys(JOBS) as JobId[];
 
-  it.each(jobIds)("%s: availableSkills('combat') reproduces unlockedSkills('battle')", (jobId) => {
+  it.each(jobIds)("%s: availableSkills('combat') == unlockedSkills('battle') + the universal Defend", (jobId) => {
     const u = jobUnit(jobId);
-    expect(availableSkills(u, "combat")).toEqual(unlockedSkills(u, "battle"));
+    expect(availableSkills(u, "combat")).toEqual([...unlockedSkills(u, "battle"), DEFEND]);
   });
 
   it("the Chef's camp skill surfaces in the overworld", () => {
@@ -122,5 +122,19 @@ describe("availableSkills — parity with today's surfacing + the dual-context w
     const u = jobUnit("scout");
     expect(availableSkills(u, "pre-combat").map((s) => s.id)).toContain("dash");
     expect(availableSkills(u, "combat").map((s) => s.id)).toContain("dash");
+  });
+});
+
+describe("availableSkills — universal capabilities fold in (D67 increment 4)", () => {
+  it("Defend is universal in both board contexts", () => {
+    const u = jobUnit("soldier");
+    expect(availableSkills(u, "combat").map((s) => s.id)).toContain("defend");
+    expect(availableSkills(u, "pre-combat").map((s) => s.id)).toContain("defend");
+  });
+
+  it("Dig In is a universal pre-combat capability only (executes via the digIn verb)", () => {
+    const u = jobUnit("soldier");
+    expect(availableSkills(u, "pre-combat").map((s) => s.id)).toContain("dig-in");
+    expect(availableSkills(u, "combat").map((s) => s.id)).not.toContain("dig-in");
   });
 });

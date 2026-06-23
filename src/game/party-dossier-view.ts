@@ -215,37 +215,42 @@ export class PartyDossierView {
 
   private renderMember(m: MemberRow): void {
     const s = this.scene;
+    const u = m.unit;
     let y = this.ptop + 6;
 
-    // Name + class line.
+    // Header (full width): name, then level · class, then the (long) jeopardy line.
     this.detail.push(
       s.add.text(this.px, y, m.name, { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.heading, fontStyle: WEIGHT.bold }).setOrigin(0, 0.5).setDepth(43),
     );
     y += 26;
     y = this.line(`Lv ${m.level} · ${m.jobLabel}`, y, INK.muted);
-    y += 8;
-
-    // Vitality: a wide HP bar + numbers.
-    this.wideHpBar(this.px, y, this.pw, m);
-    y += 14;
-    this.detail.push(
-      s.add.text(this.px, y, `HP ${m.hp} / ${m.maxHp}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(43),
-    );
-    y += 22;
-
-    // Jeopardy banner (urgent risks).
     const jb = jeopardyBanner(m.jeopardy, m.dyingNights);
     if (jb) y = this.line(jb.text, y, jb.color);
+    y += 8;
 
-    // Readiness: fatigue + XP progress.
+    // The panel is wide and short, so the card splits into two columns below the
+    // header — vitality + stats on the left, jobs + abilities on the right. That
+    // keeps an ability-rich card inside its bounds (with room to spare as units grow).
+    const colTop = y;
+    const px = this.px;
+    const pw = this.pw;
+    const gap = 18;
+    const leftW = Math.round((pw - gap) * 0.54);
+    const rightW = pw - gap - leftW;
+    const rightX = px + leftW + gap;
+
+    // --- Left column: vitality + stats ---
+    this.px = px;
+    this.pw = leftW;
+    y = colTop;
+    this.wideHpBar(px, y, leftW, m);
+    y += 14;
+    y = this.line(`HP ${m.hp} / ${m.maxHp}`, y);
     y = this.line(`Fatigue: ${m.fatigueLabel} (${m.fatigue})`, y, m.fatigue > 6 ? INK.ember : INK.secondary);
     y = this.line(`XP: ${m.xp} / ${m.xpToNext}`, y);
-    y += 6;
-
-    // Conditions.
-    const pips = statusPips(m.unit);
+    const pips = statusPips(u);
     if (pips.length) {
-      let cx = this.px;
+      let cx = px;
       this.detail.push(s.add.text(cx, y + 8, "Conditions:", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(43));
       cx += 90;
       for (const pip of pips) {
@@ -257,11 +262,8 @@ export class PartyDossierView {
     } else {
       y = this.line("No active conditions", y, INK.disabled);
     }
-    y += 6;
-
-    // The combat stat block, in two columns.
+    y += 4;
     y = this.subheading("Stats", y);
-    const u = m.unit;
     const stats: [string, number][] = [
       ["Speed", u.speed],
       ["Attack", u.attack],
@@ -272,25 +274,22 @@ export class PartyDossierView {
       ["Awareness", u.awareness],
       ["Intelligence", u.intelligence],
     ];
-    const colW = this.pw / 2;
-    const rowY = y;
+    const colW = leftW / 2;
+    const statTop = y;
     stats.forEach(([label, val], i) => {
       const col = i % 2;
       const row = Math.floor(i / 2);
       this.detail.push(
-        s.add
-          .text(this.px + col * colW, rowY + row * 20, `${label}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label })
-          .setOrigin(0, 0.5)
-          .setDepth(43),
-        s.add
-          .text(this.px + col * colW + colW - 24, rowY + row * 20, `${val}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label })
-          .setOrigin(1, 0.5)
-          .setDepth(43),
+        s.add.text(px + col * colW, statTop + row * 20, `${label}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(43),
+        s.add.text(px + col * colW + colW - 16, statTop + row * 20, `${val}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(43),
       );
     });
-    y = rowY + Math.ceil(stats.length / 2) * 20 + 8;
+    const leftBottom = statTop + Math.ceil(stats.length / 2) * 20;
 
-    // Jobs held + their levels (growth detail).
+    // --- Right column: jobs + abilities ---
+    this.px = rightX;
+    this.pw = rightW;
+    y = colTop;
     y = this.subheading("Jobs", y);
     const jobs = u.heldJobs.length ? u.heldJobs : primaryJobOf(u) ? [primaryJobOf(u)!] : [];
     if (!jobs.length) {
@@ -303,11 +302,16 @@ export class PartyDossierView {
       }
       y = this.line(`Loadout slots: ${u.loadoutSlots}`, y, INK.muted);
     }
-
-    // Abilities — actives + passives, each row hoverable/clickable to reveal what it
-    // does (the surfacing ask: the card should answer "what can this unit do?").
     y += 6;
-    this.renderAbilities(m, y);
+    const rightBottom = this.renderAbilities(m, y);
+
+    // A faint divider between the columns, then restore the full-width metrics.
+    const colBottom = Math.max(leftBottom, rightBottom);
+    this.detail.push(
+      s.add.rectangle(px + leftW + gap / 2, colTop, 1, Math.max(0, colBottom - colTop), COLOR.border).setOrigin(0.5, 0).setDepth(42),
+    );
+    this.px = px;
+    this.pw = pw;
   }
 
   // ---- abilities (hover/focus to read what they do) ------------------------

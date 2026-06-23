@@ -25,21 +25,22 @@ describe("jobs (data-driven loading)", () => {
     expect(getJob("nope")).toBeUndefined();
   });
 
-  it("defines the Soldier's skills purely as data hooking the Battle phase", () => {
+  it("defines the Soldier's formation kit purely as data hooking the Battle phase", () => {
     const ids = SOLDIER.skills.map((s) => s.id);
-    expect(ids).toContain("power-strike");
-    expect(ids).toContain("hamstring");
-    expect(ids).toContain("second-wind");
+    expect(ids).toContain("debilitating-strike");
+    expect(ids).toContain("turtle-formation");
     for (const skill of SOLDIER.skills) {
       expect(skill.phase).toBe("battle");
-      expect(["damage", "status", "heal"]).toContain(skill.effect.kind);
+      expect(["damage", "guard-allies"]).toContain(skill.effect.kind);
     }
+    // Brother-in-arms is its passive identity anchor (D66).
+    expect(SOLDIER.passives?.brotherInArms).toBe(1);
   });
 
   it("reads a unit's skills back via its jobId, filtered by phase", () => {
     const u = soldier("Rook");
-    expect(unitSkills(u).length).toBe(3);
-    expect(unitSkills(u, "battle").length).toBe(3);
+    expect(unitSkills(u).length).toBe(2);
+    expect(unitSkills(u, "battle").length).toBe(2);
     expect(unitSkills(u, "meta").length).toBe(0);
 
     const jobless = createUnit({
@@ -79,6 +80,6 @@ describe("jobs (data-driven loading)", () => {
       });
     expect(unitSkills(withJob("Pip", "chef"), "meta").map((s) => s.id)).toEqual(["cook-stew"]);
     expect(unitSkills(withJob("Vale", "survivalist"), "deployment").map((s) => s.id)).toEqual(["set-trap"]);
-    expect(unitSkills(withJob("Rook", "soldier"), "battle").length).toBe(3);
+    expect(unitSkills(withJob("Rook", "soldier"), "battle").length).toBe(2);
   });
 });

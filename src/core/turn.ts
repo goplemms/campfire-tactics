@@ -11,7 +11,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit, Side } from "./units";
+import { isActive, type Unit, type Side } from "./units";
 import type { GridCoord } from "./iso";
 import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
@@ -22,9 +22,10 @@ import {
   resolveAttack,
   battleOutcome,
   refreshAuras,
+  isAdjacent,
   type BattleOutcome,
 } from "./combat";
-import { tickStatuses } from "./status";
+import { tickStatuses, applyStatus, guarded, GUARDED } from "./status";
 import { computeVisibleTiles } from "./vision";
 import { PILOT_POLICY, type AIPlan, type BattlePolicy } from "./ai";
 import { stampPassives } from "./jobs";
@@ -368,6 +369,8 @@ export class Battle {
         let outcome: SkillOutcome;
         if (skill.effect.kind === "forced-move") {
           outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);
+        } else if (skill.effect.kind === "guard-allies") {
+          outcome = this.resolveGuardAllies(caster, skill.effect.amount, skill.effect.duration ?? 1);
         } else if (skill.cost?.charge) {
           // Commit to the timeline; the effect lands when its gauge fills (D5/D37).
           this.clock.schedule({
@@ -540,6 +543,24 @@ export class Battle {
     }
     void moved;
     return out;
+  }
+
+  /**
+   * The Soldier's **Turtle Formation** (D66): brace the line — apply Guarded to
+   * every ally orthogonally adjacent to the caster (an "AoE Defend"; per-ally,
+   * lasting to that ally's next turn, like Defend). Needs the roster, so it resolves
+   * here rather than via the unit-pair {@link resolveSkill}. Returns the Guarded id
+   * when it braced anyone.
+   */
+  resolveGuardAllies(caster: Unit, amount: number, duration: number): SkillOutcome {
+    let braced = 0;
+    for (const u of this.units) {
+      if (isActive(u) && u.side === caster.side && u !== caster && isAdjacent(u.pos, caster.pos)) {
+        applyStatus(u, guarded(duration, amount));
+        braced += 1;
+      }
+    }
+    return braced > 0 ? { status: GUARDED } : {};
   }
 
   /**

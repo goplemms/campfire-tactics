@@ -2072,9 +2072,9 @@ trail of reasoning stays intact.
   - **Brother-in-arms** (passive) — **+1 attack damage per adjacent ally, max 3**. A new
     `PASSIVE` key read in `resolveAttack`, mirroring Deadeye (the flank code already counts
     adjacent bodies). Formation *offense*.
-  - **Turtle Formation** (Act) — adjacent allies gain **Guarded** (≈+2 def) **until the
-    Soldier's next turn**: "AoE Defend for the line." A **one-turn aura** (below); cost is
-    implicit (turtling ≠ attacking). Formation *defense*.
+  - **Turtle Formation** (Act) — every **adjacent ally** gains **Guarded** (≈+2 def) **until its
+    next turn**: an **"AoE Defend" for the line.** A **one-turn aura** (below); cost is implicit
+    (turtling ≠ attacking). Formation *defense*.
   - **Debilitating Strike** (Act) — **+3 damage and Exposed** (clears on the **target's** next
     turn) — the Expose pattern (`damage` + `onHit` status), **reusing the Scout's Exposed
     keyword** as intentional shared synergy (Soldier = the heavy applier, Scout = the fast one).
@@ -2085,11 +2085,13 @@ trail of reasoning stays intact.
     the Soldier **lean on the squad/Medic** for sustain — on theme.
 - **Decision — the channeled-aura model (the reusable mechanic).** Auras maintained on a
   **commitment ladder** of *what the unit gives up to project them*:
-  - **One-turn aura** (Turtle): cast (Act) → live **until the caster's next turn** → the value
-    pays off **outside** the caster's turn (foes act in the CT gap). Re-cast to maintain; the
-    only cost is the Act (**offense xor defense**, each turn). Reuses **Guarded** + the tarpit's
-    recompute-on-movement (`refreshAuras`), anchored to the caster, cleared at its next
-    turn-start. **No new primitive.**
+  - **One-turn aura** (Turtle): cast (Act) → each **adjacent ally** gains **Guarded** until its
+    next turn (an **"AoE Defend"**) — the value pays off **outside** the caster's turn (foes act
+    in the CT gap). Re-cast to maintain; the only cost is the Act (**offense xor defense**, each
+    turn). **Built** as a per-ally Guarded at cast — the proven Defend mechanic spread to the
+    line, chosen over a caster-anchored aura to avoid a same-id clash with a unit's own Defend.
+    The **aura-that-follows-the-formation** is reserved with the persistent stance. **No new
+    primitive.**
   - **Persistent stance** (reserved — built with the prestige): cast-once, **hold-until-broken**,
     at a commitment cost — **free** (= Mark Prey today) / **rooted** (no move) / **locked** (no
     other action). The dial **scales cost to aura strength**; **displacement breaks it** (the

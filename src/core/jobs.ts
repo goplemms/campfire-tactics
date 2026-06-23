@@ -60,51 +60,46 @@ export interface JobDef {
 }
 
 /**
- * The Soldier — a front-line combat job. Its skills are all Battle-phase Acts:
+ * The **Soldier** — the **formation anchor** (D66): the first per-class pass and the
+ * D40 retrofit (it predated the 2-active + 1-passive house style). Every piece is a
+ * team multiplier — it hits harder *in a line* (Brother-in-arms), braces the line
+ * (Turtle Formation), and breaks the foe's guard for the line (Debilitating Strike).
+ * The clean inverse of the Scout (isolate + solo-flank); a complement to the Heavy
+ * Knight (who controls *enemy* spacing). Stats are a sturdy mid-armor melee anchor.
  *
- * - **Power Strike** — a heavier melee hit (damage effect).
- * - **Hamstring** — a melee hit that Immobilizes (status effect). Duration 2 so
- *   it survives the target's next turn-start tick and actually costs them a move
- *   (the AI honours `isImmobilized`).
- * - **Second Wind** — self-heal (heal effect).
+ * - **Brother-in-arms** (passive) — +1 attack damage per adjacent ally (capped, D66).
+ * - **Debilitating Strike** (active) — a heavier blow that leaves the foe Exposed.
+ * - **Turtle Formation** (active, L2) — brace: Guard every adjacent ally for a turn.
  */
 export const SOLDIER: JobDef = {
   id: "soldier",
   name: "Soldier",
-  description: "Front-line fighter: heavy strikes, a crippling blow, and grit.",
+  description: "Formation anchor: stronger in a line — hits harder beside allies, braces them, and breaks the foe's guard.",
+  passives: { [PASSIVE.brotherInArms]: 1 },
+  baseline: { speed: 10, maxHp: 30, attack: 10, defense: 3, moveRange: 4, sightRadius: 4, attackRange: 1 },
+  growth: { maxHp: 2, attack: 1 },
   skills: [
     {
-      id: "power-strike",
-      name: "Power Strike",
-      description: "A heavy melee blow (+6 attack) against an adjacent foe.",
+      id: "debilitating-strike",
+      name: "Debilitating Strike",
+      description: "A heavy blow (+3 attack) that leaves an adjacent foe Exposed (takes extra damage) until its next turn.",
       phase: "battle",
       target: "enemy",
       range: 1,
       spend: "act",
-      effect: { kind: "damage", bonusAttack: 6 },
+      unlockLevel: 1,
+      effect: { kind: "damage", bonusAttack: 3, onHit: { ...exposed(1) } },
     },
     {
-      id: "hamstring",
-      name: "Hamstring",
-      description: "Strike an adjacent foe and Immobilize them for a turn.",
-      phase: "battle",
-      target: "enemy",
-      range: 1,
-      spend: "act",
-      effect: {
-        kind: "status",
-        status: { id: "immobilized", name: "Immobilized", duration: 2 },
-      },
-    },
-    {
-      id: "second-wind",
-      name: "Second Wind",
-      description: "Catch your breath and recover 10 HP.",
+      id: "turtle-formation",
+      name: "Turtle Formation",
+      description: "Brace the line: every ally beside you gains Guard (−2 damage) until its next turn.",
       phase: "battle",
       target: "self",
       range: 0,
       spend: "act",
-      effect: { kind: "heal", amount: 10 },
+      unlockLevel: 2,
+      effect: { kind: "guard-allies", amount: 2 },
     },
   ],
 };

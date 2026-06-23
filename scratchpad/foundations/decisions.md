@@ -2124,10 +2124,11 @@ trail of reasoning stays intact.
 
 ## D67 — Deployment as combat-substrate + capture-wave layer + a game-wide skill `usableContext` axis (finishes D63)
 
-- **Status:** Decided (2026-06-23) · **build in progress** (increment 0 — the golden-trace
-  safety net — and the `usableContext` axis landing first). Finishes **D63**'s deferred
-  phase 2 (the clock fold) and widens the convergence to skill-surfacing. Full build brief
-  (the 0–12 increment plan, the audit, the completeness checklist):
+- **Status:** Decided + **substantially built** (2026-06-23). The skill-surfacing
+  unification (sub-decisions A–C and E's *cast path*) shipped across increments 0–8 + 6c; the
+  clock/RNG/controller fold (sub-decision D and E's *RNG/controller*) was **investigated and
+  deliberately not pursued** — see *Build outcome* below. Full build brief (the 0–12 plan, the
+  audit, the completeness checklist):
   [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md).
 - **Context:** D63 made on-map Deployment a CT-clock, move-and-act board phase — i.e. it
   already *is* combat's substrate — but implemented twice. Phases 1 (truth reconciliation)
@@ -2172,10 +2173,31 @@ trail of reasoning stays intact.
   engagement; win/lose (`battleOutcome`); the AI (combat-only — the only deployment "AI" is the
   front advancing). The guild context is wired as a forward-looking placeholder (it surfaces no
   per-unit skills today).
-- **Build:** the 0–12 increment plan in the brief — golden-trace-gated, the clock fold (D)
-  landed **last** and revertible alone, suite-green (`test`/`build`/`test:e2e`/`sim`) at every
-  increment.
-- **Reuses / consistent with:** **D63** (finishes its phase 2), **D3** (phase tier kept;
+- **Build:** the 0–12 increment plan in the brief — golden-trace-gated, suite-green
+  (`test`/`build`/`test:e2e`/`sim`) at every increment.
+- **Build outcome (2026-06-23):** increments **0–8 + 6c shipped.** Skills declare context as
+  data (`usableContext` + the pure `skillContexts`); **one** `availableSkills(unit, ctx)`
+  projects the overworld / pre-combat / combat rows (the hardcoded `DEFEND` append *and* the
+  `canTrap` special-case are gone); deployment honors `effectiveMove` (Swift applies
+  pre-combat); and a **drained `deploySkill` verb** makes dual-context abilities castable
+  pre-combat without corrupting replay. Fix **6c** keeps the two **combat-bound** ability
+  families out of the pre-combat surface: **charged** skills (they resolve later on the CT
+  clock, which deployment lacks) and the **herb-stash `med-heal`** (its stash pick + inventory
+  spend have no drained deploy resolver — `resolveSkill` would throw). **Sub-decision D and
+  E's RNG/controller fold were NOT built**, on evidence gathered during the build: (1)
+  `CTClock` and `DeployClock` already share the entire stepping engine (`tickUntilReady` +
+  `byReadiest` + `effectiveSpeed`), so `DeployClock` is a ~60-line adapter whose only real
+  difference is the front (a non-unit, strict-lead tempo source) — folding it into `CTClock`
+  would *add* a front + unused charge machinery to the combat clock, net-negative; (2)
+  `deployRng`/`spotRng` are already deterministic (seeded via `streamFor`) and replay rebuilds
+  the front's effect from the logged `capture` outcome — routing them through `Battle.roll`'s
+  shared `drawCount` would actually *break* replay (the deploy draws aren't reproduced on
+  replay); (3) the deploy telegraph (increment 9) has no aimed pre-combat surface today
+  (self-casts / traps / Dig In don't hover-aim). The arm→click targeting substrate is wired
+  and ready for future plain ally-target pre-combat content. **D63's phase-2 clock fold thus
+  remains deferred — by evidence, not omission.**
+- **Reuses / consistent with:** **D63** (advances its convergence — the skill-surfacing half;
+  the phase-2 clock fold stays deferred by evidence, see *Build outcome*), **D3** (phase tier kept;
   `usableContext` layers over it), **D5** (the one CT clock), **D2** (core/render), **D7/D11**
   (the capture-wave layer), **D60** (the free-move budget deployment now matches), **D64**
   (telegraph extended to pre-combat), **D35** (the overworld action economy whose

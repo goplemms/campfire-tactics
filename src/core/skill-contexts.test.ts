@@ -6,7 +6,9 @@
  */
 import { describe, it, expect } from "vitest";
 import { skillContexts, type SkillDef, type SkillEffect, type UsableContext } from "./skills";
-import { DEFEND } from "./jobs";
+import { availableSkills, unlockedSkills } from "./leveling";
+import { DEFEND, JOBS, type JobId } from "./jobs";
+import { createUnit, type Unit } from "./units";
 
 function mk(over: Partial<SkillDef> & { effect: SkillEffect }): SkillDef {
   return {
@@ -79,5 +81,46 @@ describe("skillContexts — explicit override wins", () => {
 describe("skillContexts — real shipping skills", () => {
   it("the universal Defend is usable in both board contexts (self status)", () => {
     expect(skillContexts(DEFEND)).toEqual(BOTH);
+  });
+});
+
+function jobUnit(jobId: JobId): Unit {
+  return createUnit({
+    id: `u-${jobId}`,
+    side: "player",
+    pos: { col: 0, row: 0 },
+    awareness: 2,
+    speed: 10,
+    maxHp: 20,
+    attack: 5,
+    defense: 1,
+    moveRange: 3,
+    sightRadius: 4,
+    jobId,
+  });
+}
+
+describe("availableSkills — parity with today's surfacing + the dual-context win (D67 increment 3)", () => {
+  const jobIds = Object.keys(JOBS) as JobId[];
+
+  it.each(jobIds)("%s: availableSkills('combat') reproduces unlockedSkills('battle')", (jobId) => {
+    const u = jobUnit(jobId);
+    expect(availableSkills(u, "combat")).toEqual(unlockedSkills(u, "battle"));
+  });
+
+  it("the Chef's camp skill surfaces in the overworld", () => {
+    expect(availableSkills(jobUnit("chef"), "overworld").map((s) => s.id)).toContain("cook-stew");
+  });
+
+  it("the Survivalist's Set Trap is pre-combat only", () => {
+    const u = jobUnit("survivalist");
+    expect(availableSkills(u, "pre-combat").map((s) => s.id)).toContain("set-trap");
+    expect(availableSkills(u, "combat").map((s) => s.id)).not.toContain("set-trap");
+  });
+
+  it("the Scout's Dash is dual-context — surfaced in BOTH pre-combat and combat (the F2 win)", () => {
+    const u = jobUnit("scout");
+    expect(availableSkills(u, "pre-combat").map((s) => s.id)).toContain("dash");
+    expect(availableSkills(u, "combat").map((s) => s.id)).toContain("dash");
   });
 });

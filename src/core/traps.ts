@@ -98,22 +98,6 @@ export function canDisarm(unit: Unit): boolean {
 
 // --- Player trap placement (the Survivalist's own Set Trap, Deployment) ------
 
-/**
- * The party's **Set Trap** placement spec (D11), if any member holds the
- * deployment skill: its `damage` and optional snare `status` (Immobilize). The
- * single source of the player trap's tuning — the BattleScene used to read the
- * skill effect inline and fall back to a hard-coded damage. Returns undefined when
- * no one can lay a trap (the deploy button is gated on it).
- */
-export function playerTrapSkill(party: readonly Unit[]): PlaceTrapEffect | undefined {
-  for (const u of party) {
-    for (const s of unitSkills(u, "deployment")) {
-      if (s.effect.kind === "placeTrap") return s.effect;
-    }
-  }
-  return undefined;
-}
-
 /** A player-placed (recoverable, non-concealed, player-owned) trap on `tile`, if any. */
 function playerTrapAt(entities: EntityRegistry, tile: GridCoord): RecoverableEntity | undefined {
   return entities

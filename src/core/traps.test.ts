@@ -6,6 +6,7 @@ import { recoverMaterials } from "./resolution";
 import { createInventory, countOf, addItem } from "./inventory";
 import { immobilized, isDebuffed } from "./status";
 import { Rng } from "./rng";
+import type { PlaceTrapEffect } from "./skills";
 import {
   spotChance,
   spotRadius,
@@ -13,7 +14,6 @@ import {
   hiddenTraps,
   canDisarm,
   disarmTrap,
-  playerTrapSkill,
   canPlacePlayerTrap,
   placePlayerTrap,
 } from "./traps";
@@ -149,14 +149,15 @@ describe("disarming — Survivalist-only, harvests the kit (the lever payoff)", 
 });
 
 describe("player trap placement — the pure Set Trap resolver (D11)", () => {
+  // The placement spec the deploy verb now sources from the acting unit's own Set Trap skill.
+  const trap: PlaceTrapEffect = { kind: "placeTrap", damage: 3 };
+
   it("a trapper places a trap: kit spent, entity registered on the field, XP gained", () => {
     const r = reg();
     const inv = createInventory(8, { "trap-kit": 2 });
     const actor = unit("trapper", "player", { jobId: "scout" });
-    const effect = playerTrapSkill([actor]);
-    expect(effect).toBeTruthy();
     const xpBefore = actor.xp;
-    const res = placePlayerTrap(inv, r, actor, { col: 2, row: 2 }, effect!, "pt-0");
+    const res = placePlayerTrap(inv, r, actor, { col: 2, row: 2 }, trap, "pt-0");
     expect(res.ok).toBe(true);
     expect(countOf(inv, "trap-kit")).toBe(1); // one kit consumed
     expect(r.all().some((e) => e.id === "pt-0")).toBe(true); // live on the field
@@ -167,13 +168,12 @@ describe("player trap placement — the pure Set Trap resolver (D11)", () => {
     const r = reg();
     const inv = createInventory(8); // no kits
     const actor = unit("trapper2", "player", { jobId: "scout" });
-    const effect = playerTrapSkill([actor])!;
     expect(canPlacePlayerTrap(inv, r, { col: 1, row: 1 }).ok).toBe(false);
-    expect(placePlayerTrap(inv, r, actor, { col: 1, row: 1 }, effect, "a").ok).toBe(false);
+    expect(placePlayerTrap(inv, r, actor, { col: 1, row: 1 }, trap, "a").ok).toBe(false);
 
     addItem(inv, "trap-kit", 2);
-    expect(placePlayerTrap(inv, r, actor, { col: 1, row: 1 }, effect, "b").ok).toBe(true);
-    const dup = placePlayerTrap(inv, r, actor, { col: 1, row: 1 }, effect, "c");
+    expect(placePlayerTrap(inv, r, actor, { col: 1, row: 1 }, trap, "b").ok).toBe(true);
+    const dup = placePlayerTrap(inv, r, actor, { col: 1, row: 1 }, trap, "c");
     expect(dup.ok).toBe(false);
     expect(dup.reason).toMatch(/already a trap/i);
     expect(countOf(inv, "trap-kit")).toBe(1); // only the one successful place spent a kit
@@ -184,8 +184,7 @@ describe("player trap placement — the pure Set Trap resolver (D11)", () => {
     const r = new EntityRegistry(bus);
     const inv = createInventory(8, { "trap-kit": 1 });
     const actor = unit("trapper3", "player", { jobId: "scout" });
-    const effect = playerTrapSkill([actor])!;
-    placePlayerTrap(inv, r, actor, { col: 4, row: 4 }, effect, "pt");
+    placePlayerTrap(inv, r, actor, { col: 4, row: 4 }, trap, "pt");
     let sprungId = "";
     bus.on("trapSprung", ({ id }) => { sprungId = id; });
     const foe = unit("foe", "enemy", { pos: { col: 4, row: 3 } });

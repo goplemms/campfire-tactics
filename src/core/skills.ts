@@ -23,6 +23,14 @@ import { assertNever } from "./num";
 export type Phase = "meta" | "deployment" | "battle" | "resolution";
 
 /**
+ * The game-wide surfaces where a skill can be **used/surfaced** (D67) — a finer axis than
+ * {@link Phase} (the pipeline tier `meta` splits into `overworld` + `guild`). Declared as
+ * data on a skill; defaults from the skill's *shape* via {@link skillContexts}, so authors
+ * rarely write it. Combat is the substrate; deployment is `pre-combat`.
+ */
+export type UsableContext = "overworld" | "guild" | "pre-combat" | "combat";
+
+/**
  * Who a skill is aimed at. `self`/`enemy`/`ally` are battle targets (a unit);
  * `camp` (economy/morale) and `party` (a whole-party buff) are non-combat
  * targets resolved by the meta/deployment phases, not against a single unit.
@@ -187,6 +195,12 @@ export interface SkillDef {
   description: string;
   /** Which phase of the pipeline this skill acts in (D3). */
   phase: Phase;
+  /**
+   * Optional override of where this skill may be surfaced/used (D67). When omitted,
+   * {@link skillContexts} derives it from the skill's shape (effect kind + target + spend).
+   * Set it only when the default is wrong (e.g. {@link "./jobs".DIG_IN} is pre-combat-only).
+   */
+  usableContext?: UsableContext[];
   /** Who it can be aimed at. */
   target: SkillTarget;
   /** Range in tiles (Manhattan). `self` skills use 0. */
@@ -214,6 +228,49 @@ export interface SkillDef {
    */
   usesPerNode?: number;
   effect: SkillEffect;
+}
+
+/**
+ * Where a skill may be surfaced/used (D67), defaulting from its **shape** so availability is
+ * pure data, not a per-ability annotation. The rule, in one place:
+ *
+ * - a **movement** ability (spends the *move* budget to self-buff — the Dash/Reposition
+ *   shape) ⇒ both board contexts (`pre-combat` + `combat`);
+ * - **engagement** (offensive / aimed at a foe: damage/cleave/forced-move/channel, or a
+ *   status *on an enemy*) ⇒ `combat` only — it would raise the alarm pre-combat;
+ * - **support** (heals/cleanse/guard-allies) and **self/ally buffs** ⇒ both board contexts;
+ * - a **trap** ⇒ `pre-combat`; **camp/morale** ⇒ `overworld`.
+ *
+ * An explicit {@link SkillDef.usableContext} overrides the default. The switch is exhaustive
+ * over the effect union (a new kind forces a decision here at compile time).
+ */
+export function skillContexts(skill: SkillDef): UsableContext[] {
+  if (skill.usableContext) return skill.usableContext;
+  // A movement ability — spends the move budget to self-buff: shared by nature.
+  if (skill.spend === "move" && skill.target === "self") return ["pre-combat", "combat"];
+  const e = skill.effect;
+  switch (e.kind) {
+    case "placeTrap":
+      return ["pre-combat"];
+    case "morale":
+      return ["overworld"];
+    case "damage":
+    case "cleave":
+    case "forced-move":
+    case "channel":
+      return ["combat"];
+    case "status":
+      // Friend/foe split: an enemy debuff is engagement; a self/ally buff is shareable.
+      return skill.target === "enemy" ? ["combat"] : ["pre-combat", "combat"];
+    case "heal":
+    case "med-heal":
+    case "triage-heal":
+    case "cleanse":
+    case "guard-allies":
+      return ["pre-combat", "combat"];
+    default:
+      return assertNever(e);
+  }
 }
 
 /** What a resolved skill did, for the caller / render layer to report. */

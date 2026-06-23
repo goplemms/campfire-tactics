@@ -8,7 +8,7 @@ import {
   findPath,
   occupiedGrid,
   reachableTiles,
-  effectiveMove,
+  moveBudget,
   isImmobilized,
   inAttackRange,
   refreshAuras,
@@ -812,7 +812,7 @@ export class BattleScene extends Phaser.Scene {
     // Clamp to the move budget, then back off any trailing tile a friendly body
     // sits on — you can cross an ally but not stop on one (D55).
     const occupied = new Set(this.battle.units.filter((u) => u.alive && u !== actor).map((u) => `${u.pos.col},${u.pos.row}`));
-    let steps = path.slice(1).slice(0, actor.moveRange);
+    let steps = path.slice(1).slice(0, moveBudget(actor));
     while (steps.length > 0 && occupied.has(`${steps[steps.length - 1].col},${steps[steps.length - 1].row}`)) steps = steps.slice(0, -1);
     if (steps.length === 0) {
       this.setHint("Can't stop there — an ally holds the only tile in reach.");
@@ -976,7 +976,7 @@ export class BattleScene extends Phaser.Scene {
    */
   private beginPlayerTurn(actor: Unit): void {
     this.waitingFor = actor;
-    this.moveBudget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+    this.moveBudget = moveBudget(actor);
     this.acted = false;
     this.actCharged = false;
     this.movedThisTurn = false;
@@ -1690,7 +1690,7 @@ export class BattleScene extends Phaser.Scene {
     this.bribeArmed = false;
     this.battle.undoAll(); // core: positions, HP, statuses, clock/charges, RNG cursor, log
     // Render flags back to the turn's start.
-    this.moveBudget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+    this.moveBudget = moveBudget(actor);
     this.acted = false;
     this.actCharged = false;
     this.movedThisTurn = false;
@@ -2095,7 +2095,7 @@ export class BattleScene extends Phaser.Scene {
         // Hot decision: forecast each choice's capture risk (D48 route-forecast ethos),
         // so the card answers "what should this unit do *now*", not just "how bad is it".
         // Repositioning is only on the table before the unit has moved this turn.
-        const reach = this.deployMoved ? [] : reachableTiles(actor, this.battle.units, this.grid, actor.moveRange).map((r) => r.tile);
+        const reach = this.deployMoved ? [] : reachableTiles(actor, this.battle.units, this.grid, moveBudget(actor)).map((r) => r.tile);
         const fc = deployForecast(actor, this.front, reach, { dugIn: dug });
         const pct = (n: number) => `${Math.round(n * 100)}%`;
         rows.push({ label: "Hold", value: pct(fc.hold), color: INK.danger, emphasize: true });

@@ -199,9 +199,9 @@ is the lone playmaker; the Soldier is the **anchor of the group**.
 
 - **Brother-in-arms** *(passive)* — **+1 attack damage per adjacent ally, max 3**. Formation
   *offense*. A new passive read in `resolveAttack`, mirroring the Hunter's Deadeye.
-- **Turtle Formation** *(Act)* — adjacent allies gain **Guarded** (≈+2 def) **until your next
-  turn**: "AoE Defend for the line." Formation *defense*. A **one-turn aura** (below); the cost
-  is implicit — turtling is not attacking.
+- **Turtle Formation** *(Act)* — every **adjacent ally** gains **Guarded** (≈+2 def) **until its
+  next turn**: an "AoE Defend for the line." Formation *defense*. A **one-turn aura** (below);
+  the cost is implicit — turtling is not attacking.
 - **Debilitating Strike** *(Act)* — **+3 damage** and applies **Exposed** (clears on the
   target's next turn). Formation *target-priority*: crack the guard so the clustered line grinds
   them down. **Reuses the Scout's Exposed** as intentional shared synergy (the Soldier is the
@@ -213,10 +213,11 @@ the Soldier **lean on the squad** for sustain — on theme.
 **The channeled-aura model.** Turtle introduced a reusable mechanic: auras maintained on a
 **commitment ladder** of *what you give up to project them*.
 
-- **One-turn aura** (Turtle): cast → live **until your next turn** → the value lands **outside**
-  your turn (foes act in the CT gap before you come up again). Re-cast to maintain; the cost is
-  the Act — **brace the line *or* strike, each turn**. Reuses **Guarded** + the tarpit's
-  recompute-on-movement (`refreshAuras`).
+- **One-turn aura** (Turtle): cast → each **adjacent ally** gains **Guarded** until its next
+  turn (an "AoE Defend") → the value lands **outside** your turn (foes act in the CT gap before
+  you come up again). Re-cast to maintain; the cost is the Act — **brace the line *or* strike,
+  each turn**. Built as a per-ally Guarded at cast (the proven Defend mechanic, spread to the
+  line); the aura-that-follows-the-formation is reserved with the persistent stance.
 - **Persistent stance** (reserved for prestige): cast-once, **hold-until-broken**, at a cost —
   **free** (= Mark Prey) / **rooted** (no move) / **locked** (no other action). The dial scales
   cost to strength; **displacement breaks it** (the Heavy Knight's Shove is the counter). The

@@ -45,6 +45,9 @@ export function inAttackRange(attacker: Unit, target: Unit): boolean {
 /** Flanking tuning (D36) — one tunable number. */
 export const FLANK = { bonus: 4 } as const;
 
+/** Brother-in-arms tuning (D66) — the Soldier's formation-damage ally cap. */
+export const BROTHER = { maxAllies: 3 } as const;
+
 /**
  * Passive-parameter keys (D40) a job stamps onto a unit and combat reads. Kept
  * here so combat stays self-contained (no jobs import — that would cycle).
@@ -60,6 +63,8 @@ export const PASSIVE = {
   triage: "triage",
   /** Heavy Knight Hold-the-Line: emits the speed-1 tarpit to adjacent foes. */
   tarpit: "tarpit",
+  /** Soldier Brother-in-arms (D66): bonus attack damage per adjacent ally. */
+  brotherInArms: "brotherInArms",
 } as const;
 
 /**
@@ -89,6 +94,10 @@ export const PASSIVE_INFO: Record<string, { label: string; description: string }
   [PASSIVE.tarpit]: {
     label: "Hold the Line",
     description: "Foes Slow to a crawl while they stand next to you — you tax the ground around you.",
+  },
+  [PASSIVE.brotherInArms]: {
+    label: "Brother-in-arms",
+    description: "Hits harder for each ally standing beside you — strongest in a tight formation.",
   },
 };
 
@@ -198,6 +207,10 @@ export function computeDamage(
   power += markBonus(attacker, defender.id);
   const deadeye = attacker.passives[PASSIVE.deadeye] ?? 0;
   if (deadeye && isDebuffed(defender)) power += deadeye;
+  // Brother-in-arms (D66): the Soldier hits harder the more allies stand beside it
+  // (capped). Needs the roster, so it joins flanking in the `units`-gated reads.
+  const brother = attacker.passives[PASSIVE.brotherInArms] ?? 0;
+  if (brother && units) power += brother * Math.min(BROTHER.maxAllies, adjacentBodies(attacker, units, attacker.side));
 
   let dmg = power - defender.defense + statusAmount(defender, EXPOSED);
   if (hasStatus(defender, GUARDED)) dmg -= statusAmount(defender, GUARDED);

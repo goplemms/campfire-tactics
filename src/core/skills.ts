@@ -69,6 +69,19 @@ export interface CleaveEffect {
 export interface MedHealEffect {
   kind: "med-heal";
 }
+/**
+ * The Soldier's **Turtle Formation** (D66): a self-cast that braces the line —
+ * apply Guarded to every ally adjacent to the caster (an "AoE Defend"). Needs the
+ * roster, so it's resolved by {@link "./turn".Battle.resolveGuardAllies}, not the
+ * unit-pair {@link resolveSkill}.
+ */
+export interface GuardAlliesEffect {
+  kind: "guard-allies";
+  /** Damage-reduction granted to each adjacent ally (the Guarded amount). */
+  amount: number;
+  /** Turns the Guard lasts (default 1 — until the ally's next turn, like Defend). */
+  duration?: number;
+}
 /** Restore HP to the target (capped at maxHp). */
 export interface HealEffect {
   kind: "heal";
@@ -137,7 +150,7 @@ export type BattleEffect =
  * cleave) or the **shared stash** (med-heal). Resolved by dedicated {@link
  * "./turn".Battle} methods (`resolveShove`/`cleave`/`useHeal`), never by `resolveSkill`.
  */
-export type FieldEffect = ForcedMoveEffect | CleaveEffect | MedHealEffect;
+export type FieldEffect = ForcedMoveEffect | CleaveEffect | MedHealEffect | GuardAlliesEffect;
 /** **Meta/camp** effects resolved by {@link "./camp".applyCampSkill}. */
 export type CampEffect = MoraleEffect;
 /** **Deployment** effects realized when the field is built (the trap layer). */

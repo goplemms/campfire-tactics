@@ -174,9 +174,10 @@ export function abilityFootprint(
     case "channel":
     case "triage-heal":
     case "cleanse":
-    case "med-heal": {
-      // A self-targeted battle/field skill (Reposition/Dash/Defend) anchors on the
-      // caster; everything else is the single aimed tile.
+    case "med-heal":
+    case "guard-allies": {
+      // A self-targeted battle/field skill (Reposition/Dash/Defend/Turtle) anchors on
+      // the caster; everything else is the single aimed tile.
       if (skill.target === "self") return { kind: "self", tile: caster.pos };
       const onTile = units.filter((u) => u.alive && u.pos.col === aim.col && u.pos.row === aim.row);
       return { kind: "single", tile: aim, units: onTile };
@@ -400,6 +401,10 @@ const FORECAST_HANDLERS: {
     });
     return { kind: "branching", label: "Heal", rows };
   },
+  "guard-allies": (effect) =>
+    // The Soldier's Turtle Formation (D66): an "AoE Defend" — each adjacent ally
+    // gains Guard (−amount damage) until its next turn. A flat, immediate buff.
+    ({ kind: "immediate", label: "Guard allies", value: effect.amount }),
 
   // --- Camp partition ------------------------------------------------------
   morale: (effect, { morale }) => {

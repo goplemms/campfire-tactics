@@ -59,6 +59,8 @@ export type CombatAction =
   // --- Deployment-phase verbs (D63 unification) -----------------------------
   /** Reposition during Deployment (walks the path like `move`, and breaks dig-in). */
   | { kind: "deployMove"; unit: UnitId; path: GridCoord[] }
+  /** Cast a dual-context ability during Deployment — resolves like `skill`, no CT commit (D67). */
+  | { kind: "deploySkill"; unit: UnitId; skill: SkillDef; target: UnitId }
   /** Hunker for a reduced capture chance when the net's turn comes (D63). */
   | { kind: "digIn"; unit: UnitId }
   /** Lay a player trap on `pos`, consuming one kit from the shared stash (D11/D63). */
@@ -72,6 +74,7 @@ export type CombatActionKind = CombatAction["kind"];
 /** The deployment-phase discriminants — drained ahead of the combat loop by replay. */
 const DEPLOY_KINDS: ReadonlySet<CombatActionKind> = new Set<CombatActionKind>([
   "deployMove",
+  "deploySkill",
   "digIn",
   "placeTrap",
   "capture",

@@ -8,7 +8,7 @@ import {
   findPath,
   occupiedGrid,
   reachableTiles,
-  effectiveMove,
+  moveBudget,
   isImmobilized,
   inAttackRange,
   refreshAuras,
@@ -16,8 +16,8 @@ import {
   TileGrid,
   TILE_HEIGHT,
   Battle,
-  unitSkills,
   unlockedSkills,
+  availableSkills,
   getJob,
   primaryJobOf,
   onSkillCooldown,
@@ -44,7 +44,6 @@ import {
   // tested), so the scene renders the choices instead of making them.
   frontTurnStage,
   deployActions,
-  type DeployActionId,
   advanceOutcome,
   noActionsAvailable as scanNoActions,
   adjacentRevealedTrap as findAdjacentRevealedTrap,
@@ -72,7 +71,6 @@ import {
   revealTrapsNear,
   disarmTrap,
   canDisarm,
-  playerTrapSkill,
   type ConcealedTrap,
   type PlaceTrapEffect,
   bribeEnemy,
@@ -238,7 +236,6 @@ export class BattleScene extends Phaser.Scene {
   private deployMoved = false;
   private deployActed = false;
   /** The party's Set Trap spec (damage + snare status), resolved at deploy; undefined = no trapper. */
-  private trapEffect?: PlaceTrapEffect;
   /** Board markers for the player's own placed traps, keyed by the registered entity id. */
   private playerTrapMarkers = new Map<string, Phaser.GameObjects.Text>();
   private trapSeq = 0;
@@ -431,8 +428,6 @@ export class BattleScene extends Phaser.Scene {
     this.trapMarkers.clear();
     this.playerTrapMarkers.clear();
     this.trapSeq = 0;
-    // The party's Set Trap spec (damage + snare status) — resolved once in core (D11).
-    this.trapEffect = playerTrapSkill(this.run.party);
     // Deploy verbs flow through the one interpreter now (D63): wire the run stash so
     // Battle's placeTrap action can spend kits, undoably, on the shared log.
     this.battle.setStash(this.run.inventory);
@@ -625,40 +620,64 @@ export class BattleScene extends Phaser.Scene {
 
   private refreshDeployButtons(): void {
     const actor = this.deployActor;
-    // The *decision* of which verbs to surface is pure (deployActions, D63 Phase B);
-    // the scene only maps each id to its label + handler (movement is a separate,
-    // click-to-move budget, not a button).
-    const canTrap = !!actor && unitSkills(actor, "deployment").some((s) => s.effect.kind === "placeTrap");
-    const ids = deployActions({
-      hasActor: !!actor,
-      captured: !!actor?.captured,
-      acted: this.deployActed,
-      canUndo: this.battle.canUndo(),
-      canTrap,
-    });
-    const make: Record<DeployActionId, { text: string; description?: string; onClick: () => void }> = {
-      undo: {
+    const specs: { text: string; description?: string; onClick: () => void }[] = [];
+    // Meta-controls (pure decision, D63/D67): Undo leads when there's something to take back.
+    const ids = deployActions({ hasActor: !!actor, captured: !!actor?.captured, canUndo: this.battle.canUndo() });
+    if (ids.includes("undo") && actor) {
+      specs.push({
         text: "Undo",
         description: "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc).",
-        onClick: () => { if (actor) this.undoDeployTurn(actor); },
-      },
-      digIn: {
-        text: "Dig In",
-        description: "Hunker on this tile — far lower capture chance when the net closes, at the cost of this turn.",
-        onClick: () => this.digIn(),
-      },
-      placeTrap: {
-        text: "Place Trap Here",
-        description: "Drop a trap on this tile (1 kit). Deeper tiles raise capture risk.",
-        onClick: () => this.placeTrap(),
-      },
-      startBattle: {
-        text: "Start Battle",
-        description: "Commit now — begin the fight with the party where it stands.",
-        onClick: () => { if (!this.busy) this.startBattle(); },
-      },
-    };
-    this.layoutActionMenu(ids.map((id) => make[id]));
+        onClick: () => this.undoDeployTurn(actor),
+      });
+    }
+    // The ability buttons are the **same data-driven projection as combat** (D67): the unit's
+    // pre-combat skills + the universal Dig In / Defend, from availableSkills — so a Set-Trap
+    // skill surfaces because it's pre-combat *data*, not via a hand-computed `canTrap`.
+    if (actor && !actor.captured && !this.deployActed) {
+      for (const skill of availableSkills(actor, "pre-combat")) {
+        const text = skill.effect.kind === "placeTrap" ? "Place Trap Here" : skill.name;
+        specs.push({ text, description: skill.description, onClick: () => this.onDeploySkillButton(actor, skill) });
+      }
+    }
+    // Start Battle always closes the row (commit early at any point).
+    specs.push({
+      text: "Start Battle",
+      description: "Commit now — begin the fight with the party where it stands.",
+      onClick: () => { if (!this.busy) this.startBattle(); },
+    });
+    this.layoutActionMenu(specs);
+  }
+
+  /**
+   * Route a surfaced deploy ability to its verb (D67): a trap keeps the place-trap flow,
+   * Dig In its hunker verb, a self-cast resolves immediately, and a targeted ability arms
+   * for a click — all the same `availableSkills` projection the buttons came from.
+   */
+  private onDeploySkillButton(actor: Unit, skill: SkillDef): void {
+    if (this.busy || this.deployActor !== actor || actor.captured || this.deployActed) return;
+    if (skill.effect.kind === "placeTrap") return this.placeTrap(skill.effect);
+    if (skill.id === "dig-in") return this.digIn();
+    if (skill.target === "self") return this.castDeploySkill(actor, skill, actor);
+    this.armedSkill = skill;
+    this.setHint(`${skill.name}: click a valid target (or click ${actor.name} to cancel).`);
+  }
+
+  /**
+   * Cast a dual-context ability during Deployment through the drained `deploySkill` verb
+   * (D67) — logged + undoable, with no CT commit. It spends the unit's **act**, leaving its
+   * **move** free, so a Dash → reposition combo works pre-combat just like in battle.
+   */
+  private castDeploySkill(actor: Unit, skill: SkillDef, target: Unit): void {
+    if (this.busy || actor.captured || this.deployActed) return;
+    this.armedSkill = null;
+    this.battle.deploySkill(actor, skill, target);
+    this.deployActed = true;
+    this.refreshAuras();
+    for (const u of this.battle.units) this.placeView(u);
+    this.highlightTile(actor.pos);
+    this.refreshDeployButtons();
+    this.refreshDeployStatus();
+    this.setHint(`${actor.name} used ${skill.name}. Reposition or End Turn (Space) to advance the net.`);
   }
 
   private refreshDeployStatus(): void {
@@ -812,7 +831,7 @@ export class BattleScene extends Phaser.Scene {
     // Clamp to the move budget, then back off any trailing tile a friendly body
     // sits on — you can cross an ally but not stop on one (D55).
     const occupied = new Set(this.battle.units.filter((u) => u.alive && u !== actor).map((u) => `${u.pos.col},${u.pos.row}`));
-    let steps = path.slice(1).slice(0, actor.moveRange);
+    let steps = path.slice(1).slice(0, moveBudget(actor));
     while (steps.length > 0 && occupied.has(`${steps[steps.length - 1].col},${steps[steps.length - 1].row}`)) steps = steps.slice(0, -1);
     if (steps.length === 0) {
       this.setHint("Can't stop there — an ally holds the only tile in reach.");
@@ -839,14 +858,14 @@ export class BattleScene extends Phaser.Scene {
     this.boardObjects.push(dropNetCage(this, x, y - this.view.halfH()));
   }
 
-  private placeTrap(): void {
+  private placeTrap(effect: PlaceTrapEffect): void {
     const actor = this.deployActor;
-    if (!actor || actor.captured || this.busy || !this.trapEffect) return;
+    if (!actor || actor.captured || this.busy) return;
     // The rules (kit cost, tile clear, entity registration, use-XP) run through the
     // one interpreter now (D63: Battle.placeTrap → the logged, undoable placeTrap
     // action); the scene keeps only the board marker, keyed by entity id.
     const id = `ptrap-${this.trapSeq++}`;
-    const res = this.battle.placeTrap(actor, actor.pos, this.trapEffect, id);
+    const res = this.battle.placeTrap(actor, actor.pos, effect, id);
     if (!res.ok) {
       this.setHint(res.reason ?? "Can't place a trap here.");
       return;
@@ -976,7 +995,7 @@ export class BattleScene extends Phaser.Scene {
    */
   private beginPlayerTurn(actor: Unit): void {
     this.waitingFor = actor;
-    this.moveBudget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+    this.moveBudget = moveBudget(actor);
     this.acted = false;
     this.actCharged = false;
     this.movedThisTurn = false;
@@ -1107,7 +1126,7 @@ export class BattleScene extends Phaser.Scene {
     if (!this.acted) {
       // Level-gated actives (D39): a 2nd active unlocks as the job levels — so combat
       // growth shows up here, in every fight. Each is numbered for its 1–9 key (D55).
-      unlockedSkills(actor, "battle").forEach((skill, i) => {
+      availableSkills(actor, "combat").filter((s) => s.id !== DEFEND.id).forEach((skill, i) => {
         // Surface the per-skill cooldown (D37): an armed skill is *live* state that
         // was invisible — show it's cooling and steer the click to a hint rather than
         // letting a re-use slip through (the menu now enforces what the clock tracks).
@@ -1164,7 +1183,10 @@ export class BattleScene extends Phaser.Scene {
       }
       // The universal Defend (D41): every unit can brace until its next turn — the
       // always-available defensive verb, even for a unit with no job actives.
-      specs.push({ text: "Defend (D)", description: `${DEFEND.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, DEFEND) });
+      // The universal Defend (D41) keeps its dedicated "D" key, sourced from the same
+      // availableSkills projection (D67) — no separate hardcoded append.
+      const defend = availableSkills(actor, "combat").find((s) => s.id === DEFEND.id);
+      if (defend) specs.push({ text: "Defend (D)", description: `${defend.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, defend) });
     }
     // The turn's explicit close is the prominent green primary button (plus Space and
     // W) — so the action row carries only the unit's *verbs*, not a second End Turn.
@@ -1436,7 +1458,7 @@ export class BattleScene extends Phaser.Scene {
     if (k === "w" || k === "W") return this.endPlayerTurn(actor);
     if (k === "d" || k === "D") return this.onSkillButton(actor, DEFEND);
     if (k >= "1" && k <= "9") {
-      const skills = unlockedSkills(actor, "battle");
+      const skills = availableSkills(actor, "combat").filter((s) => s.id !== DEFEND.id);
       const idx = Number(k) - 1;
       if (idx < skills.length) this.onSkillButton(actor, skills[idx]);
     }
@@ -1515,10 +1537,23 @@ export class BattleScene extends Phaser.Scene {
     if (!this.grid || !this.grid.inBounds(tile)) return;
 
     if (this.phase === "deployment") {
-      // Turn-based deployment (D63): only the unit whose turn it is may act, and
-      // clicking an empty tile repositions it (the clock dictates the order).
+      // Turn-based deployment (D63): only the unit whose turn it is may act. An armed deploy
+      // ability commits on a valid target — the same arm→click flow as combat, through the
+      // drained deploySkill verb (D67); otherwise clicking an empty tile repositions it.
       if (this.busy || !this.deployActor) return;
+      const actor = this.deployActor;
       const clicked = this.battle.units.find((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row);
+      if (this.armedSkill) {
+        if (clicked === actor) {
+          this.armedSkill = null;
+          this.refreshDeployButtons();
+          this.setHint(`${actor.name}'s turn — reposition, use an ability, or End Turn (Space).`);
+          return;
+        }
+        if (clicked && isValidSkillTarget(this.armedSkill, actor, clicked)) this.castDeploySkill(actor, this.armedSkill, clicked);
+        else this.setHint("Not a valid target for that skill.");
+        return;
+      }
       if (!clicked) this.deployMove(tile);
       return;
     }
@@ -1690,7 +1725,7 @@ export class BattleScene extends Phaser.Scene {
     this.bribeArmed = false;
     this.battle.undoAll(); // core: positions, HP, statuses, clock/charges, RNG cursor, log
     // Render flags back to the turn's start.
-    this.moveBudget = isImmobilized(actor) ? 0 : effectiveMove(actor);
+    this.moveBudget = moveBudget(actor);
     this.acted = false;
     this.actCharged = false;
     this.movedThisTurn = false;
@@ -2095,7 +2130,7 @@ export class BattleScene extends Phaser.Scene {
         // Hot decision: forecast each choice's capture risk (D48 route-forecast ethos),
         // so the card answers "what should this unit do *now*", not just "how bad is it".
         // Repositioning is only on the table before the unit has moved this turn.
-        const reach = this.deployMoved ? [] : reachableTiles(actor, this.battle.units, this.grid, actor.moveRange).map((r) => r.tile);
+        const reach = this.deployMoved ? [] : reachableTiles(actor, this.battle.units, this.grid, moveBudget(actor)).map((r) => r.tile);
         const fc = deployForecast(actor, this.front, reach, { dugIn: dug });
         const pct = (n: number) => `${Math.round(n * 100)}%`;
         rows.push({ label: "Hold", value: pct(fc.hold), color: INK.danger, emphasize: true });

@@ -16,8 +16,9 @@
  */
 
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
-import { getJob, unitSkills } from "./jobs";
+import { getJob, unitSkills, UNIVERSAL_SKILLS } from "./jobs";
 import type { SkillDef, Phase } from "./skills";
+import { skillContexts, type UsableContext } from "./skills";
 import type { EventBus } from "./events";
 
 /** Leveling tuning — all data, a numbers pass later (D32/D39). */
@@ -220,6 +221,20 @@ export function abilityScaleBonus(unit: Unit): number {
 export function unlockedSkills(unit: Unit, phase?: Phase): SkillDef[] {
   const lvl = jobLevelOf(unit, primaryJobOf(unit));
   return unitSkills(unit, phase).filter((s) => (s.unlockLevel ?? 1) <= lvl);
+}
+
+/**
+ * The skills a unit can surface/use in a given **context** (D67) — the level-gated job
+ * skills (like {@link unlockedSkills}) **plus the universal capabilities** ({@link
+ * "./jobs".DEFEND} / {@link "./jobs".DIG_IN}), all filtered to those whose {@link
+ * skillContexts} includes `context`. One projection for every surface: combat calls
+ * `availableSkills(u, "combat")`; deployment `"pre-combat"`; the overworld `"overworld"`.
+ */
+export function availableSkills(unit: Unit, context: UsableContext): SkillDef[] {
+  const lvl = jobLevelOf(unit, primaryJobOf(unit));
+  const jobSkills = unitSkills(unit).filter((s) => (s.unlockLevel ?? 1) <= lvl && skillContexts(s).includes(context));
+  const universals = UNIVERSAL_SKILLS.filter((s) => skillContexts(s).includes(context));
+  return [...jobSkills, ...universals];
 }
 
 /**

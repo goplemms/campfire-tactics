@@ -1,6 +1,13 @@
 # Deployment ↔ Combat unification — phased plan
 
-> Status: **in progress** · branch `claude/combat-predeployment-refactor-h3v2cf`
+> **HISTORICAL — phases 1–3 COMPLETE.** All three phases shipped and merged to `main`
+> (the branch below is gone). The work is **continued by D67** — see
+> [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md), which finishes
+> the deferred clock fold, widens skill-surfacing to a game-wide `usableContext` axis, and
+> consolidates *both* deploy RNG streams (this plan's RNG note below only accounted for one,
+> `deployRng`; there is also `spotRng`). Read the rest of this file as a record, not a to-do.
+>
+> Status (historical): phases 1–3 done · former branch `claude/combat-predeployment-refactor-h3v2cf`
 > Goal: make the on-map **Deployment** phase a true *phase of* `Battle`, not a
 > parallel system beside it — incrementally, suite-green at every gate.
 
@@ -53,8 +60,9 @@ substrate, implemented twice.
 
 - `02-deployment.md` + decision **D11** still describe the *superseded* "safe
   period → auto-retreat → per-step capture" model; the code runs **D63**.
-- **D63 has no decision record** — code/tests/comments cite it; `decisions.md`
-  stops at D62.
+- ~~**D63 has no decision record**~~ — *resolved:* D63 is now authored in `decisions.md`
+  (line ~1820), `02-deployment.md` was rewritten to the D63 model, and D11 is marked
+  `Superseded by: D63`.
 
 ## The phases
 

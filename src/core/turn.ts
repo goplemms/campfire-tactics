@@ -410,6 +410,26 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "deploySkill": {
+        // A dual-context ability cast during Deployment (e.g. Dash → Swift): resolve the
+        // effect like the combat `skill` verb but WITHOUT the CT-clock turn-commit (the deploy
+        // clock owns the turn). A distinct, drained verb so replay reconstructs it as part of
+        // the deploy prelude — not a post-seed combat action.
+        const caster = this.unit(action.unit);
+        const target = this.unit(action.target);
+        const skill = action.skill;
+        if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
+        let outcome: SkillOutcome;
+        if (skill.effect.kind === "forced-move") {
+          outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);
+        } else if (skill.effect.kind === "guard-allies") {
+          outcome = this.resolveGuardAllies(caster, skill.effect.amount, skill.effect.duration ?? 1);
+        } else {
+          outcome = resolveSkill(skill, caster, target, this.bus, this.units);
+        }
+        this._log.push(action);
+        return { ok: true, outcome };
+      }
       case "digIn": {
         this.unit(action.unit).dugIn = true;
         this._log.push(action);
@@ -623,6 +643,15 @@ export class Battle {
    */
   deployMove(unit: Unit, path: readonly GridCoord[]): void {
     this.apply({ kind: "deployMove", unit: unit.id, path: [...path] });
+  }
+
+  /**
+   * Cast a dual-context ability during Deployment (D67) — resolves the effect with no CT
+   * commit (the deploy clock owns the turn); a distinct **drained** verb so {@link replay}
+   * keeps it in the deploy prelude rather than re-applying it as a post-seed combat action.
+   */
+  deploySkill(unit: Unit, skill: SkillDef, target: Unit): void {
+    this.apply({ kind: "deploySkill", unit: unit.id, skill, target: target.id });
   }
 
   /** Hunker for a reduced capture chance when the net's turn comes (D63). */

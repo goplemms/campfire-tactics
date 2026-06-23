@@ -1603,10 +1603,10 @@ trail of reasoning stays intact.
 
 ## D61 — The overworld action-economy limiter model + the market-access axis (Merchant rework)
 
-- **Status:** Decided (2026-06-19) · design pass, **not yet built** beyond the interim
-  stopgap below; reworks parts of **D30** (the gold economy / Merchant role) and **D35**
-  (the overworld action-economy spine), and opens a new **map axis** on **D22**'s `MapNode`.
-  Sub-items flagged **Open**/**Deferred** inline.
+- **Status:** **Decided + Built** (2026-06-19) · the limiter model + market-access axis shipped
+  (see the **build-progress** notes below); any remaining sub-items flagged **Open**/**Deferred**
+  inline. Reworks parts of **D30** (the gold economy / Merchant role) and **D35** (the overworld
+  action-economy spine), and opens a new **map axis** on **D22**'s `MapNode`.
 - **Context:** Playtesting flagged that **camp actions could be used an unlimited number of
   times**. The investigation found this was not one rogue action but a **limiter patchwork**:
   the signature job meta-skills (Chef **Cook Stew**, Merchant **Trade**) flowed through
@@ -1819,12 +1819,16 @@ trail of reasoning stays intact.
 
 ## D63 — Deployment as the closing net (retires the retreat-gamble) + the combat convergence
 
-- **Status:** **Decided + Built** (deployment retro-documented; the
-  Deployment↔Combat unification is **in progress** on branch
-  `claude/combat-predeployment-refactor-h3v2cf`). Refines **D7/D11** (the deployment
-  gamble) and leans on **D5** (the CT clock). Spec:
-  [`docs/design/02-deployment.md`](../../docs/design/02-deployment.md); plan:
-  [`deployment-combat-unification-plan.md`](deployment-combat-unification-plan.md).
+- **Status:** **Decided + Built** (the closing-net deployment model shipped). The convergence
+  plan's **phase 1** (truth reconciliation) and **phase 3** (one action log — deploy verbs through
+  `Battle.apply`, with undo + replay) are complete and merged. **Phase 2 — the actual
+  `DeployClock`→`CTClock` fold — was *not* done:** the plan shipped a shared stepping engine
+  (`tickUntilReady` / `byReadiest`) but kept two clocks. The genuine fold (the front as a
+  strict-lead tempo source on the one clock), plus a game-wide skill `usableContext` axis, is
+  carried by **D67**. Refines **D7/D11** (the deployment gamble) and leans on **D5** (the CT
+  clock). Spec: [`docs/design/02-deployment.md`](../../docs/design/02-deployment.md); plan:
+  [`deployment-combat-unification-plan.md`](deployment-combat-unification-plan.md) (historical);
+  continuation: [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md).
 - **Context:** Two pressures converged. (1) The D11 *"safe period → auto-retreat at
   the buzzer → per-step capture roll"* model was specced but **never built**; when
   Deployment was actually implemented it became something cleaner and more legible.
@@ -1875,7 +1879,9 @@ trail of reasoning stays intact.
 
 ## D64 — Telegraph & action forecast (preview-before-commit)
 
-- **Status:** Decided
+- **Status:** **Decided · render layer built** (the forecast/telegraph render landed — see the
+  *Build (render layer landed)* note below; ~632 tests at the time. The pure-core forecast
+  extraction + HUD follow-ups remain.)
 - **Context:** A start-to-end "resource & action" audit of one job (the **Heavy
   Knight**, traced across every screen) surfaced a general gap, not a class-specific
   one: the game **resolves actions without showing the player what they will do
@@ -1919,7 +1925,9 @@ trail of reasoning stays intact.
     shown in-preview, read from the same gate the action uses.
   - **Non-goal sharpened:** *label* deferred/conditional outcomes; do **not** simulate
     them (no AI-path or downstream-morale projection).
-- **Build:** not yet started — design only (this record + the system doc, now hardened).
+- **Build:** core (pure forecast) not yet started; **the render layer has since landed** (see the
+  *Build (render layer landed)* note below). (Originally: design only — this record + the system
+  doc, now hardened.)
   Planned as three layers behind a user-testable gate: **core** (`abilityFootprint` +
   a `forecastSkill` registry over the full union, plus extracting pure predict-cores so
   forecast == resolver math; vitest coverage, no Phaser), **render** (extend
@@ -2111,3 +2119,98 @@ trail of reasoning stays intact.
   (channel / Mark Prey), D5 (CT action economy).
 - **Build:** not yet started — **design only**.
 - **Superseded by:** —
+
+---
+
+## D67 — Deployment as combat-substrate + capture-wave layer + a game-wide skill `usableContext` axis (finishes D63)
+
+- **Status:** Decided + **substantially built** (2026-06-23). The skill-surfacing
+  unification (sub-decisions A–C and E's *cast path*) shipped across increments 0–8 + 6c; the
+  clock/RNG/controller fold (sub-decision D and E's *RNG/controller*) was **investigated and
+  deliberately not pursued** — see *Build outcome* below. Full build brief (the 0–12 plan, the
+  audit, the completeness checklist):
+  [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md).
+- **Context:** D63 made on-map Deployment a CT-clock, move-and-act board phase — i.e. it
+  already *is* combat's substrate — but implemented twice. Phases 1 (truth reconciliation)
+  and 3 (one action log: deploy verbs through `Battle.apply`, with undo + replay) shipped;
+  **phase 2 (the actual `DeployClock`→`CTClock` fold) was deferred** — the plan shipped a
+  shared stepping engine (`tickUntilReady`/`byReadiest`) but kept two clocks. A 2026-06-23
+  code review confirmed the remaining forks: deployment reads raw `moveRange` (ignoring Swift)
+  while its clock already honors `effectiveSpeed`; skill availability is single-valued
+  (`SkillDef.phase`) with surfacing forked across overworld/deploy/combat (and combat's row
+  isn't even pure data — `DEFEND` is a hardcoded append); two scene-owned RNG streams
+  (`deployRng` + `spotRng`) draw outside `Battle.roll`; two scene turn-loop controllers; and
+  **no replay-safe deploy skill-cast verb** (a dual-context ability cast pre-combat via the
+  plain `skill` verb would corrupt replay's pre-seed drain).
+- **Decision (the scope rule):** Pre-combat and combat share **all** functionality minus
+  explicitly phase-specific layers; skills declare **where they can be used** as data; **one**
+  `availableSkills(unit, context)` projects every surface. Five sub-decisions:
+  - **A. `usableContext` axis.** `type UsableContext = "overworld" | "guild" | "pre-combat" |
+    "combat"` + an optional `usableContext?: UsableContext[]` on `SkillDef`, defaulted by a
+    pure `skillContexts(skill)` keyed on `effect.kind` + `target` + `spend`. A finer axis than
+    `phase` (`meta` splits into overworld + guild); `phase` stays the D3 pipeline/interpreter tier.
+  - **B. One move budget.** Deployment reads `effectiveMove` (Swift applies pre-combat too),
+    via a shared `moveBudget(u)` helper.
+  - **C. One surfacing projection.** Every context row = `availableSkills(unit, ctx)` + a thin
+    per-context non-skill extras set; the universals (`DEFEND`, a new `DIG_IN`) fold *into*
+    `availableSkills` (killing the hardcoded `DEFEND` append and the `canTrap` special case).
+  - **D. One clock.** Fold `DeployClock` into `CTClock` with the front as a registered
+    **strict-lead-tie tempo source** — preserving deployment's deliberate tie rule (players win
+    ties; the front acts only on a strict CT lead) as a clock-policy flag. The capture-wave
+    layer still owns *what* the front's turn does.
+  - **E. One cast path + RNG + controller.** A drained `deploySkill` verb (the twin of
+    `deployMove`, in `DEPLOY_KINDS`) makes a dual-context ability *castable* pre-combat without
+    breaking replay; **both** scene RNG streams route through `Battle.roll`; the deploy/combat
+    per-turn loops merge into one context-parameterized path.
+- **Sharing policy:** **permissive — "share all but engagement."** Movement, support
+  (heals/cleanse/guard-allies), and self/ally buffs are usable in **both** board contexts;
+  engagement (attacks / offensive status / foe-aimed) is **combat-only** (the stealth/alarm
+  invariant); traps are pre-combat; camp/morale is overworld. (Owner decision; the blast
+  radius — Hunter `reposition`, Scout `dash`, `DEFEND`, all heals — becomes pre-combat-usable
+  and is test-pinned.)
+- **Phase-specific layers (kept, not dissolved):** capture-wave (campfire safe-radius, the
+  danger-front + growth, the capture roll, Dig In, the deploy risk forecast, alarm→battle);
+  engagement; win/lose (`battleOutcome`); the AI (combat-only — the only deployment "AI" is the
+  front advancing). The guild context is wired as a forward-looking placeholder (it surfaces no
+  per-unit skills today).
+- **Build:** the 0–12 increment plan in the brief — golden-trace-gated, suite-green
+  (`test`/`build`/`test:e2e`/`sim`) at every increment.
+- **Build outcome (2026-06-23):** increments **0–8 + 6c shipped.** Skills declare context as
+  data (`usableContext` + the pure `skillContexts`); **one** `availableSkills(unit, ctx)`
+  projects the overworld / pre-combat / combat rows (the hardcoded `DEFEND` append *and* the
+  `canTrap` special-case are gone); deployment honors `effectiveMove` (Swift applies
+  pre-combat); and a **drained `deploySkill` verb** makes dual-context abilities castable
+  pre-combat without corrupting replay. Fix **6c** keeps the two **combat-bound** ability
+  families out of the pre-combat surface: **charged** skills (they resolve later on the CT
+  clock, which deployment lacks) and the **herb-stash `med-heal`** (its stash pick + inventory
+  spend have no drained deploy resolver — `resolveSkill` would throw). **Sub-decision D and
+  E's RNG/controller fold were NOT built**, on evidence gathered during the build: (1)
+  `CTClock` and `DeployClock` already share the entire stepping engine (`tickUntilReady` +
+  `byReadiest` + `effectiveSpeed`), so `DeployClock` is a ~60-line adapter whose only real
+  difference is the front (a non-unit, strict-lead tempo source) — folding it into `CTClock`
+  would *add* a front + unused charge machinery to the combat clock, net-negative; (2)
+  `deployRng`/`spotRng` are already deterministic (seeded via `streamFor`) and replay rebuilds
+  the front's effect from the logged `capture` outcome — routing them through `Battle.roll`'s
+  shared `drawCount` would actually *break* replay (the deploy draws aren't reproduced on
+  replay); (3) the deploy telegraph (increment 9) has no aimed pre-combat surface today
+  (self-casts / traps / Dig In don't hover-aim). The arm→click targeting substrate is wired
+  and ready for future plain ally-target pre-combat content. **D63's phase-2 clock fold thus
+  remains deferred — by evidence, not omission.**
+- **Reuses / consistent with:** **D63** (advances its convergence — the skill-surfacing half;
+  the phase-2 clock fold stays deferred by evidence, see *Build outcome*), **D3** (phase tier kept;
+  `usableContext` layers over it), **D5** (the one CT clock), **D2** (core/render), **D7/D11**
+  (the capture-wave layer), **D60** (the free-move budget deployment now matches), **D64**
+  (telegraph extended to pre-combat), **D35** (the overworld action economy whose
+  `usesPerNode`/cooldown gating the context filter preserves), **D41** (the universal Defend
+  that Dig In mirrors).
+- **Superseded by:** —
+
+---
+
+## Roadmap — queued (not yet authored decisions)
+
+> Forward pointer so a fresh session knows what comes next. These are **not** decided
+> records yet — each is authored as a full `## D##` entry when its build starts.
+
+- **D68 — Scout per-class pass** (passive "Quiet Footsteps", "Set Trap", a dual-context
+  "Dash"). Builds *on top of* D67's substrate; do not start before D67 lands.

@@ -71,6 +71,13 @@ planning workflow. The flow:
 
 ## Status
 
-Project **scaffolded**; no game code yet. Next milestone is **M1 — Walking
-skeleton** (Vite + Phaser + TypeScript with the core/render split). See
-[`plan.md`](scratchpad/foundations/plan.md).
+Well past scaffolding: a playable vertical slice — *The Hollow Mill* demo — runs end
+to end (deploy → battle → resolution). Live status and the next step live in the
+planning workspace, not here:
+
+- **Resume point:** [`scratchpad/foundations/PROGRESS.md`](scratchpad/foundations/PROGRESS.md)
+- **Decision log (source of truth):**
+  [`scratchpad/foundations/decisions.md`](scratchpad/foundations/decisions.md) — latest
+  **D66**; next queued **D67** (deployment↔combat substrate unification), brief at
+  [`scratchpad/foundations/d67-substrate-unification-build.md`](scratchpad/foundations/d67-substrate-unification-build.md).
+- **Verify locally:** `npm run test` · `npm run build` · `npm run test:e2e` · `npm run sim`.

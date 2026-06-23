@@ -40,30 +40,22 @@ describe("frontTurnStage — what the deploy phase does after the net's turn", (
   });
 });
 
-describe("deployActions — the action-row decision", () => {
-  const base: DeployActionContext = { hasActor: true, captured: false, acted: false, canUndo: false, canTrap: false };
+describe("deployActions — the meta-control decision (D67)", () => {
+  const base: DeployActionContext = { hasActor: true, captured: false, canUndo: false };
 
-  it("a fresh turn offers Dig In + Start Battle (no trapper, nothing to undo)", () => {
-    expect(deployActions(base)).toEqual(["digIn", "startBattle"]);
-  });
-
-  it("a trapper also gets Place Trap, in order after Dig In", () => {
-    expect(deployActions({ ...base, canTrap: true })).toEqual(["digIn", "placeTrap", "startBattle"]);
+  it("a fresh turn offers just Start Battle (nothing to undo)", () => {
+    expect(deployActions(base)).toEqual(["startBattle"]);
   });
 
   it("Undo leads once there's something to take back", () => {
-    expect(deployActions({ ...base, canUndo: true })).toEqual(["undo", "digIn", "startBattle"]);
-  });
-
-  it("a spent act drops the one-act verbs (Undo + Start Battle remain)", () => {
-    expect(deployActions({ ...base, acted: true, canUndo: true, canTrap: true })).toEqual(["undo", "startBattle"]);
+    expect(deployActions({ ...base, canUndo: true })).toEqual(["undo", "startBattle"]);
   });
 
   it("between turns (no actor) only Start Battle shows", () => {
-    expect(deployActions({ ...base, hasActor: false })).toEqual(["startBattle"]);
+    expect(deployActions({ ...base, hasActor: false, canUndo: true })).toEqual(["startBattle"]);
   });
 
   it("a captured active unit can only Start Battle", () => {
-    expect(deployActions({ ...base, captured: true, canTrap: true })).toEqual(["startBattle"]);
+    expect(deployActions({ ...base, captured: true, canUndo: true })).toEqual(["startBattle"]);
   });
 });

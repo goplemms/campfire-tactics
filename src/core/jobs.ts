@@ -420,6 +420,32 @@ export const DEFEND: SkillDef = {
 };
 
 /**
+ * The universal **Dig In** (D63/D67): a deployment-only brace — hunker for a far lower
+ * capture chance when the net closes, at the cost of the turn. Mirrors {@link DEFEND} as a
+ * universal capability surfaced for every unit (not on any job), but **pre-combat only**
+ * (`usableContext`). It *executes* via the `digIn` CombatAction verb (which sets
+ * `Unit.dugIn`); the status here is descriptive, for surfacing + forecast.
+ */
+export const DIG_IN: SkillDef = {
+  id: "dig-in",
+  name: "Dig In",
+  description: "Hunker on this tile — far lower capture chance when the net closes, at the cost of this turn.",
+  phase: "deployment",
+  target: "self",
+  range: 0,
+  spend: "act",
+  usableContext: ["pre-combat"],
+  effect: { kind: "status", status: { id: "dug-in", name: "Dug In", duration: 1, kind: "buff" } },
+};
+
+/**
+ * The universal capabilities surfaced for every unit (D67) — folded into {@link
+ * "./leveling".availableSkills} so the combat and pre-combat rows are one projection (no
+ * hardcoded Defend append, no `canTrap` special case).
+ */
+export const UNIVERSAL_SKILLS: readonly SkillDef[] = [DEFEND, DIG_IN];
+
+/**
  * The job registry — the single source jobs are loaded from. Written with literal
  * keys (not `[SOLDIER.id]`) so the keys survive into the type and {@link JobId} can
  * derive from them; `satisfies` still type-checks every value as a {@link JobDef}.

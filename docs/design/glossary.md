@@ -227,6 +227,7 @@ buttons are Layer 1.
 | **Camp alert** | The deployment exposure meter (0–100%). | "exposure"; "detection"; "heat" |
 | **Cover** | The zero-risk deploy region ("in cover" / "past safe"). | "safe zone" *and* "cover" both — pick **Cover** |
 | **Captured** | A unit netted past safe; bound in the enemy zone until rescued or the fight is won. | "netted" (as the status word — fine in the *event* prose); "bound" |
+| **Dig In** | A deployable unit's hunker stance — far lower **capture** chance when the net's turn comes, at the cost of its turn. | "Hunker"; "Brace" (that's **Defend**); "Entrench" |
 
 > **One small split to hold:** the **event prose** may say a unit was *spotted* /
 > *netted* / *bolting for cover* (Layer 2); the **status word** on the HUD is

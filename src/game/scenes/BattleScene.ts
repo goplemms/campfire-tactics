@@ -18,6 +18,7 @@ import {
   Battle,
   unitSkills,
   unlockedSkills,
+  availableSkills,
   getJob,
   primaryJobOf,
   onSkillCooldown,
@@ -1107,7 +1108,7 @@ export class BattleScene extends Phaser.Scene {
     if (!this.acted) {
       // Level-gated actives (D39): a 2nd active unlocks as the job levels — so combat
       // growth shows up here, in every fight. Each is numbered for its 1–9 key (D55).
-      unlockedSkills(actor, "battle").forEach((skill, i) => {
+      availableSkills(actor, "combat").filter((s) => s.id !== DEFEND.id).forEach((skill, i) => {
         // Surface the per-skill cooldown (D37): an armed skill is *live* state that
         // was invisible — show it's cooling and steer the click to a hint rather than
         // letting a re-use slip through (the menu now enforces what the clock tracks).
@@ -1164,7 +1165,10 @@ export class BattleScene extends Phaser.Scene {
       }
       // The universal Defend (D41): every unit can brace until its next turn — the
       // always-available defensive verb, even for a unit with no job actives.
-      specs.push({ text: "Defend (D)", description: `${DEFEND.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, DEFEND) });
+      // The universal Defend (D41) keeps its dedicated "D" key, sourced from the same
+      // availableSkills projection (D67) — no separate hardcoded append.
+      const defend = availableSkills(actor, "combat").find((s) => s.id === DEFEND.id);
+      if (defend) specs.push({ text: "Defend (D)", description: `${defend.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, defend) });
     }
     // The turn's explicit close is the prominent green primary button (plus Space and
     // W) — so the action row carries only the unit's *verbs*, not a second End Turn.
@@ -1436,7 +1440,7 @@ export class BattleScene extends Phaser.Scene {
     if (k === "w" || k === "W") return this.endPlayerTurn(actor);
     if (k === "d" || k === "D") return this.onSkillButton(actor, DEFEND);
     if (k >= "1" && k <= "9") {
-      const skills = unlockedSkills(actor, "battle");
+      const skills = availableSkills(actor, "combat").filter((s) => s.id !== DEFEND.id);
       const idx = Number(k) - 1;
       if (idx < skills.length) this.onSkillButton(actor, skills[idx]);
     }

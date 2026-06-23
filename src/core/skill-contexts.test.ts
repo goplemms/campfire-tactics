@@ -138,3 +138,14 @@ describe("availableSkills — universal capabilities fold in (D67 increment 4)",
     expect(availableSkills(u, "combat").map((s) => s.id)).not.toContain("dig-in");
   });
 });
+
+describe("availableSkills — the guild context is a wired placeholder (D67 increment 8)", () => {
+  it("is a live axis value that surfaces nothing today (no per-unit guild skills exist yet)", () => {
+    // The guild screen has no per-unit ability surface; this locks the placeholder so a
+    // future guild-context skill (which would make this non-empty) is a visible prompt to
+    // add the GuildScene surface — rather than silently going unsurfaced.
+    for (const jobId of Object.keys(JOBS) as JobId[]) {
+      expect(availableSkills(jobUnit(jobId), "guild")).toEqual([]);
+    }
+  });
+});

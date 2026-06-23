@@ -42,38 +42,30 @@ export function frontTurnStage(
   return { kind: "continue" };
 }
 
-/** The deploy action-row verbs (drive the buttons + the keyboard). */
-export type DeployActionId = "undo" | "digIn" | "placeTrap" | "startBattle";
+/** The deploy action-row **meta-controls** (D67) — the phase-commit + log controls; the
+ *  per-unit *abilities* (Dig In / Set Trap / dual-context skills) surface from
+ *  `availableSkills(unit, "pre-combat")`, the same projection as combat. */
+export type DeployActionId = "undo" | "startBattle";
 
-/** The state the deploy action row is decided from. */
+/** The state the deploy meta-controls are decided from. */
 export interface DeployActionContext {
   /** A unit currently has the turn (vs. resting between turns). */
   hasActor: boolean;
   /** The active unit is captured (a netted unit can do nothing). */
   captured: boolean;
-  /** The unit has spent its one act (dig-in / trap) this turn. */
-  acted: boolean;
   /** There is something on this turn's log to take back. */
   canUndo: boolean;
-  /** The active unit carries a Set-Trap deployment skill. */
-  canTrap: boolean;
 }
 
 /**
- * The ordered action ids the deploy row should surface — the pure decision behind
- * `BattleScene.refreshDeployButtons`. **Undo** leads when there's something to take
- * back; then the one-act verbs (**Dig In**, and **Place Trap** for a trapper) until
- * the act is spent; then **Start Battle** always (commit early at any point). The
- * scene maps each id to a button (label + handler) and a key.
+ * The ordered meta-control ids the deploy row should surface — the pure decision behind
+ * `BattleScene.refreshDeployButtons`. **Undo** leads when there's something to take back;
+ * **Start Battle** always closes (commit early at any point). The scene slots the ability
+ * buttons (from `availableSkills`) between them.
  */
 export function deployActions(ctx: DeployActionContext): DeployActionId[] {
   const ids: DeployActionId[] = [];
-  const active = ctx.hasActor && !ctx.captured;
-  if (active && ctx.canUndo) ids.push("undo");
-  if (active && !ctx.acted) {
-    ids.push("digIn");
-    if (ctx.canTrap) ids.push("placeTrap");
-  }
+  if (ctx.hasActor && !ctx.captured && ctx.canUndo) ids.push("undo");
   ids.push("startBattle");
   return ids;
 }

@@ -16,7 +16,6 @@ import {
   TileGrid,
   TILE_HEIGHT,
   Battle,
-  unitSkills,
   unlockedSkills,
   availableSkills,
   getJob,
@@ -45,7 +44,6 @@ import {
   // tested), so the scene renders the choices instead of making them.
   frontTurnStage,
   deployActions,
-  type DeployActionId,
   advanceOutcome,
   noActionsAvailable as scanNoActions,
   adjacentRevealedTrap as findAdjacentRevealedTrap,
@@ -626,40 +624,67 @@ export class BattleScene extends Phaser.Scene {
 
   private refreshDeployButtons(): void {
     const actor = this.deployActor;
-    // The *decision* of which verbs to surface is pure (deployActions, D63 Phase B);
-    // the scene only maps each id to its label + handler (movement is a separate,
-    // click-to-move budget, not a button).
-    const canTrap = !!actor && unitSkills(actor, "deployment").some((s) => s.effect.kind === "placeTrap");
-    const ids = deployActions({
-      hasActor: !!actor,
-      captured: !!actor?.captured,
-      acted: this.deployActed,
-      canUndo: this.battle.canUndo(),
-      canTrap,
-    });
-    const make: Record<DeployActionId, { text: string; description?: string; onClick: () => void }> = {
-      undo: {
+    const specs: { text: string; description?: string; onClick: () => void }[] = [];
+    // Meta-controls (pure decision, D63/D67): Undo leads when there's something to take back.
+    const ids = deployActions({ hasActor: !!actor, captured: !!actor?.captured, canUndo: this.battle.canUndo() });
+    if (ids.includes("undo") && actor) {
+      specs.push({
         text: "Undo",
         description: "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc).",
-        onClick: () => { if (actor) this.undoDeployTurn(actor); },
-      },
-      digIn: {
-        text: "Dig In",
-        description: "Hunker on this tile — far lower capture chance when the net closes, at the cost of this turn.",
-        onClick: () => this.digIn(),
-      },
-      placeTrap: {
-        text: "Place Trap Here",
-        description: "Drop a trap on this tile (1 kit). Deeper tiles raise capture risk.",
-        onClick: () => this.placeTrap(),
-      },
-      startBattle: {
-        text: "Start Battle",
-        description: "Commit now — begin the fight with the party where it stands.",
-        onClick: () => { if (!this.busy) this.startBattle(); },
-      },
-    };
-    this.layoutActionMenu(ids.map((id) => make[id]));
+        onClick: () => this.undoDeployTurn(actor),
+      });
+    }
+    // The ability buttons are the **same data-driven projection as combat** (D67): the unit's
+    // pre-combat skills + the universal Dig In / Defend, from availableSkills — so a Set-Trap
+    // skill surfaces because it's pre-combat *data*, not via a hand-computed `canTrap`.
+    if (actor && !actor.captured && !this.deployActed) {
+      for (const skill of availableSkills(actor, "pre-combat")) {
+        const text = skill.effect.kind === "placeTrap" ? "Place Trap Here" : skill.name;
+        specs.push({ text, description: skill.description, onClick: () => this.onDeploySkillButton(actor, skill) });
+      }
+    }
+    // Start Battle always closes the row (commit early at any point).
+    specs.push({
+      text: "Start Battle",
+      description: "Commit now — begin the fight with the party where it stands.",
+      onClick: () => { if (!this.busy) this.startBattle(); },
+    });
+    this.layoutActionMenu(specs);
+  }
+
+  /**
+   * Route a surfaced deploy ability to its verb (D67): a trap keeps the place-trap flow,
+   * Dig In its hunker verb, a self-cast resolves immediately, and a targeted ability arms
+   * for a click — all the same `availableSkills` projection the buttons came from.
+   */
+  private onDeploySkillButton(actor: Unit, skill: SkillDef): void {
+    if (this.busy || this.deployActor !== actor || actor.captured || this.deployActed) return;
+    if (skill.effect.kind === "placeTrap") {
+      this.trapEffect = skill.effect;
+      return this.placeTrap();
+    }
+    if (skill.id === "dig-in") return this.digIn();
+    if (skill.target === "self") return this.castDeploySkill(actor, skill, actor);
+    this.armedSkill = skill;
+    this.setHint(`${skill.name}: click a valid target (or click ${actor.name} to cancel).`);
+  }
+
+  /**
+   * Cast a dual-context ability during Deployment through the drained `deploySkill` verb
+   * (D67) — logged + undoable, with no CT commit. It spends the unit's **act**, leaving its
+   * **move** free, so a Dash → reposition combo works pre-combat just like in battle.
+   */
+  private castDeploySkill(actor: Unit, skill: SkillDef, target: Unit): void {
+    if (this.busy || actor.captured || this.deployActed) return;
+    this.armedSkill = null;
+    this.battle.deploySkill(actor, skill, target);
+    this.deployActed = true;
+    this.refreshAuras();
+    for (const u of this.battle.units) this.placeView(u);
+    this.highlightTile(actor.pos);
+    this.refreshDeployButtons();
+    this.refreshDeployStatus();
+    this.setHint(`${actor.name} used ${skill.name}. Reposition or End Turn (Space) to advance the net.`);
   }
 
   private refreshDeployStatus(): void {
@@ -1519,10 +1544,23 @@ export class BattleScene extends Phaser.Scene {
     if (!this.grid || !this.grid.inBounds(tile)) return;
 
     if (this.phase === "deployment") {
-      // Turn-based deployment (D63): only the unit whose turn it is may act, and
-      // clicking an empty tile repositions it (the clock dictates the order).
+      // Turn-based deployment (D63): only the unit whose turn it is may act. An armed deploy
+      // ability commits on a valid target — the same arm→click flow as combat, through the
+      // drained deploySkill verb (D67); otherwise clicking an empty tile repositions it.
       if (this.busy || !this.deployActor) return;
+      const actor = this.deployActor;
       const clicked = this.battle.units.find((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row);
+      if (this.armedSkill) {
+        if (clicked === actor) {
+          this.armedSkill = null;
+          this.refreshDeployButtons();
+          this.setHint(`${actor.name}'s turn — reposition, use an ability, or End Turn (Space).`);
+          return;
+        }
+        if (clicked && isValidSkillTarget(this.armedSkill, actor, clicked)) this.castDeploySkill(actor, this.armedSkill, clicked);
+        else this.setHint("Not a valid target for that skill.");
+        return;
+      }
       if (!clicked) this.deployMove(tile);
       return;
     }

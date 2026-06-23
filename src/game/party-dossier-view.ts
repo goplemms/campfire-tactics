@@ -16,6 +16,7 @@ import Phaser from "phaser";
 import {
   getJob,
   primaryJobOf,
+  type AbilityRow,
   type DossierProjection,
   type Jeopardy,
   type MemberRow,
@@ -77,6 +78,9 @@ export class PartyDossierView {
   private pw = 0;
   private ptop = 0;
 
+  /** The floating description tooltip (one, reused) shown on ability hover/focus. */
+  private tip?: Phaser.GameObjects.Container;
+
   constructor(scene: Phaser.Scene, o: DossierViewOptions) {
     this.scene = scene;
     this.o = o;
@@ -84,6 +88,7 @@ export class PartyDossierView {
   }
 
   destroy(): void {
+    this.hideTip();
     this.clear(this.detail);
     this.clear(this.objects);
     this.tabs = [];
@@ -182,6 +187,7 @@ export class PartyDossierView {
   private select(index: number): void {
     for (const t of this.tabs) t.rect.setFillStyle(t.index === index ? COLOR.surfaceAlt : COLOR.surfaceRaised);
     this.clear(this.detail);
+    this.hideTip();
     if (index === -1) this.renderOverview();
     else this.renderMember(this.o.data.members[index]);
   }
@@ -288,15 +294,132 @@ export class PartyDossierView {
     y = this.subheading("Jobs", y);
     const jobs = u.heldJobs.length ? u.heldJobs : primaryJobOf(u) ? [primaryJobOf(u)!] : [];
     if (!jobs.length) {
-      this.line("No job assigned", y, INK.disabled);
+      y = this.line("No job assigned", y, INK.disabled);
     } else {
       for (const jid of jobs) {
         const jl = u.jobLevels[jid]?.level ?? 1;
         const star = jid === primaryJobOf(u) ? " ♛" : "";
         y = this.line(`${getJob(jid)?.name ?? jid}  L${jl}${star}`, y);
       }
-      this.line(`Loadout slots: ${u.loadoutSlots}`, y, INK.muted);
+      y = this.line(`Loadout slots: ${u.loadoutSlots}`, y, INK.muted);
     }
+
+    // Abilities — actives + passives, each row hoverable/clickable to reveal what it
+    // does (the surfacing ask: the card should answer "what can this unit do?").
+    y += 6;
+    this.renderAbilities(m, y);
+  }
+
+  // ---- abilities (hover/focus to read what they do) ------------------------
+
+  private renderAbilities(m: MemberRow, y: number): number {
+    if (m.actives.length) {
+      y = this.subheading("Active Abilities", y);
+      for (const a of m.actives) y = this.abilityRow(a, y, "·");
+    }
+    if (m.passives.length) {
+      y = this.subheading("Passives", y);
+      for (const a of m.passives) y = this.abilityRow(a, y, "·");
+    }
+    if (!m.actives.length && !m.passives.length) y = this.line("No abilities", y, INK.disabled);
+    return y;
+  }
+
+  /** One ability line: glyph + name on the left, its tag (or unlock level) on the
+   *  right, and a hover/click zone that reveals the description tooltip. Locked
+   *  actives read dimmed with the level they unlock at. */
+  private abilityRow(a: AbilityRow, y: number, glyph: string): number {
+    const s = this.scene;
+    const rowH = 18;
+    const locked = a.lockedUntil !== undefined;
+
+    this.detail.push(
+      s.add
+        .text(this.px, y, `${glyph} ${a.name}`, {
+          color: locked ? INK.disabled : INK.secondary,
+          fontFamily: FONT.family,
+          fontSize: FONT.label,
+        })
+        .setOrigin(0, 0.5)
+        .setDepth(43),
+    );
+
+    const meta = locked ? `Lv ${a.lockedUntil}` : a.tag ?? "";
+    if (meta) {
+      this.detail.push(
+        s.add
+          .text(this.px + this.pw, y, meta, {
+            color: locked ? INK.ember : INK.muted,
+            fontFamily: FONT.family,
+            fontSize: FONT.caption,
+          })
+          .setOrigin(1, 0.5)
+          .setDepth(43),
+      );
+    }
+
+    this.hoverZone(this.px, y - rowH / 2, this.pw, rowH, this.abilityTipText(a));
+    return y + rowH;
+  }
+
+  /** The multi-line text the tooltip shows for an ability. */
+  private abilityTipText(a: AbilityRow): string {
+    const head = a.tag ? `${a.name}  ·  ${a.tag}` : a.name;
+    const lines = [head, a.description];
+    if (a.lockedUntil !== undefined) lines.push(`Locked until Lv ${a.lockedUntil}.`);
+    lines.push(`— ${a.jobName}`);
+    return lines.join("\n");
+  }
+
+  // ---- the description tooltip ---------------------------------------------
+
+  /** A hover/focus zone that reveals `text` in the floating tooltip while pointed at. */
+  private hoverZone(x: number, y: number, w: number, h: number, text: string): void {
+    const z = this.scene.add.zone(x, y, w, h).setOrigin(0, 0).setDepth(46).setInteractive({ useHandCursor: true });
+    z.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showTip(text));
+    z.on(Phaser.Input.Events.GAMEOBJECT_POINTER_MOVE, () => this.positionTip());
+    z.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.hideTip());
+    z.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.showTip(text)); // focus parity (touch)
+    this.detail.push(z);
+  }
+
+  private showTip(text: string): void {
+    this.hideTip();
+    const s = this.scene;
+    const pad = 8;
+    const maxW = 264;
+    const txt = s.add
+      .text(pad, pad, text, {
+        color: INK.bright,
+        fontFamily: FONT.family,
+        fontSize: FONT.label,
+        wordWrap: { width: maxW - pad * 2 },
+        lineSpacing: 3,
+      })
+      .setOrigin(0, 0);
+    const bg = s.add
+      .rectangle(0, 0, txt.width + pad * 2, txt.height + pad * 2, COLOR.surface, 0.98)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, COLOR.gold);
+    this.tip = s.add.container(0, 0, [bg, txt]).setDepth(60);
+    this.positionTip();
+  }
+
+  private positionTip(): void {
+    if (!this.tip) return;
+    const b = this.o.bounds;
+    const p = this.scene.input.activePointer;
+    const bg = this.tip.list[0] as Phaser.GameObjects.Rectangle;
+    let x = p.x + 16;
+    let y = p.y + 16;
+    if (x + bg.width > b.right - 8) x = p.x - bg.width - 16;
+    if (y + bg.height > b.bottom - 8) y = b.bottom - 8 - bg.height;
+    this.tip.setPosition(Math.max(b.left + 8, x), Math.max(b.top + 8, y));
+  }
+
+  private hideTip(): void {
+    this.tip?.destroy();
+    this.tip = undefined;
   }
 
   // ---- small drawing helpers ----------------------------------------------

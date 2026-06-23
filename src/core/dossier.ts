@@ -18,6 +18,8 @@
 import type { RunState } from "./run";
 import { primaryJobOf, type Unit } from "./units";
 import { getJob } from "./jobs";
+import { PASSIVE_INFO } from "./combat";
+import type { SkillDef } from "./skills";
 import { fatigueTier, type FatigueTier } from "./fatigue";
 import { moraleTier, type MoraleTier } from "./camp";
 import { computeUpkeep } from "./upkeep";
@@ -62,6 +64,10 @@ export interface MemberRow {
   /** Nights left on the permadeath clock (D9 Hard), or `null` if not dying. */
   dyingNights: number | null;
   jeopardy: Jeopardy;
+  /** Active abilities the unit's jobs grant (locked ones flagged) — for the card. */
+  actives: AbilityRow[];
+  /** Passive abilities the unit's jobs grant — for the card. */
+  passives: AbilityRow[];
 }
 
 /** One carried-supply line in the party "stock vs need" readout. */
@@ -105,9 +111,69 @@ export function jeopardyOf(u: Unit): Jeopardy {
   return null;
 }
 
+/**
+ * One ability line for the card (D65 surfacing) — an **active** skill or a job
+ * **passive**, with the copy a hover/focus reveals. Pure display data (no Phaser).
+ */
+export interface AbilityRow {
+  /** Display name (active: the skill name; passive: its {@link PASSIVE_INFO} label). */
+  name: string;
+  /** One-line "what it does" — the active's own text, or the passive's authored copy. */
+  description: string;
+  /** The held job that grants it (shown as the tooltip's source footer). */
+  jobName: string;
+  /** Active only: a compact "when · how" tag (e.g. "Battle · Act", "Deploy", "Camp"). */
+  tag?: string;
+  /** Active only: locked until the owning job reaches this level (omitted = ready). */
+  lockedUntil?: number;
+}
+
+/** A compact "when · how" tag for an active ability (D65 ability surfacing). */
+function abilityTag(s: SkillDef): string {
+  if (s.phase === "battle") return `Battle · ${s.spend === "act" ? "Act" : "Move"}`;
+  if (s.phase === "deployment") return "Deploy";
+  if (s.phase === "meta") return "Camp";
+  return s.phase;
+}
+
+/**
+ * Project a unit's job abilities into card rows (pure): every held job's actives
+ * (flagged locked when the owning job hasn't reached the ability's `unlockLevel`)
+ * and passives (named/described via {@link PASSIVE_INFO}). Primary job first; a job
+ * held more than once is read once. This is the copy a hover/focus reveals.
+ */
+export function unitAbilityRows(u: Unit): { actives: AbilityRow[]; passives: AbilityRow[] } {
+  const order: string[] = [];
+  for (const j of [primaryJobOf(u), ...u.heldJobs]) if (j && !order.includes(j)) order.push(j);
+
+  const actives: AbilityRow[] = [];
+  const passives: AbilityRow[] = [];
+  for (const jid of order) {
+    const job = getJob(jid);
+    if (!job) continue;
+    const level = u.jobLevels[jid]?.level ?? 1;
+    for (const s of job.skills) {
+      const unlock = s.unlockLevel ?? 1;
+      actives.push({
+        name: s.name,
+        description: s.description,
+        jobName: job.name,
+        tag: abilityTag(s),
+        lockedUntil: unlock > level ? unlock : undefined,
+      });
+    }
+    for (const key of Object.keys(job.passives ?? {})) {
+      const info = PASSIVE_INFO[key];
+      passives.push({ name: info?.label ?? key, description: info?.description ?? "", jobName: job.name });
+    }
+  }
+  return { actives, passives };
+}
+
 function memberRow(u: Unit): MemberRow {
   const job = getJob(primaryJobOf(u));
   const dying = u.counters?.[DYING_COUNTER] ?? 0;
+  const { actives, passives } = unitAbilityRows(u);
   return {
     unit: u,
     name: u.name,
@@ -124,6 +190,8 @@ function memberRow(u: Unit): MemberRow {
     captured: u.captured,
     dyingNights: dying > 0 ? dying : null,
     jeopardy: jeopardyOf(u),
+    actives,
+    passives,
   };
 }
 

@@ -140,6 +140,10 @@ reference them rather than re-explain:
 - **[Influence](systems/influence.md)** — the Noble's per-expedition *standing*
   currency: presence → opportunity (passive accrual + Patronize), spent on bribes and
   gating event quality (decision D62).
+- **[Jobs, growth & prestige](systems/jobs.md)** — the character build axis: two growth axes
+  (**breadth** = hold & mix more jobs · **depth** = prestige a job into a successor), one
+  diegetic **grant seam** for acquiring jobs and triggering prestige, a symmetric tree (power
+  attaches to *story*, not tier), and **emergent** combat/non-combat (decision D65).
 
 ## One run, end to end (pseudo-example)
 

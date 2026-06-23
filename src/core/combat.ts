@@ -62,6 +62,36 @@ export const PASSIVE = {
   tarpit: "tarpit",
 } as const;
 
+/**
+ * Player-facing copy for each {@link PASSIVE} (D65 ability surfacing): a short label
+ * and a one-line description the Captain's Tent reveals on hover/focus. Passives are
+ * bare keyed numbers in combat, so this is the single source of their player-facing
+ * words (active abilities already carry their own `description`). Keyed by the same
+ * passive id a job stamps; combat resolution never reads this — it's display-only.
+ */
+export const PASSIVE_INFO: Record<string, { label: string; description: string }> = {
+  [PASSIVE.flankSolo]: {
+    label: "Lone Flanker",
+    description: "Flanks a foe alone — no second ally adjacent needed to earn the flanking bonus.",
+  },
+  [PASSIVE.flankBonus]: {
+    label: "Keen Flanker",
+    description: "Flank attacks bite deeper — a larger flanking bonus than the baseline.",
+  },
+  [PASSIVE.deadeye]: {
+    label: "Deadeye",
+    description: "Bonus damage to any foe suffering a debuff (Slowed, Exposed, Immobilized…).",
+  },
+  [PASSIVE.triage]: {
+    label: "Triage",
+    description: "Heals scale with the target's wounds — the nearer to death, the more restored.",
+  },
+  [PASSIVE.tarpit]: {
+    label: "Hold the Line",
+    description: "Foes Slow to a crawl while they stand next to you — you tax the ground around you.",
+  },
+};
+
 /** A unit's **effective** move this turn: base move + the Swift buff (Dash). */
 export function effectiveMove(unit: Unit): number {
   return unit.moveRange + statusAmount(unit, SWIFT);

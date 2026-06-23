@@ -2122,16 +2122,73 @@ trail of reasoning stays intact.
 
 ---
 
+## D67 — Deployment as combat-substrate + capture-wave layer + a game-wide skill `usableContext` axis (finishes D63)
+
+- **Status:** Decided (2026-06-23) · **build in progress** (increment 0 — the golden-trace
+  safety net — and the `usableContext` axis landing first). Finishes **D63**'s deferred
+  phase 2 (the clock fold) and widens the convergence to skill-surfacing. Full build brief
+  (the 0–12 increment plan, the audit, the completeness checklist):
+  [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md).
+- **Context:** D63 made on-map Deployment a CT-clock, move-and-act board phase — i.e. it
+  already *is* combat's substrate — but implemented twice. Phases 1 (truth reconciliation)
+  and 3 (one action log: deploy verbs through `Battle.apply`, with undo + replay) shipped;
+  **phase 2 (the actual `DeployClock`→`CTClock` fold) was deferred** — the plan shipped a
+  shared stepping engine (`tickUntilReady`/`byReadiest`) but kept two clocks. A 2026-06-23
+  code review confirmed the remaining forks: deployment reads raw `moveRange` (ignoring Swift)
+  while its clock already honors `effectiveSpeed`; skill availability is single-valued
+  (`SkillDef.phase`) with surfacing forked across overworld/deploy/combat (and combat's row
+  isn't even pure data — `DEFEND` is a hardcoded append); two scene-owned RNG streams
+  (`deployRng` + `spotRng`) draw outside `Battle.roll`; two scene turn-loop controllers; and
+  **no replay-safe deploy skill-cast verb** (a dual-context ability cast pre-combat via the
+  plain `skill` verb would corrupt replay's pre-seed drain).
+- **Decision (the scope rule):** Pre-combat and combat share **all** functionality minus
+  explicitly phase-specific layers; skills declare **where they can be used** as data; **one**
+  `availableSkills(unit, context)` projects every surface. Five sub-decisions:
+  - **A. `usableContext` axis.** `type UsableContext = "overworld" | "guild" | "pre-combat" |
+    "combat"` + an optional `usableContext?: UsableContext[]` on `SkillDef`, defaulted by a
+    pure `skillContexts(skill)` keyed on `effect.kind` + `target` + `spend`. A finer axis than
+    `phase` (`meta` splits into overworld + guild); `phase` stays the D3 pipeline/interpreter tier.
+  - **B. One move budget.** Deployment reads `effectiveMove` (Swift applies pre-combat too),
+    via a shared `moveBudget(u)` helper.
+  - **C. One surfacing projection.** Every context row = `availableSkills(unit, ctx)` + a thin
+    per-context non-skill extras set; the universals (`DEFEND`, a new `DIG_IN`) fold *into*
+    `availableSkills` (killing the hardcoded `DEFEND` append and the `canTrap` special case).
+  - **D. One clock.** Fold `DeployClock` into `CTClock` with the front as a registered
+    **strict-lead-tie tempo source** — preserving deployment's deliberate tie rule (players win
+    ties; the front acts only on a strict CT lead) as a clock-policy flag. The capture-wave
+    layer still owns *what* the front's turn does.
+  - **E. One cast path + RNG + controller.** A drained `deploySkill` verb (the twin of
+    `deployMove`, in `DEPLOY_KINDS`) makes a dual-context ability *castable* pre-combat without
+    breaking replay; **both** scene RNG streams route through `Battle.roll`; the deploy/combat
+    per-turn loops merge into one context-parameterized path.
+- **Sharing policy:** **permissive — "share all but engagement."** Movement, support
+  (heals/cleanse/guard-allies), and self/ally buffs are usable in **both** board contexts;
+  engagement (attacks / offensive status / foe-aimed) is **combat-only** (the stealth/alarm
+  invariant); traps are pre-combat; camp/morale is overworld. (Owner decision; the blast
+  radius — Hunter `reposition`, Scout `dash`, `DEFEND`, all heals — becomes pre-combat-usable
+  and is test-pinned.)
+- **Phase-specific layers (kept, not dissolved):** capture-wave (campfire safe-radius, the
+  danger-front + growth, the capture roll, Dig In, the deploy risk forecast, alarm→battle);
+  engagement; win/lose (`battleOutcome`); the AI (combat-only — the only deployment "AI" is the
+  front advancing). The guild context is wired as a forward-looking placeholder (it surfaces no
+  per-unit skills today).
+- **Build:** the 0–12 increment plan in the brief — golden-trace-gated, the clock fold (D)
+  landed **last** and revertible alone, suite-green (`test`/`build`/`test:e2e`/`sim`) at every
+  increment.
+- **Reuses / consistent with:** **D63** (finishes its phase 2), **D3** (phase tier kept;
+  `usableContext` layers over it), **D5** (the one CT clock), **D2** (core/render), **D7/D11**
+  (the capture-wave layer), **D60** (the free-move budget deployment now matches), **D64**
+  (telegraph extended to pre-combat), **D35** (the overworld action economy whose
+  `usesPerNode`/cooldown gating the context filter preserves), **D41** (the universal Defend
+  that Dig In mirrors).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided
 > records yet — each is authored as a full `## D##` entry when its build starts.
 
-- **D67 — Deployment ↔ Combat substrate unification + a game-wide skill `usableContext` axis.**
-  *Finishes D63's phase 2* (fold `DeployClock` into `CTClock`, the front as a strict-lead
-  tempo source) and widens skill-surfacing so overworld / guild / pre-combat / combat all
-  project from one `availableSkills(unit, context)`. Permissive sharing ("share all but
-  engagement"). **Ready to dispatch** — full build brief:
-  [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md).
 - **D68 — Scout per-class pass** (passive "Quiet Footsteps", "Set Trap", a dual-context
   "Dash"). Builds *on top of* D67's substrate; do not start before D67 lands.

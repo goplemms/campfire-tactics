@@ -31,7 +31,7 @@
 import { healUnit, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
-import { getJob } from "./jobs";
+import { getJob, unitHasCapability } from "./jobs";
 import { PASSIVE } from "./combat";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
 import { decayCounters, bumpCounter, nonNegInt } from "./num";
@@ -564,14 +564,14 @@ export const TRIAGE = {
 
 /**
  * True if `unit` is a **healing class** — a job stamped with the Medic's Triage
- * passive ({@link "./combat".PASSIVE.triage}). The capability gate for {@link triage}
- * (the {@link "./traps".canDisarm} pattern: own the capability, not a hard-coded job
- * id), so it **auto-extends to any future healer** that carries the passive. Reads the
- * **job def** (not `unit.passives`, which is only stamped at battle setup), so it's
- * valid in camp.
+ * passive ({@link "./combat".PASSIVE.triage}). The capability gate for {@link triage},
+ * now the `healer` entry of the shared {@link "./jobs".unitHasCapability} taxonomy
+ * (D72) — own the capability, not a hard-coded job id, so it **auto-extends to any
+ * future healer**. Reads the **job def** (not `unit.passives`, which is only stamped at
+ * battle setup), so it's valid in camp. Kept as a named alias for the many call sites.
  */
 export function isHealer(unit: Unit): boolean {
-  return (getJob(primaryJobOf(unit))?.passives?.[PASSIVE.triage] ?? 0) > 0;
+  return unitHasCapability(unit, "healer");
 }
 
 /** What a camp {@link triage} produced. */

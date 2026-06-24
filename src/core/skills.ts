@@ -18,6 +18,7 @@ import { applyStatus, markPrey, cleanseOne, hastened } from "./status";
 import { countOf, removeItem, type Inventory } from "./inventory";
 import { abilityScaleBonus } from "./leveling";
 import { assertNever } from "./num";
+import type { CapabilityId } from "./jobs";
 
 /** The ordered phases of the game pipeline (D3). */
 export type Phase = "meta" | "deployment" | "battle" | "resolution";
@@ -231,6 +232,14 @@ export interface SkillDef {
    * clock is their limiter).
    */
   usesPerNode?: number;
+  /**
+   * An optional **capability gate** (D72): the action is available only to a unit that
+   * *holds* this {@link "./jobs".CapabilityId} (the Triage / lockpick shape — the
+   * **Capability** gate of the action taxonomy), layered on the implicit **Class** gate
+   * of living on a job. Evaluated by {@link "./jobs".unitHasCapability}; omitted ⇒ no
+   * capability gate (the action's class/universal home is its only gate).
+   */
+  requires?: CapabilityId;
   effect: SkillEffect;
 }
 

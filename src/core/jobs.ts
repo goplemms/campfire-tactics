@@ -583,6 +583,39 @@ export function getJob(id: string | undefined): JobDef | undefined {
  */
 export type JobLookup = (id: string | undefined) => JobDef | undefined;
 
+// --- Capabilities (D72) — the Capability gate of the action taxonomy --------
+
+/**
+ * A **capability** (D72) — a cross-cutting ability a unit *holds* (a passive / a job
+ * flag), the **Capability** gate of the action catalogue (`docs/design/systems/actions.md`):
+ * an action gated by *having* it, **not** by a hard-coded job id, so it auto-extends to
+ * any future class that earns it. `healer` (the Medic's Triage passive — the camp-heal
+ * gate) and `lockpick` (the Thief's Expert Lockpick — disarm / pick) are the two today.
+ * Add a capability by adding an id here **and** a predicate to {@link CAPABILITY_PREDICATES}
+ * (the mapped type makes the build demand the predicate).
+ */
+export type CapabilityId = "healer" | "lockpick";
+
+/**
+ * A predicate per {@link CapabilityId} (D72) — **exhaustive at compile time**: the mapped
+ * type `{ [K in CapabilityId]: ... }` forces a predicate for every id (mirroring the
+ * effect-handler registries). Each reads the unit's **effective primary** job (D65) via
+ * the injected `lookup`, so the gate is fixture-injectable and respects prestige.
+ */
+export const CAPABILITY_PREDICATES: { [K in CapabilityId]: (unit: Unit, lookup: JobLookup) => boolean } = {
+  healer: (unit, lookup) => (lookup(primaryJobOf(unit))?.passives?.[PASSIVE.triage] ?? 0) > 0,
+  lockpick: (unit, lookup) => lookup(primaryJobOf(unit))?.lockpick === true,
+};
+
+/**
+ * True if `unit` **holds** the capability `cap` (D72) — the Capability gate evaluator.
+ * `lookup` resolves the job data ({@link getJob} by default; injected by fixtures so a
+ * throwaway capability-bearing job is never registered in {@link JOBS}).
+ */
+export function unitHasCapability(unit: Unit, cap: CapabilityId, lookup: JobLookup = getJob): boolean {
+  return CAPABILITY_PREDICATES[cap](unit, lookup);
+}
+
 /**
  * Stamp a unit's job passives (D40) onto `unit.passives` so combat resolution
  * reads them (the Scout's solo-flank, the Hunter's Deadeye, the Medic's Triage,

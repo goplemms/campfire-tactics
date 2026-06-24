@@ -31,7 +31,8 @@ import {
   cloneOverworldEconomy,
   type OverworldCost,
 } from "./overworld-actions";
-import { getJob } from "./jobs";
+import { getJob, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
+import { PASSIVE } from "./combat";
 import { computeUpkeep } from "./upkeep";
 import { effectiveMarketTier, marketOpenedFlag, type MapNode } from "./overworld";
 import type { SkillDef } from "./skills";
@@ -423,5 +424,48 @@ describe("per-node / one-shot ability-flag bag (D72)", () => {
     // A deep copy — mutating the clone doesn't touch the original.
     setNodeFlag(copy, "n2");
     expect(hasNodeFlag(eco, "n2")).toBe(false);
+  });
+});
+
+describe("capability-gate taxonomy (D72)", () => {
+  const mk = (id: string, jobId: string) =>
+    createUnit({ id, side: "player", pos: { col: -1, row: -1 }, jobId: jobId as never, speed: 9, maxHp: 20, attack: 4, defense: 2, moveRange: 3, sightRadius: 4 });
+
+  it("a unit holds a capability by carrying its passive/flag, not a hard-coded job id", () => {
+    expect(unitHasCapability(mk("doc", "medic"), "healer")).toBe(true); // Triage passive
+    expect(unitHasCapability(mk("rook", "scout"), "healer")).toBe(false);
+    expect(unitHasCapability(mk("sly", "thief"), "lockpick")).toBe(true); // Expert Lockpick flag
+    expect(unitHasCapability(mk("rook", "scout"), "lockpick")).toBe(false);
+    expect(unitHasCapability(mk("doc", "medic"), "lockpick")).toBe(false);
+  });
+
+  it("isHealer is the named alias of the `healer` capability (parity, no drift)", () => {
+    for (const job of ["medic", "scout", "thief", "soldier"]) {
+      const u = mk("u", job);
+      expect(isHealer(u)).toBe(unitHasCapability(u, "healer"));
+    }
+  });
+
+  it("the predicate registry is exhaustive (one predicate per capability id)", () => {
+    expect(Object.keys(CAPABILITY_PREDICATES).sort()).toEqual(["healer", "lockpick"]);
+  });
+
+  it("respects an injected lookup — a throwaway capability-bearing job, never in JOBS (fixture-safe)", () => {
+    const scout = mk("rook", "scout");
+    const fixtureHealer: JobDef = { id: "scout", name: "Fixture Healer", description: "", skills: [], passives: { [PASSIVE.triage]: 0.5 } };
+    const lookup: JobLookup = (id) => (id === "scout" ? fixtureHealer : getJob(id));
+    expect(unitHasCapability(scout, "healer")).toBe(false); // the real Scout job has no Triage
+    expect(unitHasCapability(scout, "healer", lookup)).toBe(true); // the fixture lookup injects it — no registry pollution
+  });
+
+  it("a SkillDef.requires expresses the gate as data, layered on the class home", () => {
+    // The gate predicate the interpreter (inc 5) and the projection apply.
+    const passes = (u: Unit, skill: SkillDef) => !skill.requires || unitHasCapability(u, skill.requires);
+    const gated: SkillDef = { id: "fx-triage", name: "Field Triage", description: "", phase: "meta", target: "party", range: 0, spend: "act", requires: "healer", effect: { kind: "morale", morale: 0, partyHeal: 0 } };
+    expect(passes(mk("doc", "medic"), gated)).toBe(true);
+    expect(passes(mk("rook", "scout"), gated)).toBe(false);
+    // An ungated action (no `requires`) is open to its class home.
+    const open: SkillDef = { ...gated, requires: undefined };
+    expect(passes(mk("rook", "scout"), open)).toBe(true);
   });
 });

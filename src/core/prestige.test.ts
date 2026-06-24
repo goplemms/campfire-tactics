@@ -5,6 +5,7 @@ import { jobLevelOf } from "./leveling";
 import { prestige, eligibleGrants, applyGrant, type Grant, type PredicateCtx } from "./grants";
 import { rpPerNight, computeUpkeep, UPKEEP } from "./upkeep";
 import { merchantFloor } from "./overworld";
+import { describeUnit } from "./node-events";
 import type { SkillDef } from "./skills";
 import type { RunState } from "./run";
 
@@ -144,11 +145,14 @@ describe("prestige — agency: eligibility never auto-applies (D65)", () => {
 });
 
 // --- The standardization regression: the jobId → primaryJob landmine ---------
-// stampPassives/unitSkills are covered above via fixtures. The economy readers
-// resolve through getJob (not the injectable lookup), so they're exercised with
-// REAL jobs whose primaryJob ≠ jobId — proving each reads primaryJobOf, not the
-// frozen jobId. (The non-prestiged regression below cannot catch this, since for
-// a normal unit primaryJobOf === jobId.)
+// All seven mechanic-driving readers are accounted for here. stampPassives /
+// unitSkills are covered above via fixtures; rpPerNight / hasChef / merchantFloor /
+// describeUnit are exercised below with PRESTIGED units (real jobs whose
+// primaryJob ≠ jobId) — proving each reads primaryJobOf, not the frozen jobId.
+// merchantSell shares merchantFloor's exact `primaryJobOf(u) === "merchant"` broker
+// idiom (economy-actions.ts), so that assertion covers it by standardization.
+// (The non-prestiged regression below cannot catch under-scoping, since for a
+// normal unit primaryJobOf === jobId.)
 
 describe("jobId → primaryJob standardization (D65) — closes the silent no-op", () => {
   it("a non-prestiged unit's passives + skills are UNCHANGED by the standardization", () => {
@@ -185,5 +189,14 @@ describe("jobId → primaryJob standardization (D65) — closes the silent no-op
     prestige(merch, "soldier", "merchant");
     expect(merch.jobId).toBe("soldier"); // frozen
     expect(merchantFloor([merch])).toBe("poor"); // reads primaryJobOf = merchant
+  });
+
+  it("describeUnit names the prestiged (primary) job, not the frozen jobId", () => {
+    const u = unit({ id: "d", jobId: "soldier" });
+    expect(describeUnit(u)).toMatch(/^soldier /); // before: the original class
+
+    prestige(u, "soldier", "merchant"); // real-job target via getJob
+    expect(u.jobId).toBe("soldier"); // frozen original class
+    expect(describeUnit(u)).toMatch(/^merchant /); // prose now leads with the evolved primary
   });
 });

@@ -796,7 +796,12 @@ function canStoreMore(run: RunState, materialId: string): boolean {
   return canAdd(run.inventory, materialId);
 }
 
-/** A one-line stat blurb for a recruiter's offered body. */
-function describeUnit(u: Unit): string {
+/**
+ * A one-line stat blurb for an offered/featured body. Names the unit's **effective**
+ * class via {@link primaryJobOf} (D65) — a prestiged unit reads as its evolved job,
+ * not its frozen `jobId`. Exported so that standardization is asserted directly
+ * (`prestige.test.ts`) rather than only covered by the read-swap.
+ */
+export function describeUnit(u: Unit): string {
   return `${primaryJobOf(u) ?? "fighter"} · HP ${u.maxHp} · ATK ${u.attack} · SPD ${u.speed}`;
 }

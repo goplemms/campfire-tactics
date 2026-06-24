@@ -170,7 +170,7 @@ export const ROLE = {
   hunter: 0xe0b24a, //      amber  — ranged (also foe bowman/archer)
   scout: 0x6fd69b, //       green  — mobility / recon
   medic: 0x8fe0d0, //       cyan   — sustain
-  chef: 0xe0903a, //        orange — support
+  cook: 0xe0903a, //        orange — support
   merchant: 0xd6c24a, //    gold   — economy
   noble: 0xb070d0, //       regal violet — standing / Influence
   banker: 0x4a8fd6, //      deep blue — purse / finance

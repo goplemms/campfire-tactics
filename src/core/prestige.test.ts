@@ -174,11 +174,11 @@ describe("jobId → primaryJob standardization (D65) — closes the silent no-op
     expect(rpPerNight([medicked])).toBe(getJob("medic")!.restPoints); // reads primaryJobOf
   });
 
-  it("the Chef food discount follows the prestiged job (hasChef via computeUpkeep)", () => {
+  it("the Cook food discount follows the prestiged job (hasCook via computeUpkeep)", () => {
     const u = unit({ jobId: "soldier" });
-    prestige(u, "soldier", "chef");
+    prestige(u, "soldier", "cook");
     const food = computeUpkeep([u]).lines.find((l) => l.id === "food")!;
-    expect(food.cost).toBe(UPKEEP.chefFoodPerUnit); // discounted — hasChef saw primaryJob = chef
+    expect(food.cost).toBe(UPKEEP.cookFoodPerUnit); // discounted — hasCook saw primaryJob = cook
   });
 
   it("Appraisal (marketTierBonus) follows the prestiged job", () => {

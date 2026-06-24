@@ -59,7 +59,7 @@ describe("jobs (data-driven loading)", () => {
 
   it("ships the three signature jobs, each hooking a different phase (D3)", () => {
     expect(getJob("survivalist")!.skills[0].phase).toBe("deployment");
-    expect(getJob("chef")!.skills[0].phase).toBe("meta");
+    expect(getJob("cook")!.skills[0].phase).toBe("meta");
     // The Merchant's gold-minting Trade camp skill was retired (D61); its kit is now the
     // overworld trade verbs (Find Trade / Savvy Barter, D70) — both hook the meta phase.
     expect(getJob("merchant")!.skills.map((s) => s.id)).toEqual(["find-trade", "savvy-barter"]);
@@ -79,7 +79,7 @@ describe("jobs (data-driven loading)", () => {
         moveRange: 3,
         sightRadius: 4,
       });
-    expect(unitSkills(withJob("Pip", "chef"), "meta").map((s) => s.id)).toEqual(["cook-stew"]);
+    expect(unitSkills(withJob("Pip", "cook"), "meta").map((s) => s.id)).toEqual(["cook-stew", "feast"]);
     expect(unitSkills(withJob("Vale", "survivalist"), "deployment").map((s) => s.id)).toEqual(["set-trap"]);
     expect(unitSkills(withJob("Rook", "soldier"), "battle").length).toBe(2);
   });

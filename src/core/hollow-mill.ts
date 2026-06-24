@@ -58,7 +58,7 @@ export const HOLLOW_MILL_PARTY: UnitSpec[] = [
   // Rook the Hunter's Deadeye. No dedicated trapper needed.
   member("vale", "Vale", "scout", { intelligence: 7, awareness: 4 }),
   member("sela", "Sela", "medic"),
-  member("pip", "Pip", "chef", { standingOrder: "defend", maxHp: 22, attack: 5, defense: 2, moveRange: 3, speed: 8 }),
+  member("pip", "Pip", "cook", { standingOrder: "defend", maxHp: 22, attack: 5, defense: 2, moveRange: 3, speed: 8 }),
 ];
 
 // --- The three fights (re-homed from the demo, on the D50 objectives) --------

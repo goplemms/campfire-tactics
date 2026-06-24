@@ -23,10 +23,17 @@ import {
   knobDeclared,
   checkOverworldCost,
   commitOverworldCost,
+  setNodeFlag,
+  hasNodeFlag,
+  primeFlag,
+  consumeFlag,
+  isPrimed,
+  cloneOverworldEconomy,
   type OverworldCost,
 } from "./overworld-actions";
 import { getJob } from "./jobs";
 import { computeUpkeep } from "./upkeep";
+import { effectiveMarketTier, marketOpenedFlag, type MapNode } from "./overworld";
 import type { SkillDef } from "./skills";
 import { previewNode } from "./intel";
 import { FATIGUE } from "./fatigue";
@@ -356,5 +363,65 @@ describe("computed (provider) costs (D72)", () => {
     expect(check.ok).toBe(true);
     if (check.ok) commitOverworldCost(run, "stew-fixture", cost, check.fatigueSpend);
     expect(run.camp.gold).toBe(before - foodValue); // the dynamic price was billed, not a static guess
+  });
+});
+
+describe("per-node / one-shot ability-flag bag (D72)", () => {
+  /** A barren (`none` market) node with no merchant in the party — so only the flag can lift it. */
+  function barrenNode(): MapNode {
+    return { id: "nFlag", layer: 1, index: 0, kind: "combat", market: "none", edges: [] };
+  }
+
+  it("a per-node flag is set + read, and cleared on the node-step (the Find-Trade shape)", () => {
+    const eco = createOverworldEconomy();
+    expect(hasNodeFlag(eco, "market-opened")).toBe(false);
+    setNodeFlag(eco, "market-opened");
+    expect(hasNodeFlag(eco, "market-opened")).toBe(true);
+    // The node boundary clears it — the mark never leaks to the next node.
+    tickCooldowns(eco);
+    expect(hasNodeFlag(eco, "market-opened")).toBe(false);
+  });
+
+  it("a one-shot primed flag is consumed on read and persists across node-steps until then (the Savvy-Barter shape)", () => {
+    const eco = createOverworldEconomy();
+    expect(consumeFlag(eco, "deal")).toBe(false); // nothing primed
+    primeFlag(eco, "deal");
+    expect(isPrimed(eco, "deal")).toBe(true); // a non-consuming peek
+    tickCooldowns(eco); // a node-step passes — a primed treat you haven't cashed waits
+    expect(isPrimed(eco, "deal")).toBe(true);
+    expect(consumeFlag(eco, "deal")).toBe(true); // cashed once...
+    expect(consumeFlag(eco, "deal")).toBe(false); // ...and only once
+    expect(isPrimed(eco, "deal")).toBe(false);
+  });
+
+  it("effectiveMarketTier folds the per-node flag — a barren node trades at `poor` for the node-step", () => {
+    const node = barrenNode();
+    const eco = createOverworldEconomy();
+    expect(effectiveMarketTier(node, [], eco)).toBe("none"); // no merchant, no flag → barren
+    setNodeFlag(eco, marketOpenedFlag(node.id));
+    expect(effectiveMarketTier(node, [], eco)).toBe("poor"); // the impromptu market opened here
+    tickCooldowns(eco);
+    expect(effectiveMarketTier(node, [], eco)).toBe("none"); // closes again on departure
+  });
+
+  it("the flag is node-keyed — opening a market here doesn't lift a different node", () => {
+    const here = barrenNode();
+    const elsewhere: MapNode = { ...here, id: "nOther" };
+    const eco = createOverworldEconomy();
+    setNodeFlag(eco, marketOpenedFlag(here.id));
+    expect(effectiveMarketTier(here, [], eco)).toBe("poor");
+    expect(effectiveMarketTier(elsewhere, [], eco)).toBe("none");
+  });
+
+  it("clone round-trips both flag bags (snapshot safety)", () => {
+    const eco = createOverworldEconomy();
+    setNodeFlag(eco, "n");
+    primeFlag(eco, "p");
+    const copy = cloneOverworldEconomy(eco);
+    expect(hasNodeFlag(copy, "n")).toBe(true);
+    expect(isPrimed(copy, "p")).toBe(true);
+    // A deep copy — mutating the clone doesn't touch the original.
+    setNodeFlag(copy, "n2");
+    expect(hasNodeFlag(eco, "n2")).toBe(false);
   });
 });

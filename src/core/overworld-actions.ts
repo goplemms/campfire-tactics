@@ -216,6 +216,22 @@ export interface OverworldEconomy {
    */
   campUses: Record<string, number>;
   /**
+   * **Per-node ability flags** (D72) — a general boolean bag for signature actions that
+   * mark a transient fact about *this* node (the Find-Trade "impromptu market opened
+   * here" flag, folded into {@link "./overworld".effectiveMarketTier}). **Reset to empty
+   * each node-step** ({@link tickCooldowns}), exactly like {@link campUses}, so the mark
+   * never leaks to the next node. Set/read via {@link setNodeFlag}/{@link hasNodeFlag}.
+   */
+  nodeFlags: Record<string, boolean>;
+  /**
+   * **One-shot primed flags** (D72) — a general boolean bag for "the *next* X goes a
+   * certain way" treats (the Savvy-Barter "next deal primed" flag, consumed by the next
+   * trade). **Consumed on read** ({@link consumeFlag}) and **persists across node-steps**
+   * until then (unlike {@link nodeFlags}) — a primed treat you haven't cashed waits. Set
+   * via {@link primeFlag}; peek without consuming via {@link isPrimed}.
+   */
+  primedFlags: Record<string, boolean>;
+  /**
    * The **Banker's** purse-scoped sub-state (M10, D30/D34) — **never** touches the
    * guild treasury. All three are off (0) until a Banker verb engages them
    * ({@link "./economy-actions"}).
@@ -235,9 +251,9 @@ export interface OverworldEconomy {
   influence: number;
 }
 
-/** A fresh, fully-ready economy (every ability off cooldown, nothing scouted). */
+/** A fresh, fully-ready economy (every ability off cooldown, nothing scouted, no flags set). */
 export function createOverworldEconomy(): OverworldEconomy {
-  return { cooldowns: {}, scouted: {}, campUses: {}, interestPerStep: 0, debt: 0, protection: 0, influence: 0 };
+  return { cooldowns: {}, scouted: {}, campUses: {}, nodeFlags: {}, primedFlags: {}, interestPerStep: 0, debt: 0, protection: 0, influence: 0 };
 }
 
 /** A deep copy of the economy (for snapshots / round-trips). */
@@ -246,11 +262,48 @@ export function cloneOverworldEconomy(eco: OverworldEconomy): OverworldEconomy {
     cooldowns: { ...eco.cooldowns },
     scouted: { ...eco.scouted },
     campUses: { ...eco.campUses },
+    nodeFlags: { ...eco.nodeFlags },
+    primedFlags: { ...eco.primedFlags },
     interestPerStep: eco.interestPerStep,
     debt: eco.debt,
     protection: eco.protection,
     influence: eco.influence,
   };
+}
+
+// --- General ability-flag bag (D72) -----------------------------------------
+
+/** Set a **per-node** ability flag (cleared each node-step) — the Find-Trade "market opened here" shape. */
+export function setNodeFlag(eco: OverworldEconomy, flag: string): void {
+  eco.nodeFlags[flag] = true;
+}
+
+/** True if a **per-node** ability flag is currently set (a non-consuming read). */
+export function hasNodeFlag(eco: OverworldEconomy, flag: string): boolean {
+  return eco.nodeFlags[flag] === true;
+}
+
+/** **Prime** a one-shot ability flag (persists across node-steps until consumed) — the Savvy-Barter shape. */
+export function primeFlag(eco: OverworldEconomy, flag: string): void {
+  eco.primedFlags[flag] = true;
+}
+
+/**
+ * Read **and consume** a one-shot primed flag (D72): returns true at most once per
+ * prime, clearing it — the consume-on-next-use helper a follow-up action reads (the
+ * Savvy-Barter "next deal" reading its primed discount). Returns false if never primed.
+ */
+export function consumeFlag(eco: OverworldEconomy, flag: string): boolean {
+  if (eco.primedFlags[flag]) {
+    delete eco.primedFlags[flag];
+    return true;
+  }
+  return false;
+}
+
+/** Peek at a one-shot primed flag **without consuming** it (for render surfacing). */
+export function isPrimed(eco: OverworldEconomy, flag: string): boolean {
+  return eco.primedFlags[flag] === true;
 }
 
 /** Node-steps remaining on an ability's cooldown (0 = ready). */
@@ -285,8 +338,10 @@ export function scoutedTier(eco: OverworldEconomy, nodeId: string): number {
  */
 export function tickCooldowns(eco: OverworldEconomy): void {
   decayCounters(eco.cooldowns, 1);
-  // Per-node allowance resets at the node boundary (D35) — a new camp, fresh uses.
+  // Per-node allowance + per-node flags reset at the node boundary (D35/D72) — a new
+  // camp, fresh uses, and any "opened here" mark cleared. (Primed one-shots persist.)
   eco.campUses = {};
+  eco.nodeFlags = {};
 }
 
 /**

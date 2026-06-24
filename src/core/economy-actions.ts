@@ -163,7 +163,7 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
   if (countOf(run.inventory, materialId) <= 0) {
     return { applied: false, reason: `No ${material.name} to sell.` };
   }
-  const tier = effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party);
+  const tier = effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld);
   const price = sellPrice(material, tier);
   if (price <= 0) {
     const why = saleValueOf(material) <= 0 ? `${material.name} can't be sold.` : `No market here to sell ${material.name}.`;

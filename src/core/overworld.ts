@@ -144,13 +144,31 @@ export function merchantFloor(party: readonly Unit[]): MarketTier {
 }
 
 /**
- * The market tier the caravan actually trades at (D61): the node's own market
- * **raised by the Merchant floor** (`clampUp`). `none` ⇒ no market here (buys/sells
- * refused). The single reader for both buying and selling, so access scarcity is
- * applied in one place.
+ * The **per-node flag id** a "open an impromptu market here" action sets (D72): the
+ * Find-Trade shape, keyed by node so the mark is unambiguous and clears on the node-step
+ * ({@link "./overworld-actions".tickCooldowns}). Read by {@link effectiveMarketTier}; set
+ * by the `openMarket` overworld effect (the verb that *sets* it is the next content pass).
  */
-export function effectiveMarketTier(node: MapNode, party: readonly Unit[]): MarketTier {
-  return clampUpMarket(node.market ?? "none", merchantFloor(party));
+export function marketOpenedFlag(nodeId: string): string {
+  return `market-open:${nodeId}`;
+}
+
+/**
+ * The market tier the caravan actually trades at (D61/D72): the node's own market
+ * **raised by the Merchant floor** (`clampUp`), then by a **per-node "impromptu market
+ * opened here" flag** (Find-Trade) when `eco` carries one — lifting a barren node to
+ * `poor` for this node-step. `none` ⇒ no market here (buys/sells refused). The single
+ * reader for both buying and selling, so access scarcity is applied in one place. `eco`
+ * is read **structurally** (just its `nodeFlags`) to avoid a cycle with the action layer.
+ */
+export function effectiveMarketTier(
+  node: MapNode,
+  party: readonly Unit[],
+  eco?: { nodeFlags: Record<string, boolean> },
+): MarketTier {
+  let tier = clampUpMarket(node.market ?? "none", merchantFloor(party));
+  if (eco?.nodeFlags[marketOpenedFlag(node.id)]) tier = clampUpMarket(tier, "poor");
+  return tier;
 }
 
 /** Add a forward edge to a node, keeping the list sorted + de-duplicated. */

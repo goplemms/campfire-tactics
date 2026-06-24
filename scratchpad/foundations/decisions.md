@@ -2451,6 +2451,75 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D72 — The non-combat action substrate (unify overworld-action registration)
+
+- **Status:** Decided **+ built** (the substrate machinery, **fixtures only** — no real class
+  kit), 2026-06-24. Sibling to **D61** (the two-axis limiter) and **D65** (the grant seam): the
+  shared machinery the non-combat triad (D70/D71) needs *before* its kits can be built. Resolves
+  the open architectural calls D70/D71 deferred.
+- **Context:** authoring "a thing a class does between nodes" followed **3+ inconsistent
+  patterns** — a registry `OverworldAbility` (`OVERWORLD_ABILITIES`, job-gated, declarative
+  effect), a meta `SkillDef` on `JobDef.skills` (Cook Stew, surfaced via D67's `availableSkills`),
+  and bespoke economy fns (`merchantBuy` / `patronize` / …, ad-hoc gates). The triad's new verbs
+  (Find Trade, Savvy Barter, Cook Stew, Feast) had no clean home and needed primitives that
+  didn't exist (a computed cost, per-node / one-shot state, an Upkeep coupling). Building the kits
+  onto that fragmentation would deepen it — so the substrate came first.
+- **Decision 1 (the keystone) — one home: `JobDef.skills` (A2); `availableSkills` the one
+  projection.** A job's overworld actions are **`SkillDef`s** carrying an `overworldCost` (the
+  two-axis menu) + an `OverworldActionEffect`, surfaced through the **D67 `availableSkills`** path
+  like combat/deploy skills — so the render no longer hardcodes `getAbility("survey")`. **Survey
+  migrated** onto the Scout job; the parallel `OVERWORLD_ABILITIES` / `getAbility` /
+  `takeOverworldAction` / `OverworldAbility` registry was **retired**. (A1 — generalize the
+  registry — was rejected: it entrenches a second home. **A3** — migrate the economy verbs onto
+  JobDefs too — is the **north star**, deferred; the verbs stay as functions the resolvers call,
+  an incremental migration.) *Owner-confirmed A2.*
+- **Decision 2 — computed (provider) costs.** A price knob may be a provider
+  `gold?: number | (run) => number`, resolved at the gate (`resolveKnob`), so Cook Stew prices
+  itself at *the night's Food value* rather than a static number. A provider counts as priced, so
+  the two-axis no-free-and-unlimited invariant still holds at load. Generic + minimal — no typed
+  cost-kind per dynamic price.
+- **Decision 3 — per-node / one-shot ability state.** A general **flag bag** on
+  `OverworldEconomy`: `nodeFlags` (per-node, reset by `tickCooldowns` — the Find-Trade "market
+  opened here" flag, folded into `effectiveMarketTier`) and `primedFlags` (one-shot, consumed on
+  read — the Savvy-Barter "next deal primed" flag). A bag, not ad-hoc fields — more verbs will want it.
+- **Decision 4 — presence / faucet as data.** `JobDef.presence` (Appraisal's `marketTierBonus`,
+  read by `effectiveMarketTier`) + `JobDef.faucet` (Renown's `influencePerStep`, accrued by
+  `breakCamp`'s `accrueDeclaredFaucets`), plus a `jobPresenceSummary` card hook. **Built now**
+  (additive + injectable-lookup; dormant until a class declares one, so the sim is byte-identical).
+- **Decision 5 — the gate taxonomy as data.** Beyond the implicit **Class** gate (living on a
+  job), an action declares a **Capability** gate (`SkillDef.requires`, e.g. `"healer"` /
+  `"lockpick"`), resolved by the exhaustive `CAPABILITY_PREDICATES` registry (`unitHasCapability`)
+  — the Triage/lockpick shape, auto-extending to any future class that earns it. Both
+  `availableSkills` and the interpreter honor it. (Access = the market-tier read; Stat / Universal
+  unchanged; `docs/design/systems/actions.md` is the taxonomy.)
+- **The interpreter + the effect registry.** One interpreter — **`useOverworldSkill`** — gates
+  (capability + the shared two-axis cost), applies the effect via the **exhaustive
+  `OVERWORLD_EFFECT_HANDLERS`** mapped-type registry (mirroring `BATTLE_EFFECT_HANDLERS` /
+  `FORECAST_HANDLERS` / `GRANT_EFFECT_HANDLERS`: a new kind fails the build until handled), then
+  commits + grants use-XP. The **Upkeep coupling** is a primitive: a `provisionMeal` effect
+  satisfies an Upkeep line (`camp.satisfiedUpkeep`), which `payUpkeep` reads **before** billing
+  (no double-charge, no morale/gear consequence), ordered by the camp flow (cook → End the Night).
+- **The three kits are the next content pass.** Merchant (Appraisal · Find Trade · Savvy Barter) ·
+  Cook (Field Kitchen · Cook Stew · Feast) · Noble (Renown · Patronize · Bribe) **consume** this
+  substrate — exactly as the Scout/Soldier passes consumed the D65 prestige substrate. Proven here
+  with **throwaway fixtures only** (never in `JOBS`), so the deterministic sim stays byte-identical.
+  The numbers pass (Cook Stew RP, Feast magnitudes, the `restPoints` floor, the limiter knobs) and
+  the `chef → cook` rename belong to that pass.
+- **Spec:** the build brief
+  [`non-combat-action-substrate-build.md`](non-combat-action-substrate-build.md); the worked kit
+  examples in [`docs/design/systems/jobs.md`](../../docs/design/systems/jobs.md) (D70/D71).
+- **Reuses / consistent with:** **D61** (the two-axis limiter / single gate — extended with
+  computed costs), **D65** (the grant seam's fixture-injection + exhaustive-registry ethos), **D67**
+  (the one `availableSkills` projection — now the overworld home too), **D29/D35** (the cooldown
+  spine), **D70/D71** (the consumers it serves), **D15/D45** (Upkeep — the line a meal satisfies),
+  **D9** (Rest Points — the meal's bank), **D62** (Influence — Renown's faucet).
+- **Build:** **built** — machinery + fixtures, one PR, one commit per increment, each green +
+  reversible. No real kit content; no fixture in a live registry; `test` / `build` / `test:e2e` /
+  `sim` green at every increment, sim byte-identical.
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided
@@ -2459,11 +2528,14 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 - **D69 — Scout-fork follow-ons** (surface `PRESTIGE_OFFERS` in live runs + camp-accept UI;
   the Expert Lockpick chest/door entity + lock-gated events; the combat convince-an-assassin
   path; job-capability card surfacing; the Scout-line numbers pass). Built *on* D68's fork.
-- **The non-combat action substrate** — unify the 3+ patterns that author an overworld/camp action
-  (registry `OverworldAbility` / meta-`SkillDef` / economy-fn) **+** the new mechanisms the triad needs
-  (Cook Stew's Upkeep-coupling + RP-bank + computed cost; Find Trade per-node state; Savvy Barter primed
-  flag; an `availableAbilities` projection; presence/faucet registries) — **before** building D70/D71.
-  Sibling to D61 (limiter) / D65 (grant seam).
+- ~~**The non-combat action substrate**~~ — **done: D72.** The home unified onto `JobDef.skills`
+  (A2) with `availableSkills` the one projection (Survey migrated, the registry retired); computed
+  costs; the per-node / one-shot flag bag; presence/faucet as data; capability gates; the exhaustive
+  `OVERWORLD_EFFECT_HANDLERS` registry + the Upkeep coupling — **fixtures only**. The **three kits**
+  (D70/D71) are the next content pass that consumes it.
+- **The non-combat triad kits** (consume D72) — Merchant (Appraisal · Find Trade · Savvy Barter) ·
+  Cook (Field Kitchen · Cook Stew · Feast; the `chef → cook` rename) · Noble (Renown · Patronize ·
+  Bribe), + the numbers pass. The content pass that wires the real verbs onto the classes.
 - **Soldier prestige fork** — **Sentinel** (Turtle → persistent stance) vs **Banner**
   (Brother-in-arms scales the party); lands the persistent-stance primitive reserved in D66.
 - **Non-combat prestige forks** — Merchant (D70) · Cook / Noble (D71): the first **verb-prestiges**

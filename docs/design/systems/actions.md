@@ -114,12 +114,16 @@ The between-battle surface (`OverworldScene` Survey screen + the camp panel).
 
 ## Overworld actions
 
-Between-node abilities on the cooldown spine (D29/D35), resolved by `takeOverworldAction`.
-`jobIds` is an **enforced allowlist** (the actor's job must be on it).
+Between-node abilities on the cooldown spine (D29/D35), **unified onto `JobDef.skills`** (D72):
+a `SkillDef` with an `overworldCost` (the two-axis menu) + an `OverworldActionEffect`, surfaced
+through the one `availableSkills` projection (D67) and resolved by `useOverworldSkill`. The
+**Class** gate is implicit (the skill lives on its job); a **Capability** gate is `SkillDef.requires`
+(the Triage/lockpick shape). The old `OVERWORLD_ABILITIES` / `takeOverworldAction` registry was
+retired.
 
 | Verb | Gate | Owner | Cost | Effect | Code |
 |---|---|---|---|---|---|
-| **Survey** | **Class** (`jobIds:["scout"]`) | Scout | cooldown 2 + fatigue 1 | Raise a reachable node's intel preview by a tier | `overworld-actions.ts` `SURVEY` |
+| **Survey** | **Class** (on the Scout job) | Scout | cooldown 2 + fatigue 1 | Raise a reachable node's intel preview by a tier | `jobs.ts` `SURVEY` → `useOverworldSkill` |
 
 > *Naming note:* the **Survey** ability (id `survey`) is distinct from the **Scout
 > class** (jobId `scout`) — the Scout performs the Survey. (Was a name collision.)

@@ -399,10 +399,12 @@ clean loop: **accrue → Patronize → Bribe.**
 
 - **The per-class design pass (one at a time)** — **Soldier = pass 1** (D66) · **Scout = pass 2**
   (D68 — built) · **Merchant = pass 3** (D70) · **Cook = pass 4** & **Noble = pass 5** (D71) — the
-  non-combat triad now designed. Still ahead: the **action-registration substrate** these non-combat
-  kits need (before build), the **Banker's** own 2+1 pass (+ its missing presence anchor), the
-  **prestige forks** (combat — the Soldier's; non-combat — Merchant / Cook / Noble), and the remaining
-  combat classes' kits.
+  non-combat triad now designed. The **action-registration substrate** these non-combat kits need is
+  **built (D72** — one home on `JobDef.skills`, `availableSkills` the projection, the effect registry,
+  computed costs, the flag bag, presence/faucet, capability gates; fixtures only). Still ahead: the
+  **triad kits** that consume it (the next content pass), the **Banker's** own 2+1 pass (+ its missing
+  presence anchor), the **prestige forks** (combat — the Soldier's; non-combat — Merchant / Cook /
+  Noble), and the remaining combat classes' kits.
 - **Chain pacing** — job levels between hops so a tier-3 capstone feels earned.
 - **The acquisition agency model** — automatic (authored beats) vs. choice/item (generics).
 - **The per-unit-memory data shape** — contents + persistence scope (node / run / guild).

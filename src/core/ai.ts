@@ -29,7 +29,7 @@ import {
   PASSIVE,
 } from "./combat";
 import { isImmobilized, isDebuffed, hasStatus, EXPOSED } from "./status";
-import { canSee } from "./vision";
+import { canSeeUnit } from "./vision";
 import { unitSkills } from "./jobs";
 
 /** Scoring weights — all tunable data, a numbers pass later (D42). */
@@ -230,7 +230,7 @@ export function planEnemyTurn(
   const stay: AIPlan = { unit, path: [], destination: unit.pos, target: null };
   if (foes.length === 0) return stay;
 
-  const seen = foes.filter((f) => canSee(units, side, f.pos));
+  const seen = foes.filter((f) => canSeeUnit(units, side, f));
   const ability = debuffAbility(unit);
   const dests = reachableTiles(unit, units, grid);
 

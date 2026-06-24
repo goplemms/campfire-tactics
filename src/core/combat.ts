@@ -54,10 +54,8 @@ export const BROTHER = { maxAllies: 3 } as const;
  * here so combat stays self-contained (no jobs import — that would cycle).
  */
 export const PASSIVE = {
-  /** Scout Flanker: flank an isolated target **solo** (no second body needed). */
-  flankSolo: "flankSolo",
-  /** Scout Flanker: flank bonus override (bigger than the baseline +4). */
-  flankBonus: "flankBonus",
+  /** Scout Quiet Footsteps: flanks an isolated target **solo** (no second body) + harder to capture (read in deployment). */
+  quietFootsteps: "quietFootsteps",
   /** Hunter Deadeye: bonus damage against a debuffed target. */
   deadeye: "deadeye",
   /** Medic Triage: missing-HP heal-scaling factor (read by the heal resolver). */
@@ -76,13 +74,9 @@ export const PASSIVE = {
  * passive id a job stamps; combat resolution never reads this — it's display-only.
  */
 export const PASSIVE_INFO: Record<string, { label: string; description: string }> = {
-  [PASSIVE.flankSolo]: {
-    label: "Lone Flanker",
-    description: "Flanks a foe alone — no second ally adjacent needed to earn the flanking bonus.",
-  },
-  [PASSIVE.flankBonus]: {
-    label: "Keen Flanker",
-    description: "Flank attacks bite deeper — a larger flanking bonus than the baseline.",
+  [PASSIVE.quietFootsteps]: {
+    label: "Quiet Footsteps",
+    description: "Strikes from isolation — flanks a foe with no second ally needed — and moves unseen, halving the chance of being captured while ranging deep.",
   },
   [PASSIVE.deadeye]: {
     label: "Deadeye",
@@ -175,10 +169,10 @@ export function computeFlankBonus(
   if (adjacentBodies(defender, units, defender.side) > 0) return 0;
   // Clause 1: ≥2 of the attacker's side adjacent to the target (the attacker —
   // already counted by adjacentBodies — plus at least one more). The Scout's
-  // solo-flank passive drops the requirement to 1 (the attacker alone).
-  const needed = attacker.passives[PASSIVE.flankSolo] ? 1 : 2;
+  // Quiet Footsteps passive drops the requirement to 1 (the attacker alone).
+  const needed = attacker.passives[PASSIVE.quietFootsteps] ? 1 : 2;
   if (adjacentBodies(defender, units, attacker.side) < needed) return 0;
-  return attacker.passives[PASSIVE.flankBonus] || FLANK.bonus;
+  return FLANK.bonus;
 }
 
 /**
@@ -195,7 +189,7 @@ export function isFlanked(unit: Unit, units: readonly Unit[]): boolean {
   const meleeFoes = adjFoes.filter((f) => f.attackRange <= 1);
   if (meleeFoes.length === 0) return false; // only a melee attacker can flank
   if (adjFoes.length >= 2) return true; // ganged: the melee foe + a second body
-  return meleeFoes.some((f) => Boolean(f.passives[PASSIVE.flankSolo])); // lone solo-flanker
+  return meleeFoes.some((f) => Boolean(f.passives[PASSIVE.quietFootsteps])); // lone solo-flanker
 }
 
 /**

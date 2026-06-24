@@ -13,7 +13,7 @@
 
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
 import type { Phase, SkillDef } from "./skills";
-import { PASSIVE, FLANK } from "./combat";
+import { PASSIVE } from "./combat";
 import { guarded, exposed, swift, immobilized } from "./status";
 import type { PrestigeBranch } from "./grants";
 
@@ -300,53 +300,42 @@ export const HUNTER: JobDef = {
   ],
 };
 
-/** The **Scout** — playmaker / flank engine; manufactures isolation + marks the kill. */
+/** The **Scout** — infiltrator / flank engine; manufactures isolation, slips the net, weakens the approach. */
 export const SCOUT_JOB: JobDef = {
   id: "scout",
   name: "Scout",
-  description: "Playmaker & field-craft: manufacture isolation, plant and disarm snares, let the team eat.",
-  passives: { [PASSIVE.flankSolo]: 1, [PASSIVE.flankBonus]: FLANK.bonus + 3 },
+  description: "Infiltrator & field-craft: range deep unseen, plant weakening traps, and strike from isolation.",
+  passives: { [PASSIVE.quietFootsteps]: 1 },
   baseline: { speed: 14, maxHp: 24, attack: 9, defense: 2, moveRange: 5, sightRadius: 6, attackRange: 1 },
   growth: { speed: 2, moveRange: 1 },
   skills: [
     {
-      // Field-craft (extends the Survivalist's, which still exists as its own job): the
-      // fast playmaker plants and disarms snares. The Scout's snare also Immobilizes its
-      // prey — a richer trap than the Survivalist's plain Set Trap — setting up Deadeye.
-      id: "set-snare",
-      name: "Set Snare",
-      description: "Plant a snare in Deployment: 8 damage and Immobilizes the first enemy onto it (sets up Deadeye).",
-      phase: "deployment",
-      target: "camp",
-      range: 0,
-      spend: "act",
-      effect: { kind: "placeTrap", damage: 8, status: immobilized(2) },
-    },
-    {
+      // Dual-context by shape (move + self ⇒ pre-combat & combat, D67): the +move reaches a
+      // flank in battle and infiltrates deep in deployment, where Quiet Footsteps' net-evasion
+      // compounds (the capture read halves again while Swift). The Scout's core mobility —
+      // available from L1.
       id: "dash",
       name: "Dash",
-      description: "Reposition to reach a flank tile or dive a line (+move this turn).",
+      description: "Dart +3 tiles to reach a flank or infiltrate deep (this turn; slips the net further while pre-combat).",
       phase: "battle",
       target: "self",
       range: 0,
       spend: "move",
-      unlockLevel: 1,
       effect: { kind: "status", status: swift(1, 3) },
     },
     {
-      id: "expose",
-      name: "Expose",
-      description: "A melee strike that marks: damage AND Exposed (foe takes +damage).",
-      phase: "battle",
-      target: "enemy",
-      range: 1,
+      // Field-craft: the fast infiltrator plants (and, holding a trap skill, disarms) traps.
+      // The Scout's trap **Exposes** its prey — weakening the approach and still setting up the
+      // Hunter's Deadeye (Exposed is a debuff). The L2 rest-beat payoff atop L1 Dash.
+      id: "set-snare",
+      name: "Set Trap",
+      description: "Plant a trap in Deployment: 8 damage and Exposes the first enemy onto it (it takes +damage; sets up Deadeye).",
+      phase: "deployment",
+      target: "camp",
+      range: 0,
       spend: "act",
       unlockLevel: 2,
-      effect: {
-        kind: "damage",
-        bonusAttack: 2,
-        onHit: { ...exposed(2) },
-      },
+      effect: { kind: "placeTrap", damage: 8, status: exposed(2) },
     },
   ],
 };

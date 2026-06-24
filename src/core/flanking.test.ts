@@ -53,12 +53,12 @@ describe("flanking (D36)", () => {
     expect(computeFlankBonus(a, t, [a, t])).toBe(0);
   });
 
-  it("the Scout's Flanker passive flanks solo and for a bigger bonus", () => {
+  it("the Scout's Quiet Footsteps passive flanks solo (at the baseline bonus)", () => {
     const scout = at("s", "player", 1, 2, {
-      passives: { [PASSIVE.flankSolo]: 1, [PASSIVE.flankBonus]: 7 },
+      passives: { [PASSIVE.quietFootsteps]: 1 },
     });
     const t = at("t", "enemy", 2, 2);
-    expect(computeFlankBonus(scout, t, [scout, t])).toBe(7);
+    expect(computeFlankBonus(scout, t, [scout, t])).toBe(FLANK.bonus);
   });
 
   it("is melee-only: a ranged attacker never flanks", () => {

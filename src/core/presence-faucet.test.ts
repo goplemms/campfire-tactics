@@ -77,10 +77,12 @@ describe("card-surfacing hook + production dormancy (D72)", () => {
     expect(jobPresenceSummary(getJob("soldier")!)).toEqual([]); // a plain combat job: nothing to surface
   });
 
-  it("no live job declares presence or a faucet yet — the seam is dormant (byte-identical)", () => {
-    for (const job of Object.values(JOBS)) {
+  it("the kit pass declares the economy classes' presence/faucet (D71/D72)", () => {
+    // Noble → Renown (the Influence faucet). Every other job declares neither (yet).
+    expect(JOBS.noble.faucet?.influencePerStep).toBe(1);
+    for (const [id, job] of Object.entries(JOBS)) {
+      if (id !== "noble") expect(job.faucet).toBeUndefined();
       expect(job.presence).toBeUndefined();
-      expect(job.faucet).toBeUndefined();
     }
   });
 });

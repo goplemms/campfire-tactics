@@ -16,7 +16,7 @@
  *   from incoming run gold ({@link "./economy".gainRunGold}); and **theft
  *   protection** that blunts a skim ({@link "./theft"}). **Purse only — never the
  *   treasury** (D34).
- * - **Noble — INFLUENCE** ({@link accrueNobleInfluence}/{@link patronize}/{@link
+ * - **Noble — INFLUENCE** ({@link accrueDeclaredFaucets}/{@link patronize}/{@link
  *   bribeEnemy}): **Influence** — a separate, **per-expedition** currency that can never
  *   pay Upkeep — accrues passively from a Noble's presence and from the **Patronize**
  *   verb (gold → standing), and is spent on a **bribe** that sways an enemy (reading the
@@ -296,25 +296,11 @@ export function hasNoble(party: readonly Unit[]): boolean {
   return party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "noble");
 }
 
-/** Influence the party's Noble accrues per node-step (0 with no Noble present, D62). */
-export function nobleInfluencePerStep(party: readonly Unit[]): number {
-  return hasNoble(party) ? ECONOMY.noble.incomePerStep : 0;
-}
-
 /**
- * Accrue the **Noble's passive Influence** one node-step (D62): a Noble builds rapport
- * just by travelling — people seek them for patronage and work. The Noble's twin of the
- * Banker's {@link "./overworld-actions".accruePurseInterest}; credited to the run's
- * **per-expedition** standing (never the guild). Called from {@link "./run".breakCamp}.
- * Returns the Influence gained (0 with no Noble present — no free faucet).
+ * Influence a party accrues per node-step from declared {@link "./jobs".JobFaucet}s (D72) —
+ * **Renown as data**: each fielded member's `faucet.influencePerStep`, summed. The **Noble**
+ * (D71) is the first declarer (`influencePerStep: 1`); `lookup` injectable for fixtures.
  */
-export function accrueNobleInfluence(run: RunState): number {
-  const gain = nobleInfluencePerStep(run.party);
-  if (gain > 0) addInfluence(run.overworld, gain);
-  return gain;
-}
-
-/** Influence a party accrues per node-step from declared {@link "./jobs".JobFaucet}s (D72 — Renown as data). `lookup` injectable for fixtures. */
 export function declaredFaucetInfluence(party: readonly Unit[], lookup: JobLookup = getJob): number {
   let inf = 0;
   for (const u of party) {
@@ -325,12 +311,10 @@ export function declaredFaucetInfluence(party: readonly Unit[], lookup: JobLooku
 }
 
 /**
- * Accrue declared per-step **Influence faucets** one node-step (D72) — the data-driven twin
- * of {@link accrueNobleInfluence}: a class's Renown declared on its {@link "./jobs".JobDef}
- * instead of a hardcoded fn. Called from {@link "./run".breakCamp} alongside the legacy
- * faucet. **0 in production today** (no class declares one yet), so it's byte-identical;
- * the verb-kit pass migrates Renown onto a declaration and retires the hardcoded path.
- * Returns the Influence gained.
+ * Accrue declared per-step **Influence faucets** one node-step (D72) — the Noble's **Renown**
+ * (D71), declared on its {@link "./jobs".JobDef} rather than a hardcoded fn (this **retired**
+ * the old `accrueNobleInfluence`). Credited to the run's per-expedition standing (never the
+ * guild); called from {@link "./run".breakCamp}. Returns the Influence gained.
  */
 export function accrueDeclaredFaucets(run: RunState, lookup: JobLookup = getJob): number {
   const gain = declaredFaucetInfluence(run.party, lookup);

@@ -232,6 +232,9 @@ export const NOBLE: JobDef = {
   name: "Noble",
   description: "Works the standing economy: courts patrons for Influence and sways enemies with bribes.",
   noncombat: true,
+  // Renown (D71/D72): the Noble's presence accrues Influence each node-step — the standing
+  // anchor as data, read by accrueDeclaredFaucets in breakCamp (mirrors ECONOMY.noble.incomePerStep = 1).
+  faucet: { influencePerStep: 1 },
   skills: [],
 };
 

@@ -14,8 +14,8 @@ import {
   hasBanker,
   patronize,
   hasNoble,
-  nobleInfluencePerStep,
-  accrueNobleInfluence,
+  declaredFaucetInfluence,
+  accrueDeclaredFaucets,
   bribeEnemy,
   bribeCost,
   bribeChance,
@@ -252,11 +252,11 @@ function commoner(seed: string): Unit {
 }
 
 describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => {
-  it("a Noble in the party accrues passive Influence each node-step", () => {
+  it("a Noble in the party accrues passive Influence each node-step (Renown, declared D71/D72)", () => {
     const run = newRun("noble-passive"); // newRun's party fields a Noble (the standing-bearer)
     expect(hasNoble(run.party)).toBe(true);
     const before = run.overworld.influence;
-    const gained = accrueNobleInfluence(run);
+    const gained = accrueDeclaredFaucets(run); // the Noble's Renown faucet, now read as data
     expect(gained).toBe(ECONOMY.noble.incomePerStep);
     expect(run.overworld.influence).toBe(before + gained);
   });
@@ -264,8 +264,8 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
   it("no Noble in the party → no passive Influence (no free faucet)", () => {
     const run = createRun("noble-none", { party: [commoner("none")], difficultyId: "normal", gold: 100, storageCap: 8 });
     expect(hasNoble(run.party)).toBe(false);
-    expect(nobleInfluencePerStep(run.party)).toBe(0);
-    expect(accrueNobleInfluence(run)).toBe(0);
+    expect(declaredFaucetInfluence(run.party)).toBe(0);
+    expect(accrueDeclaredFaucets(run)).toBe(0);
     expect(run.overworld.influence).toBe(0);
   });
 
@@ -298,7 +298,7 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
   it("Influence can't pay Upkeep — earning it leaves the treasury bill unfunded (D34)", () => {
     const g = guildWith("noble-no-upkeep", 0);
     const run = newRun("noble-no-upkeep-run");
-    accrueNobleInfluence(run);
+    accrueDeclaredFaucets(run);
     const infBefore = run.overworld.influence;
     expect(infBefore).toBeGreaterThan(0);
     const res = payTreasuryUpkeep(g);

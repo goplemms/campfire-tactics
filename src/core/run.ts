@@ -49,7 +49,7 @@ import {
   accruePurseInterest,
   type OverworldEconomy,
 } from "./overworld-actions";
-import { accrueNobleInfluence, accrueDeclaredFaucets, deftHandsSkim } from "./economy-actions";
+import { accrueDeclaredFaucets, deftHandsSkim } from "./economy-actions";
 
 /** A recorded node outcome, for the run history / run-end screen. */
 export interface EncounterRecord {
@@ -267,8 +267,7 @@ export function reachableNodes(run: RunState): MapNode[] {
 export function breakCamp(run: RunState): void {
   tickCooldowns(run.overworld);
   accruePurseInterest(run.overworld, run.camp);
-  accrueNobleInfluence(run); // the Noble's passive Influence — rapport built on the road (D62)
-  accrueDeclaredFaucets(run); // declared per-step faucets as data (D72 — Renown's seam; 0 until a class declares it)
+  accrueDeclaredFaucets(run); // declared per-step Influence faucets (D72) — the Noble's Renown (D71) + any future declarer
   deftHandsSkim(run); // the Thief's Deft Hands — a chance to skim coin off a busy node (D68)
   // The deployed trickle (D53): every deployed character earns a passive bump per
   // node-step on the road (benched roster lives on the guild, never passed here).

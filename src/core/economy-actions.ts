@@ -28,6 +28,7 @@
 
 import type { RunState } from "./run";
 import { primaryJobOf, type Unit } from "./units";
+import { getJob, type JobLookup } from "./jobs";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
 import { checkOverworldCost, commitOverworldCost, type OverworldCost, type ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
@@ -309,6 +310,30 @@ export function nobleInfluencePerStep(party: readonly Unit[]): number {
  */
 export function accrueNobleInfluence(run: RunState): number {
   const gain = nobleInfluencePerStep(run.party);
+  if (gain > 0) addInfluence(run.overworld, gain);
+  return gain;
+}
+
+/** Influence a party accrues per node-step from declared {@link "./jobs".JobFaucet}s (D72 — Renown as data). `lookup` injectable for fixtures. */
+export function declaredFaucetInfluence(party: readonly Unit[], lookup: JobLookup = getJob): number {
+  let inf = 0;
+  for (const u of party) {
+    if (!u.alive || u.captured) continue;
+    inf += lookup(primaryJobOf(u))?.faucet?.influencePerStep ?? 0;
+  }
+  return inf;
+}
+
+/**
+ * Accrue declared per-step **Influence faucets** one node-step (D72) — the data-driven twin
+ * of {@link accrueNobleInfluence}: a class's Renown declared on its {@link "./jobs".JobDef}
+ * instead of a hardcoded fn. Called from {@link "./run".breakCamp} alongside the legacy
+ * faucet. **0 in production today** (no class declares one yet), so it's byte-identical;
+ * the verb-kit pass migrates Renown onto a declaration and retires the hardcoded path.
+ * Returns the Influence gained.
+ */
+export function accrueDeclaredFaucets(run: RunState, lookup: JobLookup = getJob): number {
+  const gain = declaredFaucetInfluence(run.party, lookup);
   if (gain > 0) addInfluence(run.overworld, gain);
   return gain;
 }

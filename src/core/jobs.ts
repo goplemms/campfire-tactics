@@ -24,12 +24,43 @@ import type { PrestigeBranch } from "./grants";
  */
 export type GrowthTable = Partial<Record<keyof UnitStats, number>>;
 
+/**
+ * A **presence effect** (D72) — a benefit a job holds *by being fielded* (the non-combat
+ * **presence anchor**, D70: the passive analogue). Data the readers fold in, not a
+ * hardcoded fn — the Merchant's **Appraisal** lifts every existing market a tier.
+ */
+export interface JobPresence {
+  /** Tiers a fielded member lifts every **existing** market (Appraisal: poor→basic→premium, capped). */
+  marketTierBonus?: number;
+}
+
+/**
+ * A **per-step faucet** (D72) — what a fielded member accrues each node-step by presence
+ * (the Noble's **Renown** Influence trickle). Read by the breakCamp accruals as data.
+ */
+export interface JobFaucet {
+  /** Influence accrued per node-step by a fielded member's presence (Renown). */
+  influencePerStep?: number;
+}
+
 /** A job definition — a named, described set of skills. */
 export interface JobDef {
   id: string;
   name: string;
   description: string;
   skills: SkillDef[];
+  /**
+   * **Presence** (D72) — a benefit that holds by being fielded (the non-combat presence
+   * anchor, D70). Read structurally by {@link "./overworld".effectiveMarketTier}; declared
+   * by the verb-kit content pass (Appraisal). The substrate ships the seam + fixtures.
+   */
+  presence?: JobPresence;
+  /**
+   * **Per-step faucet** (D72) — Influence (etc.) a fielded member accrues each node-step
+   * by presence (Renown). Read by {@link "./economy-actions".accrueDeclaredFaucets} from
+   * {@link "./run".breakCamp}; declared by the verb-kit content pass.
+   */
+  faucet?: JobFaucet;
   /**
    * Passive parameters this job stamps onto its bearer (D40), read by combat
    * resolution. Keyed by {@link "./combat".PASSIVE}. The identity anchor.
@@ -640,6 +671,21 @@ export const CAPABILITY_PREDICATES: { [K in CapabilityId]: (unit: Unit, lookup: 
  */
 export function unitHasCapability(unit: Unit, cap: CapabilityId, lookup: JobLookup = getJob): boolean {
   return CAPABILITY_PREDICATES[cap](unit, lookup);
+}
+
+/**
+ * Human-readable lines describing a job's **presence / faucet** declarations (D72) — the
+ * **card-surfacing hook**: a class's standing-by-presence read as data, so the render can
+ * show "Markets +1 tier while fielded" / "+1 Influence per step" without a bespoke string
+ * per class. Empty for a job that declares neither (every job today, until the kit pass).
+ */
+export function jobPresenceSummary(job: JobDef): string[] {
+  const out: string[] = [];
+  const lift = job.presence?.marketTierBonus ?? 0;
+  if (lift > 0) out.push(`Markets read +${lift} tier while fielded`);
+  const inf = job.faucet?.influencePerStep ?? 0;
+  if (inf > 0) out.push(`+${inf} Influence per node-step`);
+  return out;
 }
 
 /**

@@ -6,9 +6,11 @@
  * one tier up: a data-driven hook surface where classes *act between nodes*. An
  * **overworld ability** is **data** — an id, a display, an {@link OverworldEffect},
  * and a {@link OverworldCost} drawn from the short limiter menu (D29) — resolved by
- * one interpreter ({@link takeOverworldAction}), exactly as combat/camp skills are
+ * one interpreter ({@link useOverworldSkill}), exactly as combat/camp skills are
  * data resolved by {@link "./skills"} (D3/D4 ethos). New abilities are new records,
- * not new branches.
+ * not new branches. Since D72 the home is unified onto `JobDef.skills` (A2): an
+ * overworld action is a {@link "./skills".SkillDef} with an `overworldCost` + an
+ * {@link "./skills".OverworldActionEffect}, surfaced through {@link "./leveling".availableSkills}.
  *
  * - **Spine — per-ability cooldowns (D35).** Each ability carries a **node-step
  *   cooldown**: firing it arms the cooldown; advancing a node ({@link tickCooldowns},
@@ -30,8 +32,9 @@
 
 import { healUnit, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
-import type { SkillDef, OverworldActionEffect } from "./skills";
-import { getJob, unitHasCapability } from "./jobs";
+import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
+import { skillContexts } from "./skills";
+import { getJob, unitHasCapability, JOBS } from "./jobs";
 import { PASSIVE } from "./combat";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
 import { decayCounters, bumpCounter, nonNegInt } from "./num";
@@ -39,7 +42,7 @@ import { earn, spend } from "./purse-journal";
 import { spendInfluence } from "./economy";
 import { reachableFrom, marketOpenedFlag } from "./overworld";
 import { satisfyUpkeepLine } from "./upkeep";
-import { useCampJobSkill, type Camp, type CampOutcome } from "./camp";
+import { applyCampSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp } from "./leveling";
 
 /**
@@ -129,71 +132,16 @@ export function validateOverworldCost(label: string, cost: OverworldCost): void 
   }
 }
 
-/** Raise a chosen reachable node's intel preview tier (leans on {@link "./intel"}). */
-export interface SurveyEffect {
-  kind: "survey";
-  /** How many tiers to bump the target node's preview by. */
-  tierBump: number;
-}
-
-/**
- * The declarative effect an overworld ability applies (interpreted by the resolver).
- * (The Merchant's old `market` effect — a gold/storage mint — was retired in D61;
- * the Merchant's access is now the node's {@link "./overworld".MarketTier} + the
- * {@link "./economy-actions".merchantBuy}/{@link "./economy-actions".merchantSell}
- * verbs, not a cooldown ability.)
- */
-export type OverworldEffect = SurveyEffect;
-
-/** An overworld ability — pure data (D29), the overworld twin of a {@link "./skills".SkillDef}. */
-export interface OverworldAbility {
-  id: string;
-  name: string;
-  description: string;
-  effect: OverworldEffect;
-  cost: OverworldCost;
-  /**
-   * The job ids **allowed to perform** this ability — an *enforced* allowlist: the
-   * actor's {@link "./units".primaryJobOf | primary job} must be one of these or
-   * {@link takeOverworldAction} refuses. The render uses it to pick an eligible actor
-   * and to disable the action when the party fields none. **Omitted = any job.**
-   * Extensible: widen who can act by adding a job id (e.g. Survey is `["scout"]` today).
-   */
-  jobIds?: string[];
-}
-
-// --- The registry (jobs.ts/skills.ts spirit) --------------------------------
-
-/**
- * **Survey** — the Scout class's overworld recon action: raise a reachable node's banded
- * intel preview by a tier (D24). The cheap, frequent action — a short cooldown and light
- * fatigue — **job-gated to the Scout** ({@link OverworldAbility.jobIds}). Renamed from the
- * former "scout" ability so the *action* (id `survey`) no longer collides with the *class*
- * (jobId `scout`); the shared name is now intentional (the Scout surveys).
- */
-export const SURVEY: OverworldAbility = {
-  id: "survey",
-  name: "Survey",
-  description: "Survey a node ahead — raise its intel preview by one tier (the Scout's recon).",
-  effect: { kind: "survey", tierBump: 1 },
-  cost: { cooldown: 2, fatigue: 1 },
-  jobIds: ["scout"],
-};
-
-/** The overworld-ability registry — the single source abilities load from. */
-export const OVERWORLD_ABILITIES: Record<string, OverworldAbility> = {
-  [SURVEY.id]: SURVEY,
-};
-
-// Enforce the two-axis invariant (D61) at load: no registered ability may be both
-// unpaced and unpriced. A bad record fails fast at import, not silently in play.
-for (const ability of Object.values(OVERWORLD_ABILITIES)) {
-  validateOverworldCost(ability.name, ability.cost);
-}
-
-/** Look up an overworld ability by id. */
-export function getAbility(id: string): OverworldAbility | undefined {
-  return OVERWORLD_ABILITIES[id];
+// Enforce the two-axis invariant (D61/D72) at load: every overworld/camp **skill's** cost
+// must be paced or priced (no free-and-unlimited). The home is now `JobDef.skills` (A2,
+// D72) — Survey, Cook Stew, the triad's verbs — so a bad record fails fast at import,
+// exactly as the retired `OVERWORLD_ABILITIES` registry did for its `OverworldAbility`s.
+for (const job of Object.values(JOBS)) {
+  for (const skill of job.skills) {
+    if (skillContexts(skill).includes("overworld")) {
+      validateOverworldCost(skill.name, overworldCostOf(skill));
+    }
+  }
 }
 
 // --- The per-run economy sub-state ------------------------------------------
@@ -467,47 +415,15 @@ export function commitOverworldCost(run: RunState, id: string, cost: OverworldCo
 }
 
 /**
- * Take an overworld action (D29/D35/D61): the single interpreter. Routes the ability's
- * two-axis {@link OverworldCost} through the shared {@link checkCost} gate (pacing +
- * price), applies the effect, then {@link commitCost | commits} the spend and arms the
- * pacing. Returns an {@link ActionResult} the render reads — never throws on a refusal.
+ * The {@link OverworldCost} an overworld/camp {@link SkillDef} resolves through the gate
+ * (D61/D72): the skill's own `overworldCost` (the full two-axis menu — Survey's cooldown +
+ * fatigue, a computed price, …), or — for a costless signature action that declares only
+ * `usesPerNode` (Cook Stew) — the per-node cap alone. Supersedes the former `campSkillCost`,
+ * widening it from the pacing knob to the whole menu. (`usesPerNode` undefined ⇒ no cap,
+ * the legacy "pays its own way" escape.)
  */
-export function takeOverworldAction(
-  run: RunState,
-  unit: Unit,
-  abilityId: string,
-  opts: ActionOpts = {},
-): ActionResult {
-  const ability = getAbility(abilityId);
-  if (!ability) return { applied: false, reason: `Unknown overworld ability "${abilityId}".` };
-
-  // Job gate (the audit pass): an ability with a `jobIds` allowlist may only be performed
-  // by an actor whose primary job is on it (omitted ⇒ any). The render picks an eligible
-  // actor; this is the enforcement backstop so the rule can't be bypassed.
-  if (ability.jobIds && !ability.jobIds.includes(primaryJobOf(unit) ?? "")) {
-    return { applied: false, reason: `${unit.name} can't ${ability.name} — only ${ability.jobIds.join(", ")} can.` };
-  }
-
-  const check = checkOverworldCost(run, abilityId, ability.cost, ability.name, unit);
-  if (!check.ok) return { applied: false, reason: check.reason };
-
-  // Apply the effect (may still refuse — e.g. an unreachable Scout target).
-  const applied = applyEffect(run, ability, opts);
-  if (!applied.ok) return { applied: false, reason: applied.reason };
-
-  commitOverworldCost(run, abilityId, ability.cost, check.fatigueSpend, unit);
-
-  // Use-leveling (D53): a successful overworld ability use bumps its user — the
-  // non-combat growth path (Scout/Survey/etc.), paired with the deployed trickle.
-  grantAbilityUseXp(unit);
-
-  const goldSpent = resolveKnob(ability.cost.gold, run);
-  return {
-    applied: true,
-    detail: applied.detail,
-    fatigueSpent: check.fatigueSpend,
-    goldSpent: goldSpent > 0 ? goldSpent : undefined,
-  };
+export function overworldCostOf(skill: SkillDef): OverworldCost {
+  return skill.overworldCost ?? { usesPerNode: skill.usesPerNode };
 }
 
 /** The outcome of a gated camp-skill use — the {@link CampOutcome} plus the gate verdict. */
@@ -517,35 +433,61 @@ export interface CampSkillResult extends ActionResult {
 }
 
 /**
- * The {@link OverworldCost} a meta/camp {@link SkillDef} resolves through the gate
- * (D61): its per-node cap is the **pacing** knob. Costless signature actions (Cook
- * Stew) are limited entirely by `usesPerNode`; a priced camp job would add price knobs
- * here. (`usesPerNode` undefined ⇒ no cap, the legacy "pays its own way" escape.)
+ * Use an **overworld / camp skill** at the current node (D35/D61/D72) — the **single
+ * interpreter** every between-nodes action routes through (A2): Survey, Cook Stew, the
+ * non-combat triad's verbs, the fixtures. One path replaces both the old registry
+ * interpreter (`takeOverworldAction`) and the camp-skill path (`useCampSkillAtNode`):
+ *
+ * 1. **Class gate** is implicit — the skill came off the actor's job via {@link
+ *    "./leveling".availableSkills}; **Capability gate** (D72) is the explicit `requires`.
+ * 2. The shared two-axis **cost gate** ({@link checkOverworldCost} — computed costs and all).
+ * 3. The **effect**, by partition: the exhaustive {@link OVERWORLD_EFFECT_HANDLERS} registry
+ *    (openMarket / primeDeal / provisionMeal / survey), or the camp resolver for a `morale`
+ *    {@link "./skills".CampEffect} (Cook Stew).
+ * 4. {@link commitOverworldCost} + use-XP ({@link grantAbilityUseXp}, D53).
+ *
+ * Never throws on a refusal — returns the {@link CampSkillResult} the render reads.
  */
-function campSkillCost(skill: SkillDef): OverworldCost {
-  return { usesPerNode: skill.usesPerNode };
-}
-
-/**
- * Use a **camp job skill** at the current node (D35/D61), routed through the same
- * {@link checkCost} gate as every overworld action — its `usesPerNode` is the pacing
- * knob ({@link OverworldEconomy.campUses}, reset each node-step). When the cap is
- * reached it **refuses** (never throws), so the render shows why; otherwise it applies
- * the effect (levelling the owner, D32/D53) and commits the use.
- */
-export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): CampSkillResult {
-  const cost = campSkillCost(skill);
+export function useOverworldSkill(run: RunState, unit: Unit, skill: SkillDef, opts: ActionOpts = {}): CampSkillResult {
+  // Capability gate (D72): the explicit Capability gate, layered on the implicit class home.
+  if (skill.requires && !unitHasCapability(unit, skill.requires)) {
+    return { applied: false, reason: `${unit.name} can't ${skill.name} — only a ${skill.requires} can.` };
+  }
+  const cost = overworldCostOf(skill);
   const check = checkOverworldCost(run, skill.id, cost, skill.name, unit);
   if (!check.ok) return { applied: false, reason: check.reason };
 
-  const outcome = useCampJobSkill(unit, skill, run.camp);
-  commitOverworldCost(run, skill.id, cost, check.fatigueSpend, unit);
+  const effect = skill.effect;
+  // The overworld-economy partition (incl. migrated Survey) — the exhaustive registry.
+  if (isOverworldActionEffect(effect)) {
+    const applied = applyOverworldEffect(effect, { run, unit, opts });
+    if (!applied.ok) return { applied: false, reason: applied.reason };
+    commitOverworldCost(run, skill.id, cost, check.fatigueSpend, unit);
+    grantAbilityUseXp(unit);
+    const goldSpent = resolveKnob(cost.gold, run);
+    return { applied: true, detail: applied.detail, fatigueSpent: check.fatigueSpend, goldSpent: goldSpent > 0 ? goldSpent : undefined };
+  }
+  // The camp partition (Cook Stew's `morale`) — resolved by the camp interpreter.
+  if (effect.kind === "morale") {
+    const camp = applyCampSkill(skill, run.camp);
+    commitOverworldCost(run, skill.id, cost, check.fatigueSpend, unit);
+    const levels = grantAbilityUseXp(unit);
+    const parts: string[] = [];
+    if (camp.morale) parts.push(`+${camp.morale} morale`);
+    if (camp.bankedHeal) parts.push(`banked +${camp.bankedHeal} HP/unit`);
+    if (levels > 0) parts.push(`${unit.name} reached L${unit.level}!`);
+    return { applied: true, outcome: { ...camp, levels }, detail: `${skill.name}: ${parts.join(", ")}.`, fatigueSpent: check.fatigueSpend };
+  }
+  // A non-overworld effect routed here by mistake (a battle/deploy kind) — refuse cleanly.
+  return { applied: false, reason: `${skill.name} is not an overworld action.` };
+}
 
-  const parts: string[] = [];
-  if (outcome.morale) parts.push(`+${outcome.morale} morale`);
-  if (outcome.bankedHeal) parts.push(`banked +${outcome.bankedHeal} HP/unit`);
-  if (outcome.levels > 0) parts.push(`${unit.name} reached L${unit.level}!`);
-  return { applied: true, outcome, detail: `${skill.name}: ${parts.join(", ")}.` };
+/**
+ * Back-compat alias for the camp-skill call sites (D72) — overworld camp skills now route
+ * through the unified {@link useOverworldSkill}. (Cook Stew et al. take no `opts`.)
+ */
+export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): CampSkillResult {
+  return useOverworldSkill(run, unit, skill);
 }
 
 // --- Triage — the healer's fatigue-fuelled camp heal (the audit pass) --------
@@ -624,30 +566,6 @@ export function triage(run: RunState, healer: Unit): TriageResult {
   };
 }
 
-/** Apply an ability's effect; returns success + a detail string, or a refusal. */
-function applyEffect(
-  run: RunState,
-  ability: OverworldAbility,
-  opts: ActionOpts,
-): { ok: true; detail: string } | { ok: false; reason: string } {
-  const effect = ability.effect;
-  switch (effect.kind) {
-    case "survey": {
-      const targetId = opts.targetNodeId;
-      if (!targetId) return { ok: false, reason: "Survey needs a node to read." };
-      const reachable = reachableFrom(run.map, run.mapNodeId);
-      if (!reachable.some((n) => n.id === targetId)) {
-        return { ok: false, reason: "That node isn't reachable to survey." };
-      }
-      bumpCounter(run.overworld.scouted, targetId, effect.tierBump);
-      return { ok: true, detail: `Surveyed ${targetId} — preview raised ${effect.tierBump} tier.` };
-    }
-  }
-  // Guard (D61): a new OverworldEffect kind that's not handled above throws a clear
-  // error here instead of silently returning undefined (→ a confusing `.ok` crash).
-  return { ok: false, reason: `Unhandled overworld effect "${(effect as OverworldEffect).kind}".` };
-}
-
 // --- The overworld-effect registry (D72) ------------------------------------
 
 /** The well-known one-shot flag a Merchant's "next deal" primes (D72) — consumed by the next trade. */
@@ -694,13 +612,29 @@ const OVERWORLD_EFFECT_HANDLERS: {
     satisfyUpkeepLine(run.camp, "food");
     return { ok: true, detail: `Cooked: +${effect.rp} Rest Points banked, the night's food covered.` };
   },
+  survey: (effect, { run, opts }) => {
+    // The Scout's recon (D24), migrated from the retired registry switch (D72): raise a
+    // chosen *reachable* node's banded intel preview (read back by intel.previewNode).
+    const targetId = opts.targetNodeId;
+    if (!targetId) return { ok: false, reason: "Survey needs a node to read." };
+    const reachable = reachableFrom(run.map, run.mapNodeId);
+    if (!reachable.some((n) => n.id === targetId)) {
+      return { ok: false, reason: "That node isn't reachable to survey." };
+    }
+    bumpCounter(run.overworld.scouted, targetId, effect.tierBump);
+    return { ok: true, detail: `Surveyed ${targetId} — preview raised ${effect.tierBump} tier.` };
+  },
 };
+
+/** True if a {@link "./skills".SkillEffect} is an {@link OverworldActionEffect} (the registry owns its kind). */
+export function isOverworldActionEffect(effect: SkillEffect): effect is OverworldActionEffect {
+  return effect.kind in OVERWORLD_EFFECT_HANDLERS;
+}
 
 /**
  * Apply an {@link OverworldActionEffect} through the exhaustive {@link
  * OVERWORLD_EFFECT_HANDLERS} registry (D72) — the single overworld-effect interpreter the
- * camp/overworld action path dispatches through (inc 5's `useOverworldSkill`). Survey
- * joins this registry when it migrates off the legacy switch above.
+ * camp/overworld action path ({@link useOverworldSkill}) dispatches through.
  */
 export function applyOverworldEffect(effect: OverworldActionEffect, ctx: OverworldEffectCtx): OverworldEffectResult {
   const handler = OVERWORLD_EFFECT_HANDLERS[effect.kind] as (e: OverworldActionEffect, c: OverworldEffectCtx) => OverworldEffectResult;

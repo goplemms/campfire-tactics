@@ -311,6 +311,28 @@ export const SUBTLE_BLADE_BONUS = 8;
 /** The job-level floor a Scout must reach before a prestige branch opens (D68). */
 export const SCOUT_PRESTIGE_FLOOR = 5;
 
+/**
+ * **Survey** (D24/D72) — the Scout's overworld recon: raise a reachable node's banded
+ * intel preview by a tier, tightening the route forecast (D48). This is the **unified
+ * home** for what was the registry's only `OverworldAbility` (D72): an overworld
+ * {@link SkillDef} carrying its own two-axis `overworldCost` (a short cooldown + light
+ * fatigue) and a `survey` effect, **Class-gated by living on the Scout job** and surfaced
+ * through {@link "./leveling".availableSkills} like every other action — no more
+ * hardcoded `getAbility("survey")`. Target `camp` (it aims at a *map node* via the action
+ * opts, not a unit), resolved by {@link "./overworld-actions".useOverworldSkill}.
+ */
+export const SURVEY: SkillDef = {
+  id: "survey",
+  name: "Survey",
+  description: "Survey a node ahead — raise its intel preview by one tier (the Scout's recon).",
+  phase: "meta",
+  target: "camp",
+  range: 0,
+  spend: "act",
+  overworldCost: { cooldown: 2, fatigue: 1 },
+  effect: { kind: "survey", tierBump: 1 },
+};
+
 /** The **Scout** — infiltrator / flank engine; manufactures isolation, slips the net, weakens the approach. */
 export const SCOUT_JOB: JobDef = {
   id: "scout",
@@ -348,6 +370,10 @@ export const SCOUT_JOB: JobDef = {
       unlockLevel: 2,
       effect: { kind: "placeTrap", damage: 8, status: exposed(2) },
     },
+    // The Scout's overworld recon (D24/D72) — a meta/overworld verb alongside the two
+    // battle/deploy actives (the house style flexes; this is the Scout's signature
+    // between-nodes action, now a first-class skill rather than a registry special-case).
+    SURVEY,
   ],
   // The fork (D68): a Scout that grinds to the floor and meets a branch trigger may
   // prestige in place. The Assassin is the lethal payoff of the flank identity.

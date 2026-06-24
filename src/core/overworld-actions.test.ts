@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import { createRun, reachableNodes, breakCamp, type RunState } from "./run";
 import {
-  getAbility,
-  takeOverworldAction,
+  useOverworldSkill,
   useCampSkillAtNode,
+  overworldCostOf,
   campSkillUses,
   campSkillUsesLeft,
   tickCooldowns,
@@ -14,8 +14,6 @@ import {
   validateOverworldCost,
   hasPacing,
   hasPrice,
-  OVERWORLD_ABILITIES,
-  SURVEY,
   triage,
   isHealer,
   TRIAGE,
@@ -33,9 +31,10 @@ import {
   DEAL_PRIMED_FLAG,
   type OverworldCost,
 } from "./overworld-actions";
-import { getJob, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
+import { getJob, JOBS, SURVEY, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
 import { skillContexts } from "./skills";
+import { availableSkills } from "./leveling";
 import { computeUpkeep, payUpkeep, satisfyUpkeepLine } from "./upkeep";
 import { effectiveMarketTier, marketOpenedFlag, type MapNode } from "./overworld";
 import type { SkillDef } from "./skills";
@@ -44,7 +43,7 @@ import { FATIGUE } from "./fatigue";
 
 function roster(): Unit[] {
   return [
-    // Rook is a Scout so it can perform the job-gated Survey ability (jobIds: ["scout"]).
+    // Rook is a Scout so it carries the Survey skill (D72: Survey lives on the Scout job).
     createUnit({ id: "Rook", side: "player", pos: { col: 0, row: 1 }, jobId: "scout", speed: 12, maxHp: 30, attack: 9, defense: 3, moveRange: 4, sightRadius: 5, awareness: 4, intelligence: 1 }),
     createUnit({ id: "Coin", side: "player", pos: { col: -1, row: -1 }, jobId: "merchant", speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }),
   ];
@@ -64,12 +63,14 @@ function cookSkill(): SkillDef {
   return getJob("chef")!.skills[0];
 }
 
-describe("overworld-actions — registry (D29)", () => {
-  it("abilities are data with a cost menu (cooldown + optional fatigue/gold)", () => {
-    expect(getAbility("survey")).toBe(SURVEY);
-    expect(getAbility("nope")).toBeUndefined();
-    // The cooldown spine is always present.
-    expect(SURVEY.cost.cooldown).toBeGreaterThan(0);
+describe("overworld-actions — Survey is a unified overworld SkillDef (D72)", () => {
+  it("Survey lives on the Scout job and surfaces through availableSkills (no hardcoded id)", () => {
+    expect(getJob("scout")!.skills).toContain(SURVEY);
+    expect(SURVEY.overworldCost!.cooldown).toBeGreaterThan(0); // the cooldown spine is present
+    // The render reads the one projection — a Scout surfaces Survey, a Merchant doesn't
+    // (the class gate now lives in availableSkills, not a getAbility("survey") special-case).
+    expect(availableSkills(roster()[0], "overworld").map((s) => s.id)).toContain("survey");
+    expect(availableSkills(roster()[1], "overworld").map((s) => s.id)).not.toContain("survey");
   });
 });
 
@@ -78,20 +79,20 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
     const run = newRun("cd-arm");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent).toBe(SURVEY.cost.fatigue);
-    expect(actor.fatigue).toBe(SURVEY.cost.fatigue);
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown);
+    expect(res.fatigueSpent).toBe(SURVEY.overworldCost!.fatigue);
+    expect(actor.fatigue).toBe(SURVEY.overworldCost!.fatigue);
+    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown);
   });
 
   it("refuses while on cooldown, with a reason", () => {
     const run = newRun("cd-refuse");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
-    const again = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
+    const again = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
 
     expect(again.applied).toBe(false);
     expect(again.reason).toMatch(/cooldown/i);
@@ -113,11 +114,11 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
     const run = newRun("cd-node-tick");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown!);
+    useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
+    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown!);
 
     // Break Camp is the node-step that ticks cooldowns — at departure, not the event.
-    for (let i = 0; i < SURVEY.cost.cooldown!; i++) {
+    for (let i = 0; i < SURVEY.overworldCost!.cooldown!; i++) {
       breakCamp(run);
     }
     expect(cooldownRemaining(run.overworld, "survey")).toBe(0);
@@ -134,7 +135,7 @@ describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
     // (The demanding-action *lock* itself is unit-tested in fatigue.test via
     // fatiguePenalty; no demanding overworld ability exists post-D61.)
     const target = reachableNodes(run)[0];
-    const scout = takeOverworldAction(run, a, "survey", { targetNodeId: target.id });
+    const scout = useOverworldSkill(run, a, SURVEY, { targetNodeId: target.id });
     expect(scout.applied).toBe(true);
   });
 
@@ -144,10 +145,10 @@ describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
     actor.fatigue = FATIGUE.floor + 1; // just over the floor → surcharge of 1
     const target = reachableNodes(run)[0];
     const before = actor.fatigue;
-    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent!).toBeGreaterThan(SURVEY.cost.fatigue!); // base + surcharge
+    expect(res.fatigueSpent!).toBeGreaterThan(SURVEY.overworldCost!.fatigue!); // base + surcharge
     expect(actor.fatigue).toBe(before + res.fatigueSpent!);
   });
 });
@@ -159,7 +160,7 @@ describe("overworld-actions — Survey raises a reachable node's preview tier", 
     const target = reachableNodes(run).find((n) => n.kind === "combat")!;
 
     const before = previewNode(run, target.id, scoutedTier(run.overworld, target.id));
-    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
     expect(res.applied).toBe(true);
     expect(scoutedTier(run.overworld, target.id)).toBe(SURVEY.effect.kind === "survey" ? SURVEY.effect.tierBump : 0);
 
@@ -170,14 +171,14 @@ describe("overworld-actions — Survey raises a reachable node's preview tier", 
   it("refuses to scout an unreachable node", () => {
     const run = newRun("scout-unreach");
     const actor = run.party[0];
-    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: run.map.finalIds[0] });
+    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: run.map.finalIds[0] });
     expect(res.applied).toBe(false);
     expect(res.reason).toMatch(/reachable/i);
   });
 
   it("refuses with no target node", () => {
     const run = newRun("scout-notarget");
-    const res = takeOverworldAction(run, run.party[0], "survey");
+    const res = useOverworldSkill(run, run.party[0], SURVEY);
     expect(res.applied).toBe(false);
   });
 });
@@ -324,9 +325,15 @@ describe("the two-axis limiter invariant (D61)", () => {
     expect(hasPrice({ cooldown: 2 })).toBe(false);
   });
 
-  it("every registered overworld ability satisfies the invariant", () => {
-    for (const ability of Object.values(OVERWORLD_ABILITIES)) {
-      expect(() => validateOverworldCost(ability.name, ability.cost)).not.toThrow();
+  it("every overworld/camp skill in the live registry satisfies the invariant (D72)", () => {
+    // The home is now JobDef.skills (A2): Survey, Cook Stew, and any future verb. The
+    // load-time guard in overworld-actions runs this same check at import.
+    for (const job of Object.values(JOBS)) {
+      for (const skill of job.skills) {
+        if (skillContexts(skill).includes("overworld")) {
+          expect(() => validateOverworldCost(skill.name, overworldCostOf(skill))).not.toThrow();
+        }
+      }
     }
   });
 });

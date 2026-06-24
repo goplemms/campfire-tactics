@@ -19,6 +19,7 @@ import { countOf, removeItem, type Inventory } from "./inventory";
 import { abilityScaleBonus } from "./leveling";
 import { assertNever } from "./num";
 import type { CapabilityId } from "./jobs";
+import type { OverworldCost } from "./overworld-actions";
 
 /** The ordered phases of the game pipeline (D3). */
 export type Phase = "meta" | "deployment" | "battle" | "resolution";
@@ -197,13 +198,24 @@ export interface ProvisionMealEffect {
   rp: number;
 }
 /**
+ * **Overworld**: raise a reachable node's banded **intel preview** by `tierBump` tiers
+ * (D24) — the Scout's Survey recon. Reads the chosen node from the action's
+ * `opts.targetNodeId`; the one node-targeting overworld effect (skill target `camp`).
+ * Migrated from the retired `OverworldAbility` registry into the unified home (D72).
+ */
+export interface SurveyNodeEffect {
+  kind: "survey";
+  /** How many tiers to bump the target node's preview by. */
+  tierBump: number;
+}
+/**
  * **Overworld / camp economy** effects (D72) — resolved by the exhaustive
  * {@link "./overworld-actions".OVERWORLD_EFFECT_HANDLERS} registry (the overworld twin of
- * {@link BattleEffect}'s, the way {@link CampEffect} resolves in {@link "./camp"}). These
- * are the generic *mechanisms* the non-combat triad needs; a class's actual verbs (Find
- * Trade / Savvy Barter / Cook Stew) wire them onto a job in the following content pass.
+ * {@link BattleEffect}'s, the way {@link CampEffect} resolves in {@link "./camp"}). The
+ * generic *mechanisms* the non-combat triad needs (plus migrated Survey); a class's actual
+ * verbs (Find Trade / Savvy Barter / Cook Stew) wire them onto a job in the content pass.
  */
-export type OverworldActionEffect = OpenMarketEffect | PrimeDealEffect | ProvisionMealEffect;
+export type OverworldActionEffect = OpenMarketEffect | PrimeDealEffect | ProvisionMealEffect | SurveyNodeEffect;
 
 /**
  * The declarative effect a skill applies when it resolves — **partitioned by the
@@ -276,6 +288,16 @@ export interface SkillDef {
    * capability gate (the action's class/universal home is its only gate).
    */
   requires?: CapabilityId;
+  /**
+   * The **two-axis overworld cost** (D72) a between-nodes action declares — the full
+   * {@link "./overworld-actions".OverworldCost} menu (cooldown / per-node cap / fatigue /
+   * gold / influence / rp, computed prices and all), gating the action through the shared
+   * {@link "./overworld-actions".checkOverworldCost} limiter. Omitted ⇒ derived from
+   * `usesPerNode` alone (a costless signature action like Cook Stew), via
+   * {@link "./overworld-actions".overworldCostOf}. Combat skills ignore it (the CT clock /
+   * `cost` is their limiter); it's the overworld twin of {@link SkillCost}.
+   */
+  overworldCost?: OverworldCost;
   effect: SkillEffect;
 }
 
@@ -309,7 +331,8 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
     case "openMarket":
     case "primeDeal":
     case "provisionMeal":
-      // Camp/overworld economy mechanisms (D72) — surfaced on the between-nodes beat.
+    case "survey":
+      // Camp/overworld economy + recon mechanisms (D72) — surfaced on the between-nodes beat.
       return ["overworld"];
     case "med-heal":
       // The herb-stash heal (D40) is a combat/logistics bridge: its stash pick + inventory

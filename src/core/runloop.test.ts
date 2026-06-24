@@ -3,7 +3,8 @@ import { createUnit, type Unit } from "./units";
 import { createRun, currentNode, reachableNodes, chooseNode, type RunState } from "./run";
 import { RunLoop, REST } from "./runloop";
 import { getNode } from "./overworld";
-import { cooldownRemaining, SURVEY } from "./overworld-actions";
+import { cooldownRemaining } from "./overworld-actions";
+import { SURVEY } from "./jobs";
 import { computeUpkeep } from "./upkeep";
 import { FATIGUE } from "./fatigue";
 
@@ -201,10 +202,10 @@ describe("runloop — the unified camp at every node (D35)", () => {
     const actor = run.party[0];
     const ahead = reachableNodes(run)[0];
     if (ahead) {
-      const res = loop.overworldAction(actor, "survey", { targetNodeId: ahead.id });
+      const res = loop.useOverworldSkill(actor, SURVEY, { targetNodeId: ahead.id });
       expect(res.applied).toBe(true);
-      expect(actor.fatigue).toBe(SURVEY.cost.fatigue);
-      expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown);
+      expect(actor.fatigue).toBe(SURVEY.overworldCost!.fatigue);
+      expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown);
     }
 
     // Commit: the existing camp → encounter → resolution still runs.
@@ -218,12 +219,12 @@ describe("runloop — the unified camp at every node (D35)", () => {
     // Resolving the fight does NOT tick the spine — the node-step fires at
     // *departure* now (D46), so the scout's cooldown is still full here…
     if (ahead) {
-      expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown);
+      expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown);
       // …and Break Camp (choosing the next edge) is what ticks it down.
       const next = reachableNodes(run)[0];
       if (next) {
         chooseNode(run, next.id);
-        expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown! - 1);
+        expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown! - 1);
       }
     }
   });
@@ -237,7 +238,7 @@ describe("runloop — the unified camp at every node (D35)", () => {
     // The camp surface is the same at a rest node — fire an action, spend fatigue.
     const actor = run.party[0];
     const ahead = reachableNodes(run)[0]!;
-    const res = loop.overworldAction(actor, "survey", { targetNodeId: ahead.id });
+    const res = loop.useOverworldSkill(actor, SURVEY, { targetNodeId: ahead.id });
     expect(res.applied).toBe(true);
     expect(actor.fatigue).toBeGreaterThan(0);
 

@@ -45,8 +45,10 @@ describe("the four kits load as data (D40)", () => {
     for (const job of [HEAVY_KNIGHT, HUNTER, SCOUT_JOB, MEDIC]) {
       expect(getJob(job.id)).toBe(job);
       expect(job.passives && Object.keys(job.passives).length).toBeGreaterThan(0);
-      // Count all actives, not just battle-phase: the Scout's two span deployment + battle.
-      const actives = job.skills;
+      // Count the **combat-kit** actives (battle + deployment): the Scout's two span both.
+      // Its overworld Survey (phase "meta", D72) is a non-combat verb layered on top, not
+      // part of the D40 2-active shape — so it doesn't count against the kit guideline.
+      const actives = job.skills.filter((s) => s.phase !== "meta");
       expect(actives.length).toBe(2);
       expect(actives.find((s) => s.unlockLevel === 2)).toBeTruthy();
       expect(job.baseline).toBeTruthy();

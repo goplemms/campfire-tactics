@@ -55,7 +55,7 @@ import { rpPerNight, payUpkeep, restHeal, computeUpkeep, RECOVERY, type UpkeepRe
 import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import { restoreFatigue } from "./fatigue";
-import { takeOverworldAction, useCampSkillAtNode, scoutedTier, type ActionOpts, type ActionResult, type CampSkillResult } from "./overworld-actions";
+import { useOverworldSkill, scoutedTier, type ActionOpts, type CampSkillResult } from "./overworld-actions";
 import { gainRunGold } from "./economy";
 import {
   type PlaytestLog,
@@ -214,25 +214,24 @@ export class RunLoop {
   // --- The unified overworld camp (D35) -------------------------------------
 
   /**
-   * Take an overworld action at the current node (D29/D35) — the unified camp's
-   * verb. Delegates to the cost-gating interpreter ({@link takeOverworldAction}):
-   * checks the ability is off cooldown and the actor has fatigue headroom/gold,
-   * applies the effect, spends the costs and arms the node-step cooldown. Never
-   * throws on a refusal — returns the {@link ActionResult} the render reads.
+   * Use an **overworld / camp skill** at the current node (D29/D35/D72) — the unified
+   * camp verb for *any* between-nodes action (Survey, Cook Stew, the triad's verbs).
+   * Delegates to the single cost-gating interpreter ({@link useOverworldSkill}): the
+   * capability gate, the two-axis cost gate, the effect, the spend + node-step pacing.
+   * `opts` carries a target (Survey's chosen node). Never throws on a refusal — returns
+   * the {@link CampSkillResult} the render reads. Replaces the old `overworldAction`
+   * (registry id) path (D72).
    */
-  overworldAction(unit: Unit, abilityId: string, opts: ActionOpts = {}): ActionResult {
-    return takeOverworldAction(this.run, unit, abilityId, opts);
+  useOverworldSkill(unit: Unit, skill: SkillDef, opts: ActionOpts = {}): CampSkillResult {
+    return useOverworldSkill(this.run, unit, skill, opts);
   }
 
   /**
-   * Use a **camp job skill** at the current node (D35) — the signature non-combat
-   * action (Chef stew, Merchant trade). Delegates to {@link useCampSkillAtNode},
-   * which gates the costless actions by their per-node cap so they can't be spammed,
-   * levels the owner, and keeps the storage cap in sync. Never throws on a refusal —
-   * returns the {@link CampSkillResult} the render reads.
+   * Use a **camp job skill** at the current node (D35) — the signature non-combat action
+   * (Cook Stew). A thin alias of {@link useOverworldSkill} for the no-target call sites.
    */
   useCampSkill(unit: Unit, skill: SkillDef): CampSkillResult {
-    return useCampSkillAtNode(this.run, unit, skill);
+    return useOverworldSkill(this.run, unit, skill);
   }
 
   // --- Rest node (no battle, D23) -------------------------------------------

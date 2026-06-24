@@ -35,7 +35,7 @@
 
 import type { RunState } from "./run";
 import type { MapNode } from "./overworld";
-import type { Unit } from "./units";
+import { primaryJobOf, type Unit } from "./units";
 import { streamFor } from "./rng";
 import { MATERIALS, addItem, canAdd } from "./inventory";
 import { addInfluence, influenceTier, type InfluenceTier } from "./economy";
@@ -651,5 +651,5 @@ function canStoreMore(run: RunState, materialId: string): boolean {
 
 /** A one-line stat blurb for a recruiter's offered body. */
 function describeUnit(u: Unit): string {
-  return `${u.jobId ?? "fighter"} · HP ${u.maxHp} · ATK ${u.attack} · SPD ${u.speed}`;
+  return `${primaryJobOf(u) ?? "fighter"} · HP ${u.maxHp} · ATK ${u.attack} · SPD ${u.speed}`;
 }

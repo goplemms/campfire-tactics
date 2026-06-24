@@ -14,11 +14,10 @@
  * deterministic functions of the unit + run.
  */
 
-import type { Unit } from "./units";
-import { recalls } from "./units";
+import { recalls, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import { getNode, type MapNode, type NodeKind } from "./overworld";
-import type { JobId } from "./jobs";
+import { getJob, stampPassives, type JobId, type JobLookup } from "./jobs";
 import { jobLevelOf } from "./leveling";
 
 /** The read-only context a {@link Predicate} evaluates against (D65). */
@@ -89,7 +88,8 @@ export function evalPredicate(pred: Predicate, unit: Unit, ctx: PredicateCtx): b
  * {@link GRANT_EFFECT_HANDLERS}.
  */
 export type GrantEffect =
-  | { kind: "addHeldJob"; job: JobId };
+  | { kind: "addHeldJob"; job: JobId }
+  | { kind: "prestige"; from: JobId; into: JobId };
 
 /** A grant (D65): an eligibility {@link Predicate} guarding a {@link GrantEffect}. */
 export interface Grant {
@@ -99,7 +99,8 @@ export interface Grant {
 
 /** What applying a {@link GrantEffect} did (D65) — the report the caller surfaces. */
 export type GrantResult =
-  | { kind: "addHeldJob"; ok: boolean; job: JobId };
+  | { kind: "addHeldJob"; ok: boolean; job: JobId }
+  | { kind: "prestige"; ok: boolean; from: JobId; into: JobId };
 
 /**
  * The grant-effect registry (D65) — a handler per {@link GrantEffect} kind. The
@@ -108,12 +109,18 @@ export type GrantResult =
  * {@link GrantEffect} fails the build here until its handler is written.
  */
 const GRANT_EFFECT_HANDLERS: {
-  [K in GrantEffect["kind"]]: (effect: Extract<GrantEffect, { kind: K }>, unit: Unit, run: RunState) => GrantResult;
+  [K in GrantEffect["kind"]]: (
+    effect: Extract<GrantEffect, { kind: K }>,
+    unit: Unit,
+    run: RunState,
+    lookup: JobLookup,
+  ) => GrantResult;
 } = {
-  addHeldJob: (effect, unit, _run) => {
+  addHeldJob: (effect, unit) => {
     if (!unit.heldJobs.includes(effect.job)) unit.heldJobs.push(effect.job);
     return { kind: "addHeldJob", ok: true, job: effect.job };
   },
+  prestige: (effect, unit, _run, lookup) => prestige(unit, effect.from, effect.into, lookup),
 };
 
 /** The {@link Grant}s whose predicate `unit` currently satisfies in `ctx` (D65). */
@@ -124,13 +131,61 @@ export function eligibleGrants(unit: Unit, grants: readonly Grant[], ctx: Predic
 /**
  * Apply a {@link GrantEffect} to `unit` (D65) — dispatched through the exhaustive
  * registry. The eligibility check is {@link eligibleGrants}' job; this just applies.
+ * `lookup` resolves job data for the `prestige` re-stamp (`getJob` by default,
+ * injected by fixtures).
  */
-export function applyGrantEffect(effect: GrantEffect, unit: Unit, run: RunState): GrantResult {
-  const handler = GRANT_EFFECT_HANDLERS[effect.kind] as (e: GrantEffect, u: Unit, r: RunState) => GrantResult;
-  return handler(effect, unit, run);
+export function applyGrantEffect(
+  effect: GrantEffect,
+  unit: Unit,
+  run: RunState,
+  lookup: JobLookup = getJob,
+): GrantResult {
+  const handler = GRANT_EFFECT_HANDLERS[effect.kind] as (
+    e: GrantEffect,
+    u: Unit,
+    r: RunState,
+    l: JobLookup,
+  ) => GrantResult;
+  return handler(effect, unit, run, lookup);
 }
 
 /** Apply a {@link Grant}'s effect to `unit` (D65). */
-export function applyGrant(grant: Grant, unit: Unit, run: RunState): GrantResult {
-  return applyGrantEffect(grant.then, unit, run);
+export function applyGrant(grant: Grant, unit: Unit, run: RunState, lookup: JobLookup = getJob): GrantResult {
+  return applyGrantEffect(grant.then, unit, run, lookup);
+}
+
+/**
+ * **Prestige** (D65) — replace a job **in place** (depth, not breadth): the evolved
+ * `into` job takes the same `heldJobs` slot its `from` base held (replace, not
+ * stack), carries the base's level/xp (it *is* the job evolved), and the unit
+ * re-stamps passives off the evolved primary (skills follow via the standardized
+ * `primaryJobOf` readers). Chains naturally — `into` may itself carry `.prestige`.
+ *
+ * Guarded: a no-op (`ok:false`) if the unit doesn't hold `from`, or already holds
+ * `into`. If `from` was the effective primary, `into` takes the primary seat; the
+ * readonly `jobId` (the frozen original class) never changes. `lookup` resolves the
+ * evolved job's passives — `getJob` by default; injected by fixtures.
+ */
+export function prestige(
+  unit: Unit,
+  from: JobId,
+  into: JobId,
+  lookup: JobLookup = getJob,
+): Extract<GrantResult, { kind: "prestige" }> {
+  const slot = unit.heldJobs.indexOf(from);
+  if (slot < 0 || unit.heldJobs.includes(into)) {
+    return { kind: "prestige", ok: false, from, into };
+  }
+  const wasPrimary = primaryJobOf(unit) === from;
+  unit.heldJobs[slot] = into; // same slot — replace, not stack
+  if (wasPrimary) unit.primaryJob = into;
+  // Carry the job's progression — the evolved job keeps its level/xp.
+  const progress = unit.jobLevels[from];
+  if (progress) {
+    unit.jobLevels[into] = progress;
+    delete unit.jobLevels[from];
+  }
+  // Re-stamp passives off the evolved primary (skills now read it too, via primaryJobOf).
+  stampPassives(unit, lookup);
+  return { kind: "prestige", ok: true, from, into };
 }

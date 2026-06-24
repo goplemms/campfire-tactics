@@ -19,8 +19,14 @@ import {
   triage,
   isHealer,
   TRIAGE,
+  resolveKnob,
+  knobDeclared,
+  checkOverworldCost,
+  commitOverworldCost,
+  type OverworldCost,
 } from "./overworld-actions";
 import { getJob } from "./jobs";
+import { computeUpkeep } from "./upkeep";
 import type { SkillDef } from "./skills";
 import { previewNode } from "./intel";
 import { FATIGUE } from "./fatigue";
@@ -311,5 +317,44 @@ describe("the two-axis limiter invariant (D61)", () => {
     for (const ability of Object.values(OVERWORLD_ABILITIES)) {
       expect(() => validateOverworldCost(ability.name, ability.cost)).not.toThrow();
     }
+  });
+});
+
+describe("computed (provider) costs (D72)", () => {
+  it("resolveKnob: a static number passes through; a provider is sanitized to a non-negative int", () => {
+    const run = newRun("knob-resolve");
+    expect(resolveKnob(7, run)).toBe(7);
+    expect(resolveKnob(undefined, run)).toBe(0);
+    expect(resolveKnob((r) => r.party.length * 2, run)).toBe(run.party.length * 2);
+    expect(resolveKnob(() => -3, run)).toBe(0); // never a negative price
+    expect(resolveKnob(() => 4.9, run)).toBe(4); // floored
+  });
+
+  it("a provider knob still satisfies the two-axis invariant (it counts as priced)", () => {
+    expect(knobDeclared(() => 0)).toBe(true); // a provider always counts — its value isn't known at load
+    expect(knobDeclared(0)).toBe(false);
+    expect(hasPrice({ gold: () => 10 })).toBe(true);
+    expect(() => validateOverworldCost("Computed", { gold: (r) => r.party.length })).not.toThrow();
+  });
+
+  it("the gate resolves a provider at check time — refuses when the purse can't cover the computed value", () => {
+    const run = newRun("knob-refuse");
+    const cost: OverworldCost = { cooldown: 1, gold: () => 999_999 };
+    const check = checkOverworldCost(run, "pricey", cost, "Pricey");
+    expect(check.ok).toBe(false);
+    if (!check.ok) expect(check.reason).toMatch(/Not enough gold for Pricey \(999999g\)/);
+  });
+
+  it("priced at 'the night's Food value' — commit spends exactly the computed amount (the Cook Stew shape)", () => {
+    const run = newRun("knob-food");
+    const foodValue = computeUpkeep(run.party).total;
+    expect(foodValue).toBeGreaterThan(0);
+    const cost: OverworldCost = { usesPerNode: 1, gold: (r) => computeUpkeep(r.party).total };
+
+    const before = run.camp.gold;
+    const check = checkOverworldCost(run, "stew-fixture", cost, "Cook Stew");
+    expect(check.ok).toBe(true);
+    if (check.ok) commitOverworldCost(run, "stew-fixture", cost, check.fatigueSpend);
+    expect(run.camp.gold).toBe(before - foodValue); // the dynamic price was billed, not a static guess
   });
 });

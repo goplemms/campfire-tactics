@@ -34,12 +34,33 @@ import type { SkillDef } from "./skills";
 import { getJob } from "./jobs";
 import { PASSIVE } from "./combat";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
-import { decayCounters, bumpCounter } from "./num";
+import { decayCounters, bumpCounter, nonNegInt } from "./num";
 import { earn, spend } from "./purse-journal";
 import { spendInfluence } from "./economy";
 import { reachableFrom } from "./overworld";
 import { useCampJobSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp } from "./leveling";
+
+/**
+ * A **price knob** (D72): either a fixed number, or a **provider** computed from the
+ * run at gate time. The provider is how Cook Stew prices itself at *the night's Food
+ * value* (`(run) => computeUpkeep(run.party).total`) rather than a static figure —
+ * a single, generic seam that keeps the two-axis menu (no new typed cost-kind per
+ * dynamic price). **Must be a pure function of run state that is stable across the
+ * action** (it is resolved at the check and again at the commit, after the effect):
+ * key it off composition the effect doesn't move (party size), not the purse it spends.
+ */
+export type CostKnob = number | ((run: RunState) => number);
+
+/** Resolve a {@link CostKnob} against the run — a provider is sanitized to a non-negative int. */
+export function resolveKnob(knob: CostKnob | undefined, run: RunState): number {
+  return typeof knob === "function" ? nonNegInt(knob(run)) : knob ?? 0;
+}
+
+/** True if a price {@link CostKnob} is **declared** — a provider always counts (its value isn't known at load). */
+export function knobDeclared(knob: CostKnob | undefined): boolean {
+  return typeof knob === "function" || (knob ?? 0) > 0;
+}
 
 /**
  * The **two-axis cost menu** every camp/overworld action declares (D61 — the D29
@@ -65,12 +86,12 @@ export interface OverworldCost {
   // --- Price (axis B): what each individual cast costs ---
   /** Fatigue spent on the acting character — the loose guardrail (D35). */
   fatigue?: number;
-  /** Run gold spent from the purse (`camp.gold`, D34/D30). */
-  gold?: number;
-  /** Influence spent — the Noble's walled-off currency (D62; run-scoped). */
-  influence?: number;
-  /** Rest Points spent. */
-  rp?: number;
+  /** Run gold spent from the purse (`camp.gold`, D34/D30) — static, or a {@link CostKnob} provider. */
+  gold?: CostKnob;
+  /** Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider. */
+  influence?: CostKnob;
+  /** Rest Points spent. Static or a provider. */
+  rp?: CostKnob;
   // --- Escape hatch: an intrinsic limiter outside the two-knob menu ---
   /**
    * True when the action is bounded by a finite **consumable** rather than a
@@ -86,9 +107,9 @@ export function hasPacing(cost: OverworldCost): boolean {
   return (cost.cooldown ?? 0) > 0 || cost.usesPerNode !== undefined;
 }
 
-/** True if `cost` declares any **price** knob (fatigue / gold / influence / rp). */
+/** True if `cost` declares any **price** knob (fatigue / gold / influence / rp) — a provider counts (D72). */
 export function hasPrice(cost: OverworldCost): boolean {
-  return (cost.fatigue ?? 0) > 0 || (cost.gold ?? 0) > 0 || (cost.influence ?? 0) > 0 || (cost.rp ?? 0) > 0;
+  return (cost.fatigue ?? 0) > 0 || knobDeclared(cost.gold) || knobDeclared(cost.influence) || knobDeclared(cost.rp);
 }
 
 /**
@@ -350,17 +371,20 @@ export function checkOverworldCost(run: RunState, id: string, cost: OverworldCos
     }
     fatigueSpend = baseFatigue + penalty.surcharge;
   }
-  // Price — gold (the run purse).
-  if ((cost.gold ?? 0) > 0 && run.camp.gold < cost.gold!) {
-    return { ok: false, reason: `Not enough gold for ${label} (${cost.gold}g).` };
+  // Price — gold (the run purse). The knob may be a provider (D72) — resolve it now.
+  const goldCost = resolveKnob(cost.gold, run);
+  if (goldCost > 0 && run.camp.gold < goldCost) {
+    return { ok: false, reason: `Not enough gold for ${label} (${goldCost}g).` };
   }
   // Price — Influence (the Noble's per-expedition standing, D62).
-  if ((cost.influence ?? 0) > 0 && eco.influence < cost.influence!) {
-    return { ok: false, reason: `Not enough Influence for ${label} (${cost.influence}).` };
+  const influenceCost = resolveKnob(cost.influence, run);
+  if (influenceCost > 0 && eco.influence < influenceCost) {
+    return { ok: false, reason: `Not enough Influence for ${label} (${influenceCost}).` };
   }
   // Price — Rest Points.
-  if ((cost.rp ?? 0) > 0 && run.rp < cost.rp!) {
-    return { ok: false, reason: `Not enough Rest Points for ${label} (${cost.rp}).` };
+  const rpCost = resolveKnob(cost.rp, run);
+  if (rpCost > 0 && run.rp < rpCost) {
+    return { ok: false, reason: `Not enough Rest Points for ${label} (${rpCost}).` };
   }
   return { ok: true, fatigueSpend };
 }
@@ -374,9 +398,14 @@ export function checkOverworldCost(run: RunState, id: string, cost: OverworldCos
 export function commitOverworldCost(run: RunState, id: string, cost: OverworldCost, fatigueSpend: number, unit?: Unit): void {
   const eco = run.overworld;
   if (fatigueSpend > 0 && unit) unit.fatigue = spendFatigue(unit.fatigue, fatigueSpend);
-  if ((cost.gold ?? 0) > 0) spend(run.camp, cost.gold!, "action", id, { nodeId: run.mapNodeId, night: run.night });
-  if ((cost.influence ?? 0) > 0) spendInfluence(eco, cost.influence!);
-  if ((cost.rp ?? 0) > 0) run.rp -= cost.rp!;
+  // Re-resolve the price knobs (D72) — a static knob is unchanged; a provider is pure
+  // and stable across the action, so this matches what {@link checkOverworldCost} gated on.
+  const goldCost = resolveKnob(cost.gold, run);
+  const influenceCost = resolveKnob(cost.influence, run);
+  const rpCost = resolveKnob(cost.rp, run);
+  if (goldCost > 0) spend(run.camp, goldCost, "action", id, { nodeId: run.mapNodeId, night: run.night });
+  if (influenceCost > 0) spendInfluence(eco, influenceCost);
+  if (rpCost > 0) run.rp -= rpCost;
   if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;
   if (cost.usesPerNode !== undefined) bumpCounter(eco.campUses, id);
 }
@@ -416,11 +445,12 @@ export function takeOverworldAction(
   // non-combat growth path (Scout/Survey/etc.), paired with the deployed trickle.
   grantAbilityUseXp(unit);
 
+  const goldSpent = resolveKnob(ability.cost.gold, run);
   return {
     applied: true,
     detail: applied.detail,
     fatigueSpent: check.fatigueSpend,
-    goldSpent: (ability.cost.gold ?? 0) > 0 ? ability.cost.gold : undefined,
+    goldSpent: goldSpent > 0 ? goldSpent : undefined,
   };
 }
 

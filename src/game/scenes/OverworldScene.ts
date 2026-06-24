@@ -12,6 +12,7 @@ import {
   campReadoutLine,
   // M8 — the overworld action economy (D35)
   getAbility,
+  resolveKnob,
   cooldownRemaining,
   scoutedTier,
   campSkillUsesLeft,
@@ -715,7 +716,8 @@ export class OverworldScene extends Phaser.Scene {
       const surcharge = fatiguePenalty(actor.fatigue).surcharge;
       parts.push(`fatigue: ${baseFat + surcharge}${surcharge > 0 ? " (tired)" : ""}`);
     }
-    if (ability.cost.gold) parts.push(`gold: ${ability.cost.gold}`);
+    const gold = resolveKnob(ability.cost.gold, this.run);
+    if (gold > 0) parts.push(`gold: ${gold}`);
     return parts.join(", ");
   }
 
@@ -725,7 +727,8 @@ export class OverworldScene extends Phaser.Scene {
     if (cd > 0) return `On cooldown — ${cd} more node${cd === 1 ? "" : "s"}.`;
     const baseFat = ability.cost.fatigue ?? 0;
     if (baseFat >= fatiguePenalty(actor.fatigue).lockAtOrAbove) return `${actor.name} is too exhausted — rest first.`;
-    if (ability.cost.gold && this.run.camp.gold < ability.cost.gold) return `Not enough gold (${ability.cost.gold}g).`;
+    const gold = resolveKnob(ability.cost.gold, this.run);
+    if (gold > 0 && this.run.camp.gold < gold) return `Not enough gold (${gold}g).`;
     return null;
   }
 

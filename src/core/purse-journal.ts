@@ -36,6 +36,7 @@ export type PurseSource =
   | "recovery" // …or its kill-to-recover (in)
   | "banker" // a Banker buy-on-debt advance
   | "interest" // the Banker's per-step interest faucet
+  | "deft-hands" // the Thief's Deft Hands node skim (in) (D68)
   | "recruit" // a mid-run recruiter fee
   | "event" // a story-node payout or cost
   | "action"; // an overworld ability's gold cost

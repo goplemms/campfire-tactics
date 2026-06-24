@@ -255,6 +255,35 @@ export function bankerProtect(run: RunState): BankerProtectResult {
 // --- Noble — INFLUENCE (a walled-off, per-expedition currency, D62) ----------
 
 /**
+ * True if the party fields a **Thief** — the {@link "./jobs".THIEF_JOB} prestige (D68), the
+ * unseen hand whose **Deft Hands** skims coin off busy nodes. Mirrors {@link hasBanker} /
+ * {@link hasNoble}: a class in the party unlocks that class's economy.
+ */
+export function hasThief(party: readonly Unit[]): boolean {
+  return party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "thief");
+}
+
+/** Deft Hands tuning (D68) — the per-node skim chance + take. Tunable; modest vs the scarce economy. */
+export const DEFT_HANDS = { chance: 0.5, gold: 25 } as const;
+
+/**
+ * **Deft Hands** (D68) — the Thief's passive node skim: leaving a busy node (a **combat**
+ * or **event** node — never a quiet rest), the thief has a seeded {@link DEFT_HANDS.chance}
+ * to pocket {@link DEFT_HANDS.gold} into the purse. Deterministic per node-step
+ * (`streamFor(seed, "deft:<node>:<night>")`) — no live RNG. A no-op (0) with no Thief
+ * present, on a rest node, or on a missed roll. Fired by {@link "./run".breakCamp}.
+ */
+export function deftHandsSkim(run: RunState): number {
+  if (!hasThief(run.party)) return 0;
+  const kind = getNode(run.map, run.mapNodeId).kind;
+  if (kind !== "combat" && kind !== "event") return 0;
+  const rng = streamFor(run.seed, `deft:${run.mapNodeId}:${run.night}`);
+  if (!rng.chance(DEFT_HANDS.chance)) return 0;
+  earn(run.camp, DEFT_HANDS.gold, "deft-hands", "Deft Hands skim", { nodeId: run.mapNodeId, night: run.night });
+  return DEFT_HANDS.gold;
+}
+
+/**
  * True if the party fields a **Noble** — the {@link "./jobs".NOBLE} job (D62), the
  * standing-bearer whose presence accrues Influence, works the Patronize verb, and
  * backs the mid-battle bribe ({@link bribeEnemy}). Mirrors {@link

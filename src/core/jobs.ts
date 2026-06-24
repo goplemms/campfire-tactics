@@ -61,11 +61,17 @@ export interface JobDef {
   /**
    * Prestige branches (D65): the **depth** evolutions this job can take, each gated
    * by a {@link "./grants".Predicate} (the default floor is `jobLevel ≥ N`). Chains
-   * fall out — a prestige job may carry its own `.prestige`. The substrate ships the
-   * **field + evaluator** ({@link "./grants".eligiblePrestiges}); **no real job is
-   * populated** here — that's the per-class pass.
+   * fall out — a prestige job may carry its own `.prestige`. The substrate shipped the
+   * **field + evaluator** ({@link "./grants".eligiblePrestiges}); the **Scout** populates
+   * it first (D68, the Assassin/Thief fork).
    */
   prestige?: PrestigeBranch[];
+  /**
+   * True for a **lockpick/trap-trained** job (D68): it can **disarm** spotted traps and
+   * pick locks even without carrying a Set-Trap skill (the Thief's Expert Lockpick).
+   * Read by {@link "./traps".canDisarm} — a capability, not a hard-coded jobId (D54).
+   */
+  lockpick?: boolean;
 }
 
 /**
@@ -356,7 +362,34 @@ export const SCOUT_JOB: JobDef = {
         ],
       },
     },
+    {
+      into: "thief",
+      when: {
+        kind: "all",
+        of: [
+          { kind: "jobLevel", job: "scout", min: SCOUT_PRESTIGE_FLOOR },
+          { kind: "remembers", flag: "thieves-guild-invite" },
+        ],
+      },
+    },
   ],
+};
+
+/**
+ * **Hidden Passage** (D68) — the shared spine of the Scout's prestige fork: both the
+ * Assassin and the Thief vanish to operate unseen. Combat-only (the closing net doesn't
+ * "see", so Stealth has no pre-combat use).
+ */
+const HIDDEN_PASSAGE: SkillDef = {
+  id: "hidden-passage",
+  name: "Hidden Passage",
+  description: "Vanish — gain Stealth until your next turn: the enemy can't see or target you unless they stand adjacent.",
+  phase: "battle",
+  target: "self",
+  range: 0,
+  spend: "act",
+  usableContext: ["combat"],
+  effect: { kind: "status", status: stealth(1) },
 };
 
 /**
@@ -372,19 +405,7 @@ export const ASSASSIN_JOB: JobDef = {
   baseline: { speed: 15, maxHp: 22, attack: 12, defense: 1, moveRange: 5, sightRadius: 6, attackRange: 1 },
   growth: { attack: 2, speed: 1 },
   skills: [
-    {
-      // The spine: vanish from the army's sight to set up the strike. Combat-only — the
-      // closing net doesn't "see", so Stealth has no pre-combat use.
-      id: "hidden-passage",
-      name: "Hidden Passage",
-      description: "Vanish — gain Stealth until your next turn: the enemy can't see or target you unless they stand adjacent.",
-      phase: "battle",
-      target: "self",
-      range: 0,
-      spend: "act",
-      usableContext: ["combat"],
-      effect: { kind: "status", status: stealth(1) },
-    },
+    HIDDEN_PASSAGE,
     {
       // The cripple: a precise strike that leaves the prey Exposed AND Immobilized (the
       // multi-rider onHit). The L2 payoff.
@@ -399,6 +420,24 @@ export const ASSASSIN_JOB: JobDef = {
       effect: { kind: "damage", bonusAttack: 3, onHit: [exposed(2), immobilized(2)] },
     },
   ],
+};
+
+/**
+ * The **Thief** (D68) — the Scout's utility prestige: an unseen hand that works the node
+ * economy and the locks. The non-combat-leaning branch (D65 emergent non-combat) — its
+ * value is **verbs** (Deft Hands node-gold, Expert Lockpick disarm/pick), not a battle
+ * kit. Spine = Hidden Passage (Stealth). `passives: {}` is intentional: it clears the
+ * Scout's Quiet Footsteps on prestige (the Thief's anchor is economic, not combat).
+ */
+export const THIEF_JOB: JobDef = {
+  id: "thief",
+  name: "Thief",
+  description: "Unseen hand: vanish, skim coin off the road, and pick the locks others can't.",
+  passives: {},
+  lockpick: true, // Expert Lockpick: disarm spotted traps + pick locks (read by canDisarm)
+  baseline: { speed: 14, maxHp: 22, attack: 7, defense: 2, moveRange: 5, sightRadius: 6, attackRange: 1 },
+  growth: { speed: 1, moveRange: 1 },
+  skills: [HIDDEN_PASSAGE],
 };
 
 /** The **Medic** — sustain backbone & clock-manager; its game is timing. */
@@ -520,6 +559,7 @@ export const JOBS = {
   hunter: HUNTER,
   scout: SCOUT_JOB,
   assassin: ASSASSIN_JOB,
+  thief: THIEF_JOB,
   medic: MEDIC,
   "snare-trapper": SNARE_TRAPPER,
 } satisfies Record<string, JobDef>;

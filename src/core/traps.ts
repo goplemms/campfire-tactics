@@ -11,13 +11,13 @@
  *
  * Pure logic: no Phaser, no DOM; all randomness flows through the run's {@link Rng}.
  */
-import type { Unit } from "./units";
+import { primaryJobOf, type Unit } from "./units";
 import type { Inventory } from "./inventory";
 import { addItem, countOf, removeItem } from "./inventory";
 import type { Rng } from "./rng";
 import { chebyshev, type GridCoord } from "./iso";
 import { clamp01 } from "./num";
-import { unitSkills } from "./jobs";
+import { unitSkills, getJob } from "./jobs";
 import { grantAbilityUseXp } from "./leveling";
 import type { PlaceTrapEffect } from "./skills";
 import {
@@ -91,9 +91,12 @@ export function revealTrapsNear(
   return found;
 }
 
-/** True if `unit` knows traps (holds a Set Trap deployment skill) — so it can disarm one. */
+/** True if `unit` can disarm a trap — it carries a Set-Trap skill, or its job is lockpick-trained (the Thief, D68). */
 export function canDisarm(unit: Unit): boolean {
-  return unitSkills(unit, "deployment").some((s) => s.effect.kind === "placeTrap");
+  return (
+    unitSkills(unit, "deployment").some((s) => s.effect.kind === "placeTrap") ||
+    getJob(primaryJobOf(unit))?.lockpick === true
+  );
 }
 
 // --- Player trap placement (the Survivalist's own Set Trap, Deployment) ------

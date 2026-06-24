@@ -104,26 +104,25 @@ describe("projectDossier (party dossier projection — pure read)", () => {
     const u = mkUnit("vale", { jobId: "scout" });
     const row = projectDossier(mkRun([u])).members[0];
 
-    // All three Scout actives, in kit order, each tagged by when/how it's used.
-    expect(row.actives.map((a) => a.name)).toEqual(["Set Snare", "Dash", "Expose"]);
+    // Both Scout actives, in kit order, each tagged by when/how it's used.
+    expect(row.actives.map((a) => a.name)).toEqual(["Dash", "Set Trap"]);
     const byName = (n: string) => row.actives.find((a) => a.name === n)!;
-    expect(byName("Set Snare").tag).toBe("Deploy");
     expect(byName("Dash").tag).toBe("Battle · Move");
-    expect(byName("Expose").tag).toBe("Battle · Act");
+    expect(byName("Set Trap").tag).toBe("Deploy");
 
-    // The 2nd active gates at job level 2 — locked at level 1; the others are ready.
-    expect(byName("Expose").lockedUntil).toBe(2);
+    // The 2nd active (Set Trap) gates at job level 2 — locked at level 1; Dash is ready.
+    expect(byName("Set Trap").lockedUntil).toBe(2);
     expect(byName("Dash").lockedUntil).toBeUndefined();
 
-    // Passives surface with player-facing labels + descriptions, not bare keys.
-    expect(row.passives.map((p) => p.name).sort()).toEqual(["Keen Flanker", "Lone Flanker"]);
+    // The single identity-anchor passive surfaces with its label + description.
+    expect(row.passives.map((p) => p.name)).toEqual(["Quiet Footsteps"]);
     expect(row.passives.every((p) => p.description.length > 0)).toBe(true);
   });
 
   it("unlocks the gated active once the owning job reaches its level", () => {
     const u = mkUnit("vale", { jobId: "scout", jobLevels: { scout: { level: 2, xp: 0 } } });
-    const expose = projectDossier(mkRun([u])).members[0].actives.find((a) => a.name === "Expose")!;
-    expect(expose.lockedUntil).toBeUndefined();
+    const setTrap = projectDossier(mkRun([u])).members[0].actives.find((a) => a.name === "Set Trap")!;
+    expect(setTrap.lockedUntil).toBeUndefined();
   });
 
   it("a jobless unit has no abilities", () => {

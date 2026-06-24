@@ -123,7 +123,7 @@ describe("isFlanked", () => {
 
   it("is flanked by a lone solo-flanker (Scout)", () => {
     const v = victim(1);
-    expect(isFlanked(v, [v, foe("a", 0, { passives: { flankSolo: 1 } })])).toBe(true);
+    expect(isFlanked(v, [v, foe("a", 0, { passives: { quietFootsteps: 1 } })])).toBe(true);
   });
 
   it("is not flanked when both adjacent foes are ranged", () => {

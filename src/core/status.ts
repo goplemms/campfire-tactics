@@ -116,6 +116,8 @@ export const HASTENED = "hastened";
 export const GUARDED = "guarded";
 /** Swift: a transient extra-move buff for one turn (Scout Dash / Hunter Reposition). */
 export const SWIFT = "swift";
+/** Stealth: the bearer is unseen by the enemy unless a foe stands adjacent (Assassin Hidden Passage). */
+export const STEALTH = "stealth";
 
 /**
  * Slowed — a CT-gain debuff read by {@link "./clock".effectiveSpeed}. `speed`
@@ -156,6 +158,20 @@ export function guarded(
 /** Swift — a transient +move buff read by {@link "./combat".effectiveMove}. */
 export function swift(duration = 1, amount: number = STATUS_TUNING.swiftMove): StatusInstance {
   return { id: SWIFT, name: "Swift", duration, kind: "buff", data: { amount } };
+}
+
+/**
+ * Stealth — a "hidden" buff read by {@link "./vision".canSeeUnit} (D68): the enemy can't
+ * see (or target) the bearer unless a foe stands directly adjacent. The Assassin's Hidden
+ * Passage; lasts until the bearer's next turn.
+ */
+export function stealth(duration = 1): StatusInstance {
+  return { id: STEALTH, name: "Stealth", duration, kind: "buff" };
+}
+
+/** True if the unit is hidden by Stealth (read by {@link "./vision".canSeeUnit}). */
+export function isStealthed(unit: Unit): boolean {
+  return hasStatus(unit, STEALTH);
 }
 
 /** Read a status's numeric `data.amount` (0 if absent) — the teeth's magnitude. */
@@ -273,6 +289,7 @@ export const STATUS_VISUALS: Record<string, StatusVisual> = {
   [HASTENED]: { glyph: "H", tint: 0x7be0a0, label: "Hastened" },
   [GUARDED]: { glyph: "G", tint: 0x8fb6e0, label: "Guarded" },
   [SWIFT]: { glyph: "F", tint: 0xe0d27b, label: "Swift" },
+  [STEALTH]: { glyph: "◌", tint: 0x8a7fb0, label: "Stealth" },
   [MARKED]: { glyph: "M", tint: 0xe0a070, label: "Marked Prey" },
 };
 

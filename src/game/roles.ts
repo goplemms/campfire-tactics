@@ -20,6 +20,8 @@ const JOB_COLORS: Record<JobId, number> = {
   "heavy-knight": ROLE.soldier, // steel — frontline / tank
   hunter: ROLE.hunter, //         amber — ranged marker
   scout: ROLE.scout, //          green — mobility / recon
+  assassin: ROLE.skirmisher, //   violet — the Scout's lethal prestige (unseen blade)
+  thief: ROLE.skirmisher, //      violet — the Scout's utility prestige (unseen hand)
   medic: ROLE.medic, //          cyan  — sustain
   chef: ROLE.chef, //           orange — support
   merchant: ROLE.merchant, //       gold  — economy

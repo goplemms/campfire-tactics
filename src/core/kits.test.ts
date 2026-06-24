@@ -45,7 +45,8 @@ describe("the four kits load as data (D40)", () => {
     for (const job of [HEAVY_KNIGHT, HUNTER, SCOUT_JOB, MEDIC]) {
       expect(getJob(job.id)).toBe(job);
       expect(job.passives && Object.keys(job.passives).length).toBeGreaterThan(0);
-      const actives = job.skills.filter((s) => s.phase === "battle");
+      // Count all actives, not just battle-phase: the Scout's two span deployment + battle.
+      const actives = job.skills;
       expect(actives.length).toBe(2);
       expect(actives.find((s) => s.unlockLevel === 2)).toBeTruthy();
       expect(job.baseline).toBeTruthy();
@@ -55,7 +56,7 @@ describe("the four kits load as data (D40)", () => {
 
   it("stampPassives copies the job's passive onto the unit", () => {
     const scout = at("s", "player", 0, 0, "scout");
-    expect(scout.passives[PASSIVE.flankSolo]).toBe(1);
+    expect(scout.passives[PASSIVE.quietFootsteps]).toBe(1);
     const medic = at("m", "player", 0, 0, "medic");
     expect(medic.passives[PASSIVE.triage]).toBeGreaterThan(0);
   });
@@ -76,12 +77,12 @@ describe("Heavy Knight — Hold the Line tarpit aura", () => {
   });
 });
 
-describe("Scout — Flanker solo-flank", () => {
-  it("flanks an isolated foe alone, for a bigger-than-baseline bonus", () => {
+describe("Scout — Quiet Footsteps solo-flank", () => {
+  it("flanks an isolated foe alone, at the baseline bonus", () => {
     const scout = at("s", "player", 1, 2, "scout");
     const foe = at("f", "enemy", 2, 2);
     const bonus = computeFlankBonus(scout, foe, [scout, foe]);
-    expect(bonus).toBeGreaterThan(4); // baseline is 4; the Scout gets more
+    expect(bonus).toBe(4); // solo-flank at the baseline bonus — the edge is flanking alone, not harder
   });
 });
 

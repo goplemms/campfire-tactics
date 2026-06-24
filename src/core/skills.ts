@@ -37,16 +37,20 @@ export type UsableContext = "overworld" | "guild" | "pre-combat" | "combat";
  */
 export type SkillTarget = "self" | "enemy" | "ally" | "camp" | "party";
 
+/** A status rider authored on a skill (the `data` payload is optional — the builder may add it). */
+export type RiderStatus = Omit<StatusInstance, "data"> & { data?: Record<string, unknown> };
+
 /**
  * A heavier strike: deal damage as if the caster's attack were `+bonusAttack`,
- * optionally applying `onHit` to the target afterwards (the Scout's Expose =
- * damage **and** Exposed). The strike still earns flanking when melee.
+ * optionally applying `onHit` to the target afterwards — one rider (the Soldier's
+ * Debilitating Strike = Exposed) or a list (the Assassin's Surgical Precision =
+ * Exposed + Immobilized). The strike still earns flanking when melee.
  */
 export interface DamageEffect {
   kind: "damage";
   bonusAttack: number;
-  /** A status applied to the target on a hit (Expose → Exposed). */
-  onHit?: Omit<StatusInstance, "data"> & { data?: Record<string, unknown> };
+  /** Status(es) applied to the target on a hit — one, or a list. */
+  onHit?: RiderStatus | RiderStatus[];
 }
 /**
  * Forced movement (D19): push the target away from the caster `tiles` tiles,
@@ -461,8 +465,10 @@ const BATTLE_EFFECT_HANDLERS: {
     );
     const out: SkillOutcome = { damage };
     if (effect.onHit && target.alive) {
-      applyStatus(target, { ...effect.onHit });
-      out.status = effect.onHit.id;
+      // One rider, or a list (Surgical Precision = Exposed + Immobilized).
+      const riders = Array.isArray(effect.onHit) ? effect.onHit : [effect.onHit];
+      for (const rider of riders) applyStatus(target, { ...rider });
+      out.status = riders[0]?.id;
     }
     return out;
   },

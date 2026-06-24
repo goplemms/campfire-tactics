@@ -231,11 +231,69 @@ free channel, **Turtle** the one-turn rung.
 the offense) — designed in a following pass, with the persistent-stance primitive landing
 alongside it.
 
+## Worked example — the Scout (per-class pass 2: the first fork)
+
+The second per-class pass, and the **first class to actually fork.** The Soldier (pass 1) only
+*reserved* its prestige; the Scout builds the real thing — a `JobDef.prestige` and authored
+transition events on top of the D65 machinery. Decision: **D68**.
+
+**Identity — the lone playmaker.** The Scout is the **infiltrator / flank engine**: it
+manufactures isolation, slips the net, and strikes from where the enemy isn't looking — the clean
+inverse of the Soldier's formation anchor, and distinct from the Hunter's range. Unlike the legacy
+Soldier, the Scout was already near the 2-active + 1-passive shape, so the base pass is a **tidy**,
+not a retrofit.
+
+**Base kit (2 active + 1 passive):**
+
+- **Quiet Footsteps** *(passive)* — **merged** the two legacy flank passives into one anchor: the
+  Scout flanks **solo** (no second body) **and** moves unseen, **halving its capture chance** in
+  deployment (compounding again while **Swift**). One passive, two reads — *quiet* means unseen by
+  both the net and the target.
+- **Dash** *(Act, L1)* — dart **+3 tiles** this turn. **Dual-context by shape** (D67): it reaches a
+  flank in combat *and* infiltrates deep pre-combat, where Quiet Footsteps' evasion compounds. Kept
+  dead-useful in both phases on purpose.
+- **Set Trap** *(Act, L2, Deployment)* — plant a trap: **8 damage** + **Exposes** the first enemy
+  onto it (reuses Exposed; sets up the Hunter's Deadeye). The L2 payoff atop L1 Dash.
+
+**The fork — rogue → {Assassin · Thief}.** At a job-level floor **and** a met trigger, the Scout
+prestiges **in place** down one of two branches (replace-the-kit, keep the grind). Both share one
+spine:
+
+- **Hidden Passage** *(shared spine)* — an Act granting **Stealth** until your next turn: the enemy
+  can't see or target you unless it stands **adjacent**. Authored once as a single skill both
+  branches reference. **Combat-only** — the closing net doesn't "see", so Stealth means nothing
+  pre-combat. (Stealth stays *lightweight*: a status + one `canSeeUnit` read the AI already uses —
+  no full fog-of-war.)
+- **Assassin** *(lethal branch)* — **Subtle Blade** (passive) replaces Quiet Footsteps: **+8 power
+  on a full-HP target** — an **opening-strike alpha** (an alpha, not a crit), built to pay off
+  *vanish → open*. **Surgical Precision** (L2) replaces Set Trap: a **+3** strike leaving the foe
+  **Exposed *and* Immobilized** (the first multi-rider `onHit`). The frame shifts to a glass dagger.
+- **Thief** *(utility branch — emergent non-combat)* — its value is **verbs, not a battle kit**
+  (spine = Hidden Passage only; `passives: {}` deliberately clears Quiet Footsteps — the anchor is
+  economic). **Deft Hands**: skim **25 gold at ≈50%** at a busy node (never a rest). **Expert
+  Lockpick**: the **disarm** capability — read as a *capability*, not a jobId, so the Thief disarms
+  where the Assassin can't and the Scout still can via Set Trap.
+
+**The transition (how the fork is *earned*, not auto-granted).** Prestige is a **choice at an
+event**, never a threshold auto-flip. The Scout-fork ships two authored offers, kept out of the
+random pool so they surface only when drawn / eligible:
+
+- **Thieves' guild → Thief** — a one-step join offer to a floor-met Scout.
+- **The travelling companion → Assassin** — a **two-step chain**: walk the road with a stranger
+  first (a remembered flag), and *only then* does the reveal — the traveler was an assassin all
+  along — offer the mentorship. Linked memory gates the second event on the first.
+
+**Next:** the **D69 follow-ons** — surfacing these offers in live runs + the camp-accept UI, the
+Expert Lockpick chest/door content, the combat "convince a neutral assassin" path, and the
+Scout-line numbers pass.
+
 ## Open questions / future scope
 
 - **The per-class design pass (one at a time)** — **Soldier = pass 1** (the formation kit above,
-  D66; its prestige fork still pending). Still ahead: the other classes' **prestige branches**
-  and the **non-combat prestige verb shapes** (Banker / Merchant / Noble).
+  D66; its prestige fork still pending) · **Scout = pass 2** (the infiltrator + the first real
+  fork above, D68 — built). Still ahead: the **Soldier's** own fork (Sentinel / Banner), the
+  remaining classes' kits + **prestige branches**, and the **non-combat prestige verb shapes**
+  (Banker / Merchant / Noble).
 - **Chain pacing** — job levels between hops so a tier-3 capstone feels earned.
 - **The acquisition agency model** — automatic (authored beats) vs. choice/item (generics).
 - **The per-unit-memory data shape** — contents + persistence scope (node / run / guild).

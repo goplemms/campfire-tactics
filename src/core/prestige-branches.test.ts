@@ -77,8 +77,10 @@ describe("JobDef.prestige — branches as data + evaluator (D65)", () => {
     expect(eligiblePrestiges(u, ctx, gjLookup).map((o) => o.into)).toEqual(["gj-elite"]);
   });
 
-  it("BOUNDARY: no real job is populated with prestige branches (per-class pass owns that)", () => {
+  it("D68: the Scout carries the prestige fork; the rest of the base roster does not (yet)", () => {
+    expect(JOBS.scout.prestige?.map((b) => b.into)).toContain("assassin");
     for (const id of Object.keys(JOBS)) {
+      if (id === "scout") continue;
       expect(JOBS[id as JobId].prestige).toBeUndefined();
     }
   });

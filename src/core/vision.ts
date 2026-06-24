@@ -11,6 +11,7 @@
 
 import type { Unit, Side } from "./units";
 import { tileKey, chebyshev, type GridCoord } from "./iso";
+import { isStealthed } from "./status";
 
 /**
  * The set of tiles a side can currently see: the union of each living unit's
@@ -45,4 +46,22 @@ export function canSee(
     if (chebyshev(u.pos, tile) <= u.sightRadius) return true;
   }
   return false;
+}
+
+/**
+ * Whether `side` can see `target` **as a unit** — the fog read ({@link canSee}) plus the
+ * **Stealth** rule (the Assassin's Hidden Passage, D68): a Stealthed unit is unseen unless a
+ * `side` unit stands **directly (orthogonally) adjacent** to it. The enemy AI filters its
+ * targets through this, so a Stealthed infiltrator slips the army and is spotted only by
+ * whoever it is right next to.
+ */
+export function canSeeUnit(units: readonly Unit[], side: Side, target: Unit): boolean {
+  if (!canSee(units, side, target.pos)) return false;
+  if (!isStealthed(target)) return true;
+  return units.some(
+    (u) =>
+      u.alive &&
+      u.side === side &&
+      Math.abs(u.pos.col - target.pos.col) + Math.abs(u.pos.row - target.pos.row) === 1,
+  );
 }

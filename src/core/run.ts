@@ -49,7 +49,7 @@ import {
   accruePurseInterest,
   type OverworldEconomy,
 } from "./overworld-actions";
-import { accrueNobleInfluence } from "./economy-actions";
+import { accrueNobleInfluence, deftHandsSkim } from "./economy-actions";
 
 /** A recorded node outcome, for the run history / run-end screen. */
 export interface EncounterRecord {
@@ -268,6 +268,7 @@ export function breakCamp(run: RunState): void {
   tickCooldowns(run.overworld);
   accruePurseInterest(run.overworld, run.camp);
   accrueNobleInfluence(run); // the Noble's passive Influence — rapport built on the road (D62)
+  deftHandsSkim(run); // the Thief's Deft Hands — a chance to skim coin off a busy node (D68)
   // The deployed trickle (D53): every deployed character earns a passive bump per
   // node-step on the road (benched roster lives on the guild, never passed here).
   accrueDeployedXp(run.party);

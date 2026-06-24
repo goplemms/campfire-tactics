@@ -2250,10 +2250,110 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D68 — The Scout: per-class pass 2 (the infiltrator) + the first prestige **fork** (rogue → {Assassin · Thief})
+
+- **Status:** Decided + **built** (2026-06-24). Five increments shipped on
+  `claude/practical-brahmagupta-vqoxbp`; **758 tests green**, `tsc`/`build`/`sim` clean. The
+  first concrete realization of **D65** (a real `JobDef.prestige` + authored transition events)
+  and the first class to **fork** — pass 1 (D66 Soldier) only *reserved* its fork.
+- **Context:** D65 built the prestige machinery with fixtures only; D66 did pass 1 (Soldier) but
+  left its fork for later; D67 unified the deployment/combat skill surface (`usableContext`). The
+  Scout is **pass 2** — and unlike the legacy Soldier it was already close to the D40
+  2-active+1-passive house style, so this is mostly a **tidy + the fork**, not a retrofit. The
+  Scout's identity (per D66's framing) is the **lone playmaker** — isolate, solo-flank, slip the
+  net — the clean inverse of the Soldier's formation anchor and distinct from the Hunter's range.
+- **Decision — the base kit tidy (the infiltrator).** Conform to 2-active + 1-passive without
+  losing the flank character:
+  - **Quiet Footsteps** (passive) — **merged** the two legacy flank passives (`flankSolo` +
+    `flankBonus`) into one identity anchor: the Scout flanks **solo** (no second body needed,
+    `isFlanked`/`computeFlankBonus` read it) **and** moves unseen — it **halves the capture
+    chance** in deployment (`captureEvasionFactor`, compounding ×0.5 again while **Swift**). One
+    passive, two reads, on theme (*quiet* = both unseen-by-the-net and unseen-by-the-target).
+  - **Dash** (Act, **L1**) — dart **+3 tiles** this turn (`swift(1,3)`). **Dual-context by shape**
+    (D67): `move`+`self` ⇒ usable **pre-combat & combat**. In battle it reaches a flank; in
+    deployment it infiltrates deep, where Quiet Footsteps' evasion compounds. Kept its
+    capture-reduction character per the owner's call: *"ultimately a pre-combat ability, but the
+    extra movement means it isn't dead in the combat phase."* The core mobility — available from L1.
+  - **Set Trap** (Act, **L2**, Deployment) — plant a trap: **8 damage** and **Exposes** the first
+    enemy onto it (reuses the Scout's Exposed; sets up the Hunter's Deadeye). The rest-beat payoff
+    atop L1 Dash (mirrors the Hunter's Reposition→Mark unlock cadence).
+- **Decision — the fork (the spine).** The Scout is the **rogue**; at a job-level floor
+  (`SCOUT_PRESTIGE_FLOOR = 5`) **and** a met trigger it prestiges in place into **one** of two
+  branches — the owner's original *rogue → assassin* **or** *rogue → thief* vision:
+  - **Hidden Passage** *(shared spine)* — both branches **vanish to operate unseen**: an Act that
+    grants **Stealth** until the unit's next turn. A single `SkillDef` constant referenced by both
+    `JobDef`s — the fork's common root, authored once. **Combat-only** (`usableContext:["combat"]`):
+    the closing net doesn't "see", so Stealth has no pre-combat meaning.
+  - **Assassin** *(the lethal branch)* — **Subtle Blade** (passive) replaces Quiet Footsteps:
+    **+8 power against a full-HP target** — an **opening-strike alpha** (the owner's call: alpha,
+    *not* a crit), synergizing with Hidden Passage (vanish → open). No per-target bookkeeping — it
+    reads `defender.hp >= defender.maxHp` at resolve. **Surgical Precision** (Act, L2) replaces Set
+    Trap: a precise **+3** strike that leaves the foe **Exposed *and* Immobilized** — the first
+    **multi-rider `onHit`**. Stat frame shifts to a glass dagger (spd 15 / atk 12 / def 1 / hp 22).
+  - **Thief** *(the utility branch — emergent non-combat, D65)* — its value is **verbs, not a
+    battle kit** (spine = Hidden Passage only). `passives: {}` is intentional: it **clears** the
+    Scout's Quiet Footsteps on prestige (the Thief's anchor is **economic**, not combat).
+    - **Deft Hands** — a per-node-step seeded **purse faucet**: at a *busy* node (combat/event,
+      never a rest node) a Thief skims **25 gold at ≈50%** (`deftHandsSkim`, hooked in
+      `run.breakCamp` beside the Banker's interest and the Noble's influence; new `"deft-hands"`
+      `PurseSource`).
+    - **Expert Lockpick** — gains the **disarm** capability (the owner's "give the Thief the
+      dropped disarm aspect"): `canDisarm` reads it as a **capability** (`JobDef.lockpick`), not a
+      jobId (D54) — so the Thief disarms spotted traps where the Assassin can't, and the Scout
+      still can via Set Trap. The chest/door **lock-gated** content is reserved (D69).
+- **Decision — Stealth, kept lightweight.** No full D18 fog. Stealth is a **status** + **one read**
+  the enemy AI already funnels through: `vision.canSeeUnit(units, side, target)` — visible unless
+  Stealthed, and a Stealthed unit is seen **only** by an orthogonally-adjacent foe. The AI's target
+  scan switched from `canSee(...pos)` to `canSeeUnit(...unit)`; nothing else changed. The heavy
+  per-tile-vision system stays deferred until a feature actually needs it.
+- **Decision — the transition (town & combat node events).** Authored as **`PRESTIGE_OFFERS`** —
+  a dedicated `StorySpec[]` kept **out of** the random `STORIES` pool (so the deterministic sim
+  stays byte-identical; they surface only when explicitly drawn / eligibility-gated):
+  - **Thieves' guild → Thief** (`thieves-guild`): a single-step join offer, gated on a floor-met
+    Scout; accepting writes the `thieves-guild-invite` memory and prestiges in place.
+  - **The travelling companion → Assassin** (`travelling-companion` → `the-reveal`): a **two-step
+    chain** — first walk the road with a stranger (`remember "traveled-with-stranger"`); only then
+    does the reveal ("the traveler was an assassin all along") offer the mentorship that prestiges.
+    Linked memory gates the second event on the first — the multi-trigger model from D65.
+  - Both use the D65 `StoryChoiceSpec.target:"unit"` + `.when` + `StoryOutcomeSpec.remember`/`.grant`
+    path; `applyStoryChoice` returns `EventOutcome.prestiged`.
+- **New seams / keywords introduced:** **Stealth** status (`status.ts` + `STATUS_VISUALS`);
+  `vision.canSeeUnit`; **Subtle Blade** `PASSIVE` key + `computeDamage` read; **multi-rider
+  `onHit`** (`DamageEffect.onHit: RiderStatus | RiderStatus[]`, normalized in the resolver);
+  `JobDef.lockpick` capability flag; the `"deft-hands"` `PurseSource`. The `flankSolo`/`flankBonus`
+  passives **merged** into `quietFootsteps` (one fewer key).
+- **Build (5 increments, each suite-green):** `5e2ddb2` base kit (Quiet Footsteps merge +
+  capture-evasion) · `031a1ab` Stealth (the Hidden Passage spine) · `4a64451` the Assassin ·
+  `b2ff0df` the Thief (Deft Hands + Expert Lockpick) · `0184a7f` the transition offers. New tests:
+  `scout` / `stealth` / `assassin` / `thief` / `scout-transitions`; updated `flanking` / `kits` /
+  `combat` / `dossier` / `prestige-branches`.
+- **Spec:** [`docs/design/systems/jobs.md`](../../docs/design/systems/jobs.md) (Worked example — the Scout).
+- **Deferred (the D69 follow-ons):** surface `PRESTIGE_OFFERS` in *live* runs (a guild node /
+  an appear-when-eligible event) + the camp-accept UI (`eligiblePrestiges`); the Expert Lockpick
+  **chest/door** entity + lock-gated events; the **combat** convince-a-neutral-assassin path; the
+  job-capability **card** surfacing (Subtle Blade / lockpick / Deft Hands need readout text); the
+  **numbers pass** (baselines/growth/magnitudes); a later **Assassin tier** is the reserved home
+  for the dropped **Weakened** status (cut here per the owner's call).
+- **Reuses / consistent with:** **D65** (first real `prestige` + authored transitions — the
+  machinery, fixtures-only until now), **D66** (per-class pass; the Scout-identity framing; Exposed
+  shared synergy), **D67** (Dash is dual-context via `usableContext`/`skillContexts`; capture-evasion
+  threads the deploy forecast), **D54** (capability-not-jobId — `canDisarm` reads `lockpick`), **D40**
+  (2-active+1-passive), **D36** (flank — Quiet Footsteps keeps the solo-flank lane), **D41**
+  (statuses — Exposed/Immobilized/Swift reuse, Stealth the one new keyword), **D34** (purse — Deft
+  Hands is a journaled faucet).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided
 > records yet — each is authored as a full `## D##` entry when its build starts.
 
-- **D68 — Scout per-class pass** (passive "Quiet Footsteps", "Set Trap", a dual-context
-  "Dash"). Builds *on top of* D67's substrate; do not start before D67 lands.
+- **D69 — Scout-fork follow-ons** (surface `PRESTIGE_OFFERS` in live runs + camp-accept UI;
+  the Expert Lockpick chest/door entity + lock-gated events; the combat convince-an-assassin
+  path; job-capability card surfacing; the Scout-line numbers pass). Built *on* D68's fork.
+- **Soldier prestige fork** — **Sentinel** (Turtle → persistent stance) vs **Banner**
+  (Brother-in-arms scales the party); lands the persistent-stance primitive reserved in D66.
+- **Next per-class pass** — another class's kit tidy + fork, one at a time (D66 = pass 1,
+  D68 = pass 2).

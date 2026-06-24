@@ -26,6 +26,8 @@ import type { GridCoord } from "./iso";
 import { findPath } from "./pathfinding";
 import { occupiedGrid } from "./ai";
 import { effectiveSpeed, byReadiest, tickUntilReady, TURN_THRESHOLD, ACT_COST, MOVE_COST, type TurnSpend } from "./clock";
+import { PASSIVE } from "./combat";
+import { hasStatus, SWIFT } from "./status";
 
 /** Exposure at which a unit is captured. */
 export const CAPTURE_THRESHOLD = 100;
@@ -273,6 +275,10 @@ export const FRONT_SPEED_LEAN = 0.5;
 export const FRONT_DANGER_MULTIPLIER = 3;
 /** Fraction of the capture chance a dug-in unit faces (hunkered = hard to grab). */
 export const DIG_IN_CAPTURE_FACTOR = 0.25;
+/** Quiet Footsteps (D68): the Scout passive's capture-chance multiplier — it slips the net. */
+export const QUIET_FOOTSTEPS_CAPTURE_FACTOR = 0.5;
+/** Dash's transient capture cut (D68): an extra multiplier while a quiet unit is Swift (darting deep). */
+export const DASH_CAPTURE_FACTOR = 0.5;
 /** Base safe radius (steps) the campfire grants before any presence bonus. */
 export const SAFE_BASE_RADIUS = 2;
 /** Party presence per extra step of campfire safe radius. */
@@ -366,7 +372,7 @@ export function frontCaptureChance(
   front: DeploySource,
   opts: { dugIn?: boolean } = {},
 ): number {
-  return captureChanceAt(unit.pos, front, opts);
+  return captureChanceAt(unit.pos, front, { ...opts, evasion: captureEvasionFactor(unit) });
 }
 
 /**
@@ -378,13 +384,27 @@ export function frontCaptureChance(
 export function captureChanceAt(
   coord: GridCoord,
   front: DeploySource,
-  opts: { dugIn?: boolean } = {},
+  opts: { dugIn?: boolean; evasion?: number } = {},
 ): number {
   if (!inDangerZone(coord, front)) return 0;
   const depth = front.radius - stepDistance(coord, front.origin) + 1; // >= 1 once inside
   let chance = Math.min(CAPTURE_CHANCE_MAX, depth * CAPTURE_PER_DEPTH * FRONT_DANGER_MULTIPLIER);
   if (opts.dugIn) chance *= DIG_IN_CAPTURE_FACTOR;
+  if (opts.evasion !== undefined) chance *= opts.evasion;
   return chance;
+}
+
+/**
+ * The capture-chance multiplier a unit's own traits earn (D68): the Scout's **Quiet
+ * Footsteps** passive halves it, and **Dash** (while the quiet unit is Swift, darting
+ * deep) halves it again — so a dashing Scout faces a quarter of the net's grab. `1` for
+ * anyone without the passive. Read by the roll ({@link frontCaptureChance}) and the
+ * forecast ({@link deployForecast}) so preview == outcome.
+ */
+export function captureEvasionFactor(unit: Unit): number {
+  if (!unit.passives[PASSIVE.quietFootsteps]) return 1;
+  const dash = hasStatus(unit, SWIFT) ? DASH_CAPTURE_FACTOR : 1;
+  return QUIET_FOOTSTEPS_CAPTURE_FACTOR * dash;
 }
 
 /**
@@ -414,11 +434,12 @@ export function deployForecast(
   opts: { dugIn?: boolean } = {},
 ): DeployForecast {
   const dugIn = opts.dugIn ?? unit.dugIn === true;
-  const hold = captureChanceAt(unit.pos, front, { dugIn });
-  const digIn = dugIn ? null : captureChanceAt(unit.pos, front, { dugIn: true });
+  const evasion = captureEvasionFactor(unit);
+  const hold = captureChanceAt(unit.pos, front, { dugIn, evasion });
+  const digIn = dugIn ? null : captureChanceAt(unit.pos, front, { dugIn: true, evasion });
   let best: number | null = null;
   for (const coord of reachable) {
-    const risk = captureChanceAt(coord, front, { dugIn: false });
+    const risk = captureChanceAt(coord, front, { dugIn: false, evasion });
     if (best === null || risk < best) best = risk;
   }
   const move = best !== null && best < hold ? best : null;

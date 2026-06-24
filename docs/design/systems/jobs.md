@@ -50,6 +50,14 @@ The two axes preserve the guideline's *spirit* automatically:
 - **Held jobs add** kit elements through **loadout slots** — growth in breadth is **bounded**
   by the slot economy, not unbounded sprawl.
 
+**The non-combat medium (D70).** The *1–2 active + 1 passive* shape was authored for **combat** —
+battle skills in the `skills` array plus a `PASSIVE` identity anchor. A **non-combat** job (the
+economy triad) has neither, so the shape transfers in *spirit*, not letter: its anchor is a
+**presence effect** (a benefit that holds *by being fielded* — the Merchant's market-tier lift, the
+Noble's Influence accrual), and its actives are **overworld verbs** routed through the D61 limiter. So
+the non-combat house style is **1 presence-anchor + 1–2 verbs** — the honest analogue of 2+1, with the
+**Merchant** (D70) the first worked case.
+
 ## Prestige — the depth capstone (replace-in-place)
 
 Prestige is **growing a job into a successor**, and it **replaces in place**:
@@ -287,13 +295,60 @@ random pool so they surface only when drawn / eligible:
 Expert Lockpick chest/door content, the combat "convince a neutral assassin" path, and the
 Scout-line numbers pass.
 
+## Worked example — the Merchant (per-class pass 3: the first non-combat verb-kit)
+
+The third per-class pass — and the **first non-combat class** to get one, which forced the question
+the combat passes never had to ask: **does the 2-active + 1-passive house style even apply** to a job
+with no battle phase, no CT, and an empty `skills` array? The Merchant's identity already lived
+entirely in **verbs gated outside `skills`** (D61): a market-access lift plus the buy/sell trade
+verbs. Decision: **D70**.
+
+**The answer — 2+1 transfers in *spirit*, not letter.** A non-combat job's anchor is a **presence
+effect** (a benefit that holds by being fielded — the passive analogue), and its actives are
+**overworld verbs** (routed through the D61 limiter). So the non-combat house style is **1
+presence-anchor + 1–2 verbs**, and the Merchant is authored as a clean 2+1 in that medium — the frame
+the later Banker / Noble passes inherit.
+
+**Identity — the trade-broker.** The Merchant *makes and works markets*: it conjures trade where
+there is none, and squeezes every real market for more. Its value is the **economy**, not the field —
+the clean non-combat counterpart to the combat kits.
+
+**Base kit (1 passive + 2 actives — in the verb medium):**
+
+- **Appraisal** *(passive — the presence anchor)* — while a Merchant rides along, any node that
+  **already has a market** reads **one tier better** (`poor → basic → premium`, capped). A Merchant
+  makes every real market *better* — the always-on identity. (New behavior: D61's `merchantFloor`
+  did **not** upgrade existing markets.)
+- **Find Trade** *(active)* — open an **impromptu market on a `none` node**: the caravan can trade
+  anywhere a Merchant can drum one up. This is D61's ACCESS lift **reframed from an always-on passive
+  into a paid action** — access at a barren node now **costs a turn** (the D61 limiter), not a
+  freebie-by-presence. The conjured market is **`poor`** and is **not** Appraised (else a `basic`
+  market anywhere for one action — which would undercut the scarcity of real trade hubs).
+- **Savvy Barter** *(active)* — the Merchant's **next deal goes their way**: a **buy at 0.5× price**
+  *or* a **sale at 1.25×** (whichever they do next). Paced through the limiter (a timed treat, not a
+  standing aura), with **deliberately asymmetric** magnitudes — a big cut on the *sink* (buy), a
+  modest premium on the *faucet* (sell) — so it sharpens trade without minting unbounded gold (D61's
+  scarcity discipline; a 1.25× sale at an appraised premium market beats face value, so the pacing is
+  what keeps it honest).
+
+**Buy / Sell stay universal.** Raw buying and selling remain **market-gated, not Merchant-gated**
+(anyone trades at a market that exists; the event-shop already does). The Merchant *layer* — Appraisal
+/ Find Trade / Savvy Barter — is the job-exclusive kit on top, and the Merchant still **levels from
+brokering** (a sale grants it use-XP). This keeps the three economy classes consistent: the Merchant's
+exclusivity lives in its three signature abilities, the way the Banker's and Noble's live in theirs.
+
+**Next:** the Merchant's **prestige fork** — the **first non-combat (verb) prestige**, where
+replace-in-place deepens the *verbs/presence* rather than a battle kit — designed in a following pass
+(reserved here, as the Soldier's fork was in pass 1).
+
 ## Open questions / future scope
 
 - **The per-class design pass (one at a time)** — **Soldier = pass 1** (the formation kit above,
   D66; its prestige fork still pending) · **Scout = pass 2** (the infiltrator + the first real
-  fork above, D68 — built). Still ahead: the **Soldier's** own fork (Sentinel / Banner), the
-  remaining classes' kits + **prestige branches**, and the **non-combat prestige verb shapes**
-  (Banker / Merchant / Noble).
+  fork above, D68 — built) · **Merchant = pass 3** (the trade-broker base kit above, D70 — the first
+  non-combat verb-kit; its prestige fork reserved). Still ahead: the **Soldier's** and **Merchant's**
+  own forks, the remaining classes' kits + **prestige branches**, and the **non-combat prestige verb
+  shapes** for the rest of the economy triad (Banker / Noble).
 - **Chain pacing** — job levels between hops so a tier-3 capstone feels earned.
 - **The acquisition agency model** — automatic (authored beats) vs. choice/item (generics).
 - **The per-unit-memory data shape** — contents + persistence scope (node / run / guild).

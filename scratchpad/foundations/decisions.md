@@ -2345,6 +2345,60 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D70 — The Merchant: per-class pass 3 (the trade-broker) + the first non-combat (verb) kit shape
+
+- **Status:** Decided (job-system per-class pass 3, 2026-06-24) · realizes D65, builds on D61 (the
+  market-access axis). **Design only** — no build yet (the kit is data + thin verb plumbing, queued).
+- **Context:** D66 (Soldier) and D68 (Scout) ran the per-class pass on **combat** classes, both on the
+  D40 **2-active + 1-passive** house style. The Merchant is **pass 3** — and the **first non-combat
+  class** to get a dedicated pass, which forced the question: *does 2+1 even apply to a job with no
+  battle phase, no CT, no `PASSIVE` key, and an empty `skills` array?* The Merchant's identity already
+  lived entirely in **verbs gated outside `skills`** (D61: the `merchantFloor` ACCESS lift + the
+  `merchantBuy`/`merchantSell` trade verbs), so the pass is **not a battle-kit tidy** but a **verb-kit
+  articulation**.
+- **Decision — the non-combat house style (the reusable frame).** 2+1 transfers in *spirit*, not
+  letter. A non-combat job's anchor is a **presence effect** (a benefit that holds *by being fielded*
+  — the passive analogue) and its actives are **overworld verbs** (routed through the D61 limiter). So
+  the non-combat shape is **1 presence-anchor + 1–2 verbs** — and the Merchant is authored as a clean
+  2+1 in that medium. This is the frame the later **Banker / Noble** passes inherit.
+- **Decision — the Merchant base kit (1 passive + 2 actives, the trade-broker).**
+  - **Appraisal** *(passive — the presence anchor)* — while a Merchant is in the party, every node
+    that **already has a market** reads **one tier better** (`poor → basic → premium`, capped). The
+    always-on identity: a Merchant makes every real market *better*. (**New** — D61's `merchantFloor`
+    did **not** upgrade existing markets.)
+  - **Find Trade** *(active)* — open an **impromptu market on a `none` node** (the caravan trades
+    anywhere a Merchant can drum one up). This is **D61's `merchantFloor` ACCESS reframed from an
+    always-on passive into a paid action**: access at a barren node now **costs a turn** (the D61
+    limiter), not a freebie-by-presence. The conjured market is **`poor`** and is **not** subject to
+    Appraisal (else a `basic` market anywhere for one action — undercuts real trade hubs).
+  - **Savvy Barter** *(active)* — the Merchant's **next single transaction goes their way**: a **buy
+    at 0.5× price** *or* a **sale at 1.25×** (whichever they do next). Paced through the limiter (a
+    timed treat, not a standing aura that would gut the buy *sink* / mint unbounded gold). The
+    **asymmetric magnitudes are deliberate faucet discipline** (D61): a big discount on the *sink*
+    (buy) but a modest premium on the *faucet* (sell) — where a 1.25× sale at an (appraised) premium
+    market beats face value, so the **pacing** is what keeps that honest.
+  - **Buy / Sell stay universal.** Raw `merchantBuy`/`merchantSell` remain **market-gated, not
+    job-gated** (anyone trades at a market that exists; the event-shop already does). The Merchant
+    *layer* — Appraisal / Find Trade / Savvy Barter — is the job-exclusive kit on top, and the Merchant
+    still **levels from brokering** (sell → use-XP, D61). This **resolves the triad's gating wrinkle**
+    (Banker/Noble verbs hard-refuse without the class; the Merchant's exclusivity now lives in its
+    three signature abilities, so basic trading needn't be locked).
+- **Spec:** [`docs/design/systems/jobs.md`](../../docs/design/systems/jobs.md) (Worked example — the Merchant).
+- **Open / next:** the **Merchant's prestige fork** — the **first non-combat (verb) prestige**, where
+  "replace-in-place" applies to the **verbs/presence** (deepen Appraisal / Find Trade / Savvy Barter),
+  not a battle kit — direction TBD (reserved, as D66 reserved the Soldier's). The **numbers pass**
+  (Appraisal cap, the Find Trade limiter cost, the 0.5× / 1.25× knobs, Savvy Barter pacing). The
+  **card** surfacing (Appraisal needs a passive-info entry; the verbs carry their own text).
+- **Reuses / consistent with:** **D65** (per-class pass; prestige reserved), **D61** (the
+  market-access axis — `MarketTier`/`effectiveMarketTier`/`merchantFloor` it decomposes; the two-axis
+  limiter; gold scarcity / faucet-sink discipline), **D40** (2+1 — generalized to the non-combat
+  medium), **D66/D68** (the per-class-pass cadence), **D34** (purse — the trade verbs are
+  purse-scoped, never the treasury).
+- **Build:** not yet started — **design only**.
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided
@@ -2355,5 +2409,8 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   path; job-capability card surfacing; the Scout-line numbers pass). Built *on* D68's fork.
 - **Soldier prestige fork** — **Sentinel** (Turtle → persistent stance) vs **Banner**
   (Brother-in-arms scales the party); lands the persistent-stance primitive reserved in D66.
-- **Next per-class pass** — another class's kit tidy + fork, one at a time (D66 = pass 1,
-  D68 = pass 2).
+- **Merchant prestige fork** — the **first non-combat (verb) prestige fork**: replace-in-place
+  deepens the trade verbs/presence (Appraisal / Find Trade / Savvy Barter), not a battle kit;
+  direction TBD. Reserved by D70.
+- **Next per-class pass** — another class's kit tidy + fork, one at a time (D66 = pass 1 Soldier,
+  D68 = pass 2 Scout, D70 = pass 3 Merchant base).

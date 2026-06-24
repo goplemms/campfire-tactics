@@ -38,6 +38,7 @@ import type { MapNode } from "./overworld";
 import { primaryJobOf, remember, type Unit } from "./units";
 import { streamFor } from "./rng";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
+import { SCOUT_PRESTIGE_FLOOR } from "./jobs";
 import { MATERIALS, addItem, canAdd } from "./inventory";
 import { addInfluence, influenceTier, type InfluenceTier } from "./economy";
 import { merchantBuy, merchantPrice } from "./economy-actions";
@@ -385,6 +386,77 @@ export const STORIES: readonly StorySpec[] = [
           summary: "You strip the shrine of what remains; a cold unease follows the caravan.",
         },
       },
+    ],
+  },
+];
+
+/**
+ * D68 — the Scout's prestige-fork triggers, kept OUT of the random {@link STORIES} flavour
+ * pool: a prestige offer drawn for an ineligible party collapses to a lone decline, so it
+ * shouldn't dilute the flavour draw or the sim. Authored + tested here; the substrate's
+ * offer→accept ({@link storyChoices} / {@link applyStoryChoice}) drives them. **Surfacing
+ * them in a run** — a deliberate guild node, or an appear-only-when-eligible event — is a
+ * curation follow-on.
+ */
+export const PRESTIGE_OFFERS: readonly StorySpec[] = [
+  {
+    id: "thieves-guild",
+    prompt:
+      "In a back-alley tavern a fence marks your Scout's deft hands and slides a guild token across the table: \"We could use someone who moves unseen.\"",
+    choices: [
+      {
+        id: "join",
+        label: "Join the thieves' guild",
+        target: "unit",
+        when: { kind: "jobLevel", job: "scout", min: SCOUT_PRESTIGE_FLOOR },
+        outcome: {
+          remember: "thieves-guild-invite",
+          grant: { kind: "prestige", from: "scout", into: "thief" },
+          summary: "Your Scout takes the token — and the trade. They are a Thief now.",
+        },
+      },
+      { id: "decline", label: "Leave the token on the table", outcome: { summary: "You walk out into the night." } },
+    ],
+  },
+  {
+    id: "travelling-companion",
+    prompt: "A quiet traveller falls into step with the caravan, sharing your Scout's watch through the long nights.",
+    choices: [
+      {
+        id: "walk",
+        label: "Share the road",
+        target: "unit",
+        when: { kind: "jobLevel", job: "scout", min: 1 },
+        outcome: {
+          remember: "traveled-with-stranger",
+          summary: "Few words pass, but an understanding grows between your Scout and the stranger.",
+        },
+      },
+      { id: "wary", label: "Keep your distance", outcome: { summary: "The traveller drifts off at the next fork." } },
+    ],
+  },
+  {
+    id: "the-reveal",
+    prompt: "By a dying fire, the traveller you walked with sheds the disguise — an assassin, offering to teach what they know.",
+    choices: [
+      {
+        id: "learn",
+        label: "Accept the mentorship",
+        target: "unit",
+        when: {
+          kind: "all",
+          of: [
+            { kind: "remembers", flag: "traveled-with-stranger" },
+            { kind: "jobLevel", job: "scout", min: SCOUT_PRESTIGE_FLOOR },
+          ],
+        },
+        outcome: {
+          remember: "assassin-mentor",
+          grant: { kind: "prestige", from: "scout", into: "assassin" },
+          summary: "Your Scout learns the killing arts. They are an Assassin now.",
+        },
+      },
+      { id: "refuse", label: "Refuse the blade", outcome: { summary: "You let the fire burn down in silence." } },
     ],
   },
 ];

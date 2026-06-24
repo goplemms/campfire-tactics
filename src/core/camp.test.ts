@@ -30,9 +30,11 @@ function unit(id: string, side: Side, hp: number, maxHp: number): Unit {
 const cookSkill = getJob("chef")!.skills[0];
 
 describe("camp economy + morale (Merchant / Chef, Meta phase)", () => {
-  it("the Merchant has no gold-minting camp skill (retired D61)", () => {
-    // D61: the Merchant is ACCESS + SELL (market verbs), not a +gold camp skill.
-    expect(getJob("merchant")!.skills).toHaveLength(0);
+  it("the Merchant ships its overworld trade verbs, none gold-minting (D61 retired Trade / D70 kit)", () => {
+    // D61: the Merchant is ACCESS + SELL (market verbs), not a +gold camp skill. D70 gives it
+    // its overworld kit (Find Trade / Savvy Barter) — neither mints gold (openMarket / primeDeal).
+    const effects = getJob("merchant")!.skills.map((s) => s.effect.kind);
+    expect(effects).toEqual(["openMarket", "primeDeal"]);
   });
 
   it("Chef's Cook Stew raises morale and banks a heal", () => {

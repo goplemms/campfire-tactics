@@ -60,9 +60,10 @@ describe("jobs (data-driven loading)", () => {
   it("ships the three signature jobs, each hooking a different phase (D3)", () => {
     expect(getJob("survivalist")!.skills[0].phase).toBe("deployment");
     expect(getJob("chef")!.skills[0].phase).toBe("meta");
-    // The Merchant's gold-minting Trade camp skill was retired (D61) — its economy
-    // is now the market-access verbs (buy/sell), so it ships no meta camp skill.
-    expect(getJob("merchant")!.skills).toHaveLength(0);
+    // The Merchant's gold-minting Trade camp skill was retired (D61); its kit is now the
+    // overworld trade verbs (Find Trade / Savvy Barter, D70) — both hook the meta phase.
+    expect(getJob("merchant")!.skills.map((s) => s.id)).toEqual(["find-trade", "savvy-barter"]);
+    expect(getJob("merchant")!.skills.every((s) => s.phase === "meta")).toBe(true);
 
     // unitSkills filters a job's skills by the phase each one hooks.
     const withJob = (id: string, job: JobId): Unit =>

@@ -9,7 +9,6 @@ import {
   MARKET_TIERS,
   marketRank,
   clampUpMarket,
-  merchantFloor,
   effectiveMarketTier,
   type OverworldMap,
   type MapNode,
@@ -196,26 +195,17 @@ describe("overworld — the market-access axis (D61)", () => {
     }
   });
 
-  it("a Merchant raises the market floor to `poor` (impromptu market anywhere)", () => {
-    expect(merchantFloor([member("soldier"), member("chef")])).toBe("none");
-    expect(merchantFloor([member("soldier"), member("merchant")])).toBe("poor");
-    // A downed or captured Merchant can't broker a market.
-    const downed = member("merchant"); downed.alive = false;
-    const captive = member("merchant"); captive.captured = true;
-    expect(merchantFloor([downed])).toBe("none");
-    expect(merchantFloor([captive])).toBe("none");
-  });
-
-  it("effectiveMarketTier folds the Merchant floor over the node, never lowering it", () => {
+  it("a fielded Merchant's Appraisal lifts an existing market a tier (D70) — never lowering, never conjuring", () => {
     const wild: MapNode = { id: "w", layer: 1, index: 0, kind: "combat", edges: [], market: "none" };
     const town: MapNode = { id: "t", layer: 2, index: 0, kind: "rest", edges: [], market: "basic" };
     const noMerchant = [member("soldier")];
     const withMerchant = [member("merchant")];
-    // A Merchant turns a no-market wild node into an impromptu `poor` one…
+    // Appraisal raises a real town's market a band (basic → premium)…
+    expect(effectiveMarketTier(town, noMerchant)).toBe("basic");
+    expect(effectiveMarketTier(town, withMerchant)).toBe("premium");
+    // …but it does NOT conjure a market on a barren node (that's the paid Find Trade, D70).
+    expect(effectiveMarketTier(wild, withMerchant)).toBe("none");
     expect(effectiveMarketTier(wild, noMerchant)).toBe("none");
-    expect(effectiveMarketTier(wild, withMerchant)).toBe("poor");
-    // …but never drags a real town's market down to the impromptu floor.
-    expect(effectiveMarketTier(town, withMerchant)).toBe("basic");
     // A node with no market field defaults to `none`.
     expect(effectiveMarketTier({ ...wild, market: undefined }, noMerchant)).toBe("none");
   });

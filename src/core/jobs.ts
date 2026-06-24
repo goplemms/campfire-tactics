@@ -201,19 +201,64 @@ export const CHEF: JobDef = {
   ],
 };
 
+/** Merchant kit pacing (D70) — once-per-node verbs; magnitudes are a numbers-pass concern. */
+export const MERCHANT_KIT = { findTradeUsesPerNode: 1, savvyBarterUsesPerNode: 1 } as const;
+
 /**
- * The Merchant — the signature **economy** job (D3/D61). The old gold-minting
- * **Trade** camp skill was retired (D61): the Merchant doesn't *print* gold, it is
- * **ACCESS + SELL** — it raises a node's market floor ({@link "./overworld".merchantFloor})
- * and works the {@link "./economy-actions".merchantBuy}/{@link "./economy-actions".merchantSell}
- * verbs (goods <-> gold at the node's market tier). Hence **no meta camp skill**.
+ * **Find Trade** (D70) — the Merchant's ACCESS verb: drum up an **impromptu market** at a
+ * barren (`none`) node so the caravan can trade where there'd be none. Reframes D61's old
+ * always-on `merchantFloor` into a **paid action** (access costs a turn): the `openMarket`
+ * effect sets a per-node flag {@link "./overworld".effectiveMarketTier} folds in (a `poor`
+ * market for the node-step, cleared on Break Camp). Surfaced via `availableSkills` (D67/D72).
+ */
+export const FIND_TRADE: SkillDef = {
+  id: "find-trade",
+  name: "Find Trade",
+  description: "Drum up an impromptu market here — trade at a poor market even where there is none (this node).",
+  phase: "meta",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: MERCHANT_KIT.findTradeUsesPerNode },
+  effect: { kind: "openMarket" },
+};
+
+/**
+ * **Savvy Barter** (D70) — the Merchant's bargaining verb: the **next single deal** goes its
+ * way (a buy at half price *or* a sale at +25%, whichever comes first). The `primeDeal` effect
+ * sets a one-shot flag {@link "./economy-actions".merchantBuy}/{@link "./economy-actions".merchantSell}
+ * consume on the next trade. Paced (once per node) — a timed treat, not a standing aura (D61).
+ */
+export const SAVVY_BARTER: SkillDef = {
+  id: "savvy-barter",
+  name: "Savvy Barter",
+  description: "Drive a hard bargain — your next deal is a buy at half price or a sale at +25%.",
+  phase: "meta",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: MERCHANT_KIT.savvyBarterUsesPerNode },
+  effect: { kind: "primeDeal" },
+};
+
+/**
+ * The **Merchant** — the trade-broker (D70, the first non-combat verb-kit). Its value is the
+ * **economy**, as a presence anchor + two overworld verbs (the non-combat 2+1):
+ * - **Appraisal** (presence) — a fielded Merchant lifts every *existing* market one tier
+ *   ({@link "./overworld".effectiveMarketTier} reads `presence.marketTierBonus`); it does not
+ *   conjure a market on a barren node (that's Find Trade).
+ * - **Find Trade** (active) — open an impromptu `poor` market at a barren node (access as a paid action).
+ * - **Savvy Barter** (active) — the next deal goes its way (½ buy / +¼ sale).
+ * Raw Buy/Sell stay **universal** (market-gated, not job-gated); the Merchant still levels from
+ * brokering a sale ({@link "./economy-actions".merchantSell}). Still **noncombat** (camp verbs only).
  */
 export const MERCHANT: JobDef = {
   id: "merchant",
   name: "Merchant",
-  description: "Works the economy: finds markets anywhere and trades goods for gold.",
+  description: "Works the economy: appraises markets, drums up trade anywhere, and drives a hard bargain.",
   noncombat: true,
-  skills: [],
+  presence: { marketTierBonus: 1 }, // Appraisal — lifts an existing market one tier
+  skills: [FIND_TRADE, SAVVY_BARTER],
 };
 
 /**

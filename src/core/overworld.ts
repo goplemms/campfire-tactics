@@ -134,17 +134,6 @@ function nodeMarket(rng: ReturnType<typeof streamFor>, kind: NodeKind): MarketTi
 }
 
 /**
- * The market floor a **Merchant** in the party guarantees (D61): an active Merchant
- * can broker an *impromptu* market anywhere, so the floor rises to `poor`; without
- * one it stays `none`. The overworld twin of the Noble's passive intel floor — read
- * by {@link effectiveMarketTier}.
- */
-export function merchantFloor(party: readonly Unit[]): MarketTier {
-  const hasMerchant = party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "merchant");
-  return hasMerchant ? "poor" : "none";
-}
-
-/**
  * Total **market-tier lift** from fielded members' {@link "./jobs".JobPresence} (D72) —
  * the Merchant's Appraisal as *data* (Σ each fielded member's `presence.marketTierBonus`).
  * Read by {@link effectiveMarketTier} to raise an **existing** market a band; declared by
@@ -171,12 +160,17 @@ export function marketOpenedFlag(nodeId: string): string {
 }
 
 /**
- * The market tier the caravan actually trades at (D61/D72): the node's own market
- * **raised by the Merchant floor** (`clampUp`), then by a **per-node "impromptu market
- * opened here" flag** (Find-Trade) when `eco` carries one — lifting a barren node to
- * `poor` for this node-step. `none` ⇒ no market here (buys/sells refused). The single
- * reader for both buying and selling, so access scarcity is applied in one place. `eco`
- * is read **structurally** (just its `nodeFlags`) to avoid a cycle with the action layer.
+ * The market tier the caravan actually trades at (D61/D72/D70): the node's own innate market,
+ * lifted by a fielded Merchant's **Appraisal** presence (+N bands on an *existing* market), then
+ * floored to `poor` by a **per-node "impromptu market opened here" flag** (the Merchant's **Find
+ * Trade**, D70) when `eco` carries one. `none` ⇒ no market here (buys/sells refused). The single
+ * reader for both buying and selling, so access scarcity is applied in one place.
+ *
+ * **Order matters (D70):** Appraisal applies to the *innate* market **before** Find Trade's
+ * floor, so a Find-Trade-conjured market stays `poor` (Appraisal never lifts it to `basic` — that
+ * would make "a basic market anywhere for one action"). D70 retired the old always-on
+ * `merchantFloor`: access at a barren node is now the *paid* Find Trade, not a freebie-by-presence.
+ * `eco` is read **structurally** (just its `nodeFlags`) to avoid a cycle with the action layer.
  */
 export function effectiveMarketTier(
   node: MapNode,
@@ -184,15 +178,16 @@ export function effectiveMarketTier(
   eco?: { nodeFlags: Record<string, boolean> },
   lookup: JobLookup = getJob,
 ): MarketTier {
-  let tier = clampUpMarket(node.market ?? "none", merchantFloor(party));
-  if (eco?.nodeFlags[marketOpenedFlag(node.id)]) tier = clampUpMarket(tier, "poor");
-  // Presence (D72): a fielded member's Appraisal lifts an **existing** market by N bands
-  // (capped at premium) — it does not conjure one on a barren node (that's Find Trade).
-  // `lookup` is injectable so a fixture presence-job is never registered in JOBS.
+  let tier: MarketTier = node.market ?? "none";
+  // Appraisal (presence, D72/D70): lift an **existing** (innate) market by N bands (capped) — it
+  // never conjures one on a barren node (that's Find Trade), and runs BEFORE the Find-Trade floor
+  // so the conjured market is never appraised up. `lookup` injectable for fixtures.
   if (tier !== "none") {
     const bonus = marketTierBonus(party, lookup);
     if (bonus > 0) tier = MARKET_TIERS[Math.min(MARKET_TIERS.length - 1, marketRank(tier) + bonus)];
   }
+  // Find Trade (D70): an impromptu `poor` market at a barren node for this node-step.
+  if (eco?.nodeFlags[marketOpenedFlag(node.id)]) tier = clampUpMarket(tier, "poor");
   return tier;
 }
 

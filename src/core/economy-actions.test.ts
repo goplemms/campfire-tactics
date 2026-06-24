@@ -25,9 +25,11 @@ import { streamFor } from "./rng";
 import { gainRunGold, payTreasuryUpkeep } from "./economy";
 import { countOf, addItem, getMaterial } from "./inventory";
 import { currentNode } from "./run";
+import { useOverworldSkill } from "./overworld-actions";
+import { FIND_TRADE } from "./jobs";
 import type { NodePreview } from "./intel";
 
-/** A Merchant party member (raises the market floor, D61). */
+/** A Merchant party member — the trade-broker (Appraisal / Find Trade / Savvy Barter, D70). */
 function merchant(): Unit {
   return createUnit({
     id: `merchant-${nextId++}`, side: "player", pos: { col: -1, row: -1 },
@@ -137,7 +139,7 @@ describe("economy-actions — Merchant SELL (goods -> gold, market-gated) (D61)"
     expect(countOf(run.inventory, "valuables")).toBe(1); // one sold
   });
 
-  it("refuses (removing nothing) with no market here, and an impromptu Merchant unlocks it", () => {
+  it("refuses (removing nothing) with no market here; the Merchant's Find Trade unlocks it (D70)", () => {
     const run = newRun("sell-nomarket");
     run.map.nodes[run.mapNodeId].market = "none"; // a wild node, no market
     addItem(run.inventory, "valuables", 1);
@@ -145,8 +147,13 @@ describe("economy-actions — Merchant SELL (goods -> gold, market-gated) (D61)"
     expect(blocked.applied).toBe(false);
     expect(countOf(run.inventory, "valuables")).toBe(1); // nothing removed
 
-    // A Merchant in the party brokers an impromptu `poor` market -> the sale lands.
-    run.party.push(merchant());
+    // A Merchant alone no longer passively floors the market (D70 retired merchantFloor)…
+    const coin = merchant();
+    run.party.push(coin);
+    expect(merchantSell(run, "valuables").applied).toBe(false);
+    // …but Find Trade opens an impromptu `poor` market here, and the sale lands at poor
+    // (Appraisal never lifts the conjured market — D70 ordering).
+    useOverworldSkill(run, coin, FIND_TRADE);
     const ok = merchantSell(run, "valuables");
     expect(ok.applied).toBe(true);
     expect(ok.earned).toBe(sellPrice(getMaterial("valuables")!, "poor"));

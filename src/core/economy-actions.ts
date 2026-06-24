@@ -30,7 +30,7 @@ import type { RunState } from "./run";
 import { primaryJobOf, type Unit } from "./units";
 import { getJob, type JobLookup } from "./jobs";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
-import { checkOverworldCost, commitOverworldCost, type OverworldCost, type ActionOutcome } from "./overworld-actions";
+import { checkOverworldCost, commitOverworldCost, isPrimed, consumeFlag, DEAL_PRIMED_FLAG, type OverworldCost, type ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
@@ -57,6 +57,10 @@ export const ECONOMY = {
      * pays full face. Data, a numbers pass later.
      */
     sellRate: { none: 0, poor: 0.5, basic: 0.8, premium: 1 } as Record<MarketTier, number>,
+    /** Savvy Barter (D70): the next buy costs this fraction of price (½ off). Numbers pass. */
+    savvyBuyFactor: 0.5,
+    /** Savvy Barter (D70): the next sale fetches this multiple of price (+25%). Numbers pass. */
+    savvySellFactor: 1.25,
   },
   banker: {
     /** Flat purse-interest rate per node-step, applied to the purse at engage. */
@@ -117,7 +121,10 @@ export function merchantBuy(run: RunState, materialId: string, tier: MarketTier)
   if (tier === "none") {
     return { applied: false, reason: `No market here to buy ${materialId}.` };
   }
-  const price = merchantPrice(tier);
+  // Savvy Barter (D70): a primed deal halves the next buy. Peek now (don't consume on a
+  // refused buy); the flag is cashed only once the purchase actually goes through.
+  const primed = isPrimed(run.overworld, DEAL_PRIMED_FLAG);
+  const price = primed ? Math.ceil(merchantPrice(tier) * ECONOMY.merchant.savvyBuyFactor) : merchantPrice(tier);
   // The purse price rides the **shared gate** as a gold knob (D61) — the same
   // check/spend path as Patronize and every overworld action, so "what paying
   // gold means" lives in one place ({@link checkOverworldCost}), not per verb.
@@ -129,7 +136,8 @@ export function merchantBuy(run: RunState, materialId: string, tier: MarketTier)
   }
   commitOverworldCost(run, "merchant-buy", cost, check.fatigueSpend);
   addItem(run.inventory, materialId);
-  return { applied: true, detail: `Bought ${materialId} for ${price}g (${tier} market).`, spent: price, price };
+  if (primed) consumeFlag(run.overworld, DEAL_PRIMED_FLAG); // cash the bargain only on success
+  return { applied: true, detail: `Bought ${materialId} for ${price}g${primed ? " (savvy barter)" : ""} (${tier} market).`, spent: price, price };
 }
 
 // --- Merchant — SELL (goods -> gold, gated by market access, D61) ------------
@@ -165,18 +173,22 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
     return { applied: false, reason: `No ${material.name} to sell.` };
   }
   const tier = effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld);
-  const price = sellPrice(material, tier);
-  if (price <= 0) {
+  const base = sellPrice(material, tier);
+  if (base <= 0) {
     const why = saleValueOf(material) <= 0 ? `${material.name} can't be sold.` : `No market here to sell ${material.name}.`;
-    return { applied: false, reason: why, price };
+    return { applied: false, reason: why, price: base };
   }
+  // Savvy Barter (D70): a primed deal fetches +25% on the next sale (consumed on success).
+  const primed = isPrimed(run.overworld, DEAL_PRIMED_FLAG);
+  const price = primed ? Math.floor(base * ECONOMY.merchant.savvySellFactor) : base;
   removeItem(run.inventory, materialId, 1);
   const { credited } = gainRunGold(run, price, "sale", `Sold ${material.name}`);
+  if (primed) consumeFlag(run.overworld, DEAL_PRIMED_FLAG);
   // The Merchant grows from its signature work (D32/D53) — replacing the use-XP the
   // retired Trade camp skill used to grant. Only a live Merchant brokers (and levels).
   const broker = run.party.find((u) => u.alive && !u.captured && primaryJobOf(u) === "merchant");
   const levels = broker ? grantAbilityUseXp(broker) : 0;
-  return { applied: true, earned: credited, price, levels, detail: `Sold ${material.name} for ${price}g (${tier} market).` };
+  return { applied: true, earned: credited, price, levels, detail: `Sold ${material.name} for ${price}g${primed ? " (savvy barter)" : ""} (${tier} market).` };
 }
 
 // --- Banker — TIME-SHIFT + SECURE (purse only, never the treasury) ----------

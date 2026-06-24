@@ -14,7 +14,7 @@
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
 import type { Phase, SkillDef } from "./skills";
 import { PASSIVE } from "./combat";
-import { guarded, exposed, swift, immobilized } from "./status";
+import { guarded, exposed, swift, immobilized, stealth } from "./status";
 import type { PrestigeBranch } from "./grants";
 
 /**
@@ -300,6 +300,11 @@ export const HUNTER: JobDef = {
   ],
 };
 
+/** The Assassin's Subtle Blade opening-strike bonus (D68) — tunable. */
+export const SUBTLE_BLADE_BONUS = 8;
+/** The job-level floor a Scout must reach before a prestige branch opens (D68). */
+export const SCOUT_PRESTIGE_FLOOR = 5;
+
 /** The **Scout** — infiltrator / flank engine; manufactures isolation, slips the net, weakens the approach. */
 export const SCOUT_JOB: JobDef = {
   id: "scout",
@@ -336,6 +341,62 @@ export const SCOUT_JOB: JobDef = {
       spend: "act",
       unlockLevel: 2,
       effect: { kind: "placeTrap", damage: 8, status: exposed(2) },
+    },
+  ],
+  // The fork (D68): a Scout that grinds to the floor and meets a branch trigger may
+  // prestige in place. The Assassin is the lethal payoff of the flank identity.
+  prestige: [
+    {
+      into: "assassin",
+      when: {
+        kind: "all",
+        of: [
+          { kind: "jobLevel", job: "scout", min: SCOUT_PRESTIGE_FLOOR },
+          { kind: "remembers", flag: "assassin-mentor" },
+        ],
+      },
+    },
+  ],
+};
+
+/**
+ * The **Assassin** (D68) — the Scout's lethal prestige: an unseen blade that opens on the
+ * fresh and cripples the key target. Spine = Hidden Passage (Stealth); replaces Quiet
+ * Footsteps → Subtle Blade and the field-craft → Surgical Precision.
+ */
+export const ASSASSIN_JOB: JobDef = {
+  id: "assassin",
+  name: "Assassin",
+  description: "Unseen blade: vanish, open on a fresh target for a heavy strike, then cripple it.",
+  passives: { [PASSIVE.subtleBlade]: SUBTLE_BLADE_BONUS },
+  baseline: { speed: 15, maxHp: 22, attack: 12, defense: 1, moveRange: 5, sightRadius: 6, attackRange: 1 },
+  growth: { attack: 2, speed: 1 },
+  skills: [
+    {
+      // The spine: vanish from the army's sight to set up the strike. Combat-only — the
+      // closing net doesn't "see", so Stealth has no pre-combat use.
+      id: "hidden-passage",
+      name: "Hidden Passage",
+      description: "Vanish — gain Stealth until your next turn: the enemy can't see or target you unless they stand adjacent.",
+      phase: "battle",
+      target: "self",
+      range: 0,
+      spend: "act",
+      usableContext: ["combat"],
+      effect: { kind: "status", status: stealth(1) },
+    },
+    {
+      // The cripple: a precise strike that leaves the prey Exposed AND Immobilized (the
+      // multi-rider onHit). The L2 payoff.
+      id: "surgical-precision",
+      name: "Surgical Precision",
+      description: "A precise strike (+3 damage) that leaves the foe Exposed and Immobilized until after its next turn.",
+      phase: "battle",
+      target: "enemy",
+      range: 1,
+      spend: "act",
+      unlockLevel: 2,
+      effect: { kind: "damage", bonusAttack: 3, onHit: [exposed(2), immobilized(2)] },
     },
   ],
 };
@@ -458,6 +519,7 @@ export const JOBS = {
   "heavy-knight": HEAVY_KNIGHT,
   hunter: HUNTER,
   scout: SCOUT_JOB,
+  assassin: ASSASSIN_JOB,
   medic: MEDIC,
   "snare-trapper": SNARE_TRAPPER,
 } satisfies Record<string, JobDef>;

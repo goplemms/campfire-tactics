@@ -64,6 +64,8 @@ export const PASSIVE = {
   tarpit: "tarpit",
   /** Soldier Brother-in-arms (D66): bonus attack damage per adjacent ally. */
   brotherInArms: "brotherInArms",
+  /** Assassin Subtle Blade (D68): bonus damage on the opening strike (a full-HP, unbloodied foe). */
+  subtleBlade: "subtleBlade",
 } as const;
 
 /**
@@ -93,6 +95,10 @@ export const PASSIVE_INFO: Record<string, { label: string; description: string }
   [PASSIVE.brotherInArms]: {
     label: "Brother-in-arms",
     description: "Hits harder for each ally standing beside you — strongest in a tight formation.",
+  },
+  [PASSIVE.subtleBlade]: {
+    label: "Subtle Blade",
+    description: "The opening strike on an unbloodied foe lands for heavy bonus damage — strike first, strike fresh.",
   },
 };
 
@@ -215,6 +221,11 @@ export function computeDamage(
   // (capped). Needs the roster, so it joins flanking in the `units`-gated reads.
   const brother = attacker.passives[PASSIVE.brotherInArms] ?? 0;
   if (brother && units) power += brother * Math.min(BROTHER.maxAllies, adjacentBodies(attacker, units, attacker.side));
+  // Subtle Blade (D68): the Assassin's opening strike lands harder on an unbloodied
+  // (full-HP) foe — nobody's engaged it yet. Pairs with Stealth, which reaches fresh
+  // backliners. The passive value is the bonus, like Deadeye.
+  const subtle = attacker.passives[PASSIVE.subtleBlade] ?? 0;
+  if (subtle && defender.hp >= defender.maxHp) power += subtle;
 
   let dmg = power - defender.defense + statusAmount(defender, EXPOSED);
   if (hasStatus(defender, GUARDED)) dmg -= statusAmount(defender, GUARDED);

@@ -16,7 +16,7 @@
  */
 
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
-import { getJob, unitSkills, UNIVERSAL_SKILLS } from "./jobs";
+import { getJob, unitSkills, unitHasCapability, UNIVERSAL_SKILLS, type JobLookup } from "./jobs";
 import type { SkillDef, Phase } from "./skills";
 import { skillContexts, type UsableContext } from "./skills";
 import type { EventBus } from "./events";
@@ -230,9 +230,16 @@ export function unlockedSkills(unit: Unit, phase?: Phase): SkillDef[] {
  * skillContexts} includes `context`. One projection for every surface: combat calls
  * `availableSkills(u, "combat")`; deployment `"pre-combat"`; the overworld `"overworld"`.
  */
-export function availableSkills(unit: Unit, context: UsableContext): SkillDef[] {
+export function availableSkills(unit: Unit, context: UsableContext, lookup: JobLookup = getJob): SkillDef[] {
   const lvl = jobLevelOf(unit, primaryJobOf(unit));
-  const jobSkills = unitSkills(unit).filter((s) => (s.unlockLevel ?? 1) <= lvl && skillContexts(s).includes(context));
+  const jobSkills = unitSkills(unit, undefined, lookup).filter(
+    (s) =>
+      (s.unlockLevel ?? 1) <= lvl &&
+      // The Capability gate (D72): a `requires` skill surfaces only for a unit holding it
+      // (no-op for every skill today — none declares `requires`; proven by fixtures).
+      (!s.requires || unitHasCapability(unit, s.requires, lookup)) &&
+      skillContexts(s).includes(context),
+  );
   const universals = UNIVERSAL_SKILLS.filter((s) => skillContexts(s).includes(context));
   return [...jobSkills, ...universals];
 }

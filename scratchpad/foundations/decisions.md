@@ -2348,7 +2348,7 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 ## D70 — The Merchant: per-class pass 3 (the trade-broker) + the first non-combat (verb) kit shape
 
 - **Status:** Decided (job-system per-class pass 3, 2026-06-24) · realizes D65, builds on D61 (the
-  market-access axis). **Design only** — no build yet (the kit is data + thin verb plumbing, queued).
+  market-access axis). **Decided + built** (2026-06-24) — on the D72 substrate (see Build below).
 - **Context:** D66 (Soldier) and D68 (Scout) ran the per-class pass on **combat** classes, both on the
   D40 **2-active + 1-passive** house style. The Merchant is **pass 3** — and the **first non-combat
   class** to get a dedicated pass, which forced the question: *does 2+1 even apply to a job with no
@@ -2394,7 +2394,10 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   limiter; gold scarcity / faucet-sink discipline), **D40** (2+1 — generalized to the non-combat
   medium), **D66/D68** (the per-class-pass cadence), **D34** (purse — the trade verbs are
   purse-scoped, never the treasury).
-- **Build:** not yet started — **design only**.
+- **Build:** **built** (2026-06-24) on the D72 substrate — Appraisal (`JobDef.presence`), Find Trade
+  (`openMarket`) + Savvy Barter (`primeDeal`, consumed by `merchantBuy`/`merchantSell`); retired the
+  passive `merchantFloor` (access is now the paid Find Trade). Tests: `merchant.test.ts` (+ migrated
+  `overworld`/`prestige`/`economy-actions`). Commit `8a58986`.
 - **Superseded by:** —
 
 ---
@@ -2402,7 +2405,7 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 ## D71 — Cook & Noble: per-class passes 4 & 5 (the non-combat triad, formalized)
 
 - **Status:** Decided (job-system per-class passes 4 & 5, 2026-06-24) · applies the **D70** non-combat
-  house style; realizes D65. **Design only** — no build yet. Co-designed with **D70** (Merchant) as the
+  house style; realizes D65. **Decided + built** (2026-06-24, on the D72 substrate). Co-designed with **D70** (Merchant) as the
   non-combat triad; the **action-registration substrate** all three need is assessed next (a sibling
   decision to D61's limiter / D65's grant seam — see *Open / next*).
 - **Context:** D70 articulated the non-combat house style (**1 presence-anchor + 1–2 verbs**) on the
@@ -2446,7 +2449,10 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   pass), **D9** (Rest-Point recovery — Cook Stew's new sink), **D15** (Upkeep — the Food line Cook Stew
   satisfies), **D45** (voluntary-skip — the exploit the free-food closes), **D62** (Influence — the
   Noble's economy), **D8** (morale — Feast), **D40** (2+1, generalized to the non-combat medium).
-- **Build:** not yet started — **design only**.
+- **Build:** **built** (2026-06-24) on the D72 substrate — Noble's **Renown** (`JobDef.faucet`, retiring
+  `accrueNobleInfluence`); Cook's **Cook Stew** (`provisionMeal`, computed Food-value cost + RP bank),
+  **Feast** (morale), Field Kitchen kept, `restPoints` 3→1, and the **chef→cook rename**. Tests:
+  `cook.test.ts` + `presence-faucet`. Commits `9a971fa` (Noble) · `32a7e93` (Cook).
 - **Superseded by:** —
 
 ---

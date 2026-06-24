@@ -341,14 +341,68 @@ exclusivity lives in its three signature abilities, the way the Banker's and Nob
 replace-in-place deepens the *verbs/presence* rather than a battle kit — designed in a following pass
 (reserved here, as the Soldier's fork was in pass 1).
 
+## Worked example — the Cook (per-class pass 4: food → recovery)
+
+Pass 4 — the **camp-support** non-combat class (the legacy **Chef**, renamed **Cook**). It was a 1+0
+(one verb, no anchor); this gives it the D70 shape and wires its active into the **Rest-Point** economy
+(D9). Decision: **D71**.
+
+**Identity — the field cook.** Keeps the party fed, rested, and in good spirits; its value is
+**recovery**, the support mirror of the economy classes. Three food-themed levers: provisioning
+(passive), rest (Stew), morale (Feast).
+
+**Base kit (1 passive + 2 actives):**
+
+- **Field Kitchen** *(passive — presence anchor)* — a Cook lowers the party's **Food upkeep** (the
+  existing per-unit food discount): double duty — cheaper food *and* a cheaper Cook Stew.
+- **Cook Stew** *(active)* — **spend the day's Food value → bank Rest Points** (≈ one chunk's worth)
+  **and satisfy the Food upkeep line.** It turns the mandatory food spend into recovery: net gold is
+  the same as just paying food, but you get RP for it. The **"free food that day" is the anti-exploit**
+  — it blocks cooking for RP *and then* skipping the Food line (D45) to pocket the gold. Once per node.
+  Replaces the legacy battle-start `pendingHeal` (RP supersedes it) and its `+1 morale` rider (→ Feast).
+- **Feast** *(active)* — a special meal: a **larger morale lift** to rally before a hard fight,
+  costed/paced heavier than Stew. The morale verb.
+
+**Recovery is now *active*.** Cook Stew feeds the **shared RP pool**, cashed at the next rest beat — so
+the Cook's recovery is *chosen* (cook → bank → rest), not a passive trickle. The big passive
+`restPoints` shrinks to a small floor; the Cook earns its RP by cooking, tying the class to the food
+economy it already discounts.
+
+**Next:** the Cook's **prestige fork** — a non-combat verb-prestige like the Merchant's (reserved).
+
+## Worked example — the Noble (per-class pass 5: the standing economy)
+
+Pass 5 — the **Influence** economy class (D62), and the lightest pass: the Noble was *already* nearly a
+2+1, so this mainly **formalizes** the shape (no new code). Decision: **D71**.
+
+**Identity — the standing-bearer.** Works the *political* economy, not the field: presence builds
+rapport, gold courts patrons, standing sways enemies. Its currency is **Influence** — walled-off,
+per-expedition (D62).
+
+**Base kit (1 passive + 2 actives — across two surfaces):**
+
+- **Renown** *(passive — presence anchor)* — a Noble **accrues Influence per node-step** as the caravan
+  travels (the existing presence faucet). The always-on standing identity.
+- **Patronize** *(active — camp)* — spend **gold → Influence** (court patrons): the active faucet,
+  paced (once per node + gold).
+- **Bribe** *(active — combat)* — spend **Influence → sway an enemy** mid-battle (temp turncoat /
+  permanent recruit, D33).
+
+**The cross-surface generalization.** The Noble's two verbs sit on **different surfaces** — Patronize
+in camp, Bribe in battle — so it **generalizes the house style** to *"1 presence + 1–2 verbs, where a
+verb may be a camp **or** a combat action"* (the archetype-5 carve-out the substrate anticipates). A
+clean loop: **accrue → Patronize → Bribe.**
+
+**Next:** the Noble's **prestige fork** — a non-combat verb-prestige (reserved).
+
 ## Open questions / future scope
 
-- **The per-class design pass (one at a time)** — **Soldier = pass 1** (the formation kit above,
-  D66; its prestige fork still pending) · **Scout = pass 2** (the infiltrator + the first real
-  fork above, D68 — built) · **Merchant = pass 3** (the trade-broker base kit above, D70 — the first
-  non-combat verb-kit; its prestige fork reserved). Still ahead: the **Soldier's** and **Merchant's**
-  own forks, the remaining classes' kits + **prestige branches**, and the **non-combat prestige verb
-  shapes** for the rest of the economy triad (Banker / Noble).
+- **The per-class design pass (one at a time)** — **Soldier = pass 1** (D66) · **Scout = pass 2**
+  (D68 — built) · **Merchant = pass 3** (D70) · **Cook = pass 4** & **Noble = pass 5** (D71) — the
+  non-combat triad now designed. Still ahead: the **action-registration substrate** these non-combat
+  kits need (before build), the **Banker's** own 2+1 pass (+ its missing presence anchor), the
+  **prestige forks** (combat — the Soldier's; non-combat — Merchant / Cook / Noble), and the remaining
+  combat classes' kits.
 - **Chain pacing** — job levels between hops so a tier-3 capstone feels earned.
 - **The acquisition agency model** — automatic (authored beats) vs. choice/item (generics).
 - **The per-unit-memory data shape** — contents + persistence scope (node / run / guild).

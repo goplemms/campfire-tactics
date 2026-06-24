@@ -11,10 +11,11 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit, UnitStats } from "./units";
+import { primaryJobOf, type Unit, type UnitStats } from "./units";
 import type { Phase, SkillDef } from "./skills";
 import { PASSIVE, FLANK } from "./combat";
 import { guarded, exposed, swift, immobilized } from "./status";
+import type { PrestigeBranch } from "./grants";
 
 /**
  * Per-stat growth weights (D39): a job level-up banks **+1 to every main stat**
@@ -57,6 +58,14 @@ export interface JobDef {
    * field — kept in the roster for Upkeep/RP/morale, excluded from combat.
    */
   noncombat?: boolean;
+  /**
+   * Prestige branches (D65): the **depth** evolutions this job can take, each gated
+   * by a {@link "./grants".Predicate} (the default floor is `jobLevel ≥ N`). Chains
+   * fall out — a prestige job may carry its own `.prestige`. The substrate ships the
+   * **field + evaluator** ({@link "./grants".eligiblePrestiges}); **no real job is
+   * populated** here — that's the per-class pass.
+   */
+  prestige?: PrestigeBranch[];
 }
 
 /**
@@ -477,21 +486,34 @@ export function getJob(id: string | undefined): JobDef | undefined {
 }
 
 /**
+ * A job-data resolver (D65) — {@link getJob} by default. Injectable so the prestige
+ * substrate's tests can resolve **throwaway fixture jobs** (never in {@link JOBS})
+ * without polluting the registry; production always uses the default {@link getJob}.
+ */
+export type JobLookup = (id: string | undefined) => JobDef | undefined;
+
+/**
  * Stamp a unit's job passives (D40) onto `unit.passives` so combat resolution
  * reads them (the Scout's solo-flank, the Hunter's Deadeye, the Medic's Triage,
  * the Heavy Knight's tarpit). Idempotent; call at battle setup.
  */
-export function stampPassives(unit: Unit): void {
-  const passives = getJob(unit.jobId)?.passives;
-  if (passives) unit.passives = { ...passives };
+export function stampPassives(unit: Unit, lookup: JobLookup = getJob): void {
+  // Read the **effective primary** (D65 standardization): a prestiged unit's
+  // primaryJob is the evolved job, while the readonly jobId stays the frozen
+  // original — so passives must follow primaryJobOf, not jobId. Always replace
+  // (clearing stale passives if the evolved job has none); byte-identical for a
+  // non-prestiged unit, whose primaryJobOf === jobId.
+  unit.passives = { ...(lookup(primaryJobOf(unit))?.passives ?? {}) };
 }
 
 /**
  * The skills a unit has via its job, optionally filtered to one phase. Returns
  * an empty list for a unit with no job.
  */
-export function unitSkills(unit: Unit, phase?: Phase): SkillDef[] {
-  const job = getJob(unit.jobId);
+export function unitSkills(unit: Unit, phase?: Phase, lookup: JobLookup = getJob): SkillDef[] {
+  // Effective primary (D65 standardization): a prestiged unit draws the evolved
+  // job's skills, not its frozen jobId's. Byte-identical when primaryJobOf === jobId.
+  const job = lookup(primaryJobOf(unit));
   if (!job) return [];
   return phase ? job.skills.filter((s) => s.phase === phase) : job.skills;
 }

@@ -124,6 +124,8 @@ export interface UnitSpec extends UnitStats {
    * this tag or its id, so a generator can emit objectives without hand-wiring.
    */
   role?: string;
+  /** Seed the unit's run-scoped {@link Unit.memory} flag bag (D65); defaults to empty. */
+  memory?: Record<string, string | number | boolean>;
 }
 
 /**
@@ -206,6 +208,14 @@ export interface Unit extends UnitStats {
    * {@link "./combat".PASSIVE}. Empty for a unit with no passive.
    */
   passives: Record<string, number>;
+  /**
+   * Per-unit **memory** (D65) — a run-scoped flag bag a node event writes and a
+   * later one reads (the meet-traveler → later-reveal chain). Lives on the
+   * `run.party` unit, so it threads the whole run for free; cross-run / guild
+   * persistence is deferred (D65 addendum). Keyed flag → value; empty for a
+   * fresh unit. Read via {@link recalls}/{@link recall}, written via {@link remember}.
+   */
+  memory: Record<string, string | number | boolean>;
 }
 
 /** Inflate an authored {@link UnitSpec} into a live {@link Unit}. */
@@ -247,6 +257,7 @@ export function createUnit(spec: UnitSpec): Unit {
     counters: {},
     cooldowns: {},
     passives: {},
+    memory: { ...(spec.memory ?? {}) },
   };
 }
 
@@ -281,6 +292,34 @@ export function hasActive(units: readonly Unit[], side: Side): boolean {
  */
 export function primaryJobOf(unit: Pick<Unit, "primaryJob" | "jobId">): JobId | undefined {
   return unit.primaryJob ?? unit.jobId;
+}
+
+/**
+ * Per-unit **memory** (D65) — write a run-scoped flag onto the unit's {@link
+ * Unit.memory} bag. Defaults the value to `true` (the common "this happened"
+ * marker); pass a string/number for richer linked state. Pure; mutates the bag.
+ */
+export function remember(unit: Unit, flag: string, value: string | number | boolean = true): void {
+  unit.memory[flag] = value;
+}
+
+/**
+ * True if the unit **recalls** `flag` as a truthy value (the linked-event gate
+ * the `remembers` predicate reads). Use {@link recall} to read the raw value
+ * (e.g. a stored `0`/`false`/`""`). Pure.
+ */
+export function recalls(unit: Pick<Unit, "memory">, flag: string): boolean {
+  return Boolean(unit.memory[flag]);
+}
+
+/** The raw value remembered for `flag`, or `undefined` if never written (D65). Pure. */
+export function recall(unit: Pick<Unit, "memory">, flag: string): string | number | boolean | undefined {
+  return unit.memory[flag];
+}
+
+/** Forget a remembered `flag` (idempotent, D65). Pure; mutates the bag. */
+export function forget(unit: Unit, flag: string): void {
+  delete unit.memory[flag];
 }
 
 /**

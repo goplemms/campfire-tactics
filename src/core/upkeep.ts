@@ -18,7 +18,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { healUnit, type Unit } from "./units";
+import { healUnit, primaryJobOf, type Unit } from "./units";
 import type { Camp } from "./camp";
 import { getJob } from "./jobs";
 import type { DifficultyPolicy } from "./mortality";
@@ -69,7 +69,7 @@ export function foodFirst(lines: readonly UpkeepLine[]): UpkeepLine[] {
 
 /** True if any party member is a Chef (unlocks the food discount, D15). */
 function hasChef(party: readonly Unit[]): boolean {
-  return party.some((u) => getJob(u.jobId)?.upkeep?.food !== undefined);
+  return party.some((u) => getJob(primaryJobOf(u))?.upkeep?.food !== undefined);
 }
 
 /**
@@ -197,7 +197,7 @@ export function rpPerNight(party: readonly Unit[]): number {
   let rp = 0;
   for (const u of party) {
     if (!u.alive) continue;
-    rp += getJob(u.jobId)?.restPoints ?? 0;
+    rp += getJob(primaryJobOf(u))?.restPoints ?? 0;
   }
   return rp;
 }

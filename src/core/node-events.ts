@@ -35,8 +35,9 @@
 
 import type { RunState } from "./run";
 import type { MapNode } from "./overworld";
-import type { Unit } from "./units";
+import { primaryJobOf, remember, type Unit } from "./units";
 import { streamFor } from "./rng";
+import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
 import { MATERIALS, addItem, canAdd } from "./inventory";
 import { addInfluence, influenceTier, type InfluenceTier } from "./economy";
 import { merchantBuy, merchantPrice } from "./economy-actions";
@@ -117,6 +118,13 @@ export interface EventOutcome {
   stolen?: number;
   /** A human-readable result line for the render. */
   summary: string;
+  /**
+   * A **prestige** applied to a party unit (D65 offer→accept), if any — reported so
+   * the render + run-history can react. The job evolved in place; `jobId` is frozen.
+   */
+  prestiged?: { unitId: string; from: string; into: string };
+  /** A **memory** flag written on a party unit (D65 linked-event chain), if any. */
+  remembered?: string;
 }
 
 /** A blank outcome of a kind (resolvers fill in what they apply). */
@@ -282,15 +290,40 @@ export interface StoryOutcomeSpec {
   fatigueDelta?: number;
   /** A small material reward dropped into storage under the cap (D6). */
   material?: string;
+  /**
+   * Write a **memory** flag on the targeted unit (D65) — the linked-event chain
+   * (event A remembers; event B reads it). Requires a unit-targeted choice.
+   */
+  remember?: string;
+  /**
+   * Apply a **grant** (D65) to the targeted unit — `addHeldJob` (breadth) or
+   * `prestige` (depth). Requires a unit-targeted choice; the offer→accept agency is
+   * the choice itself (autoResolve, which targets no unit, never applies it).
+   */
+  grant?: GrantEffect;
   /** The result line shown after picking this option. */
   summary: string;
 }
 
-/** A story option (M11) — a label + its deterministic outcome. */
+/** A story option (M11; D65 targeting/gating) — a label + its deterministic outcome. */
 export interface StoryChoiceSpec {
   id: string;
   label: string;
   outcome: StoryOutcomeSpec;
+  /**
+   * If `"unit"`, the option **targets a party member** (D65): it expands to one
+   * choice per *eligible* member, the `choiceId` encoding the unit as `id:unitId`.
+   * The chosen unit receives the outcome's `remember`/`grant`. Omitted ⇒ a plain
+   * party/camp choice (the existing behaviour).
+   */
+  target?: "unit";
+  /**
+   * An eligibility {@link "./grants".Predicate} (D65): for a `target:"unit"` choice
+   * it gates **which members** qualify (evaluated per member — floor + memory +
+   * identity); for a plain choice it gates whether the option is offered at all
+   * (any member satisfies). Omitted ⇒ open.
+   */
+  when?: Predicate;
 }
 
 /** An authored story event (M11) — a prompt + a small (2-option) choice set. */
@@ -373,7 +406,12 @@ export function storyForNode(seed: string | number, node: MapNode): StorySpec {
  * deterministically from the node + option (D22). Returns the outcome.
  */
 export function applyStoryChoice(run: RunState, node: MapNode, story: StorySpec, choiceId: string): EventOutcome {
-  const choice = story.choices.find((c) => c.id === choiceId) ?? story.choices[0];
+  // A unit-targeted choice encodes the member as `id:unitId` (D65); split it off so
+  // the base id still finds the StoryChoiceSpec and seeds the deterministic roll.
+  const sep = choiceId.indexOf(":");
+  const baseId = sep >= 0 ? choiceId.slice(0, sep) : choiceId;
+  const targetId = sep >= 0 ? choiceId.slice(sep + 1) : undefined;
+  const choice = story.choices.find((c) => c.id === baseId) ?? story.choices[0];
   const spec = choice.outcome;
   const out = emptyOutcome("story", spec.summary);
 
@@ -403,6 +441,43 @@ export function applyStoryChoice(run: RunState, node: MapNode, story: StorySpec,
     const before = run.inventory.counts[spec.material] ?? 0;
     addItem(run.inventory, spec.material);
     if ((run.inventory.counts[spec.material] ?? 0) > before) out.materials = [spec.material];
+  }
+  // D65 — a unit-targeted choice writes memory and/or applies a grant to that member.
+  // (autoResolve picks the base id, so it targets no unit and applies neither — the
+  // offer→accept agency is the explicit per-unit accept.)
+  const target = targetId ? run.party.find((u) => u.id === targetId) : undefined;
+  if (target && spec.remember) {
+    remember(target, spec.remember);
+    out.remembered = spec.remember;
+  }
+  if (target && spec.grant) {
+    const res = applyGrantEffect(spec.grant, target, run);
+    if (res.kind === "prestige" && res.ok) {
+      out.prestiged = { unitId: target.id, from: res.from, into: res.into };
+    }
+  }
+  return out;
+}
+
+/**
+ * The interactive options a story surfaces (M11; D65 targeting/gating). A plain
+ * choice yields one option (open, or gated by `when` against any member); a
+ * `target:"unit"` choice **expands to one option per eligible party member** (gated
+ * per member by `when`), the `choiceId` encoding the unit as `id:unitId`. Pure read.
+ */
+export function storyChoices(run: RunState, node: MapNode, story: StorySpec): EventChoice[] {
+  const ctx = { run, node };
+  const out: EventChoice[] = [];
+  for (const c of story.choices) {
+    if (c.target === "unit") {
+      for (const u of run.party) {
+        if (c.when && !evalPredicate(c.when, u, ctx)) continue;
+        out.push({ id: `${c.id}:${u.id}`, label: `${c.label} — ${u.name}`, available: true });
+      }
+    } else {
+      const available = c.when ? run.party.some((u) => evalPredicate(c.when!, u, ctx)) : true;
+      out.push({ id: c.id, label: c.label, available });
+    }
   }
   return out;
 }
@@ -506,7 +581,7 @@ export const EVENTS: readonly EventDef[] = [
       return applyStoryChoice(run, node, story, choice.id);
     },
     choices(run, node) {
-      return storyForNode(run.seed, node).choices.map((c) => ({ id: c.id, label: c.label, available: true }));
+      return storyChoices(run, node, storyForNode(run.seed, node));
     },
     choose(run, node, choiceId) {
       return applyStoryChoice(run, node, storyForNode(run.seed, node), choiceId);
@@ -651,5 +726,5 @@ function canStoreMore(run: RunState, materialId: string): boolean {
 
 /** A one-line stat blurb for a recruiter's offered body. */
 function describeUnit(u: Unit): string {
-  return `${u.jobId ?? "fighter"} · HP ${u.maxHp} · ATK ${u.attack} · SPD ${u.speed}`;
+  return `${primaryJobOf(u) ?? "fighter"} · HP ${u.maxHp} · ATK ${u.attack} · SPD ${u.speed}`;
 }

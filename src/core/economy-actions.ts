@@ -173,7 +173,7 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
   const { credited } = gainRunGold(run, price, "sale", `Sold ${material.name}`);
   // The Merchant grows from its signature work (D32/D53) — replacing the use-XP the
   // retired Trade camp skill used to grant. Only a live Merchant brokers (and levels).
-  const broker = run.party.find((u) => u.alive && !u.captured && u.jobId === "merchant");
+  const broker = run.party.find((u) => u.alive && !u.captured && primaryJobOf(u) === "merchant");
   const levels = broker ? grantAbilityUseXp(broker) : 0;
   return { applied: true, earned: credited, price, levels, detail: `Sold ${material.name} for ${price}g (${tier} market).` };
 }

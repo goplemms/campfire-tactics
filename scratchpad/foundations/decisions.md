@@ -2063,8 +2063,51 @@ trail of reasoning stays intact.
   ability scaling, loadout boons), D40 (2-active+1-passive roster + passive identity), D33
   (recruitment tiers — refined here), D25 (uniform slots), D27 (permadeath → the attachment
   stakes), the reserved `leveling.ts:applyCharacterBoons` hook.
-- **Build:** not yet started — **design only** (this record + the system doc).
+- **Build:** the **shared prestige & transition substrate is built** (2026-06-24) — see the
+  **Addendum (D65-A)** below. **Per-class content** (the actual prestige branches, the Soldier
+  retrofit, the authored events) remains the deferred per-class pass (D66 Soldier, D68 Scout).
 - **Superseded by:** —
+
+### Addendum D65-A (2026-06-24) — the prestige & transition substrate, built
+
+The **shared machinery** D65 designed is now built — the generic substrate the Soldier's Elite
+Soldier and the Scout's Assassin/Thief both consume, built **once**. This addendum records the
+**resolved deferred questions** and the load-bearing decisions the build settled.
+
+- **Per-unit memory = run-scoped `Record<string, …>` on `Unit`.** A flag bag (`unit.memory`) with
+  pure `remember` / `recalls` / `recall` / `forget` helpers (`units.ts`). It threads the run for
+  free (the `run.party` units are the same objects across nodes) and **dies with the run**;
+  cross-run / guild persistence is a deferred follow-on. The `remembers(flag)` predicate reads it.
+- **Prestige = replace-in-place, carrying the job level.** `prestige(unit, from, into)`
+  (`grants.ts`): the evolved job takes the **same `heldJobs` slot**, `jobLevels[from] → [into]`
+  (the level/xp carries — it *is* the job evolved), passives re-stamp off the evolved primary, and
+  `into` may itself carry `.prestige` (chains). Guarded — a no-op if the unit doesn't hold `from`
+  or already holds `into`. If `from` was the effective primary, `into` takes the primary seat.
+- **The `jobId` → `primaryJob` read-standardization (the silent-no-op landmine).** `unit.jobId` is
+  the **frozen original class** (the identity / authoring anchor; never changes on prestige); any
+  read of a unit's **current effective class** now goes through `primaryJobOf(unit)`. The seven
+  mechanic-driving readers were standardized — `stampPassives`, `unitSkills`, `hasChef`,
+  `rpPerNight`, `merchantFloor`, the `merchantSell` broker, `describeUnit`. Verified
+  **byte-identical** (no content authors `primaryJob ≠ jobId`), so the sim is unchanged; telemetry /
+  render reads of `jobId` (the authored class) correctly stay as-is.
+- **The grant seam.** `grant := { when: Predicate, then: GrantEffect }`, effect ∈ { `addHeldJob`,
+  `prestige` }, one **exhaustive mapped-type** interpreter (`GRANT_EFFECT_HANDLERS`, mirroring the
+  D3/D4 effects-as-data ethos). Composable, default-open predicates
+  (`jobLevel`/`charLevel`/`holdsItem`/`atNode`/`atNodeKind`/`unitId`/`remembers` + `all`/`any`).
+  `JobDef.prestige` carries the branch data; `eligiblePrestiges` evaluates it. A fixture-injectable
+  job lookup keeps throwaway test jobs out of the `JOBS` registry.
+- **Agency = the accept is a choice.** Node events offer a prestige via the extended **story** data
+  pattern (a unit-targeted, predicate-gated choice that writes a memory flag or applies a grant; the
+  `choiceId` encodes the unit). A generic prestige **never auto-applies on a threshold** —
+  `autoResolve` targets no unit, so it applies neither the memory nor the grant; only the explicit
+  per-unit accept does.
+- **Scope held:** the substrate ships with **fixtures only** — no real Assassin / Thief /
+  Elite-Soldier `JobDef`s, no `SCOUT_JOB.prestige`, no authored events. Those remain the per-class
+  passes (D66 Soldier, D68 Scout). Fixtures are never registered in the live `JOBS` / `STORIES` /
+  event pool (which would shift deterministic selection and break the byte-identical sim).
+- **Cites:** D65 (this framework), D38/D39 (the job model + hybrid leveling), D33 (acquisition — the
+  recruit path already exists via the `recruiter` event; the mentor path is a *prestige trigger*, no
+  recruitment work), D3/D4 (effects-as-data, one interpreter).
 
 ## D66 — The Soldier: first per-class pass (formation anchor) + the channeled-aura model
 

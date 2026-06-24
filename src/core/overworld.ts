@@ -23,7 +23,7 @@
 
 import { streamFor } from "./rng";
 import { generateEncounter, type EncounterDef } from "./generation";
-import type { Unit } from "./units";
+import { primaryJobOf, type Unit } from "./units";
 
 /**
  * A node kind (D23). A fight (`combat`), a no-battle recovery camp (`rest`), or a
@@ -139,7 +139,7 @@ function nodeMarket(rng: ReturnType<typeof streamFor>, kind: NodeKind): MarketTi
  * by {@link effectiveMarketTier}.
  */
 export function merchantFloor(party: readonly Unit[]): MarketTier {
-  const hasMerchant = party.some((u) => u.alive && !u.captured && u.jobId === "merchant");
+  const hasMerchant = party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "merchant");
   return hasMerchant ? "poor" : "none";
 }
 

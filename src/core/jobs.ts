@@ -15,6 +15,7 @@ import { primaryJobOf, type Unit, type UnitStats } from "./units";
 import type { Phase, SkillDef } from "./skills";
 import { PASSIVE, FLANK } from "./combat";
 import { guarded, exposed, swift, immobilized } from "./status";
+import type { PrestigeBranch } from "./grants";
 
 /**
  * Per-stat growth weights (D39): a job level-up banks **+1 to every main stat**
@@ -57,6 +58,14 @@ export interface JobDef {
    * field — kept in the roster for Upkeep/RP/morale, excluded from combat.
    */
   noncombat?: boolean;
+  /**
+   * Prestige branches (D65): the **depth** evolutions this job can take, each gated
+   * by a {@link "./grants".Predicate} (the default floor is `jobLevel ≥ N`). Chains
+   * fall out — a prestige job may carry its own `.prestige`. The substrate ships the
+   * **field + evaluator** ({@link "./grants".eligiblePrestiges}); **no real job is
+   * populated** here — that's the per-class pass.
+   */
+  prestige?: PrestigeBranch[];
 }
 
 /**

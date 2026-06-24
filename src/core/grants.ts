@@ -97,6 +97,21 @@ export interface Grant {
   then: GrantEffect;
 }
 
+/**
+ * A prestige **branch** authored on a {@link "./jobs".JobDef} (D65): the job evolves
+ * `into` another when `when` holds (the default floor is `jobLevel ≥ N`). Chains fall
+ * out — the `into` job may carry its own `.prestige`.
+ */
+export interface PrestigeBranch {
+  into: JobId;
+  when: Predicate;
+}
+
+/** A {@link PrestigeBranch} resolved against a unit (D65): which held job it evolves `from`. */
+export interface PrestigeOption extends PrestigeBranch {
+  from: JobId;
+}
+
 /** What applying a {@link GrantEffect} did (D65) — the report the caller surfaces. */
 export type GrantResult =
   | { kind: "addHeldJob"; ok: boolean; job: JobId }
@@ -188,4 +203,29 @@ export function prestige(
   // Re-stamp passives off the evolved primary (skills now read it too, via primaryJobOf).
   stampPassives(unit, lookup);
   return { kind: "prestige", ok: true, from, into };
+}
+
+/**
+ * Every prestige branch reachable from the unit's **held jobs** (D65), tagged with
+ * the `from` job carrying it. Reads `JobDef.prestige`; `lookup` resolves the job data
+ * (`getJob` by default, injected by fixtures). Pure — does not filter by eligibility.
+ */
+export function prestigeOptions(unit: Unit, lookup: JobLookup = getJob): PrestigeOption[] {
+  const out: PrestigeOption[] = [];
+  for (const from of unit.heldJobs) {
+    for (const branch of lookup(from)?.prestige ?? []) {
+      out.push({ from, into: branch.into, when: branch.when });
+    }
+  }
+  return out;
+}
+
+/**
+ * The prestige options the unit is **eligible** for right now (D65) — {@link
+ * prestigeOptions} filtered by {@link evalPredicate}. After a {@link prestige} the
+ * unit holds the evolved job, so a fresh call surfaces that job's own branches — the
+ * chain falls out for free.
+ */
+export function eligiblePrestiges(unit: Unit, ctx: PredicateCtx, lookup: JobLookup = getJob): PrestigeOption[] {
+  return prestigeOptions(unit, lookup).filter((o) => evalPredicate(o.when, unit, ctx));
 }

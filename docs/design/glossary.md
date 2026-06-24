@@ -280,9 +280,10 @@ read it everywhere.
 **Immobilized · Slowed · Exposed · Hastened · Guarded · Swift · Stealth · Marked Prey · Flanked**.
 New statuses follow the pattern (a single capitalized adjective/noun); check this list
 before coining one so two effects never share a word.
-> **Stealth** (*D68*) = the Assassin's Hidden Passage stance — the enemy can't see or target the
-> bearer unless a foe stands directly adjacent. The *status* is **Stealth**; the vision-ladder fog
-> state it imposes on the enemy is **Hidden** (below) — keep the two words apart.
+> **Stealth** (*D68*) = the Hidden Passage stance shared by both Scout-fork branches (Assassin &
+> Thief) — the enemy can't see or target the bearer unless a foe stands directly adjacent. The
+> *status* is **Stealth**; the vision-ladder fog state it imposes on the enemy is **Hidden**
+> (below) — keep the two words apart.
 
 **Vision ladder (*D18*):** the canonical tiers are **Hidden → Pinged → Seen** (with
 **ghost markers** for spotted-then-lost foes, and an **ambush bonus** for breaking from

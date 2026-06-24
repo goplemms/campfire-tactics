@@ -58,9 +58,13 @@ function actor(run: RunState): Unit {
   return run.party[0];
 }
 
-/** The Chef's costless camp skill (Cook Stew) — the per-node-capped signature action. */
+/**
+ * A costless, per-node-capped morale camp skill (the old Cook Stew shape) — a **fixture** for the
+ * per-node-cap machinery tests, decoupled from the real Cook kit (whose Cook Stew is now a
+ * computed-cost `provisionMeal`, D71). The cap/reset machinery is what these tests exercise.
+ */
 function cookSkill(): SkillDef {
-  return getJob("chef")!.skills[0];
+  return { id: "fx-stew", name: "Fixture Stew", description: "", phase: "meta", target: "party", range: 0, spend: "act", usesPerNode: 1, effect: { kind: "morale", morale: 1, partyHeal: 8 } };
 }
 
 describe("overworld-actions — Survey is a unified overworld SkillDef (D72)", () => {

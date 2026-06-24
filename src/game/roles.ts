@@ -23,7 +23,7 @@ const JOB_COLORS: Record<JobId, number> = {
   assassin: ROLE.skirmisher, //   violet — the Scout's lethal prestige (unseen blade)
   thief: ROLE.skirmisher, //      violet — the Scout's utility prestige (unseen hand)
   medic: ROLE.medic, //          cyan  — sustain
-  chef: ROLE.chef, //           orange — support
+  cook: ROLE.cook, //           orange — support
   merchant: ROLE.merchant, //       gold  — economy
   noble: ROLE.noble, //          violet — standing / Influence
   banker: ROLE.banker, //         blue  — purse / finance

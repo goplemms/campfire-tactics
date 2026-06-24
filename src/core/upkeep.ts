@@ -29,10 +29,10 @@ import { spend } from "./purse-journal";
 
 /** Tuning for the Upkeep lines (all data, configurable). */
 export const UPKEEP = {
-  /** Per-roster-unit food cost without a Chef. */
+  /** Per-roster-unit food cost without a Cook. */
   foodPerUnit: 2,
-  /** Per-roster-unit food cost with a Chef in the party (the discount). */
-  chefFoodPerUnit: 1,
+  /** Per-roster-unit food cost with a Cook in the party (the discount). */
+  cookFoodPerUnit: 1,
   /** Per-roster-unit repairs cost. */
   repairsPerUnit: 1,
   /** Morale hit when Food is underfunded (high — hunger bites fast, D15). */
@@ -67,8 +67,8 @@ export function foodFirst(lines: readonly UpkeepLine[]): UpkeepLine[] {
   return [...lines].sort((a, b) => (a.id === "food" ? -1 : b.id === "food" ? 1 : 0));
 }
 
-/** True if any party member is a Chef (unlocks the food discount, D15). */
-function hasChef(party: readonly Unit[]): boolean {
+/** True if any party member is a Cook (unlocks the food discount, D15). */
+function hasCook(party: readonly Unit[]): boolean {
   return party.some((u) => getJob(primaryJobOf(u))?.upkeep?.food !== undefined);
 }
 
@@ -79,7 +79,7 @@ function hasChef(party: readonly Unit[]): boolean {
  */
 export function computeUpkeep(party: readonly Unit[]): UpkeepBill {
   const size = party.length;
-  const foodPerUnit = hasChef(party) ? UPKEEP.chefFoodPerUnit : UPKEEP.foodPerUnit;
+  const foodPerUnit = hasCook(party) ? UPKEEP.cookFoodPerUnit : UPKEEP.foodPerUnit;
   const lines: UpkeepLine[] = [
     { id: "food", name: "Food", cost: foodPerUnit * size, moraleHit: UPKEEP.foodMoraleHit },
     { id: "repairs", name: "Repairs", cost: UPKEEP.repairsPerUnit * size, moraleHit: UPKEEP.repairsMoraleHit },

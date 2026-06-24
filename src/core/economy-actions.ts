@@ -16,7 +16,7 @@
  *   from incoming run gold ({@link "./economy".gainRunGold}); and **theft
  *   protection** that blunts a skim ({@link "./theft"}). **Purse only — never the
  *   treasury** (D34).
- * - **Noble — INFLUENCE** ({@link accrueNobleInfluence}/{@link patronize}/{@link
+ * - **Noble — INFLUENCE** ({@link accrueDeclaredFaucets}/{@link patronize}/{@link
  *   bribeEnemy}): **Influence** — a separate, **per-expedition** currency that can never
  *   pay Upkeep — accrues passively from a Noble's presence and from the **Patronize**
  *   verb (gold → standing), and is spent on a **bribe** that sways an enemy (reading the
@@ -30,7 +30,7 @@ import type { RunState } from "./run";
 import { primaryJobOf, type Unit } from "./units";
 import { getJob, type JobLookup } from "./jobs";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
-import { checkOverworldCost, commitOverworldCost, type OverworldCost, type ActionOutcome } from "./overworld-actions";
+import { checkOverworldCost, commitOverworldCost, isPrimed, consumeFlag, DEAL_PRIMED_FLAG, type OverworldCost, type ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
@@ -57,6 +57,10 @@ export const ECONOMY = {
      * pays full face. Data, a numbers pass later.
      */
     sellRate: { none: 0, poor: 0.5, basic: 0.8, premium: 1 } as Record<MarketTier, number>,
+    /** Savvy Barter (D70): the next buy costs this fraction of price (½ off). Numbers pass. */
+    savvyBuyFactor: 0.5,
+    /** Savvy Barter (D70): the next sale fetches this multiple of price (+25%). Numbers pass. */
+    savvySellFactor: 1.25,
   },
   banker: {
     /** Flat purse-interest rate per node-step, applied to the purse at engage. */
@@ -117,7 +121,10 @@ export function merchantBuy(run: RunState, materialId: string, tier: MarketTier)
   if (tier === "none") {
     return { applied: false, reason: `No market here to buy ${materialId}.` };
   }
-  const price = merchantPrice(tier);
+  // Savvy Barter (D70): a primed deal halves the next buy. Peek now (don't consume on a
+  // refused buy); the flag is cashed only once the purchase actually goes through.
+  const primed = isPrimed(run.overworld, DEAL_PRIMED_FLAG);
+  const price = primed ? Math.ceil(merchantPrice(tier) * ECONOMY.merchant.savvyBuyFactor) : merchantPrice(tier);
   // The purse price rides the **shared gate** as a gold knob (D61) — the same
   // check/spend path as Patronize and every overworld action, so "what paying
   // gold means" lives in one place ({@link checkOverworldCost}), not per verb.
@@ -129,7 +136,8 @@ export function merchantBuy(run: RunState, materialId: string, tier: MarketTier)
   }
   commitOverworldCost(run, "merchant-buy", cost, check.fatigueSpend);
   addItem(run.inventory, materialId);
-  return { applied: true, detail: `Bought ${materialId} for ${price}g (${tier} market).`, spent: price, price };
+  if (primed) consumeFlag(run.overworld, DEAL_PRIMED_FLAG); // cash the bargain only on success
+  return { applied: true, detail: `Bought ${materialId} for ${price}g${primed ? " (savvy barter)" : ""} (${tier} market).`, spent: price, price };
 }
 
 // --- Merchant — SELL (goods -> gold, gated by market access, D61) ------------
@@ -165,18 +173,22 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
     return { applied: false, reason: `No ${material.name} to sell.` };
   }
   const tier = effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld);
-  const price = sellPrice(material, tier);
-  if (price <= 0) {
+  const base = sellPrice(material, tier);
+  if (base <= 0) {
     const why = saleValueOf(material) <= 0 ? `${material.name} can't be sold.` : `No market here to sell ${material.name}.`;
-    return { applied: false, reason: why, price };
+    return { applied: false, reason: why, price: base };
   }
+  // Savvy Barter (D70): a primed deal fetches +25% on the next sale (consumed on success).
+  const primed = isPrimed(run.overworld, DEAL_PRIMED_FLAG);
+  const price = primed ? Math.floor(base * ECONOMY.merchant.savvySellFactor) : base;
   removeItem(run.inventory, materialId, 1);
   const { credited } = gainRunGold(run, price, "sale", `Sold ${material.name}`);
+  if (primed) consumeFlag(run.overworld, DEAL_PRIMED_FLAG);
   // The Merchant grows from its signature work (D32/D53) — replacing the use-XP the
   // retired Trade camp skill used to grant. Only a live Merchant brokers (and levels).
   const broker = run.party.find((u) => u.alive && !u.captured && primaryJobOf(u) === "merchant");
   const levels = broker ? grantAbilityUseXp(broker) : 0;
-  return { applied: true, earned: credited, price, levels, detail: `Sold ${material.name} for ${price}g (${tier} market).` };
+  return { applied: true, earned: credited, price, levels, detail: `Sold ${material.name} for ${price}g${primed ? " (savvy barter)" : ""} (${tier} market).` };
 }
 
 // --- Banker — TIME-SHIFT + SECURE (purse only, never the treasury) ----------
@@ -296,25 +308,11 @@ export function hasNoble(party: readonly Unit[]): boolean {
   return party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "noble");
 }
 
-/** Influence the party's Noble accrues per node-step (0 with no Noble present, D62). */
-export function nobleInfluencePerStep(party: readonly Unit[]): number {
-  return hasNoble(party) ? ECONOMY.noble.incomePerStep : 0;
-}
-
 /**
- * Accrue the **Noble's passive Influence** one node-step (D62): a Noble builds rapport
- * just by travelling — people seek them for patronage and work. The Noble's twin of the
- * Banker's {@link "./overworld-actions".accruePurseInterest}; credited to the run's
- * **per-expedition** standing (never the guild). Called from {@link "./run".breakCamp}.
- * Returns the Influence gained (0 with no Noble present — no free faucet).
+ * Influence a party accrues per node-step from declared {@link "./jobs".JobFaucet}s (D72) —
+ * **Renown as data**: each fielded member's `faucet.influencePerStep`, summed. The **Noble**
+ * (D71) is the first declarer (`influencePerStep: 1`); `lookup` injectable for fixtures.
  */
-export function accrueNobleInfluence(run: RunState): number {
-  const gain = nobleInfluencePerStep(run.party);
-  if (gain > 0) addInfluence(run.overworld, gain);
-  return gain;
-}
-
-/** Influence a party accrues per node-step from declared {@link "./jobs".JobFaucet}s (D72 — Renown as data). `lookup` injectable for fixtures. */
 export function declaredFaucetInfluence(party: readonly Unit[], lookup: JobLookup = getJob): number {
   let inf = 0;
   for (const u of party) {
@@ -325,12 +323,10 @@ export function declaredFaucetInfluence(party: readonly Unit[], lookup: JobLooku
 }
 
 /**
- * Accrue declared per-step **Influence faucets** one node-step (D72) — the data-driven twin
- * of {@link accrueNobleInfluence}: a class's Renown declared on its {@link "./jobs".JobDef}
- * instead of a hardcoded fn. Called from {@link "./run".breakCamp} alongside the legacy
- * faucet. **0 in production today** (no class declares one yet), so it's byte-identical;
- * the verb-kit pass migrates Renown onto a declaration and retires the hardcoded path.
- * Returns the Influence gained.
+ * Accrue declared per-step **Influence faucets** one node-step (D72) — the Noble's **Renown**
+ * (D71), declared on its {@link "./jobs".JobDef} rather than a hardcoded fn (this **retired**
+ * the old `accrueNobleInfluence`). Credited to the run's per-expedition standing (never the
+ * guild); called from {@link "./run".breakCamp}. Returns the Influence gained.
  */
 export function accrueDeclaredFaucets(run: RunState, lookup: JobLookup = getJob): number {
   const gain = declaredFaucetInfluence(run.party, lookup);

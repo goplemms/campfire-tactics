@@ -4,7 +4,7 @@ import { getJob, stampPassives, unitSkills, SOLDIER, type JobDef, type JobId, ty
 import { jobLevelOf } from "./leveling";
 import { prestige, eligibleGrants, applyGrant, type Grant, type PredicateCtx } from "./grants";
 import { rpPerNight, computeUpkeep, UPKEEP } from "./upkeep";
-import { merchantFloor } from "./overworld";
+import { marketTierBonus } from "./overworld";
 import { describeUnit } from "./node-events";
 import type { SkillDef } from "./skills";
 import type { RunState } from "./run";
@@ -146,11 +146,11 @@ describe("prestige — agency: eligibility never auto-applies (D65)", () => {
 
 // --- The standardization regression: the jobId → primaryJob landmine ---------
 // All seven mechanic-driving readers are accounted for here. stampPassives /
-// unitSkills are covered above via fixtures; rpPerNight / hasChef / merchantFloor /
+// unitSkills are covered above via fixtures; rpPerNight / hasChef / marketTierBonus /
 // describeUnit are exercised below with PRESTIGED units (real jobs whose
 // primaryJob ≠ jobId) — proving each reads primaryJobOf, not the frozen jobId.
-// merchantSell shares merchantFloor's exact `primaryJobOf(u) === "merchant"` broker
-// idiom (economy-actions.ts), so that assertion covers it by standardization.
+// merchantSell shares the same `primaryJobOf(u) === "merchant"` broker idiom
+// (economy-actions.ts), so that assertion covers it by standardization.
 // (The non-prestiged regression below cannot catch under-scoping, since for a
 // normal unit primaryJobOf === jobId.)
 
@@ -174,21 +174,21 @@ describe("jobId → primaryJob standardization (D65) — closes the silent no-op
     expect(rpPerNight([medicked])).toBe(getJob("medic")!.restPoints); // reads primaryJobOf
   });
 
-  it("the Chef food discount follows the prestiged job (hasChef via computeUpkeep)", () => {
+  it("the Cook food discount follows the prestiged job (hasCook via computeUpkeep)", () => {
     const u = unit({ jobId: "soldier" });
-    prestige(u, "soldier", "chef");
+    prestige(u, "soldier", "cook");
     const food = computeUpkeep([u]).lines.find((l) => l.id === "food")!;
-    expect(food.cost).toBe(UPKEEP.chefFoodPerUnit); // discounted — hasChef saw primaryJob = chef
+    expect(food.cost).toBe(UPKEEP.cookFoodPerUnit); // discounted — hasCook saw primaryJob = cook
   });
 
-  it("merchantFloor follows the prestiged job", () => {
+  it("Appraisal (marketTierBonus) follows the prestiged job", () => {
     const plain = unit({ id: "p", jobId: "soldier" });
-    expect(merchantFloor([plain])).toBe("none");
+    expect(marketTierBonus([plain])).toBe(0);
 
     const merch = unit({ id: "m", jobId: "soldier" });
     prestige(merch, "soldier", "merchant");
     expect(merch.jobId).toBe("soldier"); // frozen
-    expect(merchantFloor([merch])).toBe("poor"); // reads primaryJobOf = merchant
+    expect(marketTierBonus([merch])).toBe(1); // reads primaryJobOf = merchant (Appraisal)
   });
 
   it("describeUnit names the prestiged (primary) job, not the frozen jobId", () => {

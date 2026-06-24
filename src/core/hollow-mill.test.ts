@@ -69,7 +69,7 @@ describe("The Hollow Mill — the framework's first AuthoredExpedition (D52)", (
     loop.resolve();
     // Every surviving fighter reached primary-job L2 (the 2nd-active unlock).
     for (const u of loop.run.party) {
-      if (u.jobId === "chef") continue; // Pip the support body uses the deployed path
+      if (u.jobId === "cook") continue; // Pip the support body uses the deployed path
       expect(jobLevelOf(u, u.primaryJob)).toBeGreaterThanOrEqual(2);
     }
   });

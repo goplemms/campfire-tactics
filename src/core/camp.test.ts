@@ -27,12 +27,19 @@ function unit(id: string, side: Side, hp: number, maxHp: number): Unit {
   });
 }
 
-const cookSkill = getJob("chef")!.skills[0];
+// A costless morale camp skill (the old Cook Stew shape) — a fixture for the camp morale
+// resolver tests, decoupled from the real Cook kit (Cook Stew is now a provisionMeal, D71).
+const cookSkill: SkillDef = {
+  id: "fx-stew", name: "Fixture Stew", description: "", phase: "meta", target: "party", range: 0, spend: "act",
+  usesPerNode: 1, effect: { kind: "morale", morale: 1, partyHeal: 8 },
+};
 
 describe("camp economy + morale (Merchant / Chef, Meta phase)", () => {
-  it("the Merchant has no gold-minting camp skill (retired D61)", () => {
-    // D61: the Merchant is ACCESS + SELL (market verbs), not a +gold camp skill.
-    expect(getJob("merchant")!.skills).toHaveLength(0);
+  it("the Merchant ships its overworld trade verbs, none gold-minting (D61 retired Trade / D70 kit)", () => {
+    // D61: the Merchant is ACCESS + SELL (market verbs), not a +gold camp skill. D70 gives it
+    // its overworld kit (Find Trade / Savvy Barter) — neither mints gold (openMarket / primeDeal).
+    const effects = getJob("merchant")!.skills.map((s) => s.effect.kind);
+    expect(effects).toEqual(["openMarket", "primeDeal"]);
   });
 
   it("Chef's Cook Stew raises morale and banks a heal", () => {

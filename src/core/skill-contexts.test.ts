@@ -116,8 +116,8 @@ describe("availableSkills — parity with today's surfacing + the dual-context w
     expect(availableSkills(u, "combat")).toEqual([...unlockedSkills(u, "battle"), DEFEND]);
   });
 
-  it("the Chef's camp skill surfaces in the overworld", () => {
-    expect(availableSkills(jobUnit("chef"), "overworld").map((s) => s.id)).toContain("cook-stew");
+  it("the Cook's camp skill surfaces in the overworld", () => {
+    expect(availableSkills(jobUnit("cook"), "overworld").map((s) => s.id)).toContain("cook-stew");
   });
 
   it("the Survivalist's Set Trap is pre-combat only", () => {

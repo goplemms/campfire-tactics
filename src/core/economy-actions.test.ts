@@ -14,8 +14,8 @@ import {
   hasBanker,
   patronize,
   hasNoble,
-  nobleInfluencePerStep,
-  accrueNobleInfluence,
+  declaredFaucetInfluence,
+  accrueDeclaredFaucets,
   bribeEnemy,
   bribeCost,
   bribeChance,
@@ -25,9 +25,11 @@ import { streamFor } from "./rng";
 import { gainRunGold, payTreasuryUpkeep } from "./economy";
 import { countOf, addItem, getMaterial } from "./inventory";
 import { currentNode } from "./run";
+import { useOverworldSkill } from "./overworld-actions";
+import { FIND_TRADE } from "./jobs";
 import type { NodePreview } from "./intel";
 
-/** A Merchant party member (raises the market floor, D61). */
+/** A Merchant party member — the trade-broker (Appraisal / Find Trade / Savvy Barter, D70). */
 function merchant(): Unit {
   return createUnit({
     id: `merchant-${nextId++}`, side: "player", pos: { col: -1, row: -1 },
@@ -137,7 +139,7 @@ describe("economy-actions — Merchant SELL (goods -> gold, market-gated) (D61)"
     expect(countOf(run.inventory, "valuables")).toBe(1); // one sold
   });
 
-  it("refuses (removing nothing) with no market here, and an impromptu Merchant unlocks it", () => {
+  it("refuses (removing nothing) with no market here; the Merchant's Find Trade unlocks it (D70)", () => {
     const run = newRun("sell-nomarket");
     run.map.nodes[run.mapNodeId].market = "none"; // a wild node, no market
     addItem(run.inventory, "valuables", 1);
@@ -145,8 +147,13 @@ describe("economy-actions — Merchant SELL (goods -> gold, market-gated) (D61)"
     expect(blocked.applied).toBe(false);
     expect(countOf(run.inventory, "valuables")).toBe(1); // nothing removed
 
-    // A Merchant in the party brokers an impromptu `poor` market -> the sale lands.
-    run.party.push(merchant());
+    // A Merchant alone no longer passively floors the market (D70 retired merchantFloor)…
+    const coin = merchant();
+    run.party.push(coin);
+    expect(merchantSell(run, "valuables").applied).toBe(false);
+    // …but Find Trade opens an impromptu `poor` market here, and the sale lands at poor
+    // (Appraisal never lifts the conjured market — D70 ordering).
+    useOverworldSkill(run, coin, FIND_TRADE);
     const ok = merchantSell(run, "valuables");
     expect(ok.applied).toBe(true);
     expect(ok.earned).toBe(sellPrice(getMaterial("valuables")!, "poor"));
@@ -252,11 +259,11 @@ function commoner(seed: string): Unit {
 }
 
 describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => {
-  it("a Noble in the party accrues passive Influence each node-step", () => {
+  it("a Noble in the party accrues passive Influence each node-step (Renown, declared D71/D72)", () => {
     const run = newRun("noble-passive"); // newRun's party fields a Noble (the standing-bearer)
     expect(hasNoble(run.party)).toBe(true);
     const before = run.overworld.influence;
-    const gained = accrueNobleInfluence(run);
+    const gained = accrueDeclaredFaucets(run); // the Noble's Renown faucet, now read as data
     expect(gained).toBe(ECONOMY.noble.incomePerStep);
     expect(run.overworld.influence).toBe(before + gained);
   });
@@ -264,8 +271,8 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
   it("no Noble in the party → no passive Influence (no free faucet)", () => {
     const run = createRun("noble-none", { party: [commoner("none")], difficultyId: "normal", gold: 100, storageCap: 8 });
     expect(hasNoble(run.party)).toBe(false);
-    expect(nobleInfluencePerStep(run.party)).toBe(0);
-    expect(accrueNobleInfluence(run)).toBe(0);
+    expect(declaredFaucetInfluence(run.party)).toBe(0);
+    expect(accrueDeclaredFaucets(run)).toBe(0);
     expect(run.overworld.influence).toBe(0);
   });
 
@@ -298,7 +305,7 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
   it("Influence can't pay Upkeep — earning it leaves the treasury bill unfunded (D34)", () => {
     const g = guildWith("noble-no-upkeep", 0);
     const run = newRun("noble-no-upkeep-run");
-    accrueNobleInfluence(run);
+    accrueDeclaredFaucets(run);
     const infBefore = run.overworld.influence;
     expect(infBefore).toBeGreaterThan(0);
     const res = payTreasuryUpkeep(g);

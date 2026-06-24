@@ -13,8 +13,8 @@ function roster(): Unit[] {
     // Rook is a Scout so it can perform the job-gated Survey ability (jobIds: ["scout"]).
     createUnit({ id: "Rook", side: "player", pos: { col: 0, row: 1 }, jobId: "scout", speed: 12, maxHp: 30, attack: 9, defense: 3, moveRange: 4, sightRadius: 5, awareness: 4, intelligence: 4 }),
     createUnit({ id: "Vale", side: "player", pos: { col: 0, row: 4 }, jobId: "survivalist", speed: 10, maxHp: 24, attack: 11, defense: 2, moveRange: 4, sightRadius: 5, awareness: 2 }),
-    // A Chef banks Rest Points (so a rest node has RP to triage with).
-    createUnit({ id: "Pip", side: "player", pos: { col: -1, row: -1 }, jobId: "chef", speed: 8, maxHp: 18, attack: 3, defense: 1, moveRange: 3, sightRadius: 4 }),
+    // A Cook banks Rest Points (so a rest node has RP to triage with).
+    createUnit({ id: "Pip", side: "player", pos: { col: -1, row: -1 }, jobId: "cook", speed: 8, maxHp: 18, attack: 3, defense: 1, moveRange: 3, sightRadius: 4 }),
   ];
 }
 

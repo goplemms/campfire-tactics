@@ -16,6 +16,7 @@ import type { Phase, SkillDef } from "./skills";
 import { PASSIVE } from "./combat";
 import { guarded, exposed, swift, immobilized, stealth } from "./status";
 import type { PrestigeBranch } from "./grants";
+import { computeUpkeep } from "./upkeep"; // Cook Stew's computed cost (lazy — closure only, no init-time cycle)
 
 /**
  * Per-stat growth weights (D39): a job level-up banks **+1 to every main stat**
@@ -174,46 +175,131 @@ export const SURVIVALIST: JobDef = {
   ],
 };
 
+/** Cook kit tuning (D71) — RP banked + morale/cost; magnitudes are a numbers-pass concern. */
+export const COOK_KIT = {
+  /** Rest Points a stew banks (≈ one chunk at Normal — "a stew = a chunk of recovery"). */
+  stewRp: 14,
+  /** Morale a feast lifts before a hard fight (D8). */
+  feastMorale: 2,
+  /** Gold a feast costs — a special occasion, dearer than the everyday stew. */
+  feastGold: 20,
+} as const;
+
 /**
- * The Chef — the signature **Meta/camp**-phase job (D3). Cooking raises party
- * morale (D8) and banks a between-battle heal applied to the party at the start
- * of the next fight.
+ * **Cook Stew** (D71) — the Cook's recovery verb: cook the day's rations into a hearty meal,
+ * **banking Rest Points** for the party (D9) and **satisfying the night's Food upkeep line**
+ * (D15) — the mandatory food spend turned into recovery. Priced at *the night's Food value*
+ * (a computed cost), so net gold is unchanged vs just paying food; the "free food that day"
+ * (the `provisionMeal` effect → {@link "./upkeep".satisfyUpkeepLine}) is the anti-exploit
+ * (D45 — can't cook for RP *and* skip the food line for the gold). Once per node.
  */
-export const CHEF: JobDef = {
-  id: "chef",
-  name: "Chef",
-  description: "Cooks for the party: lifts morale and banks a hearty heal.",
-  restPoints: 3,
-  upkeep: { food: 1 }, // the Chef lowers the per-unit food cost (D15)
-  noncombat: true,
-  skills: [
-    {
-      id: "cook-stew",
-      name: "Cook Stew",
-      description: "Raise morale and bank +8 HP healing for each unit next battle.",
-      phase: "meta",
-      target: "party",
-      range: 0,
-      spend: "act",
-      usesPerNode: 1, // one stew per camp (D35) — costless, so the node-cap is its limiter
-      effect: { kind: "morale", morale: 1, partyHeal: 8 },
-    },
-  ],
+export const COOK_STEW: SkillDef = {
+  id: "cook-stew",
+  name: "Cook Stew",
+  description: "Cook the day's rations into a hearty meal — bank Rest Points for the party and cover tonight's Food upkeep.",
+  phase: "meta",
+  target: "party",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: 1, gold: (run) => computeUpkeep(run.party).lines.find((l) => l.id === "food")?.cost ?? 0 },
+  effect: { kind: "provisionMeal", rp: COOK_KIT.stewRp },
 };
 
 /**
- * The Merchant — the signature **economy** job (D3/D61). The old gold-minting
- * **Trade** camp skill was retired (D61): the Merchant doesn't *print* gold, it is
- * **ACCESS + SELL** — it raises a node's market floor ({@link "./overworld".merchantFloor})
- * and works the {@link "./economy-actions".merchantBuy}/{@link "./economy-actions".merchantSell}
- * verbs (goods <-> gold at the node's market tier). Hence **no meta camp skill**.
+ * **Feast** (D71) — the Cook's morale verb: lay on a feast before a hard fight for a **big morale
+ * lift** (D8). Costed/paced heavier than the everyday stew (a flat gold cost + once per node), so
+ * it's a deliberate pre-battle rally, not a constant — the dedicated morale lever, freeing Cook
+ * Stew to be pure recovery. Routed through the camp morale resolver (no heal of its own).
+ */
+export const FEAST: SkillDef = {
+  id: "feast",
+  name: "Feast",
+  description: "Lay on a feast before a hard fight — a big morale lift for the whole party.",
+  phase: "meta",
+  target: "party",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: 1, gold: COOK_KIT.feastGold },
+  effect: { kind: "morale", morale: COOK_KIT.feastMorale, partyHeal: 0 },
+};
+
+/**
+ * The **Cook** (D71, renamed from Chef) — the camp-support non-combat class. Its value is
+ * **recovery**, as a food-economy anchor + two meal verbs (the non-combat 2+1):
+ * - **Field Kitchen** (presence) — a Cook lowers the party's **Food upkeep** (`upkeep.food`, D15):
+ *   cheaper food, and a cheaper Cook Stew.
+ * - **Cook Stew** (active) — spend the day's food → bank Rest Points + satisfy the Food line.
+ * - **Feast** (active) — a big morale lift before a hard fight.
+ * Recovery is now **active** (cook to bank RP), so the passive `restPoints` is a small floor (D71).
+ */
+export const COOK: JobDef = {
+  id: "cook",
+  name: "Cook",
+  description: "Camp-support: keeps the party fed cheaply, cooks the day's food into recovery, and rallies morale.",
+  restPoints: 1, // a small floor — the Cook's recovery is now active (Cook Stew banks RP)
+  upkeep: { food: 1 }, // Field Kitchen — the Cook lowers the per-unit food cost (D15)
+  noncombat: true,
+  skills: [COOK_STEW, FEAST],
+};
+
+/** Merchant kit pacing (D70) — once-per-node verbs; magnitudes are a numbers-pass concern. */
+export const MERCHANT_KIT = { findTradeUsesPerNode: 1, savvyBarterUsesPerNode: 1 } as const;
+
+/**
+ * **Find Trade** (D70) — the Merchant's ACCESS verb: drum up an **impromptu market** at a
+ * barren (`none`) node so the caravan can trade where there'd be none. Reframes D61's old
+ * always-on `merchantFloor` into a **paid action** (access costs a turn): the `openMarket`
+ * effect sets a per-node flag {@link "./overworld".effectiveMarketTier} folds in (a `poor`
+ * market for the node-step, cleared on Break Camp). Surfaced via `availableSkills` (D67/D72).
+ */
+export const FIND_TRADE: SkillDef = {
+  id: "find-trade",
+  name: "Find Trade",
+  description: "Drum up an impromptu market here — trade at a poor market even where there is none (this node).",
+  phase: "meta",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: MERCHANT_KIT.findTradeUsesPerNode },
+  effect: { kind: "openMarket" },
+};
+
+/**
+ * **Savvy Barter** (D70) — the Merchant's bargaining verb: the **next single deal** goes its
+ * way (a buy at half price *or* a sale at +25%, whichever comes first). The `primeDeal` effect
+ * sets a one-shot flag {@link "./economy-actions".merchantBuy}/{@link "./economy-actions".merchantSell}
+ * consume on the next trade. Paced (once per node) — a timed treat, not a standing aura (D61).
+ */
+export const SAVVY_BARTER: SkillDef = {
+  id: "savvy-barter",
+  name: "Savvy Barter",
+  description: "Drive a hard bargain — your next deal is a buy at half price or a sale at +25%.",
+  phase: "meta",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: MERCHANT_KIT.savvyBarterUsesPerNode },
+  effect: { kind: "primeDeal" },
+};
+
+/**
+ * The **Merchant** — the trade-broker (D70, the first non-combat verb-kit). Its value is the
+ * **economy**, as a presence anchor + two overworld verbs (the non-combat 2+1):
+ * - **Appraisal** (presence) — a fielded Merchant lifts every *existing* market one tier
+ *   ({@link "./overworld".effectiveMarketTier} reads `presence.marketTierBonus`); it does not
+ *   conjure a market on a barren node (that's Find Trade).
+ * - **Find Trade** (active) — open an impromptu `poor` market at a barren node (access as a paid action).
+ * - **Savvy Barter** (active) — the next deal goes its way (½ buy / +¼ sale).
+ * Raw Buy/Sell stay **universal** (market-gated, not job-gated); the Merchant still levels from
+ * brokering a sale ({@link "./economy-actions".merchantSell}). Still **noncombat** (camp verbs only).
  */
 export const MERCHANT: JobDef = {
   id: "merchant",
   name: "Merchant",
-  description: "Works the economy: finds markets anywhere and trades goods for gold.",
+  description: "Works the economy: appraises markets, drums up trade anywhere, and drives a hard bargain.",
   noncombat: true,
-  skills: [],
+  presence: { marketTierBonus: 1 }, // Appraisal — lifts an existing market one tier
+  skills: [FIND_TRADE, SAVVY_BARTER],
 };
 
 /**
@@ -232,6 +318,9 @@ export const NOBLE: JobDef = {
   name: "Noble",
   description: "Works the standing economy: courts patrons for Influence and sways enemies with bribes.",
   noncombat: true,
+  // Renown (D71/D72): the Noble's presence accrues Influence each node-step — the standing
+  // anchor as data, read by accrueDeclaredFaucets in breakCamp (mirrors ECONOMY.noble.incomePerStep = 1).
+  faucet: { influencePerStep: 1 },
   skills: [],
 };
 
@@ -608,7 +697,7 @@ export const UNIVERSAL_SKILLS: readonly SkillDef[] = [DEFEND, DIG_IN];
 export const JOBS = {
   soldier: SOLDIER,
   survivalist: SURVIVALIST,
-  chef: CHEF,
+  cook: COOK,
   merchant: MERCHANT,
   noble: NOBLE,
   banker: BANKER,

@@ -39,8 +39,8 @@ describe("upkeep — the gold figure (D15)", () => {
     expect(bill.lines.find((l) => l.id === "food")!.cost).toBe(UPKEEP.foodPerUnit * 2);
   });
 
-  it("a Chef lowers the per-unit food cost", () => {
-    const withChef = computeUpkeep([member("a"), member("chef", "chef")]);
+  it("a Cook lowers the per-unit food cost", () => {
+    const withChef = computeUpkeep([member("a"), member("cook", "cook")]);
     const without = computeUpkeep([member("a"), member("b")]);
     expect(withChef.lines.find((l) => l.id === "food")!.cost).toBeLessThan(
       without.lines.find((l) => l.id === "food")!.cost,
@@ -125,7 +125,7 @@ describe("upkeep — voluntary underfunding: the ledger as an input (D45)", () =
 describe("recovery — Rest Points (D9)", () => {
   it("support roles bank RP per night (data-driven)", () => {
     expect(rpPerNight([member("fighter")])).toBe(0);
-    expect(rpPerNight([member("chef", "chef")])).toBeGreaterThan(0);
+    expect(rpPerNight([member("cook", "cook")])).toBeGreaterThan(0);
   });
 
   it("rest-heal spends whole chunks of RP to heal a unit", () => {

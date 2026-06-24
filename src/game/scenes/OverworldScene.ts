@@ -10,8 +10,9 @@ import {
   countOf,
   canAdd,
   campReadoutLine,
-  // M8 — the overworld action economy (D35)
-  getAbility,
+  // M8 — the overworld action economy (D35) · D72 unified onto SkillDef
+  overworldCostOf,
+  resolveKnob,
   cooldownRemaining,
   scoutedTier,
   campSkillUsesLeft,
@@ -60,7 +61,6 @@ import {
   type EventChoice,
   type EventKind,
   type Unit,
-  type OverworldAbility,
   type SkillDef,
   type Guild,
   type Ledger,
@@ -560,7 +560,9 @@ export class OverworldScene extends Phaser.Scene {
   private campRecoveryActions(): CampAction[] {
     const out: CampAction[] = [];
     for (const u of this.run.party) {
-      for (const skill of availableSkills(u, "overworld")) {
+      // No-target overworld skills only (Cook Stew etc.); node-targeting Survey lives on the
+      // Intel/survey screen, not this immediate-action drawer (D72).
+      for (const skill of this.overworldCampSkills(u)) {
         // Costless signature actions are per-node capped (D35) — disable when spent, and
         // badge the label with the uses left so the limiter is legible.
         const left = campSkillUsesLeft(this.run.overworld, skill);
@@ -705,27 +707,31 @@ export class OverworldScene extends Phaser.Scene {
     }
   }
 
-  /** A human-readable cost line for an overworld ability (cooldown + fatigue + gold). */
-  private costReadout(ability: OverworldAbility, actor: Unit): string {
-    const cd = cooldownRemaining(this.run.overworld, ability.id);
+  /** A human-readable cost line for an overworld skill (cooldown + fatigue + gold), D72. */
+  private costReadout(skill: SkillDef, actor: Unit): string {
+    const cost = overworldCostOf(skill);
+    const cd = cooldownRemaining(this.run.overworld, skill.id);
     const cdStr = cd > 0 ? `${cd} node${cd === 1 ? "" : "s"}` : "ready";
     const parts = [`cd: ${cdStr}`];
-    const baseFat = ability.cost.fatigue ?? 0;
+    const baseFat = cost.fatigue ?? 0;
     if (baseFat > 0) {
       const surcharge = fatiguePenalty(actor.fatigue).surcharge;
       parts.push(`fatigue: ${baseFat + surcharge}${surcharge > 0 ? " (tired)" : ""}`);
     }
-    if (ability.cost.gold) parts.push(`gold: ${ability.cost.gold}`);
+    const gold = resolveKnob(cost.gold, this.run);
+    if (gold > 0) parts.push(`gold: ${gold}`);
     return parts.join(", ");
   }
 
-  /** Why an ability would refuse right now (cooldown / exhaustion / gold), or null. */
-  private refusal(ability: OverworldAbility, actor: Unit): string | null {
-    const cd = cooldownRemaining(this.run.overworld, ability.id);
+  /** Why an overworld skill would refuse right now (cooldown / exhaustion / gold), or null. */
+  private refusal(skill: SkillDef, actor: Unit): string | null {
+    const cost = overworldCostOf(skill);
+    const cd = cooldownRemaining(this.run.overworld, skill.id);
     if (cd > 0) return `On cooldown — ${cd} more node${cd === 1 ? "" : "s"}.`;
-    const baseFat = ability.cost.fatigue ?? 0;
+    const baseFat = cost.fatigue ?? 0;
     if (baseFat >= fatiguePenalty(actor.fatigue).lockAtOrAbove) return `${actor.name} is too exhausted — rest first.`;
-    if (ability.cost.gold && this.run.camp.gold < ability.cost.gold) return `Not enough gold (${ability.cost.gold}g).`;
+    const gold = resolveKnob(cost.gold, this.run);
+    if (gold > 0 && this.run.camp.gold < gold) return `Not enough gold (${gold}g).`;
     return null;
   }
 
@@ -745,13 +751,28 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The acting unit for Survey: an active **Scout** (the ability's job gate, D-audit),
-   * the highest-Intelligence among them. `undefined` when the party fields no Scout — the
-   * render then disables the action and explains why.
+   * A unit's **node-targeting** overworld skills (D72) — Survey and any future recon verb
+   * (skill target `camp`, aimed at a *map* node via opts). Surfaced on the intel/survey
+   * screen, **not** the no-target recovery drawer. Sourced from {@link availableSkills}, so
+   * the gate (class + capability + unlock) is the single projection — no hardcoded id.
+   */
+  private overworldNodeSkills(u: Unit): SkillDef[] {
+    return availableSkills(u, "overworld").filter((s) => s.target === "camp");
+  }
+
+  /** A unit's **no-target** overworld camp skills (Cook Stew etc.) — the recovery drawer (D72). */
+  private overworldCampSkills(u: Unit): SkillDef[] {
+    return availableSkills(u, "overworld").filter((s) => s.target !== "camp");
+  }
+
+  /**
+   * The acting unit for Survey (D72): an active unit that can perform a node-targeting
+   * overworld skill (the Scout's Survey, via {@link overworldNodeSkills} — the class gate
+   * lives in the projection now), the highest-Intelligence among them. `undefined` when the
+   * party fields none — the render then hides the Intel drawer.
    */
   private surveyActor(): Unit | undefined {
-    const jobIds = getAbility("survey")?.jobIds;
-    const eligible = this.activeUnits().filter((u) => !jobIds || jobIds.includes(primaryJobOf(u) ?? ""));
+    const eligible = this.activeUnits().filter((u) => this.overworldNodeSkills(u).length > 0);
     if (eligible.length === 0) return undefined;
     return eligible.reduce((best, u) => (u.intelligence > best.intelligence ? u : best), eligible[0]);
   }
@@ -1363,11 +1384,11 @@ export class OverworldScene extends Phaser.Scene {
     // row tags the surveying Scout, whose fatigue the cost readout shows (who's wearing down).
     const surveyor = this.surveyActor();
     const intel: CampAction[] = [];
-    if (surveyor) {
-      const survey = getAbility("survey")!;
+    const survey = surveyor ? this.overworldNodeSkills(surveyor)[0] : undefined;
+    if (surveyor && survey) {
       for (const target of this.loop.reachable()) {
         const refusal = this.refusal(survey, surveyor);
-        intel.push({ label: `Survey → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.overworldAction(surveyor, "survey", { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description });
+        intel.push({ label: `Survey → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description });
       }
     }
     y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());

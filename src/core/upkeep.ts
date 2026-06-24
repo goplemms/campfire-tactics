@@ -136,6 +136,10 @@ export function payUpkeep(
 ): UpkeepResult {
   const bill = computeUpkeep(party);
   const skipSet = new Set(opts.skip ?? camp.skippedUpkeep);
+  // Lines an effect prepaid this night (D72, e.g. Cook Stew → Food): covered before the
+  // affordability pass, with no bill and no consequence — and this beats a voluntary skip,
+  // so a satisfied line can't *also* be skipped for the gold (the anti-exploit).
+  const satisfiedSet = new Set(camp.satisfiedUpkeep);
   // Food before Repairs: skipping food is the harsher breach, so fund it first.
   const ordered = foodFirst(bill.lines);
   let paid = 0;
@@ -144,6 +148,10 @@ export function payUpkeep(
   const skipped: UpkeepLine["id"][] = [];
   let gearWorn = false;
   for (const line of ordered) {
+    if (satisfiedSet.has(line.id)) {
+      // Prepaid by an effect (D72) — provisioned, not breached or skipped: no bill, no hit.
+      continue;
+    }
     if (skipSet.has(line.id)) {
       // Voluntary skip (D45): free the gold, take the consequence, flag the intent.
       skipped.push(line.id);
@@ -162,7 +170,22 @@ export function payUpkeep(
   camp.morale += moraleDelta;
   // Worn gear compounds as a debt the premium rest node clears (D45/D47).
   if (gearWorn) camp.gearWear += 1;
+  // Satisfied lines are a **single-night** provision — consumed once billing reconciles,
+  // so the next night bills normally. (Empty in production until a meal verb is wired —
+  // a no-op, so the bill is byte-identical.)
+  camp.satisfiedUpkeep = [];
   return { paid, underfunded, skipped, moraleDelta, gearWorn };
+}
+
+/**
+ * Mark an Upkeep line **satisfied for the night** (D72) — an effect (e.g. Cook Stew's
+ * {@link "./skills".ProvisionMealEffect}) prepaid it, so the next {@link payUpkeep} won't
+ * bill it or apply its consequence, and it can't be voluntarily skipped for the gold. The
+ * camp flow runs the meal **before** End-the-Night billing, then payUpkeep clears the
+ * flag. Idempotent.
+ */
+export function satisfyUpkeepLine(camp: Camp, line: UpkeepLine["id"]): void {
+  if (!camp.satisfiedUpkeep.includes(line)) camp.satisfiedUpkeep.push(line);
 }
 
 // --- The two-tier recovery economy (D47) ------------------------------------

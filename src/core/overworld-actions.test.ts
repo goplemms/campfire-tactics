@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import { createRun, reachableNodes, breakCamp, type RunState } from "./run";
 import {
-  getAbility,
-  takeOverworldAction,
+  useOverworldSkill,
   useCampSkillAtNode,
+  overworldCostOf,
   campSkillUses,
   campSkillUsesLeft,
   tickCooldowns,
@@ -14,20 +14,36 @@ import {
   validateOverworldCost,
   hasPacing,
   hasPrice,
-  OVERWORLD_ABILITIES,
-  SURVEY,
   triage,
   isHealer,
   TRIAGE,
+  resolveKnob,
+  knobDeclared,
+  checkOverworldCost,
+  commitOverworldCost,
+  setNodeFlag,
+  hasNodeFlag,
+  primeFlag,
+  consumeFlag,
+  isPrimed,
+  cloneOverworldEconomy,
+  applyOverworldEffect,
+  DEAL_PRIMED_FLAG,
+  type OverworldCost,
 } from "./overworld-actions";
-import { getJob } from "./jobs";
+import { getJob, JOBS, SURVEY, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
+import { PASSIVE } from "./combat";
+import { skillContexts } from "./skills";
+import { availableSkills } from "./leveling";
+import { computeUpkeep, payUpkeep, satisfyUpkeepLine } from "./upkeep";
+import { effectiveMarketTier, marketOpenedFlag, type MapNode } from "./overworld";
 import type { SkillDef } from "./skills";
 import { previewNode } from "./intel";
 import { FATIGUE } from "./fatigue";
 
 function roster(): Unit[] {
   return [
-    // Rook is a Scout so it can perform the job-gated Survey ability (jobIds: ["scout"]).
+    // Rook is a Scout so it carries the Survey skill (D72: Survey lives on the Scout job).
     createUnit({ id: "Rook", side: "player", pos: { col: 0, row: 1 }, jobId: "scout", speed: 12, maxHp: 30, attack: 9, defense: 3, moveRange: 4, sightRadius: 5, awareness: 4, intelligence: 1 }),
     createUnit({ id: "Coin", side: "player", pos: { col: -1, row: -1 }, jobId: "merchant", speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }),
   ];
@@ -47,12 +63,14 @@ function cookSkill(): SkillDef {
   return getJob("chef")!.skills[0];
 }
 
-describe("overworld-actions — registry (D29)", () => {
-  it("abilities are data with a cost menu (cooldown + optional fatigue/gold)", () => {
-    expect(getAbility("survey")).toBe(SURVEY);
-    expect(getAbility("nope")).toBeUndefined();
-    // The cooldown spine is always present.
-    expect(SURVEY.cost.cooldown).toBeGreaterThan(0);
+describe("overworld-actions — Survey is a unified overworld SkillDef (D72)", () => {
+  it("Survey lives on the Scout job and surfaces through availableSkills (no hardcoded id)", () => {
+    expect(getJob("scout")!.skills).toContain(SURVEY);
+    expect(SURVEY.overworldCost!.cooldown).toBeGreaterThan(0); // the cooldown spine is present
+    // The render reads the one projection — a Scout surfaces Survey, a Merchant doesn't
+    // (the class gate now lives in availableSkills, not a getAbility("survey") special-case).
+    expect(availableSkills(roster()[0], "overworld").map((s) => s.id)).toContain("survey");
+    expect(availableSkills(roster()[1], "overworld").map((s) => s.id)).not.toContain("survey");
   });
 });
 
@@ -61,20 +79,20 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
     const run = newRun("cd-arm");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent).toBe(SURVEY.cost.fatigue);
-    expect(actor.fatigue).toBe(SURVEY.cost.fatigue);
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown);
+    expect(res.fatigueSpent).toBe(SURVEY.overworldCost!.fatigue);
+    expect(actor.fatigue).toBe(SURVEY.overworldCost!.fatigue);
+    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown);
   });
 
   it("refuses while on cooldown, with a reason", () => {
     const run = newRun("cd-refuse");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
-    const again = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
+    const again = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
 
     expect(again.applied).toBe(false);
     expect(again.reason).toMatch(/cooldown/i);
@@ -96,11 +114,11 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
     const run = newRun("cd-node-tick");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown!);
+    useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
+    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown!);
 
     // Break Camp is the node-step that ticks cooldowns — at departure, not the event.
-    for (let i = 0; i < SURVEY.cost.cooldown!; i++) {
+    for (let i = 0; i < SURVEY.overworldCost!.cooldown!; i++) {
       breakCamp(run);
     }
     expect(cooldownRemaining(run.overworld, "survey")).toBe(0);
@@ -117,7 +135,7 @@ describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
     // (The demanding-action *lock* itself is unit-tested in fatigue.test via
     // fatiguePenalty; no demanding overworld ability exists post-D61.)
     const target = reachableNodes(run)[0];
-    const scout = takeOverworldAction(run, a, "survey", { targetNodeId: target.id });
+    const scout = useOverworldSkill(run, a, SURVEY, { targetNodeId: target.id });
     expect(scout.applied).toBe(true);
   });
 
@@ -127,10 +145,10 @@ describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
     actor.fatigue = FATIGUE.floor + 1; // just over the floor → surcharge of 1
     const target = reachableNodes(run)[0];
     const before = actor.fatigue;
-    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent!).toBeGreaterThan(SURVEY.cost.fatigue!); // base + surcharge
+    expect(res.fatigueSpent!).toBeGreaterThan(SURVEY.overworldCost!.fatigue!); // base + surcharge
     expect(actor.fatigue).toBe(before + res.fatigueSpent!);
   });
 });
@@ -142,7 +160,7 @@ describe("overworld-actions — Survey raises a reachable node's preview tier", 
     const target = reachableNodes(run).find((n) => n.kind === "combat")!;
 
     const before = previewNode(run, target.id, scoutedTier(run.overworld, target.id));
-    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: target.id });
+    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
     expect(res.applied).toBe(true);
     expect(scoutedTier(run.overworld, target.id)).toBe(SURVEY.effect.kind === "survey" ? SURVEY.effect.tierBump : 0);
 
@@ -153,14 +171,14 @@ describe("overworld-actions — Survey raises a reachable node's preview tier", 
   it("refuses to scout an unreachable node", () => {
     const run = newRun("scout-unreach");
     const actor = run.party[0];
-    const res = takeOverworldAction(run, actor, "survey", { targetNodeId: run.map.finalIds[0] });
+    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: run.map.finalIds[0] });
     expect(res.applied).toBe(false);
     expect(res.reason).toMatch(/reachable/i);
   });
 
   it("refuses with no target node", () => {
     const run = newRun("scout-notarget");
-    const res = takeOverworldAction(run, run.party[0], "survey");
+    const res = useOverworldSkill(run, run.party[0], SURVEY);
     expect(res.applied).toBe(false);
   });
 });
@@ -307,9 +325,221 @@ describe("the two-axis limiter invariant (D61)", () => {
     expect(hasPrice({ cooldown: 2 })).toBe(false);
   });
 
-  it("every registered overworld ability satisfies the invariant", () => {
-    for (const ability of Object.values(OVERWORLD_ABILITIES)) {
-      expect(() => validateOverworldCost(ability.name, ability.cost)).not.toThrow();
+  it("every overworld/camp skill in the live registry satisfies the invariant (D72)", () => {
+    // The home is now JobDef.skills (A2): Survey, Cook Stew, and any future verb. The
+    // load-time guard in overworld-actions runs this same check at import.
+    for (const job of Object.values(JOBS)) {
+      for (const skill of job.skills) {
+        if (skillContexts(skill).includes("overworld")) {
+          expect(() => validateOverworldCost(skill.name, overworldCostOf(skill))).not.toThrow();
+        }
+      }
     }
+  });
+});
+
+describe("computed (provider) costs (D72)", () => {
+  it("resolveKnob: a static number passes through; a provider is sanitized to a non-negative int", () => {
+    const run = newRun("knob-resolve");
+    expect(resolveKnob(7, run)).toBe(7);
+    expect(resolveKnob(undefined, run)).toBe(0);
+    expect(resolveKnob((r) => r.party.length * 2, run)).toBe(run.party.length * 2);
+    expect(resolveKnob(() => -3, run)).toBe(0); // never a negative price
+    expect(resolveKnob(() => 4.9, run)).toBe(4); // floored
+  });
+
+  it("a provider knob still satisfies the two-axis invariant (it counts as priced)", () => {
+    expect(knobDeclared(() => 0)).toBe(true); // a provider always counts — its value isn't known at load
+    expect(knobDeclared(0)).toBe(false);
+    expect(hasPrice({ gold: () => 10 })).toBe(true);
+    expect(() => validateOverworldCost("Computed", { gold: (r) => r.party.length })).not.toThrow();
+  });
+
+  it("the gate resolves a provider at check time — refuses when the purse can't cover the computed value", () => {
+    const run = newRun("knob-refuse");
+    const cost: OverworldCost = { cooldown: 1, gold: () => 999_999 };
+    const check = checkOverworldCost(run, "pricey", cost, "Pricey");
+    expect(check.ok).toBe(false);
+    if (!check.ok) expect(check.reason).toMatch(/Not enough gold for Pricey \(999999g\)/);
+  });
+
+  it("priced at 'the night's Food value' — commit spends exactly the computed amount (the Cook Stew shape)", () => {
+    const run = newRun("knob-food");
+    const foodValue = computeUpkeep(run.party).total;
+    expect(foodValue).toBeGreaterThan(0);
+    const cost: OverworldCost = { usesPerNode: 1, gold: (r) => computeUpkeep(r.party).total };
+
+    const before = run.camp.gold;
+    const check = checkOverworldCost(run, "stew-fixture", cost, "Cook Stew");
+    expect(check.ok).toBe(true);
+    if (check.ok) commitOverworldCost(run, "stew-fixture", cost, check.fatigueSpend);
+    expect(run.camp.gold).toBe(before - foodValue); // the dynamic price was billed, not a static guess
+  });
+});
+
+describe("per-node / one-shot ability-flag bag (D72)", () => {
+  /** A barren (`none` market) node with no merchant in the party — so only the flag can lift it. */
+  function barrenNode(): MapNode {
+    return { id: "nFlag", layer: 1, index: 0, kind: "combat", market: "none", edges: [] };
+  }
+
+  it("a per-node flag is set + read, and cleared on the node-step (the Find-Trade shape)", () => {
+    const eco = createOverworldEconomy();
+    expect(hasNodeFlag(eco, "market-opened")).toBe(false);
+    setNodeFlag(eco, "market-opened");
+    expect(hasNodeFlag(eco, "market-opened")).toBe(true);
+    // The node boundary clears it — the mark never leaks to the next node.
+    tickCooldowns(eco);
+    expect(hasNodeFlag(eco, "market-opened")).toBe(false);
+  });
+
+  it("a one-shot primed flag is consumed on read and persists across node-steps until then (the Savvy-Barter shape)", () => {
+    const eco = createOverworldEconomy();
+    expect(consumeFlag(eco, "deal")).toBe(false); // nothing primed
+    primeFlag(eco, "deal");
+    expect(isPrimed(eco, "deal")).toBe(true); // a non-consuming peek
+    tickCooldowns(eco); // a node-step passes — a primed treat you haven't cashed waits
+    expect(isPrimed(eco, "deal")).toBe(true);
+    expect(consumeFlag(eco, "deal")).toBe(true); // cashed once...
+    expect(consumeFlag(eco, "deal")).toBe(false); // ...and only once
+    expect(isPrimed(eco, "deal")).toBe(false);
+  });
+
+  it("effectiveMarketTier folds the per-node flag — a barren node trades at `poor` for the node-step", () => {
+    const node = barrenNode();
+    const eco = createOverworldEconomy();
+    expect(effectiveMarketTier(node, [], eco)).toBe("none"); // no merchant, no flag → barren
+    setNodeFlag(eco, marketOpenedFlag(node.id));
+    expect(effectiveMarketTier(node, [], eco)).toBe("poor"); // the impromptu market opened here
+    tickCooldowns(eco);
+    expect(effectiveMarketTier(node, [], eco)).toBe("none"); // closes again on departure
+  });
+
+  it("the flag is node-keyed — opening a market here doesn't lift a different node", () => {
+    const here = barrenNode();
+    const elsewhere: MapNode = { ...here, id: "nOther" };
+    const eco = createOverworldEconomy();
+    setNodeFlag(eco, marketOpenedFlag(here.id));
+    expect(effectiveMarketTier(here, [], eco)).toBe("poor");
+    expect(effectiveMarketTier(elsewhere, [], eco)).toBe("none");
+  });
+
+  it("clone round-trips both flag bags (snapshot safety)", () => {
+    const eco = createOverworldEconomy();
+    setNodeFlag(eco, "n");
+    primeFlag(eco, "p");
+    const copy = cloneOverworldEconomy(eco);
+    expect(hasNodeFlag(copy, "n")).toBe(true);
+    expect(isPrimed(copy, "p")).toBe(true);
+    // A deep copy — mutating the clone doesn't touch the original.
+    setNodeFlag(copy, "n2");
+    expect(hasNodeFlag(eco, "n2")).toBe(false);
+  });
+});
+
+describe("capability-gate taxonomy (D72)", () => {
+  const mk = (id: string, jobId: string) =>
+    createUnit({ id, side: "player", pos: { col: -1, row: -1 }, jobId: jobId as never, speed: 9, maxHp: 20, attack: 4, defense: 2, moveRange: 3, sightRadius: 4 });
+
+  it("a unit holds a capability by carrying its passive/flag, not a hard-coded job id", () => {
+    expect(unitHasCapability(mk("doc", "medic"), "healer")).toBe(true); // Triage passive
+    expect(unitHasCapability(mk("rook", "scout"), "healer")).toBe(false);
+    expect(unitHasCapability(mk("sly", "thief"), "lockpick")).toBe(true); // Expert Lockpick flag
+    expect(unitHasCapability(mk("rook", "scout"), "lockpick")).toBe(false);
+    expect(unitHasCapability(mk("doc", "medic"), "lockpick")).toBe(false);
+  });
+
+  it("isHealer is the named alias of the `healer` capability (parity, no drift)", () => {
+    for (const job of ["medic", "scout", "thief", "soldier"]) {
+      const u = mk("u", job);
+      expect(isHealer(u)).toBe(unitHasCapability(u, "healer"));
+    }
+  });
+
+  it("the predicate registry is exhaustive (one predicate per capability id)", () => {
+    expect(Object.keys(CAPABILITY_PREDICATES).sort()).toEqual(["healer", "lockpick"]);
+  });
+
+  it("respects an injected lookup — a throwaway capability-bearing job, never in JOBS (fixture-safe)", () => {
+    const scout = mk("rook", "scout");
+    const fixtureHealer: JobDef = { id: "scout", name: "Fixture Healer", description: "", skills: [], passives: { [PASSIVE.triage]: 0.5 } };
+    const lookup: JobLookup = (id) => (id === "scout" ? fixtureHealer : getJob(id));
+    expect(unitHasCapability(scout, "healer")).toBe(false); // the real Scout job has no Triage
+    expect(unitHasCapability(scout, "healer", lookup)).toBe(true); // the fixture lookup injects it — no registry pollution
+  });
+
+  it("a SkillDef.requires expresses the gate as data, layered on the class home", () => {
+    // The gate predicate the interpreter (inc 5) and the projection apply.
+    const passes = (u: Unit, skill: SkillDef) => !skill.requires || unitHasCapability(u, skill.requires);
+    const gated: SkillDef = { id: "fx-triage", name: "Field Triage", description: "", phase: "meta", target: "party", range: 0, spend: "act", requires: "healer", effect: { kind: "morale", morale: 0, partyHeal: 0 } };
+    expect(passes(mk("doc", "medic"), gated)).toBe(true);
+    expect(passes(mk("rook", "scout"), gated)).toBe(false);
+    // An ungated action (no `requires`) is open to its class home.
+    const open: SkillDef = { ...gated, requires: undefined };
+    expect(passes(mk("rook", "scout"), open)).toBe(true);
+  });
+});
+
+describe("the overworld-effect registry (D72)", () => {
+  it("openMarket sets the per-node 'market opened here' flag (the Find-Trade mechanism)", () => {
+    const run = newRun("fx-openmkt");
+    expect(hasNodeFlag(run.overworld, marketOpenedFlag(run.mapNodeId))).toBe(false);
+    const res = applyOverworldEffect({ kind: "openMarket" }, { run, unit: actor(run), opts: {} });
+    expect(res.ok).toBe(true);
+    expect(hasNodeFlag(run.overworld, marketOpenedFlag(run.mapNodeId))).toBe(true);
+  });
+
+  it("primeDeal primes the one-shot deal flag, consumed by the next trade (the Savvy-Barter mechanism)", () => {
+    const run = newRun("fx-prime");
+    applyOverworldEffect({ kind: "primeDeal" }, { run, unit: actor(run), opts: {} });
+    expect(isPrimed(run.overworld, DEAL_PRIMED_FLAG)).toBe(true);
+    expect(consumeFlag(run.overworld, DEAL_PRIMED_FLAG)).toBe(true); // the follow-up trade cashes it...
+    expect(consumeFlag(run.overworld, DEAL_PRIMED_FLAG)).toBe(false); // ...exactly once
+  });
+
+  it("provisionMeal banks RP and satisfies the Food line (the Cook-Stew mechanism)", () => {
+    const run = newRun("fx-meal");
+    const before = run.rp;
+    const res = applyOverworldEffect({ kind: "provisionMeal", rp: 3 }, { run, unit: actor(run), opts: {} });
+    expect(res.ok).toBe(true);
+    expect(run.rp).toBe(before + 3); // RP banked into the run pool
+    expect(run.camp.satisfiedUpkeep).toContain("food"); // Food prepaid for the night
+  });
+
+  it("the Upkeep coupling: a satisfied Food line is not billed and applies no consequence (no double-charge)", () => {
+    const run = newRun("fx-coupling");
+    const bill = computeUpkeep(run.party);
+    const foodCost = bill.lines.find((l) => l.id === "food")!.cost;
+    expect(foodCost).toBeGreaterThan(0);
+
+    // Cook the meal: it pays its own (dynamic) cost elsewhere and marks Food satisfied.
+    applyOverworldEffect({ kind: "provisionMeal", rp: 2 }, { run, unit: actor(run), opts: {} });
+
+    const goldBefore = run.camp.gold;
+    const moraleBefore = run.camp.morale;
+    const result = payUpkeep(run.camp, run.party, { skip: [] });
+
+    expect(result.paid).toBe(bill.total - foodCost); // Repairs billed, Food was already covered
+    expect(run.camp.gold).toBe(goldBefore - (bill.total - foodCost)); // Food not double-charged
+    expect(result.underfunded).not.toContain("food");
+    expect(result.skipped).not.toContain("food");
+    expect(run.camp.morale).toBe(moraleBefore); // no hunger morale hit — Food was provisioned, not breached
+    expect(run.camp.satisfiedUpkeep).toEqual([]); // a single-night provision, consumed by billing
+  });
+
+  it("satisfyUpkeepLine is idempotent and only the satisfied line is spared", () => {
+    const run = newRun("fx-idem");
+    satisfyUpkeepLine(run.camp, "food");
+    satisfyUpkeepLine(run.camp, "food"); // idempotent
+    expect(run.camp.satisfiedUpkeep).toEqual(["food"]);
+    const result = payUpkeep(run.camp, run.party, { skip: [] });
+    expect(result.paid).toBe(computeUpkeep(run.party).lines.find((l) => l.id === "repairs")!.cost);
+  });
+
+  it("the new effect kinds surface on the overworld beat (skillContexts)", () => {
+    const base = { name: "Fx", description: "", phase: "meta", target: "party", range: 0, spend: "act" } as const;
+    expect(skillContexts({ id: "a", ...base, effect: { kind: "openMarket" } })).toEqual(["overworld"]);
+    expect(skillContexts({ id: "b", ...base, effect: { kind: "primeDeal" } })).toEqual(["overworld"]);
+    expect(skillContexts({ id: "c", ...base, effect: { kind: "provisionMeal", rp: 1 } })).toEqual(["overworld"]);
   });
 });

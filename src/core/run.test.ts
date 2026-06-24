@@ -18,7 +18,8 @@ import {
 import { generateOverworld, getNode } from "./overworld";
 import { isAuthoredEncounter } from "./staging";
 import { RunLoop } from "./runloop";
-import { takeOverworldAction, cooldownRemaining, SURVEY } from "./overworld-actions";
+import { useOverworldSkill, cooldownRemaining } from "./overworld-actions";
+import { SURVEY } from "./jobs";
 
 /** A small fightable roster (Soldiers so they have battle skills too). */
 function roster(): Unit[] {
@@ -216,14 +217,14 @@ describe("run — the overworld economy round-trips & replays deterministically 
   it("snapshotRun captures the overworld cooldown/scout state (a deep copy)", () => {
     const run = newRun("eco-snap");
     const target = reachableNodes(run)[0];
-    takeOverworldAction(run, run.party[0], "survey", { targetNodeId: target.id });
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.cost.cooldown);
+    useOverworldSkill(run, run.party[0], SURVEY, { targetNodeId: target.id });
+    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown);
 
     const snap = snapshotRun(run);
     expect(snap.overworld).toEqual(run.overworld);
     // It's a copy, not the live reference — mutating the run doesn't touch the snap.
     run.overworld.cooldowns["survey"] = 0;
-    expect(snap.overworld.cooldowns["survey"]).toBe(SURVEY.cost.cooldown);
+    expect(snap.overworld.cooldowns["survey"]).toBe(SURVEY.overworldCost!.cooldown);
   });
 
   it("same seed + same choices + same actions ⇒ identical cooldown/fatigue trace", () => {
@@ -238,7 +239,7 @@ describe("run — the overworld economy round-trips & replays deterministically 
         if (next.length === 0) break;
         loop.choose(next[0].id);
         const ahead = loop.reachable()[0];
-        if (ahead) loop.overworldAction(run.party[0], "survey", { targetNodeId: ahead.id });
+        if (ahead) loop.useOverworldSkill(run.party[0], SURVEY, { targetNodeId: ahead.id });
         loop.playCurrentNode();
       }
       return {

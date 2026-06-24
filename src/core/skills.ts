@@ -18,6 +18,8 @@ import { applyStatus, markPrey, cleanseOne, hastened } from "./status";
 import { countOf, removeItem, type Inventory } from "./inventory";
 import { abilityScaleBonus } from "./leveling";
 import { assertNever } from "./num";
+import type { CapabilityId } from "./jobs";
+import type { OverworldCost } from "./overworld-actions";
 
 /** The ordered phases of the game pipeline (D3). */
 export type Phase = "meta" | "deployment" | "battle" | "resolution";
@@ -169,12 +171,59 @@ export type CampEffect = MoraleEffect;
 export type DeploymentEffect = PlaceTrapEffect;
 
 /**
+ * **Overworld**: open an **impromptu market** at the current node — sets the per-node
+ * "market opened here" flag ({@link "./overworld-actions".setNodeFlag}) that {@link
+ * "./overworld".effectiveMarketTier} folds in (the Find-Trade *mechanism*). No payload —
+ * the node is the actor's current one.
+ */
+export interface OpenMarketEffect {
+  kind: "openMarket";
+}
+/**
+ * **Overworld**: **prime** the one-shot "next deal" flag ({@link
+ * "./overworld-actions".primeFlag}) a follow-up trade consumes (the Savvy-Barter
+ * *mechanism*). No payload — the priming is the whole effect.
+ */
+export interface PrimeDealEffect {
+  kind: "primeDeal";
+}
+/**
+ * **Camp/overworld**: **provision a meal** — bank `rp` Rest Points (D9) **and satisfy the
+ * Food Upkeep line** for the night (D15/D45), turning the mandatory food spend into
+ * recovery with no double-charge (the Cook-Stew *mechanism* — Upkeep coupling + RP bank).
+ */
+export interface ProvisionMealEffect {
+  kind: "provisionMeal";
+  /** Rest Points banked into the run pool. */
+  rp: number;
+}
+/**
+ * **Overworld**: raise a reachable node's banded **intel preview** by `tierBump` tiers
+ * (D24) — the Scout's Survey recon. Reads the chosen node from the action's
+ * `opts.targetNodeId`; the one node-targeting overworld effect (skill target `camp`).
+ * Migrated from the retired `OverworldAbility` registry into the unified home (D72).
+ */
+export interface SurveyNodeEffect {
+  kind: "survey";
+  /** How many tiers to bump the target node's preview by. */
+  tierBump: number;
+}
+/**
+ * **Overworld / camp economy** effects (D72) — resolved by the exhaustive
+ * {@link "./overworld-actions".OVERWORLD_EFFECT_HANDLERS} registry (the overworld twin of
+ * {@link BattleEffect}'s, the way {@link CampEffect} resolves in {@link "./camp"}). The
+ * generic *mechanisms* the non-combat triad needs (plus migrated Survey); a class's actual
+ * verbs (Find Trade / Savvy Barter / Cook Stew) wire them onto a job in the content pass.
+ */
+export type OverworldActionEffect = OpenMarketEffect | PrimeDealEffect | ProvisionMealEffect | SurveyNodeEffect;
+
+/**
  * The declarative effect a skill applies when it resolves — **partitioned by the
  * interpreter that owns it** ({@link BattleEffect} / {@link FieldEffect} /
- * {@link CampEffect} / {@link DeploymentEffect}), so where a kind resolves is part
- * of the type, not a comment.
+ * {@link CampEffect} / {@link DeploymentEffect} / {@link OverworldActionEffect}), so
+ * where a kind resolves is part of the type, not a comment.
  */
-export type SkillEffect = BattleEffect | FieldEffect | CampEffect | DeploymentEffect;
+export type SkillEffect = BattleEffect | FieldEffect | CampEffect | DeploymentEffect | OverworldActionEffect;
 
 /**
  * Optional ability cost beyond the Act (D37). The combat economy is **time**:
@@ -231,6 +280,24 @@ export interface SkillDef {
    * clock is their limiter).
    */
   usesPerNode?: number;
+  /**
+   * An optional **capability gate** (D72): the action is available only to a unit that
+   * *holds* this {@link "./jobs".CapabilityId} (the Triage / lockpick shape — the
+   * **Capability** gate of the action taxonomy), layered on the implicit **Class** gate
+   * of living on a job. Evaluated by {@link "./jobs".unitHasCapability}; omitted ⇒ no
+   * capability gate (the action's class/universal home is its only gate).
+   */
+  requires?: CapabilityId;
+  /**
+   * The **two-axis overworld cost** (D72) a between-nodes action declares — the full
+   * {@link "./overworld-actions".OverworldCost} menu (cooldown / per-node cap / fatigue /
+   * gold / influence / rp, computed prices and all), gating the action through the shared
+   * {@link "./overworld-actions".checkOverworldCost} limiter. Omitted ⇒ derived from
+   * `usesPerNode` alone (a costless signature action like Cook Stew), via
+   * {@link "./overworld-actions".overworldCostOf}. Combat skills ignore it (the CT clock /
+   * `cost` is their limiter); it's the overworld twin of {@link SkillCost}.
+   */
+  overworldCost?: OverworldCost;
   effect: SkillEffect;
 }
 
@@ -261,6 +328,11 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
     case "placeTrap":
       return ["pre-combat"];
     case "morale":
+    case "openMarket":
+    case "primeDeal":
+    case "provisionMeal":
+    case "survey":
+      // Camp/overworld economy + recon mechanisms (D72) — surfaced on the between-nodes beat.
       return ["overworld"];
     case "med-heal":
       // The herb-stash heal (D40) is a combat/logistics bridge: its stash pick + inventory

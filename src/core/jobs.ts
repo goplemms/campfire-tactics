@@ -24,12 +24,43 @@ import type { PrestigeBranch } from "./grants";
  */
 export type GrowthTable = Partial<Record<keyof UnitStats, number>>;
 
+/**
+ * A **presence effect** (D72) — a benefit a job holds *by being fielded* (the non-combat
+ * **presence anchor**, D70: the passive analogue). Data the readers fold in, not a
+ * hardcoded fn — the Merchant's **Appraisal** lifts every existing market a tier.
+ */
+export interface JobPresence {
+  /** Tiers a fielded member lifts every **existing** market (Appraisal: poor→basic→premium, capped). */
+  marketTierBonus?: number;
+}
+
+/**
+ * A **per-step faucet** (D72) — what a fielded member accrues each node-step by presence
+ * (the Noble's **Renown** Influence trickle). Read by the breakCamp accruals as data.
+ */
+export interface JobFaucet {
+  /** Influence accrued per node-step by a fielded member's presence (Renown). */
+  influencePerStep?: number;
+}
+
 /** A job definition — a named, described set of skills. */
 export interface JobDef {
   id: string;
   name: string;
   description: string;
   skills: SkillDef[];
+  /**
+   * **Presence** (D72) — a benefit that holds by being fielded (the non-combat presence
+   * anchor, D70). Read structurally by {@link "./overworld".effectiveMarketTier}; declared
+   * by the verb-kit content pass (Appraisal). The substrate ships the seam + fixtures.
+   */
+  presence?: JobPresence;
+  /**
+   * **Per-step faucet** (D72) — Influence (etc.) a fielded member accrues each node-step
+   * by presence (Renown). Read by {@link "./economy-actions".accrueDeclaredFaucets} from
+   * {@link "./run".breakCamp}; declared by the verb-kit content pass.
+   */
+  faucet?: JobFaucet;
   /**
    * Passive parameters this job stamps onto its bearer (D40), read by combat
    * resolution. Keyed by {@link "./combat".PASSIVE}. The identity anchor.
@@ -311,6 +342,28 @@ export const SUBTLE_BLADE_BONUS = 8;
 /** The job-level floor a Scout must reach before a prestige branch opens (D68). */
 export const SCOUT_PRESTIGE_FLOOR = 5;
 
+/**
+ * **Survey** (D24/D72) — the Scout's overworld recon: raise a reachable node's banded
+ * intel preview by a tier, tightening the route forecast (D48). This is the **unified
+ * home** for what was the registry's only `OverworldAbility` (D72): an overworld
+ * {@link SkillDef} carrying its own two-axis `overworldCost` (a short cooldown + light
+ * fatigue) and a `survey` effect, **Class-gated by living on the Scout job** and surfaced
+ * through {@link "./leveling".availableSkills} like every other action — no more
+ * hardcoded `getAbility("survey")`. Target `camp` (it aims at a *map node* via the action
+ * opts, not a unit), resolved by {@link "./overworld-actions".useOverworldSkill}.
+ */
+export const SURVEY: SkillDef = {
+  id: "survey",
+  name: "Survey",
+  description: "Survey a node ahead — raise its intel preview by one tier (the Scout's recon).",
+  phase: "meta",
+  target: "camp",
+  range: 0,
+  spend: "act",
+  overworldCost: { cooldown: 2, fatigue: 1 },
+  effect: { kind: "survey", tierBump: 1 },
+};
+
 /** The **Scout** — infiltrator / flank engine; manufactures isolation, slips the net, weakens the approach. */
 export const SCOUT_JOB: JobDef = {
   id: "scout",
@@ -348,6 +401,10 @@ export const SCOUT_JOB: JobDef = {
       unlockLevel: 2,
       effect: { kind: "placeTrap", damage: 8, status: exposed(2) },
     },
+    // The Scout's overworld recon (D24/D72) — a meta/overworld verb alongside the two
+    // battle/deploy actives (the house style flexes; this is the Scout's signature
+    // between-nodes action, now a first-class skill rather than a registry special-case).
+    SURVEY,
   ],
   // The fork (D68): a Scout that grinds to the floor and meets a branch trigger may
   // prestige in place. The Assassin is the lethal payoff of the flank identity.
@@ -582,6 +639,54 @@ export function getJob(id: string | undefined): JobDef | undefined {
  * without polluting the registry; production always uses the default {@link getJob}.
  */
 export type JobLookup = (id: string | undefined) => JobDef | undefined;
+
+// --- Capabilities (D72) — the Capability gate of the action taxonomy --------
+
+/**
+ * A **capability** (D72) — a cross-cutting ability a unit *holds* (a passive / a job
+ * flag), the **Capability** gate of the action catalogue (`docs/design/systems/actions.md`):
+ * an action gated by *having* it, **not** by a hard-coded job id, so it auto-extends to
+ * any future class that earns it. `healer` (the Medic's Triage passive — the camp-heal
+ * gate) and `lockpick` (the Thief's Expert Lockpick — disarm / pick) are the two today.
+ * Add a capability by adding an id here **and** a predicate to {@link CAPABILITY_PREDICATES}
+ * (the mapped type makes the build demand the predicate).
+ */
+export type CapabilityId = "healer" | "lockpick";
+
+/**
+ * A predicate per {@link CapabilityId} (D72) — **exhaustive at compile time**: the mapped
+ * type `{ [K in CapabilityId]: ... }` forces a predicate for every id (mirroring the
+ * effect-handler registries). Each reads the unit's **effective primary** job (D65) via
+ * the injected `lookup`, so the gate is fixture-injectable and respects prestige.
+ */
+export const CAPABILITY_PREDICATES: { [K in CapabilityId]: (unit: Unit, lookup: JobLookup) => boolean } = {
+  healer: (unit, lookup) => (lookup(primaryJobOf(unit))?.passives?.[PASSIVE.triage] ?? 0) > 0,
+  lockpick: (unit, lookup) => lookup(primaryJobOf(unit))?.lockpick === true,
+};
+
+/**
+ * True if `unit` **holds** the capability `cap` (D72) — the Capability gate evaluator.
+ * `lookup` resolves the job data ({@link getJob} by default; injected by fixtures so a
+ * throwaway capability-bearing job is never registered in {@link JOBS}).
+ */
+export function unitHasCapability(unit: Unit, cap: CapabilityId, lookup: JobLookup = getJob): boolean {
+  return CAPABILITY_PREDICATES[cap](unit, lookup);
+}
+
+/**
+ * Human-readable lines describing a job's **presence / faucet** declarations (D72) — the
+ * **card-surfacing hook**: a class's standing-by-presence read as data, so the render can
+ * show "Markets +1 tier while fielded" / "+1 Influence per step" without a bespoke string
+ * per class. Empty for a job that declares neither (every job today, until the kit pass).
+ */
+export function jobPresenceSummary(job: JobDef): string[] {
+  const out: string[] = [];
+  const lift = job.presence?.marketTierBonus ?? 0;
+  if (lift > 0) out.push(`Markets read +${lift} tier while fielded`);
+  const inf = job.faucet?.influencePerStep ?? 0;
+  if (inf > 0) out.push(`+${inf} Influence per node-step`);
+  return out;
+}
 
 /**
  * Stamp a unit's job passives (D40) onto `unit.passives` so combat resolution

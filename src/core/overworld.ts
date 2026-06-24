@@ -24,6 +24,7 @@
 import { streamFor } from "./rng";
 import { generateEncounter, type EncounterDef } from "./generation";
 import { primaryJobOf, type Unit } from "./units";
+import { getJob, type JobLookup } from "./jobs";
 
 /**
  * A node kind (D23). A fight (`combat`), a no-battle recovery camp (`rest`), or a
@@ -144,13 +145,55 @@ export function merchantFloor(party: readonly Unit[]): MarketTier {
 }
 
 /**
- * The market tier the caravan actually trades at (D61): the node's own market
- * **raised by the Merchant floor** (`clampUp`). `none` ⇒ no market here (buys/sells
- * refused). The single reader for both buying and selling, so access scarcity is
- * applied in one place.
+ * Total **market-tier lift** from fielded members' {@link "./jobs".JobPresence} (D72) —
+ * the Merchant's Appraisal as *data* (Σ each fielded member's `presence.marketTierBonus`).
+ * Read by {@link effectiveMarketTier} to raise an **existing** market a band; declared by
+ * the verb-kit content pass, so it's 0 in production today (effectiveMarketTier stays
+ * byte-identical until a class declares it).
  */
-export function effectiveMarketTier(node: MapNode, party: readonly Unit[]): MarketTier {
-  return clampUpMarket(node.market ?? "none", merchantFloor(party));
+export function marketTierBonus(party: readonly Unit[], lookup: JobLookup = getJob): number {
+  let bonus = 0;
+  for (const u of party) {
+    if (!u.alive || u.captured) continue;
+    bonus += lookup(primaryJobOf(u))?.presence?.marketTierBonus ?? 0;
+  }
+  return bonus;
+}
+
+/**
+ * The **per-node flag id** a "open an impromptu market here" action sets (D72): the
+ * Find-Trade shape, keyed by node so the mark is unambiguous and clears on the node-step
+ * ({@link "./overworld-actions".tickCooldowns}). Read by {@link effectiveMarketTier}; set
+ * by the `openMarket` overworld effect (the verb that *sets* it is the next content pass).
+ */
+export function marketOpenedFlag(nodeId: string): string {
+  return `market-open:${nodeId}`;
+}
+
+/**
+ * The market tier the caravan actually trades at (D61/D72): the node's own market
+ * **raised by the Merchant floor** (`clampUp`), then by a **per-node "impromptu market
+ * opened here" flag** (Find-Trade) when `eco` carries one — lifting a barren node to
+ * `poor` for this node-step. `none` ⇒ no market here (buys/sells refused). The single
+ * reader for both buying and selling, so access scarcity is applied in one place. `eco`
+ * is read **structurally** (just its `nodeFlags`) to avoid a cycle with the action layer.
+ */
+export function effectiveMarketTier(
+  node: MapNode,
+  party: readonly Unit[],
+  eco?: { nodeFlags: Record<string, boolean> },
+  lookup: JobLookup = getJob,
+): MarketTier {
+  let tier = clampUpMarket(node.market ?? "none", merchantFloor(party));
+  if (eco?.nodeFlags[marketOpenedFlag(node.id)]) tier = clampUpMarket(tier, "poor");
+  // Presence (D72): a fielded member's Appraisal lifts an **existing** market by N bands
+  // (capped at premium) — it does not conjure one on a barren node (that's Find Trade).
+  // `lookup` is injectable so a fixture presence-job is never registered in JOBS.
+  if (tier !== "none") {
+    const bonus = marketTierBonus(party, lookup);
+    if (bonus > 0) tier = MARKET_TIERS[Math.min(MARKET_TIERS.length - 1, marketRank(tier) + bonus)];
+  }
+  return tier;
 }
 
 /** Add a forward edge to a node, keeping the list sorted + de-duplicated. */

@@ -53,6 +53,15 @@ export interface Camp {
    */
   gearWear: number;
   /**
+   * Upkeep lines **prepaid by an effect this night** (D72) — e.g. Cook Stew's
+   * {@link "./skills".ProvisionMealEffect} satisfying Food. {@link "./upkeep".payUpkeep}
+   * skips billing these (and applies **no** morale/gear consequence — they're provisioned,
+   * not breached or skipped) **before** the affordability pass, then clears the list so the
+   * next night bills normally. Set via {@link "./upkeep".satisfyUpkeepLine}. The anti-exploit
+   * (a satisfied line can't *also* be voluntarily skipped for the gold) lives in that ordering.
+   */
+  satisfiedUpkeep: ("food" | "repairs")[];
+  /**
    * The **purse journal** (`camp.gold`'s transaction log) — every gold movement,
    * tagged by {@link "./purse-journal".PurseSource}, in order. Mutated only through
    * the {@link "./purse-journal".earn}/{@link "./purse-journal".spend} chokepoint, so
@@ -71,6 +80,7 @@ export function createCamp(init: Partial<Camp> = {}): Camp {
     morale: init.morale ?? 0,
     pendingHeal: init.pendingHeal ?? 0,
     skippedUpkeep: init.skippedUpkeep ?? [],
+    satisfiedUpkeep: init.satisfiedUpkeep ?? [],
     gearWear: init.gearWear ?? 0,
     purseLog: init.purseLog ?? openingPurseLog(gold),
   };

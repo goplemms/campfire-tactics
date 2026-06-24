@@ -104,11 +104,13 @@ describe("projectDossier (party dossier projection — pure read)", () => {
     const u = mkUnit("vale", { jobId: "scout" });
     const row = projectDossier(mkRun([u])).members[0];
 
-    // Both Scout actives, in kit order, each tagged by when/how it's used.
-    expect(row.actives.map((a) => a.name)).toEqual(["Dash", "Set Trap"]);
+    // All Scout actives, in kit order, each tagged by when/how it's used. Survey is now a
+    // first-class overworld ability on the sheet (D72), tagged "Camp" — surfaced like any other.
+    expect(row.actives.map((a) => a.name)).toEqual(["Dash", "Set Trap", "Survey"]);
     const byName = (n: string) => row.actives.find((a) => a.name === n)!;
     expect(byName("Dash").tag).toBe("Battle · Move");
     expect(byName("Set Trap").tag).toBe("Deploy");
+    expect(byName("Survey").tag).toBe("Camp");
 
     // The 2nd active (Set Trap) gates at job level 2 — locked at level 1; Dash is ready.
     expect(byName("Set Trap").lockedUntil).toBe(2);

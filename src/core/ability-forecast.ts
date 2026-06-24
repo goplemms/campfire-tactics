@@ -210,7 +210,12 @@ export function abilityFootprint(
       // A tile target chosen in Deployment (target "camp") — the claimed tile.
       return { kind: "placement", tile: aim };
     case "morale":
-      // A party/camp meta target — no board footprint (floating forecast box).
+    case "openMarket":
+    case "primeDeal":
+    case "provisionMeal":
+    case "survey":
+      // A party/camp/overworld meta target — no battle-board footprint (Survey aims at a
+      // *map* node via opts, not a grid tile; floating forecast box).
       return { kind: "none" };
   }
 }
@@ -436,6 +441,15 @@ const FORECAST_HANDLERS: {
       bonus: effect.damage,
     };
   },
+
+  // --- Overworld / camp economy partition (D72) ----------------------------
+  // These resolve on the between-nodes beat, not the combat clock, so their forecast
+  // is a simple immediate readout (no target/HP math) — but the registry stays
+  // exhaustive over the *whole* SkillEffect union, so each still owns a handler.
+  openMarket: () => ({ kind: "immediate", label: "Open market", value: 1 }),
+  primeDeal: () => ({ kind: "immediate", label: "Next deal primed", value: 1 }),
+  provisionMeal: (effect) => ({ kind: "immediate", label: "Rest Points", value: effect.rp }),
+  survey: (effect) => ({ kind: "immediate", label: "Intel tier", value: effect.tierBump }),
 };
 
 /**

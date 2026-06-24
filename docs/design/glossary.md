@@ -225,6 +225,7 @@ job's level → its **Prestige** capstone, D65).
 | **Primary** | The job that sets a unit's frame, kit, and passives (D38). Any job can be primary; it changes on **Prestige**. | "Class" *as the live slot* (a unit's authored class is its **frozen identity**; Primary is the mutable one); "main" |
 | **Job Level** | A single job's **depth** track (D39): scales its abilities and gates unlocks, including the Prestige floor. Distinct from character **Level**. | "Rank"; "Mastery" |
 | **Prestige** | A job's **depth capstone** (D65): it **evolves in place** into a specialist successor — same character, same slot, carrying its Job Level — earned at a Job-Level floor (sometimes a story trigger). Chains (tier 1 → 2 → 3). | **"Evolve"** / **"Promote"** / **"Advance"** (as the *label* — they read as generic level-ups, not the in-place class capstone; *D65*) |
+| **Presence** | A non-combat job's **standing by being fielded** (D70/D72): a benefit that holds while the unit is in the party — the Merchant's market-tier lift (*Appraisal*), the Noble's Influence trickle (*Renown*). The non-combat analogue of a combat **Passive** (the identity anchor); declared as data on the job, surfaced on its card. | "Aura" (combat-flavored, timed); "buff" (transient — Presence is *standing*, not a status) |
 
 > **Prestige is not a level-up.** A Job Level is a number going up; **Prestige** swaps the
 > kit — it replaces the job *in place* (the character and the slot are the same, the

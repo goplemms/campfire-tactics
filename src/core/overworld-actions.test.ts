@@ -29,11 +29,14 @@ import {
   consumeFlag,
   isPrimed,
   cloneOverworldEconomy,
+  applyOverworldEffect,
+  DEAL_PRIMED_FLAG,
   type OverworldCost,
 } from "./overworld-actions";
 import { getJob, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
-import { computeUpkeep } from "./upkeep";
+import { skillContexts } from "./skills";
+import { computeUpkeep, payUpkeep, satisfyUpkeepLine } from "./upkeep";
 import { effectiveMarketTier, marketOpenedFlag, type MapNode } from "./overworld";
 import type { SkillDef } from "./skills";
 import { previewNode } from "./intel";
@@ -467,5 +470,69 @@ describe("capability-gate taxonomy (D72)", () => {
     // An ungated action (no `requires`) is open to its class home.
     const open: SkillDef = { ...gated, requires: undefined };
     expect(passes(mk("rook", "scout"), open)).toBe(true);
+  });
+});
+
+describe("the overworld-effect registry (D72)", () => {
+  it("openMarket sets the per-node 'market opened here' flag (the Find-Trade mechanism)", () => {
+    const run = newRun("fx-openmkt");
+    expect(hasNodeFlag(run.overworld, marketOpenedFlag(run.mapNodeId))).toBe(false);
+    const res = applyOverworldEffect({ kind: "openMarket" }, { run, unit: actor(run), opts: {} });
+    expect(res.ok).toBe(true);
+    expect(hasNodeFlag(run.overworld, marketOpenedFlag(run.mapNodeId))).toBe(true);
+  });
+
+  it("primeDeal primes the one-shot deal flag, consumed by the next trade (the Savvy-Barter mechanism)", () => {
+    const run = newRun("fx-prime");
+    applyOverworldEffect({ kind: "primeDeal" }, { run, unit: actor(run), opts: {} });
+    expect(isPrimed(run.overworld, DEAL_PRIMED_FLAG)).toBe(true);
+    expect(consumeFlag(run.overworld, DEAL_PRIMED_FLAG)).toBe(true); // the follow-up trade cashes it...
+    expect(consumeFlag(run.overworld, DEAL_PRIMED_FLAG)).toBe(false); // ...exactly once
+  });
+
+  it("provisionMeal banks RP and satisfies the Food line (the Cook-Stew mechanism)", () => {
+    const run = newRun("fx-meal");
+    const before = run.rp;
+    const res = applyOverworldEffect({ kind: "provisionMeal", rp: 3 }, { run, unit: actor(run), opts: {} });
+    expect(res.ok).toBe(true);
+    expect(run.rp).toBe(before + 3); // RP banked into the run pool
+    expect(run.camp.satisfiedUpkeep).toContain("food"); // Food prepaid for the night
+  });
+
+  it("the Upkeep coupling: a satisfied Food line is not billed and applies no consequence (no double-charge)", () => {
+    const run = newRun("fx-coupling");
+    const bill = computeUpkeep(run.party);
+    const foodCost = bill.lines.find((l) => l.id === "food")!.cost;
+    expect(foodCost).toBeGreaterThan(0);
+
+    // Cook the meal: it pays its own (dynamic) cost elsewhere and marks Food satisfied.
+    applyOverworldEffect({ kind: "provisionMeal", rp: 2 }, { run, unit: actor(run), opts: {} });
+
+    const goldBefore = run.camp.gold;
+    const moraleBefore = run.camp.morale;
+    const result = payUpkeep(run.camp, run.party, { skip: [] });
+
+    expect(result.paid).toBe(bill.total - foodCost); // Repairs billed, Food was already covered
+    expect(run.camp.gold).toBe(goldBefore - (bill.total - foodCost)); // Food not double-charged
+    expect(result.underfunded).not.toContain("food");
+    expect(result.skipped).not.toContain("food");
+    expect(run.camp.morale).toBe(moraleBefore); // no hunger morale hit — Food was provisioned, not breached
+    expect(run.camp.satisfiedUpkeep).toEqual([]); // a single-night provision, consumed by billing
+  });
+
+  it("satisfyUpkeepLine is idempotent and only the satisfied line is spared", () => {
+    const run = newRun("fx-idem");
+    satisfyUpkeepLine(run.camp, "food");
+    satisfyUpkeepLine(run.camp, "food"); // idempotent
+    expect(run.camp.satisfiedUpkeep).toEqual(["food"]);
+    const result = payUpkeep(run.camp, run.party, { skip: [] });
+    expect(result.paid).toBe(computeUpkeep(run.party).lines.find((l) => l.id === "repairs")!.cost);
+  });
+
+  it("the new effect kinds surface on the overworld beat (skillContexts)", () => {
+    const base = { name: "Fx", description: "", phase: "meta", target: "party", range: 0, spend: "act" } as const;
+    expect(skillContexts({ id: "a", ...base, effect: { kind: "openMarket" } })).toEqual(["overworld"]);
+    expect(skillContexts({ id: "b", ...base, effect: { kind: "primeDeal" } })).toEqual(["overworld"]);
+    expect(skillContexts({ id: "c", ...base, effect: { kind: "provisionMeal", rp: 1 } })).toEqual(["overworld"]);
   });
 });

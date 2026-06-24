@@ -170,12 +170,48 @@ export type CampEffect = MoraleEffect;
 export type DeploymentEffect = PlaceTrapEffect;
 
 /**
+ * **Overworld**: open an **impromptu market** at the current node — sets the per-node
+ * "market opened here" flag ({@link "./overworld-actions".setNodeFlag}) that {@link
+ * "./overworld".effectiveMarketTier} folds in (the Find-Trade *mechanism*). No payload —
+ * the node is the actor's current one.
+ */
+export interface OpenMarketEffect {
+  kind: "openMarket";
+}
+/**
+ * **Overworld**: **prime** the one-shot "next deal" flag ({@link
+ * "./overworld-actions".primeFlag}) a follow-up trade consumes (the Savvy-Barter
+ * *mechanism*). No payload — the priming is the whole effect.
+ */
+export interface PrimeDealEffect {
+  kind: "primeDeal";
+}
+/**
+ * **Camp/overworld**: **provision a meal** — bank `rp` Rest Points (D9) **and satisfy the
+ * Food Upkeep line** for the night (D15/D45), turning the mandatory food spend into
+ * recovery with no double-charge (the Cook-Stew *mechanism* — Upkeep coupling + RP bank).
+ */
+export interface ProvisionMealEffect {
+  kind: "provisionMeal";
+  /** Rest Points banked into the run pool. */
+  rp: number;
+}
+/**
+ * **Overworld / camp economy** effects (D72) — resolved by the exhaustive
+ * {@link "./overworld-actions".OVERWORLD_EFFECT_HANDLERS} registry (the overworld twin of
+ * {@link BattleEffect}'s, the way {@link CampEffect} resolves in {@link "./camp"}). These
+ * are the generic *mechanisms* the non-combat triad needs; a class's actual verbs (Find
+ * Trade / Savvy Barter / Cook Stew) wire them onto a job in the following content pass.
+ */
+export type OverworldActionEffect = OpenMarketEffect | PrimeDealEffect | ProvisionMealEffect;
+
+/**
  * The declarative effect a skill applies when it resolves — **partitioned by the
  * interpreter that owns it** ({@link BattleEffect} / {@link FieldEffect} /
- * {@link CampEffect} / {@link DeploymentEffect}), so where a kind resolves is part
- * of the type, not a comment.
+ * {@link CampEffect} / {@link DeploymentEffect} / {@link OverworldActionEffect}), so
+ * where a kind resolves is part of the type, not a comment.
  */
-export type SkillEffect = BattleEffect | FieldEffect | CampEffect | DeploymentEffect;
+export type SkillEffect = BattleEffect | FieldEffect | CampEffect | DeploymentEffect | OverworldActionEffect;
 
 /**
  * Optional ability cost beyond the Act (D37). The combat economy is **time**:
@@ -270,6 +306,10 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
     case "placeTrap":
       return ["pre-combat"];
     case "morale":
+    case "openMarket":
+    case "primeDeal":
+    case "provisionMeal":
+      // Camp/overworld economy mechanisms (D72) — surfaced on the between-nodes beat.
       return ["overworld"];
     case "med-heal":
       // The herb-stash heal (D40) is a combat/logistics bridge: its stash pick + inventory

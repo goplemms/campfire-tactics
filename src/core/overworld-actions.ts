@@ -30,14 +30,15 @@
 
 import { healUnit, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
-import type { SkillDef } from "./skills";
+import type { SkillDef, OverworldActionEffect } from "./skills";
 import { getJob, unitHasCapability } from "./jobs";
 import { PASSIVE } from "./combat";
 import { spendFatigue, fatiguePenalty } from "./fatigue";
 import { decayCounters, bumpCounter, nonNegInt } from "./num";
 import { earn, spend } from "./purse-journal";
 import { spendInfluence } from "./economy";
-import { reachableFrom } from "./overworld";
+import { reachableFrom, marketOpenedFlag } from "./overworld";
+import { satisfyUpkeepLine } from "./upkeep";
 import { useCampJobSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp } from "./leveling";
 
@@ -645,4 +646,63 @@ function applyEffect(
   // Guard (D61): a new OverworldEffect kind that's not handled above throws a clear
   // error here instead of silently returning undefined (→ a confusing `.ok` crash).
   return { ok: false, reason: `Unhandled overworld effect "${(effect as OverworldEffect).kind}".` };
+}
+
+// --- The overworld-effect registry (D72) ------------------------------------
+
+/** The well-known one-shot flag a Merchant's "next deal" primes (D72) — consumed by the next trade. */
+export const DEAL_PRIMED_FLAG = "merchant-deal-primed";
+
+/** What an {@link OverworldActionEffect} handler resolves against — the run, the actor, and the action opts. */
+export interface OverworldEffectCtx {
+  run: RunState;
+  unit: Unit;
+  opts: ActionOpts;
+}
+
+/** An overworld-effect outcome — applied (with a detail) or refused (with a reason). */
+export type OverworldEffectResult = { ok: true; detail: string } | { ok: false; reason: string };
+
+/**
+ * The **overworld-effect registry** (D72) — a handler per {@link OverworldActionEffect}
+ * kind, the mapped type `{ [K in OverworldActionEffect["kind"]]: ... }` **exhaustive at
+ * compile time** (mirroring `skills.ts`'s `BATTLE_EFFECT_HANDLERS` / `ability-forecast.ts`'s
+ * `FORECAST_HANDLERS` / `grants.ts`'s `GRANT_EFFECT_HANDLERS`): adding a kind to the union
+ * fails the build here until its handler is written. Each handler applies its mechanism
+ * against the run and returns a result the interpreter surfaces — effects are **data**,
+ * one interpreter, no new branches (D3/D4). The verbs that carry these onto real classes
+ * (Find Trade / Savvy Barter / Cook Stew) are the following content pass.
+ */
+const OVERWORLD_EFFECT_HANDLERS: {
+  [K in OverworldActionEffect["kind"]]: (effect: Extract<OverworldActionEffect, { kind: K }>, ctx: OverworldEffectCtx) => OverworldEffectResult;
+} = {
+  openMarket: (_effect, { run }) => {
+    // Find-Trade mechanism: open an impromptu market at this node for the node-step
+    // (the per-node flag effectiveMarketTier folds in; cleared at the next Break Camp).
+    setNodeFlag(run.overworld, marketOpenedFlag(run.mapNodeId));
+    return { ok: true, detail: "Opened an impromptu market here." };
+  },
+  primeDeal: (_effect, { run }) => {
+    // Savvy-Barter mechanism: prime the one-shot "next deal" flag a follow-up trade consumes.
+    primeFlag(run.overworld, DEAL_PRIMED_FLAG);
+    return { ok: true, detail: "The next deal is primed." };
+  },
+  provisionMeal: (effect, { run }) => {
+    // Cook-Stew mechanism: bank RP (D9) and satisfy the Food line (D15/D45) — the day's
+    // food becomes recovery with no double-charge (payUpkeep skips the satisfied line).
+    run.rp += effect.rp;
+    satisfyUpkeepLine(run.camp, "food");
+    return { ok: true, detail: `Cooked: +${effect.rp} Rest Points banked, the night's food covered.` };
+  },
+};
+
+/**
+ * Apply an {@link OverworldActionEffect} through the exhaustive {@link
+ * OVERWORLD_EFFECT_HANDLERS} registry (D72) — the single overworld-effect interpreter the
+ * camp/overworld action path dispatches through (inc 5's `useOverworldSkill`). Survey
+ * joins this registry when it migrates off the legacy switch above.
+ */
+export function applyOverworldEffect(effect: OverworldActionEffect, ctx: OverworldEffectCtx): OverworldEffectResult {
+  const handler = OVERWORLD_EFFECT_HANDLERS[effect.kind] as (e: OverworldActionEffect, c: OverworldEffectCtx) => OverworldEffectResult;
+  return handler(effect, ctx);
 }

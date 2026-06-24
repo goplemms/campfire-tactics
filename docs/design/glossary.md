@@ -214,6 +214,23 @@ characters.
 expendable) · **Companion** (authored, earned not bought) · **Lord** (authored,
 campaign-critical; death = game-over).
 
+## Jobs & progression (*D38/D39/D65*)
+
+Any job can be a unit's **Primary** (the combat/non-combat split is dissolved, D38);
+growth runs on two orthogonal axes — **breadth** (holding more jobs) and **depth** (a
+job's level → its **Prestige** capstone, D65).
+
+| Canonical | Means | Banned synonyms (and why) |
+|---|---|---|
+| **Primary** | The job that sets a unit's frame, kit, and passives (D38). Any job can be primary; it changes on **Prestige**. | "Class" *as the live slot* (a unit's authored class is its **frozen identity**; Primary is the mutable one); "main" |
+| **Job Level** | A single job's **depth** track (D39): scales its abilities and gates unlocks, including the Prestige floor. Distinct from character **Level**. | "Rank"; "Mastery" |
+| **Prestige** | A job's **depth capstone** (D65): it **evolves in place** into a specialist successor — same character, same slot, carrying its Job Level — earned at a Job-Level floor (sometimes a story trigger). Chains (tier 1 → 2 → 3). | **"Evolve"** / **"Promote"** / **"Advance"** (as the *label* — they read as generic level-ups, not the in-place class capstone; *D65*) |
+
+> **Prestige is not a level-up.** A Job Level is a number going up; **Prestige** swaps the
+> kit — it replaces the job *in place* (the character and the slot are the same, the
+> successor is new). Flavor prose may say a unit "comes into their own" (Layer 2); the
+> button and the readout say **Prestige** (Layer 1).
+
 ## Deployment (*D7/D11* · the on-map setup phase)
 
 The "earlier that day" placement phase — distinct from the guild's **Dispatch** and

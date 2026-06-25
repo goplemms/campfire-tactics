@@ -69,6 +69,7 @@ import {
   isConcealedTrap,
   hiddenTraps,
   revealTrapsNear,
+  spotWhileMoving,
   disarmTrap,
   canDisarm,
   type ConcealedTrap,
@@ -445,6 +446,14 @@ export class BattleScene extends Phaser.Scene {
     this.deployClock.seed();
     this.drawZones();
     this.drawSourceMarkers();
+    // Trap-field (D12): enemy hazards are live across *both* phases, so the party's
+    // opening Awareness scan happens here — at the deploy line, not at combat start.
+    // Spotted traps draw now, so positioning is informed; the rest are sensed as units
+    // advance (the per-step read) or via a deliberate Search.
+    if (hiddenTraps(this.battle.entities).length > 0) {
+      for (const u of this.battle.units) if (u.side === "player" && u.alive) revealTrapsNear(u, this.battle.entities, this.spotRng);
+      this.redrawTrapMarkers();
+    }
     this.deployNextActor(); // step to the first actor (a player gets the head start)
   }
 
@@ -469,10 +478,20 @@ export class BattleScene extends Phaser.Scene {
     // Arm the shared action-log undo for the deploy turn (D63) — each move/dig-in/
     // trap becomes undoable back to the turn's start, exactly like a combat turn.
     this.battle.beginUndo();
+    // The active unit looks around as it steps up — a passive Awareness scan may spot
+    // nearby traps (D12 parity with the combat turn-open). Reveal *before* the buttons
+    // render so a freshly-spotted adjacent trap surfaces its Disarm verb this turn.
+    const spotted = hiddenTraps(this.battle.entities).length > 0
+      ? revealTrapsNear(unit, this.battle.entities, this.spotRng)
+      : [];
+    if (spotted.length > 0) this.redrawTrapMarkers();
     this.selectDeployActor(unit);
     this.setPrimary("End Turn");
+    const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0;
     this.setHint(
       `${unit.name}'s turn — click a tile to reposition, Dig In, or place a trap, then End Turn (Space). ` +
+        (spotted.length > 0 ? `Spots ${spotted.length} hidden trap${spotted.length > 1 ? "s" : ""} (${ICON.trapArmed.glyph})! ` : "") +
+        (trapsAfield ? `Search to scan further, or a trapper can Disarm. ` : "") +
         `The enemy's reach is ${this.front.radius} step${this.front.radius === 1 ? "" : "s"} and growing.`,
     );
   }
@@ -638,6 +657,23 @@ export class BattleScene extends Phaser.Scene {
         const text = skill.effect.kind === "placeTrap" ? "Place Trap Here" : skill.name;
         specs.push({ text, description: skill.description, onClick: () => this.onDeploySkillButton(actor, skill) });
       }
+      // Trap-field verbs (D12) carried into Deployment: Search scans the ground ahead,
+      // and a trapper Disarms a spotted, adjacent trap — both spend the unit's act.
+      if (hiddenTraps(this.battle.entities).length > 0) {
+        specs.push({
+          text: "Search",
+          description: "Spend this unit's act scanning the ground ahead for concealed traps (a wider, better look).",
+          onClick: () => this.doDeploySearch(actor),
+        });
+      }
+      const adjTrap = this.adjacentRevealedTrap(actor);
+      if (adjTrap && canDisarm(actor)) {
+        specs.push({
+          text: "Disarm trap",
+          description: "Disarm the adjacent spotted trap and pocket its kit (a trap-trained unit only).",
+          onClick: () => this.doDeployDisarm(actor, adjTrap.id),
+        });
+      }
     }
     // Start Battle always closes the row (commit early at any point).
     specs.push({
@@ -678,6 +714,34 @@ export class BattleScene extends Phaser.Scene {
     this.refreshDeployButtons();
     this.refreshDeployStatus();
     this.setHint(`${actor.name} used ${skill.name}. Reposition or End Turn (Space) to advance the net.`);
+  }
+
+  /** Deployment Search (D12) — spend the unit's act on a wider, better trap scan. */
+  private doDeploySearch(actor: Unit): void {
+    if (this.busy || this.deployActor !== actor || actor.captured || this.deployActed) return;
+    const found = revealTrapsNear(actor, this.battle.entities, this.spotRng, { search: true });
+    if (found.length > 0) this.redrawTrapMarkers();
+    this.deployActed = true;
+    this.refreshDeployButtons();
+    this.refreshDeployStatus();
+    this.setHint(found.length > 0
+      ? `${actor.name} searches and spots ${found.length} hidden trap${found.length > 1 ? "s" : ""} (${ICON.trapArmed.glyph}). Reposition or End Turn.`
+      : `${actor.name} searches but turns up nothing here. Reposition or End Turn.`);
+  }
+
+  /** Deployment Disarm (D12) — a trapper clears a spotted adjacent trap, pocketing its kit. */
+  private doDeployDisarm(actor: Unit, trapId: string): void {
+    if (this.busy || this.deployActor !== actor || actor.captured || this.deployActed) return;
+    const res = disarmTrap(this.battle.entities, trapId, actor, this.run.inventory);
+    if (!res.ok) return this.setHint(`Can't disarm: ${res.reason}`);
+    this.redrawTrapMarkers();
+    this.refreshCampText();
+    this.deployActed = true;
+    this.refreshDeployButtons();
+    this.refreshDeployStatus();
+    this.setHint(res.harvested
+      ? `${actor.name} disarms the trap and pockets a ${res.harvested}. Reposition or End Turn.`
+      : `${actor.name} disarms the trap (storage full — the kit is lost). Reposition or End Turn.`);
   }
 
   private refreshDeployStatus(): void {
@@ -837,18 +901,41 @@ export class BattleScene extends Phaser.Scene {
       this.setHint("Can't stop there — an ally holds the only tile in reach.");
       return;
     }
+    // Per-step trap read (D12): before each step the unit may sense a hidden enemy
+    // trap and balk — or blunder onto one it missed. Truncate the route to what it
+    // actually walks; an already-spotted trap simply stops it short of itself.
+    const spot = spotWhileMoving(actor, steps, this.battle.entities, this.spotRng);
+    const walked = spot.path;
+    if (walked.length === 0) {
+      // A trap sits on the very next tile (sensed now, or already known) — hold ground.
+      if (spot.spotted) this.redrawTrapMarkers();
+      this.setHint(
+        `${actor.name} ${spot.spotted ? "senses a hidden trap" : "won't step onto the spotted trap"} just ahead ` +
+          `(${ICON.trapArmed.glyph}) — route around it, Disarm it, or End Turn.`,
+      );
+      return;
+    }
+    const hpBefore = actor.hp;
     // Route the reposition through the one interpreter (D63): it walks the path
     // (logged + undoable), springs any entity crossed, and breaks the dig-in stance.
-    this.battle.deployMove(actor, steps);
+    this.battle.deployMove(actor, walked);
     this.deployMoved = true;
     this.busy = true;
-    this.animateMove(actor, steps, () => {
+    this.animateMove(actor, walked, () => {
       this.busy = false;
       this.highlightTile(actor.pos);
       this.refreshAuras(); // a repositioned Heavy Knight drags its tarpit ring (D64)
+      this.checkTrapSprings(); // a missed trap just sprang underfoot — reveal + mark it
+      if (spot.spotted) this.redrawTrapMarkers(); // a sensed trap — draw its fresh marker
       this.refreshDeployButtons();
       this.refreshDeployStatus();
-      this.setHint(`${actor.name} repositioned. Dig In, place a trap, or End Turn (Space) to advance the net.`);
+      this.setHint(
+        spot.spotted
+          ? `${actor.name} senses a hidden trap just in time (${ICON.trapArmed.glyph}) and stops short — Disarm it, place a trap, or End Turn.`
+          : actor.hp < hpBefore
+            ? `${ICON.trapSprung.glyph} ${actor.name} stepped on a hidden trap! Dig In, place a trap, or End Turn.`
+            : `${actor.name} repositioned. Dig In, place a trap, or End Turn (Space) to advance the net.`,
+      );
     });
   }
 
@@ -1687,6 +1774,22 @@ export class BattleScene extends Phaser.Scene {
           : `${actor.name} is out of moves — strike a foe, use a skill, or End Turn (Space/W).`,
       );
     }
+    // Per-step trap read (D12): the unit may sense a hidden enemy trap and stop short,
+    // or blunder onto one it missed. Truncate the click's route to what it actually
+    // walks; a trap it already spotted halts it short (you don't step onto one you see).
+    const spot = spotWhileMoving(actor, r.path, this.battle.entities, this.spotRng);
+    const walked = spot.path;
+    if (walked.length === 0) {
+      if (spot.spotted) this.redrawTrapMarkers();
+      return this.setHint(
+        `${actor.name} ${spot.spotted ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
+          `(${ICON.trapArmed.glyph}) — route around it, Disarm it, strike, or End Turn.`,
+      );
+    }
+    // The walked route ends on a tile from the original reach, so its weighted cost is
+    // exactly the reach cost to that halt tile (a tarpit ring costs extra to enter, D42).
+    const halt = walked[walked.length - 1];
+    const cost = this.reachByKey.get(`${halt.col},${halt.row}`)?.cost ?? r.cost;
     const hpBefore = actor.hp;
     this.busy = true;
     this.armedSkill = null;
@@ -1694,11 +1797,12 @@ export class BattleScene extends Phaser.Scene {
     this.highlightTile(null);
     this.hoverTile = null;
     this.armedAim = null;
-    this.battle.moveUnit(actor, r.path);
+    this.battle.moveUnit(actor, walked);
     this.movedThisTurn = true;
-    this.moveBudget -= r.cost;
-    this.animateMove(actor, r.path, () => {
+    this.moveBudget -= cost;
+    this.animateMove(actor, walked, () => {
       this.checkTrapSprings();
+      if (spot.spotted) this.redrawTrapMarkers(); // a sensed trap — draw its fresh marker
       this.refreshHud();
       if (!actor.alive || this.encounterDecided()) {
         this.busy = false;
@@ -1706,6 +1810,10 @@ export class BattleScene extends Phaser.Scene {
       }
       if (actor.hp < hpBefore) this.turnLocked = true; // a trap bit — the move stands
       this.afterActionContinue(actor);
+      // Override the generic turn hint when the unit balked at a freshly-sensed trap.
+      if (spot.spotted && this.waitingFor === actor && !this.over) {
+        this.setHint(`${actor.name} senses a hidden trap (${ICON.trapArmed.glyph}) and stops short — Disarm it, strike, or End Turn.`);
+      }
     });
   }
 

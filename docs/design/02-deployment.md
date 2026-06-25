@@ -29,48 +29,61 @@ Combat** (see [action-economy](systems/action-economy.md)). Player units take re
 turns — **move**, **Dig In**, or **place** a field entity — and the board is shaped
 by **two radial influence sources**, measured in orthogonal steps:
 
-- **Your campfire** — a home-edge anchor whose **safe radius** scales with the
-  party's total combat **presence** (a sturdier party intimidates further out).
+- **Your campfire** — a home-edge anchor projecting a small **protected core** where
+  units are **capture-immune**. Its radius scales with the party's total combat
+  **presence** (a sturdier party holds more ground) but is **capped to the board's
+  width** (`PROTECT_MAP_DIVISOR`), so the core stays a tight pocket on a small map and
+  only opens up on larger ground — it never blankets the field.
 - **The enemy's danger source** — a single actor on the deployment clock that starts
   with no reach and **grows one step on each of its turns**. The danger **overrides**
-  the campfire, so a growing enemy radius **eats into your safe ground** — your
-  territory shrinks turn by turn.
+  the campfire: when the net reaches a unit sitting in your protected core it **can't
+  grab them** (the core is immune) — the contact just **trips the alarm and starts the
+  battle, nobody taken** (a *breach*, the soft consequence).
+
+> **There is no free ground.** Outside the protected core the whole board is a danger
+> zone — **neutral** open ground carries a real (if lower) capture risk, and the
+> **net** is near-guaranteed. Safety is something the campfire *carves out*, not the
+> board's default.
 
 ```
-   CAMP ★░░░░  Safe        (inside the campfire, not yet reached — ~0%)
-        ░░░░░  Exposed     (neutral ground — safe for now)
+   CAMP ★▓▓░░  Safe core   (campfire-protected — capture-IMMUNE; net contact only breaches)
+        ░░░░░  Neutral     (open ground — a real, lower capture risk: NO free ground)
         ▒▒▒▒▒  Warning     (the ring the net takes next turn)
-   ENEMY█████★ Danger      (inside the enemy radius — rolls capture)
+   ENEMY█████★ The net     (near-guaranteed capture for anyone but an infiltrator)
 ```
 
-**Capture is rolled only on the net's turn** — never per player turn — for every unit
-inside the danger radius, **deepest first**. The per-tile odds scale with how deep a
-unit sits inside the radius (capped, so even a surrounded unit is never a sure loss),
-and the party's **last un-captured fighter is never netted**. The **first** catch
-raises the alarm and Combat begins; if the net overruns the last safe tile with
-nobody caught, Combat begins anyway.
+**Capture is rolled only on the net's turn** — never per player turn — for every
+**unprotected** unit (neutral *or* netted), **deepest first**; the protected core is
+exempt. The net's rate is **near-guaranteed** (`FRONT_DANGER`); neutral ground is a
+lower flat rate (`NEUTRAL_DANGER`). The party's **last un-captured fighter is never
+netted**. The **first** catch raises the alarm and Combat begins; if no one is caught
+but the net has **reached the protected core** (or overrun the last safe tile), Combat
+begins anyway — with **nobody taken**.
 
 A unit may **Dig In**: hunker on its tile for a **sharply reduced** capture chance,
 at the cost of its turn (moving breaks the stance). Or simply **hold safe ground** —
 place nothing, take zero risk, be ready when Combat starts. Deployment is opt-in per
 unit: *range forward (more setup, more risk)* vs. *hold / dig in (safe, less setup)*.
 
-Two stats drive the gamble (see [Stats](systems/stats.md)):
+What shapes the gamble (see [Stats](systems/stats.md)):
 
-| Stat | Role in Deployment |
+| Lever | Role in Deployment |
 |---|---|
-| **Awareness** | **Safety.** Widens your safe radius (folded with morale + intel in `deployMods`), so you can place further forward before the net reaches you. |
-| **Speed** | **Throughput.** Capture is on the *net's* clock, so a faster party earns **more positioning turns between net-closings** — more setup for the same risk. (Also the unit's Combat CT stat.) |
+| **Presence** (party) | **Territory.** A unit's attack + defense + a tenth of its HP; the party's sum sizes the campfire's **protected core** (capped to the board). A heavier party — the trade-off for fewer fast infiltrators — holds *more guaranteed-safe ground* to position and prep within. |
+| **Awareness** (unit) | **Eyes.** Spots concealed enemy traps (D12) and feeds the intel read; it doesn't itself enlarge the core. |
+| **Speed** (unit) | **Throughput.** Capture is on the *net's* clock, so a faster party earns **more positioning turns between net-closings** — more setup for the same risk. (Also the unit's Combat CT stat.) |
 
-High party **morale** widens the safe radius (confident troops set up bolder) — see
-[morale](systems/morale.md). And a **Tier-3 [intel](systems/intel.md)** read, plus
-scouted ground (D10), further widens it — so investing in intel makes ranging out
-safer, a deliberate cross-reinforcement of the prep systems.
+High party **morale** and a **scouted / [intel](systems/intel.md)** read now **trim the
+capture risk on neutral (open) ground** (the `exposureMultiplier`, folded in `deployMods`)
+rather than enlarging the immune core — so a confident, well-scouted party can **range out
+of the core more safely** (D8/D10). The net's own rate is untouched: once the net is on
+you, only dig-in and an infiltrator's evasion help.
 
 ### Capture — the cost of overreach
 
-If a retreat-step roll fails, the unit is **captured** (and is **repositioned into
-the enemy's safe zone** to start the battle). A captured unit:
+When a capture roll lands on the net's turn (only for an **unprotected** unit — neutral
+or netted), the unit is **captured** (and is **repositioned into the enemy's safe zone**
+to start the battle). A captured unit:
 
 - still **appears on the battlefield**, but **bound/guarded** under enemy control;
 - does **not** count toward your **active fielded count** (effective **−1**);
@@ -128,15 +141,16 @@ seed** for both sides.
 
 > The canyon map from Pre-deployment loads. The party has `2 × trap kit`,
 > `1 × fire-rune reagent`, and Vale's arrows already on her. A sturdy party, so the
-> **campfire's safe radius reaches the canyon mouth**; the enemy danger source starts
-> cold at the far edge.
+> **campfire's protected core** gives a solid pocket of staging ground; the enemy
+> danger source starts cold at the far edge.
 >
-> 1. **Bram** (Survivalist) spends his turns inside the safe ring, planting **both
->    trap kits** on the chokepoint tiles. No risk taken — the net hasn't reached him.
-> 2. **Vale** (Scout, **high Speed**) uses her extra positioning turns to range
->    **forward of the fire**, near the enemy approach, and **place the fire rune** on
->    a deep tile. The board flags that tile **Warning** — the net takes it next turn.
->    The player gambles for the value and leaves her there.
+> 1. **Bram** (Survivalist) spends his turns inside the protected core, planting **both
+>    trap kits** at its forward edge. No risk taken — the core is **capture-immune**.
+> 2. **Vale** (Scout, **high Speed**) uses her extra positioning turns to range **out of
+>    the core into open ground**, near the enemy approach, and **place the fire rune** on
+>    a deep tile — accepting the **neutral-ground capture risk** for the value (a Scout's
+>    evasion softens it). The board flags her tile **Warning** — the net takes it next
+>    turn. The player gambles and leaves her there.
 > 3. The clock steps to the **net's turn**: the danger radius grows over Vale's tile
 >    and rolls capture. ✗ — **Vale is netted**, bound on the map, and the **alarm
 >    goes up**.
@@ -150,13 +164,16 @@ seed** for both sides.
 ## Open questions / future scope
 
 - Exposure model is **resolved + built** (D63 — the closing net; supersedes the
-  never-built D11 retreat-race): two radial sources on the CT clock (campfire safe
-  radius sized by presence vs. an enemy danger source that grows one step per net
-  turn and overrides the campfire); capture rolled **on the net's turn**, deepest
-  first, banded and capped, last fighter spared; **Dig In** for a reduced chance;
-  Awareness/morale/intel widen the safe radius, Speed buys more positioning turns.
-  Only the radius/growth/capture-curve numbers are tuning. **Architecture:**
-  Deployment is being unified into `Battle` as a true phase — see the
+  never-built D11 retreat-race): two radial sources on the CT clock — a campfire
+  **protected core** (capture-immune, presence-sized, **capped to board width**) vs. an
+  enemy danger source that grows one step per net turn. **There is no free ground:**
+  capture is rolled **on the net's turn** for every *unprotected* unit (neutral ground a
+  flat lower rate, the net near-guaranteed), deepest first, last fighter spared; **Dig In**
+  and an infiltrator's evasion reduce it, and morale/intel trim the *neutral* rate
+  (`exposureMultiplier`). The net reaching the protected core **breaches** (combat starts,
+  nobody taken) — the soft consequence vs. capture out in the open. Only the
+  radius/cap/growth/rate numbers are tuning. **Architecture:** Deployment is being unified
+  into `Battle` as a true phase — see the
   [unification plan](../../scratchpad/foundations/deployment-combat-unification-plan.md).
 - Enemy-prep symmetry is **resolved** (D12): A3 fortified-encounter type;
   Intel/Awareness-gated detection; Act-cost disarm or route-around; the Snare drags

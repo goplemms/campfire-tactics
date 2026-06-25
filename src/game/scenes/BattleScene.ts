@@ -38,6 +38,7 @@ import {
   resolveFrontTurn,
   inDangerZone,
   inSafeZone,
+  isProtected,
   stepDistance,
   deployForecast,
   // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
@@ -441,10 +442,11 @@ export class BattleScene extends Phaser.Scene {
     // the front share one deployment CT clock, so a quick party earns more positioning
     // turns between net-closings. (Dig-in is unit state now, reset at staging.)
     const enemies = this.battle.units.filter((u) => u.side === "enemy");
-    // The campfire's safe radius comes from party presence (D63), widened by the
-    // morale/intel deploy edge (D8/D10) — a confident, well-scouted camp holds more.
+    // The campfire's protected (capture-immune) core comes from party presence and is
+    // capped to the board width (D-feel) — a small map keeps a tight core. The morale/
+    // intel deploy edge (D8/D10) now trims the *neutral* capture rate instead of widening
+    // the immune zone (see deployMods().exposureMultiplier, threaded into the net rolls).
     this.campfire = createCampfire(this.grid, this.battle.units);
-    this.campfire.radius += this.deployMods().safeDepthBonus;
     this.front = createFront(this.grid, enemies);
     this.deployClock = new DeployClock(this.battle.units, this.front);
     this.deployClock.seed();
@@ -517,8 +519,11 @@ export class BattleScene extends Phaser.Scene {
    * begins anyway. Otherwise the clock rests on the player until the next Advance.
    */
   private runFrontTurn(): void {
-    // resolveFrontTurn reads each unit's dugIn stance by default (D63).
-    const out = resolveFrontTurn(this.front, this.battle.units, this.deployRng);
+    // resolveFrontTurn reads each unit's dugIn stance by default (D63); the morale/intel
+    // deploy edge rides in as the neutral-capture multiplier (D8/D10).
+    const out = resolveFrontTurn(this.front, this.campfire, this.battle.units, this.deployRng, {
+      exposureMultiplier: this.deployMods().exposureMultiplier,
+    });
     this.deployClock.spendFront();
     this.deployActor = null;
     this.clearActionButtons();
@@ -546,7 +551,11 @@ export class BattleScene extends Phaser.Scene {
     }
     if (stage.kind === "overrun") {
       this.busy = true;
-      this.setHint("The enemy has overrun the camp — battle begins!");
+      // Either the net reached the protected core (a breach — nobody taken) or it
+      // swallowed the last safe tile; both start the battle with the party where it stands.
+      this.setHint(out.breached
+        ? "The net reaches your camp — the alarm goes up, battle begins!"
+        : "The enemy has overrun the camp — battle begins!");
       this.time.delayedCall(800, () => {
         this.busy = false;
         this.startBattle();
@@ -761,10 +770,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Paint the two influence zones (D63): green safe ground (inside the campfire,
-   * not yet reached by the enemy), red danger (inside the enemy radius), and an
-   * amber telegraph on the ring about to fall next turn. Party-wide — drawn only
-   * when the sources actually change (enter / front turn), never per unit.
+   * Paint the influence zones (D63 / D-feel): green **safe** core (campfire-protected,
+   * capture-immune), a faint **neutral** wash on open ground (unprotected — a real,
+   * lower capture risk, so it reads as mild danger, not free space), red **danger**
+   * inside the net, and an amber telegraph on the ring about to fall next turn.
+   * Party-wide — drawn only when the sources change (enter / front turn), never per unit.
    */
   private drawZones(): void {
     if (!this.safeZoneGfx) {
@@ -790,6 +800,11 @@ export class BattleScene extends Phaser.Scene {
             // The ring about to fall next turn — a warning telegraph in amber.
             this.fillTileDiamond(this.dangerZoneGfx, t, COLOR.accent, 0.22);
             break;
+          case "neutral":
+            // Open ground — unprotected, so a real (if lower) capture risk: a faint
+            // danger wash so it never reads as free, safe space (D-feel).
+            this.fillTileDiamond(this.dangerZoneGfx, t, COLOR.danger, 0.1);
+            break;
           case "safe":
             this.fillTileDiamond(this.safeZoneGfx, t, COLOR.successDeep, 0.28);
             break;
@@ -804,12 +819,16 @@ export class BattleScene extends Phaser.Scene {
     this.refreshAuras();
   }
 
-  /** Which deployment band a walkable tile falls in (drives both fill and outline). */
-  private zoneOf(t: GridCoord): "danger" | "warning" | "safe" | "none" {
+  /**
+   * Which deployment band a walkable tile falls in (drives both fill and outline). The
+   * green **safe** core is capture-immune; **neutral** open ground is a real (lower)
+   * capture risk — there is no free ground — and the **danger** net is near-guaranteed.
+   */
+  private zoneOf(t: GridCoord): "danger" | "warning" | "safe" | "neutral" {
     if (inDangerZone(t, this.front)) return "danger";
-    if (stepDistance(t, this.front.origin) === this.front.radius + 1) return "warning";
     if (inSafeZone(t, this.campfire, this.front)) return "safe";
-    return "none";
+    if (stepDistance(t, this.front.origin) === this.front.radius + 1) return "warning";
+    return "neutral";
   }
 
   /**
@@ -1611,12 +1630,13 @@ export class BattleScene extends Phaser.Scene {
       "  1–9 — use the active unit's skills          Esc — cancel target / Undo Move",
       "  T — danger zone     F — animation speed     L — this legend",
       "",
-      "DEPLOYMENT (the closing net): green = your campfire's safe ground (wider with",
-      "  a stronger party); red = the enemy's danger, growing each time it acts (amber",
-      "  = the ring about to fall). On a unit's turn: move to pull back, Dig In to",
-      "  hunker (far safer), or set a trap — then End Turn (Space). Between turns press",
-      "  Advance Clock (Space) to let the danger grow. A unit caught inside it may be",
-      "  captured — the first capture raises the alarm and the battle begins.",
+      "DEPLOYMENT (the closing net): green = your camp's safe core — no capture there",
+      "  (wider with a stronger party, capped on small maps). Faint-red open ground is",
+      "  risky; the solid-red net (grows each time it acts, amber = falls next turn) is",
+      "  near-certain capture. On a unit's turn: pull back into the core, Dig In to hunker,",
+      "  or set a trap — then End Turn (Space); Advance Clock (Space) grows the net. A unit",
+      "  caught in the open or the net is captured (the alarm begins the battle); if the",
+      "  net reaches your safe core, the battle just starts — nobody is taken.",
     ].join("\n");
     this.legend.push(
       this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.btnStroke).setDepth(30),
@@ -2203,11 +2223,11 @@ export class BattleScene extends Phaser.Scene {
    */
   private refreshCampText(): void {
     const r = campReadout(this.run);
-    // Attribute morale to its *effect* here (D-UX): in Deployment morale widens the
-    // safe radius, so the otherwise-inert tier reads as "High (+1 safe)" — off-focus,
-    // but its mechanical pull is legible where it lands rather than as a bare stat.
-    const mb = this.phase === "deployment" ? this.moraleMods().safeDepthBonus : 0;
-    const morale = mb > 0 ? `${r.moraleTier} (+${mb} safe)` : r.moraleTier;
+    // Attribute morale to its *effect* here (D-UX): in Deployment high morale trims the
+    // capture risk on open (neutral) ground, so the otherwise-inert tier reads as
+    // "High (−20% open risk)" — its mechanical pull legible where it lands, not a bare stat.
+    const em = this.phase === "deployment" ? this.moraleMods().exposureMultiplier : 1;
+    const morale = em < 1 ? `${r.moraleTier} (−${Math.round((1 - em) * 100)}% open risk)` : r.moraleTier;
     this.campCard.set(`Camp · Night ${this.run.night + 1}`, [
       { label: "Morale", value: morale },
       { label: "Purse", value: `${r.purse}g` },
@@ -2235,23 +2255,25 @@ export class BattleScene extends Phaser.Scene {
     if (job) rows.push({ label: "Role", value: `${job.name} L${jobLevelOf(actor, primaryJobOf(actor))}`, color: INK.secondary });
     if (this.phase === "deployment") {
       const dug = actor.dugIn === true;
-      const inDanger = this.front && inDangerZone(actor.pos, this.front);
-      const safe = this.front && this.campfire && inSafeZone(actor.pos, this.campfire, this.front);
-      const band = actor.captured ? "Captured" : inDanger ? "In danger" : dug ? "Dug in" : safe ? "Safe" : "Exposed";
-      const bandColor = actor.captured || inDanger ? INK.danger : safe || dug ? INK.success : INK.muted;
+      const protectedHere = !!this.campfire && isProtected(actor.pos, this.campfire);
+      const inNet = !!this.front && inDangerZone(actor.pos, this.front);
+      const band = actor.captured ? "Captured" : protectedHere ? "Safe" : inNet ? "In the net" : dug ? "Dug in" : "Exposed";
+      // Protected ground is genuinely safe (green); the net is near-certain capture;
+      // open ground is a real risk now, so "Exposed" reads as a warning, not neutral.
+      const bandColor = actor.captured || inNet ? INK.danger : protectedHere || dug ? INK.success : INK.ember;
       rows.push({ label: "Position", value: band, color: bandColor });
-      if (inDanger && this.front && !actor.captured) {
+      if (!actor.captured && protectedHere) {
+        rows.push({ label: "Capture risk", value: "safe in camp", color: INK.success });
+      } else if (!actor.captured && this.front && this.campfire) {
         // Hot decision: forecast each choice's capture risk (D48 route-forecast ethos),
         // so the card answers "what should this unit do *now*", not just "how bad is it".
         // Repositioning is only on the table before the unit has moved this turn.
         const reach = this.deployMoved ? [] : reachableTiles(actor, this.battle.units, this.grid, moveBudget(actor)).map((r) => r.tile);
-        const fc = deployForecast(actor, this.front, reach, { dugIn: dug });
+        const fc = deployForecast(actor, this.campfire, this.front, reach, { dugIn: dug, exposureMultiplier: this.deployMods().exposureMultiplier });
         const pct = (n: number) => `${Math.round(n * 100)}%`;
         rows.push({ label: "Hold", value: pct(fc.hold), color: INK.danger, emphasize: true });
         if (fc.digIn !== null) rows.push({ label: "Dig in", value: pct(fc.digIn), color: INK.success });
         if (fc.move !== null) rows.push({ label: "Move", value: fc.move <= 0 ? "safe" : pct(fc.move), color: INK.success });
-      } else if (!actor.captured) {
-        rows.push({ label: "Capture risk", value: dug ? "low (dug in)" : safe ? "none" : "if net reaches", color: bandColor });
       }
     } else {
       rows.push({ label: "Move left", value: `${this.moveBudget}`, color: this.moveBudget > 0 ? INK.secondary : INK.muted });

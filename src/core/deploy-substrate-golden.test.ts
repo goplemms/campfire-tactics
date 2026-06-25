@@ -11,7 +11,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 import { describe, it, expect } from "vitest";
-import { DeployClock, createFront, resolveFrontTurn } from "./deployment";
+import { DeployClock, createFront, createCampfire, resolveFrontTurn } from "./deployment";
 import { Rng } from "./rng";
 import { TileGrid } from "./grid";
 import { reachableTiles } from "./ai";
@@ -43,6 +43,7 @@ function deployTrace(): string[] {
     unit("cob", "player", { col: 2, row: 2 }, 6),
   ];
   const front = createFront(grid, [unit("ogre", "enemy", { col: 7, row: 2 }, 12)]);
+  const camp = createCampfire(grid, party);
   const clock = new DeployClock(party, front);
   const rng = new Rng(7); // one shared stream, like the battle's RNG seam
   const trace: string[] = [];
@@ -50,7 +51,7 @@ function deployTrace(): string[] {
   for (let i = 0; i < 24; i++) {
     const t = clock.next();
     if (t.isFront || !t.unit) {
-      const out = resolveFrontTurn(front, party, rng);
+      const out = resolveFrontTurn(front, camp, party, rng);
       trace.push(`FRONT r${out.advancedTo}${out.captured ? ` caught ${out.captured.id}` : ""}`);
       clock.spendFront();
       if (out.alarm) break; // first catch raises the alarm → combat begins
@@ -67,18 +68,7 @@ describe("D67 increment 0 — deployment substrate characterization (golden)", (
     expect(deployTrace()).toMatchInlineSnapshot(`
       [
         "bram",
-        "FRONT r1",
-        "bram",
-        "vale",
-        "bram",
-        "cob",
-        "FRONT r2",
-        "vale",
-        "bram",
-        "bram",
-        "vale",
-        "cob",
-        "FRONT r3 caught bram",
+        "FRONT r1 caught bram",
       ]
     `);
   });

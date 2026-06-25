@@ -7,11 +7,12 @@ import { createUnit, type Unit } from "./units";
 const player = (id: string): Unit =>
   createUnit({ id, side: "player", pos: { col: 0, row: 0 }, awareness: 2, speed: 10, maxHp: 20, attack: 5, defense: 1, moveRange: 3, sightRadius: 4 });
 
-const outcome = (captured: Unit | null): FrontTurnOutcome => ({
+const outcome = (captured: Unit | null, breached = false): FrontTurnOutcome => ({
   advancedTo: 1,
   captured,
   rolled: [],
   alarm: captured !== null,
+  breached,
 });
 
 describe("frontTurnStage — what the deploy phase does after the net's turn", () => {
@@ -37,6 +38,14 @@ describe("frontTurnStage — what the deploy phase does after the net's turn", (
     const front = createFront(g, [player("e")]);
     for (let i = 0; i < 30; i++) advanceFront(front); // swallow the whole board
     expect(frontTurnStage(outcome(null), g, camp, front).kind).toBe("overrun");
+  });
+
+  it("no catch but the net reached the protected core → overrun (a breach, nobody taken)", () => {
+    const g = grid();
+    const camp = createCampfire(g, [player("a")]);
+    const front = createFront(g, [player("e")]); // radius 0 — safe ground still remains
+    // The breach flag alone starts the battle, even with safe ground left on the board.
+    expect(frontTurnStage(outcome(null, true), g, camp, front).kind).toBe("overrun");
   });
 });
 

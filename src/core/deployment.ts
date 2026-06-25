@@ -271,18 +271,34 @@ export function resolveDeployAction(
 export const FRONT_ADVANCE_PER_TURN = 1;
 /** Lean toward the fastest enemy when deriving the source's Speed (0 = avg, 1 = max). */
 export const FRONT_SPEED_LEAN = 0.5;
-/** How sharply the danger spikes the per-turn capture chance over the base curve. */
-export const FRONT_DANGER_MULTIPLIER = 3;
+/**
+ * Per-net-turn capture chance for a unit caught **inside the net** (the red zone) —
+ * "near-guaranteed for anyone who isn't an infiltrator." Only dig-in and the Scout's
+ * evasion cut it (the net is the net — confidence/scouting don't help once it's on you).
+ */
+export const FRONT_DANGER = 0.95;
+/**
+ * Per-net-turn capture chance on **neutral** ground — unprotected, but the net hasn't
+ * reached it yet. Lower than the net, but real: there is no free open ground. A
+ * confident / scouted party trims it via the morale+intel exposure multiplier.
+ */
+export const NEUTRAL_DANGER = 0.4;
 /** Fraction of the capture chance a dug-in unit faces (hunkered = hard to grab). */
 export const DIG_IN_CAPTURE_FACTOR = 0.25;
 /** Quiet Footsteps (D68): the Scout passive's capture-chance multiplier — it slips the net. */
 export const QUIET_FOOTSTEPS_CAPTURE_FACTOR = 0.5;
 /** Dash's transient capture cut (D68): an extra multiplier while a quiet unit is Swift (darting deep). */
 export const DASH_CAPTURE_FACTOR = 0.5;
-/** Base safe radius (steps) the campfire grants before any presence bonus. */
+/** Base **protected** radius (steps): the capture-immune green core around the campfire. */
 export const SAFE_BASE_RADIUS = 2;
-/** Party presence per extra step of campfire safe radius. */
+/** Party presence per extra step of protected radius (a sturdier party holds more ground). */
 export const SAFE_POWER_PER_STEP = 20;
+/**
+ * Caps the protected radius to a fraction of the board's width, so the green core can't
+ * blanket a small map (the original "safe range is huge on small maps" complaint). A
+ * floor of {@link SAFE_BASE_RADIUS} keeps even the tightest board playable.
+ */
+export const PROTECT_MAP_DIVISOR = 3;
 
 /** A unit's deployment **presence** — its intimidation weight at the campfire. */
 export function unitPresence(unit: Unit): number {
@@ -296,9 +312,20 @@ export function partyPresence(units: readonly Unit[]): number {
     .reduce((sum, u) => sum + unitPresence(u), 0);
 }
 
-/** The campfire's safe radius (steps): a base widened by the party's presence. */
+/** The campfire's protected radius (steps), uncapped: a base widened by the party's presence. */
 export function campfireRadius(units: readonly Unit[]): number {
   return Math.max(1, SAFE_BASE_RADIUS + Math.floor(partyPresence(units) / SAFE_POWER_PER_STEP));
+}
+
+/**
+ * The protected radius the campfire actually projects on `grid` — the presence-sized
+ * {@link campfireRadius}, **capped to a fraction of the board width** ({@link
+ * PROTECT_MAP_DIVISOR}) so the green core stays tight on a small map and only opens up
+ * on larger ground. Floored at {@link SAFE_BASE_RADIUS}.
+ */
+export function protectRadiusOn(grid: TileGrid, units: readonly Unit[]): number {
+  const cap = Math.max(SAFE_BASE_RADIUS, Math.floor(grid.cols / PROTECT_MAP_DIVISOR));
+  return Math.min(campfireRadius(units), cap);
 }
 
 /** A radial influence source on the board, measured in orthogonal steps. */
@@ -332,9 +359,9 @@ export function frontSpeed(enemies: readonly Unit[], lean = FRONT_SPEED_LEAN): n
   return Math.max(1, Math.round(avg + (max - avg) * lean));
 }
 
-/** The campfire anchored at the home-edge centre, sized by the party's presence. */
+/** The campfire anchored at the home-edge centre, its protected radius presence-sized and map-capped. */
 export function createCampfire(grid: TileGrid, units: readonly Unit[]): DeploySource {
-  return { origin: { col: 0, row: Math.floor((grid.rows - 1) / 2) }, radius: campfireRadius(units) };
+  return { origin: { col: 0, row: Math.floor((grid.rows - 1) / 2) }, radius: protectRadiusOn(grid, units) };
 }
 
 /** A fresh enemy danger source at the enemy-edge centre (nothing dangerous yet). */
@@ -342,18 +369,28 @@ export function createFront(grid: TileGrid, enemies: readonly Unit[], lean = FRO
   return { origin: { col: grid.cols - 1, row: Math.floor((grid.rows - 1) / 2) }, radius: 0, speed: frontSpeed(enemies, lean) };
 }
 
-/** True if `coord` is inside the enemy danger radius. */
+/** True if `coord` is inside the enemy danger radius (the net — the red zone). */
 export function inDangerZone(coord: GridCoord, front: DeploySource): boolean {
   return stepDistance(coord, front.origin) <= front.radius;
 }
 
 /**
- * True if `coord` is still safe ground: inside the campfire radius **and** not yet
- * reached by the danger source. The danger overrides the campfire, so the safe
- * zone shrinks as the enemy radius grows.
+ * True if `coord` is inside the campfire's **protected** radius — the green core where
+ * a unit is **capture-immune** (D-feel). Protection is what carves safety out of an
+ * otherwise-hostile board; everything outside it is a danger zone (neutral or net).
+ */
+export function isProtected(coord: GridCoord, camp: DeploySource): boolean {
+  return stepDistance(coord, camp.origin) <= camp.radius;
+}
+
+/**
+ * True if `coord` reads as safe ground for the overlays: protected by the campfire and
+ * **not yet reached by the net**. (A protected tile the net has lapped over no longer
+ * paints green — the contact is what ends deployment — but the unit there is still
+ * never captured; see {@link captureChanceAt}.)
  */
 export function inSafeZone(coord: GridCoord, camp: DeploySource, front: DeploySource): boolean {
-  return stepDistance(coord, camp.origin) <= camp.radius && !inDangerZone(coord, front);
+  return isProtected(coord, camp) && !inDangerZone(coord, front);
 }
 
 /** Grow the danger radius one (or `by`) steps. */
@@ -362,36 +399,41 @@ export function advanceFront(front: DeployFront, by = FRONT_ADVANCE_PER_TURN): v
 }
 
 /**
- * The per-turn capture chance for `unit`: zero unless the danger has reached it,
- * then scaling with how deep inside the radius it sits (more enemies around it) —
- * spiked by {@link FRONT_DANGER_MULTIPLIER} and slashed for a dug-in unit. Capped
- * by {@link CAPTURE_CHANCE_MAX} so even a deep, surrounded unit is never a sure loss.
+ * The per-net-turn capture chance for `unit` — the zone model (D-feel): **0** inside
+ * the campfire's protected core (capture-immune), {@link FRONT_DANGER} inside the net
+ * (near-guaranteed), {@link NEUTRAL_DANGER} on open neutral ground. Dig-in and the
+ * Scout's {@link captureEvasionFactor evasion} cut it; a confident/scouted party trims
+ * the *neutral* rate via `exposureMultiplier` (the morale+intel deploy edge, D8/D10).
  */
 export function frontCaptureChance(
   unit: Unit,
+  camp: DeploySource,
   front: DeploySource,
-  opts: { dugIn?: boolean } = {},
+  opts: { dugIn?: boolean; exposureMultiplier?: number } = {},
 ): number {
-  return captureChanceAt(unit.pos, front, { ...opts, evasion: captureEvasionFactor(unit) });
+  return captureChanceAt(unit.pos, camp, front, { ...opts, evasion: captureEvasionFactor(unit) });
 }
 
 /**
  * The capture chance at an arbitrary `coord` — the position-only core of
  * {@link frontCaptureChance}, so a forecast can score *hypothetical* tiles (where a
- * unit could step) without cloning the unit. Same maths: zero outside the danger,
- * else depth-scaled and dig-in-slashed, capped.
+ * unit could step) without cloning the unit. Protected ground is **immune** (0); the
+ * net is near-guaranteed; neutral ground is a real, lower risk. The net's rate ignores
+ * `exposureMultiplier` — once the net is on you, confidence doesn't help (only dig-in
+ * and evasion do).
  */
 export function captureChanceAt(
   coord: GridCoord,
+  camp: DeploySource,
   front: DeploySource,
-  opts: { dugIn?: boolean; evasion?: number } = {},
+  opts: { dugIn?: boolean; evasion?: number; exposureMultiplier?: number } = {},
 ): number {
-  if (!inDangerZone(coord, front)) return 0;
-  const depth = front.radius - stepDistance(coord, front.origin) + 1; // >= 1 once inside
-  let chance = Math.min(CAPTURE_CHANCE_MAX, depth * CAPTURE_PER_DEPTH * FRONT_DANGER_MULTIPLIER);
+  if (isProtected(coord, camp)) return 0; // green core — capture-immune
+  const base = inDangerZone(coord, front) ? FRONT_DANGER : NEUTRAL_DANGER * (opts.exposureMultiplier ?? 1);
+  let chance = base;
   if (opts.dugIn) chance *= DIG_IN_CAPTURE_FACTOR;
   if (opts.evasion !== undefined) chance *= opts.evasion;
-  return chance;
+  return Math.max(0, Math.min(1, chance));
 }
 
 /**
@@ -429,17 +471,19 @@ export interface DeployForecast {
 
 export function deployForecast(
   unit: Unit,
+  camp: DeploySource,
   front: DeploySource,
   reachable: readonly GridCoord[] = [],
-  opts: { dugIn?: boolean } = {},
+  opts: { dugIn?: boolean; exposureMultiplier?: number } = {},
 ): DeployForecast {
   const dugIn = opts.dugIn ?? unit.dugIn === true;
   const evasion = captureEvasionFactor(unit);
-  const hold = captureChanceAt(unit.pos, front, { dugIn, evasion });
-  const digIn = dugIn ? null : captureChanceAt(unit.pos, front, { dugIn: true, evasion });
+  const exposureMultiplier = opts.exposureMultiplier;
+  const hold = captureChanceAt(unit.pos, camp, front, { dugIn, evasion, exposureMultiplier });
+  const digIn = dugIn ? null : captureChanceAt(unit.pos, camp, front, { dugIn: true, evasion, exposureMultiplier });
   let best: number | null = null;
   for (const coord of reachable) {
-    const risk = captureChanceAt(coord, front, { dugIn: false, evasion });
+    const risk = captureChanceAt(coord, camp, front, { dugIn: false, evasion, exposureMultiplier });
     if (best === null || risk < best) best = risk;
   }
   const move = best !== null && best < hold ? best : null;
@@ -456,14 +500,22 @@ export interface FrontTurnOutcome {
   rolled: Unit[];
   /** True if a capture raised the alarm (combat should begin). */
   alarm: boolean;
+  /**
+   * True when **no one was captured** but the net has reached a unit sitting in the
+   * **protected** core (D-feel): the green is capture-immune, so the contact can't
+   * grab anyone — it just trips the alarm and starts the battle (the soft consequence).
+   */
+  breached: boolean;
 }
 
 /**
  * Resolve the enemy source's turn (D63): grow the danger radius one step, then roll
- * capture for every player unit inside it — deepest (closest to the source) first.
- * The party's **last un-captured fighter is never caught**, and the **first** catch
- * stops the rolls and raises the alarm. All rolls take the seeded `rng`, so the
- * whole turn is reproducible.
+ * capture for every **unprotected** player unit (neutral or netted) — deepest (closest
+ * to the source) first; the campfire's protected core is immune. The party's **last
+ * un-captured fighter is never caught**, and the **first** catch stops the rolls and
+ * raises the alarm. If no one is caught but the net has reached a protected unit, the
+ * turn comes back **breached** (combat starts, nobody taken). All rolls take the seeded
+ * `rng`, so the whole turn is reproducible.
  *
  * This **decides** the catch; it no longer binds the unit itself — the caller
  * applies the capture through the one interpreter ({@link "./turn".Battle.apply}'s
@@ -472,15 +524,20 @@ export interface FrontTurnOutcome {
  */
 export function resolveFrontTurn(
   front: DeployFront,
+  camp: DeploySource,
   units: readonly Unit[],
   rng: Rng,
-  opts: { dugIn?: (u: Unit) => boolean; by?: number } = {},
+  opts: { dugIn?: (u: Unit) => boolean; by?: number; exposureMultiplier?: number } = {},
 ): FrontTurnOutcome {
   advanceFront(front, opts.by ?? FRONT_ADVANCE_PER_TURN);
   const isDugIn = opts.dugIn ?? ((u: Unit) => u.dugIn === true);
+  const exposureMultiplier = opts.exposureMultiplier;
 
-  const exposed = units
-    .filter((u) => u.side === "player" && u.alive && !u.captured && inDangerZone(u.pos, front))
+  const players = units.filter((u) => u.side === "player" && u.alive && !u.captured);
+  // Capture rolls are for the **unprotected** — neutral or netted; the green core is
+  // immune. Deepest (closest to the source) first, so the most-exposed is grabbed first.
+  const exposed = players
+    .filter((u) => !isProtected(u.pos, camp))
     .sort(
       (a, b) =>
         stepDistance(a.pos, front.origin) - stepDistance(b.pos, front.origin) ||
@@ -494,13 +551,16 @@ export function resolveFrontTurn(
   for (const u of exposed) {
     if (remaining <= 1) break; // never catch the party's last fighter
     rolled.push(u);
-    if (rng.chance(frontCaptureChance(u, front, { dugIn: isDugIn(u) }))) {
+    if (rng.chance(frontCaptureChance(u, camp, front, { dugIn: isDugIn(u), exposureMultiplier }))) {
       captured = u;
       remaining -= 1;
       break; // first catch raises the alarm → combat begins
     }
   }
-  return { advancedTo: front.radius, captured, rolled, alarm: captured !== null };
+  // No catch, but the net has lapped over a protected unit → it can't be grabbed, but
+  // the contact trips the alarm (combat starts, nobody taken) — the soft consequence.
+  const breached = captured === null && players.some((u) => isProtected(u.pos, camp) && inDangerZone(u.pos, front));
+  return { advancedTo: front.radius, captured, rolled, alarm: captured !== null, breached };
 }
 
 /** True while any walkable tile is still safe ground (else the danger has overrun). */

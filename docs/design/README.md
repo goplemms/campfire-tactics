@@ -148,6 +148,14 @@ reference them rather than re-explain:
   diegetic **grant seam** for acquiring jobs and triggering prestige, a symmetric tree (power
   attaches to *story*, not tier), and **emergent** combat/non-combat (decision D65).
 
+## The demo expedition
+
+- **[The Hollow Mill](expedition-hollow-mill.md)** — the framework's first authored
+  expedition, redesigned as a **mechanics-teaching vertical slice** (D44/D52). Codifies
+  the locked topology, each node's **teaching goal**, the recruit economy
+  (Cook/Medic/Merchant), and a running **route-change / feel-pass log**. The data lives
+  in [`src/core/hollow-mill.ts`](../../src/core/hollow-mill.ts); this doc is the intent.
+
 ## One run, end to end (pseudo-example)
 
 > A full, beat-by-beat annotated playthrough lives in

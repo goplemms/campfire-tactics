@@ -103,4 +103,9 @@ export class MiniCard extends Phaser.GameObjects.Container {
     this.setVisible(false);
     return this;
   }
+
+  /** The card's bottom edge in scene space (origin-top bg) — lets a sibling card dock just below it. */
+  bottomY(): number {
+    return this.y + this.bg.height;
+  }
 }

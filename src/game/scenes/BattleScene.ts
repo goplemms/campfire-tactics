@@ -11,6 +11,7 @@ import {
   moveBudget,
   isImmobilized,
   inAttackRange,
+  computeDamage,
   refreshAuras,
   isAdjacent,
   TileGrid,
@@ -39,6 +40,8 @@ import {
   inDangerZone,
   inSafeZone,
   isProtected,
+  captureChanceAt,
+  captureEvasionFactor,
   stepDistance,
   deployForecast,
   // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
@@ -206,8 +209,12 @@ export class BattleScene extends Phaser.Scene {
   /** Active-unit focus card (left, the decision zone) + the peripheral camp-state card. */
   private focusCard!: MiniCard;
   private campCard!: MiniCard;
-  /** The armed-ability **forecast box** (D64) — docked under the focus card, shown only while a skill is armed. */
-  private forecastCard!: MiniCard;
+  /**
+   * The docked **preview card** — the "before you commit" read (docked just under the
+   * focus card): the armed-ability forecast (D64), or, on hover, the move-tile (cost +
+   * tiles left), the enemy (deal + hits-back), or the deploy-tile (capture risk).
+   */
+  private previewCard!: MiniCard;
   /** Initiative rail collapse (D-UX): show the soonest few, chevron to reveal the rest. */
   private static readonly RAIL_COLLAPSED = 3;
   private railExpanded = false;
@@ -271,6 +278,10 @@ export class BattleScene extends Phaser.Scene {
   private reachByKey = new Map<string, ReturnType<typeof reachableTiles>[number]>();
   /** The tile under the cursor whose route is lit (FE path read), or null. */
   private hoverTile: GridCoord | null = null;
+  /** The enemy under the cursor (Battle) — drives the attack preview (deal / hits-back). */
+  private hoverFoe: Unit | null = null;
+  /** The walkable tile under the cursor (Deployment) — drives the capture-risk preview. */
+  private deployHoverTile: GridCoord | null = null;
   /** While a skill is armed: the hovered/aimed tile that drives its footprint + forecast box (D64). */
   private armedAim: GridCoord | null = null;
   /** Animation speed multiplier for moves (F cycles 1×/2×/4×) — playtest pacing (D55). */
@@ -329,9 +340,10 @@ export class BattleScene extends Phaser.Scene {
     // Left column = "you" (the decision zone): the active-unit focus card. Camp-state —
     // passive reference — is tucked top-right, clear below the Tips chip.
     this.focusCard = new MiniCard(this, 8, 82, { w: 150, hp: true }).hide();
-    // The armed-ability forecast box (D64) — docked just under the focus card, surfaced
-    // only while a skill is armed; switches on the tagged AbilityForecast kind.
-    this.forecastCard = new MiniCard(this, 8, 184, { w: 150 }).hide();
+    // The preview card — docked just under the focus card (repositioned per refresh so it
+    // never overlaps a tall card). Surfaces the armed-ability forecast (D64) or, on hover,
+    // the move-tile / enemy / deploy-tile outcome before you commit.
+    this.previewCard = new MiniCard(this, 8, 184, { w: 150 }).hide();
     this.campCard = new MiniCard(this, this.scale.width - 158, 42, { w: 150 });
     this.hintPanel = new HintPanel(this);
     // The persistent board colour key — the same component carries across phases,
@@ -481,6 +493,7 @@ export class BattleScene extends Phaser.Scene {
   private beginDeployTurn(unit: Unit): void {
     this.deployMoved = false;
     this.deployActed = false;
+    this.deployHoverTile = null;
     // Arm the shared action-log undo for the deploy turn (D63) — each move/dig-in/
     // trap becomes undoable back to the turn's start, exactly like a combat turn.
     this.battle.beginUndo();
@@ -767,6 +780,7 @@ export class BattleScene extends Phaser.Scene {
     const who = actor ? (actor.captured ? `${actor.name} captured` : `${actor.name}'s turn`) : "set up";
     this.titleText.setText(`Deployment — ${who} · reach ${reach} · safe ${safeR} · ${kits} kit${kits === 1 ? "" : "s"}`);
     this.refreshFocusCard();
+    this.refreshPreviewCard();
   }
 
   /**
@@ -1116,6 +1130,7 @@ export class BattleScene extends Phaser.Scene {
     // the unit makes becomes undoable back to this point, until the turn commits.
     this.battle.beginUndo();
     this.hoverTile = null;
+    this.hoverFoe = null;
     this.armedAim = null;
     this.recomputeReach(actor);
     // The active unit looks around — an Awareness roll may spot nearby traps (D12).
@@ -1708,16 +1723,27 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Hover routing (D60): while a player unit is waiting, light the route to the tile
-   * under the cursor (FE-style path read) and float the cursor highlight there. A
+   * Hover routing (D60): light the route to the tile under the cursor (FE-style path
+   * read) and drive the preview card. In Battle: a foe under the cursor reads as an
+   * attack preview (deal / hits-back), otherwise a reachable tile lights its route. In
+   * Deployment: the walkable tile under the cursor drives the capture-risk preview. A
    * cheap reach lookup — no pathfinding per move — so it can run every frame.
    */
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
-    if (this.phase !== "battle" || this.busy || this.over || !this.waitingFor) return;
-    if (this.bribeArmed) return;
+    if (this.busy || this.over) return;
     const tile = this.grid?.inBounds(this.worldToTile(pointer.worldX, pointer.worldY))
       ? this.worldToTile(pointer.worldX, pointer.worldY)
       : null;
+
+    // Deployment: hover a walkable tile for its capture risk (no armed-skill hover read).
+    if (this.phase === "deployment") {
+      const t = this.deployActor && !this.deployActor.captured && !this.armedSkill && tile && this.grid.isWalkable(tile) ? tile : null;
+      if ((t?.col ?? -1) === (this.deployHoverTile?.col ?? -1) && (t?.row ?? -1) === (this.deployHoverTile?.row ?? -1)) return;
+      this.deployHoverTile = t;
+      this.refreshPreviewCard();
+      return;
+    }
+    if (this.phase !== "battle" || !this.waitingFor || this.bribeArmed) return;
     // Armed (skill or herb-picked med-heal): track the aimed tile so the footprint +
     // forecast box recompute as the cursor moves (D64). The aim isn't gated by reach —
     // an out-of-range aim still telegraphs (the box can grey it); the legal-target wash
@@ -1729,11 +1755,18 @@ export class BattleScene extends Phaser.Scene {
       this.drawPreview();
       return;
     }
+    // A foe under the cursor reads as an attack preview; otherwise a reachable move tile.
+    const foe = tile
+      ? this.battle.units.find((u) => u.alive && !u.hidden && !u.captured && u.side !== this.waitingFor!.side && u.pos.col === tile.col && u.pos.row === tile.row) ?? null
+      : null;
     const reachable = tile ? this.reachByKey.get(`${tile.col},${tile.row}`) : undefined;
-    const next = reachable && reachable.path.length > 0 ? tile : null;
-    if ((next?.col ?? -1) === (this.hoverTile?.col ?? -1) && (next?.row ?? -1) === (this.hoverTile?.row ?? -1)) return;
+    const next = !foe && reachable && reachable.path.length > 0 ? tile : null;
+    const sameFoe = (foe?.id ?? "") === (this.hoverFoe?.id ?? "");
+    const sameTile = (next?.col ?? -1) === (this.hoverTile?.col ?? -1) && (next?.row ?? -1) === (this.hoverTile?.row ?? -1);
+    if (sameFoe && sameTile) return;
+    this.hoverFoe = foe;
     this.hoverTile = next;
-    this.highlightTile(next ?? this.waitingFor.pos);
+    this.highlightTile(foe ? foe.pos : next ?? this.waitingFor.pos);
     this.drawPreview();
   }
 
@@ -1884,6 +1917,7 @@ export class BattleScene extends Phaser.Scene {
     this.actCharged = false;
     this.turnLocked = false;
     this.hoverTile = null;
+    this.hoverFoe = null;
     this.armedAim = null;
     this.reach = [];
     this.reachByKey.clear();
@@ -2336,7 +2370,7 @@ export class BattleScene extends Phaser.Scene {
       this.view.clearPreview(this.preview);
       this.threatGfx.clear();
       this.refreshAuras();
-      this.forecastCard.hide();
+      this.previewCard.hide();
       return;
     }
     if (this.showThreat) this.view.drawThreatZone(this.threatGfx, this.battle.units, this.grid, "player");
@@ -2351,7 +2385,7 @@ export class BattleScene extends Phaser.Scene {
       acted: this.acted,
       hoverPath,
     });
-    this.refreshForecastCard(actor);
+    this.refreshPreviewCard();
   }
 
   /** Re-paint the persistent tarpit aura — drawn in Deployment and Battle alike (D64). */
@@ -2369,34 +2403,99 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * The armed-ability **forecast box** (D64): build a {@link ForecastCtx} from live
-   * state — the hovered target, the roster (flank-aware), the run inventory (herb
-   * gating), and camp morale — call the pure {@link forecastSkill}, and render the
-   * docked {@link MiniCard}, switching on the tagged {@link AbilityForecast} kind.
-   * Hidden when no skill is armed; recomputed every frame (HP/stacks change live).
+   * The docked **preview card** — "what happens if I commit?" — keyed to the current
+   * hover/selection. In Battle: an armed ability's forecast (D64); else the hovered
+   * enemy's deal / hits-back; else the hovered move tile's cost + tiles-left. In
+   * Deployment: the hovered tile's capture risk. Hidden when there's nothing to
+   * preview. Re-docked just under the focus card each call (so it never overlaps a tall
+   * card) and recomputed live (HP/stacks/position change as the turn unfolds).
    */
-  private refreshForecastCard(actor: Unit): void {
-    const skill = this.armedSkill;
-    if (!skill) {
-      this.forecastCard.hide();
-      return;
+  private refreshPreviewCard(): void {
+    if (this.phase === "battle") {
+      const actor = this.waitingFor;
+      if (!actor || this.busy || this.over) return void this.previewCard.hide();
+      if (this.armedSkill) return this.showAbilityForecast(actor);
+      if (this.hoverFoe && this.hoverFoe.alive && !this.hoverFoe.hidden) return this.showAttackPreview(actor, this.hoverFoe);
+      if (this.hoverTile) return this.showMovePreview(this.hoverTile);
+      return void this.previewCard.hide();
     }
+    if (this.phase === "deployment") {
+      const actor = this.deployActor;
+      if (!actor || this.busy || actor.captured || this.armedSkill || !this.deployHoverTile) return void this.previewCard.hide();
+      return this.showDeployPreview(actor, this.deployHoverTile);
+    }
+    this.previewCard.hide();
+  }
+
+  /** Show the preview card with `title`/`rows`, docked just beneath the focus card. */
+  private showPreview(title: string, rows: CardRow[], alpha = 1): void {
+    this.previewCard.set(title, rows).setPosition(8, this.focusCard.bottomY() + 6).setAlpha(alpha);
+  }
+
+  /**
+   * The armed-ability forecast (D64): build the {@link AbilityForecast} from live state
+   * and render it; an out-of-range aim still telegraphs but dims the box.
+   */
+  private showAbilityForecast(actor: Unit): void {
+    const skill = this.armedSkill;
+    if (!skill) return void this.previewCard.hide();
     const target = this.armedAim
       ? this.battle.units.find((u) => u.alive && u.pos.col === this.armedAim!.col && u.pos.row === this.armedAim!.row)
       : undefined;
-    const fc = forecastSkill(skill, actor, {
-      target,
-      units: this.battle.units,
-      inventory: this.run.inventory,
-      morale: this.run.camp.morale,
-    });
-    const rows = this.forecastRows(fc);
-    this.forecastCard.set(skill.name, rows);
-    // Range-gate the read (D64): an out-of-range aim still telegraphs its footprint,
-    // but the forecast box dims to say "not from here" — the legal-target wash shows
-    // where it *would* land. Self/party/camp skills are anchor-free (always in range).
+    const fc = forecastSkill(skill, actor, { target, units: this.battle.units, inventory: this.run.inventory, morale: this.run.camp.morale });
     const inRange = !this.armedAim || aimInRange(skill, actor, this.armedAim);
-    this.forecastCard.setAlpha(inRange ? 1 : 0.4);
+    this.showPreview(skill.name, this.forecastRows(fc), inRange ? 1 : 0.4);
+  }
+
+  /** Battle hover — a foe: the strike's expected damage, the hit-back next turn, and whether it's in reach. */
+  private showAttackPreview(actor: Unit, foe: Unit): void {
+    this.showPreview(foe.name, this.attackPreviewRows(actor, foe), inAttackRange(actor, foe) ? 1 : 0.6);
+  }
+
+  /**
+   * The deal / hits-back / range rows for hovering `foe` (D-feel). "Deal" is the strike
+   * (flank-aware); "Hits back" is the foe's expected retaliation **on its next turn** —
+   * there's no auto-counter today, but the row is the seam for a future retaliate effect.
+   */
+  private attackPreviewRows(actor: Unit, foe: Unit): CardRow[] {
+    const units = this.battle.units;
+    const deal = computeDamage(actor, foe, actor.attack, units);
+    const back = computeDamage(foe, actor, foe.attack, units);
+    const reach = inAttackRange(actor, foe);
+    const skull = (n: number, t: Unit) => (n >= t.hp ? ` ${ICON.lethal.glyph}` : "");
+    return [
+      { label: "Deal", value: `${deal}${skull(deal, foe)}`, color: deal >= foe.hp ? INK.ember : INK.danger, emphasize: true },
+      { label: "Hits back", value: `${back}${skull(back, actor)}`, color: back >= actor.hp ? INK.danger : INK.muted },
+      { label: "Range", value: reach ? "in reach" : "move adjacent", color: reach ? INK.success : INK.muted },
+    ];
+  }
+
+  /** Battle hover — a reachable tile: this step's cost, the budget left after it, and whether the Act is still up. */
+  private showMovePreview(tile: GridCoord): void {
+    const r = this.reachByKey.get(`${tile.col},${tile.row}`);
+    if (!r || r.path.length === 0) return void this.previewCard.hide();
+    const left = Math.max(0, this.moveBudget - r.cost);
+    this.showPreview("Move here", [
+      { label: "Move cost", value: `${r.cost}`, color: INK.secondary },
+      { label: "Tiles left", value: `${left}`, color: left > 0 ? INK.success : INK.muted, emphasize: true },
+      // Reinforce that one Act can still fall before/after the move (the D60 free-move turn).
+      { label: "Action", value: this.acted ? "spent" : "ready", color: this.acted ? INK.muted : INK.success },
+    ]);
+  }
+
+  /** Deployment hover — a walkable tile: its capture risk for the active unit, plus the band it sits in. */
+  private showDeployPreview(actor: Unit, tile: GridCoord): void {
+    const protectedHere = isProtected(tile, this.campfire);
+    const inNet = inDangerZone(tile, this.front);
+    const risk = captureChanceAt(tile, this.campfire, this.front, {
+      evasion: captureEvasionFactor(actor),
+      exposureMultiplier: this.deployMods().exposureMultiplier,
+    });
+    const band = protectedHere ? "Safe core" : inNet ? "In the net" : "Open ground";
+    this.showPreview("If moved here", [
+      { label: "Capture risk", value: protectedHere ? "none" : `${Math.round(risk * 100)}%`, color: protectedHere ? INK.success : inNet ? INK.danger : INK.ember, emphasize: true },
+      { label: "Zone", value: band, color: protectedHere ? INK.success : inNet ? INK.danger : INK.muted },
+    ]);
   }
 
   /** Map a tagged {@link AbilityForecast} to the forecast box's label→value rows (D64). */

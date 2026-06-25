@@ -283,6 +283,12 @@ export class BattleScene extends Phaser.Scene {
   private hoverFoe: Unit | null = null;
   /** The walkable tile under the cursor (Deployment) — drives the capture-risk preview. */
   private deployHoverTile: GridCoord | null = null;
+  /**
+   * Click-ahead (micro-movement): the latest plain board click made **while a step was
+   * animating**. Replayed the instant that step finishes ({@link processQueuedClick}),
+   * so rapid tile-by-tile clicking never drops an input. Cleared at every turn boundary.
+   */
+  private queuedTile: GridCoord | null = null;
   /** While a skill is armed: the hovered/aimed tile that drives its footprint + forecast box (D64). */
   private armedAim: GridCoord | null = null;
   /** Animation speed multiplier for moves (F cycles 1×/2×/4×) — playtest pacing (D55). */
@@ -1132,6 +1138,7 @@ export class BattleScene extends Phaser.Scene {
     this.battle.beginUndo();
     this.hoverTile = null;
     this.hoverFoe = null;
+    this.queuedTile = null;
     this.armedAim = null;
     this.recomputeReach(actor);
     // The active unit looks around — an Awareness roll may spot nearby traps (D12).
@@ -1239,6 +1246,9 @@ export class BattleScene extends Phaser.Scene {
     this.drawPreview();
     this.refreshFocusCard();
     this.setHint(this.turnHint(actor));
+    // Click-ahead: replay any board click made while this step was animating, so rapid
+    // tile-by-tile movement flows without dropping inputs (micro-movement).
+    this.processQueuedClick(actor);
   }
 
   private showSkillButtons(actor: Unit): void {
@@ -1689,7 +1699,14 @@ export class BattleScene extends Phaser.Scene {
     if (this.phase !== "battle") return;
 
     const actor = this.waitingFor;
-    if (this.over || this.busy || !actor) return;
+    if (this.over || !actor) return;
+    if (this.busy) {
+      // Click-ahead (micro-movement): while a step animates, remember the latest plain
+      // board click and replay it the instant the step finishes, so rapid tile-by-tile
+      // clicking never drops. Armed/bribe/herb targeting isn't queued (it needs a live aim).
+      if (!this.armedSkill && !this.bribeArmed && !this.pendingHerb) this.queuedTile = { col: tile.col, row: tile.row };
+      return;
+    }
     const clicked = this.battle.units.find((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row);
 
     if (this.bribeArmed) {
@@ -1717,10 +1734,34 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    this.resolveBattleClick(actor, tile);
+  }
+
+  /**
+   * Route a plain (un-armed) battle click at `tile` to the right verb — free a captured
+   * ally, strike a foe, or step toward the tile. Shared by {@link onPointerDown} and the
+   * click-ahead {@link processQueuedClick}, so a queued click replays identically.
+   */
+  private resolveBattleClick(actor: Unit, tile: GridCoord): void {
+    const clicked = this.battle.units.find((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row);
     if (clicked && clicked.captured && clicked.side === actor.side && clicked !== actor) this.playerRescue(actor, clicked);
     else if (clicked && clicked.side !== actor.side && !clicked.captured) this.playerAttack(actor, clicked);
     else if (clicked === actor) this.setHint(this.turnHint(actor)); // clicking yourself is a no-op nudge
     else if (!clicked && this.grid.isWalkable(tile)) this.playerMoveStep(actor, tile);
+  }
+
+  /**
+   * Replay a click-ahead (micro-movement): if a board click landed mid-step, run it now
+   * that the step has finished and the turn is still the same unit's. Guards against a
+   * state change in the interim (armed/bribe/herb, busy, turn ended). Chains naturally —
+   * each replayed step's completion calls back here, so a flurry of clicks plays out.
+   */
+  private processQueuedClick(actor: Unit): void {
+    const tile = this.queuedTile;
+    this.queuedTile = null;
+    if (!tile || this.busy || this.over || this.waitingFor !== actor) return;
+    if (this.armedSkill || this.bribeArmed || this.pendingHerb) return;
+    this.resolveBattleClick(actor, tile);
   }
 
   /**
@@ -1919,6 +1960,7 @@ export class BattleScene extends Phaser.Scene {
     this.turnLocked = false;
     this.hoverTile = null;
     this.hoverFoe = null;
+    this.queuedTile = null;
     this.armedAim = null;
     this.reach = [];
     this.reachByKey.clear();

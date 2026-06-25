@@ -160,6 +160,22 @@ async function main() {
               return { visible: s.previewCard.visible };
             `);
             check("preview card shows tiles-left on a move-tile hover", mv && (mv.skip || mv.visible === true));
+            // Click-ahead (micro-movement): a board click that lands mid-step is queued and
+            // replayed once the step finishes, so rapid tile-by-tile clicking never drops.
+            const qb = await g.bsEval(`
+              const a = s.waitingFor; const d = s.reach.find(r => r.path.length > 0);
+              if (!a || !d) return { skip: true };
+              const from = { col: a.pos.col, row: a.pos.row };
+              s.queuedTile = { col: d.tile.col, row: d.tile.row }; // a click that arrived mid-step
+              s.processQueuedClick(a);                              // replay it now the step finished
+              return { from, queuedCleared: s.queuedTile === null };
+            `);
+            check("a click-ahead clears the queue when replayed", qb && (qb.skip || qb.queuedCleared));
+            if (qb && !qb.skip) {
+              await sleep(300); // let the replayed step animate
+              const moved = await g.bsEval(`const a = s.waitingFor; return a ? (a.pos.col !== ${qb.from.col} || a.pos.row !== ${qb.from.row}) : false;`);
+              check("a click-ahead replays and moves the unit", moved === true);
+            }
             // Re-hover the foe so the captured frame shows the headline deal / hits-back read.
             await g.bsEval(`
               const foe = s.battle.units.find(u => u.side === "enemy" && u.alive && !u.hidden);

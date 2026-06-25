@@ -145,6 +145,14 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Micro-movement — responsive click-ahead stepping** (D-feel). The free-move turn
+  already let a unit move tile-by-tile with the Act placeable anywhere (move → act →
+  move), but a click landing during a step's ~150 ms walk animation was **dropped** (the
+  board was `busy`), so rapid tile-by-tile clicking lost inputs. Now the latest plain
+  board click made mid-step is **queued and replayed** the instant the step finishes, so
+  consecutive stepping (and a destination click during a walk) flows without dropped
+  clicks. Seam: `BattleScene.queuedTile` / `processQueuedClick` (replays through the
+  shared `resolveBattleClick`). Armed/bribe targeting isn't queued (it needs a live aim).
 - **Hover preview card — "before you commit" reads** (D-feel). A docked preview card
   (under the focus card) surfaces the outcome of whatever you point at, so a unit's
   free-move turn (move → act → move, one tile at a time) is legible: hover a **move tile**

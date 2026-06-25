@@ -145,6 +145,14 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Hover preview card — "before you commit" reads** (D-feel). A docked preview card
+  (under the focus card) surfaces the outcome of whatever you point at, so a unit's
+  free-move turn (move → act → move, one tile at a time) is legible: hover a **move tile**
+  → step cost + **tiles left** + whether the Act is still up; hover an **enemy** → **Deal**
+  + **Hits back** (its expected retaliation next turn — the seam for a future auto-retaliate
+  ability) + range; hover a **deploy tile** → its **capture risk** + zone band. Folds in the
+  D64 armed-ability forecast (one card, repositioned under the focus card). Seam:
+  `BattleScene.refreshPreviewCard`.
 - **Deployment: capture-immune core + danger everywhere** (D-feel). The campfire's old
   "safe radius" blanketed small maps and was effectively **cosmetic** (capture was driven
   only by the enemy net; neutral ground was free). Replaced with the two-consequence zone

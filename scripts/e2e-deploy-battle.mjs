@@ -70,6 +70,15 @@ async function main() {
         `return [...s.view.views.values()].filter(v => v.unit.side === "enemy" && v.unit.alive).every(v => v.container.visible === false);`,
       );
       check("enemy tokens are concealed during deployment", foeHiddenInDeploy === true);
+      // Deploy hover preview: a walkable tile reports its capture risk + zone band.
+      const dep = await g.bsEval(`
+        const a = s.deployActor; if (!a) return null;
+        s.deployHoverTile = { col: a.pos.col, row: a.pos.row }; // the spawn tile (protected core)
+        s.refreshPreviewCard();
+        return { visible: s.previewCard.visible };
+      `);
+      check("deploy hover shows the capture-risk preview", dep && dep.visible === true);
+      await g.bsEval(`s.deployHoverTile = null; s.refreshPreviewCard();`); // clear so it doesn't bleed into later stages
       await shot("deploy-opens");
 
       const startPos = st.pos;
@@ -129,7 +138,33 @@ async function main() {
         const cur = await snap();
         if (cur.phase === "resolution") { reachedResolution = true; break; }
         if (cur.waiting) {
-          if (!sawPlayerTurn) await shot("battle-player-turn"); // action row + focus card, live
+          if (!sawPlayerTurn) {
+            await shot("battle-player-turn"); // action row + focus card, live
+            // Hover preview card: an enemy reads as deal/hits-back; a reachable tile as tiles-left.
+            const atk = await g.bsEval(`
+              const foe = s.battle.units.find(u => u.side === "enemy" && u.alive && !u.hidden);
+              if (!foe) return null;
+              s.hoverFoe = foe; s.hoverTile = null; s.drawPreview();
+              const rows = s.attackPreviewRows(s.waitingFor, foe);
+              return { visible: s.previewCard.visible, labels: rows.map(r => r.label), deal: rows[0].value };
+            `);
+            check("preview card shows on enemy hover", atk && atk.visible === true);
+            check("enemy preview has Deal + Hits back rows", atk && atk.labels.includes("Deal") && atk.labels.includes("Hits back"));
+            check("enemy preview reports a concrete Deal figure", atk && /\d/.test(String(atk.deal)));
+            const mv = await g.bsEval(`
+              const r = s.reach.find(x => x.path.length > 0);
+              if (!r) return { skip: true }; // immobilized/surrounded — no move tile to preview
+              s.hoverFoe = null; s.hoverTile = r.tile; s.drawPreview();
+              return { visible: s.previewCard.visible };
+            `);
+            check("preview card shows tiles-left on a move-tile hover", mv && (mv.skip || mv.visible === true));
+            // Re-hover the foe so the captured frame shows the headline deal / hits-back read.
+            await g.bsEval(`
+              const foe = s.battle.units.find(u => u.side === "enemy" && u.alive && !u.hidden);
+              if (foe) { s.hoverFoe = foe; s.hoverTile = null; s.drawPreview(); }
+            `);
+            await shot("battle-hover-preview");
+          }
           sawPlayerTurn = true;
           await g.key(" "); // Space = End Turn while a player unit is active (D60)
         } else {

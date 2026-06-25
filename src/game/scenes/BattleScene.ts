@@ -478,12 +478,20 @@ export class BattleScene extends Phaser.Scene {
     // Arm the shared action-log undo for the deploy turn (D63) — each move/dig-in/
     // trap becomes undoable back to the turn's start, exactly like a combat turn.
     this.battle.beginUndo();
+    // The active unit looks around as it steps up — a passive Awareness scan may spot
+    // nearby traps (D12 parity with the combat turn-open). Reveal *before* the buttons
+    // render so a freshly-spotted adjacent trap surfaces its Disarm verb this turn.
+    const spotted = hiddenTraps(this.battle.entities).length > 0
+      ? revealTrapsNear(unit, this.battle.entities, this.spotRng)
+      : [];
+    if (spotted.length > 0) this.redrawTrapMarkers();
     this.selectDeployActor(unit);
     this.setPrimary("End Turn");
     const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0;
     this.setHint(
       `${unit.name}'s turn — click a tile to reposition, Dig In, or place a trap, then End Turn (Space). ` +
-        (trapsAfield ? `Enemy traps are seeded ahead (${ICON.trapArmed.glyph}) — Search to scan, or a trapper can Disarm. ` : "") +
+        (spotted.length > 0 ? `Spots ${spotted.length} hidden trap${spotted.length > 1 ? "s" : ""} (${ICON.trapArmed.glyph})! ` : "") +
+        (trapsAfield ? `Search to scan further, or a trapper can Disarm. ` : "") +
         `The enemy's reach is ${this.front.radius} step${this.front.radius === 1 ? "" : "s"} and growing.`,
     );
   }

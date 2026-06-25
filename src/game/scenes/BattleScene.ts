@@ -12,6 +12,7 @@ import {
   isImmobilized,
   inAttackRange,
   computeDamage,
+  retaliationDamage,
   refreshAuras,
   isAdjacent,
   TileGrid,
@@ -2454,13 +2455,14 @@ export class BattleScene extends Phaser.Scene {
 
   /**
    * The deal / hits-back / range rows for hovering `foe` (D-feel). "Deal" is the strike
-   * (flank-aware); "Hits back" is the foe's expected retaliation **on its next turn** —
-   * there's no auto-counter today, but the row is the seam for a future retaliate effect.
+   * (flank-aware); "Hits back" is the **auto-counter** the strike would provoke — `0`
+   * today (no riposte/thorns mechanic), via {@link retaliationDamage}, the seam a future
+   * retaliate effect plugs into. It is *not* the foe's own next turn.
    */
   private attackPreviewRows(actor: Unit, foe: Unit): CardRow[] {
     const units = this.battle.units;
     const deal = computeDamage(actor, foe, actor.attack, units);
-    const back = computeDamage(foe, actor, foe.attack, units);
+    const back = retaliationDamage(actor, foe, units);
     const reach = inAttackRange(actor, foe);
     const skull = (n: number, t: Unit) => (n >= t.hp ? ` ${ICON.lethal.glyph}` : "");
     return [

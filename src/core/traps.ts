@@ -91,6 +91,74 @@ export function revealTrapsNear(
   return found;
 }
 
+/** Per-step "sense it just in time" tuning (D12 — the deploy/combat trap-crossing roll). */
+export const STEP_SPOT = {
+  /**
+   * Added to the standard {@link spotChance} for the **imminent** (one-tile-away)
+   * step — a last-second read is easier than spotting at range, so a sharp-eyed unit
+   * reliably balks while a heedless one blunders in.
+   */
+  bonus: 0.2,
+} as const;
+
+/** The outcome of resolving a voluntary walk against concealed traps, step by step. */
+export interface MoveSpotResult {
+  /**
+   * The path the unit should **actually** walk — truncated to stop *before* a trap it
+   * sensed (or one it already knew about), or to end *on* a trap it failed to sense
+   * (which springs on entry). Equal to the input path when the walk is clear.
+   */
+  path: GridCoord[];
+  /** A hidden trap **newly revealed** by this walk (the unit sensed it just in time), else null. */
+  spotted: ConcealedTrap | null;
+  /** True when a trap cut the walk short (sensed, already-known, or stepped into) before its end. */
+  halted: boolean;
+}
+
+/**
+ * Resolve a **voluntary** walk against concealed enemy traps, one step at a time
+ * (D12). Before the unit enters each tile, if that tile hides an un-sprung enemy
+ * trap it gets a chance to *sense it just in time*:
+ *
+ * - an **already-revealed** trap halts the unit on the prior tile — no roll, you
+ *   don't knowingly step onto a trap you can see;
+ * - a **hidden** trap rolls Awareness ({@link spotChance} at one tile, plus
+ *   {@link STEP_SPOT.bonus}). On success it's **revealed** and the unit **halts**
+ *   short of it; on a **failed** roll the unit **steps in** (the tile is included, so
+ *   the caller's move springs it via the entity's `onUnitEnterTile`) and stops there.
+ *
+ * Pure: the only mutation is setting `revealed` on a sensed trap. Returns the
+ * truncated path the caller should apply — so the logged move records exactly what
+ * happened and replay needs no re-roll. Forced moves (shoves) bypass this: you can't
+ * sense-and-balk when you're being pushed.
+ */
+export function spotWhileMoving(
+  unit: Unit,
+  path: readonly GridCoord[],
+  entities: EntityRegistry,
+  rng: Rng,
+): MoveSpotResult {
+  const walked: GridCoord[] = [];
+  for (const tile of path) {
+    const trap = entities
+      .at(tile)
+      .find((e): e is ConcealedTrap => isConcealedTrap(e) && !e.sprung && e.owner !== unit.side);
+    if (trap) {
+      if (trap.revealed) return { path: walked, spotted: null, halted: true };
+      const p = Math.min(1, spotChance(unit.awareness ?? 0, trap.concealment, 1) + STEP_SPOT.bonus);
+      if (rng.chance(p)) {
+        trap.revealed = true;
+        return { path: walked, spotted: trap, halted: true };
+      }
+      // Failed the read — step onto it (this tile springs on entry) and stop there.
+      walked.push(tile);
+      return { path: walked, spotted: null, halted: true };
+    }
+    walked.push(tile);
+  }
+  return { path: walked, spotted: null, halted: false };
+}
+
 /** True if `unit` can disarm a trap — it carries a Set-Trap skill, or its job is lockpick-trained (the Thief, D68). */
 export function canDisarm(unit: Unit): boolean {
   return (

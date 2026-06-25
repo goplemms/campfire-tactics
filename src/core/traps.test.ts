@@ -16,6 +16,7 @@ import {
   disarmTrap,
   canPlacePlayerTrap,
   placePlayerTrap,
+  spotWhileMoving,
 } from "./traps";
 
 function unit(id: string, side: Side, over: Partial<Parameters<typeof createUnit>[0]> = {}): Unit {
@@ -103,6 +104,73 @@ describe("spotting — Awareness vs concealment (D11)", () => {
     r.register(a);
     r.register(b);
     expect(hiddenTraps(r).map((t) => t.id)).toEqual(["a"]);
+  });
+});
+
+describe("spotWhileMoving — the per-step 'sense it just in time' read (D12)", () => {
+  // A straight 4-tile route east from the start; an enemy trap sits on the 3rd tile.
+  const route = [{ col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }, { col: 4, row: 0 }];
+  const trapTile = { col: 3, row: 0 };
+  const always = { chance: () => true } as unknown as Rng;
+  const never = { chance: () => false } as unknown as Rng;
+
+  it("walks the whole route untouched when no trap lies on it", () => {
+    const r = reg();
+    r.register(makeConcealedTrap("off-path", { col: 3, row: 5 }, "enemy", 12, 4));
+    const scout = unit("s", "player", { pos: { col: 0, row: 0 }, awareness: 5 });
+    const out = spotWhileMoving(scout, route, r, always);
+    expect(out.path).toEqual(route);
+    expect(out.halted).toBe(false);
+    expect(out.spotted).toBeNull();
+  });
+
+  it("senses a hidden trap just in time: halts on the prior tile and reveals it", () => {
+    const r = reg();
+    const trap = makeConcealedTrap("t", trapTile, "enemy", 22, 5);
+    r.register(trap);
+    const scout = unit("s", "player", { pos: { col: 0, row: 0 }, awareness: 6 });
+    const out = spotWhileMoving(scout, route, r, always);
+    // Stops one tile short of the trap — never enters it.
+    expect(out.path).toEqual([{ col: 1, row: 0 }, { col: 2, row: 0 }]);
+    expect(out.spotted?.id).toBe("t");
+    expect(trap.revealed).toBe(true);
+    expect(out.halted).toBe(true);
+  });
+
+  it("blunders in on a failed read: steps onto the trap (which springs) and stops there", () => {
+    const r = reg();
+    const trap = makeConcealedTrap("t", trapTile, "enemy", 22, 5);
+    r.register(trap);
+    const oaf = unit("o", "player", { pos: { col: 0, row: 0 }, awareness: 1 });
+    const out = spotWhileMoving(oaf, route, r, never);
+    // The trap tile IS the last step — entering it is what springs it for the caller.
+    expect(out.path).toEqual([{ col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }]);
+    expect(out.spotted).toBeNull(); // not "spotted" — it was felt the hard way
+    expect(trap.revealed).toBe(false);
+    expect(out.halted).toBe(true);
+  });
+
+  it("stops short of an already-revealed trap with no roll at all", () => {
+    const r = reg();
+    const trap = makeConcealedTrap("t", trapTile, "enemy", 22, 5);
+    trap.revealed = true;
+    r.register(trap);
+    const scout = unit("s", "player", { pos: { col: 0, row: 0 }, awareness: 5 });
+    // A throwing rng proves no spot roll is consumed for a trap you can already see.
+    const noRoll = { chance: () => { throw new Error("rolled for a known trap"); } } as unknown as Rng;
+    const out = spotWhileMoving(scout, route, r, noRoll);
+    expect(out.path).toEqual([{ col: 1, row: 0 }, { col: 2, row: 0 }]);
+    expect(out.spotted).toBeNull();
+    expect(out.halted).toBe(true);
+  });
+
+  it("ignores a trap of the unit's own side (you don't balk at your own snares)", () => {
+    const r = reg();
+    r.register(makeConcealedTrap("mine", trapTile, "player", 22, 5));
+    const scout = unit("s", "player", { pos: { col: 0, row: 0 }, awareness: 5 });
+    const out = spotWhileMoving(scout, route, r, never);
+    expect(out.path).toEqual(route); // walked clean through
+    expect(out.halted).toBe(false);
   });
 });
 

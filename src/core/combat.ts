@@ -233,6 +233,24 @@ export function computeDamage(
 }
 
 /**
+ * The **auto-counter** damage `attacker` would take *as a direct consequence of
+ * striking* `defender` — the riposte/thorns hit that resolves with the attack, NOT the
+ * defender's own future turn. **No counter mechanic exists today, so this is 0**: a
+ * plain attack provokes no hit-back. This is the single seam such a mechanic plugs
+ * into — when a riposte passive or a "counter" status lands, read its power here and
+ * the attack preview reflects real retaliation automatically. Flank-aware via `units`.
+ */
+export function retaliationDamage(
+  attacker: Unit,
+  defender: Unit,
+  units?: readonly Unit[],
+): number {
+  // Future: e.g. defender.passives[PASSIVE.riposte] ?? statusAmount(defender, COUNTER).
+  const counter = 0;
+  return counter > 0 ? computeDamage(defender, attacker, counter, units) : 0;
+}
+
+/**
  * Ramp the attacker's Mark Prey channel after a hit (D37): a hit on the marked
  * prey adds a stack (capped); hitting a different target re-locks the mark and
  * resets the ramp. No-op for an unmarked attacker.

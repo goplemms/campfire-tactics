@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeDamage,
+  retaliationDamage,
   resolveAttack,
   battleOutcome,
   isAdjacent,
@@ -35,6 +36,15 @@ describe("combat", () => {
     const weak = unit("c", "player", { attack: 1 });
     const wall = unit("d", "enemy", { defense: 99 });
     expect(computeDamage(weak, wall)).toBe(1);
+  });
+
+  it("a plain strike provokes no auto-counter (retaliation is 0 until a mechanic lands)", () => {
+    const a = unit("a", "player", { attack: 10 });
+    const b = unit("b", "enemy", { attack: 8, defense: 1 });
+    // No riposte/thorns mechanic exists, so striking costs nothing in return — the
+    // preview's "Hits back" reads 0, distinct from the foe's own (future) turn.
+    expect(retaliationDamage(a, b)).toBe(0);
+    expect(retaliationDamage(a, b, [a, b])).toBe(0);
   });
 
   it("applies damage and emits onUnitDamaged", () => {

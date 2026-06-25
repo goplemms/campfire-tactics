@@ -146,11 +146,13 @@ async function main() {
               if (!foe) return null;
               s.hoverFoe = foe; s.hoverTile = null; s.drawPreview();
               const rows = s.attackPreviewRows(s.waitingFor, foe);
-              return { visible: s.previewCard.visible, labels: rows.map(r => r.label), deal: rows[0].value };
+              const back = rows.find(r => r.label === "Hits back");
+              return { visible: s.previewCard.visible, labels: rows.map(r => r.label), deal: rows[0].value, back: back && back.value };
             `);
             check("preview card shows on enemy hover", atk && atk.visible === true);
             check("enemy preview has Deal + Hits back rows", atk && atk.labels.includes("Deal") && atk.labels.includes("Hits back"));
             check("enemy preview reports a concrete Deal figure", atk && /\d/.test(String(atk.deal)));
+            check("hits-back is 0 with no auto-counter mechanic", atk && String(atk.back) === "0");
             const mv = await g.bsEval(`
               const r = s.reach.find(x => x.path.length > 0);
               if (!r) return { skip: true }; // immobilized/surrounded — no move tile to preview

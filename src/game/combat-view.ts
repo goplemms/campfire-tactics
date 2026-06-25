@@ -133,6 +133,14 @@ export class CombatView {
   hoveredUnitId: string | null = null;
   /** Skip perpetual/juice motion (set by the screenshot harness) for stable frames. */
   reduceMotion = false;
+  /**
+   * Conceal enemy tokens entirely (D12). Set during deployment: the foe is
+   * pre-positioned on the board but unseen — the party reads the closing net and
+   * the campfire's safe radius, not the enemy's exact placement. Cleared when the
+   * battle opens, so the foe resolves into view. (A future intel/scout ability can
+   * surface a faint "ghost" of the formation instead of this hard veil.)
+   */
+  concealEnemies = false;
 
   /** Units we've already played the death pop for (reset each encounter). */
   private readonly deadSeen = new Set<string>();
@@ -740,6 +748,10 @@ export class CombatView {
       // Status pips (D41 + flank, D36): one badge per status — glyph + turns left,
       // tinted per status — laid out centred under the token; the flank pip trails.
       this.layoutStatusPips(view, statusPipsFor(unit, units));
+      // Deployment veil (D12): a living, uncaptured foe is fully hidden — token,
+      // nameplate, and (since Phaser skips input on invisible objects) its hover.
+      const concealed = this.concealEnemies && unit.side === "enemy" && unit.alive && !unit.captured;
+      view.container.setVisible(!concealed);
       view.container.setAlpha(!unit.alive ? 0.2 : unit.captured ? 0.4 : unit.hidden ? 0.35 : 1);
       // Death pop: the first time a unit reads as dead, collapse its token so the
       // kill registers (it then rests as the faded "downed" marker).

@@ -64,6 +64,12 @@ async function main() {
       check("a unit has the first deploy turn", st.actorId !== null);
       check("both sides are on the board", st.players >= 1 && st.enemies >= 1);
       check("undo starts empty (armed, nothing to take back)", st.canUndo === false);
+      // D12 — the foe is pre-positioned but veiled during staging: every living enemy
+      // token is concealed (its container invisible) until the battle opens.
+      const foeHiddenInDeploy = await g.bsEval(
+        `return [...s.view.views.values()].filter(v => v.unit.side === "enemy" && v.unit.alive).every(v => v.container.visible === false);`,
+      );
+      check("enemy tokens are concealed during deployment", foeHiddenInDeploy === true);
       await shot("deploy-opens");
 
       const startPos = st.pos;
@@ -109,6 +115,11 @@ async function main() {
       st = await snap();
       console.log("• Start Battle");
       check("phase advanced to battle", st.phase === "battle");
+      // D12 — the veil lifts when the net closes: enemy tokens resolve into view.
+      const foeShownInBattle = await g.bsEval(
+        `return [...s.view.views.values()].filter(v => v.unit.side === "enemy" && v.unit.alive).some(v => v.container.visible === true);`,
+      );
+      check("enemy tokens are revealed once the battle opens", foeShownInBattle === true);
       await shot("battle-start");
 
       // --- Stage: drive the CT clock; a player turn opens and can be ended ----

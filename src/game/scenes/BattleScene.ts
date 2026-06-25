@@ -423,6 +423,10 @@ export class BattleScene extends Phaser.Scene {
 
   private enterDeploy(): void {
     this.phase = "deployment";
+    // The foe is pre-positioned but unseen during staging (D12) — veil enemy tokens
+    // now; startBattle lifts it. Refresh re-applies the veil after spawnUnits.
+    this.view.concealEnemies = true;
+    this.view.refreshUnits();
     this.legendStrip.setItems(DEPLOY_LEGEND);
     this.deployRng = streamFor(this.run.seed, "deploy");
     this.spotRng = streamFor(this.run.seed, "trap-spot");
@@ -974,6 +978,8 @@ export class BattleScene extends Phaser.Scene {
 
   private startBattle(): void {
     this.phase = "battle";
+    // The net closes and the foe resolves into view — lift the deployment veil (D12).
+    this.view.concealEnemies = false;
     this.titleText.setText("Battle");
     this.refreshIntelText(); // re-style the roster line down to passive reference (D-UX)
     this.legendStrip.setItems(BATTLE_LEGEND);

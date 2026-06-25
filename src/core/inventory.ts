@@ -82,6 +82,17 @@ export const MATERIALS: Record<string, MaterialDef> = {
   // Sell-only loot (D61): pure value, no function. The illiquid half of a reward —
   // hauled in scarce slots until Sold at a market. Never bought/stocked.
   valuables: { id: "valuables", name: "Valuables", stackSize: 4, slotCost: 1, recoverable: false, loot: true, saleValue: 25 },
+  // A build-defining unique weapon (D52 placeholder) — the Thieves' Den relic. The
+  // loadout/item system has no unique-weapon spec yet, so this is a grantable stash
+  // item standing in for the relic; its combat effect is TBD with the user.
+  "relic-hollow-blade": {
+    id: "relic-hollow-blade",
+    name: "The Hollow Blade",
+    stackSize: 1,
+    slotCost: 1,
+    recoverable: false,
+    saleValue: 80,
+  },
 };
 
 /** Gold a unit of `material` fetches at a full market (0 if not sellable) — read by sell. */

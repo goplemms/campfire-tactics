@@ -34,11 +34,11 @@
  */
 
 import type { RunState } from "./run";
-import type { MapNode } from "./overworld";
-import { primaryJobOf, remember, type Unit } from "./units";
+import { marketOpenedFlag, type MapNode } from "./overworld";
+import { createUnit, primaryJobOf, remember, type Unit, type UnitSpec } from "./units";
 import { streamFor } from "./rng";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
-import { SCOUT_PRESTIGE_FLOOR } from "./jobs";
+import { getJob, SCOUT_PRESTIGE_FLOOR } from "./jobs";
 import { MATERIALS, addItem, canAdd } from "./inventory";
 import { addInfluence, influenceTier, type InfluenceTier } from "./economy";
 import { merchantBuy, merchantPrice } from "./economy-actions";
@@ -53,7 +53,7 @@ import { earn, spend } from "./purse-journal";
  * that tells you the price up front and doesn't sneak" — a *known*, deterministic
  * cost you see while planning and **route around** (vs. the fogged thief skim).
  */
-export type EventKind = "thief" | "shop" | "recruiter" | "story" | "toll" | "patron";
+export type EventKind = "thief" | "shop" | "recruiter" | "story" | "toll" | "patron" | "provision" | "town";
 
 /** Node-event tuning — all data, a numbers pass later (D23/D30/D33/D48). */
 export const NODE_EVENTS = {
@@ -704,7 +704,146 @@ export const EVENTS: readonly EventDef[] = [
       return out;
     },
   },
+  {
+    // The Hollow Mill node-2 "Camp on the Road" (D52): the two-item **pick-one**
+    // scarcity beat (trap-kit vs iron weapons) + the first **Cook Stew** (RP bank when
+    // a Cook is aboard). Authored — pinned to the node via `MapNode.eventId`, never in
+    // the seeded pool (weight 0). The iron pick sets the `iron-weapons` run flag the
+    // gear-condition combat link reads; the edge decays via worn gear thereafter.
+    id: "provision-choice",
+    kind: "provision",
+    name: "Camp on the Road",
+    teaser: "A night's camp — two finds, room for one. (And a hot meal if a Cook rides along.)",
+    weight: 0, // authored-only — pinned by node, never seeded
+    autoResolve(run, _node) {
+      // Headless default: take the trap-kit (a deterministic, reusable-utility pick).
+      return applyProvisionChoice(run, "take:trap-kit");
+    },
+    choices(run, _node) {
+      const cook = run.party.some((u) => primaryJobOf(u) === "cook" && u.alive);
+      const kitRoom = canAdd(run.inventory, "trap-kit");
+      return [
+        {
+          id: "take:trap-kit",
+          label: "Take the Trap Kit (reusable field-craft)",
+          available: kitRoom,
+          detail: kitRoom ? "A reusable snare kit for Vale's field-craft." : "No storage room.",
+        },
+        {
+          id: "take:iron-weapons",
+          label: "Take the Iron Weapons (a party-wide attack edge that decays)",
+          available: true,
+          detail: "A blanket gear-condition upgrade (+attack). It fades without a smith to maintain it.",
+        },
+        ...(cook
+          ? [{ id: "cook-stew", label: "Have Pip cook a stew (banks Rest Points)", available: true, detail: "The Cook banks RP and eases the food line." }]
+          : []),
+      ];
+    },
+    choose(run, _node, choiceId) {
+      return applyProvisionChoice(run, choiceId);
+    },
+  },
+  {
+    // The Hollow Mill Layer-5 **Market town** (D52): recruit Mira the Merchant (joins
+    // the party as a camp body) + open a `basic` market here (Find Trade). The economy
+    // hub every road reaches — the Merchant beat is guaranteed. Authored-only.
+    id: "merchant-town",
+    kind: "town",
+    name: "Market Town",
+    teaser: "The first real town — a Merchant to recruit and a market to spend at.",
+    weight: 0,
+    autoResolve(run, node) {
+      // Headless default: recruit Mira (the guaranteed economy beat) + open the market.
+      return applyTownVisit(run, node, "recruit-mira");
+    },
+    choices(run, _node) {
+      const mira = run.party.some((u) => u.id === "mira");
+      return [
+        {
+          id: "recruit-mira",
+          label: mira ? "Mira already rides with you" : "Recruit Mira the Merchant",
+          available: !mira,
+          detail: mira ? "Already recruited." : "A camp Merchant — markets, Find Trade, Savvy Barter.",
+        },
+        { id: "open-market", label: "Open the market here", available: true, detail: "Trade at a town market." },
+      ];
+    },
+    choose(run, node, choiceId) {
+      return applyTownVisit(run, node, choiceId);
+    },
+  },
 ];
+
+// --- The Hollow Mill authored-event resolvers (D52) -------------------------
+
+/** Apply a node-2 provision pick (D52): the two-item pick-one + the Cook Stew RP bank. */
+export function applyProvisionChoice(run: RunState, choiceId: string): EventOutcome {
+  const out = emptyOutcome("provision");
+  if (choiceId === "take:iron-weapons") {
+    run.flags["iron-weapons"] = true;
+    out.summary = "You strap on the iron weapons — the whole party hits harder for now.";
+    return out;
+  }
+  if (choiceId === "cook-stew") {
+    // The first Cook verb (E3): bank a little RP + ease the food line for the night.
+    run.rp += 2;
+    out.summary = "Pip cooks a hot stew — spirits and rations both hold (RP banked).";
+    return out;
+  }
+  // Default / take:trap-kit — a reusable kit into the stash under the cap.
+  if (canAdd(run.inventory, "trap-kit")) {
+    addItem(run.inventory, "trap-kit");
+    out.materials = ["trap-kit"];
+    out.summary = "You pack the trap kit for the road ahead.";
+  } else {
+    out.summary = "No room in the stash for the trap kit.";
+  }
+  return out;
+}
+
+/** Mira the Merchant's spec (D52) — the Layer-5 town recruit, off the merchant baseline. */
+const MIRA_SPEC: UnitSpec = (() => {
+  const base = getJob("merchant")?.baseline;
+  return {
+    id: "mira",
+    name: "Mira",
+    side: "player",
+    pos: { col: 0, row: 0 },
+    jobId: "merchant",
+    authored: true,
+    speed: base?.speed ?? 9,
+    maxHp: base?.maxHp ?? 20,
+    attack: base?.attack ?? 5,
+    defense: base?.defense ?? 2,
+    moveRange: base?.moveRange ?? 3,
+    sightRadius: base?.sightRadius ?? 4,
+    attackRange: base?.attackRange ?? 1,
+    intelligence: 2,
+    awareness: 2,
+    standingOrder: "defend",
+  };
+})();
+
+/** Apply a Layer-5 town visit (D52): recruit Mira + open the market. */
+export function applyTownVisit(run: RunState, node: MapNode, choiceId: string): EventOutcome {
+  const out = emptyOutcome("town");
+  if (choiceId === "open-market") {
+    run.overworld.nodeFlags[marketOpenedFlag(node.id)] = true;
+    out.summary = "The market opens — purse gold finally has a sink.";
+    return out;
+  }
+  // Default / recruit-mira — Mira joins the party as a camp Merchant (idempotent).
+  if (run.party.some((u) => u.id === "mira")) {
+    out.summary = "Mira already rides with the caravan.";
+    return out;
+  }
+  const mira = createUnit(MIRA_SPEC);
+  run.party.push(mira);
+  out.recruited = mira;
+  out.summary = "Mira the Merchant joins the caravan — markets and a sharper purse.";
+  return out;
+}
 
 /** Look up an event def by id (M11). */
 export function getEvent(id: string): EventDef {
@@ -740,6 +879,13 @@ export function eventWeightAt(def: EventDef, tier: InfluenceTier): number {
  * this of an `event`-kind node; it doesn't check the kind.)
  */
 export function eventForNode(seed: string | number, node: MapNode, tier: InfluenceTier = "unknown"): EventDef {
+  // An authored expedition can pin a specific event to a node (D52) — honored before
+  // the seeded pick so the hand-built event nodes (pick-one camp, Merchant town) run
+  // their exact beat. Falls through to the seeded pick if the id is unknown.
+  if (node.eventId) {
+    const pinned = EVENTS.find((e) => e.id === node.eventId);
+    if (pinned) return pinned;
+  }
   const rng = streamFor(seed, `event:${node.id}`);
   const pool = EVENTS.filter((e) => eventWeightAt(e, tier) > 0);
   return rng.pickWeighted(pool, (e) => eventWeightAt(e, tier));

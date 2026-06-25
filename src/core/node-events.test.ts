@@ -78,7 +78,10 @@ describe("node-events — the registry is data (D4)", () => {
       expect(e.id).toBeTruthy();
       expect(e.name).toBeTruthy();
       expect(e.teaser).toBeTruthy();
-      expect(e.weight).toBeGreaterThan(0);
+      // Seeded events weight into the per-node pick (> 0); authored-only events (D52 —
+      // pinned to a node by `MapNode.eventId`) carry weight 0 so they never leak into
+      // the seeded pool. Both are valid; only the non-negativity is universal.
+      expect(e.weight).toBeGreaterThanOrEqual(0);
       expect(typeof e.autoResolve).toBe("function");
     }
   });

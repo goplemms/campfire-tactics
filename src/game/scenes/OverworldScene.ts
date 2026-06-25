@@ -344,6 +344,9 @@ export class OverworldScene extends Phaser.Scene {
     story: { key: "story", color: COLOR.captive },
     toll: { key: "toll", color: COLOR.gold },
     patron: { key: "patron", color: COLOR.gold },
+    // Authored Hollow Mill event nodes (D52) — the pick-one camp + the Merchant town.
+    provision: { key: "shop", color: COLOR.gold },
+    town: { key: "recruiter", color: COLOR.gold },
   };
 
   /** Icon key + circle tint for an event node, keyed by which event it runs (M11). */

@@ -13,7 +13,7 @@
  * a wipe and replay a seed.
  */
 
-import { healUnit, woundedBySeverity, type Unit } from "./units";
+import { healUnit, woundedBySeverity, createUnit, type Unit } from "./units";
 import type { SkillDef } from "./skills";
 import { Battle } from "./turn";
 import {
@@ -57,6 +57,7 @@ import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import { restoreFatigue } from "./fatigue";
 import { useOverworldSkill, scoutedTier, type ActionOpts, type CampSkillResult } from "./overworld-actions";
 import { gainRunGold } from "./economy";
+import { applyGearCondition } from "./gear-condition";
 import {
   type PlaytestLog,
   recordCamp,
@@ -463,6 +464,9 @@ export class RunLoop {
     // — the bodies stage visible instead of springing a surprise (D10 reveal).
     const node = currentNode(this.run);
     const tier = clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, node.id));
+    // Blanket gear-condition stamp (D52): the iron-weapons +attack edge (decayed by
+    // worn gear) and the worn-gear −defense, applied party-wide before the fight.
+    applyGearCondition(this.run, players);
     const staged = stageEncounter(source, players, { deploymentPenalty, revealHidden: tier >= MAX_TIER });
     this.source = source;
     this.staged = staged;
@@ -579,7 +583,27 @@ export class RunLoop {
     const objXp = source.reward.xp ?? 0;
     if (objXp > 0) for (const u of survivors) tally[u.id] = (tally[u.id] ?? 0) + objXp;
     const levels = commitCombatXp(tally, survivors);
+
+    // Post-win authored grants (D52): a rescued recruit joins the party, a relic drops
+    // into the stash, and/or a run flag is set. Win-only (this is applyRewards, called
+    // on a win), idempotent (a recruit already aboard is not re-added).
+    if (isAuthoredEncounter(source) && source.grants) this.applyGrant(source.grants);
+
     return { goldEarned, recovered, levels };
+  }
+
+  /**
+   * Apply an authored encounter's **post-win grant** (D52): push the recruit onto the
+   * run party (a fresh, authored body — joins permanently), drop the relic/item into
+   * the stash under the cap, and set any run flag (read by conditional node access).
+   * Idempotent on the recruit (an id already in the party is skipped).
+   */
+  private applyGrant(grant: import("./authored").EncounterGrant): void {
+    if (grant.recruit && !this.run.party.some((u) => u.id === grant.recruit!.id)) {
+      this.run.party.push(createUnit({ ...grant.recruit, authored: true }));
+    }
+    if (grant.item) addItem(this.run.inventory, grant.item);
+    if (grant.flag) this.run.flags[grant.flag] = true;
   }
 
   /**

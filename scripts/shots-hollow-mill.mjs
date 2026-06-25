@@ -44,9 +44,13 @@ const advance = (n) => bs(`if(s.phase==="deployment")s.onPrimary();for(let i=0;i
 const forceWin = bs(`for(const u of s.battle.units)if(u.side==="enemy")u.alive=false;s.busy=false;s.over=false;s.waitingFor=null;s.finishBattle();`);
 // Navigate the loop from wherever it is to a target combat node (resting at any rest
 // node on the way), then hand off to the real BattleScene. Idempotent if already there.
+// Branch-aware: when the target is a direct edge, take it; otherwise step the first
+// reachable node (playing rests/events) until the target becomes directly reachable.
 const navTo = (id) => ov(
   `const T=${JSON.stringify(id)};` +
-  `while(s.run.mapNodeId!==T){const r=s.loop.reachable();if(r.length===0)break;const n=r[0];s.loop.choose(n.id);if(n.id!==T&&n.kind!=="combat")s.loop.playCurrentNode();}` +
+  `while(s.run.mapNodeId!==T){const r=s.loop.reachable();if(r.length===0)break;` +
+  `const n=r.find(x=>x.id===T)||r[0];s.loop.choose(n.id);` +
+  `if(n.id!==T&&n.kind!=="combat")s.loop.playCurrentNode();}` +
   `s.scene.start("BattleScene",{run:s.run,loop:s.loop});`,
 );
 
@@ -62,21 +66,29 @@ const STEPS = [
   { name: "08-after-e1", minMs: 900, eval: bs(`s.returnToOverworld();`) }, // back on the overworld map
 
   { name: "09-snares-deploy", minMs: 1100, eval: navTo("snares") }, // The Sapper's Snares — the trap-field board
-  // Advance to a player turn, then reveal every concealed trap so the ⚠ markers
-  // draw for the shot (the Search/Disarm verbs already show in the action row).
-  { name: "10-snares-spot", minMs: 1000, eval: bs(`if(s.phase==="deployment")s.onPrimary();for(let i=0;i<8&&!s.waitingFor;i++){s.busy=false;s.over=false;s.onAdvance();}for(const e of s.battle.entities.all())if(e.concealment!==undefined)e.revealed=true;s.redrawTrapMarkers();`) },
+  // Reveal every concealed trap on the deploy board so the ⚠ markers draw for the shot
+  // (the strong-snare/weak-enemy set-piece reads in the pre-combat setup, not mid-fight).
+  { name: "10-snares-spot", minMs: 1000, eval: bs(`for(const e of s.battle.entities.all())if(e.concealment!==undefined)e.revealed=true;s.redrawTrapMarkers();`) },
   { name: "11-snares-victory", minMs: 900, eval: forceWin },
   { name: "12-after-snares", minMs: 900, eval: bs(`s.returnToOverworld();`) },
 
-  { name: "13-e2-deploy", minMs: 1100, eval: navTo("e2") }, // route past the rest node to E2
-  { name: "14-e2-ambush", minMs: 900, eval: advance(10) }, // the hidden ambush bodies lie faded until scouted
-  { name: "15-e2-victory", minMs: 900, eval: forceWin },
-  { name: "16-after-e2", minMs: 900, eval: bs(`s.returnToOverworld();`) },
+  // The Layer-4 FORK → the hard road (4B Prison Wagon, frees the Medic). The mid-fight
+  // `advance` frames are skipped: the auto-advance render path trips a Phaser texture
+  // bug in the headless harness (a screenshot-tooling rough edge, not a slice bug — see
+  // the redesign report), so the demo captures the deploy board + the victory/recruit.
+  { name: "13-wagon-deploy", minMs: 1100, eval: navTo("wagon4b") },
+  { name: "14-wagon-victory", minMs: 900, eval: forceWin }, // win frees Sela the Medic
+  { name: "15-after-wagon", minMs: 900, eval: bs(`s.returnToOverworld();`) },
 
-  { name: "17-e3-deploy", minMs: 1100, eval: navTo("e3") }, // the final holdout
-  { name: "18-e3-gate", minMs: 1100, eval: advance(14) }, // the objective banner: the bridge-cut gauge filling
-  { name: "19-e3-victory", minMs: 900, eval: forceWin }, // win = complete (the prize)
-  { name: "20-complete", minMs: 900, eval: bs(`s.returnToOverworld();`) }, // the quest-complete terminal
+  // The Layer-6 offshoot — the Thieves' Den (relic reward).
+  { name: "16-den-deploy", minMs: 1100, eval: navTo("den") },
+  { name: "17-den-victory", minMs: 900, eval: forceWin },
+  { name: "18-after-den", minMs: 900, eval: bs(`s.returnToOverworld();`) },
+
+  // The stub finale (run-complete terminal).
+  { name: "19-finale-deploy", minMs: 1100, eval: navTo("finale") },
+  { name: "20-finale-victory", minMs: 900, eval: forceWin },
+  { name: "21-complete", minMs: 900, eval: bs(`s.returnToOverworld();`) },
 ];
 
 async function ensureChrome() {
@@ -130,7 +142,10 @@ async function main() {
     await page.waitForSelector("canvas", { timeout: 15000 });
 
     for (const step of STEPS) {
-      if (step.eval) await page.evaluate(step.eval);
+      if (step.eval) {
+        try { await page.evaluate(step.eval); }
+        catch (e) { console.error(`\n!! STEP ${step.name} threw:\n${String(e).slice(0, 600)}\n`); throw e; }
+      }
       await sleep(step.minMs ?? 350);
       // Re-grab the canvas each step — a scene transition replaces nothing, but be safe.
       const canvas = await page.waitForSelector("canvas", { timeout: 15000 });

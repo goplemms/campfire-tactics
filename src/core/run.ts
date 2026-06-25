@@ -143,6 +143,14 @@ export interface RunState {
   over: boolean;
   /** True once a final-layer node has been cleared (run-complete, D23). */
   complete: boolean;
+  /**
+   * Run-scoped boolean flags (D52 vertical-slice) — authored expedition state that
+   * isn't a roster/inventory fact: the node-2 **iron-weapons** pick (`iron-weapons`,
+   * read by the gear-condition combat link), and a recruit-held marker the
+   * conditional map access reads (e.g. `medic-freed`). Set by authored grants /
+   * event choices; never by procedural generation. Absent flag ⇒ false.
+   */
+  flags: Record<string, boolean>;
 }
 
 /** Options for {@link createRun}. */
@@ -181,6 +189,7 @@ export function createRun(seed: string | number, opts: CreateRunOptions): RunSta
     rescueQuests: [],
     over: false,
     complete: false,
+    flags: {},
   };
 }
 
@@ -251,7 +260,21 @@ export function isFinalRunNode(run: RunState): boolean {
  * branch choices the player picks among. The final node has none.
  */
 export function reachableNodes(run: RunState): MapNode[] {
-  return reachableFrom(run.map, run.mapNodeId);
+  return reachableFrom(run.map, run.mapNodeId).filter((n) => nodeAccessible(run, n));
+}
+
+/**
+ * **Conditional node access** (D52 — the party-state gate). `MapNode.edges` is static,
+ * so this is the one roster-conditional map mechanic: a node can be dropped from the
+ * reachable set based on run state. Today only one rule (the slice's need): the dug-in
+ * **secured Wagon** is inaccessible once the **Medic is already freed** (no duplicate
+ * rescue) — keyed by node id + the `medic-freed` flag. Pragmatic/expedition-specific:
+ * a general predicate-on-node mechanic is the proper build (see report). Returns true
+ * unless a gate rule applies and is unmet.
+ */
+export function nodeAccessible(run: RunState, node: MapNode): boolean {
+  if (node.id === "securedWagon" && run.flags["medic-freed"]) return false;
+  return true;
 }
 
 /**

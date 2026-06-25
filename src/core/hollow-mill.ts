@@ -1,17 +1,25 @@
 /**
- * "The Hollow Mill" — the framework's first {@link AuthoredExpedition} (D44/D52).
+ * "The Hollow Mill" — the framework's first {@link AuthoredExpedition} (D44/D52),
+ * **redesigned as a mechanics-teaching vertical slice** (the demo-expedition pass).
  *
- * The M12 demo quest, **rebuilt as an authored expedition** so it plays inside the
- * real M13 routing economy through `OverworldScene → BattleScene` (M14). Where the
- * retired demo runner walked a linear beat list in its own renderer, the Hollow
- * Mill is now a hand-built {@link "./overworld".OverworldMap}
- * (a camp → three fights → a rest), `authoredId` on its combat nodes, a catalog of
- * {@link AuthoredEncounter}s, and a starting bundle — configured exactly like a
- * future campaign quest (D26) would be.
+ * The expedition is a layered DAG the player branches through. The slice runs from
+ * **camp (L0) through the Layer-5 region** (Market hub + dug-in Wagon + Thieves' Den)
+ * and reaches a **stub finale** so the run is completable. Layers 6–10 are NOT
+ * designed and are NOT built here — the finale is a placeholder.
  *
- * The three fights keep their M12 shapes; E3's bridge-cut is the generalized
- * **closing-gate** objective (D50). The deserter spare/press branch (a cross-node
- * flag) is deferred — E2's ambush is plain **hidden-until-scouted** (D44 fog).
+ * Topology (locked):
+ * ```
+ *   L0 Camp ─► L1 Skirmish+Cook ─► L2 Camp(pick-one) ─► L3 Sapper's Snares
+ *      ─► L4 FORK { 4A Rest (no Medic) | 4B Prison Wagon (frees Medic) }
+ *      ─► L5 Market (hub — Merchant) ─► L6 { dug-in Wagon (Medic catch-up), Den (relic) }
+ *      ─► L7 stub finale
+ *   edges: 4A→Market, 4B→{Market, Den}, Market→{dug-in Wagon, Den}, {Wagon,Den}→finale
+ * ```
+ *
+ * Cast: starting trio Edrin/**Soldier** (lord) · Rook/**Hunter** · Vale/**Scout**.
+ * Recruits join via their nodes (authored post-win grants, NOT the bundle): Pip the
+ * **Cook** (node 1 rescue) · Sela the **Medic** (4B or the dug-in Wagon) · Mira the
+ * **Merchant** (Market event).
  *
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
@@ -22,7 +30,7 @@ import type { AuthoredEncounter } from "./authored";
 import type { OverworldMap, MapNode } from "./overworld";
 import { registerExpedition, type AuthoredExpedition } from "./expedition";
 
-// --- The party (D44) — the cast on the combat-depth classes (D40) -----------
+// --- The cast (D52) — trio on the field; recruits join via their nodes ------
 
 /** Build a party member from a job's baseline frame (D39). */
 function member(id: string, name: string, jobId: JobId, extra: Partial<UnitSpec> = {}): UnitSpec {
@@ -46,24 +54,41 @@ function member(id: string, name: string, jobId: JobId, extra: Partial<UnitSpec>
   };
 }
 
-/** The five Hollow Mill characters (Pip the Chef auto-Defends as a 5th body). */
+/**
+ * The **starting trio** (D52) — Soldier-only front line. The party visibly has no
+ * healer and no support, which motivates the Cook/Medic/Merchant recruits across the
+ * run. Recruits are NOT in this bundle; they join via authored post-win grants.
+ */
 export const HOLLOW_MILL_PARTY: UnitSpec[] = [
-  member("edrin", "Edrin", "heavy-knight", { isLord: true }),
+  member("edrin", "Edrin", "soldier", { isLord: true }),
   member("rook", "Rook", "hunter"),
-  // Vale is the party's eyes (D10): a high Intelligence floors intel at tier 2 —
-  // the deploy edge is live, and a single Scout on E2 reaches tier 3 to blow its
-  // hidden ambush. Without this the intel teeth would be unreachable on the short map.
-  // Vale the Scout is the party's field-craft specialist (Survivalist subsumed):
-  // high Intelligence/Awareness, plants and disarms snares, and her snares set up
-  // Rook the Hunter's Deadeye. No dedicated trapper needed.
-  member("vale", "Vale", "scout", { intelligence: 7, awareness: 4 }),
-  member("sela", "Sela", "medic"),
-  member("pip", "Pip", "cook", { standingOrder: "defend", maxHp: 22, attack: 5, defense: 2, moveRange: 3, speed: 8 }),
+  // Vale the Scout is the party's eyes + field-craft (D10): high Intelligence floors
+  // intel at tier 2 (the deploy edge is live, and a single Scout reaches tier 3 to
+  // blow a hidden ambush); high Awareness spots the node-3 concealed snares.
+  member("vale", "Vale", "scout", { intelligence: 7, awareness: 5 }),
 ];
 
-// --- The three fights (re-homed from the demo, on the D50 objectives) --------
+// --- Recruit specs (granted on the win at their node, not in the bundle) -----
 
-/** E1 — Skirmish: an open mill yard, four loose bandits incl. an apart straggler. */
+/** Pip the Cook — rescued at node 1; introduces the camp economy (Cook Stew/RP). */
+export const PIP_COOK: UnitSpec = member("pip", "Pip", "cook", {
+  standingOrder: "defend",
+});
+
+/** Sela the Medic — freed at 4B (or the dug-in Wagon); introduces sustain (Heal/cleanse). */
+export const SELA_MEDIC: UnitSpec = member("sela", "Sela", "medic");
+
+/** Mira the Merchant — recruited at the Market; introduces markets (presence/Find Trade). */
+export const MIRA_MERCHANT: UnitSpec = member("mira", "Mira", "merchant");
+
+// --- The encounters (authored.ts shapes) ------------------------------------
+
+/**
+ * Node 1 — Skirmish at the Mill Yard. The first fight (no-healer trio, winnable raw),
+ * doubling as the **Cook rescue**: a cutthroat captor placed **apart** in a corner —
+ * the flank affordance and the rescue affordance are the same corner. On the win, Pip
+ * joins (the authored post-win grant). Teaches C1 CT clock + C2 flank/isolation.
+ */
 export const E1_SKIRMISH: AuthoredEncounter = {
   id: "e1-skirmish",
   name: "Skirmish at the Mill Yard",
@@ -73,24 +98,25 @@ export const E1_SKIRMISH: AuthoredEncounter = {
   playerSpawns: [
     { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
+  // Fight #1 — winnable raw by the no-healer trio (D52). The main cluster is two
+  // bodies; the captor sits apart (the flank + rescue corner), so the player can
+  // isolate and gang up rather than face all four at once.
   enemies: [
     { templateId: "bandit-thug", pos: { col: 6, row: 2 } },
-    { templateId: "bandit-thug", pos: { col: 6, row: 3 } },
     { templateId: "bandit-bowman", pos: { col: 7, row: 4 } },
-    { templateId: "bandit-cutthroat", pos: { col: 7, row: 0 } }, // placed apart — the isolation moment
+    { templateId: "bandit-cutthroat", pos: { col: 7, row: 0 } }, // apart — the captor guarding Pip (flank + rescue)
   ],
-  // The XP award is tuned so every survivor's primary job reaches L2 after E1 — the
-  // 2nd-active unlock the rest beat used to grant (authoring, not a mechanics change).
+  // XP tuned so every survivor's primary job reaches L2 after E1 (the 2nd-active unlock).
   reward: { gold: 60, materials: [{ id: "salve", count: 1 }], xp: 100 },
+  // The rescued Cook joins on the win (the front-loaded camp economy).
+  grants: { recruit: PIP_COOK },
 };
 
 /**
- * The Sapper's Snares — the trap-field set-piece (D12). A sapper has seeded the
- * approach with concealed traps; the party must cross them to reach the bandits.
- * Spot them with Awareness (or eat the damage), and let Bram the Survivalist
- * disarm the spotted ones to harvest their kits — which then feed her own snares at
- * the chokepoint (E2) and the holdout (E3), each Immobilizing prey for Rook's
- * Deadeye. The "why set traps" made felt.
+ * Node 3 — The Sapper's Snares (trap-field). A **strong-field / weak-enemy** encounter
+ * (D52): one lone bandit, but very strong concealed snares — the threat is the terrain.
+ * Win or lose in the **pre-combat setup**: spot the strong traps (Vale's Awareness) and
+ * position so the lone enemy is fought on your terms. Unsprung kits salvage to the stash.
  */
 export const TRAP_FIELD: AuthoredEncounter = {
   id: "snares-trapfield",
@@ -101,105 +127,179 @@ export const TRAP_FIELD: AuthoredEncounter = {
   playerSpawns: [
     { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
+  // LOCKED: one relatively weak enemy — the strong snares are the real encounter.
   enemies: [
-    { templateId: "sapper", pos: { col: 8, row: 2 }, id: "field-sapper" }, // the trapper who laid them
-    { templateId: "bandit-thug", pos: { col: 7, row: 1 } },
+    { templateId: "bandit-thug", pos: { col: 8, row: 2 }, id: "lone-straggler" },
+  ],
+  // Very strong, concealed, mid-field traps the party must cross — high damage so
+  // eating an unspotted one really stings (no Medic yet). Spot-and-avoid (no disarm req).
+  traps: [
+    { pos: { col: 3, row: 1 }, concealment: 4, damage: 22 },
+    { pos: { col: 4, row: 2 }, concealment: 5, damage: 24 },
+    { pos: { col: 4, row: 3 }, concealment: 5, damage: 24 },
+    { pos: { col: 5, row: 1 }, concealment: 5, damage: 22 },
+    { pos: { col: 5, row: 4 }, concealment: 6, damage: 26 },
+  ],
+  // Modest purse; unsprung kits salvage on the win (F5, light).
+  reward: { gold: 70, materials: [{ id: "trap-kit", count: 1 }], xp: 70 },
+};
+
+/**
+ * Node 4B — Prison Wagon (the hard road). A tougher **slaver escort** fought before you
+ * have a healer (tense by design); on the win, **Sela the Medic** is freed (the gated
+ * recruit). High risk, high reward — the elite combat tier.
+ */
+export const PRISON_WAGON: AuthoredEncounter = {
+  id: "prison-wagon",
+  name: "The Prison Wagon",
+  cols: 9,
+  rows: 6,
+  blocked: [{ col: 4, row: 2 }, { col: 4, row: 3 }],
+  playerSpawns: [
+    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
+  ],
+  enemies: [
+    // The elite escort — a slaver lieutenant (a softened captain: the *introduction*
+    // to the elite tier, not the finale brawler) + a small detail. Tougher than the
+    // road bandits, tense without a healer, but winnable raw.
+    { templateId: "bandit-captain", pos: { col: 8, row: 2 }, id: "slaver-lieutenant", role: "captain", overrides: { maxHp: 34, attack: 10, defense: 3 } },
+    { templateId: "bandit-cutthroat", pos: { col: 7, row: 1 } },
     { templateId: "bandit-thug", pos: { col: 7, row: 4 } },
     { templateId: "bandit-bowman", pos: { col: 8, row: 4 } },
   ],
-  // Concealed across the mid-field the party must cross — a spread of easy and
-  // well-hidden ones so Awareness (and a Search) genuinely matter.
-  traps: [
-    { pos: { col: 3, row: 1 }, concealment: 3 },
-    { pos: { col: 4, row: 2 }, concealment: 4 },
-    { pos: { col: 4, row: 3 }, concealment: 5 },
-    { pos: { col: 5, row: 1 }, concealment: 4 },
-    { pos: { col: 5, row: 4 }, concealment: 6 },
-  ],
-  // Modest purse + two visible kits; the real prize is the kits Bram harvests.
-  reward: { gold: 70, materials: [{ id: "trap-kit", count: 2 }], xp: 60 },
+  reward: { gold: 120, materials: [{ id: "salve", count: 2 }], xp: 80 },
+  // Free the captured medic + set the run flag the conditional map access reads.
+  grants: { recruit: SELA_MEDIC, flag: "medic-freed" },
 };
 
-/** E2 — Ambush at the chokepoint: a sluice-bridge funnel, a snare debuffer, a hidden pair. */
-export const E2_AMBUSH: AuthoredEncounter = {
-  id: "e2-ambush",
-  name: "Ambush at the Chokepoint",
+/**
+ * Node 6 (offshoot) — Prison Wagon, SECURED (the Medic catch-up, via the Market). A
+ * second rescue attempt against **alert, dug-in captors** (higher Awareness) who have
+ * **laid their own snares** — you must spot/avoid enemy traps (inverting node 3). Frees
+ * Sela on the win. INACCESSIBLE once the Medic is already held (the party-state gate;
+ * see the map's conditional access — STUBBED, see report).
+ */
+export const SECURED_WAGON: AuthoredEncounter = {
+  id: "secured-wagon",
+  name: "The Prison Wagon, Secured",
+  cols: 9,
+  rows: 6,
+  blocked: [{ col: 4, row: 0 }, { col: 4, row: 5 }],
+  playerSpawns: [
+    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
+  ],
+  enemies: [
+    // Higher-Awareness captors — they resist the scout's free read (the pre-combat edge
+    // turned against you). A softened captain (the catch-up, not the finale) + a small
+    // alert detail; the laid snares below are the real teeth.
+    { templateId: "bandit-captain", pos: { col: 8, row: 2 }, id: "secured-captain", role: "captain", overrides: { maxHp: 34, attack: 10, defense: 3, awareness: 6 } },
+    { templateId: "bandit-cutthroat", pos: { col: 7, row: 1 }, overrides: { awareness: 5 } },
+    { templateId: "bandit-thug", pos: { col: 7, row: 4 }, overrides: { awareness: 4 } },
+  ],
+  // The captors laid their own snares — spot/avoid ENEMY traps (the node-3 lesson inverted).
+  traps: [
+    { pos: { col: 2, row: 2 }, concealment: 5, damage: 16 },
+    { pos: { col: 3, row: 3 }, concealment: 6, damage: 18 },
+    { pos: { col: 2, row: 4 }, concealment: 5, damage: 16 },
+  ],
+  reward: { gold: 140, materials: [{ id: "salve", count: 2 }], xp: 80 }, // slightly richer — it's harder
+  grants: { recruit: SELA_MEDIC, flag: "medic-freed" },
+};
+
+/**
+ * Node 6 (offshoot) — Thieves' Den (the relic offshoot). Thief enemies skim the purse
+ * and bolt for the edge (per theft.ts + ENEMY_TEMPLATES.thief) — kill them to drop the
+ * gold; let them escape and it's gone. On the win, the **relic** drops (placeholder
+ * unique; effect TBD). Stealth in play.
+ */
+export const THIEVES_DEN: AuthoredEncounter = {
+  id: "thieves-den",
+  name: "The Thieves' Den",
+  cols: 9,
+  rows: 6,
+  blocked: [{ col: 3, row: 0 }, { col: 5, row: 5 }, { col: 6, row: 2 }],
+  playerSpawns: [
+    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
+  ],
+  enemies: [
+    // Thieves skim the purse and bolt — the chase-the-thief tension (theft.ts).
+    { templateId: "thief", pos: { col: 7, row: 1 } },
+    { templateId: "thief", pos: { col: 7, row: 4 } },
+    { templateId: "bandit-cutthroat", pos: { col: 8, row: 2 } },
+    { templateId: "bandit-thug", pos: { col: 8, row: 3 } },
+  ],
+  reward: { gold: 90, materials: [{ id: "valuables", count: 1 }], xp: 70 },
+  // The build-defining relic (placeholder unique — effect TBD with the user).
+  grants: { item: "relic-hollow-blade" },
+};
+
+/**
+ * The stub finale (L7) — a placeholder so the run is completable. Layers 6–10 are NOT
+ * designed; this is a minimal holdout fight, NOT the authored finale. Replace when those
+ * layers are designed.
+ */
+export const STUB_FINALE: AuthoredEncounter = {
+  id: "stub-finale",
+  name: "The Mill (stub finale)",
   cols: 8,
   rows: 6,
-  // A narrow sluice-bridge chokepoint: a wall band with a single gap at row 2-3.
-  blocked: [
-    { col: 4, row: 0 }, { col: 4, row: 1 }, { col: 4, row: 4 }, { col: 4, row: 5 },
-  ],
+  blocked: [{ col: 4, row: 2 }],
   playerSpawns: [
-    { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 3 }, { col: 0, row: 1 },
+    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
   enemies: [
-    { templateId: "bandit-thug", pos: { col: 6, row: 2 } },
-    { templateId: "bandit-thug", pos: { col: 6, row: 3 } },
-    { templateId: "bandit-bowman", pos: { col: 7, row: 1 } },
-    { templateId: "snare-trapper", pos: { col: 7, row: 4 } }, // the Immobilize debuffer
-    // The ambush — plain hidden-until-scouted (the deserter cross-node gate is deferred).
-    { templateId: "bandit-cutthroat", pos: { col: 7, row: 5 }, hidden: true },
-    { templateId: "bandit-cutthroat", pos: { col: 6, row: 5 }, hidden: true },
+    { templateId: "bandit-captain", pos: { col: 7, row: 2 }, id: "mill-captain", role: "captain" },
+    { templateId: "bandit-thug", pos: { col: 6, row: 1 } },
+    { templateId: "bandit-thug", pos: { col: 6, row: 4 } },
   ],
-  reward: { gold: 80, materials: [{ id: "antidote", count: 1 }], xp: 60 },
+  reward: { gold: 150, materials: [{ id: "salve", count: 1 }], xp: 60 },
 };
 
-/** E3 — The Captain's Holdout: the millrace bridge, a Sapper on an N-turn closing-gate. */
-export const E3_HOLDOUT: AuthoredEncounter = {
-  id: "e3-holdout",
-  name: "The Captain's Holdout",
-  cols: 9,
-  rows: 5,
-  blocked: [{ col: 4, row: 0 }, { col: 4, row: 4 }],
-  playerSpawns: [
-    { col: 0, row: 2 }, { col: 0, row: 1 }, { col: 0, row: 3 }, { col: 1, row: 2 }, { col: 1, row: 1 },
-  ],
-  enemies: [
-    { templateId: "bandit-captain", pos: { col: 8, row: 2 }, role: "captain", id: "captain" },
-    { templateId: "sapper", pos: { col: 7, row: 0 }, role: "sapper", id: "sapper" },
-    { templateId: "bandit-cutthroat", pos: { col: 7, row: 3 } },
-    { templateId: "bandit-thug", pos: { col: 7, row: 4 } },
-  ],
-  reward: { gold: 150, materials: [{ id: "salve", count: 2 }], xp: 80 },
-  // The bridge-cut, generalized (D50): a visible ~3-turn gauge sweeping the gap;
-  // kill or Immobilize the Sapper (its tagged driver) to stop it.
-  objectives: [
-    {
-      id: "bridge-cut",
-      kind: "closing-gate",
-      required: true,
-      label: "The Sappers are cutting the bridge",
-      speed: 4,
-      span: [{ col: 4, row: 2 }],
-      driver: { id: "sapper" },
-    },
-  ],
-};
+// --- The hand-built map (D52) — the layered DAG -----------------------------
 
-// --- The hand-built map (D52) -----------------------------------------------
-
-function node(id: string, layer: number, kind: MapNode["kind"], edges: string[], authoredId?: string): MapNode {
-  return { id, layer, index: 0, kind, edges, authoredId };
+function node(
+  id: string,
+  layer: number,
+  kind: MapNode["kind"],
+  edges: string[],
+  opts: { authoredId?: string; eventId?: string; market?: MapNode["market"] } = {},
+): MapNode {
+  return { id, layer, index: 0, kind, edges, authoredId: opts.authoredId, eventId: opts.eventId, market: opts.market };
 }
 
-/** camp → E1 → snares → rest → E2 → E3(final). A linear authored arc on the real overworld. */
+/**
+ * Author the locked topology (see the file header). The Den is reachable from both 4B
+ * and the Market; a strict layer-DAG requires in-edges from `layer-1` only, so the Den
+ * lives in L6 and 4B reaches it **through** the Market normalization — except the spec
+ * wants a **direct** `4B→Den`. Since 4B is L4 and the Market is L5, a direct `4B→Den`
+ * (Den in L6) would skip a layer; `validateExpedition` allows cross-layer edges (it
+ * only checks edge targets exist + reachability), so the direct edge is authored as a
+ * skip-edge. See report — this is a deviation the strict-DAG note in the design flagged.
+ */
 function hollowMillMap(): OverworldMap {
   const nodes: Record<string, MapNode> = {
-    start: node("start", 0, "rest", ["e1"]), // the provisioning camp
-    e1: node("e1", 1, "combat", ["snares"], E1_SKIRMISH.id),
-    snares: node("snares", 2, "combat", ["rest"], TRAP_FIELD.id), // the trap-field (harvest kits here)
-    rest: node("rest", 3, "rest", ["e2"]), // the grain-loft rest (recover + the level-up shows)
-    e2: node("e2", 4, "combat", ["e3"], E2_AMBUSH.id),
-    e3: node("e3", 5, "combat", [], E3_HOLDOUT.id), // the final holdout (closing-gate)
+    start: node("start", 0, "rest", ["e1"]), // L0 — the provisioning camp
+    e1: node("e1", 1, "combat", ["camp2"], { authoredId: E1_SKIRMISH.id }), // L1 — Skirmish + Cook rescue
+    camp2: node("camp2", 2, "event", ["snares"], { eventId: "provision-choice" }), // L2 — Camp on the Road (pick-one + Cook Stew)
+    snares: node("snares", 3, "combat", ["rest4a", "wagon4b"], { authoredId: TRAP_FIELD.id }), // L3 — the trap-field → the FORK
+    // L4 FORK
+    rest4a: node("rest4a", 4, "rest", ["market"]), // 4A — Rest (no Medic)
+    wagon4b: node("wagon4b", 4, "combat", ["market", "den"], { authoredId: PRISON_WAGON.id }), // 4B — Prison Wagon (frees Medic) → Market + Den
+    // L5 hub
+    market: node("market", 5, "event", ["securedWagon", "den"], { eventId: "merchant-town", market: "basic" }), // Market hub (Merchant)
+    // L6 offshoots
+    securedWagon: node("securedWagon", 6, "combat", ["finale"], { authoredId: SECURED_WAGON.id }), // dug-in Wagon (Medic catch-up)
+    den: node("den", 6, "combat", ["finale"], { authoredId: THIEVES_DEN.id }), // Thieves' Den (relic)
+    // L7 stub finale
+    finale: node("finale", 7, "combat", [], { authoredId: STUB_FINALE.id }),
   };
   return {
     seed: "hollow-mill",
-    layers: 6,
+    layers: 8,
     nodes,
     startId: "start",
-    finalIds: ["e3"],
-    order: ["start", "e1", "snares", "rest", "e2", "e3"],
+    finalIds: ["finale"],
+    order: ["start", "e1", "camp2", "snares", "rest4a", "wagon4b", "market", "securedWagon", "den", "finale"],
   };
 }
 
@@ -212,8 +312,10 @@ export const THE_HOLLOW_MILL: AuthoredExpedition = registerExpedition({
   encounters: {
     [E1_SKIRMISH.id]: E1_SKIRMISH,
     [TRAP_FIELD.id]: TRAP_FIELD,
-    [E2_AMBUSH.id]: E2_AMBUSH,
-    [E3_HOLDOUT.id]: E3_HOLDOUT,
+    [PRISON_WAGON.id]: PRISON_WAGON,
+    [SECURED_WAGON.id]: SECURED_WAGON,
+    [THIEVES_DEN.id]: THIEVES_DEN,
+    [STUB_FINALE.id]: STUB_FINALE,
   },
   bundle: {
     party: HOLLOW_MILL_PARTY,

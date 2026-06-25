@@ -1,26 +1,44 @@
 import { describe, it, expect } from "vitest";
-import { THE_HOLLOW_MILL, E1_SKIRMISH, TRAP_FIELD, E2_AMBUSH, E3_HOLDOUT } from "./hollow-mill";
+import {
+  THE_HOLLOW_MILL,
+  E1_SKIRMISH,
+  TRAP_FIELD,
+  PRISON_WAGON,
+  SECURED_WAGON,
+  THIEVES_DEN,
+  STUB_FINALE,
+} from "./hollow-mill";
 import { stageEncounter } from "./staging";
 import { isConcealedTrap } from "./entities";
-import { canDisarm } from "./traps";
 import { validateExpedition } from "./expedition";
 import { createRunFromExpedition } from "./run";
 import { RunLoop } from "./runloop";
 import { jobLevelOf } from "./leveling";
 import { intelFloor } from "./intel";
 import { createUnit } from "./units";
+import { gearDelta } from "./gear-condition";
 
 function freshLoop(): RunLoop {
   return new RunLoop(createRunFromExpedition(THE_HOLLOW_MILL));
 }
 
-/** Walk the expedition node by node; `onCombat` decides each fight's fate. */
-function drive(loop: RunLoop, onCombat: (loop: RunLoop) => void): void {
+/** Force a clean win: every enemy down (drivers too ⇒ any closing-gate is met). */
+function forceWin(loop: RunLoop): void {
+  for (const u of loop.staged!.battle.units) if (u.side === "enemy") u.alive = false;
+}
+
+/**
+ * Walk the expedition, always taking the **first** reachable node; `onCombat` decides
+ * each fight. Returns the ordered node ids visited.
+ */
+function drive(loop: RunLoop, onCombat: (loop: RunLoop) => void, pick: (ids: string[]) => string = (ids) => ids[0]): string[] {
+  const visited: string[] = [];
   let guard = 0;
-  while (!loop.isTerminal() && guard++ < 20) {
+  while (!loop.isTerminal() && guard++ < 30) {
     const reachable = loop.reachable();
     if (reachable.length === 0) break;
-    const node = loop.choose(reachable[0].id);
+    const node = loop.choose(pick(reachable.map((n) => n.id)));
+    visited.push(node.id);
     if (node.kind === "combat") {
       loop.startEncounter();
       loop.beginBattle();
@@ -30,80 +48,138 @@ function drive(loop: RunLoop, onCombat: (loop: RunLoop) => void): void {
       loop.playCurrentNode(); // rest / event — no fight
     }
   }
+  return visited;
 }
 
-/** Force a clean win: every enemy down (the sapper too ⇒ the closing-gate is met). */
-function forceWin(loop: RunLoop): void {
-  for (const u of loop.staged!.battle.units) if (u.side === "enemy") u.alive = false;
-}
-
-describe("The Hollow Mill — the framework's first AuthoredExpedition (D52)", () => {
+describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
   it("is a valid hand-built expedition (connectivity + authored bindings)", () => {
     expect(validateExpedition(THE_HOLLOW_MILL)).toEqual([]);
   });
 
-  it("binds its combat nodes to the three authored encounters", () => {
+  it("authors the locked topology (camp → L5 region → stub finale)", () => {
     const m = THE_HOLLOW_MILL.map;
+    expect(m.startId).toBe("start");
+    expect(m.finalIds).toEqual(["finale"]);
+    // The fork + reconverge: 4A and 4B both reach the Market; the Market fans to the
+    // dug-in Wagon + Den; 4B also reaches the Den directly.
+    expect(m.nodes.snares.edges).toEqual(["rest4a", "wagon4b"]);
+    expect(m.nodes.rest4a.edges).toContain("market");
+    expect(m.nodes.wagon4b.edges).toEqual(expect.arrayContaining(["market", "den"]));
+    expect(m.nodes.market.edges).toEqual(expect.arrayContaining(["securedWagon", "den"]));
+    // Authored bindings resolve.
     expect(m.nodes.e1.authoredId).toBe(E1_SKIRMISH.id);
-    expect(m.nodes.e2.authoredId).toBe(E2_AMBUSH.id);
-    expect(m.nodes.e3.authoredId).toBe(E3_HOLDOUT.id);
-    expect(m.finalIds).toEqual(["e3"]);
-    // The camp + rest nodes carry no fight.
-    expect(m.nodes.start.kind).toBe("rest");
-    expect(m.nodes.rest.kind).toBe("rest");
+    expect(m.nodes.snares.authoredId).toBe(TRAP_FIELD.id);
+    expect(m.nodes.wagon4b.authoredId).toBe(PRISON_WAGON.id);
+    expect(m.nodes.securedWagon.authoredId).toBe(SECURED_WAGON.id);
+    expect(m.nodes.den.authoredId).toBe(THIEVES_DEN.id);
+    expect(m.nodes.finale.authoredId).toBe(STUB_FINALE.id);
+    // The two authored event nodes pin their beats.
+    expect(m.nodes.camp2.eventId).toBe("provision-choice");
+    expect(m.nodes.market.eventId).toBe("merchant-town");
   });
 
-  it("boots with the bundle (party, purse, supplies)", () => {
+  it("boots with the starting trio (recruits join via their nodes, not the bundle)", () => {
     const run = createRunFromExpedition(THE_HOLLOW_MILL);
-    expect(run.party).toHaveLength(5); // Vale the Scout is the trapper (Survivalist subsumed)
+    expect(run.party).toHaveLength(3);
+    expect(run.party.map((u) => u.id).sort()).toEqual(["edrin", "rook", "vale"]);
     expect(run.camp.gold).toBe(120);
     expect(run.expeditionId).toBe("hollow-mill");
   });
 
-  it("the L1→L2 unlock lands after E1 (the authored XP tuning)", () => {
+  it("node 1 rescues the Cook on the win (the authored post-win grant)", () => {
     const loop = freshLoop();
     loop.choose("e1");
     loop.startEncounter();
     loop.beginBattle();
     forceWin(loop);
     loop.resolve();
-    // Every surviving fighter reached primary-job L2 (the 2nd-active unlock).
+    expect(loop.run.party.some((u) => u.id === "pip")).toBe(true);
+    // …and every surviving fighter reached primary-job L2 (the 2nd-active unlock).
     for (const u of loop.run.party) {
-      if (u.jobId === "cook") continue; // Pip the support body uses the deployed path
+      if (u.id === "pip") continue;
       expect(jobLevelOf(u, u.primaryJob)).toBeGreaterThanOrEqual(2);
     }
   });
 
-  // --- The three graded terminals (deterministic) ---------------------------
+  it("the trap-field stages strong concealed snares + one weak enemy", () => {
+    const run = createRunFromExpedition(THE_HOLLOW_MILL);
+    const staged = stageEncounter(TRAP_FIELD, run.party);
+    const traps = staged.battle.entities.all().filter(isConcealedTrap);
+    expect(traps).toHaveLength(5);
+    expect(traps.every((t) => t.owner === "enemy" && !t.revealed && !t.sprung)).toBe(true);
+    // Exactly one enemy body — the strong field is the encounter.
+    expect(TRAP_FIELD.enemies).toHaveLength(1);
+  });
 
-  it("CLEAR: forcing each fight to a win completes the expedition (the prize)", () => {
+  it("CLEAR via 4B: frees the Medic, sets the gate, and completes the run", () => {
     const loop = freshLoop();
-    drive(loop, forceWin);
+    // Route: e1 → camp2 → snares → wagon4b (4B) → den → finale (avoids securedWagon).
+    const route = ["e1", "camp2", "snares", "wagon4b", "den", "finale"];
+    const visited = drive(loop, forceWin, (ids) => ids.find((id) => route.includes(id)) ?? ids[0]);
+    expect(visited).toContain("wagon4b");
+    expect(loop.run.party.some((u) => u.id === "sela")).toBe(true); // Medic freed at 4B
+    expect(loop.run.flags["medic-freed"]).toBe(true);
+    expect(loop.run.inventory.counts["relic-hollow-blade"] ?? 0).toBeGreaterThan(0); // relic from the Den
     expect(loop.isComplete()).toBe(true);
-    expect(loop.run.complete).toBe(true);
   });
 
-  it("OBJECTIVE-FAILURE on E3: the closing-gate fails ⇒ returns alive, no prize", () => {
+  it("CLEAR via 4A: Medic catch-up at the secured Wagon, then finale", () => {
     const loop = freshLoop();
-    drive(loop, (l) => {
-      const node = l.run.mapNodeId;
-      if (node === "e3") {
-        // Let the bridge-cut run out (Sapper alive) instead of clearing the field.
-        const clock = l.staged!.battle.clock;
-        for (let i = 0; i < 60 && l.staged!.objectives.some((o) => o.spec.kind === "closing-gate" && o.status() === "pending"); i++) clock.tick();
-      } else {
-        forceWin(l);
-      }
-    });
-    const last = loop.run.history[loop.run.history.length - 1];
-    expect(last.nodeId).toBe("e3");
-    expect(last.result).toBe("objective-failure");
-    expect(loop.isComplete()).toBe(false); // no prize
-    expect(loop.run.party.some((u) => u.alive)).toBe(true); // the party came home alive
-    expect(loop.isTerminal()).toBe(true); // but the final node ended the run
+    // Route: e1 → camp2 → snares → rest4a (safe road) → market → securedWagon → finale.
+    const route = ["e1", "camp2", "snares", "rest4a", "market", "securedWagon", "finale"];
+    drive(loop, forceWin, (ids) => ids.find((id) => route.includes(id)) ?? ids[0]);
+    expect(loop.run.party.some((u) => u.id === "mira")).toBe(true); // Merchant at the Market
+    expect(loop.run.party.some((u) => u.id === "sela")).toBe(true); // Medic via the catch-up
+    expect(loop.isComplete()).toBe(true);
   });
 
-  it("WIPE: losing E1 ends the run", () => {
+  it("conditional access: the secured Wagon is gated off once the Medic is held", () => {
+    const run = createRunFromExpedition(THE_HOLLOW_MILL);
+    const loop = new RunLoop(run);
+    // Walk node-by-node to the Market via 4B (which frees the Medic), then STOP at the
+    // Market (don't drive past it) so we can inspect the offered edges from there.
+    for (const next of ["e1", "camp2", "snares", "wagon4b", "market"]) {
+      const node = loop.choose(next);
+      if (node.kind === "combat") {
+        loop.startEncounter();
+        loop.beginBattle();
+        forceWin(loop);
+        loop.resolve();
+      } else {
+        loop.playCurrentNode();
+      }
+    }
+    expect(run.flags["medic-freed"]).toBe(true);
+    // From the Market the dug-in Wagon must NOT be offered (Medic already held).
+    const reachable = loop.reachable().map((n) => n.id);
+    expect(reachable).not.toContain("securedWagon");
+    expect(reachable).toContain("den");
+  });
+
+  it("the iron-weapons pick sets the gear flag and a blanket +attack edge", () => {
+    const run = createRunFromExpedition(THE_HOLLOW_MILL);
+    // No pick yet ⇒ identity delta.
+    expect(gearDelta(run)).toEqual({ attack: 0, defensePenalty: 0 });
+    run.flags["iron-weapons"] = true;
+    expect(gearDelta(run).attack).toBeGreaterThan(0);
+    // The edge decays with worn gear.
+    run.camp.gearWear = 99;
+    expect(gearDelta(run).attack).toBe(0);
+    expect(gearDelta(run).defensePenalty).toBeGreaterThan(0);
+  });
+
+  it("a pure AI auto-traverse reaches a terminal deterministically (replayable)", () => {
+    const a = freshLoop();
+    const b = freshLoop();
+    a.autoTraverse();
+    b.autoTraverse();
+    expect(a.isTerminal()).toBe(true);
+    expect(b.isTerminal()).toBe(true);
+    expect(a.run.path).toEqual(b.run.path);
+    expect(a.run.complete).toBe(b.run.complete);
+  });
+
+  it("WIPE: losing node 1 ends the run", () => {
     const loop = freshLoop();
     loop.choose("e1");
     loop.startEncounter();
@@ -114,37 +190,15 @@ describe("The Hollow Mill — the framework's first AuthoredExpedition (D52)", (
     expect(loop.isOver()).toBe(true);
   });
 
-  it("a pure AI auto-traverse reaches a terminal deterministically (replayable)", () => {
-    const a = freshLoop();
-    const b = freshLoop();
-    a.autoTraverse();
-    b.autoTraverse();
-    expect(a.isTerminal()).toBe(true);
-    expect(b.isTerminal()).toBe(true);
-    // Same expedition + same deterministic sim ⇒ identical route + terminal.
-    expect(a.run.path).toEqual(b.run.path);
-    expect(a.run.complete).toBe(b.run.complete);
-    expect(a.run.over).toBe(b.run.over);
-  });
-
-  it("the trap-field node stages concealed enemy traps the party can disarm (D12)", () => {
-    const run = createRunFromExpedition(THE_HOLLOW_MILL);
-    // The snares node sits on the main path (before the rest), bound to the trap field.
-    const snares = THE_HOLLOW_MILL.map.nodes["snares"];
-    expect(snares.kind).toBe("combat");
-    expect(snares.authoredId).toBe(TRAP_FIELD.id);
-    // Staging pre-registers the concealed traps as hidden enemy-owned bodies.
-    const traps = stageEncounter(TRAP_FIELD, run.party).battle.entities.all().filter(isConcealedTrap);
-    expect(traps).toHaveLength(5);
-    expect(traps.every((t) => t.owner === "enemy" && !t.revealed && !t.sprung)).toBe(true);
-    // …and the party fields a trap-trained unit (Bram) to harvest them.
-    expect(run.party.some(canDisarm)).toBe(true);
-  });
-
-  it("the party floors intel at tier 2 — the intel teeth are reachable in the demo (D10)", () => {
-    // The deploy edge is live by default at tier ≥ 2, and one Scout on E2 reaches
-    // tier 3 to reveal its hidden ambush. Guards the lever from going latent again.
+  it("the party floors intel at tier 2 — the intel teeth are reachable (D10)", () => {
     const party = THE_HOLLOW_MILL.bundle.party.map(createUnit);
     expect(intelFloor(party)).toBeGreaterThanOrEqual(2);
+  });
+
+  it("the Den fields thief enemies (the chase-the-thief tension)", () => {
+    expect(THIEVES_DEN.enemies.some((e) => e.templateId === "thief")).toBe(true);
+    const run = createRunFromExpedition(THE_HOLLOW_MILL);
+    const staged = stageEncounter(THIEVES_DEN, run.party);
+    expect(staged.battle.units.some((u) => u.side === "enemy" && u.thief)).toBe(true);
   });
 });

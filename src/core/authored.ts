@@ -53,6 +53,24 @@ export interface AuthoredTrap {
   concealment?: number;
 }
 
+/**
+ * A **post-win grant** an authored encounter awards on a `win` (D52 vertical-slice).
+ * Beyond the gold/materials/xp {@link EncounterReward}, an authored node can hand the
+ * party a fresh **recruit** (joins `run.party`), a **relic/unique item** (into the
+ * stash), and/or set a run **flag** (read by conditional map access). The slice's
+ * rescue-on-win recruits (Cook/Medic) and the Den's relic ride this — there was no
+ * "grant a unit/item on win" hook before, so it's added here and applied in
+ * `RunLoop.applyRewards`. Idempotent: a recruit already in the party is not re-added.
+ */
+export interface EncounterGrant {
+  /** A unit that joins `run.party` on the win (the rescued Cook/Medic, etc.). */
+  recruit?: UnitSpec;
+  /** A material/relic id dropped into the stash on the win (the Den's relic). */
+  item?: string;
+  /** A run flag set on the win — read by conditional node access (D52 gate). */
+  flag?: string;
+}
+
 /** A fixed, hand-authored encounter (D44). */
 export interface AuthoredEncounter {
   id: string;
@@ -66,6 +84,11 @@ export interface AuthoredEncounter {
   /** Concealed enemy traps pre-placed on the field (spot to avoid, Survivalist to harvest). */
   traps?: AuthoredTrap[];
   reward: EncounterReward;
+  /**
+   * Post-win grants (D52) — a recruit / relic / flag awarded on a `win`, beyond the
+   * reward. Applied in `RunLoop.applyRewards` (win-only, forfeited on a non-win).
+   */
+  grants?: EncounterGrant;
   /**
    * The encounter's objectives (D50) — the converged, multi-objective model the
    * staging seam arms. A closing-gate goes here; the default elimination goal is

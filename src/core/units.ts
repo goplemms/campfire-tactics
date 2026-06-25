@@ -181,6 +181,13 @@ export interface Unit extends UnitStats {
   /** Authored ambush body hidden until scouted (D44); a render/fog flag. */
   hidden?: boolean;
   /**
+   * The blanket **gear-condition** delta stamped onto this unit for the current
+   * battle (D52) — the iron-weapons +attack edge and the worn-gear −defense penalty
+   * ({@link "./gear-condition"}), recorded so it can be reverted cleanly between
+   * battles. Player combatants only; absent ⇒ no stamp in effect.
+   */
+  gearStamp?: { attack: number; defensePenalty: number };
+  /**
    * Captured (D7): bound on the map, doesn't take turns, excluded from the
    * initiative seed, but still "alive" — a rescuable sub-objective.
    */

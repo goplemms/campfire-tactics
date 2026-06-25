@@ -79,6 +79,14 @@ export interface MapNode {
    */
   authoredId?: string;
   /**
+   * Pins a specific authored **event** to this node (D52) — when set, an `event`-kind
+   * node runs this exact {@link "./node-events".EventDef} id instead of the
+   * deterministic seeded pick ({@link "./node-events".eventForNode}). The authored
+   * expedition's hand-built event nodes (the pick-one camp, the Merchant town) ride
+   * this; procedural nodes leave it unset and pick by seed.
+   */
+  eventId?: string;
+  /**
    * **Market-access tier at this node (D61)** — seeded at generation from
    * {@link nodeMarket}. **Absent ⇒ `none`** (so older fixtures/maps read as "no
    * market" rather than crashing); the generator always sets it. Read through

@@ -69,11 +69,12 @@ export class LegendStrip extends Phaser.GameObjects.Container {
 /** Swatch alphas chosen to match the board washes the key stands in for. */
 export const LEGEND_ALPHA = { wash: 0.5, outline: 1 } as const;
 
-/** The Deployment closing-net key (D63): safe ground, the ring about to fall, danger. */
+/** The Deployment closing-net key (D63/D-feel): the immune core, risky open ground, the net. */
 export const DEPLOY_LEGEND: LegendItem[] = [
-  { color: COLOR.successDeep, label: "Safe by the fire", alpha: LEGEND_ALPHA.wash },
-  { color: COLOR.accent, label: "Warning — falls next turn", alpha: LEGEND_ALPHA.wash },
-  { color: COLOR.danger, label: "Danger — may capture", alpha: LEGEND_ALPHA.wash },
+  { color: COLOR.successDeep, label: "Safe core — no capture", alpha: LEGEND_ALPHA.wash },
+  { color: COLOR.danger, label: "Open ground — risk", alpha: 0.22 },
+  { color: COLOR.accent, label: "Net falls here next", alpha: LEGEND_ALPHA.wash },
+  { color: COLOR.danger, label: "The net — capture", alpha: LEGEND_ALPHA.wash },
 ];
 
 /** The Battle key (D60): move budget, where a strike lands, the toggled threat zone. */

@@ -20,16 +20,17 @@ import { safeGroundRemains } from "./deployment";
 export type FrontTurnStage =
   /** A unit was netted → bind it, raise the alarm, start the battle. */
   | { kind: "capture" }
-  /** No catch, but the net swallowed the last safe tile → start the battle anyway. */
+  /** No catch, but the net reached the protected core (or swallowed the last safe tile) → start the battle, nobody taken. */
   | { kind: "overrun" }
   /** Safe ground remains → rest the clock on the player until the next Advance. */
   | { kind: "continue" };
 
 /**
  * Classify the net's turn (D63), the decision behind `BattleScene.runFrontTurn`: a
- * catch raises the alarm; otherwise, if no safe ground remains the net has overrun
- * the camp; otherwise the deploy phase continues. The scene renders each branch
- * (drop the net + delay → battle / overrun message → idle) but no longer decides it.
+ * catch raises the alarm; otherwise, if the net has reached the protected core
+ * ({@link FrontTurnOutcome.breached}) or no safe ground remains, the net has overrun
+ * the camp (combat starts, nobody taken); otherwise the deploy phase continues. The
+ * scene renders each branch but no longer decides it.
  */
 export function frontTurnStage(
   out: FrontTurnOutcome,
@@ -38,7 +39,7 @@ export function frontTurnStage(
   front: DeploySource,
 ): FrontTurnStage {
   if (out.captured) return { kind: "capture" };
-  if (!safeGroundRemains(grid, camp, front)) return { kind: "overrun" };
+  if (out.breached || !safeGroundRemains(grid, camp, front)) return { kind: "overrun" };
   return { kind: "continue" };
 }
 

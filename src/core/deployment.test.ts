@@ -36,6 +36,11 @@ import {
   FRONT_SPEED_LEAN,
   DIG_IN_CAPTURE_FACTOR,
   SAFE_BASE_RADIUS,
+  isProtected,
+  protectRadiusOn,
+  PROTECT_MAP_DIVISOR,
+  NEUTRAL_DANGER,
+  FRONT_DANGER,
 } from "./deployment";
 import { CTClock, sideSeed } from "./clock";
 import { Rng } from "./rng";
@@ -329,81 +334,125 @@ describe("D63 two-source geometry — campfire vs. the growing danger", () => {
   });
 });
 
-describe("D63 capture chance — danger spike, depth, dig-in", () => {
+describe("D-feel protected core — presence-sized, capped to the board width", () => {
+  const heavy = () =>
+    createUnit({ id: "k", side: "player", pos: { col: 0, row: 0 }, awareness: 2, speed: 12, maxHp: 34, attack: 11, defense: 4, moveRange: 4, sightRadius: 4 });
+
+  it("caps the protected radius to a fraction of the board width (tight on a small map, opens on a big one)", () => {
+    const big = [heavy(), heavy(), heavy(), heavy()]; // presence 72 → a large uncapped radius
+    expect(campfireRadius(big)).toBeGreaterThan(Math.floor(8 / PROTECT_MAP_DIVISOR));
+    expect(protectRadiusOn(new TileGrid(8, 6), big)).toBe(Math.floor(8 / PROTECT_MAP_DIVISOR)); // capped small
+    expect(protectRadiusOn(new TileGrid(18, 6), big)).toBeGreaterThan(Math.floor(8 / PROTECT_MAP_DIVISOR)); // opens up
+  });
+
+  it("never drops below the base radius, even on a tiny board", () => {
+    expect(protectRadiusOn(new TileGrid(3, 3), [unit("a", "player", 2)])).toBe(SAFE_BASE_RADIUS);
+  });
+
+  it("isProtected marks the tiles within the campfire's radius", () => {
+    const c = { origin: { col: 0, row: 2 }, radius: 2 };
+    expect(isProtected({ col: 2, row: 2 }, c)).toBe(true);
+    expect(isProtected({ col: 3, row: 2 }, c)).toBe(false);
+  });
+});
+
+describe("D-feel capture chance — immune core, neutral risk, near-certain net", () => {
   const at = (col: number, row = 2) => {
     const u = unit("u", "player", 2);
     u.pos = { col, row };
     return u;
   };
+  const camp = (radius = 2) => ({ origin: { col: 0, row: 2 }, radius });
   const front = (radius: number) => ({ origin: { col: 7, row: 2 }, radius, speed: 10 });
 
-  it("is zero until the danger reaches the unit", () => {
-    expect(frontCaptureChance(at(6), front(0))).toBe(0);
-    expect(frontCaptureChance(at(7), front(0))).toBeGreaterThan(0); // on the source tile
+  it("is zero inside the protected core — even when the net has lapped over it", () => {
+    expect(captureChanceAt({ col: 1, row: 2 }, camp(2), front(0))).toBe(0);
+    expect(captureChanceAt({ col: 1, row: 2 }, camp(2), front(7))).toBe(0); // net over the core: still immune (a breach, not a catch)
   });
 
-  it("rises the deeper a unit sits inside the danger radius", () => {
-    const f = front(5);
-    expect(frontCaptureChance(at(5), f)).toBeGreaterThan(frontCaptureChance(at(2), f)); // nearer source = deeper
+  it("open neutral ground carries a real (lower) risk — there is no free ground", () => {
+    expect(captureChanceAt(at(4).pos, camp(2), front(0))).toBeCloseTo(NEUTRAL_DANGER, 5);
   });
 
-  it("digging in slashes the capture chance by the dig-in factor", () => {
+  it("inside the net is near-guaranteed, and flat wherever it has reached", () => {
+    expect(captureChanceAt(at(6).pos, camp(2), front(2))).toBeCloseTo(FRONT_DANGER, 5);
+    expect(FRONT_DANGER).toBeGreaterThan(NEUTRAL_DANGER);
     const f = front(5);
-    expect(frontCaptureChance(at(4), f, { dugIn: true })).toBeCloseTo(
-      frontCaptureChance(at(4), f, { dugIn: false }) * DIG_IN_CAPTURE_FACTOR,
+    expect(captureChanceAt(at(7).pos, camp(2), f)).toBeCloseTo(captureChanceAt(at(3).pos, camp(2), f), 5);
+  });
+
+  it("digging in slashes the chance by the dig-in factor", () => {
+    const f = front(5);
+    expect(frontCaptureChance(at(4), camp(2), f, { dugIn: true })).toBeCloseTo(
+      frontCaptureChance(at(4), camp(2), f, { dugIn: false }) * DIG_IN_CAPTURE_FACTOR,
       5,
     );
   });
 
-  it("never exceeds the capture cap, even deep and surrounded", () => {
-    expect(frontCaptureChance(at(7), front(10))).toBeLessThanOrEqual(CAPTURE_CHANCE_MAX);
+  it("the exposure multiplier trims neutral ground but never the net itself", () => {
+    expect(captureChanceAt(at(4).pos, camp(2), front(0), { exposureMultiplier: 0.5 })).toBeCloseTo(NEUTRAL_DANGER * 0.5, 5);
+    expect(captureChanceAt(at(6).pos, camp(2), front(2), { exposureMultiplier: 0.5 })).toBeCloseTo(FRONT_DANGER, 5); // the net is the net
+  });
+
+  it("never exceeds the near-certain net rate", () => {
+    expect(frontCaptureChance(at(7), camp(2), front(10))).toBeLessThanOrEqual(FRONT_DANGER);
   });
 
   it("captureChanceAt scores a bare coord exactly as frontCaptureChance scores the unit", () => {
     const f = front(5);
     const u = at(4);
-    expect(captureChanceAt(u.pos, f)).toBe(frontCaptureChance(u, f));
-    expect(captureChanceAt(u.pos, f, { dugIn: true })).toBe(frontCaptureChance(u, f, { dugIn: true }));
+    expect(captureChanceAt(u.pos, camp(2), f)).toBe(frontCaptureChance(u, camp(2), f));
+    expect(captureChanceAt(u.pos, camp(2), f, { dugIn: true })).toBe(frontCaptureChance(u, camp(2), f, { dugIn: true }));
   });
 });
 
-describe("D63 deployForecast — the per-choice risk forecast for the focus card", () => {
+describe("D-feel deployForecast — the per-choice risk forecast for the focus card", () => {
   const at = (col: number, row = 2) => {
     const u = unit("u", "player", 2);
     u.pos = { col, row };
     return u;
   };
+  const camp = (radius = 2) => ({ origin: { col: 0, row: 2 }, radius });
   const front = (radius: number) => ({ origin: { col: 7, row: 2 }, radius, speed: 10 });
 
-  it("digging in is offered below the hold baseline; moving out reads safe", () => {
+  it("digging in is offered below the hold baseline; stepping into the core reads safe", () => {
     const f = front(5);
-    const u = at(4); // inside the danger
-    const safeTile = { col: 1, row: 2 }; // back by the fire, out of reach of the net
-    const fc = deployForecast(u, f, [safeTile]);
-    expect(fc.hold).toBe(frontCaptureChance(u, f));
+    const u = at(4); // in the net
+    const coreTile = { col: 1, row: 2 }; // inside the protected core
+    const fc = deployForecast(u, camp(2), f, [coreTile]);
+    expect(fc.hold).toBe(frontCaptureChance(u, camp(2), f));
     expect(fc.digIn).toBeCloseTo(fc.hold * DIG_IN_CAPTURE_FACTOR, 5);
-    expect(fc.move).toBe(0); // stepping clear of the danger zeroes it
+    expect(fc.move).toBe(0); // stepping into the protected core zeroes it
   });
 
   it("offers no dig-in figure once the unit is already dug in", () => {
     const f = front(5);
     const u = at(4);
-    const fc = deployForecast(u, f, [], { dugIn: true });
+    const fc = deployForecast(u, camp(2), f, [], { dugIn: true });
     expect(fc.digIn).toBeNull();
-    expect(fc.hold).toBeCloseTo(frontCaptureChance(u, f) * DIG_IN_CAPTURE_FACTOR, 5);
+    expect(fc.hold).toBeCloseTo(frontCaptureChance(u, camp(2), f) * DIG_IN_CAPTURE_FACTOR, 5);
   });
 
   it("suppresses the move row when no reachable tile beats standing pat", () => {
     const f = front(5);
-    const u = at(7); // on the source — deepest, can only get shallower or stay
-    const deeperOnly = { col: 7, row: 2 }; // its own tile: no improvement
-    expect(deployForecast(u, f, [deeperOnly]).move).toBeNull();
-    expect(deployForecast(u, f, []).move).toBeNull();
+    const u = at(7); // deepest in the net
+    const sameZone = { col: 7, row: 2 }; // its own tile, also in the net — no improvement
+    expect(deployForecast(u, camp(2), f, [sameZone]).move).toBeNull();
+    expect(deployForecast(u, camp(2), f, []).move).toBeNull();
+  });
+
+  it("moving across neutral ground (no core in reach) still reads risky, not safe", () => {
+    const f = front(3); // net over cols 4–7
+    const u = at(5); // in the net
+    const neutralTile = { col: 3, row: 2 }; // out of the net but unprotected → neutral
+    const fc = deployForecast(u, camp(2), f, [neutralTile]);
+    expect(fc.move).toBeCloseTo(NEUTRAL_DANGER, 5); // better than the net, but not zero
   });
 });
 
-describe("D63 resolveFrontTurn — grow then roll the swallowed", () => {
+describe("D-feel resolveFrontTurn — grow, roll the unprotected, breach the core", () => {
   const grid = () => new TileGrid(8, 5);
+  const camp = (radius = 2) => ({ origin: { col: 0, row: 2 }, radius });
   const player = (id: string, col: number, row: number) => {
     const u = unit(id, "player", 2);
     u.pos = { col, row };
@@ -412,40 +461,65 @@ describe("D63 resolveFrontTurn — grow then roll the swallowed", () => {
 
   it("grows the danger radius one step", () => {
     const front = createFront(grid(), [unit("e", "enemy", 2, 8)]); // r0
-    const out = resolveFrontTurn(front, [player("a", 0, 0)], new Rng(1));
+    const out = resolveFrontTurn(front, camp(2), [player("a", 0, 2)], new Rng(1));
     expect(out.advancedTo).toBe(1);
     expect(front.radius).toBe(1);
   });
 
-  it("rolls capture only for units inside the danger, nearest the source first", () => {
-    const safeU = player("safe", 0, 0); // never in the zone
-    const a = player("a", 4, 2); // dist 3 from source
-    const b = player("b", 6, 2); // dist 1 — deeper, rolls first
+  it("rolls the unprotected nearest the source first; the protected core is exempt", () => {
+    const protectedU = player("safe", 1, 2); // inside the core
+    const a = player("a", 4, 2); // unprotected, dist 3 from source
+    const b = player("b", 6, 2); // unprotected, dist 1 — deeper, rolls first
     const front = { origin: { col: 7, row: 2 }, radius: 4, speed: 10 }; // grows to 5
-    const out = resolveFrontTurn(front, [safeU, a, b], new Rng(5));
-    expect(out.rolled).not.toContain(safeU);
+    const out = resolveFrontTurn(front, camp(2), [protectedU, a, b], new Rng(5));
+    expect(out.rolled).not.toContain(protectedU);
     expect(out.rolled[0]).toBe(b);
   });
 
+  it("rolls neutral (unprotected, not-yet-netted) units too — no free open ground", () => {
+    const neutralA = player("a", 4, 2); // unprotected, outside the net → neutral
+    const neutralB = player("b", 5, 1); // unprotected, outside the net → neutral
+    const protectedU = player("safe", 1, 2);
+    const front = { origin: { col: 7, row: 2 }, radius: 0, speed: 10 }; // → r1, far from these tiles
+    const out = resolveFrontTurn(front, camp(2), [neutralA, neutralB, protectedU], new Rng(3));
+    expect(out.rolled).not.toContain(protectedU); // the core never rolls
+    expect(out.rolled.length).toBeGreaterThan(0); // neutral ground is rolled
+  });
+
   it("the first capture stops the rolls and raises the alarm", () => {
-    let out = resolveFrontTurn({ origin: { col: 7, row: 2 }, radius: 4, speed: 10 }, [player("z", 0, 0)], new Rng(0));
+    let out = resolveFrontTurn({ origin: { col: 7, row: 2 }, radius: 4, speed: 10 }, camp(2), [player("z", 1, 2)], new Rng(0));
     let seed = 0;
     while (!out.alarm && seed < 300) {
       seed++;
-      const us = [player("a", 6, 2), player("b", 6, 1), player("c", 6, 3), player("d", 0, 0)];
-      out = resolveFrontTurn({ origin: { col: 7, row: 2 }, radius: 4, speed: 10 }, us, new Rng(seed));
+      const us = [player("a", 6, 2), player("b", 6, 1), player("c", 6, 3), player("d", 1, 2)];
+      out = resolveFrontTurn({ origin: { col: 7, row: 2 }, radius: 4, speed: 10 }, camp(2), us, new Rng(seed));
     }
     expect(out.alarm).toBe(true);
     expect(out.captured).not.toBeNull();
-    // resolveFrontTurn now *decides* the catch; the interpreter binds the unit
-    // (Battle.apply's `capture` action, D63 unification) — so the decision flags
-    // the alarm without mutating `captured` here.
+  });
+
+  it("breaches (no catch, but the alarm goes up) when the net reaches a unit in the core", () => {
+    const front = { origin: { col: 7, row: 2 }, radius: 6, speed: 10 }; // → r7 reaches (0,2)
+    const u = player("safe", 0, 2); // in the core
+    const ally = player("ally", 1, 2); // also in the core (so this isn't the lone-fighter case)
+    const out = resolveFrontTurn(front, camp(2), [u, ally], new Rng(0));
+    expect(out.captured).toBeNull();
+    expect(out.breached).toBe(true);
+    expect(out.alarm).toBe(false);
+  });
+
+  it("does not breach while the net is short of the core", () => {
+    const front = { origin: { col: 7, row: 2 }, radius: 1, speed: 10 }; // → r2, nowhere near the core
+    const u = player("safe", 1, 2);
+    const ally = player("ally", 2, 2); // both protected → no catches, no breach
+    const out = resolveFrontTurn(front, camp(2), [u, ally], new Rng(1));
+    expect(out.breached).toBe(false);
   });
 
   it("never catches the party's last un-captured fighter", () => {
     for (let seed = 0; seed < 50; seed++) {
       const u = player("lone", 6, 2);
-      const out = resolveFrontTurn({ origin: { col: 7, row: 2 }, radius: 5, speed: 10 }, [u], new Rng(seed));
+      const out = resolveFrontTurn({ origin: { col: 7, row: 2 }, radius: 5, speed: 10 }, camp(2), [u], new Rng(seed));
       expect(out.captured).toBeNull();
       expect(u.captured).toBe(false);
     }
@@ -453,9 +527,9 @@ describe("D63 resolveFrontTurn — grow then roll the swallowed", () => {
 
   it("is deterministic for a given seed", () => {
     const run = (seed: number) => {
-      const us = [player("a", 6, 2), player("b", 5, 2)];
-      const out = resolveFrontTurn({ origin: { col: 7, row: 2 }, radius: 4, speed: 10 }, us, new Rng(seed));
-      return { advancedTo: out.advancedTo, captured: out.captured?.id ?? null, rolled: out.rolled.map((u) => u.id) };
+      const us = [player("a", 6, 2), player("b", 5, 2), player("anchor", 1, 2)];
+      const out = resolveFrontTurn({ origin: { col: 7, row: 2 }, radius: 4, speed: 10 }, camp(2), us, new Rng(seed));
+      return { advancedTo: out.advancedTo, captured: out.captured?.id ?? null, rolled: out.rolled.map((u) => u.id), breached: out.breached };
     };
     expect(run(9)).toEqual(run(9));
   });

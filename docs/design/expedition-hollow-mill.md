@@ -145,6 +145,18 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Deployment: capture-immune core + danger everywhere** (D-feel). The campfire's old
+  "safe radius" blanketed small maps and was effectively **cosmetic** (capture was driven
+  only by the enemy net; neutral ground was free). Replaced with the two-consequence zone
+  model: a small **capture-immune protected core** (presence-sized, **capped to board
+  width** so it can't dominate a small map — ~2 steps on the 8-wide demo boards, was ~6),
+  surrounded by real danger — **neutral** open ground now carries a lower flat capture
+  risk and the **net** is near-guaranteed. The net reaching the core **breaches** (combat
+  starts, nobody taken); a unit caught out in the open is **captured**. Morale/intel now
+  **trim the neutral rate** (the `exposureMultiplier`) instead of widening the immune core;
+  the Scout's evasion and **Dig In** still cut the odds. Knobs: `SAFE_BASE_RADIUS`,
+  `PROTECT_MAP_DIVISOR`, `NEUTRAL_DANGER`, `FRONT_DANGER`. See
+  [02-deployment](02-deployment.md).
 - **Enemy concealment in deployment** (PR #59, D12). Enemies are **pre-positioned but
   invisible** during deployment — the closing net and campfire safe-radius derive from
   real placement, but the foe's tokens (and nameplates/hover) are veiled until **Start

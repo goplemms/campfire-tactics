@@ -575,22 +575,29 @@ export function safeGroundRemains(grid: TileGrid, camp: DeploySource, front: Dep
 }
 
 /**
- * Build the Deployment clock (D67 clock fold) as a {@link CTClock} carrying the **front**
- * as a strict-lead {@link TempoSource}. The clock is built over **all** units — the same
- * roster combat runs on — but its participant predicate is **narrowed to active players**
- * (`setParticipants`), so the pre-positioned enemies are frozen off the clock while the
- * front rides it as a non-unit participant that takes the net-closing turn only on a strict
- * CT lead (players win ties, the front's deliberate rule). Because capture is rolled on the
- * front's turn, a faster party simply earns more positioning turns between net-closings.
- * Drive it with `seedFlat()` (the per-unit deploy seed), `nextTurn()` (a
- * `{kind:"unit"|"tempo"}` result), `spend(unit, …)`, and `spendTempo()` (the front's net
- * step). Replaces the bespoke DeployClock — deployment and combat no longer maintain
- * parallel clocks, and (D67 W-series) no longer even separate *rosters*: one clock, one
- * unit list, the phase chosen by the participant predicate.
+ * Configure an existing {@link CTClock} for the Deployment phase (D67 W2): narrow its
+ * participant set to **active players** (so the pre-positioned enemies are frozen off the
+ * very clock combat runs on) and attach the enemy **front** as a strict-lead
+ * {@link TempoSource} (it takes the net-closing turn only on a strict CT lead — players win
+ * ties, the front's deliberate rule). Because capture is rolled on the front's turn, a
+ * faster party simply earns more positioning turns between net-closings. The Battle drives
+ * *its own* clock through deployment this way — no parallel instance — and sheds this config
+ * at the combat boundary via {@link CTClock.resetForCombat}. Seed it with `seedFlat()` (the
+ * per-unit deploy seed), then `nextTurn()` / `spend()` / `spendTempo()` step the net.
+ */
+export function configureDeployClock(clock: CTClock, front: DeployFront): void {
+  clock.setParticipants((u) => isActive(u) && u.side === "player");
+  clock.setTempo({ id: "front", ct: 0, speed: front.speed, strictLeadTie: true });
+}
+
+/**
+ * Build a **standalone** Deployment clock over `units` — a fresh {@link CTClock} configured
+ * for deploy (see {@link configureDeployClock}). The Battle folds deployment onto its *own*
+ * clock in the live game (D67 W2); this constructs an isolated one for tests and harnesses
+ * that exercise the closing net without a full Battle.
  */
 export function createDeployClock(units: readonly Unit[], front: DeployFront): CTClock {
-  const tempo: TempoSource = { id: "front", ct: 0, speed: front.speed, strictLeadTie: true };
-  const clock = new CTClock([...units], undefined, tempo);
-  clock.setParticipants((u) => isActive(u) && u.side === "player");
+  const clock = new CTClock([...units]);
+  configureDeployClock(clock, front);
   return clock;
 }

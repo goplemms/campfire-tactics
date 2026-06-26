@@ -183,9 +183,11 @@ seed** for both sides.
   (`exposureMultiplier`). The net reaching the protected core **breaches** (combat starts,
   nobody taken) — the soft consequence vs. capture out in the open. Only the
   radius/cap/growth/rate numbers are tuning. **Architecture:** Deployment is a true phase of
-  `Battle` on the **one CT clock** (D67) — the enemy front rides that clock as a strict-lead
-  *tempo source* (no parallel `DeployClock`), and the deploy→battle handoff is a single
-  logged `beginBattle` boundary (also the `battleBegan` event). Repositioning and
+  `Battle` on the **Battle's own CT clock** (D67) — not a parallel class *or even a second
+  instance*: staging configures `battle.clock` (narrow turn-taking to active players, attach
+  the enemy front as a strict-lead *tempo source*), and the deploy→battle handoff is a single
+  logged `beginBattle` boundary (also the `battleBegan` event) that sheds that config and
+  re-seeds the clock for the full-roster fight. Repositioning and
   skill-casting use the **same** `moveUnit`/`useSkill` verbs as combat; the interpreter reads
   `Battle.phase` and skips the combat turn-commit in pre-combat. **Engagement stays
   combat-only by an enforced invariant:** a skill must declare the current phase in its

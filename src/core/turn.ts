@@ -458,9 +458,14 @@ export class Battle {
         return { ok: true };
       }
       case "beginBattle": {
-        // The pre-combat → combat boundary (D67): flip the phase and announce it. The
-        // logged marker is what replay() drains the deploy prelude up to.
+        // The pre-combat → combat boundary (D67): flip the phase, shed the deploy clock
+        // configuration (detach the front, re-widen participation, clear the staging
+        // timeline — see resetForCombat), and announce it. The clock now *is* the one the
+        // deploy net ran on (D67 W2); reset is a no-op when replay never staged on it, so
+        // the combat path stays byte-identical. The logged marker is what replay() drains
+        // the deploy prelude up to.
         this.phase = "combat";
+        this.clock.resetForCombat();
         this.bus.emit("battleBegan", {});
         this._log.push(action);
         return { ok: true };

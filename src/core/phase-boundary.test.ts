@@ -11,6 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { Battle, replay } from "./turn";
+import { configureDeployClock, createFront } from "./deployment";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import type { SkillDef } from "./skills";
@@ -43,6 +44,44 @@ describe("D67 phase boundary", () => {
     battle.beginBattle();
     expect(battle.phase).toBe("combat");
     expect(battle.log[battle.log.length - 1]).toEqual({ kind: "beginBattle" });
+  });
+
+  it("beginBattle sheds the deploy clock config — combat re-widens to the full roster off the SAME clock (W2)", () => {
+    const grid = new TileGrid(8, 1);
+    const enemy = pawn("e", 6, "enemy");
+    const battle = new Battle(grid, [pawn("p", 0), enemy]);
+    // Deployment runs on the Battle's OWN clock now — narrow it to players + attach the front.
+    battle.enterDeploy();
+    configureDeployClock(battle.clock, createFront(grid, [enemy]));
+    battle.clock.seedFlat();
+    expect(enemy.ct).toBe(0); // the frozen enemy isn't deploy-seeded
+
+    const staged = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      const t = battle.clock.nextTurn();
+      if (t.kind === "unit") {
+        staged.add(t.unit.id);
+        battle.clock.spend(t.unit, { moved: true });
+      } else battle.clock.spendTempo(); // the front's net step
+    }
+    expect(staged.has("e")).toBe(false); // enemy frozen off the shared clock during deploy
+    expect(staged.has("p")).toBe(true);
+
+    // Cross the boundary: resetForCombat detaches the front + re-widens participation, then seed.
+    battle.beginBattle();
+    expect(battle.clock.snapshot().tempoCt).toBeUndefined(); // the front was detached
+    battle.seed();
+    const fought = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      const t = battle.clock.nextTurn();
+      expect(t.kind).toBe("unit"); // no tempo turns in combat — the front is gone
+      if (t.kind === "unit") {
+        fought.add(t.unit.id);
+        battle.clock.spend(t.unit, { acted: true });
+      }
+    }
+    expect(fought.has("e")).toBe(true); // the enemy participates again — combat runs everyone
+    expect(fought.has("p")).toBe(true);
   });
 
   it("replays byte-identically across the logged beginBattle boundary", () => {

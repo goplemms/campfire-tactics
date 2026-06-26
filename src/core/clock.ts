@@ -173,9 +173,11 @@ export class CTClock {
   /**
    * An optional non-unit tempo participant (D67 clock fold) — the Deployment front.
    * `undefined` for a combat clock, so the combat path is byte-identical to the
-   * pre-fold behaviour (every tempo branch below is skipped when it's unset).
+   * pre-fold behaviour (every tempo branch below is skipped when it's unset). Attached for
+   * the deploy phase via {@link setTempo} and shed again at {@link resetForCombat} — the
+   * **one** clock serves both phases rather than two instances trading off (D67 W2).
    */
-  private readonly tempo?: TempoSource;
+  private tempo?: TempoSource;
 
   /**
    * Which units **participate** in this clock's turn order — they tick toward CT and can
@@ -186,15 +188,33 @@ export class CTClock {
    */
   private participates: (u: Unit) => boolean = isActive;
 
-  constructor(units: Unit[], bus?: EventBus, tempo?: TempoSource) {
+  constructor(units: Unit[], bus?: EventBus) {
     this.units = units;
     this.bus = bus;
-    this.tempo = tempo;
   }
 
   /** Narrow (or restore) which units participate in the turn order — the phase seam. */
   setParticipants(predicate: (u: Unit) => boolean): void {
     this.participates = predicate;
+  }
+
+  /** Attach (or detach) the {@link TempoSource} — the Deployment front rides the clock as one. */
+  setTempo(source?: TempoSource): void {
+    this.tempo = source;
+  }
+
+  /**
+   * Shed the Deployment configuration and restore combat defaults at the pre-combat →
+   * combat boundary (D67 W2): detach the front, re-widen participation to every active
+   * unit, and clear the staging timeline so combat opens on a fresh clock. A **no-op** for
+   * a clock that only ever fought (already in this state), so the combat path stays
+   * byte-identical; `seedInitiative` then re-seeds CT over the now-combat roster.
+   */
+  resetForCombat(): void {
+    this.tempo = undefined;
+    this.participates = isActive;
+    this.time = 0;
+    this.scheduled = [];
   }
 
   /**

@@ -145,6 +145,21 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Deployment runs on the Battle's *own* clock — one instance, not two** (D67 W2, internal
+  — no behavior change). With the participant seam proven (W1), the separate deploy `CTClock`
+  instance is **retired from the live game**: deployment now configures and runs on
+  `battle.clock` — the *same object* combat ticks. `enterDeploy` narrows that clock to active
+  players + attaches the front as the tempo source (`configureDeployClock`); the
+  `beginBattle` boundary **sheds** that config (`resetForCombat`: detach the front, re-widen
+  participation to every active unit, clear the staging timeline) so combat opens on a fresh
+  clock and re-seeds initiative over the full roster. The reset is a **no-op** for a battle
+  that never staged (replay, bare combat tests), so the combat path stays byte-identical. The
+  scene's `deployClock` field is **gone** — there's one clock now, the phase chosen by its
+  configuration. (`createDeployClock` survives as a *test-only* helper that builds a
+  standalone deploy-configured clock; the tempo is now attached via `setTempo`, not a
+  constructor arg.) Guarded byte-identical: golden trace, full suite (829), the deploy→battle
+  e2e (46, the scene fold end-to-end), and sim all green; a new boundary test pins the
+  combat re-widen — the enemy frozen in deploy fights again the moment the battle opens.
 - **One clock *instance* can serve both phases — the participant seam** (D67 W-series,
   internal — no behavior change). The last thing keeping deployment on a *separate* `CTClock`
   was the roster: deploy built its clock over **players only**, combat over everyone. Now the

@@ -145,6 +145,17 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **The front's net-closing turn is a bus event, not a hardcoded branch** (D67 W3, internal
+  — no behavior change). The deploy loop used to special-case the front's turn inline (`else
+  runFrontTurn()`); now, when the CT clock hands the **tempo source** its turn, the loop emits
+  a `frontTurn` event and the **capture wave** resolves as a *listener* (`resolveFrontWave`).
+  The front's turn is now a first-class **slot on the clock** — the same substrate every field
+  entity already uses (D4) — so "as the net closes" effects can hook the moment without
+  touching the loop. The capture *logic* (`resolveFrontTurn` → logged `capture` actions) and
+  its RNG seam are unchanged, so replay still reconstructs catches from the log and never
+  re-fires the event (it's live-phase only). Guarded byte-identical: golden trace (the
+  tempo-turn order + capture outcomes), full suite (829), the deploy→battle e2e (46 — drives
+  the real `frontTurn` dispatch), and sim all green.
 - **Deployment runs on the Battle's *own* clock — one instance, not two** (D67 W2, internal
   — no behavior change). With the participant seam proven (W1), the separate deploy `CTClock`
   instance is **retired from the live game**: deployment now configures and runs on

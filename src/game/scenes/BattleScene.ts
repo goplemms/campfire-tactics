@@ -515,6 +515,11 @@ export class BattleScene extends Phaser.Scene {
       this.deployReachGfx?.clear();
       clearLayer(this.deployMarkers);
     });
+    // The front's net-closing turn (D67 W3): the deploy loop emits `frontTurn` when the CT
+    // clock hands the tempo source its turn, and the capture wave resolves here as a reaction
+    // — so the front's turn is a first-class slot on the clock, not a branch wired into the
+    // loop. Harmless in combat (never emitted there — the front is detached at the boundary).
+    this.battle.bus.on("frontTurn", () => this.resolveFrontWave());
   }
 
   // --- Phase: Deployment -----------------------------------------------------
@@ -580,7 +585,9 @@ export class BattleScene extends Phaser.Scene {
     if (this.over || this.phase !== "deployment" || this.busy) return;
     const turn = this.battle.clock.nextTurn();
     if (turn.kind === "unit") this.beginDeployTurn(turn.unit);
-    else this.runFrontTurn(); // "tempo" (the front leads) or "idle" (never, the front always charges)
+    // "tempo" (the front leads) or "idle" (never — the front always charges): announce the
+    // front's turn on the bus; the capture-wave listener (resolveFrontWave) resolves it.
+    else this.battle.bus.emit("frontTurn", {});
   }
 
   /** Open one player unit's deployment turn: it may move, dig in, or set a trap. */
@@ -624,12 +631,14 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Resolve the front's turn (D63): the net advances one column, then rolls capture
-   * for every unit it has swallowed. The first capture raises the alarm and battle
-   * begins; if the net overruns the camp's home edge with nobody caught, battle
-   * begins anyway. Otherwise the clock rests on the player until the next Advance.
+   * The capture wave — the `frontTurn` bus listener (D67 W3, was the inline `runFrontTurn`).
+   * The net advances one column, then rolls capture for every unit it has swallowed. The
+   * first capture raises the alarm and battle begins; if the net overruns the camp's home
+   * edge with nobody caught, battle begins anyway. Otherwise the clock rests on the player
+   * until the next Advance. Reached only via the bus (emitted when the CT clock hands the
+   * tempo source its turn), so the front's turn is a hookable moment, not a hardcoded branch.
    */
-  private runFrontTurn(): void {
+  private resolveFrontWave(): void {
     // resolveFrontTurn reads each unit's dugIn stance by default (D63); the morale/intel
     // deploy edge rides in as the neutral-capture multiplier (D8/D10).
     const out = resolveFrontTurn(this.front, this.campfire, this.battle.units, this.deployRng, {

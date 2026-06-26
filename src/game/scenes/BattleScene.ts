@@ -834,20 +834,20 @@ export class BattleScene extends Phaser.Scene {
    * Cast a dual-context ability during Deployment (D67) — the **same** `useSkill` verb as
    * combat; because the Battle is in the pre-combat phase, the interpreter resolves the
    * effect with **no CT commit** (the deploy clock owns the turn). Logged + undoable; it
-   * spends the unit's **act**, leaving its **move** free, so a Dash → reposition combo works.
+   * spends the unit's **act** (via the shared {@link commitFieldAct} seam, D67 W4), leaving
+   * its **move** free, so a Dash → reposition combo works.
    */
   private castDeploySkill(actor: Unit, skill: SkillDef, target: Unit): void {
     if (this.busy || actor.captured || this.deployActed) return;
     this.armedSkill = null;
     this.battle.useSkill(actor, skill, target); // pre-combat phase ⇒ resolve only, no commit
-    this.deployActed = true;
+    // Skill-specific render (a cast may buff/move units): re-place tokens + relight the reach
+    // (the move is still free). The act-economy commit + deploy-row refresh is the shared seam.
     this.refreshAuras();
     for (const u of this.battle.units) this.placeView(u);
     this.highlightTile(actor.pos);
-    this.refreshDeployButtons();
-    this.refreshDeployStatus();
-    this.drawDeployReach(); // un-armed again; the move is still free, so relight the reach
-    this.setHint(`${actor.name} used ${skill.name}. Reposition or End Turn (Space) to advance the net.`);
+    this.drawDeployReach();
+    this.commitFieldAct(actor, "deployment", `${actor.name} used ${skill.name}. Reposition or End Turn (Space) to advance the net.`);
   }
 
   private refreshDeployStatus(): void {
@@ -1457,13 +1457,15 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Spend the unit's Act on a field interaction and continue the turn — the shared tail
-   * for Search / Disarm in either phase. Deployment just marks the act and re-surfaces the
-   * deploy row (the net steps on End Turn, not here); combat goes busy, charges the Act's
-   * CT (noteAct) and funnels through afterActionContinue (auto-end / re-surface). The
-   * optional `hint` is applied last when given (combat Search lets the turn hint stand).
+   * Spend the unit's Act and continue the turn — the **one** act-economy commit for both
+   * phases and every Act type (Search / Disarm and the skill cast, D67 W4). Deployment just
+   * marks the act and re-surfaces the deploy row (the net steps on End Turn, not here); combat
+   * goes busy, charges the Act's CT (`noteAct`) and funnels through `afterActionContinue`
+   * (auto-end / re-surface). `charged` is the Act's CT weight in **combat** — a move-spend
+   * skill (Dash) bills as a move, not the full Act (deployment treats every cast as the
+   * turn's one act regardless). The optional `hint` is applied last when given.
    */
-  private commitFieldAct(actor: Unit, ctx: BoardCtx, hint?: string): void {
+  private commitFieldAct(actor: Unit, ctx: BoardCtx, hint?: string, charged = true): void {
     if (ctx === "deployment") {
       this.deployActed = true;
       this.refreshDeployButtons();
@@ -1474,7 +1476,7 @@ export class BattleScene extends Phaser.Scene {
       this.highlightTile(null);
       this.hoverTile = null;
       this.armedAim = null;
-      this.noteAct();
+      this.noteAct(charged);
       this.afterActionContinue(actor);
     }
     if (hint) this.setHint(hint);
@@ -1661,10 +1663,11 @@ export class BattleScene extends Phaser.Scene {
       else this.flashAttack(actor, target);
       verb = outcome.healed ? `heals ${outcome.healed}` : outcome.damage ? `hits for ${outcome.damage}` : outcome.charging ? "charging" : outcome.status ? `applies ${outcome.status}` : "acts";
     }
-    // The skill is the unit's Act; its CT cost follows the skill's spend (D60).
-    this.noteAct(skill.spend === "act");
+    // The skill is the unit's Act; its CT cost follows the skill's spend (D60). The commit +
+    // continuation is the shared act-economy seam (D67 W4) — `charged` bills a move-spend
+    // skill (Dash) as a move, not the full Act. refreshHud first so the target's HP bar lands.
     this.refreshHud();
-    this.afterActionContinue(actor);
+    this.commitFieldAct(actor, "battle", undefined, skill.spend === "act");
     if (!this.over && this.waitingFor === actor) {
       this.setHint(`${actor.name} used ${skill.name} — ${verb}. ${this.canMoveFurther() ? "Move on, or " : ""}End Turn (Space/W).`);
     }

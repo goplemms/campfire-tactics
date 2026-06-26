@@ -145,6 +145,24 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **One act-economy commit for the skill cast across both phases** (D67 W4, internal — no
+  behavior change). The deploy cast (`castDeploySkill`) and the combat cast (`commitSkill`)
+  each had their *own* "spend the Act + continue the turn" bookkeeping — `deployActed = true`
+  + deploy-row refresh vs. `noteAct(...)` + `afterActionContinue`. Both now funnel through the
+  **same** `commitFieldAct` seam that Search / Disarm already use, so the act-economy commit
+  is *one* call across every field/skill Act in either phase (the seam gained a `charged`
+  flag — a move-spend skill like Dash bills as a move, not the full Act). What stays branched
+  is **genuinely phase-specific, not incidental**: combat plays the strike/heal FX (the
+  engagement invariant — deploy never strikes) and continues via `afterActionContinue`
+  (AI / win-lose), while deploy relights the reach and waits for a manual End Turn (the
+  net steps then); and the cooldown commit is phase-aware (deploy doesn't arm). The
+  combat-only Acts (attack / bribe / rescue) interleave their FX *between* lock and commit,
+  so they keep their own shape — they're combat-only, not a deploy/combat divergence. This
+  **closes the D67 unification**: the deploy and combat layers now share substrate (one clock,
+  one skill/move verb, one RNG seed, one transition event, one act-economy seam), with only
+  the FX, the capture-wave/AI continuation, and the phase-aware commit branching — by design.
+  Guarded byte-identical: full suite (829), the deploy→battle e2e (46 — casts in both phases),
+  and sim all green.
 - **The front's net-closing turn is a bus event, not a hardcoded branch** (D67 W3, internal
   — no behavior change). The deploy loop used to special-case the front's turn inline (`else
   runFrontTurn()`); now, when the CT clock hands the **tempo source** its turn, the loop emits

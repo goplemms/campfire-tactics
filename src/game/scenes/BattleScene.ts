@@ -30,7 +30,6 @@ import {
   countOf,
   campReadout,
   freeCaptive,
-  streamFor,
   // D63 — the closing net: two radial influence sources. The party's campfire
   // (safe ground, sized by presence) vs. the enemy source (danger, growing on the
   // deployment clock); the danger overrides the campfire, shrinking your territory.
@@ -529,8 +528,11 @@ export class BattleScene extends Phaser.Scene {
     this.view.concealEnemies = true;
     this.view.refreshUnits();
     this.legendStrip.setItems(DEPLOY_LEGEND);
-    this.deployRng = streamFor(this.run.seed, "deploy");
-    this.spotRng = streamFor(this.run.seed, "trap-spot");
+    // Deployment's RNG draws from the one encounter seed the Battle now owns (D67), via its
+    // label-keyed stream seam — the scene no longer reaches into run.seed for its rolls.
+    // (battle seed == run.seed, so the streams are byte-identical to the prior wiring.)
+    this.deployRng = this.battle.stream("deploy");
+    this.spotRng = this.battle.stream("trap-spot");
     this.trapMarkers.clear();
     this.playerTrapMarkers.clear();
     this.trapSeq = 0;

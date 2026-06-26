@@ -67,6 +67,14 @@ export interface StageOptions {
    * — the ambush is blown, no surprise. Authored sources only.
    */
   revealHidden?: boolean;
+  /**
+   * The run seed for this encounter's RNG (D67): wired onto the {@link Battle} so it
+   * owns the one seed the whole encounter draws from — combat's variance rolls
+   * ({@link Battle.roll}) and deployment's label-keyed streams ({@link Battle.stream}:
+   * the front-capture + trap-spot draws) all derive from it. Defaults to the
+   * deterministic `0` floor when unset (a bare staged battle / test).
+   */
+  seed?: string | number;
 }
 
 /** Reset a unit's combat-scoped transient state for a fresh encounter. */
@@ -144,7 +152,7 @@ export function stageEncounter(
     objectiveSpecs = withDefaultGoal();
   }
 
-  const battle = new Battle(grid, [...players, ...enemies]);
+  const battle = new Battle(grid, [...players, ...enemies], { seed: opts.seed });
 
   // Pre-place the authored concealed enemy traps (the trap-field lever, D12): they
   // ride the same entity registry the player's Set Trap uses, so movement springs

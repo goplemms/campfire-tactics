@@ -208,6 +208,21 @@ export class Battle {
   }
 
   /**
+   * A **label-keyed** RNG stream off this battle's seed (D67 RNG-seam unification) — the
+   * second draw shape beside {@link roll}. Where `roll` is keyed by an incrementing
+   * `drawCount` (for *apply-driven* combat draws that a re-running replay reproduces in
+   * order), `stream` is keyed by a **fixed label** with no cursor — for the **Deployment**
+   * draws (front-capture, trap-spotting) that run outside the turn loop and whose outcomes
+   * are either logged (capture) or render-only (spotting), so a replay never re-rolls them.
+   * Same `(seed, label)` ⇒ the same stream, every time, so deployment stays reproducible
+   * from the one encounter seed the Battle now owns — instead of the scene reaching into the
+   * run seed itself. **Don't route apply-driven draws through this** (use {@link roll}).
+   */
+  stream(label: string): Rng {
+    return streamFor(this.rngSeed, label);
+  }
+
+  /**
    * The damage-variance multiplier for one hit (±{@link variance}), or exactly `1`
    * — taking **no** draw — when variance is off. Keeps the off-path byte-identical.
    */

@@ -175,6 +175,19 @@ const MENU_GAP = 12; // vertical gap between the verb box and the turn-control b
 const PAIR_GAP = 6; // horizontal gap between Undo and the primary in the control box's bottom row
 
 /**
+ * Layout experiment (D-feel, revisit): hide the top **situation strip** — the phase/turn
+ * title, the objective banner, and the intel recap — to evaluate the board with a clean top.
+ * The compute paths still run (`refreshDeployStatus` / `refreshObjectiveText` / `refreshIntel`
+ * keep setting the text); only the *render* is gated, so flipping this back to `true` restores
+ * everything as-is. What this currently DROPS from view (to relocate, not lose):
+ *   • phase + whose turn — also read from the focus card + the initiative rail.
+ *   • deploy global state: net **reach**, **safe** radius, **kit** count — not surfaced elsewhere yet.
+ *   • **objective** progress for non-elimination objectives — not surfaced elsewhere yet.
+ *   • **intel** recap: tier · foe count · foe types (· encounter shape) — not surfaced elsewhere yet.
+ */
+const SHOW_SITUATION_STRIP = false;
+
+/**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
  * run the {@link "./OverworldScene"} hands it. It owns no rules — the
  * {@link RunLoop} (already positioned at the chosen node) stages the encounter and
@@ -364,10 +377,10 @@ export class BattleScene extends Phaser.Scene {
     // single secondary line that composes the objective (the goal — leads) and the
     // intel recap (passive reference — trails), laid out together by layoutSituationLine
     // so the band stays two lines instead of three (D-UX compactness).
-    this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
-    this.intelText = this.add.text(this.scale.width / 2, 42, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
+    this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10).setVisible(SHOW_SITUATION_STRIP);
+    this.intelText = this.add.text(this.scale.width / 2, 42, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10).setVisible(SHOW_SITUATION_STRIP);
     // Objective readout (label + gauge) — shares the secondary line, ahead of intel.
-    this.objectiveText = this.add.text(this.scale.width / 2, 42, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
+    this.objectiveText = this.add.text(this.scale.width / 2, 42, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11).setVisible(SHOW_SITUATION_STRIP);
     // Right column = "timing/history": the turn-order rail (drawn by CombatView) and
     // its label move here, off the left so the left can host the focus card. The label
     // sits below the camp card (above the rail) so it isn't occluded by it.
@@ -2525,6 +2538,7 @@ export class BattleScene extends Phaser.Scene {
    * (heading + situation) however many of the pieces are live.
    */
   private layoutSituationLine(): void {
+    if (!SHOW_SITUATION_STRIP) return; // top strip hidden (layout experiment) — nothing to lay out
     const cx = this.scale.width / 2;
     const y = 42;
     const obj = this.objectiveText;

@@ -113,11 +113,13 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(loop.run.party.some((u) => u.id === "pip")).toBe(true); // joined permanently
     expect(loop.run.party.find((u) => u.id === "pip")!.authored).toBe(true);
     expect(res.rescued).toContain("pip"); // surfaced in the resolution (freed by winning)
-    // …and every surviving fighter reached primary-job L2 (the 2nd-active unlock).
+    // …and every surviving fighter reached primary-job L2 (the 2nd-active unlock) — the
+    // freed Cook included: he banks the encounter's completion XP, joining leveled with the
+    // party rather than at base, and his level-up surfaces in the resolution readout.
     for (const u of loop.run.party) {
-      if (u.id === "pip") continue;
       expect(jobLevelOf(u, u.primaryJob)).toBeGreaterThanOrEqual(2);
     }
+    expect(res.levels.pip).toBeDefined();
   });
 
   it("freeing the captive mid-fight makes Pip controllable, and the win recruits him once (no double-add)", () => {

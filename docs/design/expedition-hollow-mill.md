@@ -89,7 +89,10 @@ purse, load supplies. No combat.
   the rest of the fight**; he is added to `run.party` on the win.
 - **Win-recruit guarantee:** winning the node **always** recruits Pip — even if you never
   reached him (the captors fell), and even if a freed Pip was downed afterward (demo-
-  friendly: a won node always delivers the recruit, as a fresh full-HP body).
+  friendly: a won node always delivers the recruit). He joins as a fresh body that **banks
+  the encounter's completion XP** (the objective `reward.xp` every survivor gets), so he
+  arrives **leveled with the party** (primary-job L2 here), not at base. He earns only that
+  flat win XP, not the per-unit combat-event tally — he wasn't a tracked combatant.
 - **L1 tuning is preserved:** the fight stays winnable **raw, without freeing Pip**. A bound
   (or freed-then-downed) Pip is a bonus, never a requirement, and can never make the node
   unwinnable or fail it (a captive is off the clock, not a target, and not a required

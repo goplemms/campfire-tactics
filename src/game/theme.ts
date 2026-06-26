@@ -91,8 +91,15 @@ export const COLOR = {
   // so the grid reads at a glance without turning into a loud chessboard.
   tileDark: 0x241c15,
   tileLight: 0x382a1d,
-  /** Impassable terrain. */
+  /** Impassable terrain (legacy flat fill; obstacles now render as a raised 3D block). */
   tileBlocked: 0x4a2c2c,
+  // Map obstacles — a raised stone block (an isometric extrusion, three shaded faces) so
+  // an impassable tile reads as a *solid in the world*, not a flat tile-marker like the
+  // capture-zone washes. Top lit, sides progressively darker (firelight from above).
+  obstacleTop: 0x7a6450,
+  obstacleRight: 0x52412f,
+  obstacleLeft: 0x382b1e,
+  obstacleEdge: 0x1c130c,
 
   // Factions — token body fill / edge ring.
   ally: 0xffcf6b,

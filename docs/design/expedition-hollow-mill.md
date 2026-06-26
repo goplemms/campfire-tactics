@@ -163,6 +163,21 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Obstacles are raised 3D blocks, not flat tile-markers** (D-feel, render-only). An
+  impassable tile used to be a **flat diamond** in a different colour (`tileBlocked`) — the
+  same shape and read as the translucent **capture-zone washes** (safe/danger/neutral),
+  so a wall and a zone tint were easy to confuse. Obstacles now render as a **raised
+  isometric block**: a lit top face floating a block-height above the tile plus the two
+  visible (down-left / down-right) side faces shaded progressively darker, outlined for a
+  crisp silhouette — so an obstacle reads as a *solid standing in the world*, distinct from
+  any tile overlay. `drawGrid` now paints in two passes — the flat checker floor for every
+  tile, then the blocks **back-to-front** (`col + row` ascending) so a nearer block occludes
+  the one behind it. The blocks sit on the grid layer (depth 0); zone washes already skip
+  non-walkable tiles, so nothing tints them. Pure render; no core touch (the grid's `blocked`
+  data is unchanged). Seam: `CombatView.drawGrid` / `drawObstacle`; palette `COLOR.obstacle*`.
+  Felt on every board with interior cover — the Hollow Mill encounters scatter 1–3 blocked
+  tiles each. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (55), sim
+  (summary **unchanged**).
 - **Turn-controls split out of the unit-action box** (D-feel, render-only). The bottom-left
   command menu used to stack *everything* in one box — **Undo** leading, the unit's verbs
   (skills / Search / Disarm / Dig In / Defend / Bribe / place-trap) in the middle, and the

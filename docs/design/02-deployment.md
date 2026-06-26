@@ -185,7 +185,12 @@ seed** for both sides.
   radius/cap/growth/rate numbers are tuning. **Architecture:** Deployment is a true phase of
   `Battle` on the **one CT clock** (D67) — the enemy front rides that clock as a strict-lead
   *tempo source* (no parallel `DeployClock`), and the deploy→battle handoff is a single
-  `battleBegan` bus event. See the
+  logged `beginBattle` boundary (also the `battleBegan` event). Repositioning and
+  skill-casting use the **same** `moveUnit`/`useSkill` verbs as combat; the interpreter reads
+  `Battle.phase` and skips the combat turn-commit in pre-combat. **Engagement stays
+  combat-only by an enforced invariant:** a skill must declare the current phase in its
+  `usableContext`, so an attack can't be cast in staging at the core, not just the renderer.
+  See the
   [unification plan](../../scratchpad/foundations/deployment-combat-unification-plan.md).
 - Enemy-prep symmetry is **resolved** (D12): A3 fortified-encounter type;
   Intel/Awareness-gated detection; Act-cost disarm or route-around; the Snare drags

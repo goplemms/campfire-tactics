@@ -32,9 +32,11 @@ import { stampPassives } from "./jobs";
 import {
   resolveSkill,
   resolveMedHeal,
+  skillContexts,
   type SkillDef,
   type SkillOutcome,
   type PlaceTrapEffect,
+  type UsableContext,
 } from "./skills";
 import {
   commitsTurn,
@@ -389,13 +391,17 @@ export class Battle {
         const target = this.unit(action.target);
         const skill = action.skill;
         if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
+        // Engagement invariant (D67): the skill must declare the current phase in its
+        // `usableContext` — so an attack / charged ability can't be cast in pre-combat (the
+        // stealth/alarm rule), and a deploy-only Set Trap can't be cast mid-combat. Enforced
+        // here at the core, not just hidden by the renderer's row gating.
+        const deploy = this.phase === "deploy";
+        const context: UsableContext = deploy ? "pre-combat" : "combat";
+        if (!skillContexts(skill).includes(context)) return { ok: false, reason: `${skill.name} can't be used in ${context}` };
         // The **one** skill verb across both phases (D67): the effect resolves identically;
         // only the *commit* is phase-aware. In **pre-combat** the deploy clock owns the turn,
-        // so we resolve the effect and stop — no CT/cooldown commit, and no charge scheduling
-        // (the deploy clock has no charge queue, so a charged ability just resolves now).
-        // In **combat** it commits per the skill's spend (D60), scheduling a charge on the
-        // timeline if any (D5/D37). This is what lets a heal/buff/Dash be cast in either phase.
-        const deploy = this.phase === "deploy";
+        // so we resolve the effect and stop — no CT/cooldown commit. In **combat** it commits
+        // per the skill's spend (D60), scheduling a charge on the timeline if any (D5/D37).
         let outcome: SkillOutcome;
         if (skill.effect.kind === "forced-move") {
           outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);

@@ -145,6 +145,21 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **One skill verb across pre-combat + combat** (D67, internal — no behavior change). The
+  deploy `deploySkill`/`deployMove` verbs are **retired**: repositioning and skill-casting
+  now go through the **same** `moveUnit`/`useSkill` the combat turn uses, and the
+  interpreter detects the Battle's new `phase` (`deploy` | `combat`) to decide the *commit*
+  — in pre-combat it resolves the effect off the deploy clock with **no** CT/cooldown
+  commit; in combat it commits per the skill's spend. The pre-combat → combat handoff is a
+  single **logged** `beginBattle` boundary (built on the C3 event), so `replay()` delimits
+  the deploy prelude explicitly rather than inferring it from verb kinds (`DEPLOY_KINDS`
+  retired). Capstone: the engine now **enforces** the engagement invariant — a skill must
+  declare the current phase in its `usableContext`, so an attack (or a charged ability)
+  can't be cast in pre-combat at the *core*, not just hidden by the renderer's row gating.
+  Seams: `Battle.phase`/`enterDeploy`/`beginBattle`, the phase-aware `skill` apply case. The
+  scene's cast methods stay thin per-phase render wrappers around the one verb (they diverge
+  only on flashes / the post-cast continuation). Guarded byte-identical: golden trace, sim,
+  the deploy→battle e2e, and a new `phase-boundary` replay test all green.
 - **Unification finish: one RNG seed + the last shared spines** (D67, internal — no
   behavior change). Two closing passes. (1) **RNG seam:** the scene reached into `run.seed`
   for its two deploy streams while the `Battle`'s own seed sat dormant; the run seed is now

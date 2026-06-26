@@ -29,10 +29,17 @@ const DASH: SkillDef = {
 
 const PLAIN_HEAL: SkillDef = { id: "mend", name: "Mend", description: "", phase: "battle", target: "ally", range: 2, spend: "act", effect: { kind: "heal", amount: 10 } };
 
-/** A skill with a cooldown + an Act spend — to observe the combat commit (CT + cooldown). */
+/** An attack with a cooldown — combat-only (the engagement invariant refuses it pre-combat). */
 const GUARD_BREAK: SkillDef = {
   id: "guard-break", name: "Guard Break", description: "", phase: "battle", target: "enemy", range: 1, spend: "act",
   cost: { cooldown: 200 }, effect: { kind: "damage", bonusAttack: 3 },
+};
+
+/** A heal with a cooldown — **dual-context** support: castable in either phase, to observe
+ *  the commit split (combat arms the cooldown + spends CT; pre-combat does neither). */
+const MENDER: SkillDef = {
+  id: "mender", name: "Mender", description: "", phase: "battle", target: "ally", range: 2, spend: "act",
+  cost: { cooldown: 200 }, effect: { kind: "heal", amount: 10 },
 };
 
 function pawn(id: string, col: number, side: Side = "player"): Unit {
@@ -59,25 +66,36 @@ describe("D67 — one skill verb, phase-aware commit", () => {
     expect(hurt.hp).toBeGreaterThan(5); // healed, off the deploy clock
   });
 
-  it("pre-combat resolves WITHOUT committing — no CT spent, no cooldown armed", () => {
+  it("pre-combat resolves a dual-context cast WITHOUT committing — no CT spent, no cooldown armed", () => {
+    const battle = new Battle(new TileGrid(8, 1), [pawn("medic", 0), pawn("hurt", 1)]);
+    battle.enterDeploy();
+    const [medic, hurt] = battle.units;
+    hurt.hp = 5;
+    medic.ct = TURN_THRESHOLD; // a warm unit
+    battle.useSkill(medic, MENDER, hurt);
+    expect(hurt.hp).toBeGreaterThan(5); // the heal landed
+    expect(medic.ct).toBe(TURN_THRESHOLD); // ...but no turn was committed (no CT spent)
+    expect(onSkillCooldown(medic, MENDER.id)).toBe(false); // ...and no cooldown armed
+  });
+
+  it("combat DOES commit the same dual-context cast — spends CT and arms the cooldown", () => {
+    const battle = new Battle(new TileGrid(8, 1), [pawn("medic", 0), pawn("hurt", 1)]);
+    // default phase is combat
+    const [medic, hurt] = battle.units;
+    hurt.hp = 5;
+    medic.ct = TURN_THRESHOLD;
+    battle.useSkill(medic, MENDER, hurt); // commitTurn defaults true
+    expect(hurt.hp).toBeGreaterThan(5);
+    expect(medic.ct).toBeLessThan(TURN_THRESHOLD); // CT spent (the turn committed)
+    expect(onSkillCooldown(medic, MENDER.id)).toBe(true); // cooldown armed
+  });
+
+  it("refuses a combat-only skill (an attack) cast in pre-combat — the engagement invariant", () => {
     const battle = new Battle(new TileGrid(8, 1), [pawn("a", 0), pawn("foe", 1, "enemy")]);
     battle.enterDeploy();
     const [a, foe] = battle.units;
-    a.ct = TURN_THRESHOLD; // a warm unit
-    battle.useSkill(a, GUARD_BREAK, foe);
-    expect(foe.hp).toBeLessThan(20); // the effect landed
-    expect(a.ct).toBe(TURN_THRESHOLD); // ...but no turn was committed (no CT spent)
-    expect(onSkillCooldown(a, GUARD_BREAK.id)).toBe(false); // ...and no cooldown armed
-  });
-
-  it("combat DOES commit the same cast — spends CT and arms the cooldown", () => {
-    const battle = new Battle(new TileGrid(8, 1), [pawn("a", 0), pawn("foe", 1, "enemy")]);
-    // default phase is combat
-    const [a, foe] = battle.units;
-    a.ct = TURN_THRESHOLD;
-    battle.useSkill(a, GUARD_BREAK, foe); // commitTurn defaults true
-    expect(foe.hp).toBeLessThan(20);
-    expect(a.ct).toBeLessThan(TURN_THRESHOLD); // CT spent (the turn committed)
-    expect(onSkillCooldown(a, GUARD_BREAK.id)).toBe(true); // cooldown armed
+    battle.useSkill(a, GUARD_BREAK, foe); // damage → combat-only; refused pre-combat
+    expect(foe.hp).toBe(20); // the attack never landed in staging (stealth/alarm preserved)
+    expect(battle.log.length).toBe(0); // a refused action isn't logged
   });
 });

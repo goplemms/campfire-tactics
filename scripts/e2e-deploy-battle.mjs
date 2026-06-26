@@ -81,6 +81,37 @@ async function main() {
       await g.bsEval(`s.deployHoverTile = null; s.refreshPreviewCard();`); // clear so it doesn't bleed into later stages
       await shot("deploy-opens");
 
+      // --- Stage: combat FX fire in deployment too (feel parity) --------------
+      // Deployment ↔ combat parity: a unit that takes an HP hit during *deployment* (a
+      // sprung concealed trap) must float its damage and write the combat log, exactly as
+      // mid-battle. The FX bus is wired up front now (wireBattleFx at node start), not only
+      // at startBattle. Drive a real unitDamaged through the encounter bus (no source, so it
+      // can't perturb the XP tally) and confirm the render responded *once*. Also fire a
+      // turnStart and confirm the per-turn header stays combat-only — its listener still
+      // lives in startBattle. On the pre-increment build the damage hit was silent here.
+      const fx = await g.bsEval(`
+        const a = s.deployActor; if (!a) return { skip: true };
+        let floated = 0, headers = 0;
+        const of = s.view.floatDamage.bind(s.view); s.view.floatDamage = (u, amt) => { floated += 1; return of(u, amt); };
+        const ot = s.view.logTurn.bind(s.view); s.view.logTurn = (u) => { headers += 1; return ot(u); };
+        const beforeLog = s.view.logBuffer.length;
+        s.battle.bus.emit("unitDamaged", { unit: a, amount: 3 });
+        s.battle.bus.emit("turnStart", { unit: a });
+        s.view.floatDamage = of; s.view.logTurn = ot;
+        const last = s.view.logBuffer[s.view.logBuffer.length - 1];
+        const out = { phase: s.phase, floated, headers, logGrew: s.view.logBuffer.length > beforeLog,
+          logText: last ? last.text : "", noted: s.view.lastHit.get(a.id) };
+        s.view.lastHit.delete(a.id); s.view.clearLog(); // un-pollute the test's synthetic hit
+        return out;
+      `);
+      console.log("• Combat FX in deployment");
+      check("FX fire while phase is deployment", !fx.skip && fx.phase === "deployment");
+      check("a deployment HP hit floats damage exactly once", fx.skip || fx.floated === 1);
+      check("a deployment HP hit writes a combat-log line", fx.skip || (fx.logGrew && /3/.test(fx.logText)));
+      check("a deployment HP hit registers the impact (noteDamage)", fx.skip || fx.noted === 3);
+      check("the per-turn header stays combat-only in deployment", fx.skip || fx.headers === 0);
+      await shot("deploy-trap-fx");
+
       const startPos = st.pos;
 
       // --- Stage: a real tile click repositions the unit (and arms undo) ------
@@ -139,6 +170,22 @@ async function main() {
       st = await snap();
       console.log("• Start Battle");
       check("phase advanced to battle", st.phase === "battle");
+      // No double-fire: the damage FX listener moved to node start and the old startBattle
+      // block was removed, so the view floats a battle hit exactly *once* (a leftover
+      // re-attach would float twice). The per-turn header, combat-only, now wires here.
+      const fxB = await g.bsEval(`
+        const u = s.battle.units.find(x => x.alive); if (!u) return { skip: true };
+        let floated = 0, headers = 0;
+        const of = s.view.floatDamage.bind(s.view); s.view.floatDamage = (x, amt) => { floated += 1; return of(x, amt); };
+        const ot = s.view.logTurn.bind(s.view); s.view.logTurn = (x) => { headers += 1; return ot(x); };
+        s.battle.bus.emit("unitDamaged", { unit: u, amount: 2 });
+        s.battle.bus.emit("turnStart", { unit: u });
+        s.view.floatDamage = of; s.view.logTurn = ot;
+        s.view.lastHit.delete(u.id); s.view.clearLog();
+        return { floated, headers };
+      `);
+      check("battle floats a damage hit exactly once (no double-fire)", fxB.skip || fxB.floated === 1);
+      check("the per-turn header wires once in battle", fxB.skip || fxB.headers === 1);
       // D12 — the veil lifts when the net closes: enemy tokens resolve into view.
       const foeShownInBattle = await g.bsEval(
         `return [...s.view.views.values()].filter(v => v.unit.side === "enemy" && v.unit.alive).some(v => v.container.visible === true);`,

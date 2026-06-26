@@ -145,6 +145,17 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Deployment surfaces damage feedback like combat** (D-feel). The combat FX bus
+  (floating damage, the combat log, impact scaling, the heal/defeat readouts) was wired
+  only at **Start Battle**, so a unit that sprang a concealed enemy trap **during
+  deployment** took the HP hit **silently** — no floater, no log line. The listeners now
+  attach once **up front** (`wireBattleFx`, at node start, on the per-encounter bus), so a
+  deploy-phase trap spring floats `−N` and writes the log exactly as it would mid-battle.
+  The bus persists across the phase boundary, so battle reads identically and nothing
+  double-fires (the old `startBattle` block was removed; only the per-unit `turnStart`
+  header stays combat-only — deployment has no per-unit turn cadence worth logging). Pure
+  render; no core touch. Seam: `BattleScene.wireBattleFx`. Felt anywhere traps are afield
+  in deployment (**L3** snares, **L6A**). See [02-deployment](02-deployment.md).
 - **Micro-movement — responsive click-ahead stepping** (D-feel). The free-move turn
   already let a unit move tile-by-tile with the Act placeable anywhere (move → act →
   move), but a click landing during a step's ~150 ms walk animation was **dropped** (the

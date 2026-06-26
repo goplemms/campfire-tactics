@@ -400,6 +400,9 @@ export class BattleScene extends Phaser.Scene {
     // Stage the chosen node's seeded encounter and build the board.
     this.battle = this.loop.startEncounter();
     this.grid = this.battle.grid;
+    // Wire the new bus's combat FX once, up front — so deployment trap springs float +
+    // log like combat (the bus persists through both phases; battle won't double-fire).
+    this.wireBattleFx();
     this.over = false;
     this.busy = false;
     this.waitingFor = null;
@@ -444,6 +447,40 @@ export class BattleScene extends Phaser.Scene {
 
     this.drawGrid();
     this.spawnUnits();
+  }
+
+  /**
+   * Wire the combat-FX bus listeners once per encounter (D-feel: deployment ↔ combat
+   * parity). `this.battle.bus` is fresh per `startEncounter`, so attaching here — before
+   * Deployment runs — means a unit that springs a concealed trap *during deployment*
+   * floats its damage and writes the combat log exactly as it would mid-battle, instead
+   * of taking the hit silently. The same single attachment carries through the battle
+   * phase (the bus persists), so combat reads identically and nothing double-fires. The
+   * per-turn `turnStart` header is combat-only (deployment has no per-unit turn cadence
+   * worth logging) and stays wired in {@link startBattle}.
+   */
+  private wireBattleFx(): void {
+    // Player traps registered at placement announce their own spring (trapSprung); the
+    // scene just animates the marker. Concealed *enemy* traps that spring in deployment
+    // carry no player marker, so this no-ops for them (checkTrapSprings reveals those).
+    this.battle.bus.on("trapSprung", ({ id }) => {
+      const m = this.playerTrapMarkers.get(id);
+      if (!m) return;
+      m.setText(ICON.trapSprung.glyph).setColor(INK.disabled);
+      this.tweens.add({ targets: m, scale: 1.8, duration: 140, yoyo: true });
+    });
+    // Floating combat text + impact scaling ride the rules' damage/heal bus, so they
+    // cover every source (attacks, traps, charged skills) in **both** phases — parity.
+    this.battle.bus.on("unitDamaged", ({ unit, amount, source }) => {
+      this.view.noteDamage(unit.id, amount);
+      this.view.floatDamage(unit, amount);
+      this.view.logDamage(unit, amount, source);
+    });
+    this.battle.bus.on("unitHealed", ({ unit, amount, source }) => {
+      if (amount > 0) this.view.floatText(unit, `+${amount}`, INK.success);
+      this.view.logHeal(unit, amount, source);
+    });
+    this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit));
   }
 
   // --- Phase: Deployment -----------------------------------------------------
@@ -1053,26 +1090,10 @@ export class BattleScene extends Phaser.Scene {
     clearLayer(this.deployMarkers);
     this.highlightTile(null);
 
-    // Player traps were registered as entities at placement; the entity announces
-    // its own spring (the trapSprung bus event), so the scene just animates the marker.
-    this.battle.bus.on("trapSprung", ({ id }) => {
-      const m = this.playerTrapMarkers.get(id);
-      if (!m) return;
-      m.setText(ICON.trapSprung.glyph).setColor(INK.disabled);
-      this.tweens.add({ targets: m, scale: 1.8, duration: 140, yoyo: true });
-    });
-    // Floating combat text + impact scaling ride the rules' damage/heal bus, so
-    // they cover every source (attacks, traps, charged skills) — parity with the demo.
-    this.battle.bus.on("unitDamaged", ({ unit, amount, source }) => {
-      this.view.noteDamage(unit.id, amount);
-      this.view.floatDamage(unit, amount);
-      this.view.logDamage(unit, amount, source);
-    });
-    this.battle.bus.on("unitHealed", ({ unit, amount, source }) => {
-      if (amount > 0) this.view.floatText(unit, `+${amount}`, INK.success);
-      this.view.logHeal(unit, amount, source);
-    });
-    this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit));
+    // The damage / heal / defeat / trapSprung FX are already wired for this encounter's
+    // bus (wireBattleFx, at node start) so they fire in deployment too — don't re-attach
+    // here or battle would double-float and double-log. Only the per-turn header is
+    // combat-only: deployment has no per-unit "— Name —" cadence worth logging.
     this.battle.bus.on("turnStart", ({ unit }) => this.view.logTurn(unit));
 
     // Snapshot primary-job levels so resolution can read out who leveled up (D53).

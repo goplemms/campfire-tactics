@@ -70,6 +70,20 @@ describe("Battle orchestrator", () => {
     expect(sprung).toBe(true);
   });
 
+  it("rescue frees a bound unit and emits unitRescued with the rescuer (D52)", () => {
+    const grid = new TileGrid(8, 1);
+    const captive = at("cap", "player", 2, 0, { captured: true });
+    const hero = at("hero", "player", 1, 0);
+    const battle = new Battle(grid, [hero, captive]);
+
+    const events: { unit: string; by?: string }[] = [];
+    battle.bus.on("unitRescued", ({ unit, by }) => events.push({ unit: unit.id, by: by?.id }));
+
+    battle.rescue(captive, hero);
+    expect(captive.captured).toBe(false); // freed → back on the clock, controllable
+    expect(events).toEqual([{ unit: "cap", by: "hero" }]); // announced once, naming the rescuer
+  });
+
   it("plays a tiny skirmish to a decisive outcome on the CT clock", () => {
     const grid = new TileGrid(8, 1);
     // A glass-cannon player vs. a fragile enemy: the player should win.

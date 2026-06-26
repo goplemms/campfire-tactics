@@ -81,6 +81,66 @@ async function main() {
       await g.bsEval(`s.deployHoverTile = null; s.refreshPreviewCard();`); // clear so it doesn't bleed into later stages
       await shot("deploy-opens");
 
+      // --- Stage: the L1 Cook is a bound on-board captive (D52) ----------------
+      // Pip starts the Skirmish as a player-side, *bound* token guarded by the corner
+      // cutthroat (col 7,row 0): reaching him is the flank. A captive is NOT a concealed
+      // enemy, so — unlike the veiled foe above — his grey token is VISIBLE during
+      // deployment, he's off the initiative clock (the deploy actor set excludes him), and
+      // he's not yet in the party. The captive-recruit seam this asserts is what replaced
+      // the old silent post-win grant.
+      const captive = await g.bsEval(`
+        const pip = s.battle.units.find(u => u.id === "pip");
+        if (!pip) return null;
+        const v = s.view.views.get("pip");
+        return {
+          side: pip.side, captured: !!pip.captured, pos: { col: pip.pos.col, row: pip.pos.row },
+          visible: v ? v.container.visible : false,        // a captive is shown in deployment…
+          tint: v ? v.body.fillColor : null,               // …grey-tinted (COLOR.captive)
+          inParty: s.run.party.some(u => u.id === "pip"),   // not recruited until freed/won
+          offClock: s.deployActor ? s.deployActor.id !== "pip" : true,
+        };
+      `);
+      console.log("• L1 Cook is a bound on-board captive");
+      check("Pip is on the board, player-side and bound", captive && captive.side === "player" && captive.captured === true);
+      check("Pip is bound in the captor's corner (col 7,row 1)", captive && captive.pos.col === 7 && captive.pos.row === 1);
+      check("the captive token is VISIBLE during deployment (not a concealed foe)", captive && captive.visible === true);
+      check("the captive token reads grey/bound (COLOR.captive)", captive && captive.tint === 0x9a6bd0);
+      check("Pip is not in the party yet (introduced AT L1, freed/won)", captive && captive.inParty === false);
+      check("the bound captive is off the deploy clock", captive && captive.offClock === true);
+      await shot("captive-bound");
+
+      // …and he can be freed by the **rescue Act** — the `Battle.rescue` verb BattleScene's
+      // playerRescue calls. It frees the captive and emits the `unitRescued` bus event; the
+      // wireBattleFx listener owns the reaction: re-tint the token to an ally, flash, and write
+      // a combat-log line. So freeing a new unit registers as a real rescue *event*, not a
+      // silent state poke (the full reach-then-Free + win-recruit are headless in
+      // hollow-mill.test.ts). The post-win auto-free is a separate resolution tally, not this.
+      const freeOut = await g.bsEval(`
+        const pip = s.battle.units.find(u => u.id === "pip");
+        if (!pip) return null;
+        const by = s.battle.units.find(u => u.side === "player" && !u.captured && u.id !== "pip");
+        const logBefore = s.view.logBuffer.length;
+        s.battle.rescue(pip, by);            // the rescue Act → emits unitRescued
+        const v = s.view.views.get("pip");
+        const last = s.view.logBuffer[s.view.logBuffer.length - 1];
+        return {
+          captured: !!pip.captured,
+          tint: v ? v.body.fillColor : null,
+          logged: s.view.logBuffer.length > logBefore,
+          logText: last ? last.text : "",
+        };
+      `);
+      check("the rescue Act clears the bound state (controllable)", freeOut && freeOut.captured === false);
+      check("the unitRescued listener re-tints the freed token to an ally", freeOut && freeOut.tint !== 0x9a6bd0);
+      check("the rescue emits a combat-log event line", freeOut && freeOut.logged && /free/i.test(freeOut.logText));
+      await shot("captive-freed");
+      // Re-bind + clear the log so the later stages (which assert log growth) start clean.
+      await g.bsEval(`
+        const pip = s.battle.units.find(u => u.id === "pip");
+        if (pip) { pip.captured = true; pip.ct = 0; s.tintCaptured(pip, true); }
+        s.view.clearLog();
+      `);
+
       // --- Stage: combat FX fire in deployment too (feel parity) --------------
       // Deployment ↔ combat parity: a unit that takes an HP hit during *deployment* (a
       // sprung concealed trap) must float its damage and write the combat log, exactly as

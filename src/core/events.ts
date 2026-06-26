@@ -26,6 +26,14 @@ export interface BattleEvents {
   unitDamaged: { unit: Unit; amount: number; source?: Unit };
   unitHealed: { unit: Unit; amount: number; source?: Unit };
   unitDefeated: { unit: Unit; source?: Unit };
+  /**
+   * A bound unit was **freed by the rescue Act** mid-combat (D52) — a captured ally, or a
+   * new on-board **captive recruit** (the L1 Cook) joining the party. `by` is the rescuer.
+   * The render reacts (combat-log line + FX); telemetry/intel-reveal/ghost-token effects can
+   * hook the same moment. The post-win auto-free ("freed by winning the field") is a separate
+   * resolution tally (`res.rescued`), not this live event.
+   */
+  unitRescued: { unit: Unit; by?: Unit };
   /** A scheduled/charged effect resolved on the timeline (D5/D16). */
   chargeResolved: { id: string };
   /** A scheduled/charged effect was cancelled before it resolved (D37 fizzle). */

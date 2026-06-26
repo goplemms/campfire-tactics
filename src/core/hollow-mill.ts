@@ -17,9 +17,10 @@
  * ```
  *
  * Cast: starting trio Edrin/**Soldier** (lord) · Rook/**Hunter** · Vale/**Scout**.
- * Recruits join via their nodes (authored post-win grants, NOT the bundle): Pip the
- * **Cook** (node 1 rescue) · Sela the **Medic** (4B or the dug-in Wagon) · Mira the
- * **Merchant** (Market event).
+ * Recruits join via their nodes (NOT the bundle): Pip the **Cook** is an **on-board
+ * captive** at node 1 — freed by the rescue mechanic mid-fight or by the win (D52
+ * captive-recruit) · Sela the **Medic** (4B or the dug-in Wagon) and Mira the **Merchant**
+ * (Market event) still join via authored post-win grants.
  *
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
@@ -70,7 +71,11 @@ export const HOLLOW_MILL_PARTY: UnitSpec[] = [
 
 // --- Recruit specs (granted on the win at their node, not in the bundle) -----
 
-/** Pip the Cook — rescued at node 1; introduces the camp economy (Cook Stew/RP). */
+/**
+ * Pip the Cook — the **on-board captive** at node 1 (E1_SKIRMISH.captives): freed by the
+ * rescue mechanic mid-fight (then controllable) or recruited on the win. Introduces the
+ * camp economy (Cook Stew/RP).
+ */
 export const PIP_COOK: UnitSpec = member("pip", "Pip", "cook", {
   standingOrder: "defend",
 });
@@ -85,9 +90,18 @@ export const MIRA_MERCHANT: UnitSpec = member("mira", "Mira", "merchant");
 
 /**
  * Node 1 — Skirmish at the Mill Yard. The first fight (no-healer trio, winnable raw),
- * doubling as the **Cook rescue**: a cutthroat captor placed **apart** in a corner —
- * the flank affordance and the rescue affordance are the same corner. On the win, Pip
- * joins (the authored post-win grant). Teaches C1 CT clock + C2 flank/isolation.
+ * doubling as the **Cook rescue**, taught as one shape: Pip starts **on the board as a
+ * bound captive** in the far corner, guarded by a cutthroat captor placed **apart** from
+ * the main cluster — so the flank affordance and the rescue affordance are *the same
+ * corner* ("isolating the captor IS the rescue"). The player frees Pip mid-fight with the
+ * existing capture/rescue mechanic (reach him, then Free) and he becomes a controllable
+ * party unit for the rest of the fight; winning the node frees/recruits him even if never
+ * reached (the captors fall). He joins permanently. Teaches C1 CT clock + C2 flank/isolation.
+ *
+ * **L1 tuning is preserved:** the fight stays winnable **raw by the no-healer trio**
+ * without freeing Pip — a bound (or freed-then-downed) Pip is a bonus, never a requirement,
+ * and never makes the node unwinnable (a captive is off the clock and not a target; the win
+ * check counts only active fighters).
  */
 export const E1_SKIRMISH: AuthoredEncounter = {
   id: "e1-skirmish",
@@ -106,10 +120,11 @@ export const E1_SKIRMISH: AuthoredEncounter = {
     { templateId: "bandit-bowman", pos: { col: 7, row: 4 } },
     { templateId: "bandit-cutthroat", pos: { col: 7, row: 0 } }, // apart — the captor guarding Pip (flank + rescue)
   ],
+  // Pip the Cook, bound in the corner beside his captor (col 7,row 0): reaching/rescuing
+  // him IS the flank. Freed mid-fight he's controllable; won, he's recruited (see resolve).
+  captives: [{ spec: PIP_COOK, pos: { col: 7, row: 1 } }],
   // XP tuned so every survivor's primary job reaches L2 after E1 (the 2nd-active unlock).
   reward: { gold: 60, materials: [{ id: "salve", count: 1 }], xp: 100 },
-  // The rescued Cook joins on the win (the front-loaded camp economy).
-  grants: { recruit: PIP_COOK },
 };
 
 /**

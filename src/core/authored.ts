@@ -54,6 +54,28 @@ export interface AuthoredTrap {
 }
 
 /**
+ * A **captive recruit** an authored encounter starts with **on the board** (D52) — a
+ * bound, player-side unit guarded by the enemy, freed by the existing capture/rescue
+ * mechanic (reach + {@link "./deployment".freeCaptive}) *or* by winning the field. Unlike
+ * a post-win {@link EncounterGrant.recruit} (a silent join on the win), the captive is a
+ * real token from the first turn: visible during deployment, safe from the AI while bound
+ * (a captured unit is not an active target), controllable the moment it's freed, and
+ * recruited into `run.party` when the node is won. The L1 Cook rides this — "isolating the
+ * captor IS the rescue," the flank corner and the rescue corner being the same. Reusable:
+ * any authored encounter can stand a captive up the same way (e.g. a future on-board Medic).
+ */
+export interface CaptivePlacement {
+  /**
+   * The unit's authored stat block. It is staged **player-side and bound** (its `side`
+   * is forced to `"player"` and `captured` is set at assembly), and — being an authored
+   * cast member — joins the roster **permanently** when freed/won (`authored: true`).
+   */
+  spec: UnitSpec;
+  /** The bound tile — at/adjacent to the captor's corner (the flank + rescue affordance). */
+  pos: GridCoord;
+}
+
+/**
  * A **post-win grant** an authored encounter awards on a `win` (D52 vertical-slice).
  * Beyond the gold/materials/xp {@link EncounterReward}, an authored node can hand the
  * party a fresh **recruit** (joins `run.party`), a **relic/unique item** (into the
@@ -81,6 +103,12 @@ export interface AuthoredEncounter {
   /** Where the party deploys (home edge). */
   playerSpawns: GridCoord[];
   enemies: EnemyPlacement[];
+  /**
+   * On-board **captive recruits** (D52) — bound, player-side units the player frees by
+   * reaching them (the capture/rescue mechanic) or by winning the field, then keeps. Not
+   * in `run.party` until freed/won. See {@link CaptivePlacement}.
+   */
+  captives?: CaptivePlacement[];
   /** Concealed enemy traps pre-placed on the field (spot to avoid, Survivalist to harvest). */
   traps?: AuthoredTrap[];
   reward: EncounterReward;
@@ -126,6 +154,21 @@ export function buildAuthoredEnemies(enc: AuthoredEncounter): Unit[] {
       ...p.overrides,
     });
     u.hidden = p.hidden ?? false;
+    return u;
+  });
+}
+
+/**
+ * Inflate an authored encounter's {@link CaptivePlacement}s into live, **bound** player
+ * units (D52). Each is forced player-side and authored (a freed authored cast member joins
+ * permanently), placed at its `pos`, and stamped `captured` so it stages as a grey/bound
+ * token: off the initiative clock, never an AI target, a rescuable sub-objective. Returns
+ * `[]` when the encounter declares no captives.
+ */
+export function buildAuthoredCaptives(enc: AuthoredEncounter): Unit[] {
+  return (enc.captives ?? []).map((c) => {
+    const u = createUnit({ ...c.spec, side: "player", pos: c.pos, authored: true });
+    u.captured = true;
     return u;
   });
 }

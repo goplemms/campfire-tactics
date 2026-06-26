@@ -616,6 +616,11 @@ export class CombatView {
     this.logEvent(`${shortName(unit.name)} is defeated`, INK.ember);
   }
 
+  /** Log "Rescuer frees Target" (or "Target is freed" when sourceless) — the rescue Act (D52). */
+  logRescue(unit: Unit, by?: Unit): void {
+    this.logEvent(by ? `${shortName(by.name)} frees ${shortName(unit.name)}` : `${shortName(unit.name)} is freed`, INK.success);
+  }
+
   /**
    * Note a turn-boundary header — "— Name —" — so the feed reads grouped by whose turn
    * it is. Held back ({@link pendingHeader}), not shown, until the turn logs an event:

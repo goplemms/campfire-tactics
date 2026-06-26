@@ -16,6 +16,7 @@ import { RunLoop } from "./runloop";
 import { jobLevelOf } from "./leveling";
 import { intelFloor } from "./intel";
 import { createUnit } from "./units";
+import { freeCaptive } from "./deployment";
 import { gearDelta } from "./gear-condition";
 
 function freshLoop(): RunLoop {
@@ -86,19 +87,80 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(run.expeditionId).toBe("hollow-mill");
   });
 
-  it("node 1 rescues the Cook on the win (the authored post-win grant)", () => {
+  it("node 1 stages Pip as a bound on-board captive — NOT in the party yet (D52)", () => {
+    const loop = freshLoop();
+    loop.choose("e1");
+    const battle = loop.startEncounter();
+    loop.beginBattle();
+    // Pip is a player-side, bound token on the board…
+    const pip = battle.units.find((u) => u.id === "pip");
+    expect(pip).toBeDefined();
+    expect(pip!.side).toBe("player");
+    expect(pip!.captured).toBe(true);
+    expect(pip!.pos).toEqual({ col: 7, row: 1 }); // beside the corner cutthroat (col 7,row 0)
+    // …but he is NOT a party member until freed/won, and not a fielded combatant.
+    expect(loop.run.party.some((u) => u.id === "pip")).toBe(false);
+    expect(loop.combatants.some((u) => u.id === "pip")).toBe(false);
+  });
+
+  it("node 1 recruits the Cook on the win — even if never reached (the captive-recruit guarantee)", () => {
     const loop = freshLoop();
     loop.choose("e1");
     loop.startEncounter();
     loop.beginBattle();
-    forceWin(loop);
-    loop.resolve();
-    expect(loop.run.party.some((u) => u.id === "pip")).toBe(true);
-    // …and every surviving fighter reached primary-job L2 (the 2nd-active unlock).
+    forceWin(loop); // the captors fall; the player never walked to Pip
+    const res = loop.resolve();
+    expect(loop.run.party.some((u) => u.id === "pip")).toBe(true); // joined permanently
+    expect(loop.run.party.find((u) => u.id === "pip")!.authored).toBe(true);
+    expect(res.rescued).toContain("pip"); // surfaced in the resolution (freed by winning)
+    // …and every surviving fighter reached primary-job L2 (the 2nd-active unlock) — the
+    // freed Cook included: he banks the encounter's completion XP, joining leveled with the
+    // party rather than at base, and his level-up surfaces in the resolution readout.
     for (const u of loop.run.party) {
-      if (u.id === "pip") continue;
       expect(jobLevelOf(u, u.primaryJob)).toBeGreaterThanOrEqual(2);
     }
+    expect(res.levels.pip).toBeDefined();
+  });
+
+  it("freeing the captive mid-fight makes Pip controllable, and the win recruits him once (no double-add)", () => {
+    const loop = freshLoop();
+    loop.choose("e1");
+    const battle = loop.startEncounter();
+    loop.beginBattle();
+    const pip = battle.units.find((u) => u.id === "pip")!;
+    // The rescue mechanic: free the captive (what BattleScene.playerRescue calls).
+    freeCaptive(pip);
+    expect(pip.captured).toBe(false); // no longer bound → on the CT clock, controllable
+    // A freed captive is now an active player unit the clock can hand a turn.
+    battle.seed();
+    const handed: string[] = [];
+    for (let i = 0; i < 40 && handed.length < 8; i++) {
+      const a = battle.nextActor();
+      if (!a) break;
+      if (a.side === "player") handed.push(a.id);
+      a.ct = 0;
+    }
+    expect(handed).toContain("pip");
+    // Win → recruited, exactly once (idempotent: the mid-fight free didn't pre-add him).
+    forceWin(loop);
+    loop.resolve();
+    expect(loop.run.party.filter((u) => u.id === "pip")).toHaveLength(1);
+  });
+
+  it("L1 stays winnable raw without freeing Pip — a bound captive never fails/blocks the node", () => {
+    const loop = freshLoop();
+    loop.choose("e1");
+    const battle = loop.startEncounter();
+    loop.beginBattle();
+    const pip = battle.units.find((u) => u.id === "pip")!;
+    expect(pip.captured).toBe(true);
+    // Kill only the enemies; Pip is left bound (the trio "wins raw"). The graded outcome
+    // is a clean win — a captive is not an active player the win check counts, and not a
+    // required objective, so it can neither downgrade the win nor wedge the encounter.
+    for (const u of battle.units) if (u.side === "enemy") u.alive = false;
+    const res = loop.resolve();
+    expect(res.result).toBe("win");
+    expect(loop.run.party.some((u) => u.id === "pip")).toBe(true); // still recruited on the win
   });
 
   it("the trap-field stages strong concealed snares + one weak enemy", () => {

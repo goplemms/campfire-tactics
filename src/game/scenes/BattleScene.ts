@@ -495,6 +495,15 @@ export class BattleScene extends Phaser.Scene {
       this.view.logHeal(unit, amount, source);
     });
     this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit));
+    // The in-combat rescue Act (D52): freeing a bound unit — a captured ally, or a new
+    // captive recruit (the L1 Cook) — announces itself here, so the event owns the reaction
+    // (un-grey the token, flash, log the moment) rather than the call site. The post-win
+    // auto-free is the resolution `rescued` tally, not this live event, so it doesn't fire.
+    this.battle.bus.on("unitRescued", ({ unit, by }) => {
+      this.tintCaptured(unit, false);
+      this.flashHeal(unit);
+      this.view.logRescue(unit, by);
+    });
     // Deploy → battle transition (D67): when the alarm trips (or the player commits), the
     // bus announces combat, and the render tears down the staging visuals — lift the D12
     // veil so the foe resolves into view, and retire the deploy zone/reach overlays + the
@@ -1252,7 +1261,7 @@ export class BattleScene extends Phaser.Scene {
     const trapHint = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0
       ? `Traps are seeded ahead — watch for ${ICON.trapArmed.glyph}, and let a trapper disarm them. `
       : "";
-    this.setHint((healed > 0 ? `Chef's stew restored ${healed} HP. ` : "Battle begins. ") + trapHint + (bound ? `${bound.name} is bound — rescue or win to free her. ` : "") + "Press Advance Clock.");
+    this.setHint((healed > 0 ? `Chef's stew restored ${healed} HP. ` : "Battle begins. ") + trapHint + (bound ? `${bound.name} is bound — reach and free them, or win the field. ` : "") + "Press Advance Clock.");
   }
 
   private onPrimary(): void {
@@ -2044,10 +2053,10 @@ export class BattleScene extends Phaser.Scene {
     this.highlightTile(null);
     this.hoverTile = null;
     this.armedAim = null;
-    freeCaptive(captive);
-    this.tintCaptured(captive, false);
+    // The rescue verb frees the captive and emits `unitRescued`; the bus listener owns the
+    // token re-tint, the flash, and the combat-log line (the event drives the reaction).
+    this.battle.rescue(captive, actor);
     this.noteAct();
-    this.flashHeal(captive);
     this.refreshHud();
     this.afterActionContinue(actor);
     if (!this.over) this.setHint(`${actor.name} freed ${captive.name}!`);
@@ -2176,11 +2185,20 @@ export class BattleScene extends Phaser.Scene {
     const res = this.loop.resolve();
     const recruited = this.commitPendingRecruits();
 
+    // Winning frees the field's captives (D52): an on-board captive recruit (the L1 Cook)
+    // the player never reached is freed by the captors' fall — release the bound token so
+    // the board reads coherently (un-greyed, full alpha) under the report. resolve() already
+    // recruited him into the party; this only mirrors the freeing on his battle token.
+    if (res.result === "win") {
+      for (const u of this.battle.units) if (u.side === "player" && u.captured) freeCaptive(u);
+    }
+
     this.refreshCampText();
     this.refreshHp();
     this.refreshObjectiveText();
-    // Re-tint any freed allies.
-    for (const u of this.run.party) if (!u.captured) this.tintCaptured(u, false);
+    // Re-tint any freed allies (roster + the just-freed board captives) — skip the dead so a
+    // freed-then-downed captive keeps its death visual instead of recoloring to a live ally.
+    for (const u of this.battle.units) if (u.side === "player" && u.alive && !u.captured) this.tintCaptured(u, false);
 
     const report = this.buildResolutionSummary(res, goldEscaped, recruited);
     this.showResolutionReport(report);
@@ -2250,7 +2268,7 @@ export class BattleScene extends Phaser.Scene {
 
     // The party (D51): rescues and casualties apply on either survivable outcome.
     const party: ReportRow[] = [];
-    if (res.rescued.length) party.push({ icon: "rescued", text: `Freed by winning the field: ${res.rescued.join(", ")}`, color: INK.success });
+    if (res.rescued.length) party.push({ icon: "rescued", text: `Freed by winning the field: ${res.rescued.map(nameOf).join(", ")}`, color: INK.success });
     if (res.result !== "wipe") {
       if (res.downed.length) party.push({ icon: "fallen", text: `Downed: ${res.downed.map((d) => `${nameOf(d.unitId)} (${d.resolution})`).join(", ")}`, color: INK.ember });
       if (res.permadeaths.length) party.push({ icon: "lost", text: `Lost forever: ${res.permadeaths.map(nameOf).join(", ")}`, color: INK.danger });

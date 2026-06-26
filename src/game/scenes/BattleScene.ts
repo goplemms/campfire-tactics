@@ -172,6 +172,7 @@ const MENU_PAD = 7;
 const MENU_LEFT = 12; // box left margin
 const MENU_CX = MENU_LEFT + MENU_PAD + MENU_BW / 2; // button centre x (bottom-left)
 const MENU_GAP = 12; // vertical gap between the verb box and the turn-control box below it
+const PAIR_GAP = 6; // horizontal gap between Undo and the primary in the control box's bottom row
 
 /**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
@@ -752,17 +753,17 @@ export class BattleScene extends Phaser.Scene {
     const actor = this.deployActor;
     const specs: ActionSpec[] = [];
     // Turn-control box (pure decision, D63/D67): Undo + Start Battle + the Advance Clock /
-    // End Turn primary, kept apart from the unit's verbs. Undo leads when there's something
-    // to take back.
-    const controls: ActionSpec[] = [];
+    // End Turn primary, kept apart from the unit's verbs. Undo pairs side-by-side with the
+    // primary's bottom row when there's something to take back.
     const ids = deployActions({ hasActor: !!actor, captured: !!actor?.captured, canUndo: this.battle.canUndo() });
-    if (ids.includes("undo") && actor) {
-      controls.push({
-        text: "Undo",
-        description: "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc).",
-        onClick: () => this.undoTurn(actor, "deployment"),
-      });
-    }
+    const undo: ActionSpec | undefined =
+      ids.includes("undo") && actor
+        ? {
+            text: "Undo",
+            description: "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc).",
+            onClick: () => this.undoTurn(actor, "deployment"),
+          }
+        : undefined;
     // The ability buttons are the **same data-driven projection as combat** (D67): the unit's
     // pre-combat skills + the universal Dig In / Defend, from availableSkills — so a Set-Trap
     // skill surfaces because it's pre-combat *data*, not via a hand-computed `canTrap`.
@@ -780,13 +781,13 @@ export class BattleScene extends Phaser.Scene {
       this.pushTrapVerbs(specs, actor, "deployment"); // Search / Disarm — the shared trap-field verbs
     }
     // Start Battle is a turn-control (commit early at any point), so it sits in the control
-    // box with the clock primary — not among the unit's verbs.
-    controls.push({
+    // box (a full-width row above the Undo/primary pair) — not among the unit's verbs.
+    const controls: ActionSpec[] = [{
       text: "Start Battle",
       description: "Commit now — begin the fight with the party where it stands.",
       onClick: () => { if (!this.busy) this.startBattle(); },
-    });
-    this.layoutActionMenu(specs, controls);
+    }];
+    this.layoutActionMenu(specs, { undo, controls });
   }
 
   /**
@@ -1445,10 +1446,10 @@ export class BattleScene extends Phaser.Scene {
     // available whenever this turn's actions can be taken back (a move *or* a strike/skill),
     // as long as no sprung trap has locked it (no take-back on damage taken, D60). Routes
     // through the action log (Phase 2).
-    const controls: ActionSpec[] = [];
-    if (this.battle.canUndo() && !this.turnLocked) {
-      controls.push({ text: "Undo Turn", description: "Take back everything this unit did this turn — moves and strikes — back to where it started (Esc).", onClick: () => this.undoTurn(actor, "battle") });
-    }
+    const undo: ActionSpec | undefined =
+      this.battle.canUndo() && !this.turnLocked
+        ? { text: "Undo", description: "Take back everything this unit did this turn — moves and strikes — back to where it started (Esc).", onClick: () => this.undoTurn(actor, "battle") }
+        : undefined;
     // The Act buttons (skill / Bribe / Search / Disarm / Defend) are the unit's one
     // action this turn — surfaced only until that Act is spent (D60).
     if (!this.acted) {
@@ -1503,9 +1504,9 @@ export class BattleScene extends Phaser.Scene {
       if (defend) specs.push({ text: "Defend (D)", description: `${defend.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, defend) });
     }
     // The turn's explicit close is the prominent green primary button (plus Space and
-    // W) — so the verb box carries only the unit's *verbs*; Undo + End Turn sit in the
-    // separate control box below.
-    this.layoutActionMenu(specs, controls);
+    // W) — so the verb box carries only the unit's *verbs*; Undo sits side-by-side with
+    // End Turn in the separate control box below.
+    this.layoutActionMenu(specs, { undo });
   }
 
   // --- Trap-field: spotting, searching, disarming (D12) ----------------------
@@ -2831,39 +2832,69 @@ export class BattleScene extends Phaser.Scene {
   private clearActionButtons(): void {
     clearLayer(this.actionButtons);
     // With no command menu up, the primary (End Turn / Advance Clock / …) stands alone,
-    // bottom-left; layoutActionMenu re-docks it into the box's bottom slot.
-    this.primary?.setPosition(MENU_CX, this.primaryRestY());
+    // bottom-left at full width; layoutActionMenu re-docks (and may halve) it as needed.
+    this.primary?.setWidth(MENU_BW).setPosition(MENU_CX, this.primaryRestY());
   }
 
   /**
    * Lay the command menu as **two** stacked boxes docked **bottom-left** (D-UX): the
-   * unit's **verbs** on top, and a separate **turn-control** box below it — Undo, Start
-   * Battle, and the green End Turn / Advance Clock primary docked as its bottom entry —
-   * with a {@link MENU_GAP} between them. "What this unit does" reads apart from
-   * "control the turn/clock", instead of the two intents sharing one stack. Each box
-   * reads top to bottom in the order the callers build it. Shared by both phases and the
-   * herb submenu (which passes verbs only). The boxes are tracked with the buttons;
-   * {@link clearActionButtons} tears them down and floats the primary back to its lone
-   * resting spot.
+   * unit's **verbs** on top, and a separate **turn-control** box below it, with a
+   * {@link MENU_GAP} between them. "What this unit does" reads apart from "control the
+   * turn/clock". The control box stacks any full-width `controls` rows (e.g. Start
+   * Battle) above a **bottom row** that pairs **Undo** side-by-side with the green End
+   * Turn / Advance Clock primary (equal halves) — or the primary alone, full width, when
+   * there's nothing to take back. Undo is only ever live *during* a player turn, so it
+   * only pairs with **End Turn** (never the between-turns Advance Clock). Shared by both
+   * phases and the herb submenu (which passes verbs only). Boxes are tracked with the
+   * buttons; {@link clearActionButtons} tears them down and floats the primary back to
+   * its lone, full-width resting spot.
    */
-  private layoutActionMenu(verbs: ActionSpec[], controls: ActionSpec[] = []): void {
+  private layoutActionMenu(verbs: ActionSpec[], opts: { undo?: ActionSpec; controls?: ActionSpec[] } = {}): void {
     this.clearActionButtons();
     const dockPrimary = this.primary.visible;
-    // The turn-control cluster anchors the bottom-left; its top edge is where the verb
-    // box must stop (they sit a gap apart). A lone primary keeps its boxless resting slot.
-    let clusterTopEdge: number;
-    if (controls.length > 0) {
-      clusterTopEdge = this.drawMenuBox(controls, this.primaryRestY(), dockPrimary);
-    } else if (dockPrimary) {
-      clusterTopEdge = this.primaryRestY() - MENU_BH / 2 - MENU_PAD;
-    } else {
-      clusterTopEdge = this.primaryRestY() + MENU_BH / 2 + MENU_PAD; // nothing below — verbs take the bottom
-    }
+    const controls = opts.controls ?? [];
+    const hasCluster = dockPrimary || controls.length > 0 || !!opts.undo;
+    const clusterTopEdge = hasCluster
+      ? this.drawControlBox(controls, opts.undo, dockPrimary)
+      : this.primaryRestY() + MENU_BH / 2 + MENU_PAD; // nothing below — verbs take the bottom
     if (verbs.length > 0) {
-      const hasCluster = controls.length > 0 || dockPrimary;
       const verbsBottomY = hasCluster ? clusterTopEdge - MENU_GAP - MENU_BH / 2 - MENU_PAD : this.primaryRestY();
       this.drawMenuBox(verbs, verbsBottomY, false);
     }
+  }
+
+  /**
+   * Draw the bottom-left **turn-control box**: `controls` (full-width rows, e.g. Start
+   * Battle) stacked above a bottom row that pairs {@link undo} with the docked primary as
+   * equal halves (or the primary alone, full width, when there's no `undo`). Returns the
+   * box's **top edge** Y so the verb box can stack above it.
+   */
+  private drawControlBox(controls: ActionSpec[], undo: ActionSpec | undefined, dockPrimary: boolean): number {
+    const cx = MENU_CX;
+    const bottomY = this.primaryRestY();
+    const rows = controls.length + (dockPrimary || undo ? 1 : 0); // +1 for the bottom Undo/primary row
+    const topY = bottomY - (Math.max(rows, 1) - 1) * MENU_PITCH;
+    this.actionButtons.push(
+      this.add
+        .rectangle(cx, (topY + bottomY) / 2, MENU_BW + 2 * MENU_PAD, (Math.max(rows, 1) - 1) * MENU_PITCH + MENU_BH + 2 * MENU_PAD, COLOR.surface, 0.85)
+        .setStrokeStyle(1, COLOR.borderSoft)
+        .setDepth(11),
+    );
+    // Full-width control rows (Start Battle …) above the bottom Undo/primary row.
+    controls.forEach((spec, i) => {
+      this.actionButtons.push(this.makeTextButton(cx, topY + i * MENU_PITCH, MENU_BW, MENU_BH, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
+    });
+    // Bottom row: Undo | primary side-by-side (equal halves), or the primary alone.
+    if (undo && dockPrimary) {
+      const half = (MENU_BW - PAIR_GAP) / 2;
+      this.actionButtons.push(this.makeTextButton(cx - (half + PAIR_GAP) / 2, bottomY, half, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description));
+      this.primary.setWidth(half).setPosition(cx + (half + PAIR_GAP) / 2, bottomY);
+    } else if (undo) {
+      this.actionButtons.push(this.makeTextButton(cx, bottomY, MENU_BW, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description));
+    } else if (dockPrimary) {
+      this.primary.setWidth(MENU_BW).setPosition(cx, bottomY);
+    }
+    return topY - MENU_BH / 2 - MENU_PAD;
   }
 
   /**

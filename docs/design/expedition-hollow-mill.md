@@ -169,15 +169,20 @@ Recent work that altered routing or the within-node experience. Newest first.
   green **End Turn / Advance Clock** primary docked as the bottom slot — so "what this unit
   does" and "control the turn/clock" shared one column and read as one undifferentiated list.
   They're now **two stacked boxes** with a gap: the unit's **verbs** on top, and a separate
-  **turn-control box** below holding **Undo**, **Start Battle** (deploy), and the clock
-  primary. This mirrors the taxonomy [`systems/actions.md`](systems/actions.md) already
-  draws — *Undo / Advance Clock / Start Battle* are "pure UI/flow controls that carry no game
-  decision," distinct from the state-changing verbs — so the layout now matches the model.
-  Both phases share the split (`layoutActionMenu` now takes `verbs` + `controls`, laying each
-  via the new `drawMenuBox`); the combat box shows a bare **End Turn** under the gap until a
-  take-back exists, at which point **Undo** joins it in its own bordered box. Pure render; no
-  core touch, no key/verb change (Space / W / Esc unchanged). Seam: `BattleScene.layoutActionMenu`
-  / `drawMenuBox`. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (55), sim
+  **turn-control box** below. The control box stacks any full-width control rows (**Start
+  Battle**, deploy) above a **bottom row** that pairs **Undo** *side-by-side* with the clock
+  primary as equal halves — or the primary alone, full width, when there's nothing to take
+  back. (The primary is, and always was, *one* button that flips **End Turn** ↔ **Advance
+  Clock** by state; since Undo is only live *during* a player turn, it only ever pairs with
+  End Turn, never the between-turns Advance Clock.) This mirrors the taxonomy
+  [`systems/actions.md`](systems/actions.md) already draws — *Undo / Advance Clock / Start
+  Battle* are "pure UI/flow controls that carry no game decision," distinct from the
+  state-changing verbs — so the layout now matches the model. Both phases share it
+  (`layoutActionMenu(verbs, { undo, controls })` lays the verb box via `drawMenuBox` and the
+  control box via `drawControlBox`; the primary reflows full-width ↔ half-width via a new
+  `Button.setWidth` that refreshes its hit area). Pure render; no core touch, no key/verb
+  change (Space / W / Esc unchanged). Seam: `BattleScene.layoutActionMenu` / `drawControlBox`,
+  `Button.setWidth`. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (55), sim
   (summary **unchanged**).
 - **L1: Pip is a real on-board captive — "isolating the captor IS the rescue"** (D52 — a
   deliberate *behavior* change). The L1 Cook no longer joins via a **silent post-win grant**

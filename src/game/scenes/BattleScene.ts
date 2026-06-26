@@ -523,6 +523,7 @@ export class BattleScene extends Phaser.Scene {
 
   private enterDeploy(): void {
     this.phase = "deployment";
+    this.battle.enterDeploy(); // the Battle is now in the pre-combat phase (D67)
     // The foe is pre-positioned but unseen during staging (D12) — veil enemy tokens
     // now; startBattle lifts it. Refresh re-applies the veil after spawnUnits.
     this.view.concealEnemies = true;
@@ -1124,11 +1125,11 @@ export class BattleScene extends Phaser.Scene {
 
   private startBattle(): void {
     this.phase = "battle";
-    // Announce the transition (D67): the bus listener (wireBattleFx) tears down the staging
-    // visuals — lifts the D12 veil so the foe resolves into view, retires the deploy zone /
-    // reach overlays and the source markers — so "combat begins" is one event, not a
-    // scattered set of imperative clears here.
-    this.battle.bus.emit("battleBegan", {});
+    // Cross the pre-combat → combat boundary (D67): a *logged* transition that flips the
+    // Battle's phase and announces it. The bus listener (wireBattleFx) tears down the
+    // staging visuals — lifts the D12 veil so the foe resolves into view, retires the
+    // deploy overlays + markers — and the log marker lets replay delimit the deploy prelude.
+    this.battle.beginBattle();
     this.titleText.setText("Battle");
     this.refreshIntelText(); // re-style the roster line down to passive reference (D-UX)
     this.legendStrip.setItems(BATTLE_LEGEND);

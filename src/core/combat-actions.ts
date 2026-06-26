@@ -66,7 +66,15 @@ export type CombatAction =
   /** Lay a player trap on `pos`, consuming one kit from the shared stash (D11/D63). */
   | { kind: "placeTrap"; unit: UnitId; pos: GridCoord; effect: PlaceTrapEffect; id: string }
   /** Bind a unit captured by the closing net (D7/D63) — the deploy "enemy turn" outcome. */
-  | { kind: "capture"; unit: UnitId };
+  | { kind: "capture"; unit: UnitId }
+  /**
+   * The **pre-combat → combat boundary** (D67): logged once when the alarm trips / the
+   * player commits. Flips the Battle's phase to `combat` and announces it (the
+   * `battleBegan` event). {@link "./turn".replay} drains the deploy prelude up to this
+   * marker, so the deploy verbs no longer need a distinct `kind` to be drained — the
+   * boundary delimits the phases explicitly.
+   */
+  | { kind: "beginBattle" };
 
 /** Every {@link CombatAction} discriminant. */
 export type CombatActionKind = CombatAction["kind"];

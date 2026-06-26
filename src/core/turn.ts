@@ -147,6 +147,16 @@ export class Battle {
   readonly entities: EntityRegistry;
 
   /**
+   * Which board phase this battle is in (D67): `"deploy"` (pre-combat staging — the
+   * closing-net layer) or `"combat"`. Defaults to `combat`, so a bare staged battle (the
+   * headless sim / a test driving combat directly) behaves exactly as before. The scene
+   * calls {@link enterDeploy} for staging, and the logged `beginBattle` action flips it
+   * back to `combat`. Maps to the `pre-combat`/`combat` skill `usableContext` axis, so the
+   * one interpreter can commit (and later gate) a verb per the phase it's actually in.
+   */
+  phase: "deploy" | "combat" = "combat";
+
+  /**
    * The **action log** (D4 event-sourcing of commands) — the combat analog of the
    * purse journal. {@link apply} appends each executed {@link CombatAction} here in
    * order; it is the substrate {@link replay} (and later undo / netcode / a sim
@@ -463,6 +473,14 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "beginBattle": {
+        // The pre-combat → combat boundary (D67): flip the phase and announce it. The
+        // logged marker is what replay() drains the deploy prelude up to.
+        this.phase = "combat";
+        this.bus.emit("battleBegan", {});
+        this._log.push(action);
+        return { ok: true };
+      }
     }
   }
 
@@ -648,6 +666,27 @@ export class Battle {
     this.apply({ kind: "endTurn", unit: unit.id, spend });
   }
 
+  // --- Phase (D67 unification) ----------------------------------------------
+
+  /**
+   * Enter the **pre-combat** (deployment) phase — the staging layer. While this holds, a
+   * skill/move verb resolves its effect without committing a combat turn (the deploy clock
+   * owns the turn). Set live by the scene; {@link replay} re-enters it when it detects a
+   * deploy prelude. Not logged — the `beginBattle` boundary is what the log records.
+   */
+  enterDeploy(): void {
+    this.phase = "deploy";
+  }
+
+  /**
+   * Cross the **pre-combat → combat boundary** (D67): log the transition (so replay can
+   * delimit the deploy prelude), flip to the combat phase, and announce it (`battleBegan`,
+   * which the render reacts to — lift the veil, retire the staging overlays).
+   */
+  beginBattle(): void {
+    this.apply({ kind: "beginBattle" });
+  }
+
   // --- Deployment-phase verbs (D63 unification) -----------------------------
 
   /**
@@ -765,10 +804,18 @@ export function replay(
   opts: BattleOptions & { moraleBonus?: number } = {},
 ): Battle {
   const battle = new Battle(grid, initialUnits, opts);
-  // Drain the Deployment prelude (D63 unification): deploy verbs always lead the
-  // log and aren't part of a CT turn, so apply them before seeding + driving combat.
+  // Drain the pre-combat prelude (D67): everything up to the logged `beginBattle`
+  // boundary — the deploy verbs and the transition flip itself — applied before seeding +
+  // driving the combat loop. A marker-less hand-built log (a test that never crossed the
+  // boundary) falls back to the legacy kind-based drain of the leading deploy verbs.
   let i = 0;
-  while (i < log.length && isDeployAction(log[i])) battle.apply(log[i++]);
+  const boundary = log.findIndex((a) => a.kind === "beginBattle");
+  if (boundary >= 0) {
+    battle.enterDeploy(); // the prelude resolves in the pre-combat phase
+    while (i <= boundary) battle.apply(log[i++]); // deploy verbs + the beginBattle flip → combat
+  } else {
+    while (i < log.length && isDeployAction(log[i])) battle.apply(log[i++]);
+  }
   battle.seed(opts.moraleBonus ?? 0);
   while (i < log.length) {
     const actor = battle.nextActor();

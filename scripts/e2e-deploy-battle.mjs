@@ -95,6 +95,21 @@ async function main() {
       check("undo is now available", st.canUndo === true);
       await shot("tile-click-move");
 
+      // --- Stage: a SECOND move in the same deploy turn (micro-movement) ------
+      const firstActor = st.actorId;
+      const budgetBefore = await g.bsEval(`return s.deployMoveBudget;`);
+      const tile2 = await g.bsEval(NEIGHBOR); // a neighbour of the unit's NEW position
+      check("found a second tile to step to", tile2 !== null);
+      await g.clickTile(tile2);
+      await sleep(500);
+      st = await snap();
+      console.log("• Second move in the same deploy turn");
+      check("the unit moved again — a move can follow a move", st.pos.col === tile2.col && st.pos.row === tile2.row);
+      check("still the same unit's deploy turn", st.actorId === firstActor);
+      const budgetAfter = await g.bsEval(`return s.deployMoveBudget;`);
+      check("the deploy move budget decreased with the second step", budgetAfter < budgetBefore);
+      await shot("deploy-second-move");
+
       // --- Stage: a real Escape press undoes the deploy turn ------------------
       await g.key("Escape");
       await sleep(200);

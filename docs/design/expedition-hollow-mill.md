@@ -153,6 +153,12 @@ Recent work that altered routing or the within-node experience. Newest first.
   consecutive stepping (and a destination click during a walk) flows without dropped
   clicks. Seam: `BattleScene.queuedTile` / `processQueuedClick` (replays through the
   shared `resolveBattleClick`). Armed/bribe targeting isn't queued (it needs a live aim).
+  **Deployment now matches** (D-feel follow-up): a deploy turn was gated to *one*
+  reposition (`deployMoved`); it now steps **tile-by-tile up to the unit's move range**
+  (`deployMoveBudget`, decremented per step, shown as "Move left" on the focus card) with
+  the same click-ahead (`processDeployQueuedClick`). Total range per turn is unchanged —
+  the net still advances only between turns — so it's an interaction parity fix, not a
+  reach/balance change.
 - **Hover preview card — "before you commit" reads** (D-feel). A docked preview card
   (under the focus card) surfaces the outcome of whatever you point at, so a unit's
   free-move turn (move → act → move, one tile at a time) is legible: hover a **move tile**

@@ -198,6 +198,18 @@ export interface Unit extends UnitStats {
    * cleared by moving or capture, and reset between encounters. Combat never sets it.
    */
   dugIn?: boolean;
+  /**
+   * Concealed (D67 W6): not yet **engageable** — a pre-engagement veil rather than a
+   * skill rule. `enterDeploy` sets it on the enemy roster (the foe is pre-positioned but
+   * not yet a valid target — there is "no one to attack" in staging), and `beginBattle`
+   * clears it for everyone (the encounter engages). {@link isValidSkillTarget} won't return
+   * a concealed unit, so a combat action cast in pre-combat simply finds no target and sits
+   * idle — no per-phase skill ban needed. The seam for **targetable** pre-combat foes (a
+   * keep-assault stages defenders `concealed: false`) and future intel-reveal / ghost tokens.
+   * Distinct from {@link hidden} — the D44 authored-**ambush** flag, which persists *into*
+   * combat until scouted or sprung; this lifts the moment the battle opens.
+   */
+  concealed?: boolean;
   /** Active statuses (D12); ticked on the unit's turn start. */
   statuses: StatusInstance[];
   /** Generic per-unit counters, e.g. a capture meter (D12). */
@@ -254,6 +266,7 @@ export function createUnit(spec: UnitSpec): Unit {
     hidden: false,
     captured: false,
     dugIn: false,
+    concealed: false,
     speed: spec.speed,
     attack: spec.attack,
     defense: spec.defense,

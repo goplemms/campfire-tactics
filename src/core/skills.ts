@@ -490,6 +490,7 @@ export function isValidSkillTarget(
     case "enemy":
       return (
         target.alive &&
+        !target.concealed && // not yet engageable — the pre-combat veil (D67 W6)
         target.side !== caster.side &&
         manhattan(caster.pos, target.pos) <= skill.range
       );

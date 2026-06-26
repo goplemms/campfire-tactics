@@ -63,6 +63,7 @@ interface UnitSnapshot {
   captured: boolean;
   dugIn?: boolean;
   hidden?: boolean;
+  concealed?: boolean;
   statuses: StatusInstance[];
   counters: Record<string, number>;
   cooldowns: Record<string, number>;
@@ -95,6 +96,7 @@ function snapshotUnit(u: Unit): UnitSnapshot {
     captured: u.captured,
     dugIn: u.dugIn,
     hidden: u.hidden,
+    concealed: u.concealed,
     statuses: u.statuses.map((s) => ({ ...s, data: s.data ? { ...s.data } : undefined })),
     counters: { ...u.counters },
     cooldowns: { ...u.cooldowns },
@@ -110,6 +112,7 @@ function restoreUnit(u: Unit, s: UnitSnapshot): void {
   u.captured = s.captured;
   u.dugIn = s.dugIn;
   u.hidden = s.hidden;
+  u.concealed = s.concealed;
   u.statuses = s.statuses.map((x) => ({ ...x, data: x.data ? { ...x.data } : undefined }));
   u.counters = { ...s.counters };
   u.cooldowns = { ...s.cooldowns };
@@ -472,6 +475,10 @@ export class Battle {
         // the deploy prelude up to.
         this.phase = "combat";
         this.clock.resetForCombat();
+        // The encounter engages: lift the pre-combat veil so the foe is now a valid target
+        // (D67 W6). A D44 ambush body keeps its own `hidden` flag — that persists into combat
+        // until scouted/sprung — so this only clears the deployment-wide concealment.
+        for (const u of this.units) u.concealed = false;
         this.bus.emit("battleBegan", {});
         this._log.push(action);
         return { ok: true };
@@ -673,6 +680,11 @@ export class Battle {
    */
   enterDeploy(): void {
     this.phase = "deploy";
+    // Conceal the enemy roster: pre-positioned, but not yet **engageable** (D67 W6). With no
+    // valid enemy target, a combat action cast in staging finds no one to hit and sits idle —
+    // the engagement invariant emerges from the board state, not a per-skill ban. A scenario
+    // wanting targetable pre-combat foes (a keep assault) simply leaves them un-concealed.
+    for (const u of this.units) if (u.side === "enemy") u.concealed = true;
   }
 
   /**

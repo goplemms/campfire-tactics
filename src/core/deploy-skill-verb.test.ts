@@ -15,7 +15,7 @@ import { effectiveMove } from "./combat";
 import { onSkillCooldown, TURN_THRESHOLD } from "./clock";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
-import type { SkillDef } from "./skills";
+import { isValidSkillTarget, type SkillDef } from "./skills";
 
 const DASH: SkillDef = {
   id: "dash",
@@ -89,6 +89,25 @@ describe("D67 — one skill verb, phase-aware commit", () => {
     expect(hurt.hp).toBeGreaterThan(5);
     expect(medic.ct).toBeLessThan(TURN_THRESHOLD); // CT spent (the turn committed)
     expect(onSkillCooldown(medic, MENDER.id)).toBe(true); // cooldown armed (as in deploy)
+  });
+
+  it("conceals the enemy roster in pre-combat so it isn't a valid target — revealed when battle opens (W6)", () => {
+    const battle = new Battle(new TileGrid(8, 1), [pawn("a", 0), pawn("foe", 1, "enemy")]);
+    const [a, foe] = battle.units;
+    // Combat (the default phase): the foe is engaged — a valid in-range target.
+    expect(foe.concealed).toBeFalsy();
+    expect(isValidSkillTarget(GUARD_BREAK, a, foe)).toBe(true);
+    // Pre-combat: the enemy roster is concealed — pre-positioned but not yet engageable, so
+    // there is simply no one to attack (the engagement invariant as board state, not a ban).
+    battle.enterDeploy();
+    expect(foe.concealed).toBe(true);
+    expect(isValidSkillTarget(GUARD_BREAK, a, foe)).toBe(false);
+    // Allies are never concealed — support still finds its target in staging.
+    expect(a.concealed).toBeFalsy();
+    // The encounter engages: the veil lifts and the foe is a target again.
+    battle.beginBattle();
+    expect(foe.concealed).toBe(false);
+    expect(isValidSkillTarget(GUARD_BREAK, a, foe)).toBe(true);
   });
 
   it("refuses a combat-only skill (an attack) cast in pre-combat — the engagement invariant", () => {

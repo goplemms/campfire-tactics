@@ -145,6 +145,19 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **A `concealed` flag makes "no targets in pre-combat" true — the engagement substrate**
+  (D67 W6, internal — byte-identical). Groundwork for treating engagement as *board state*
+  rather than a per-skill phase rule. A new per-unit `concealed` flag means "not yet
+  engageable": `enterDeploy` sets it on the enemy roster, `beginBattle` clears it for everyone
+  (the encounter engages), and `isValidSkillTarget` won't return a concealed unit — so a
+  combat action cast in staging finds *no one to attack* and sits idle, the way the player
+  always imagined it (rather than being blocked by an explicit ban). Today this is redundant
+  with the existing ban, hence byte-identical; it becomes load-bearing in W7 when that ban is
+  removed. The flag is the seam for the futures the design wants: a **keep-assault** scenario
+  stages standing defenders `concealed: false` (targetable in pre-combat), and **intel-reveal
+  / ghost tokens** later clear or render it. Distinct from the D44 `hidden` ambush flag, which
+  persists *into* combat until scouted/sprung. Guarded: full suite (830), e2e (46), sim
+  (unchanged — the headless runs fight in the default combat phase, never concealed).
 - **Deploy casts now cost a cooldown + show the impact pop** (D67 W5 — a deliberate
   *behavior* change, unlike W1–W4). Treating a deploy skill as just *an action* rather than a
   privileged "free" one: a skill cast in staging now **arms its cooldown** (one interpreter

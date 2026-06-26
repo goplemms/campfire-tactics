@@ -245,6 +245,13 @@ export class BattleScene extends Phaser.Scene {
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
+  /**
+   * Tiles of movement the active deploy unit has left **this turn** (D-feel: deployment
+   * now steps tile-by-tile like a battle turn, not one reposition). Seeded to the unit's
+   * move range at turn start; each step spends from it. The total per turn is unchanged —
+   * it's the same range, just spendable across consecutive clicks.
+   */
+  private deployMoveBudget = 0;
   /** The party's Set Trap spec (damage + snare status), resolved at deploy; undefined = no trapper. */
   /** Board markers for the player's own placed traps, keyed by the registered entity id. */
   private playerTrapMarkers = new Map<string, Phaser.GameObjects.Text>();
@@ -500,7 +507,9 @@ export class BattleScene extends Phaser.Scene {
   private beginDeployTurn(unit: Unit): void {
     this.deployMoved = false;
     this.deployActed = false;
+    this.deployMoveBudget = moveBudget(unit);
     this.deployHoverTile = null;
+    this.queuedTile = null;
     // Arm the shared action-log undo for the deploy turn (D63) — each move/dig-in/
     // trap becomes undoable back to the turn's start, exactly like a combat turn.
     this.battle.beginUndo();
@@ -525,6 +534,8 @@ export class BattleScene extends Phaser.Scene {
   /** Between deploy turns the clock rests on the player — Advance Clock steps it. */
   private enterDeployIdle(hint: string): void {
     this.deployActor = null;
+    this.queuedTile = null;
+    this.deployHoverTile = null;
     this.highlightTile(null);
     this.setPrimary("Advance Clock");
     this.refreshDeployButtons();
@@ -604,6 +615,8 @@ export class BattleScene extends Phaser.Scene {
     this.battle.undoAll();
     this.deployMoved = false;
     this.deployActed = false;
+    this.deployMoveBudget = moveBudget(actor); // the whole turn rolled back — full range again
+    this.queuedTile = null;
     // Resync token positions + captured tint, then drop markers for any undone trap.
     for (const u of this.battle.units) {
       this.placeView(u);
@@ -926,8 +939,8 @@ export class BattleScene extends Phaser.Scene {
   private deployMove(tile: GridCoord): void {
     const actor = this.deployActor;
     if (!actor || actor.captured || this.busy) return;
-    if (this.deployMoved) {
-      this.setHint("Already repositioned this turn — Dig In, place a trap, or End Turn (Space).");
+    if (this.deployMoveBudget <= 0) {
+      this.setHint("Out of moves this turn — Dig In, place a trap, or End Turn (Space).");
       return;
     }
     const nav = occupiedGrid(this.grid, this.battle.units, [actor], actor.side); // route through friendly bodies (D55)
@@ -936,10 +949,11 @@ export class BattleScene extends Phaser.Scene {
       this.setHint("Can't move there.");
       return;
     }
-    // Clamp to the move budget, then back off any trailing tile a friendly body
-    // sits on — you can cross an ally but not stop on one (D55).
+    // Clamp to the *remaining* move budget (deployment steps tile-by-tile now), then back
+    // off any trailing tile a friendly body sits on — you can cross an ally, not stop on
+    // one (D55).
     const occupied = new Set(this.battle.units.filter((u) => u.alive && u !== actor).map((u) => `${u.pos.col},${u.pos.row}`));
-    let steps = path.slice(1).slice(0, moveBudget(actor));
+    let steps = path.slice(1).slice(0, this.deployMoveBudget);
     while (steps.length > 0 && occupied.has(`${steps[steps.length - 1].col},${steps[steps.length - 1].row}`)) steps = steps.slice(0, -1);
     if (steps.length === 0) {
       this.setHint("Can't stop there — an ally holds the only tile in reach.");
@@ -964,6 +978,7 @@ export class BattleScene extends Phaser.Scene {
     // (logged + undoable), springs any entity crossed, and breaks the dig-in stance.
     this.battle.deployMove(actor, walked);
     this.deployMoved = true;
+    this.deployMoveBudget -= walked.length; // spent this leg; more steps allowed while it lasts
     this.busy = true;
     this.animateMove(actor, walked, () => {
       this.busy = false;
@@ -973,13 +988,16 @@ export class BattleScene extends Phaser.Scene {
       if (spot.spotted) this.redrawTrapMarkers(); // a sensed trap — draw its fresh marker
       this.refreshDeployButtons();
       this.refreshDeployStatus();
+      const moreMoves = this.deployMoveBudget > 0 && !spot.spotted;
       this.setHint(
         spot.spotted
           ? `${actor.name} senses a hidden trap just in time (${ICON.trapArmed.glyph}) and stops short — Disarm it, place a trap, or End Turn.`
           : actor.hp < hpBefore
             ? `${ICON.trapSprung.glyph} ${actor.name} stepped on a hidden trap! Dig In, place a trap, or End Turn.`
-            : `${actor.name} repositioned. Dig In, place a trap, or End Turn (Space) to advance the net.`,
+            : `${actor.name} repositioned${moreMoves ? ` (${this.deployMoveBudget} move left)` : ""}. ${moreMoves ? "Step again, " : ""}Dig In, place a trap, or End Turn (Space).`,
       );
+      // Click-ahead: replay a tile click made while this step animated (micro-movement).
+      this.processDeployQueuedClick(actor);
     });
   }
 
@@ -1679,7 +1697,14 @@ export class BattleScene extends Phaser.Scene {
       // Turn-based deployment (D63): only the unit whose turn it is may act. An armed deploy
       // ability commits on a valid target — the same arm→click flow as combat, through the
       // drained deploySkill verb (D67); otherwise clicking an empty tile repositions it.
-      if (this.busy || !this.deployActor) return;
+      if (!this.deployActor) return;
+      if (this.busy) {
+        // Click-ahead (micro-movement): queue a move-tile click that lands mid-step.
+        if (!this.armedSkill && this.grid.isWalkable(tile) && !this.battle.units.some((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row)) {
+          this.queuedTile = { col: tile.col, row: tile.row };
+        }
+        return;
+      }
       const actor = this.deployActor;
       const clicked = this.battle.units.find((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row);
       if (this.armedSkill) {
@@ -1762,6 +1787,19 @@ export class BattleScene extends Phaser.Scene {
     if (!tile || this.busy || this.over || this.waitingFor !== actor) return;
     if (this.armedSkill || this.bribeArmed || this.pendingHerb) return;
     this.resolveBattleClick(actor, tile);
+  }
+
+  /**
+   * Replay a deployment click-ahead: a reposition click that landed while the prior step
+   * animated. Runs only if it's still this unit's deploy turn, nothing's armed, and the
+   * tile is still an empty reposition target — chains for fluid tile-by-tile stepping.
+   */
+  private processDeployQueuedClick(actor: Unit): void {
+    const tile = this.queuedTile;
+    this.queuedTile = null;
+    if (!tile || this.busy || this.over || this.phase !== "deployment" || this.deployActor !== actor || actor.captured || this.armedSkill) return;
+    if (this.battle.units.some((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row)) return;
+    this.deployMove(tile);
   }
 
   /**
@@ -2339,13 +2377,16 @@ export class BattleScene extends Phaser.Scene {
       // open ground is a real risk now, so "Exposed" reads as a warning, not neutral.
       const bandColor = actor.captured || inNet ? INK.danger : protectedHere || dug ? INK.success : INK.ember;
       rows.push({ label: "Position", value: band, color: bandColor });
+      // Remaining step budget this turn (deployment moves tile-by-tile now) — so the
+      // player can see they may keep stepping before they End Turn.
+      if (!actor.captured) rows.push({ label: "Move left", value: `${this.deployMoveBudget}`, color: this.deployMoveBudget > 0 ? INK.secondary : INK.muted });
       if (!actor.captured && protectedHere) {
         rows.push({ label: "Capture risk", value: "safe in camp", color: INK.success });
       } else if (!actor.captured && this.front && this.campfire) {
         // Hot decision: forecast each choice's capture risk (D48 route-forecast ethos),
         // so the card answers "what should this unit do *now*", not just "how bad is it".
-        // Repositioning is only on the table before the unit has moved this turn.
-        const reach = this.deployMoved ? [] : reachableTiles(actor, this.battle.units, this.grid, moveBudget(actor)).map((r) => r.tile);
+        // Repositioning stays on the table while move budget remains this turn.
+        const reach = this.deployMoveBudget > 0 ? reachableTiles(actor, this.battle.units, this.grid, this.deployMoveBudget).map((r) => r.tile) : [];
         const fc = deployForecast(actor, this.campfire, this.front, reach, { dugIn: dug, exposureMultiplier: this.deployMods().exposureMultiplier });
         const pct = (n: number) => `${Math.round(n * 100)}%`;
         rows.push({ label: "Hold", value: pct(fc.hold), color: INK.danger, emphasize: true });

@@ -1597,8 +1597,8 @@ trail of reasoning stays intact.
 - **Spec:** `src/core/turn.ts` (`useSkill`/`useHeal` `commitTurn`), `src/game/combat-view.ts`
   (`drawPreview` opts: `moveBudget`/`acted`/`hoverPath`), `src/game/scenes/BattleScene.ts`
   (`beginPlayerTurn`, `recomputeReach`, `turnHint`, `canMoveFurther`, `turnExhausted`,
-  `endPlayerTurn`, `afterActionContinue`, `playerMoveStep`, `playerAttack`, `playerRescue`,
-  `onPointerMove`, `noteAct`).
+  `endPlayerTurn`, `afterActionContinue`, `moveStep` (was `playerMoveStep`; now the one
+  weighted step for deploy + battle), `playerAttack`, `playerRescue`, `onPointerMove`, `noteAct`).
 - **Superseded by:** —
 
 ## D61 — The overworld action-economy limiter model + the market-access axis (Merchant rework)

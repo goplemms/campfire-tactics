@@ -5,8 +5,6 @@ import { CombatView } from "../combat-view";
 import { addVignette } from "../vignette";
 import {
   type ResolveResult,
-  findPath,
-  occupiedGrid,
   reachableTiles,
   moveBudget,
   isImmobilized,
@@ -255,13 +253,6 @@ export class BattleScene extends Phaser.Scene {
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
-  /**
-   * Tiles of movement the active deploy unit has left **this turn** (D-feel: deployment
-   * now steps tile-by-tile like a battle turn, not one reposition). Seeded to the unit's
-   * move range at turn start; each step spends from it. The total per turn is unchanged —
-   * it's the same range, just spendable across consecutive clicks.
-   */
-  private deployMoveBudget = 0;
   /** The party's Set Trap spec (damage + snare status), resolved at deploy; undefined = no trapper. */
   /** Board markers for the player's own placed traps, keyed by the registered entity id. */
   private playerTrapMarkers = new Map<string, Phaser.GameObjects.Text>();
@@ -280,7 +271,11 @@ export class BattleScene extends Phaser.Scene {
    * anywhere in that sequence — move, strike, move again. The turn ends only when the
    * player presses **End Turn** (or auto-ends once budget *and* Act are both spent).
    */
-  /** Movement still in the budget this turn (tiles); 0 once spent or Immobilized. */
+  /**
+   * Movement still in the budget this turn; 0 once spent or Immobilized. The **one**
+   * budget for both phases now (D-feel consolidation): a deploy turn and a battle turn
+   * both step tile-by-tile against it, charging the **weighted** reach cost of each leg.
+   */
   private moveBudget = 0;
   /** True once the unit has used its single Act this turn (attack / skill / verb). */
   private acted = false;
@@ -301,14 +296,12 @@ export class BattleScene extends Phaser.Scene {
   /** The walkable tile under the cursor (Deployment) — drives the capture-risk preview. */
   private deployHoverTile: GridCoord | null = null;
   /**
-   * Deployment reach read (D-feel: parity with the battle turn). The reach wash +
-   * lit hover path now light the deploy actor's reachable tiles for its remaining
-   * {@link deployMoveBudget}, so a player can see how far a step may go. Its own graphics
-   * layer (over the zone washes, under the markers) and a `"col,row"`→reach map for the
-   * O(1) hover-path lookup — the deploy twin of {@link reachByKey}.
+   * Deployment's reach **wash** layer (D-feel: parity with the battle turn). The reach
+   * *data* is the shared {@link reachByKey} / {@link moveBudget} now — this is only its
+   * own graphics layer, painted over the zone washes (under the markers) because the
+   * deploy phase lays down zone washes the battle preview never has to draw past.
    */
   private deployReachGfx?: Phaser.GameObjects.Graphics;
-  private deployReachByKey = new Map<string, ReturnType<typeof reachableTiles>[number]>();
   /**
    * Click-ahead (micro-movement): the latest plain board click made **while a step was
    * animating**. Replayed the instant that step finishes ({@link processQueuedClick}),
@@ -594,7 +587,7 @@ export class BattleScene extends Phaser.Scene {
   private beginDeployTurn(unit: Unit): void {
     this.deployMoved = false;
     this.deployActed = false;
-    this.deployMoveBudget = moveBudget(unit);
+    this.moveBudget = moveBudget(unit);
     this.deployHoverTile = null;
     this.queuedTile = null;
     // Arm the shared action-log undo for the deploy turn (D63) — each move/dig-in/
@@ -605,7 +598,7 @@ export class BattleScene extends Phaser.Scene {
     // *before* the buttons render so a freshly-spotted adjacent trap surfaces its Disarm verb.
     const spotted = this.scanTrapsOnTurnOpen(unit);
     this.selectDeployActor(unit);
-    this.recomputeDeployReach(unit); // light the reachable tiles for this turn's budget
+    this.recomputeReach(unit); // light the reachable tiles for this turn's budget (shared with battle)
     this.drawDeployReach();
     this.setPrimary("End Turn");
     const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0;
@@ -916,21 +909,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Recompute the deploy actor's reachable tiles for its *remaining* move budget — the
-   * deploy twin of {@link recomputeReach}. Called when the budget changes (turn start,
-   * after a step, after undo); the wash itself is repainted by {@link drawDeployReach}.
-   */
-  private recomputeDeployReach(actor: Unit): void {
-    const reach = this.deployMoveBudget > 0 && !isImmobilized(actor)
-      ? reachableTiles(actor, this.battle.units, this.grid, this.deployMoveBudget)
-      : [];
-    this.deployReachByKey = new Map(reach.map((r) => [`${r.tile.col},${r.tile.row}`, r]));
-  }
-
-  /**
    * Light the deploy actor's reach (D-feel: the deploy turn now reads like a battle turn).
    * Reuses {@link CombatView.drawPreview} in `"deploy"` mode — the reach wash for the
-   * remaining {@link deployMoveBudget} plus the lit hover path — which **suppresses the
+   * remaining {@link moveBudget} plus the lit hover path — which **suppresses the
    * strike telegraph and enemy intents** (engagement is combat-only; the deploy preview
    * must never offer a strike). Layered over the green/red zone washes, under the markers.
    * Clears when it's not a live deploy turn (between turns, captured, busy, or aiming a
@@ -947,10 +928,10 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     const hoverPath = this.deployHoverTile
-      ? this.deployReachByKey.get(`${this.deployHoverTile.col},${this.deployHoverTile.row}`)?.path
+      ? this.reachByKey.get(`${this.deployHoverTile.col},${this.deployHoverTile.row}`)?.path
       : undefined;
     this.view.drawPreview(this.deployReachGfx, actor, this.battle.units, this.grid, {
-      moveBudget: this.deployMoveBudget,
+      moveBudget: this.moveBudget,
       acted: true, // no strike telegraph (also gated by mode) — engagement is combat-only
       hoverPath,
       mode: "deploy",
@@ -1090,67 +1071,106 @@ export class BattleScene extends Phaser.Scene {
     g.fillPath();
   }
 
-  private deployMove(tile: GridCoord): void {
-    const actor = this.deployActor;
-    if (!actor || actor.captured || this.busy) return;
-    if (this.deployMoveBudget <= 0) {
-      this.setHint("Out of moves this turn — Dig In, place a trap, or End Turn (Space).");
-      return;
+  /**
+   * Step the active unit to a clicked **lit** tile, spending that leg's **weighted**
+   * cost from the shared {@link moveBudget} — the one movement path for both phases
+   * (D-feel consolidation). Only tiles in `reach` (the remaining budget) are walkable; a
+   * click outside it just hints. A cost-changing effect (the Heavy-Knight tarpit ring,
+   * D42) is charged **identically** in deploy and battle now — the spend reads the same
+   * weighted reach the wash is drawn from, so the two can never drift. Per-step trap
+   * sensing can halt it short; it commits through the shared {@link "../../core/turn".Battle.moveUnit}
+   * verb (logged + undoable, springs any entity crossed, breaks dig-in), then hands the
+   * after-step to the phase ({@link afterDeployMoveStep} / {@link afterBattleMoveStep}).
+   */
+  private moveStep(actor: Unit, tile: GridCoord, ctx: BoardCtx): void {
+    if (actor.captured || this.busy) return;
+    const deploy = ctx === "deployment";
+    const r = this.reachByKey.get(`${tile.col},${tile.row}`);
+    if (!r || r.path.length === 0) {
+      const more = this.canMoveFurther();
+      return this.setHint(
+        deploy
+          ? more
+            ? "Out of reach — click a lit tile (you step, not leap)."
+            : "Out of moves this turn — Dig In, place a trap, or End Turn (Space)."
+          : more
+            ? "Out of reach — click a lit tile (you move in steps, not leaps)."
+            : `${actor.name} is out of moves — strike a foe, use a skill, or End Turn (Space/W).`,
+      );
     }
-    const nav = occupiedGrid(this.grid, this.battle.units, [actor], actor.side); // route through friendly bodies (D55)
-    const path = findPath(nav, actor.pos, tile);
-    if (!path || path.length < 2) {
-      this.setHint("Can't move there.");
-      return;
-    }
-    // Clamp to the *remaining* move budget (deployment steps tile-by-tile now), then back
-    // off any trailing tile a friendly body sits on — you can cross an ally, not stop on
-    // one (D55).
-    const occupied = new Set(this.battle.units.filter((u) => u.alive && u !== actor).map((u) => `${u.pos.col},${u.pos.row}`));
-    let steps = path.slice(1).slice(0, this.deployMoveBudget);
-    while (steps.length > 0 && occupied.has(`${steps[steps.length - 1].col},${steps[steps.length - 1].row}`)) steps = steps.slice(0, -1);
-    if (steps.length === 0) {
-      this.setHint("Can't stop there — an ally holds the only tile in reach.");
-      return;
-    }
-    // Per-step trap read (D12): before each step the unit may sense a hidden enemy
-    // trap and balk — or blunder onto one it missed. Truncate the route to what it
-    // actually walks; an already-spotted trap simply stops it short of itself.
-    const spot = this.readStepTraps(actor, steps, (sensed) =>
-      `${actor.name} ${sensed ? "senses a hidden trap" : "won't step onto the spotted trap"} just ahead ` +
-        `(${ICON.trapArmed.glyph}) — route around it, Disarm it, or End Turn.`,
+    // Per-step trap read (D12): the unit may sense a hidden enemy trap and stop short, or
+    // blunder onto one it missed. Truncate the click's route to what it actually walks; a
+    // trap it already spotted halts it short (you don't step onto one you see).
+    const spot = this.readStepTraps(actor, r.path, (sensed) =>
+      `${actor.name} ${sensed ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
+        `(${ICON.trapArmed.glyph}) — route around it, Disarm it, ${deploy ? "" : "strike, "}or End Turn.`,
     );
     if (!spot) return; // balked on a trap — hold ground (hint already set)
     const walked = spot.path;
+    // The walked route ends on a tile from the original reach, so its weighted cost is
+    // exactly the reach cost to that halt tile (a tarpit ring costs extra to enter, D42).
+    const halt = walked[walked.length - 1];
+    const cost = this.reachByKey.get(`${halt.col},${halt.row}`)?.cost ?? r.cost;
     const hpBefore = actor.hp;
-    // Route the reposition through the **same** move verb as combat (D67): it walks the
-    // path (logged + undoable), springs any entity crossed, and breaks the dig-in stance —
-    // a move never commits a turn, so no phase branch is needed here.
-    this.battle.moveUnit(actor, walked);
-    this.deployMoved = true;
-    this.deployMoveBudget -= walked.length; // spent this leg; more steps allowed while it lasts
     this.busy = true;
-    this.animateMove(actor, walked, () => {
+    this.hoverTile = null;
+    if (!deploy) {
+      // Battle: a move clears any armed strike/skill aim and its action row (the strike
+      // telegraph re-arms after the step). Deployment has no strike to clear.
+      this.armedSkill = null;
+      this.clearActionButtons();
+      this.highlightTile(null);
+      this.armedAim = null;
+    }
+    this.battle.moveUnit(actor, walked);
+    if (deploy) this.deployMoved = true;
+    else this.movedThisTurn = true;
+    this.moveBudget -= cost; // weighted spend — same in both phases
+    this.animateMove(actor, walked, () =>
+      deploy
+        ? this.afterDeployMoveStep(actor, !!spot.spotted, hpBefore)
+        : this.afterBattleMoveStep(actor, !!spot.spotted, hpBefore),
+    );
+  }
+
+  /** The deploy after-step: relight the (smaller) reach, surface trap/feedback, chain clicks. */
+  private afterDeployMoveStep(actor: Unit, spotted: boolean, hpBefore: number): void {
+    this.busy = false;
+    this.highlightTile(actor.pos);
+    this.refreshAuras(); // a repositioned Heavy Knight drags its tarpit ring (D64)
+    this.checkTrapSprings(); // a missed trap just sprang underfoot — reveal + mark it
+    if (spotted) this.redrawTrapMarkers(); // a sensed trap — draw its fresh marker
+    this.refreshDeployButtons();
+    this.refreshDeployStatus();
+    this.recomputeReach(actor); // budget spent + new position — relight the smaller reach
+    this.drawDeployReach();
+    const moreMoves = this.moveBudget > 0 && !spotted;
+    this.setHint(
+      spotted
+        ? `${actor.name} senses a hidden trap just in time (${ICON.trapArmed.glyph}) and stops short — Disarm it, place a trap, or End Turn.`
+        : actor.hp < hpBefore
+          ? `${ICON.trapSprung.glyph} ${actor.name} stepped on a hidden trap! Dig In, place a trap, or End Turn.`
+          : `${actor.name} repositioned${moreMoves ? ` (${this.moveBudget} move left)` : ""}. ${moreMoves ? "Step again, " : ""}Dig In, place a trap, or End Turn (Space).`,
+    );
+    // Click-ahead: replay a tile click made while this step animated (micro-movement).
+    this.processQueuedClick(actor, "deployment");
+  }
+
+  /** The battle after-step: end if the move decided it, else keep the turn open (D60). */
+  private afterBattleMoveStep(actor: Unit, spotted: boolean, hpBefore: number): void {
+    this.checkTrapSprings();
+    if (spotted) this.redrawTrapMarkers(); // a sensed trap — draw its fresh marker
+    this.refreshHud();
+    if (!actor.alive || this.encounterDecided()) {
       this.busy = false;
-      this.highlightTile(actor.pos);
-      this.refreshAuras(); // a repositioned Heavy Knight drags its tarpit ring (D64)
-      this.checkTrapSprings(); // a missed trap just sprang underfoot — reveal + mark it
-      if (spot.spotted) this.redrawTrapMarkers(); // a sensed trap — draw its fresh marker
-      this.refreshDeployButtons();
-      this.refreshDeployStatus();
-      this.recomputeDeployReach(actor); // budget spent + new position — relight the smaller reach
-      this.drawDeployReach();
-      const moreMoves = this.deployMoveBudget > 0 && !spot.spotted;
-      this.setHint(
-        spot.spotted
-          ? `${actor.name} senses a hidden trap just in time (${ICON.trapArmed.glyph}) and stops short — Disarm it, place a trap, or End Turn.`
-          : actor.hp < hpBefore
-            ? `${ICON.trapSprung.glyph} ${actor.name} stepped on a hidden trap! Dig In, place a trap, or End Turn.`
-            : `${actor.name} repositioned${moreMoves ? ` (${this.deployMoveBudget} move left)` : ""}. ${moreMoves ? "Step again, " : ""}Dig In, place a trap, or End Turn (Space).`,
-      );
-      // Click-ahead: replay a tile click made while this step animated (micro-movement).
-      this.processQueuedClick(actor, "deployment");
-    });
+      return this.afterTurn();
+    }
+    if (actor.hp < hpBefore) this.turnLocked = true; // a trap bit — the move stands
+    this.afterActionContinue(actor);
+    // Override the generic turn hint when the unit balked at a freshly-sensed trap.
+    if (spotted && this.waitingFor === actor && !this.over) {
+      this.setHint(`${actor.name} senses a hidden trap (${ICON.trapArmed.glyph}) and stops short — Disarm it, strike, or End Turn.`);
+    }
   }
 
   /** Drop the capture-net cage on a unit's tile (shared deploy FX). */
@@ -1880,7 +1900,7 @@ export class BattleScene extends Phaser.Scene {
         else this.setHint("Not a valid target for that skill.");
         return;
       }
-      if (!clicked) this.deployMove(tile);
+      if (!clicked) this.moveStep(actor, tile, "deployment");
       return;
     }
     if (this.phase !== "battle") return;
@@ -1934,7 +1954,7 @@ export class BattleScene extends Phaser.Scene {
     if (clicked && clicked.captured && clicked.side === actor.side && clicked !== actor) this.playerRescue(actor, clicked);
     else if (clicked && clicked.side !== actor.side && !clicked.captured) this.playerAttack(actor, clicked);
     else if (clicked === actor) this.setHint(this.turnHint(actor)); // clicking yourself is a no-op nudge
-    else if (!clicked && this.grid.isWalkable(tile)) this.playerMoveStep(actor, tile);
+    else if (!clicked && this.grid.isWalkable(tile)) this.moveStep(actor, tile, "battle");
   }
 
   /**
@@ -1942,7 +1962,7 @@ export class BattleScene extends Phaser.Scene {
    * mid-step, run it now the step has finished and it's still this unit's turn. Guards
    * against any state change in the interim (busy, turn ended, a skill armed), then routes
    * to the phase's plain-click verb — combat's full {@link resolveBattleClick} (rescue /
-   * strike / step), or a deploy reposition ({@link deployMove}) onto a still-empty tile.
+   * strike / step), or a deploy reposition ({@link moveStep}) onto a still-empty tile.
    * Chains naturally: each replayed step's completion calls back here, so a flurry plays out.
    */
   private processQueuedClick(actor: Unit, ctx: BoardCtx): void {
@@ -1953,7 +1973,7 @@ export class BattleScene extends Phaser.Scene {
       if (this.phase !== "deployment" || this.deployActor !== actor || actor.captured) return;
       // Still an empty tile? (an ally may have stepped onto it while the prior step ran.)
       if (this.battle.units.some((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row)) return;
-      this.deployMove(tile);
+      this.moveStep(actor, tile, "deployment");
     } else {
       if (this.waitingFor !== actor || this.bribeArmed || this.pendingHerb) return;
       this.resolveBattleClick(actor, tile);
@@ -2057,62 +2077,6 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Step the unit to a clicked **lit** tile, spending that leg of its move budget
-   * (D60). Only tiles in `reach` (the remaining budget) are walkable — a click
-   * outside it just hints. The move fires its side-effects (traps, auras); if a
-   * trap bites (HP drops) the turn *locks* — no take-back on damage taken. The turn
-   * stays open so the unit can strike, move again, or End Turn.
-   */
-  private playerMoveStep(actor: Unit, tile: GridCoord): void {
-    const r = this.reachByKey.get(`${tile.col},${tile.row}`);
-    if (!r || r.path.length === 0) {
-      return this.setHint(
-        this.canMoveFurther()
-          ? "Out of reach — click a lit tile (you move in steps, not leaps)."
-          : `${actor.name} is out of moves — strike a foe, use a skill, or End Turn (Space/W).`,
-      );
-    }
-    // Per-step trap read (D12): the unit may sense a hidden enemy trap and stop short,
-    // or blunder onto one it missed. Truncate the click's route to what it actually
-    // walks; a trap it already spotted halts it short (you don't step onto one you see).
-    const spot = this.readStepTraps(actor, r.path, (sensed) =>
-      `${actor.name} ${sensed ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
-        `(${ICON.trapArmed.glyph}) — route around it, Disarm it, strike, or End Turn.`,
-    );
-    if (!spot) return; // balked on a trap — hold ground (hint already set)
-    const walked = spot.path;
-    // The walked route ends on a tile from the original reach, so its weighted cost is
-    // exactly the reach cost to that halt tile (a tarpit ring costs extra to enter, D42).
-    const halt = walked[walked.length - 1];
-    const cost = this.reachByKey.get(`${halt.col},${halt.row}`)?.cost ?? r.cost;
-    const hpBefore = actor.hp;
-    this.busy = true;
-    this.armedSkill = null;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    this.hoverTile = null;
-    this.armedAim = null;
-    this.battle.moveUnit(actor, walked);
-    this.movedThisTurn = true;
-    this.moveBudget -= cost;
-    this.animateMove(actor, walked, () => {
-      this.checkTrapSprings();
-      if (spot.spotted) this.redrawTrapMarkers(); // a sensed trap — draw its fresh marker
-      this.refreshHud();
-      if (!actor.alive || this.encounterDecided()) {
-        this.busy = false;
-        return this.afterTurn();
-      }
-      if (actor.hp < hpBefore) this.turnLocked = true; // a trap bit — the move stands
-      this.afterActionContinue(actor);
-      // Override the generic turn hint when the unit balked at a freshly-sensed trap.
-      if (spot.spotted && this.waitingFor === actor && !this.over) {
-        this.setHint(`${actor.name} senses a hidden trap (${ICON.trapArmed.glyph}) and stops short — Disarm it, strike, or End Turn.`);
-      }
-    });
-  }
-
-  /**
    * Undo **this unit's whole turn** in either phase (D60 / D63 — *Into the Breach*
    * take-back): roll the battle back to where the turn began through the shared action
    * log, then resync the board. Core reverts positions, HP, statuses, clock/charges, the
@@ -2138,7 +2102,7 @@ export class BattleScene extends Phaser.Scene {
     if (ctx === "deployment") {
       this.deployMoved = false;
       this.deployActed = false;
-      this.deployMoveBudget = moveBudget(actor); // the whole turn rolled back — full range again
+      this.moveBudget = moveBudget(actor); // the whole turn rolled back — full range again
       this.queuedTile = null;
     } else {
       this.moveBudget = moveBudget(actor);
@@ -2158,7 +2122,7 @@ export class BattleScene extends Phaser.Scene {
       this.highlightTile(actor.pos);
       this.refreshDeployButtons();
       this.refreshDeployStatus();
-      this.recomputeDeployReach(actor); // budget restored to full range — relight the reach
+      this.recomputeReach(actor); // budget restored to full range — relight the reach (shared with battle)
       this.drawDeployReach();
       this.setHint(`${actor.name}'s deploy turn reset — reposition, Dig In, place a trap, or End Turn (Space).`);
     } else {
@@ -2561,14 +2525,14 @@ export class BattleScene extends Phaser.Scene {
       rows.push({ label: "Position", value: band, color: bandColor });
       // Remaining step budget this turn (deployment moves tile-by-tile now) — so the
       // player can see they may keep stepping before they End Turn.
-      if (!actor.captured) rows.push({ label: "Move left", value: `${this.deployMoveBudget}`, color: this.deployMoveBudget > 0 ? INK.secondary : INK.muted });
+      if (!actor.captured) rows.push({ label: "Move left", value: `${this.moveBudget}`, color: this.moveBudget > 0 ? INK.secondary : INK.muted });
       if (!actor.captured && protectedHere) {
         rows.push({ label: "Capture risk", value: "safe in camp", color: INK.success });
       } else if (!actor.captured && this.front && this.campfire) {
         // Hot decision: forecast each choice's capture risk (D48 route-forecast ethos),
         // so the card answers "what should this unit do *now*", not just "how bad is it".
         // Repositioning stays on the table while move budget remains this turn.
-        const reach = this.deployMoveBudget > 0 ? reachableTiles(actor, this.battle.units, this.grid, this.deployMoveBudget).map((r) => r.tile) : [];
+        const reach = this.moveBudget > 0 ? reachableTiles(actor, this.battle.units, this.grid, this.moveBudget).map((r) => r.tile) : [];
         const fc = deployForecast(actor, this.campfire, this.front, reach, { dugIn: dug, exposureMultiplier: this.deployMods().exposureMultiplier });
         const pct = (n: number) => `${Math.round(n * 100)}%`;
         rows.push({ label: "Hold", value: pct(fc.hold), color: INK.danger, emphasize: true });

@@ -121,9 +121,9 @@ async function main() {
       const reach = await g.bsEval(`
         const a = s.deployActor; if (!a) return { skip: true };
         s.deployHoverTile = null; s.drawDeployReach();             // wash only (no hover)
-        const reachCount = s.deployReachByKey.size;
+        const reachCount = s.reachByKey.size;
         const washCmds = s.deployReachGfx ? s.deployReachGfx.commandBuffer.length : 0;
-        const r = [...s.deployReachByKey.values()].find(x => x.path && x.path.length > 0);
+        const r = [...s.reachByKey.values()].find(x => x.path && x.path.length > 0);
         let pathLit = false, washWithHover = washCmds, badges = s.view.forecastLabels.size;
         if (r) {
           s.deployHoverTile = { col: r.tile.col, row: r.tile.row };
@@ -133,7 +133,7 @@ async function main() {
           badges = s.view.forecastLabels.size;
           s.drawDeployReach(); // leave the route lit so the screenshot shows wash + path
         }
-        return { budget: s.deployMoveBudget, reachCount, washCmds, washWithHover, pathLit, badges };
+        return { budget: s.moveBudget, reachCount, washCmds, washWithHover, pathLit, badges };
       `);
       console.log("• Reach wash + hover path in deployment");
       check("the deploy actor has a move budget to light", reach.skip || reach.budget > 0);
@@ -159,7 +159,7 @@ async function main() {
 
       // --- Stage: a SECOND move in the same deploy turn (micro-movement) ------
       const firstActor = st.actorId;
-      const budgetBefore = await g.bsEval(`return s.deployMoveBudget;`);
+      const budgetBefore = await g.bsEval(`return s.moveBudget;`);
       const tile2 = await g.bsEval(NEIGHBOR); // a neighbour of the unit's NEW position
       check("found a second tile to step to", tile2 !== null);
       await g.clickTile(tile2);
@@ -168,7 +168,7 @@ async function main() {
       console.log("• Second move in the same deploy turn");
       check("the unit moved again — a move can follow a move", st.pos.col === tile2.col && st.pos.row === tile2.row);
       check("still the same unit's deploy turn", st.actorId === firstActor);
-      const budgetAfter = await g.bsEval(`return s.deployMoveBudget;`);
+      const budgetAfter = await g.bsEval(`return s.moveBudget;`);
       check("the deploy move budget decreased with the second step", budgetAfter < budgetBefore);
       await shot("deploy-second-move");
 

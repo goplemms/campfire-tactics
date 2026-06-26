@@ -495,6 +495,15 @@ export class BattleScene extends Phaser.Scene {
       this.view.logHeal(unit, amount, source);
     });
     this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit));
+    // The in-combat rescue Act (D52): freeing a bound unit — a captured ally, or a new
+    // captive recruit (the L1 Cook) — announces itself here, so the event owns the reaction
+    // (un-grey the token, flash, log the moment) rather than the call site. The post-win
+    // auto-free is the resolution `rescued` tally, not this live event, so it doesn't fire.
+    this.battle.bus.on("unitRescued", ({ unit, by }) => {
+      this.tintCaptured(unit, false);
+      this.flashHeal(unit);
+      this.view.logRescue(unit, by);
+    });
     // Deploy → battle transition (D67): when the alarm trips (or the player commits), the
     // bus announces combat, and the render tears down the staging visuals — lift the D12
     // veil so the foe resolves into view, and retire the deploy zone/reach overlays + the
@@ -2044,10 +2053,10 @@ export class BattleScene extends Phaser.Scene {
     this.highlightTile(null);
     this.hoverTile = null;
     this.armedAim = null;
-    freeCaptive(captive);
-    this.tintCaptured(captive, false);
+    // The rescue verb frees the captive and emits `unitRescued`; the bus listener owns the
+    // token re-tint, the flash, and the combat-log line (the event drives the reaction).
+    this.battle.rescue(captive, actor);
     this.noteAct();
-    this.flashHeal(captive);
     this.refreshHud();
     this.afterActionContinue(actor);
     if (!this.over) this.setHint(`${actor.name} freed ${captive.name}!`);

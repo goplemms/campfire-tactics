@@ -109,28 +109,36 @@ async function main() {
       check("the bound captive is off the deploy clock", captive && captive.offClock === true);
       await shot("captive-bound");
 
-      // …and he can be freed by the rescue mechanic. This replicates the visible effect of
-      // BattleScene.playerRescue (its core verb is freeCaptive: clear bound + reset CT) and
-      // re-tints the token — from here the clock can hand him a turn (controllable for the
-      // rest of the fight). The full reach-then-Free interaction + win-recruit are covered
-      // headlessly in hollow-mill.test.ts; here we assert the render transition.
+      // …and he can be freed by the **rescue Act** — the `Battle.rescue` verb BattleScene's
+      // playerRescue calls. It frees the captive and emits the `unitRescued` bus event; the
+      // wireBattleFx listener owns the reaction: re-tint the token to an ally, flash, and write
+      // a combat-log line. So freeing a new unit registers as a real rescue *event*, not a
+      // silent state poke (the full reach-then-Free + win-recruit are headless in
+      // hollow-mill.test.ts). The post-win auto-free is a separate resolution tally, not this.
       const freeOut = await g.bsEval(`
         const pip = s.battle.units.find(u => u.id === "pip");
         if (!pip) return null;
-        pip.captured = false; pip.ct = 0;   // freeCaptive(pip)
-        s.tintCaptured(pip, false);          // playerRescue's re-tint
+        const by = s.battle.units.find(u => u.side === "player" && !u.captured && u.id !== "pip");
+        const logBefore = s.view.logBuffer.length;
+        s.battle.rescue(pip, by);            // the rescue Act → emits unitRescued
         const v = s.view.views.get("pip");
-        return { captured: !!pip.captured, tint: v ? v.body.fillColor : null };
+        const last = s.view.logBuffer[s.view.logBuffer.length - 1];
+        return {
+          captured: !!pip.captured,
+          tint: v ? v.body.fillColor : null,
+          logged: s.view.logBuffer.length > logBefore,
+          logText: last ? last.text : "",
+        };
       `);
-      check("freeing the captive clears the bound state (controllable)", freeOut && freeOut.captured === false);
-      check("a freed captive re-tints to an ally token", freeOut && freeOut.tint !== 0x9a6bd0);
+      check("the rescue Act clears the bound state (controllable)", freeOut && freeOut.captured === false);
+      check("the unitRescued listener re-tints the freed token to an ally", freeOut && freeOut.tint !== 0x9a6bd0);
+      check("the rescue emits a combat-log event line", freeOut && freeOut.logged && /free/i.test(freeOut.logText));
       await shot("captive-freed");
-      // Re-bind for the rest of this e2e so the deployment flow continues unperturbed
-      // (the later stages drive the trio's setup, not Pip's; the win-recruit path is
-      // covered headlessly in hollow-mill.test.ts).
+      // Re-bind + clear the log so the later stages (which assert log growth) start clean.
       await g.bsEval(`
         const pip = s.battle.units.find(u => u.id === "pip");
         if (pip) { pip.captured = true; pip.ct = 0; s.tintCaptured(pip, true); }
+        s.view.clearLog();
       `);
 
       // --- Stage: combat FX fire in deployment too (feel parity) --------------

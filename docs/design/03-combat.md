@@ -57,9 +57,16 @@ Deployment, off the clock, never an enemy target while bound, and freed by an al
 (or by winning the field) — but freeing it **recruits it into the party permanently** rather
 than merely restoring an existing member. The demo's **L1 Cook** is the first: the captor's
 corner *is* the rescue corner, so the flank lesson and the rescue are one beat. The win
-**always** delivers the recruit (the captors' fall frees the captive); failing the node
-simply doesn't recruit it (the rescue was missed). See
+**always** delivers the recruit (the captors' fall frees the captive) and the recruit **banks
+the encounter's completion XP**, so it joins *leveled with the party*, not at base; failing
+the node simply doesn't recruit it (the rescue was missed). See
 [the Hollow Mill L1](expedition-hollow-mill.md).
+
+Freeing a bound unit mid-Combat (an ally **or** a captive recruit) fires a **`unitRescued`**
+event on the trigger bus (§2) — so a rescue is a first-class moment: the render logs it and
+flashes FX, and future effects (intel reveals, ghost tokens) hook the same event rather than
+the call site. The **post-win auto-free** ("freed by winning the field") is a separate
+Resolution tally, not this live event.
 
 Capture can *also begin during combat*: an enemy **Snare** (a fortified-encounter
 [field entity](systems/field-entities.md)) applies **Immobilized** plus a banded

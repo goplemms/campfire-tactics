@@ -44,7 +44,7 @@ import {
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
 import { cleaveArc, shoveLanding } from "./ability-forecast";
-import { captureUnit } from "./deployment";
+import { captureUnit, freeCaptive } from "./deployment";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import type { ClockSnapshot } from "./clock";
@@ -530,6 +530,19 @@ export class Battle {
   attack(attacker: Unit, target: Unit): number {
     const r = this.apply({ kind: "attack", unit: attacker.id, target: target.id });
     return r.ok ? r.damage ?? 0 : 0;
+  }
+
+  /**
+   * Free a bound unit via the in-combat **rescue Act** (D52) — a captured ally, or a new
+   * on-board **captive recruit** (the L1 Cook) joining the fight. Clears the captured state
+   * ({@link freeCaptive}) and announces it on the bus (`unitRescued`) so the render logs the
+   * moment + flashes FX, and future effects (intel reveal, ghost tokens) can hook it. `by`
+   * is the rescuer. Render-facing only — no RNG, no logged action — so it never perturbs
+   * determinism or replay; the post-win auto-free is a separate resolution tally, not this.
+   */
+  rescue(captive: Unit, by?: Unit): void {
+    freeCaptive(captive);
+    this.bus.emit("unitRescued", { unit: captive, by });
   }
 
   /** True if `caster` may use `skill` right now (not cooling down, D37). */

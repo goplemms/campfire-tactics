@@ -50,6 +50,17 @@ A unit captured during Deployment is on the map, guarded. Freeing it mid-Combat
 converts the side's **−1 to +1**; an ally left captured at battle's end is lost in
 [Resolution](04-resolution.md).
 
+**Captive recruits (D52 extension).** Authored content can *start* a fight with a bound
+unit on the board that **isn't yet yours** — a guarded **captive recruit**
+(`AuthoredEncounter.captives`). It rides this same rescue mechanic: visible during
+Deployment, off the clock, never an enemy target while bound, and freed by an ally **Act**
+(or by winning the field) — but freeing it **recruits it into the party permanently** rather
+than merely restoring an existing member. The demo's **L1 Cook** is the first: the captor's
+corner *is* the rescue corner, so the flank lesson and the rescue are one beat. The win
+**always** delivers the recruit (the captors' fall frees the captive); failing the node
+simply doesn't recruit it (the rescue was missed). See
+[the Hollow Mill L1](expedition-hollow-mill.md).
+
 Capture can *also begin during combat*: an enemy **Snare** (a fortified-encounter
 [field entity](systems/field-entities.md)) applies **Immobilized** plus a banded
 **capture countdown** — the abstraction being enemy reinforcements closing on that

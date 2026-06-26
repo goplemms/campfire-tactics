@@ -24,6 +24,7 @@ import { buildGrid, buildEnemies, type EncounterDef } from "./generation";
 import {
   buildAuthoredGrid,
   buildAuthoredEnemies,
+  buildAuthoredCaptives,
   placeParty,
   type AuthoredEncounter,
   type EncounterResult,
@@ -135,11 +136,16 @@ export function stageEncounter(
 
   let grid: TileGrid;
   let enemies: Unit[];
+  // On-board captive recruits (D52): bound, player-side units the player frees mid-fight or
+  // by winning. Built **outside** `players` so the roster `resetForBattle` (which clears
+  // `captured`) never touches them — a captive stays bound on entry. Authored sources only.
+  let captives: Unit[] = [];
   let objectiveSpecs;
 
   if (isAuthoredEncounter(source)) {
     grid = buildAuthoredGrid(source);
     enemies = buildAuthoredEnemies(source);
+    captives = buildAuthoredCaptives(source);
     // Scouted-to-full intel blows the ambush: hidden bodies start visible (D10).
     if (opts.revealHidden) for (const e of enemies) e.hidden = false;
     placeParty(players, opts.playerSpawns ?? source.playerSpawns);
@@ -152,7 +158,10 @@ export function stageEncounter(
     objectiveSpecs = withDefaultGoal();
   }
 
-  const battle = new Battle(grid, [...players, ...enemies], { seed: opts.seed });
+  // Captives ride between the roster and the enemies: player-side and bound, so they're off
+  // the clock (the `isActive` participant predicate excludes captured), never an AI target
+  // (`activeUnits` foe-lists skip them), and visible in deployment (only enemies are veiled).
+  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed });
 
   // Pre-place the authored concealed enemy traps (the trap-field lever, D12): they
   // ride the same entity registry the player's Set Trap uses, so movement springs

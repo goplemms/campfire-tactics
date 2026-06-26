@@ -81,6 +81,58 @@ async function main() {
       await g.bsEval(`s.deployHoverTile = null; s.refreshPreviewCard();`); // clear so it doesn't bleed into later stages
       await shot("deploy-opens");
 
+      // --- Stage: the L1 Cook is a bound on-board captive (D52) ----------------
+      // Pip starts the Skirmish as a player-side, *bound* token guarded by the corner
+      // cutthroat (col 7,row 0): reaching him is the flank. A captive is NOT a concealed
+      // enemy, so — unlike the veiled foe above — his grey token is VISIBLE during
+      // deployment, he's off the initiative clock (the deploy actor set excludes him), and
+      // he's not yet in the party. The captive-recruit seam this asserts is what replaced
+      // the old silent post-win grant.
+      const captive = await g.bsEval(`
+        const pip = s.battle.units.find(u => u.id === "pip");
+        if (!pip) return null;
+        const v = s.view.views.get("pip");
+        return {
+          side: pip.side, captured: !!pip.captured, pos: { col: pip.pos.col, row: pip.pos.row },
+          visible: v ? v.container.visible : false,        // a captive is shown in deployment…
+          tint: v ? v.body.fillColor : null,               // …grey-tinted (COLOR.captive)
+          inParty: s.run.party.some(u => u.id === "pip"),   // not recruited until freed/won
+          offClock: s.deployActor ? s.deployActor.id !== "pip" : true,
+        };
+      `);
+      console.log("• L1 Cook is a bound on-board captive");
+      check("Pip is on the board, player-side and bound", captive && captive.side === "player" && captive.captured === true);
+      check("Pip is bound in the captor's corner (col 7,row 1)", captive && captive.pos.col === 7 && captive.pos.row === 1);
+      check("the captive token is VISIBLE during deployment (not a concealed foe)", captive && captive.visible === true);
+      check("the captive token reads grey/bound (COLOR.captive)", captive && captive.tint === 0x9a6bd0);
+      check("Pip is not in the party yet (introduced AT L1, freed/won)", captive && captive.inParty === false);
+      check("the bound captive is off the deploy clock", captive && captive.offClock === true);
+      await shot("captive-bound");
+
+      // …and he can be freed by the rescue mechanic. This replicates the visible effect of
+      // BattleScene.playerRescue (its core verb is freeCaptive: clear bound + reset CT) and
+      // re-tints the token — from here the clock can hand him a turn (controllable for the
+      // rest of the fight). The full reach-then-Free interaction + win-recruit are covered
+      // headlessly in hollow-mill.test.ts; here we assert the render transition.
+      const freeOut = await g.bsEval(`
+        const pip = s.battle.units.find(u => u.id === "pip");
+        if (!pip) return null;
+        pip.captured = false; pip.ct = 0;   // freeCaptive(pip)
+        s.tintCaptured(pip, false);          // playerRescue's re-tint
+        const v = s.view.views.get("pip");
+        return { captured: !!pip.captured, tint: v ? v.body.fillColor : null };
+      `);
+      check("freeing the captive clears the bound state (controllable)", freeOut && freeOut.captured === false);
+      check("a freed captive re-tints to an ally token", freeOut && freeOut.tint !== 0x9a6bd0);
+      await shot("captive-freed");
+      // Re-bind for the rest of this e2e so the deployment flow continues unperturbed
+      // (the later stages drive the trio's setup, not Pip's; the win-recruit path is
+      // covered headlessly in hollow-mill.test.ts).
+      await g.bsEval(`
+        const pip = s.battle.units.find(u => u.id === "pip");
+        if (pip) { pip.captured = true; pip.ct = 0; s.tintCaptured(pip, true); }
+      `);
+
       // --- Stage: combat FX fire in deployment too (feel parity) --------------
       // Deployment ↔ combat parity: a unit that takes an HP hit during *deployment* (a
       // sprung concealed trap) must float its damage and write the combat log, exactly as

@@ -23,7 +23,7 @@ export function computeVisibleTiles(
 ): Set<string> {
   const visible = new Set<string>();
   for (const u of units) {
-    if (!u.alive || u.side !== side) continue;
+    if (!u.alive || u.captured || u.side !== side) continue; // a bound captive doesn't scout (D52)
     const r = u.sightRadius;
     for (let dc = -r; dc <= r; dc++) {
       for (let dr = -r; dr <= r; dr++) {
@@ -42,7 +42,7 @@ export function canSee(
   tile: GridCoord,
 ): boolean {
   for (const u of units) {
-    if (!u.alive || u.side !== side) continue;
+    if (!u.alive || u.captured || u.side !== side) continue; // a bound captive doesn't scout (D52)
     if (chebyshev(u.pos, tile) <= u.sightRadius) return true;
   }
   return false;
@@ -61,6 +61,7 @@ export function canSeeUnit(units: readonly Unit[], side: Side, target: Unit): bo
   return units.some(
     (u) =>
       u.alive &&
+      !u.captured && // a bound captive can't spot a stealthed foe (D52)
       u.side === side &&
       Math.abs(u.pos.col - target.pos.col) + Math.abs(u.pos.row - target.pos.row) === 1,
   );

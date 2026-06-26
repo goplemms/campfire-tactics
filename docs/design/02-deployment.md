@@ -111,6 +111,14 @@ map. Reaching and freeing them mid-Combat turns the **−1 back into +1**. A uni
 dramatic without being a blind death roll, and only *abandoning* the rescue
 ultimately loses the unit.
 
+> **Captive recruits (D52 extension).** Not every bound token is one of *your*
+> overreaches. Authored content can *start* an encounter with a **captive recruit** on
+> the board (`AuthoredEncounter.captives`) — a guarded unit that **isn't yours yet**. It
+> is **visible during Deployment** (a captive is not a concealed enemy), bound and off
+> the clock, and freed by the same rescue Act mid-Combat — but freeing it (or **winning**
+> the field) **recruits it permanently**. The demo's L1 Cook is the first; see
+> [the Hollow Mill L1](expedition-hollow-mill.md) and [Combat §3](03-combat.md).
+
 > **Scenario modifier — ambush in reverse.** A rescue mission is a *disadvantaged*
 > battle: the enemy knows you're coming, so the rescuing party fights with
 > **reduced Deployment**. This "reduced-Deployment" modifier is reusable for any

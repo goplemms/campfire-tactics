@@ -523,6 +523,13 @@ export class RunLoop {
     const { rescued, rescueQuests } = this.resolveRescues(won, policy);
     this.run.rescueQuests.push(...rescueQuests);
 
+    // On-board captive **recruits** (D52): an authored captive (the L1 Cook) is freed and
+    // **joins the party on the win** — even if the player never reached him (the captors
+    // fell), and even if a mid-fight-freed captive was downed (demo-friendly: a won node
+    // always delivers the recruit, replacing the old post-win `grants.recruit`). Win-only,
+    // idempotent. Folded into `rescued` so the resolution names the join.
+    rescued.push(...this.resolveCaptiveRecruits(won, source));
+
     // Mortality (D9): downed player combatants resolve on a survivable outcome (D51).
     const { downed, permadeaths } = this.resolveMortalities(survivable, policy);
 
@@ -626,6 +633,36 @@ export class RunLoop {
       }
     }
     return { rescued, rescueQuests };
+  }
+
+  /**
+   * Recruit an authored encounter's on-board **captive recruits** (D52) on the win — the
+   * L1 Cook's "freeing → joins permanently" path, replacing the old post-win
+   * `grants.recruit`. The captive is staged in the battle but never in `combatants`/the
+   * roster, so {@link resolveRescues} (which iterates the roster) doesn't touch it; this is
+   * its single recruit seam. On a **win** each declared captive joins `run.party` as a
+   * fresh, full-HP authored body — **regardless of whether it was freed mid-fight or even
+   * downed after** (the win-recruit guarantee: a captor's fall frees the captive). On a
+   * **non-win** nothing is recruited (the rescue failed; it was never in the party, so
+   * there's nothing to lose and no quest to mount). Idempotent (an id already aboard is
+   * skipped). Returns the recruited **ids** (folded into the resolution's `rescued`; the
+   * render maps them to names).
+   *
+   * **Seam limitation (reuse note):** win-gated, so it's only sound for encounters that end
+   * **win or wipe** — E1 is elimination-only, so a survivable non-win can't happen there. A
+   * future captive in an **objective-failure-capable** encounter would currently vanish on a
+   * survivable loss (no recruit *and* no rescue quest, unlike a roster captive). Extend this
+   * (a captive → rescue-quest fallback) before standing a captive up in such a node.
+   */
+  private resolveCaptiveRecruits(won: boolean, source: EncounterSource): string[] {
+    if (!won || !isAuthoredEncounter(source) || !source.captives) return [];
+    const recruited: string[] = [];
+    for (const c of source.captives) {
+      if (this.run.party.some((u) => u.id === c.spec.id)) continue; // idempotent
+      this.run.party.push(createUnit({ ...c.spec, authored: true }));
+      recruited.push(c.spec.id); // ids (like resolveRescues); the render maps to names
+    }
+    return recruited;
   }
 
   /**

@@ -52,11 +52,14 @@ motivates the three recruits across the run:
   floors intel at tier 2 (deploy edge live; a single Scout can reach tier 3 to blow a
   hidden ambush); high Awareness (5) **spots the node-3 concealed snares**.
 
-Recruits join via **authored post-win grants** (not the starting bundle):
+Recruits join via their nodes (not the starting bundle):
 
-- **Pip the Cook** — rescued at **L1**; opens the camp economy (Cook Stew / RP).
-- **Sela the Medic** — freed at **L4B** *or* the **L6 Secured Wagon**; opens sustain.
-- **Mira the Merchant** — recruited at the **L5 Market**; opens markets.
+- **Pip the Cook** — an **on-board captive** at **L1**: he starts the fight bound in the
+  captor's corner and is freed by the **rescue mechanic mid-fight** (then controllable) or
+  by **winning the field**; he joins permanently. Opens the camp economy (Cook Stew / RP).
+- **Sela the Medic** — freed at **L4B** *or* the **L6 Secured Wagon** (authored post-win
+  grant); opens sustain.
+- **Mira the Merchant** — recruited at the **L5 Market** (event); opens markets.
 
 **Starting bundle:** purse 120 · supplies `salve×2, stimulant×1, antidote×2` ·
 storage cap 8 · morale 2 · difficulty normal.
@@ -72,15 +75,27 @@ Each node carries one **teaching beat** — the mechanic it exists to introduce 
 purse, load supplies. No combat.
 
 ### L1 — Skirmish at the Mill Yard (`e1`, combat)
-**Goal:** the first fight *and* the first rescue, taught as one shape.
-- **Teaches:** the CT clock (C1) + flank/isolation (C2).
+**Goal:** the first fight *and* the first rescue, taught as **one literal shape**.
+- **Teaches:** the CT clock (C1) + flank/isolation (C2), with the rescue mechanic on top.
 - **Design:** winnable raw by the no-healer trio. Main cluster is two bodies (Thug,
-  Bowman); the **cutthroat captor sits apart in a corner** — the flank affordance and
-  the Pip-rescue affordance are the *same corner*, so isolating to gang up *is* the
-  rescue.
+  Bowman); the **cutthroat captor sits apart in a corner** (col 7,row 0), and **Pip starts
+  on the board as a bound captive beside him** (col 7,row 1). The flank affordance and the
+  Pip-rescue affordance are the *same corner* — **isolating the captor IS the rescue**.
+- **The captive (D52, replaces the old silent grant):** Pip is a real player-side token
+  from turn one — *visible* during deployment (a captive is not a concealed enemy), **grey/
+  bound**, off the initiative clock, and **safe from the AI while bound** (a captured unit
+  is not an active target, so he can't be killed before he's freed). Reaching and **freeing**
+  him mid-fight (the existing capture/rescue Act) makes him a **controllable party unit for
+  the rest of the fight**; he is added to `run.party` on the win.
+- **Win-recruit guarantee:** winning the node **always** recruits Pip — even if you never
+  reached him (the captors fell), and even if a freed Pip was downed afterward (demo-
+  friendly: a won node always delivers the recruit, as a fresh full-HP body).
+- **L1 tuning is preserved:** the fight stays winnable **raw, without freeing Pip**. A bound
+  (or freed-then-downed) Pip is a bonus, never a requirement, and can never make the node
+  unwinnable or fail it (a captive is off the clock, not a target, and not a required
+  objective).
 - **Reward:** 60g, 1 salve, 100 XP — XP tuned so every survivor's primary job reaches
   **L2 (the 2nd-active unlock)** right after this fight.
-- **Grant:** Pip the Cook joins on the win (front-loads the camp economy).
 
 ### L2 — Camp on the Road (`camp2`, event → `provision-choice`)
 **Goal:** the first **scarcity choice** and the Cook payoff. No combat.
@@ -145,6 +160,28 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **L1: Pip is a real on-board captive — "isolating the captor IS the rescue"** (D52 — a
+  deliberate *behavior* change). The L1 Cook no longer joins via a **silent post-win grant**
+  (`E1_SKIRMISH.grants: { recruit: PIP_COOK }`); he now **starts the Skirmish bound on the
+  board** in the corner the cutthroat guards (Pip at col 7,row 1, captor at col 7,row 0), so
+  the **flank corner and the rescue corner are literally the same tile**. The player frees
+  him mid-fight with the **existing** capture/rescue Act (reach him, then Free) — after which
+  he's a **controllable party unit for the rest of the fight** — or the **win frees/recruits
+  him** even if never reached (the captors fall). He joins permanently either way. New
+  **reusable data seam**: `AuthoredEncounter.captives?: { spec, pos }[]` (a future on-board
+  Medic can use it), inflated by `buildAuthoredCaptives` and injected at battle assembly
+  (`stageEncounter`) as a **player-side, `captured: true`** token — *outside* the roster
+  reset, so he stays bound, off the CT clock, and never an AI target (the win check + foe
+  lists count only active units). Recruit-on-win lives in `RunLoop.resolveCaptiveRecruits`
+  (win-only, idempotent), folded into the resolution's "Freed by winning the field" line; the
+  bound token is released on a win so the board reads coherently under the report. **L1
+  tuning is preserved**: the fight is still **winnable raw by the no-healer trio without
+  freeing Pip** — a bound (or freed-then-downed) Pip can never make the node unwinnable, fail
+  it, or perturb determinism (he draws no RNG). Core/render split kept (the
+  state/transition is core; only tint/placement/hint is render). Guarded green: tsc, 836 unit
+  tests (incl. new captive-staging + E1 captive-recruit/invariant tests), build, deploy→battle
+  e2e (54, incl. "Pip is bound at the corner during deployment and can be freed" + the
+  `02-captive-bound`/`03-captive-freed` screenshots), sim summary **unchanged**.
 - **One weighted move step for the whole board** (D-feel, internal — fixes a real drift).
   Deployment and battle still ran **parallel** move methods (`deployMove` / `playerMoveStep`)
   over **two** budgets (`deployMoveBudget` / `moveBudget`) that had drifted apart: deployment

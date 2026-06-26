@@ -99,6 +99,36 @@ describe("stageEncounter — one shape for both sources (D50)", () => {
     expect(isAuthoredEncounter(AUTHORED)).toBe(true);
     expect(isAuthoredEncounter(PROCEDURAL)).toBe(false);
   });
+
+  it("stages an on-board captive (D52): player-side + bound, off the clock, not the roster", () => {
+    const captive: UnitSpec = {
+      id: "pip", name: "Pip", side: "player", pos: { col: 0, row: 0 },
+      speed: 8, maxHp: 18, attack: 4, defense: 1, moveRange: 3, sightRadius: 4, attackRange: 1,
+    };
+    const withCaptive: AuthoredEncounter = { ...AUTHORED, captives: [{ spec: captive, pos: { col: 7, row: 1 } }] };
+    const roster = [player("a")];
+    const staged = stageEncounter(withCaptive, roster);
+
+    const pip = staged.battle.units.find((u) => u.id === "pip")!;
+    expect(pip).toBeDefined();
+    expect(pip.side).toBe("player"); // forced player-side
+    expect(pip.captured).toBe(true); // bound — survives the roster reset (it's not in the roster)
+    expect(pip.authored).toBe(true); // an authored cast member → joins permanently when freed
+    expect(pip.pos).toEqual({ col: 7, row: 1 }); // at its declared (captor's-corner) tile
+    // The roster passed in is unchanged in size — the captive is NOT one of the roster units.
+    expect(roster.some((u) => u.id === "pip")).toBe(false);
+    // Off the clock: the captive never takes a turn (the active-participant predicate skips it).
+    staged.battle.seed();
+    expect(pip.ct).toBe(0);
+    const handed: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const a = staged.battle.nextActor();
+      if (!a) break;
+      handed.push(a.id);
+      a.ct = 0; // drain so the loop advances to the next actor
+    }
+    expect(handed).not.toContain("pip");
+  });
 });
 
 // --- encounterOutcome truth table (D50/D51) ---------------------------------

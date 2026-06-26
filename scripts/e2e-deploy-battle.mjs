@@ -196,11 +196,22 @@ async function main() {
       check("dig-in was taken back", st.dugIn === false);
 
       // --- Stage: commit to Battle -------------------------------------------
+      // The deploy→battle handoff runs off a single bus event (D67): the seam is wired up
+      // front (wireBattleFx), and firing it tears down the staging visuals (veil + overlays).
+      const beganWired = await g.bsEval(`return s.battle.bus.listenerCount("battleBegan");`);
+      check("the battleBegan transition seam is wired before commit", beganWired === 1);
       await g.bsEval(`s.startBattle();`); // the "Start Battle" button's onClick
       await sleep(300);
       st = await snap();
       console.log("• Start Battle");
       check("phase advanced to battle", st.phase === "battle");
+      // The transition event retired the deploy zone / reach overlays (cleared graphics).
+      const overlays = await g.bsEval(`return {
+        safe: s.safeZoneGfx ? s.safeZoneGfx.commandBuffer.length : 0,
+        danger: s.dangerZoneGfx ? s.dangerZoneGfx.commandBuffer.length : 0,
+        reach: s.deployReachGfx ? s.deployReachGfx.commandBuffer.length : 0,
+      };`);
+      check("the transition event tore down the deploy overlays", overlays.safe === 0 && overlays.danger === 0 && overlays.reach === 0);
       // No double-fire: the damage FX listener moved to node start and the old startBattle
       // block was removed, so the view floats a battle hit exactly *once* (a leftover
       // re-attach would float twice). The per-turn header, combat-only, now wires here.

@@ -505,6 +505,19 @@ export class BattleScene extends Phaser.Scene {
       this.view.logHeal(unit, amount, source);
     });
     this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit));
+    // Deploy → battle transition (D67): when the alarm trips (or the player commits), the
+    // bus announces combat, and the render tears down the staging visuals — lift the D12
+    // veil so the foe resolves into view, and retire the deploy zone/reach overlays + the
+    // source markers. A first-class moment (other "opening of battle" effects can hook it)
+    // rather than buried in startBattle's imperative cleanup.
+    this.battle.bus.on("battleBegan", () => {
+      this.view.concealEnemies = false;
+      this.view.refreshUnits();
+      this.safeZoneGfx?.clear();
+      this.dangerZoneGfx?.clear();
+      this.deployReachGfx?.clear();
+      clearLayer(this.deployMarkers);
+    });
   }
 
   // --- Phase: Deployment -----------------------------------------------------
@@ -1098,8 +1111,11 @@ export class BattleScene extends Phaser.Scene {
 
   private startBattle(): void {
     this.phase = "battle";
-    // The net closes and the foe resolves into view — lift the deployment veil (D12).
-    this.view.concealEnemies = false;
+    // Announce the transition (D67): the bus listener (wireBattleFx) tears down the staging
+    // visuals — lifts the D12 veil so the foe resolves into view, retires the deploy zone /
+    // reach overlays and the source markers — so "combat begins" is one event, not a
+    // scattered set of imperative clears here.
+    this.battle.bus.emit("battleBegan", {});
     this.titleText.setText("Battle");
     this.refreshIntelText(); // re-style the roster line down to passive reference (D-UX)
     this.legendStrip.setItems(BATTLE_LEGEND);
@@ -1110,10 +1126,6 @@ export class BattleScene extends Phaser.Scene {
     this.pendingRecruits = [];
     this.bribeArmed = false;
     this.deployActor = null;
-    this.safeZoneGfx?.clear();
-    this.dangerZoneGfx?.clear();
-    this.deployReachGfx?.clear(); // the deploy reach wash retires with the staging overlays
-    clearLayer(this.deployMarkers);
     this.highlightTile(null);
 
     // The damage / heal / defeat / trapSprung FX are already wired for this encounter's

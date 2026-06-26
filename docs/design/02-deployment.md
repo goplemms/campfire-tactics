@@ -182,8 +182,10 @@ seed** for both sides.
   and an infiltrator's evasion reduce it, and morale/intel trim the *neutral* rate
   (`exposureMultiplier`). The net reaching the protected core **breaches** (combat starts,
   nobody taken) — the soft consequence vs. capture out in the open. Only the
-  radius/cap/growth/rate numbers are tuning. **Architecture:** Deployment is being unified
-  into `Battle` as a true phase — see the
+  radius/cap/growth/rate numbers are tuning. **Architecture:** Deployment is a true phase of
+  `Battle` on the **one CT clock** (D67) — the enemy front rides that clock as a strict-lead
+  *tempo source* (no parallel `DeployClock`), and the deploy→battle handoff is a single
+  `battleBegan` bus event. See the
   [unification plan](../../scratchpad/foundations/deployment-combat-unification-plan.md).
 - Enemy-prep symmetry is **resolved** (D12): A3 fortified-encounter type;
   Intel/Awareness-gated detection; Act-cost disarm or route-around; the Snare drags

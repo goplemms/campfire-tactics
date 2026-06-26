@@ -32,6 +32,13 @@ export interface BattleEvents {
   chargeFizzled: { id: string };
   /** A placed trap/snare sprang on a unit (D4/D13) — the render updates its marker. */
   trapSprung: { id: string; tile: GridCoord; unit: Unit };
+  /**
+   * The deployment phase ended and combat begins (D67 clock fold) — the transition
+   * seam. The render reacts by tearing down the staging visuals (the D12 veil, the
+   * zone/reach overlays); future "opening of battle" effects can hook the same moment
+   * instead of editing the scene's `startBattle`. Fired once, on the deploy→battle handoff.
+   */
+  battleBegan: Record<string, never>;
 }
 
 /** All valid event names. */

@@ -145,6 +145,19 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **One clock for deployment + combat** (D67, internal — no behavior change). Deployment
+  ran on a bespoke `DeployClock` that re-implemented `CTClock`'s seed/tick/ready/next/spend
+  beside it. That class is **retired**: `CTClock` gained an optional **tempo source** (a
+  non-unit participant with a strict-lead-tie policy), and the enemy **front** now rides
+  the one clock as that source — `createDeployClock(units, front)` builds a `CTClock` over
+  the player units with the front folded in. Pre-combat and combat share the same clock
+  element; the front still wins only on a strict CT lead (players take ties) and excludes
+  captured units. The deploy→battle handoff is now a **single bus event** (`battleBegan`):
+  the render reacts by lifting the D12 veil and tearing down the staging overlays, so
+  "combat begins" is one announced moment other systems can hook, not a scattered set of
+  imperative clears. Guarded byte-identical by the deploy golden trace; sim summary
+  unchanged. (The two scene RNG streams are a separate, deferred follow-on — the clock fold
+  doesn't need them, and replay reconstructs capture from the logged action.)
 - **One shared scene path for deployment + combat** (D-feel, internal — no behavior
   change). With deployment now carrying combat's damage feedback and reach read, the
   parallel *render twins* that had drifted into two copies — **Search**, **Disarm**, the

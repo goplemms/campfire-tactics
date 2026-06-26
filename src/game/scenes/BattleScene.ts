@@ -822,14 +822,15 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Cast a dual-context ability during Deployment through the drained `deploySkill` verb
-   * (D67) — logged + undoable, with no CT commit. It spends the unit's **act**, leaving its
-   * **move** free, so a Dash → reposition combo works pre-combat just like in battle.
+   * Cast a dual-context ability during Deployment (D67) — the **same** `useSkill` verb as
+   * combat; because the Battle is in the pre-combat phase, the interpreter resolves the
+   * effect with **no CT commit** (the deploy clock owns the turn). Logged + undoable; it
+   * spends the unit's **act**, leaving its **move** free, so a Dash → reposition combo works.
    */
   private castDeploySkill(actor: Unit, skill: SkillDef, target: Unit): void {
     if (this.busy || actor.captured || this.deployActed) return;
     this.armedSkill = null;
-    this.battle.deploySkill(actor, skill, target);
+    this.battle.useSkill(actor, skill, target); // pre-combat phase ⇒ resolve only, no commit
     this.deployActed = true;
     this.refreshAuras();
     for (const u of this.battle.units) this.placeView(u);
@@ -1061,9 +1062,10 @@ export class BattleScene extends Phaser.Scene {
     if (!spot) return; // balked on a trap — hold ground (hint already set)
     const walked = spot.path;
     const hpBefore = actor.hp;
-    // Route the reposition through the one interpreter (D63): it walks the path
-    // (logged + undoable), springs any entity crossed, and breaks the dig-in stance.
-    this.battle.deployMove(actor, walked);
+    // Route the reposition through the **same** move verb as combat (D67): it walks the
+    // path (logged + undoable), springs any entity crossed, and breaks the dig-in stance —
+    // a move never commits a turn, so no phase branch is needed here.
+    this.battle.moveUnit(actor, walked);
     this.deployMoved = true;
     this.deployMoveBudget -= walked.length; // spent this leg; more steps allowed while it lasts
     this.busy = true;
@@ -1543,8 +1545,8 @@ export class BattleScene extends Phaser.Scene {
    * hidden enemy trap is sensed (stop short) or an already-spotted one blocks the next
    * tile. Returns the spot result — the caller walks `spot.path`; on a full balk (nothing
    * walked) it draws any freshly sensed marker, sets the phase's `balkHint`, and returns
-   * `null` so the caller bails. The move verb itself stays phase-specific (deployMove vs
-   * moveUnit — the replay-load-bearing distinction), as does the post-walk continuation.
+   * `null` so the caller bails. Both phases now walk through the one `moveUnit` verb (D67);
+   * only the post-walk continuation (deploy budget vs. the combat turn) differs by caller.
    */
   private readStepTraps(
     actor: Unit,
@@ -1808,7 +1810,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.phase === "deployment") {
       // Turn-based deployment (D63): only the unit whose turn it is may act. An armed deploy
       // ability commits on a valid target — the same arm→click flow as combat, through the
-      // drained deploySkill verb (D67); otherwise clicking an empty tile repositions it.
+      // one `useSkill` verb (D67: pre-combat phase ⇒ no CT commit); otherwise a click repositions.
       if (!this.deployActor) return;
       if (this.busy) {
         // Click-ahead (micro-movement): queue a move-tile click that lands mid-step.
@@ -1893,8 +1895,8 @@ export class BattleScene extends Phaser.Scene {
    * mid-step, run it now the step has finished and it's still this unit's turn. Guards
    * against any state change in the interim (busy, turn ended, a skill armed), then routes
    * to the phase's plain-click verb — combat's full {@link resolveBattleClick} (rescue /
-   * strike / step), or a deploy {@link deployMove} onto a still-empty tile. Chains
-   * naturally: each replayed step's completion calls back here, so a flurry plays out.
+   * strike / step), or a deploy reposition ({@link deployMove}) onto a still-empty tile.
+   * Chains naturally: each replayed step's completion calls back here, so a flurry plays out.
    */
   private processQueuedClick(actor: Unit, ctx: BoardCtx): void {
     const tile = this.queuedTile;

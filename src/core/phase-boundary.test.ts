@@ -50,10 +50,11 @@ describe("D67 phase boundary", () => {
     const battle = new Battle(grid, [pawn("a", 0), pawn("b", 6, "enemy")]);
     const [a] = battle.units;
     const initial = battle.units.map((u) => structuredClone(u));
-    // A deploy prelude, the logged boundary, then a driven combat turn.
+    // A deploy prelude (the same move/skill verbs as combat — pre-combat phase ⇒ no
+    // commit), the logged boundary, then a driven combat turn.
     battle.enterDeploy();
-    battle.deployMove(a, [{ col: 1, row: 0 }]);
-    battle.deploySkill(a, DASH, a);
+    battle.moveUnit(a, [{ col: 1, row: 0 }]);
+    battle.useSkill(a, DASH, a);
     battle.beginBattle();
     battle.seed();
     const actor = battle.nextActor();

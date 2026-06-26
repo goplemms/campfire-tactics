@@ -56,11 +56,11 @@ export type CombatAction =
   | { kind: "cleave"; unit: UnitId; skill: SkillDef; dir: GridCoord }
   /** End a unit's turn, spending its CT (acting costs more than only moving). */
   | { kind: "endTurn"; unit: UnitId; spend: TurnSpend }
-  // --- Deployment-phase verbs (D63 unification) -----------------------------
-  /** Reposition during Deployment (walks the path like `move`, and breaks dig-in). */
-  | { kind: "deployMove"; unit: UnitId; path: GridCoord[] }
-  /** Cast a dual-context ability during Deployment — resolves like `skill`, no CT commit (D67). */
-  | { kind: "deploySkill"; unit: UnitId; skill: SkillDef; target: UnitId }
+  // --- Deployment-only verbs (D63/D67) --------------------------------------
+  // `move`/`skill` are reused in the pre-combat phase (the interpreter detects the
+  // Battle's phase and skips the combat turn-commit) — only these genuinely deploy-only
+  // verbs, with no combat equivalent, stay distinct. The pre-combat → combat boundary is
+  // marked by `beginBattle`, so they no longer need a "deploy kind" to be drained.
   /** Hunker for a reduced capture chance when the net's turn comes (D63). */
   | { kind: "digIn"; unit: UnitId }
   /** Lay a player trap on `pos`, consuming one kit from the shared stash (D11/D63). */
@@ -79,20 +79,6 @@ export type CombatAction =
 /** Every {@link CombatAction} discriminant. */
 export type CombatActionKind = CombatAction["kind"];
 
-/** The deployment-phase discriminants — drained ahead of the combat loop by replay. */
-const DEPLOY_KINDS: ReadonlySet<CombatActionKind> = new Set<CombatActionKind>([
-  "deployMove",
-  "deploySkill",
-  "digIn",
-  "placeTrap",
-  "capture",
-]);
-
-/** True if `action` is a Deployment-phase verb (precedes the combat turn loop). */
-export function isDeployAction(action: CombatAction): boolean {
-  return DEPLOY_KINDS.has(action.kind);
-}
-
 /**
  * The outcome of an {@link "./turn".Battle.apply} call: `ok` carries the verb's
  * natural result (so the thin public wrappers can return their original shapes —
@@ -106,10 +92,11 @@ export type ActionResult =
 
 /**
  * True if `action` **commits** the acting unit's turn (spends its CT). The replay
- * driver uses this to delimit one turn's recorded actions: an `endTurn`, a `cleave`
- * (always commits), or a `skill` with `commitTurn` left default/true. A `move`,
- * `attack`, free-move `skill` (`commitTurn: false`), or any deploy verb leaves the
- * turn open (deploy turns are committed by the scene's explicit End Turn).
+ * driver uses this to delimit one **combat** turn's recorded actions (the pre-combat
+ * prelude is drained wholesale up to the `beginBattle` boundary, so it never reaches
+ * here): an `endTurn`, a `cleave` (always commits), or a `skill` with `commitTurn` left
+ * default/true. A `move`, `attack`, or free-move `skill` (`commitTurn: false`) leaves the
+ * turn open.
  */
 export function commitsTurn(action: CombatAction): boolean {
   switch (action.kind) {

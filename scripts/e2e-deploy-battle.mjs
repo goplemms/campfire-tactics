@@ -153,7 +153,7 @@ async function main() {
       st = await snap();
       console.log("• Real tile click → reposition");
       check("the unit moved to the clicked tile", st.pos.col === tile.col && st.pos.row === tile.row);
-      check("the move was logged as a deployMove", st.lastLog === "deployMove");
+      check("the reposition was logged as a move (the one verb, D67)", st.lastLog === "move");
       check("undo is now available", st.canUndo === true);
       await shot("tile-click-move");
 

@@ -467,7 +467,7 @@ export class RunLoop {
     // Blanket gear-condition stamp (D52): the iron-weapons +attack edge (decayed by
     // worn gear) and the worn-gear −defense, applied party-wide before the fight.
     applyGearCondition(this.run, players);
-    const staged = stageEncounter(source, players, { deploymentPenalty, revealHidden: tier >= MAX_TIER });
+    const staged = stageEncounter(source, players, { deploymentPenalty, revealHidden: tier >= MAX_TIER, seed: this.run.seed });
     this.source = source;
     this.staged = staged;
     this.combatants = players;

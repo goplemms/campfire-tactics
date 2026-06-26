@@ -38,7 +38,6 @@ import {
 } from "./skills";
 import {
   commitsTurn,
-  isDeployAction,
   type CombatAction,
   type ActionResult,
   type UnitId,
@@ -62,6 +61,7 @@ interface UnitSnapshot {
   captured: boolean;
   dugIn?: boolean;
   hidden?: boolean;
+  concealed?: boolean;
   statuses: StatusInstance[];
   counters: Record<string, number>;
   cooldowns: Record<string, number>;
@@ -94,6 +94,7 @@ function snapshotUnit(u: Unit): UnitSnapshot {
     captured: u.captured,
     dugIn: u.dugIn,
     hidden: u.hidden,
+    concealed: u.concealed,
     statuses: u.statuses.map((s) => ({ ...s, data: s.data ? { ...s.data } : undefined })),
     counters: { ...u.counters },
     cooldowns: { ...u.cooldowns },
@@ -109,6 +110,7 @@ function restoreUnit(u: Unit, s: UnitSnapshot): void {
   u.captured = s.captured;
   u.dugIn = s.dugIn;
   u.hidden = s.hidden;
+  u.concealed = s.concealed;
   u.statuses = s.statuses.map((x) => ({ ...x, data: x.data ? { ...x.data } : undefined }));
   u.counters = { ...s.counters };
   u.cooldowns = { ...s.cooldowns };
@@ -145,6 +147,16 @@ export class Battle {
   readonly bus: EventBus;
   readonly clock: CTClock;
   readonly entities: EntityRegistry;
+
+  /**
+   * Which board phase this battle is in (D67): `"deploy"` (pre-combat staging — the
+   * closing-net layer) or `"combat"`. Defaults to `combat`, so a bare staged battle (the
+   * headless sim / a test driving combat directly) behaves exactly as before. The scene
+   * calls {@link enterDeploy} for staging, and the logged `beginBattle` action flips it
+   * back to `combat`. Maps to the `pre-combat`/`combat` skill `usableContext` axis, so the
+   * one interpreter can commit (and later gate) a verb per the phase it's actually in.
+   */
+  phase: "deploy" | "combat" = "combat";
 
   /**
    * The **action log** (D4 event-sourcing of commands) — the combat analog of the
@@ -205,6 +217,21 @@ export class Battle {
    */
   roll(label: string): Rng {
     return streamFor(this.rngSeed, `${label}#${this.drawCount++}`);
+  }
+
+  /**
+   * A **label-keyed** RNG stream off this battle's seed (D67 RNG-seam unification) — the
+   * second draw shape beside {@link roll}. Where `roll` is keyed by an incrementing
+   * `drawCount` (for *apply-driven* combat draws that a re-running replay reproduces in
+   * order), `stream` is keyed by a **fixed label** with no cursor — for the **Deployment**
+   * draws (front-capture, trap-spotting) that run outside the turn loop and whose outcomes
+   * are either logged (capture) or render-only (spotting), so a replay never re-rolls them.
+   * Same `(seed, label)` ⇒ the same stream, every time, so deployment stays reproducible
+   * from the one encounter seed the Battle now owns — instead of the scene reaching into the
+   * run seed itself. **Don't route apply-driven draws through this** (use {@link roll}).
+   */
+  stream(label: string): Rng {
+    return streamFor(this.rngSeed, label);
   }
 
   /**
@@ -364,14 +391,30 @@ export class Battle {
         const caster = this.unit(action.unit);
         const target = this.unit(action.target);
         const skill = action.skill;
-        const commitTurn = action.commitTurn ?? true;
         if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
+        // Engagement is **board state, not a per-phase skill ban** (D67 W7): a skill aimed at a
+        // concealed unit has no engageable target, so it's refused. That *is* the stealth/alarm
+        // invariant now — an attack cast in staging finds no one to hit (the foe is concealed
+        // until the battle opens) — and it's the only target gate the verb needs. A scenario
+        // that stages targetable pre-combat foes (a keep assault) leaves them un-concealed, and
+        // the same attack just works. Self/ally targets are never concealed, so support is
+        // unaffected. Replaces the old `usableContext` phase refusal.
+        if (target.concealed) return { ok: false, reason: `${skill.name}: no engageable target` };
+        const deploy = this.phase === "deploy";
+        // The **one** skill verb across both phases (D67): the effect resolves identically,
+        // and the *commit* is now almost identical too (D67 W5). Both phases **arm the
+        // skill's cooldown** — an ability used in staging is genuinely used, cooling toward
+        // combat. Only the **turn** is phase-aware: in **combat** the cast ends the caster's
+        // turn per its spend (D60), scheduling a charge on the timeline if any (D5/D37); in
+        // **pre-combat** the deploy clock owns the turn, so the cast doesn't spend CT / end
+        // the turn here (the scene commits that at End Turn). A charged ability is combat-only
+        // anyway (usableContext), so the charge branch never runs pre-combat.
         let outcome: SkillOutcome;
         if (skill.effect.kind === "forced-move") {
           outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);
         } else if (skill.effect.kind === "guard-allies") {
           outcome = this.resolveGuardAllies(caster, skill.effect.amount, skill.effect.duration ?? 1);
-        } else if (skill.cost?.charge) {
+        } else if (!deploy && skill.cost?.charge) {
           // Commit to the timeline; the effect lands when its gauge fills (D5/D37).
           this.clock.schedule({
             id: `charge:${caster.id}:${skill.id}:${this.clock.time}`,
@@ -385,7 +428,9 @@ export class Battle {
         } else {
           outcome = resolveSkill(skill, caster, target, this.bus, this.units);
         }
-        this.commitSkill(caster, skill, commitTurn);
+        // Arm the cooldown in both phases; end the turn only in combat (deploy commits its
+        // turn via the scene's End Turn). `!deploy && …` keeps the combat path byte-identical.
+        this.commitSkill(caster, skill, !deploy && (action.commitTurn ?? true));
         this._log.push(action);
         return { ok: true, outcome };
       }
@@ -403,33 +448,6 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
-      case "deployMove": {
-        // Deployment reposition: the same walk as `move` (springs entities, breaks
-        // dig-in), kept a distinct verb so replay can drain the deploy prelude.
-        this.execMove(this.unit(action.unit), action.path, false);
-        this._log.push(action);
-        return { ok: true };
-      }
-      case "deploySkill": {
-        // A dual-context ability cast during Deployment (e.g. Dash → Swift): resolve the
-        // effect like the combat `skill` verb but WITHOUT the CT-clock turn-commit (the deploy
-        // clock owns the turn). A distinct, drained verb so replay reconstructs it as part of
-        // the deploy prelude — not a post-seed combat action.
-        const caster = this.unit(action.unit);
-        const target = this.unit(action.target);
-        const skill = action.skill;
-        if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
-        let outcome: SkillOutcome;
-        if (skill.effect.kind === "forced-move") {
-          outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);
-        } else if (skill.effect.kind === "guard-allies") {
-          outcome = this.resolveGuardAllies(caster, skill.effect.amount, skill.effect.duration ?? 1);
-        } else {
-          outcome = resolveSkill(skill, caster, target, this.bus, this.units);
-        }
-        this._log.push(action);
-        return { ok: true, outcome };
-      }
       case "digIn": {
         this.unit(action.unit).dugIn = true;
         this._log.push(action);
@@ -445,6 +463,23 @@ export class Battle {
       }
       case "capture": {
         captureUnit(this.unit(action.unit));
+        this._log.push(action);
+        return { ok: true };
+      }
+      case "beginBattle": {
+        // The pre-combat → combat boundary (D67): flip the phase, shed the deploy clock
+        // configuration (detach the front, re-widen participation, clear the staging
+        // timeline — see resetForCombat), and announce it. The clock now *is* the one the
+        // deploy net ran on (D67 W2); reset is a no-op when replay never staged on it, so
+        // the combat path stays byte-identical. The logged marker is what replay() drains
+        // the deploy prelude up to.
+        this.phase = "combat";
+        this.clock.resetForCombat();
+        // The encounter engages: lift the pre-combat veil so the foe is now a valid target
+        // (D67 W6). A D44 ambush body keeps its own `hidden` flag — that persists into combat
+        // until scouted/sprung — so this only clears the deployment-wide concealment.
+        for (const u of this.units) u.concealed = false;
+        this.bus.emit("battleBegan", {});
         this._log.push(action);
         return { ok: true };
       }
@@ -504,9 +539,11 @@ export class Battle {
 
   /**
    * The shared **commit half** of a skill use: arm its cooldown (if any) and —
-   * unless the D60 free-move flow keeps the turn open (`commitTurn: false`) — end
-   * the caster's turn, spending CT per the skill's `spend`. Used by `useSkill`,
-   * `useHeal`, and `cleave` so the cooldown-arm + turn-end pair lives in one place.
+   * unless the turn is kept open (`commitTurn: false`: the D60 free-move flow, **or**
+   * a pre-combat cast, whose turn the deploy clock commits at End Turn) — end the
+   * caster's turn, spending CT per the skill's `spend`. Used by `useSkill`, `useHeal`,
+   * and `cleave` so the cooldown-arm + turn-end pair lives in one place (D67 W5: both
+   * phases arm the cooldown; only combat ends the turn here).
    */
   private commitSkill(caster: Unit, skill: SkillDef, commitTurn: boolean): void {
     if (skill.cost?.cooldown) armSkillCooldown(caster, skill.id, skill.cost.cooldown);
@@ -633,26 +670,38 @@ export class Battle {
     this.apply({ kind: "endTurn", unit: unit.id, spend });
   }
 
-  // --- Deployment-phase verbs (D63 unification) -----------------------------
+  // --- Phase (D67 unification) ----------------------------------------------
 
   /**
-   * Reposition a unit during Deployment — the same logged walk as a combat move
-   * (so it's undoable and springs any entity it crosses), and it breaks the unit's
-   * dig-in stance. Distinct from `move` only so {@link replay} can tell the deploy
-   * prelude from the combat turn loop.
+   * Enter the **pre-combat** (deployment) phase — the staging layer. While this holds, a
+   * skill/move verb resolves its effect without committing a combat turn (the deploy clock
+   * owns the turn). Set live by the scene; {@link replay} re-enters it when it detects a
+   * deploy prelude. Not logged — the `beginBattle` boundary is what the log records.
    */
-  deployMove(unit: Unit, path: readonly GridCoord[]): void {
-    this.apply({ kind: "deployMove", unit: unit.id, path: [...path] });
+  enterDeploy(): void {
+    this.phase = "deploy";
+    // Conceal the enemy roster: pre-positioned, but not yet **engageable** (D67 W6). With no
+    // valid enemy target, a combat action cast in staging finds no one to hit and sits idle —
+    // the engagement invariant emerges from the board state, not a per-skill ban. A scenario
+    // wanting targetable pre-combat foes (a keep assault) simply leaves them un-concealed.
+    for (const u of this.units) if (u.side === "enemy") u.concealed = true;
   }
 
   /**
-   * Cast a dual-context ability during Deployment (D67) — resolves the effect with no CT
-   * commit (the deploy clock owns the turn); a distinct **drained** verb so {@link replay}
-   * keeps it in the deploy prelude rather than re-applying it as a post-seed combat action.
+   * Cross the **pre-combat → combat boundary** (D67): log the transition (so replay can
+   * delimit the deploy prelude), flip to the combat phase, and announce it (`battleBegan`,
+   * which the render reacts to — lift the veil, retire the staging overlays).
    */
-  deploySkill(unit: Unit, skill: SkillDef, target: Unit): void {
-    this.apply({ kind: "deploySkill", unit: unit.id, skill, target: target.id });
+  beginBattle(): void {
+    this.apply({ kind: "beginBattle" });
   }
+
+  // --- Deployment-only verbs (D63/D67) --------------------------------------
+  //
+  // Repositioning and skill-casting in pre-combat now use the **same** `moveUnit` /
+  // `useSkill` verbs as combat — the interpreter detects {@link phase} and skips the
+  // combat turn-commit (see the `skill` case). Only the genuinely deploy-only verbs
+  // below (no combat equivalent) remain distinct.
 
   /** Hunker for a reduced capture chance when the net's turn comes (D63). */
   digIn(unit: Unit): void {
@@ -750,10 +799,17 @@ export function replay(
   opts: BattleOptions & { moraleBonus?: number } = {},
 ): Battle {
   const battle = new Battle(grid, initialUnits, opts);
-  // Drain the Deployment prelude (D63 unification): deploy verbs always lead the
-  // log and aren't part of a CT turn, so apply them before seeding + driving combat.
+  // Drain the pre-combat prelude (D67): everything up to (and including) the logged
+  // `beginBattle` boundary — the deploy actions resolve in the pre-combat phase (no
+  // combat commit), then the marker flips to combat — before seeding + driving the loop.
+  // A log with no boundary is a pure-combat log (the common test case): no prelude to
+  // drain, so seed straight into the combat loop, exactly as before.
   let i = 0;
-  while (i < log.length && isDeployAction(log[i])) battle.apply(log[i++]);
+  const boundary = log.findIndex((a) => a.kind === "beginBattle");
+  if (boundary >= 0) {
+    battle.enterDeploy(); // the prelude resolves in the pre-combat phase
+    while (i <= boundary) battle.apply(log[i++]); // deploy actions + the beginBattle flip → combat
+  }
   battle.seed(opts.moraleBonus ?? 0);
   while (i < log.length) {
     const actor = battle.nextActor();

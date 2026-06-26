@@ -1,17 +1,16 @@
 /**
- * D67 increment 0 — characterization safety net for the deployment substrate.
+ * D67 — characterization safety net for the deployment substrate.
  *
- * Pins, for a fixed seed + scenario, the exact `DeployClock` turn order and the per-front-turn
- * capture outcomes. The D67 clock fold (`DeployClock` → `CTClock`, the front as a strict-lead
- * tempo source) must keep this trace **byte-identical** — if it diverges, the tie rule or the
- * seed fold is wrong, and that increment alone should be reverted. Also documents that the
- * deploy move budget reads raw `moveRange` today (so increment 2's switch to `effectiveMove`
- * is a visible change only under a Swift-style buff).
+ * Pins, for a fixed seed + scenario, the exact deploy turn order and the per-front-turn
+ * capture outcomes. The clock fold landed (`DeployClock` → the one `CTClock` carrying the
+ * front as a strict-lead tempo source); this trace is the guard it kept **byte-identical** —
+ * if it ever diverges, the tie rule or the seed fold is wrong. Also documents that the deploy
+ * move budget reads `effectiveMove` (so a Swift-style buff extends reach).
  *
  * Pure logic: no Phaser, no DOM.
  */
 import { describe, it, expect } from "vitest";
-import { DeployClock, createFront, createCampfire, resolveFrontTurn } from "./deployment";
+import { createDeployClock, createFront, createCampfire, resolveFrontTurn } from "./deployment";
 import { Rng } from "./rng";
 import { TileGrid } from "./grid";
 import { reachableTiles } from "./ai";
@@ -44,16 +43,17 @@ function deployTrace(): string[] {
   ];
   const front = createFront(grid, [unit("ogre", "enemy", { col: 7, row: 2 }, 12)]);
   const camp = createCampfire(grid, party);
-  const clock = new DeployClock(party, front);
+  const clock = createDeployClock(party, front); // the unified CTClock + front tempo source
   const rng = new Rng(7); // one shared stream, like the battle's RNG seam
   const trace: string[] = [];
-  clock.seed();
+  clock.seedFlat();
   for (let i = 0; i < 24; i++) {
-    const t = clock.next();
-    if (t.isFront || !t.unit) {
+    const t = clock.nextTurn();
+    if (t.kind !== "unit") {
+      // the front leads (tempo) — or idle, which the always-charging front never hits
       const out = resolveFrontTurn(front, camp, party, rng);
       trace.push(`FRONT r${out.advancedTo}${out.captured ? ` caught ${out.captured.id}` : ""}`);
-      clock.spendFront();
+      clock.spendTempo();
       if (out.alarm) break; // first catch raises the alarm → combat begins
     } else {
       trace.push(t.unit.id);
@@ -63,8 +63,8 @@ function deployTrace(): string[] {
   return trace;
 }
 
-describe("D67 increment 0 — deployment substrate characterization (golden)", () => {
-  it("pins the DeployClock turn order + front capture outcomes (the clock-fold guard)", () => {
+describe("D67 — deployment substrate characterization (golden)", () => {
+  it("pins the deploy turn order + front capture outcomes (the clock-fold guard)", () => {
     expect(deployTrace()).toMatchInlineSnapshot(`
       [
         "bram",
@@ -77,14 +77,14 @@ describe("D67 increment 0 — deployment substrate characterization (golden)", (
     expect(deployTrace()).toEqual(deployTrace());
   });
 
-  it("deploy move budget reads raw moveRange today (Swift extends only effectiveMove)", () => {
+  it("deploy reach honors effectiveMove — a Swift buff extends it past raw moveRange", () => {
     const grid = new TileGrid(9, 9);
     const u = unit("scout", "player", { col: 4, row: 4 }, 10);
     applyStatus(u, swift(1, 2)); // +2 move while Swift
     expect(u.moveRange).toBe(3);
     expect(effectiveMove(u)).toBe(5); // 3 + 2
-    // Today the deploy clamp (BattleScene.ts:815 / :2098) passes raw moveRange; increment 2
-    // switches it to effectiveMove, extending reach under a buff. The two budgets differ:
+    // The deploy clamp reads moveBudget = effectiveMove (the substrate fold), so the Swift
+    // buff widens deploy reach exactly as it does in combat — the two budgets differ:
     const byMoveRange = reachableTiles(u, [u], grid, u.moveRange).length;
     const byEffective = reachableTiles(u, [u], grid, effectiveMove(u)).length;
     expect(byEffective).toBeGreaterThan(byMoveRange);

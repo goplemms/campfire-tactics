@@ -302,18 +302,21 @@ export interface SkillDef {
 }
 
 /**
- * Where a skill may be surfaced/used (D67), defaulting from its **shape** so availability is
- * pure data, not a per-ability annotation. The rule, in one place:
+ * Where a skill may be surfaced/used, defaulting from its **shape** so availability is pure
+ * data, not a per-ability annotation. As of D67 W7 there is **no engagement axis** — an
+ * offensive skill is *not* classified combat-only. Every board skill is usable in **both**
+ * board phases; whether an attack actually does anything pre-combat is decided by the board
+ * (a concealed foe is no valid target — see {@link isValidSkillTarget}), so it simply sits
+ * idle in staging rather than being banned. The rule, in one place:
  *
- * - a **movement** ability (spends the *move* budget to self-buff — the Dash/Reposition
- *   shape) ⇒ both board contexts (`pre-combat` + `combat`);
- * - **engagement** (offensive / aimed at a foe: damage/cleave/forced-move/channel, or a
- *   status *on an enemy*) ⇒ `combat` only — it would raise the alarm pre-combat;
- * - **support** (heals/cleanse/guard-allies) and **self/ally buffs** ⇒ both board contexts;
- * - a **trap** ⇒ `pre-combat`; **camp/morale** ⇒ `overworld`.
+ * - **board** (every offensive/support/buff effect: damage/cleave/forced-move/channel/status/
+ *   heal/med-heal/cleanse/guard-allies, and a move self-buff) ⇒ both `pre-combat` + `combat`;
+ * - a **trap** ⇒ `pre-combat`; **camp/morale/recon** ⇒ `overworld`.
  *
- * An explicit {@link SkillDef.usableContext} overrides the default. The switch is exhaustive
- * over the effect union (a new kind forces a decision here at compile time).
+ * The few genuinely **single-phase mechanics** carry an explicit {@link SkillDef.usableContext}
+ * (Dig In is `pre-combat`; the Scout's stealth is `combat`) — those are phase-native, not the
+ * engagement axis. The one remaining default exception is **charged** (it resolves on the CT
+ * clock, a combat-only mechanic). The switch is exhaustive over the effect union.
  */
 export function skillContexts(skill: SkillDef): UsableContext[] {
   if (skill.usableContext) return skill.usableContext;
@@ -321,8 +324,6 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
   // combat-clock mechanic with no deploy-clock equivalent, so it's combat-only whatever
   // its effect shape (e.g. the Medic's charged Mend).
   if (skill.cost?.charge) return ["combat"];
-  // A movement ability — spends the move budget to self-buff: shared by nature.
-  if (skill.spend === "move" && skill.target === "self") return ["pre-combat", "combat"];
   const e = skill.effect;
   switch (e.kind) {
     case "placeTrap":
@@ -335,21 +336,21 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
       // Camp/overworld economy + recon mechanisms (D72) — surfaced on the between-nodes beat.
       return ["overworld"];
     case "med-heal":
-      // The herb-stash heal (D40) is a combat/logistics bridge: its stash pick + inventory
-      // spend belong to the engagement, and it has no drained deploy resolver. Combat-only.
-      return ["combat"];
+      // The herb-stash heal (D40) — a support action like any other now (D67 W8): the deploy
+      // herb-pick menu is wired, so the demo Medic can pre-heal a wounded unit in staging. It
+      // spends a carried herb in either phase; only the surrounding turn-commit is phase-aware.
+      return ["pre-combat", "combat"];
     case "damage":
     case "cleave":
     case "forced-move":
     case "channel":
-      return ["combat"];
     case "status":
-      // Friend/foe split: an enemy debuff is engagement; a self/ally buff is shareable.
-      return skill.target === "enemy" ? ["combat"] : ["pre-combat", "combat"];
     case "heal":
     case "triage-heal":
     case "cleanse":
     case "guard-allies":
+      // Board skills — usable in either board phase. An offensive one finds no target in
+      // pre-combat (the foe is concealed) and sits idle; no per-phase ban needed (D67 W7).
       return ["pre-combat", "combat"];
     default:
       return assertNever(e);
@@ -490,6 +491,7 @@ export function isValidSkillTarget(
     case "enemy":
       return (
         target.alive &&
+        !target.concealed && // not yet engageable — the pre-combat veil (D67 W6)
         target.side !== caster.side &&
         manhattan(caster.pos, target.pos) <= skill.range
       );

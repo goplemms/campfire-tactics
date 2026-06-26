@@ -32,7 +32,7 @@ import {
   unitPresence,
   partyPresence,
   campfireRadius,
-  DeployClock,
+  createDeployClock,
   FRONT_SPEED_LEAN,
   DIG_IN_CAPTURE_FACTOR,
   SAFE_BASE_RADIUS,
@@ -535,7 +535,7 @@ describe("D-feel resolveFrontTurn — grow, roll the unprotected, breach the cor
   });
 });
 
-describe("D63 DeployClock — interleaves player turns with the front", () => {
+describe("D63/D67 deploy clock — the front folds onto the one CTClock as a tempo source", () => {
   const grid = () => new TileGrid(8, 4);
 
   it("a faster party earns more positioning turns between net-closings", () => {
@@ -545,17 +545,17 @@ describe("D63 DeployClock — interleaves player turns with the front", () => {
 
     const countPlayerTurnsPerFront = (party: Unit[]) => {
       const front = createFront(grid(), enemies);
-      const clock = new DeployClock(party, front);
-      clock.seed();
+      const clock = createDeployClock(party, front);
+      clock.seedFlat();
       let playerTurns = 0;
       for (let i = 0; i < 40; i++) {
-        const t = clock.next();
-        if (t.isFront) {
-          clock.spendFront();
+        const t = clock.nextTurn();
+        if (t.kind !== "unit") {
+          clock.spendTempo();
           break; // measure player turns before the first net-closing
         }
         playerTurns++;
-        clock.spend(t.unit!, { moved: true });
+        clock.spend(t.unit, { moved: true });
       }
       return playerTurns;
     };
@@ -567,18 +567,18 @@ describe("D63 DeployClock — interleaves player turns with the front", () => {
     const party = [unit("p1", "player", 2, 8), unit("p2", "player", 2, 8)];
     party[1].captured = true;
     const front = createFront(grid(), [unit("e", "enemy", 2, 30)]); // fast net
-    const clock = new DeployClock(party, front);
-    clock.seed();
+    const clock = createDeployClock(party, front);
+    clock.seedFlat();
     let sawFront = false;
     let sawCaptured = false;
     for (let i = 0; i < 30; i++) {
-      const t = clock.next();
-      if (t.isFront) {
+      const t = clock.nextTurn();
+      if (t.kind !== "unit") {
         sawFront = true;
-        clock.spendFront();
+        clock.spendTempo();
       } else {
         if (t.unit === party[1]) sawCaptured = true;
-        clock.spend(t.unit!, { moved: true });
+        clock.spend(t.unit, { moved: true });
       }
     }
     expect(sawFront).toBe(true);
@@ -590,5 +590,30 @@ describe("D63 DeployClock — interleaves player turns with the front", () => {
     const enemies = [unit("a", "enemy", 2, 4), unit("b", "enemy", 2, 16)];
     const front = createFront(grid(), enemies);
     expect(front.speed).toBe(frontSpeed(enemies, FRONT_SPEED_LEAN));
+  });
+
+  it("freezes the enemies off the one clock (W1 — built over the WHOLE roster, narrowed to players)", () => {
+    // The deploy clock now carries the *same* roster combat runs on — players AND the
+    // pre-positioned enemies — but its participant predicate narrows turn-taking to the
+    // active party. The enemies must neither tick toward CT nor ever be handed a turn.
+    const players = [unit("p1", "player", 2, 8), unit("p2", "player", 2, 8)];
+    const enemies = [unit("e1", "enemy", 2, 30), unit("e2", "enemy", 2, 30)]; // fast, but frozen
+    const front = createFront(grid(), enemies);
+    const clock = createDeployClock([...players, ...enemies], front);
+    clock.seedFlat();
+    expect(enemies.every((e) => e.ct === 0)).toBe(true); // not seeded — only the party is
+
+    const actors = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const t = clock.nextTurn();
+      if (t.kind !== "unit") {
+        clock.spendTempo();
+        continue;
+      }
+      actors.add(t.unit.id);
+      clock.spend(t.unit, { moved: true });
+    }
+    expect([...actors].sort()).toEqual(["p1", "p2"]); // never an enemy
+    expect(enemies.every((e) => e.ct === 0)).toBe(true); // never charged, despite their high Speed
   });
 });

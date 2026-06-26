@@ -2167,12 +2167,14 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ## D67 — Deployment as combat-substrate + capture-wave layer + a game-wide skill `usableContext` axis (finishes D63)
 
-- **Status:** Decided + **substantially built** (2026-06-23). The skill-surfacing
+- **Status:** Decided + **fully built** (skill-surfacing 2026-06-23; the deferred clock/RNG/
+  controller fold + a sharing-policy evolution **completed 2026-06-26**). The skill-surfacing
   unification (sub-decisions A–C and E's *cast path*) shipped across increments 0–8 + 6c; the
-  clock/RNG/controller fold (sub-decision D and E's *RNG/controller*) was **investigated and
-  deliberately not pursued** — see *Build outcome* below. Full build brief (the 0–12 plan, the
-  audit, the completeness checklist):
-  [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md).
+  clock/RNG/controller fold (sub-decision D and E's *RNG/controller*) was initially deferred
+  (2026-06-23) and then **built in full** in the W-series — see *Build outcome — extended* below,
+  which also records how W6/W7 **superseded the "engagement is combat-only" sharing policy**
+  (engagement is now board state). Full build brief (the 0–12 plan, the audit, the completeness
+  checklist): [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md).
 - **Context:** D63 made on-map Deployment a CT-clock, move-and-act board phase — i.e. it
   already *is* combat's substrate — but implemented twice. Phases 1 (truth reconciliation)
   and 3 (one action log: deploy verbs through `Battle.apply`, with undo + replay) shipped;
@@ -2210,7 +2212,9 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   engagement (attacks / offensive status / foe-aimed) is **combat-only** (the stealth/alarm
   invariant); traps are pre-combat; camp/morale is overworld. (Owner decision; the blast
   radius — Hunter `reposition`, Scout `dash`, `DEFEND`, all heals — becomes pre-combat-usable
-  and is test-pinned.)
+  and is test-pinned.) **→ W7 superseded the engagement clause** (2026-06-26): engagement is no
+  longer combat-only — it's **board state** (a *concealed* foe is no valid target), so attacks
+  *are* board skills that simply find no one to hit pre-combat. See *Build outcome — extended*.
 - **Phase-specific layers (kept, not dissolved):** capture-wave (campfire safe-radius, the
   danger-front + growth, the capture roll, Dig In, the deploy risk forecast, alarm→battle);
   engagement; win/lose (`battleOutcome`); the AI (combat-only — the only deployment "AI" is the
@@ -2239,8 +2243,45 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   (self-casts / traps / Dig In don't hover-aim). The arm→click targeting substrate is wired
   and ready for future plain ally-target pre-combat content. **D63's phase-2 clock fold thus
   remains deferred — by evidence, not omission.**
-- **Reuses / consistent with:** **D63** (advances its convergence — the skill-surfacing half;
-  the phase-2 clock fold stays deferred by evidence, see *Build outcome*), **D3** (phase tier kept;
+- **Build outcome — extended (2026-06-26): the deferred fold, completed (the W-series).** A
+  follow-on push revisited the deferral and built sub-decisions **D** and **E** in full — the
+  2026-06-23 evidence held where it was right and was *designed around* where it wasn't:
+  - **D (one clock) — built.** `CTClock` gained an optional **tempo source** + a settable
+    **participant predicate**; deployment now runs on the **Battle's own `CTClock`** — no
+    `DeployClock`, not even a second instance — narrowing participation to active players and
+    attaching the front as the tempo source, shed again at `beginBattle` (`resetForCombat`). The
+    original "net-negative — it'd add a front + charge machinery to the combat clock" worry is
+    **void because the fold is byte-identical**: the tempo + predicate are dormant in a combat
+    clock (it never stages), so combat steps exactly as before — golden-trace-pinned. The front's
+    net turn became a **`frontTurn` bus event** with the capture-wave as its listener (the front
+    rides the clock; the wave is its action — the "front as an event" the owner asked for).
+  - **E (RNG / controller / cast) — built, respecting the replay evidence.** RNG: the Battle owns
+    the encounter seed and deployment draws via a **label-keyed `Battle.stream()`** — a *second*
+    seam beside `Battle.roll`'s `drawCount`, precisely so the deploy draws are **not** routed
+    through the replay-ordered counter (the original concern was correct; `stream` is the
+    replay-safe answer, behaviour-identical since `rngSeed == run.seed`). Cast: `battle.phase` + a
+    **logged `beginBattle` boundary** retired the `deploySkill`/`deployMove` verbs entirely —
+    pre-combat repositioning and skill-casting go through the **same** `moveUnit`/`useSkill` as
+    combat, the interpreter reading the phase to skip only the combat turn-commit. The
+    controller + act-economy spines folded into shared helpers (one `commitFieldAct`).
+  - **Sharing policy — superseded (the engagement clause).** "Engagement is combat-only (a
+    per-skill ban)" is **replaced by engagement as _board state_** (W6/W7): a per-unit
+    **`concealed`** flag marks the pre-positioned enemy roster un-engageable, so
+    `isValidSkillTarget` returns no foe and an attack cast in staging finds no one to hit — the
+    stealth invariant *without* a phase ban. `skillContexts` no longer classifies attacks as
+    combat-only; the flag is the seam for **targetable pre-combat foes** (a keep-assault stages
+    defenders `concealed: false` and the same verbs just work) and for future intel-reveal / ghost
+    tokens. Deploy casts also now **cost their cooldown** + play the support impact pop (an
+    ability used in staging is genuinely used). **6c superseded:** `med-heal` is **both-phase**
+    now (a wired deploy herb-menu — the demo Medic pre-heals); the one remaining combat-only
+    default is **charged** (a CT-clock mechanic, genuinely phase-native). Every W-step landed
+    **byte-identical** for current content (golden trace / suite / e2e / sim green) — the
+    behaviour changes (cooldown cost, board engagement, deploy med-heal) are *new capability*,
+    not perturbations of the demo. **Known follow-on:** `med-heal` resolves outside the action
+    log (`useHeal`→`resolveMedHeal`), so it's not undoable/replayable in *either* phase — a
+    pre-existing gap, closable by making it a logged action.
+- **Reuses / consistent with:** **D63** (**completes** its convergence — both the skill-surfacing
+  half *and* the phase-2 clock fold, see *Build outcome — extended*), **D3** (phase tier kept;
   `usableContext` layers over it), **D5** (the one CT clock), **D2** (core/render), **D7/D11**
   (the capture-wave layer), **D60** (the free-move budget deployment now matches), **D64**
   (telegraph extended to pre-combat), **D35** (the overworld action economy whose

@@ -1,8 +1,12 @@
 /**
- * D67 increment 1 — the `usableContext` axis + the `skillContexts` default (pure).
+ * D67 — the `usableContext` axis + the `skillContexts` default (pure).
  *
- * Locks the default for **every** effect kind × target × spend so the move-vs-engage-vs-
- * support-vs-trap-vs-camp rule lives in one tested place, and confirms the explicit override.
+ * Locks the default for **every** effect kind × target × spend in one tested place. As of W7
+ * there is **no engagement axis**: every board skill (offensive or support) is usable in both
+ * board phases, and whether an attack does anything pre-combat is decided by the board (a
+ * concealed foe is no target) — not by the skill's context. Only `overworld` camp skills,
+ * `pre-combat` traps, and the two mechanic/UX exceptions (charged, med-heal) carry a narrower
+ * context; the genuinely single-phase mechanics (Dig In) use an explicit override.
  */
 import { describe, it, expect } from "vitest";
 import { skillContexts, type SkillDef, type SkillEffect, type UsableContext } from "./skills";
@@ -25,25 +29,31 @@ function mk(over: Partial<SkillDef> & { effect: SkillEffect }): SkillDef {
 
 const BOTH: UsableContext[] = ["pre-combat", "combat"];
 
-describe("skillContexts — engagement is combat-only", () => {
+describe("skillContexts — engagement is board state, not a combat-only ban (W7)", () => {
+  // The engagement axis is gone: an offensive skill is a **board** skill, usable in either
+  // phase. It does nothing pre-combat only because the foe is concealed (no engageable target,
+  // gated by isValidSkillTarget) — not because the skill is phase-banned. So a keep-assault
+  // (un-concealed defenders) lets the very same attack land in staging.
   it.each<[string, SkillEffect]>([
     ["damage", { kind: "damage", bonusAttack: 1 }],
     ["cleave", { kind: "cleave", bonusAttack: 1, reach: 2 }],
     ["forced-move", { kind: "forced-move", tiles: 1 }],
     ["channel", { kind: "channel" }],
-  ])("%s ⇒ combat only", (_kind, effect) => {
-    expect(skillContexts(mk({ effect }))).toEqual(["combat"]);
+  ])("%s ⇒ both board phases (no engagement ban)", (_kind, effect) => {
+    expect(skillContexts(mk({ effect }))).toEqual(BOTH);
   });
 
-  it("a status on an enemy (debuff) ⇒ combat only", () => {
+  it("a status on an enemy (debuff) ⇒ both board phases (friend/foe no longer splits availability)", () => {
     const debuff = mk({ target: "enemy", effect: { kind: "status", status: { id: "exposed", name: "Exposed", duration: 2 } } });
-    expect(skillContexts(debuff)).toEqual(["combat"]);
+    expect(skillContexts(debuff)).toEqual(BOTH);
   });
 
-  it("the herb-stash med-heal ⇒ combat only (its stash pick + inventory spend are engagement-bound, D67 increment 6c)", () => {
-    expect(skillContexts(mk({ target: "ally", effect: { kind: "med-heal" } }))).toEqual(["combat"]);
+  it("the herb-stash med-heal ⇒ both board phases now (the deploy herb-menu is wired, W8)", () => {
+    expect(skillContexts(mk({ target: "ally", effect: { kind: "med-heal" } }))).toEqual(BOTH);
   });
+});
 
+describe("skillContexts — the one remaining combat-only default (a CT-clock mechanic, not engagement)", () => {
   it("a charged ability ⇒ combat only (it resolves later on the CT clock, no deploy equivalent)", () => {
     const charged = mk({ target: "ally", cost: { charge: 50 }, effect: { kind: "heal", amount: 16 } });
     expect(skillContexts(charged)).toEqual(["combat"]);
@@ -158,13 +168,13 @@ describe("availableSkills — the guild context is a wired placeholder (D67 incr
   });
 });
 
-describe("availableSkills — combat-bound abilities don't leak into the deploy surface (D67 increment 6c)", () => {
-  it("the Medic's herb Heal surfaces in combat but NOT pre-combat (its stash pick is engagement-bound); Dig In / Defend remain pre-combat", () => {
+describe("availableSkills — the Medic's herb Heal now surfaces in both board phases (D67 W8)", () => {
+  it("the Medic's herb Heal surfaces in combat AND pre-combat (the deploy herb-menu is wired); Dig In / Defend remain pre-combat", () => {
     const medic = jobUnit("medic");
     const pre = availableSkills(medic, "pre-combat").map((s) => s.id);
     const combat = availableSkills(medic, "combat").map((s) => s.id);
     expect(combat).toContain("heal"); // the med-heal "Heal" is a combat skill
-    expect(pre).not.toContain("heal"); // ...but never offered pre-combat (would crash the drained verb)
+    expect(pre).toContain("heal"); // ...and now a pre-combat one too — the demo Medic can pre-heal
     expect(pre).toEqual(expect.arrayContaining(["dig-in", "defend"]));
   });
 });

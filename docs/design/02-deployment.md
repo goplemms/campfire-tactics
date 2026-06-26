@@ -65,6 +65,18 @@ at the cost of its turn (moving breaks the stance). Or simply **hold safe ground
 place nothing, take zero risk, be ready when Combat starts. Deployment is opt-in per
 unit: *range forward (more setup, more risk)* vs. *hold / dig in (safe, less setup)*.
 
+> **Render parity with Combat (the shared scene path).** A deploy turn now reads like a
+> combat turn: the active unit's **reachable tiles light** (the reach wash) and a hover
+> lights the **route** for its remaining move budget, and a unit that takes an HP hit —
+> e.g. springing a concealed enemy trap — **floats its damage and writes the combat log**,
+> exactly as it would mid-battle (the FX bus is wired up front, not only at Start Battle).
+> Only the genuinely **phase-specific** behavior branches: the capture-wave layer above is
+> unchanged, and **engagement emerges from the board, not a ban** (D67 W7) — the enemy roster
+> is **concealed** in staging (pre-positioned but not yet a valid target), so an attack simply
+> finds no one to hit and the deploy row never offers a strike. This is the stealth/alarm
+> invariant expressed as board state: a scenario that stages **un-concealed** defenders (a keep
+> assault) makes the *same* attack work in pre-combat, with no special rule.
+
 What shapes the gamble (see [Stats](systems/stats.md)):
 
 | Lever | Role in Deployment |
@@ -172,8 +184,22 @@ seed** for both sides.
   and an infiltrator's evasion reduce it, and morale/intel trim the *neutral* rate
   (`exposureMultiplier`). The net reaching the protected core **breaches** (combat starts,
   nobody taken) — the soft consequence vs. capture out in the open. Only the
-  radius/cap/growth/rate numbers are tuning. **Architecture:** Deployment is being unified
-  into `Battle` as a true phase — see the
+  radius/cap/growth/rate numbers are tuning. **Architecture:** Deployment is a true phase of
+  `Battle` on the **Battle's own CT clock** (D67) — not a parallel class *or even a second
+  instance*: staging configures `battle.clock` (narrow turn-taking to active players, attach
+  the enemy front as a strict-lead *tempo source*), and the deploy→battle handoff is a single
+  logged `beginBattle` boundary (also the `battleBegan` event) that sheds that config and
+  re-seeds the clock for the full-roster fight. Repositioning and
+  skill-casting use the **same** `moveUnit`/`useSkill` verbs as combat; the interpreter reads
+  `Battle.phase` and skips only the combat **turn-end** in pre-combat — the cast still **arms
+  its cooldown** (D67 W5: an ability used in staging cools toward combat), and the scene plays
+  the same heal/buff impact pop; only the **strike** FX and the auto-end-into-AI continuation
+  stay combat-only. **Engagement is board state, not a per-phase ban (D67 W7):** the enemy
+  roster is **concealed** in staging — pre-positioned but not yet a valid target — so an attack
+  finds no one to hit and sits idle (the stealth invariant as a property of the board, not a
+  `usableContext` refusal). A per-unit flag, so a scenario can stage **targetable** pre-combat
+  foes (a keep assault) and the same verbs just work; future intel-reveal / ghost tokens layer
+  on the same flag. See the
   [unification plan](../../scratchpad/foundations/deployment-combat-unification-plan.md).
 - Enemy-prep symmetry is **resolved** (D12): A3 fortified-encounter type;
   Intel/Awareness-gated detection; Act-cost disarm or route-around; the Snare drags

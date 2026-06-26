@@ -81,6 +81,68 @@ async function main() {
       await g.bsEval(`s.deployHoverTile = null; s.refreshPreviewCard();`); // clear so it doesn't bleed into later stages
       await shot("deploy-opens");
 
+      // --- Stage: combat FX fire in deployment too (feel parity) --------------
+      // Deployment ↔ combat parity: a unit that takes an HP hit during *deployment* (a
+      // sprung concealed trap) must float its damage and write the combat log, exactly as
+      // mid-battle. The FX bus is wired up front now (wireBattleFx at node start), not only
+      // at startBattle. Drive a real unitDamaged through the encounter bus (no source, so it
+      // can't perturb the XP tally) and confirm the render responded *once*. Also fire a
+      // turnStart and confirm the per-turn header stays combat-only — its listener still
+      // lives in startBattle. On the pre-increment build the damage hit was silent here.
+      const fx = await g.bsEval(`
+        const a = s.deployActor; if (!a) return { skip: true };
+        let floated = 0, headers = 0;
+        const of = s.view.floatDamage.bind(s.view); s.view.floatDamage = (u, amt) => { floated += 1; return of(u, amt); };
+        const ot = s.view.logTurn.bind(s.view); s.view.logTurn = (u) => { headers += 1; return ot(u); };
+        const beforeLog = s.view.logBuffer.length;
+        s.battle.bus.emit("unitDamaged", { unit: a, amount: 3 });
+        s.battle.bus.emit("turnStart", { unit: a });
+        s.view.floatDamage = of; s.view.logTurn = ot;
+        const last = s.view.logBuffer[s.view.logBuffer.length - 1];
+        const out = { phase: s.phase, floated, headers, logGrew: s.view.logBuffer.length > beforeLog,
+          logText: last ? last.text : "", noted: s.view.lastHit.get(a.id) };
+        s.view.lastHit.delete(a.id); s.view.clearLog(); // un-pollute the test's synthetic hit
+        return out;
+      `);
+      console.log("• Combat FX in deployment");
+      check("FX fire while phase is deployment", !fx.skip && fx.phase === "deployment");
+      check("a deployment HP hit floats damage exactly once", fx.skip || fx.floated === 1);
+      check("a deployment HP hit writes a combat-log line", fx.skip || (fx.logGrew && /3/.test(fx.logText)));
+      check("a deployment HP hit registers the impact (noteDamage)", fx.skip || fx.noted === 3);
+      check("the per-turn header stays combat-only in deployment", fx.skip || fx.headers === 0);
+      await shot("deploy-trap-fx");
+
+      // --- Stage: reach wash + lit hover path in deployment (feel parity) ------
+      // The deploy turn now reads like a battle turn: the actor's reachable tiles light for
+      // its remaining move budget and a hover lights the route — but the strike telegraph /
+      // enemy intents stay off (engagement is combat-only; the deploy preview must never
+      // offer a strike). Assert the reach graphic painted, a hover adds a lit path on top,
+      // and no strike-forecast badge appears.
+      const reach = await g.bsEval(`
+        const a = s.deployActor; if (!a) return { skip: true };
+        s.deployHoverTile = null; s.drawDeployReach();             // wash only (no hover)
+        const reachCount = s.deployReachByKey.size;
+        const washCmds = s.deployReachGfx ? s.deployReachGfx.commandBuffer.length : 0;
+        const r = [...s.deployReachByKey.values()].find(x => x.path && x.path.length > 0);
+        let pathLit = false, washWithHover = washCmds, badges = s.view.forecastLabels.size;
+        if (r) {
+          s.deployHoverTile = { col: r.tile.col, row: r.tile.row };
+          s.drawDeployReach();
+          washWithHover = s.deployReachGfx.commandBuffer.length;
+          pathLit = true;
+          badges = s.view.forecastLabels.size;
+          s.drawDeployReach(); // leave the route lit so the screenshot shows wash + path
+        }
+        return { budget: s.deployMoveBudget, reachCount, washCmds, washWithHover, pathLit, badges };
+      `);
+      console.log("• Reach wash + hover path in deployment");
+      check("the deploy actor has a move budget to light", reach.skip || reach.budget > 0);
+      check("deployment paints the reachable tiles (reach wash)", reach.skip || (reach.reachCount > 0 && reach.washCmds > 0));
+      check("a deploy hover lights the route to the tile", reach.skip || (reach.pathLit && reach.washWithHover > reach.washCmds));
+      check("no strike telegraph in deployment (engagement is combat-only)", reach.skip || reach.badges === 0);
+      await shot("deploy-reach-wash"); // wash + lit hover path layered over the zone washes
+      await g.bsEval(`s.deployHoverTile = null; s.drawDeployReach();`); // reset to the plain wash
+
       const startPos = st.pos;
 
       // --- Stage: a real tile click repositions the unit (and arms undo) ------
@@ -91,7 +153,7 @@ async function main() {
       st = await snap();
       console.log("• Real tile click → reposition");
       check("the unit moved to the clicked tile", st.pos.col === tile.col && st.pos.row === tile.row);
-      check("the move was logged as a deployMove", st.lastLog === "deployMove");
+      check("the reposition was logged as a move (the one verb, D67)", st.lastLog === "move");
       check("undo is now available", st.canUndo === true);
       await shot("tile-click-move");
 
@@ -134,11 +196,38 @@ async function main() {
       check("dig-in was taken back", st.dugIn === false);
 
       // --- Stage: commit to Battle -------------------------------------------
+      // The deploy→battle handoff runs off a single bus event (D67): the seam is wired up
+      // front (wireBattleFx), and firing it tears down the staging visuals (veil + overlays).
+      const beganWired = await g.bsEval(`return s.battle.bus.listenerCount("battleBegan");`);
+      check("the battleBegan transition seam is wired before commit", beganWired === 1);
       await g.bsEval(`s.startBattle();`); // the "Start Battle" button's onClick
       await sleep(300);
       st = await snap();
       console.log("• Start Battle");
       check("phase advanced to battle", st.phase === "battle");
+      // The transition event retired the deploy zone / reach overlays (cleared graphics).
+      const overlays = await g.bsEval(`return {
+        safe: s.safeZoneGfx ? s.safeZoneGfx.commandBuffer.length : 0,
+        danger: s.dangerZoneGfx ? s.dangerZoneGfx.commandBuffer.length : 0,
+        reach: s.deployReachGfx ? s.deployReachGfx.commandBuffer.length : 0,
+      };`);
+      check("the transition event tore down the deploy overlays", overlays.safe === 0 && overlays.danger === 0 && overlays.reach === 0);
+      // No double-fire: the damage FX listener moved to node start and the old startBattle
+      // block was removed, so the view floats a battle hit exactly *once* (a leftover
+      // re-attach would float twice). The per-turn header, combat-only, now wires here.
+      const fxB = await g.bsEval(`
+        const u = s.battle.units.find(x => x.alive); if (!u) return { skip: true };
+        let floated = 0, headers = 0;
+        const of = s.view.floatDamage.bind(s.view); s.view.floatDamage = (x, amt) => { floated += 1; return of(x, amt); };
+        const ot = s.view.logTurn.bind(s.view); s.view.logTurn = (x) => { headers += 1; return ot(x); };
+        s.battle.bus.emit("unitDamaged", { unit: u, amount: 2 });
+        s.battle.bus.emit("turnStart", { unit: u });
+        s.view.floatDamage = of; s.view.logTurn = ot;
+        s.view.lastHit.delete(u.id); s.view.clearLog();
+        return { floated, headers };
+      `);
+      check("battle floats a damage hit exactly once (no double-fire)", fxB.skip || fxB.floated === 1);
+      check("the per-turn header wires once in battle", fxB.skip || fxB.headers === 1);
       // D12 — the veil lifts when the net closes: enemy tokens resolve into view.
       const foeShownInBattle = await g.bsEval(
         `return [...s.view.views.values()].filter(v => v.unit.side === "enemy" && v.unit.alive).some(v => v.container.visible === true);`,
@@ -182,7 +271,7 @@ async function main() {
               if (!a || !d) return { skip: true };
               const from = { col: a.pos.col, row: a.pos.row };
               s.queuedTile = { col: d.tile.col, row: d.tile.row }; // a click that arrived mid-step
-              s.processQueuedClick(a);                              // replay it now the step finished
+              s.processQueuedClick(a, "battle");                    // replay it now the step finished
               return { from, queuedCleared: s.queuedTile === null };
             `);
             check("a click-ahead clears the queue when replayed", qb && (qb.skip || qb.queuedCleared));

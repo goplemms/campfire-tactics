@@ -252,11 +252,18 @@ export class CombatView {
       moveBudget: number;
       acted: boolean;
       hoverPath?: readonly GridCoord[];
+      /**
+       * Which board phase is asking. `"deploy"` paints only the *movement* read — the
+       * reach wash + lit hover path — and suppresses the **strike telegraph** and **enemy
+       * intents**: engagement is combat-only (the stealth/alarm invariant), so the deploy
+       * preview must never offer a strike. Defaults to `"battle"` (the full read).
+       */
+      mode?: "battle" | "deploy";
     },
   ): void {
     g.clear();
     this.clearForecast();
-    const { armed, armedAim, intoTrap, moveBudget, acted, hoverPath } = opts;
+    const { armed, armedAim, intoTrap, moveBudget, acted, hoverPath, mode = "battle" } = opts;
     if (armed) {
       // The *legal target set*, kept faintly so the player still sees where the skill can
       // land while the footprint highlights the current aim (D64: keep the valid-target read).
@@ -284,8 +291,9 @@ export class CombatView {
     }
     // Strike telegraph: the foes the actor could hit **in place** right now — outline
     // each and float a forecast badge (best-case damage, flank tag, lethal skull).
-    // Suppressed once the Act is spent (no second attack this turn).
-    if (!acted) {
+    // Suppressed once the Act is spent (no second attack this turn), and entirely in
+    // Deployment — engagement (and so any strike read) is combat-only (stealth/alarm).
+    if (mode === "battle" && !acted) {
       for (const foe of units) {
         if (!foe.alive || foe.hidden || foe.side === actor.side) continue;
         const f = this.inPlaceForecast(actor, foe, units);
@@ -296,8 +304,9 @@ export class CombatView {
     }
     // Enemy intent: for every foe that would act on one of the actor's side next
     // turn, draw a threat link to its mark and the incoming damage — read the
-    // counter-attack before you commit.
-    this.drawIntents(g, actor, units, grid);
+    // counter-attack before you commit. Combat-only: in Deployment the foe is veiled
+    // and not yet engaging, so it telegraphs nothing.
+    if (mode === "battle") this.drawIntents(g, actor, units, grid);
   }
 
   /**

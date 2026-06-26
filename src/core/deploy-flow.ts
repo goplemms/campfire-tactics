@@ -26,7 +26,8 @@ export type FrontTurnStage =
   | { kind: "continue" };
 
 /**
- * Classify the net's turn (D63), the decision behind `BattleScene.runFrontTurn`: a
+ * Classify the net's turn (D63), the decision behind the scene's capture wave
+ * (`resolveFrontWave`, the `frontTurn` listener): a
  * catch raises the alarm; otherwise, if the net has reached the protected core
  * ({@link FrontTurnOutcome.breached}) or no safe ground remains, the net has overrun
  * the camp (combat starts, nobody taken); otherwise the deploy phase continues. The

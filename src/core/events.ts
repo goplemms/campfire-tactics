@@ -32,6 +32,23 @@ export interface BattleEvents {
   chargeFizzled: { id: string };
   /** A placed trap/snare sprang on a unit (D4/D13) — the render updates its marker. */
   trapSprung: { id: string; tile: GridCoord; unit: Unit };
+  /**
+   * The deployment phase ended and combat begins (D67 clock fold) — the transition
+   * seam. The render reacts by tearing down the staging visuals (the D12 veil, the
+   * zone/reach overlays); future "opening of battle" effects can hook the same moment
+   * instead of editing the scene's `startBattle`. Fired once, on the deploy→battle handoff.
+   */
+  battleBegan: Record<string, never>;
+  /**
+   * The enemy **front** (the deployment tempo source) was handed its turn on the CT clock
+   * (D67 W3) — its net-closing "action." The capture-wave listener reacts: advance the net
+   * one step, roll capture for the unprotected, and trip the alarm on a catch. Modeling the
+   * front's turn as a bus event (rather than a hardcoded branch in the deploy loop) makes it
+   * a real **slot on the clock** — other "as the net closes" effects can hook the same
+   * moment. Live-phase only: replay reconstructs captures from the logged `capture` actions,
+   * so it never re-fires this.
+   */
+  frontTurn: Record<string, never>;
 }
 
 /** All valid event names. */

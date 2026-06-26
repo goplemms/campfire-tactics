@@ -145,6 +145,200 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Med-heal works in both phases — the Medic can pre-heal in staging** (D67 W8). The last
+  combat-only board skill joins the rest: the herb-stash heal is now a `pre-combat` + `combat`
+  skill, so the demo Medic (who joins mid-run) can spend a carried herb to patch a wounded unit
+  *before* the fight, not only during it. The two-step herb pick (choose salve/stimulant/
+  antidote → click a wounded ally) is one shared `openHerbMenu(actor, skill, ctx)` helper that
+  reuses the existing `armTargetedSkill` arming, so the combat and deploy flows are the same code
+  — only the per-phase aim read differs. The cast routes through the same `useHeal` verb in
+  either phase (resolve + arm cooldown + spend the herb; the deploy clock owns the turn, so no
+  CT). The only remaining default that's still combat-only is **charged** (a CT-clock mechanic
+  with no deploy equivalent) — that one is genuinely phase-native, not UX. *Caveat, shared with
+  combat:* med-heal resolves outside the action log (`useHeal` → `resolveMedHeal`, not `apply`),
+  so it isn't undoable/replayable in **either** phase — a pre-existing gap deploy inherits, not a
+  new one; making med-heal a logged action would close it in both at once (a separate change).
+  Guarded: full suite (832, incl. a new pre-combat med-heal test — heals, spends the herb, no
+  CT), e2e (46, the refactored combat herb-menu unbroken), sim (unchanged).
+- **The engagement axis is gone — combat in pre-combat is allowed, just untargeted** (D67 W7,
+  internal — byte-identical for current content). Engagement is no longer a *per-skill phase
+  rule*; it's *board state*. `skillContexts` no longer classifies attacks as combat-only — every
+  board skill (offensive or support) is usable in both phases — and the interpreter's old
+  `usableContext` refusal is replaced by one target check: a skill aimed at a **concealed** unit
+  has no engageable target, so it's refused. That single rule *is* the stealth invariant now
+  ("an attack in staging finds no one to hit"), and it does double duty: a scenario that stages
+  **un-concealed** defenders (a keep assault) lets the very same attack land in pre-combat, no
+  new code. The deploy row surfaces offensive skills only when a foe is actually engageable
+  (`canEngage`), so default staging — which conceals the whole enemy roster — reads exactly as
+  before (no attack buttons), making this byte-identical today. Two combat-only defaults remain,
+  and they're **not** the engagement axis: **charged** (a CT-clock mechanic with no deploy
+  equivalent) and **med-heal** (its herb-pick menu is combat-wired UX — a render-scope limit,
+  trivially liftable by wiring a deploy herb-menu). Guarded: full suite (831, incl. a new
+  keep-assault test — the same attack lands once the foe is un-concealed), e2e (46), sim
+  (unchanged). The render *ghost* token (info-hiding stand-in for a concealed/intel-revealed
+  foe) is the natural next layer on this flag — deferred until intel-reveal is on the table.
+- **A `concealed` flag makes "no targets in pre-combat" true — the engagement substrate**
+  (D67 W6, internal — byte-identical). Groundwork for treating engagement as *board state*
+  rather than a per-skill phase rule. A new per-unit `concealed` flag means "not yet
+  engageable": `enterDeploy` sets it on the enemy roster, `beginBattle` clears it for everyone
+  (the encounter engages), and `isValidSkillTarget` won't return a concealed unit — so a
+  combat action cast in staging finds *no one to attack* and sits idle, the way the player
+  always imagined it (rather than being blocked by an explicit ban). Today this is redundant
+  with the existing ban, hence byte-identical; it becomes load-bearing in W7 when that ban is
+  removed. The flag is the seam for the futures the design wants: a **keep-assault** scenario
+  stages standing defenders `concealed: false` (targetable in pre-combat), and **intel-reveal
+  / ghost tokens** later clear or render it. Distinct from the D44 `hidden` ambush flag, which
+  persists *into* combat until scouted/sprung. Guarded: full suite (830), e2e (46), sim
+  (unchanged — the headless runs fight in the default combat phase, never concealed).
+- **Deploy casts now cost a cooldown + show the impact pop** (D67 W5 — a deliberate
+  *behavior* change, unlike W1–W4). Treating a deploy skill as just *an action* rather than a
+  privileged "free" one: a skill cast in staging now **arms its cooldown** (one interpreter
+  line — `commitSkill` runs in both phases; only combat also ends the turn / spends CT), so an
+  ability used while setting up is genuinely used and cools toward combat. The cast also plays
+  the same `flashHeal` impact pop combat does (the damage/heal float + combat-log already rode
+  the bus since Increment 1). **What stays phase-specific is essential, not maintenance debt:**
+  the **strike** FX (`flashHit` — a lunge + screen-shake + hit-stop) stays combat-only because
+  it's a *strike telegraph*, and deployment shows no attacks (the stealth/alarm pillar); and
+  the post-cast **continuation** stays forked — combat auto-ends into the enemy's AI turn and
+  checks win/lose, while deployment waits for a deliberate *Advance Clock* to step the net and
+  has no AI/win-lose (the enemies are frozen). Both are already behind one seam
+  (`commitFieldAct`); merging the bodies would *add* `if (combat)` branches or delete the
+  manual net-pacing, so they're left as the two genuine continuations. Guarded: full suite
+  (829, incl. the repinned `deploy-skill-verb` cooldown split), the deploy→battle e2e (46),
+  and sim (summary **unchanged** — the headless runs don't cast cooldown skills in staging).
+- **One act-economy commit for the skill cast across both phases** (D67 W4, internal — no
+  behavior change). The deploy cast (`castDeploySkill`) and the combat cast (`commitSkill`)
+  each had their *own* "spend the Act + continue the turn" bookkeeping — `deployActed = true`
+  + deploy-row refresh vs. `noteAct(...)` + `afterActionContinue`. Both now funnel through the
+  **same** `commitFieldAct` seam that Search / Disarm already use, so the act-economy commit
+  is *one* call across every field/skill Act in either phase (the seam gained a `charged`
+  flag — a move-spend skill like Dash bills as a move, not the full Act). What stays branched
+  is **genuinely phase-specific, not incidental**: combat plays the strike/heal FX (the
+  engagement invariant — deploy never strikes) and continues via `afterActionContinue`
+  (AI / win-lose), while deploy relights the reach and waits for a manual End Turn (the
+  net steps then); and the cooldown commit is phase-aware (deploy doesn't arm). The
+  combat-only Acts (attack / bribe / rescue) interleave their FX *between* lock and commit,
+  so they keep their own shape — they're combat-only, not a deploy/combat divergence. This
+  **closes the D67 unification**: the deploy and combat layers now share substrate (one clock,
+  one skill/move verb, one RNG seed, one transition event, one act-economy seam), with only
+  the FX, the capture-wave/AI continuation, and the phase-aware commit branching — by design.
+  Guarded byte-identical: full suite (829), the deploy→battle e2e (46 — casts in both phases),
+  and sim all green.
+- **The front's net-closing turn is a bus event, not a hardcoded branch** (D67 W3, internal
+  — no behavior change). The deploy loop used to special-case the front's turn inline (`else
+  runFrontTurn()`); now, when the CT clock hands the **tempo source** its turn, the loop emits
+  a `frontTurn` event and the **capture wave** resolves as a *listener* (`resolveFrontWave`).
+  The front's turn is now a first-class **slot on the clock** — the same substrate every field
+  entity already uses (D4) — so "as the net closes" effects can hook the moment without
+  touching the loop. The capture *logic* (`resolveFrontTurn` → logged `capture` actions) and
+  its RNG seam are unchanged, so replay still reconstructs catches from the log and never
+  re-fires the event (it's live-phase only). Guarded byte-identical: golden trace (the
+  tempo-turn order + capture outcomes), full suite (829), the deploy→battle e2e (46 — drives
+  the real `frontTurn` dispatch), and sim all green.
+- **Deployment runs on the Battle's *own* clock — one instance, not two** (D67 W2, internal
+  — no behavior change). With the participant seam proven (W1), the separate deploy `CTClock`
+  instance is **retired from the live game**: deployment now configures and runs on
+  `battle.clock` — the *same object* combat ticks. `enterDeploy` narrows that clock to active
+  players + attaches the front as the tempo source (`configureDeployClock`); the
+  `beginBattle` boundary **sheds** that config (`resetForCombat`: detach the front, re-widen
+  participation to every active unit, clear the staging timeline) so combat opens on a fresh
+  clock and re-seeds initiative over the full roster. The reset is a **no-op** for a battle
+  that never staged (replay, bare combat tests), so the combat path stays byte-identical. The
+  scene's `deployClock` field is **gone** — there's one clock now, the phase chosen by its
+  configuration. (`createDeployClock` survives as a *test-only* helper that builds a
+  standalone deploy-configured clock; the tempo is now attached via `setTempo`, not a
+  constructor arg.) Guarded byte-identical: golden trace, full suite (829), the deploy→battle
+  e2e (46, the scene fold end-to-end), and sim all green; a new boundary test pins the
+  combat re-widen — the enemy frozen in deploy fights again the moment the battle opens.
+- **One clock *instance* can serve both phases — the participant seam** (D67 W-series,
+  internal — no behavior change). The last thing keeping deployment on a *separate* `CTClock`
+  was the roster: deploy built its clock over **players only**, combat over everyone. Now the
+  clock carries a settable **participant predicate** (`setParticipants`) — who ticks toward CT
+  and can be handed a turn — defaulting to `isActive` (alive + uncaptured), so a combat clock
+  is byte-identical to before. `createDeployClock` builds over the **whole roster** (players
+  *and* the pre-positioned enemies) and narrows the predicate to *active players*, so the
+  enemies are **frozen off the same clock** — they neither charge nor ever take a turn — while
+  the front rides it as the tempo source. This proves one clock element can stage *and* fight,
+  the phase chosen by the predicate; the actual fold onto the Battle's own clock is the next
+  step (deploy is still on its own instance here). `seedFlat` skips non-participants too, so
+  the frozen enemies aren't deploy-seeded. Guarded byte-identical: golden trace, full suite,
+  e2e (46), and sim all green; a new test pins the enemies frozen off a mixed-roster clock.
+- **One skill verb across pre-combat + combat** (D67, internal — no behavior change). The
+  deploy `deploySkill`/`deployMove` verbs are **retired**: repositioning and skill-casting
+  now go through the **same** `moveUnit`/`useSkill` the combat turn uses, and the
+  interpreter detects the Battle's new `phase` (`deploy` | `combat`) to decide the *commit*
+  — in pre-combat it resolves the effect off the deploy clock with **no** CT/cooldown
+  commit; in combat it commits per the skill's spend. The pre-combat → combat handoff is a
+  single **logged** `beginBattle` boundary (built on the C3 event), so `replay()` delimits
+  the deploy prelude explicitly rather than inferring it from verb kinds (`DEPLOY_KINDS`
+  retired). Capstone: the engine now **enforces** the engagement invariant — a skill must
+  declare the current phase in its `usableContext`, so an attack (or a charged ability)
+  can't be cast in pre-combat at the *core*, not just hidden by the renderer's row gating.
+  Seams: `Battle.phase`/`enterDeploy`/`beginBattle`, the phase-aware `skill` apply case. The
+  scene's cast methods stay thin per-phase render wrappers around the one verb (they diverge
+  only on flashes / the post-cast continuation). Guarded byte-identical: golden trace, sim,
+  the deploy→battle e2e, and a new `phase-boundary` replay test all green.
+- **Unification finish: one RNG seed + the last shared spines** (D67, internal — no
+  behavior change). Two closing passes. (1) **RNG seam:** the scene reached into `run.seed`
+  for its two deploy streams while the `Battle`'s own seed sat dormant; the run seed is now
+  wired onto the `Battle` and deployment draws via a label-keyed `Battle.stream()` — one
+  seed owner, byte-identical streams. (`Battle.roll` stays the separate drawCount-keyed seam
+  for apply-driven combat draws; routing deploy rolls through it would desync replay, since
+  they run outside the turn loop and their outcomes are logged or render-only.) (2) The last
+  cleanly-shared **turn-loop spines** fold into helpers: `scanTrapsOnTurnOpen` (the on-open
+  Awareness scan, both phases) and `armTargetedSkill` (the arm-a-skill-and-prompt tail). What
+  *stays* phase-specific by design — the per-turn controllers (`deployNextActor`/`onAdvance`),
+  the begin/end-turn bodies, and the skill *cast* (`castDeploySkill`/`commitSkill`) — diverges
+  genuinely on the capture-wave vs. AI/win-lose, the two clock instances, and the drained
+  `deploySkill` verb vs. the combat skill verb; forcing those into one branchy function would
+  cost more than it saves. Guarded byte-identical (golden trace, sim, e2e).
+- **One clock for deployment + combat** (D67, internal — no behavior change). Deployment
+  ran on a bespoke `DeployClock` that re-implemented `CTClock`'s seed/tick/ready/next/spend
+  beside it. That class is **retired**: `CTClock` gained an optional **tempo source** (a
+  non-unit participant with a strict-lead-tie policy), and the enemy **front** now rides
+  the one clock as that source — `createDeployClock(units, front)` builds a `CTClock` over
+  the player units with the front folded in. Pre-combat and combat share the same clock
+  element; the front still wins only on a strict CT lead (players take ties) and excludes
+  captured units. The deploy→battle handoff is now a **single bus event** (`battleBegan`):
+  the render reacts by lifting the D12 veil and tearing down the staging overlays, so
+  "combat begins" is one announced moment other systems can hook, not a scattered set of
+  imperative clears. Guarded byte-identical by the deploy golden trace; sim summary
+  unchanged. (The two scene RNG streams are a separate, deferred follow-on — the clock fold
+  doesn't need them, and replay reconstructs capture from the logged action.)
+- **One shared scene path for deployment + combat** (D-feel, internal — no behavior
+  change). With deployment now carrying combat's damage feedback and reach read, the
+  parallel *render twins* that had drifted into two copies — **Search**, **Disarm**, the
+  **click-ahead** replay, and the whole-turn **Undo** — collapsed into single
+  context-parameterized helpers (`doSearch`/`doDisarm`/`processQueuedClick`/`undoTurn`
+  take a `BoardCtx`), with a shared act-economy seam (`canFieldAct` / `commitFieldAct`) and
+  the undo resync loop as the one spine. Only the genuinely phase-specific bits branch:
+  the capture-wave row vs. the one-Act economy. Movement (`deployMove`/`playerMoveStep`)
+  and the action row stay separate where they diverge by design, but their **shared spines**
+  are now extracted too: `pushTrapVerbs` (the Search/Disarm row block) and `readStepTraps`
+  (the per-step trap-read + balk) serve both phases, leaving only the divergent verb/economy
+  in each caller. Behavior-preserving — the full deploy→battle e2e is unchanged and green.
+- **Deployment lights the reach like combat** (D-feel). A deploy turn now steps
+  tile-by-tile (`deployMoveBudget`), but the board showed **no reach read** — the player
+  couldn't see how far a step might go. The deploy actor's reachable tiles now light (the
+  amber **reach wash**) and a hover lights the **route** to a tile (the FE-style path
+  read), reusing `CombatView.drawPreview` in a new `"deploy"` mode that **suppresses the
+  strike telegraph and enemy intents** — engagement is combat-only (the stealth/alarm
+  invariant), so the deploy preview never offers a strike. The wash is its own graphics
+  layer over the green/red zone washes (under the markers); it relights as the budget
+  spends down (step / undo) and clears between turns and at Start Battle. Pure render.
+  Seams: `BattleScene.drawDeployReach` / `recomputeDeployReach`, `CombatView.drawPreview`
+  `mode`. See [02-deployment](02-deployment.md).
+- **Deployment surfaces damage feedback like combat** (D-feel). The combat FX bus
+  (floating damage, the combat log, impact scaling, the heal/defeat readouts) was wired
+  only at **Start Battle**, so a unit that sprang a concealed enemy trap **during
+  deployment** took the HP hit **silently** — no floater, no log line. The listeners now
+  attach once **up front** (`wireBattleFx`, at node start, on the per-encounter bus), so a
+  deploy-phase trap spring floats `−N` and writes the log exactly as it would mid-battle.
+  The bus persists across the phase boundary, so battle reads identically and nothing
+  double-fires (the old `startBattle` block was removed; only the per-unit `turnStart`
+  header stays combat-only — deployment has no per-unit turn cadence worth logging). Pure
+  render; no core touch. Seam: `BattleScene.wireBattleFx`. Felt anywhere traps are afield
+  in deployment (**L3** snares, **L6A**). See [02-deployment](02-deployment.md).
 - **Micro-movement — responsive click-ahead stepping** (D-feel). The free-move turn
   already let a unit move tile-by-tile with the Act placeable anywhere (move → act →
   move), but a click landing during a step's ~150 ms walk animation was **dropped** (the

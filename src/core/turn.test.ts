@@ -217,12 +217,13 @@ describe("Battle — deployment verbs (D63)", () => {
     expect(battle.log.length).toBe(0);
   });
 
-  it("deployMove walks the unit, breaks dig-in, and is undoable", () => {
+  it("a move walks the unit, breaks dig-in, and is undoable (the deploy reposition is now a plain move)", () => {
     const grid = new TileGrid(6, 1);
     const u = at("u", "player", 0, 0, { dugIn: true });
     const battle = new Battle(grid, [u]);
+    battle.enterDeploy(); // the deploy reposition uses the same move verb (D67)
     battle.beginUndo();
-    battle.deployMove(u, [{ col: 1, row: 0 }, { col: 2, row: 0 }]);
+    battle.moveUnit(u, [{ col: 1, row: 0 }, { col: 2, row: 0 }]);
     expect(u.pos).toEqual({ col: 2, row: 0 });
     expect(u.dugIn).toBe(false); // moving broke the stance
     battle.undo();
@@ -278,14 +279,16 @@ describe("Battle — deployment verbs (D63)", () => {
     expect(battle.log[battle.log.length - 1]).toEqual({ kind: "capture", unit: "c" });
   });
 
-  it("replay drains the deploy prelude before driving the combat turns", () => {
+  it("replay drains the deploy prelude (up to the beginBattle boundary) before the combat turns", () => {
     const grid = new TileGrid(8, 1);
     const mk = () => [at("p", "player", 0, 0, { speed: 20 }), at("e", "enemy", 7, 0, { speed: 5 })];
     const [p, e] = mk();
     const battle = new Battle(grid, [p, e]);
-    // A deploy prelude (reposition + dig in), then seed + a combat turn.
-    battle.deployMove(p, [{ col: 1, row: 0 }]);
+    // A deploy prelude (reposition + dig in) up to the logged boundary, then a combat turn.
+    battle.enterDeploy();
+    battle.moveUnit(p, [{ col: 1, row: 0 }]);
     battle.digIn(p);
+    battle.beginBattle(); // the pre-combat → combat boundary marker
     battle.seed();
     const actor = battle.nextActor()!;
     battle.endTurn(actor, { moved: false });

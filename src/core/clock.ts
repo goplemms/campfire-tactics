@@ -53,9 +53,9 @@ export function armSkillCooldown(unit: Unit, skillId: string, ct: number): void 
 
 /**
  * Determinism-stable "who acts next" order for CT actors: **highest CT first**,
- * ties broken by **Speed**, then **id**. The single comparator both the combat
- * clock ({@link CTClock}) and the deployment clock ({@link "./deployment".DeployClock})
- * sort their ready actors by — so initiative reads identically in either phase.
+ * ties broken by **Speed**, then **id**. The single comparator the one {@link CTClock}
+ * sorts its ready actors by, in **both** phases (combat, and deployment via the front
+ * tempo source) — so initiative reads identically whichever phase is running.
  */
 export function byReadiest<T extends { ct: number; speed: number; id: string }>(a: T, b: T): number {
   return b.ct - a.ct || b.speed - a.speed || a.id.localeCompare(b.id);
@@ -135,6 +135,34 @@ export function sideSeed(units: readonly Unit[], side: Side): number {
   return activeUnits(units, side).reduce((sum, u) => sum + u.speed, 0);
 }
 
+/**
+ * A **non-unit tempo participant** on the CT clock (D67 clock fold) — the
+ * Deployment **front** is the one client today. It charges by `speed` alongside the
+ * units and can take a "turn" when its gauge fills, but it is not a {@link Unit}
+ * (no HP/position/statuses), so it rides the clock as data. `strictLeadTie` encodes
+ * the front's deliberate policy: it acts **only on a strict CT lead** — units win
+ * ties — so Speed/Awareness keep buying the party its positioning turns.
+ */
+export interface TempoSource {
+  readonly id: string;
+  /** Charge-time accumulator (mutated by the clock, like a unit's `ct`). */
+  ct: number;
+  readonly speed: number;
+  /** Acts only on a strict CT lead (units win ties). The deploy front sets this. */
+  readonly strictLeadTie?: boolean;
+}
+
+/**
+ * Who the clock hands the next turn to — a unit, the registered {@link TempoSource},
+ * or nothing (the timeline can't progress). The discriminated result the
+ * tempo-aware {@link CTClock.nextTurn} returns; combat's {@link
+ * CTClock.advanceToNextActor} is the thin unit-only projection of it.
+ */
+export type ClockTurn =
+  | { kind: "unit"; unit: Unit }
+  | { kind: "tempo"; source: TempoSource }
+  | { kind: "idle" };
+
 /** The CT clock over a fixed set of units. */
 export class CTClock {
   /** Total ticks elapsed (the global timeline position). */
@@ -142,10 +170,51 @@ export class CTClock {
   private readonly units: Unit[];
   private readonly bus?: EventBus;
   private scheduled: ScheduledEffect[] = [];
+  /**
+   * An optional non-unit tempo participant (D67 clock fold) — the Deployment front.
+   * `undefined` for a combat clock, so the combat path is byte-identical to the
+   * pre-fold behaviour (every tempo branch below is skipped when it's unset). Attached for
+   * the deploy phase via {@link setTempo} and shed again at {@link resetForCombat} — the
+   * **one** clock serves both phases rather than two instances trading off (D67 W2).
+   */
+  private tempo?: TempoSource;
+
+  /**
+   * Which units **participate** in this clock's turn order — they tick toward CT and can
+   * be handed a turn (D67 one-clock fold). Defaults to {@link isActive} (alive + not
+   * captured), so a combat clock is byte-identical to before. The Deployment phase narrows
+   * it to active *players* (the enemies are frozen, pre-positioned and concealed, while the
+   * front rides the clock as the tempo source). Settable so one clock can serve both phases.
+   */
+  private participates: (u: Unit) => boolean = isActive;
 
   constructor(units: Unit[], bus?: EventBus) {
     this.units = units;
     this.bus = bus;
+  }
+
+  /** Narrow (or restore) which units participate in the turn order — the phase seam. */
+  setParticipants(predicate: (u: Unit) => boolean): void {
+    this.participates = predicate;
+  }
+
+  /** Attach (or detach) the {@link TempoSource} — the Deployment front rides the clock as one. */
+  setTempo(source?: TempoSource): void {
+    this.tempo = source;
+  }
+
+  /**
+   * Shed the Deployment configuration and restore combat defaults at the pre-combat →
+   * combat boundary (D67 W2): detach the front, re-widen participation to every active
+   * unit, and clear the staging timeline so combat opens on a fresh clock. A **no-op** for
+   * a clock that only ever fought (already in this state), so the combat path stays
+   * byte-identical; `seedInitiative` then re-seeds CT over the now-combat roster.
+   */
+  resetForCombat(): void {
+    this.tempo = undefined;
+    this.participates = isActive;
+    this.time = 0;
+    this.scheduled = [];
   }
 
   /**
@@ -227,33 +296,76 @@ export class CTClock {
       }
     }
 
-    // 2) Every living, non-captured unit charges by its **effective** Speed
+    // 2) Every **participating** unit charges by its **effective** Speed
     //    (Slowed/Hastened, D41) and burns down its cooldowns by the same amount
-    //    (D37) — a captured unit is bound and ticks toward neither.
+    //    (D37). The default predicate is {@link isActive} (alive + not captured —
+    //    a captured unit is bound and ticks toward neither); Deployment narrows it
+    //    to active players, freezing the pre-positioned enemies off the same clock.
     for (const u of this.units) {
-      if (!u.alive || u.captured) continue;
+      if (!this.participates(u)) continue;
       const sp = effectiveSpeed(u);
       u.ct += sp;
       tickSkillCooldowns(u, sp);
     }
+
+    // 3) The tempo source (the Deployment front) charges alongside the units — a
+    //    no-op for a combat clock (no tempo). It always charges, so a clock that
+    //    carries one can never stall (the front guarantees the timeline advances).
+    if (this.tempo) this.tempo.ct += this.tempo.speed;
   }
 
   /**
    * Tick until a living unit is ready (`ct >= TURN_THRESHOLD`), then return the
    * readiest one (highest CT, ties broken by Speed, then id for determinism).
-   * Returns `null` if no living unit can ever act.
+   * Returns `null` if no living unit can ever act. The combat entry — the
+   * unit-only projection of {@link nextTurn} (a combat clock carries no tempo
+   * source, so the two are identical by construction).
    */
   advanceToNextActor(): Unit | null {
-    const canAct = isActive;
+    const t = this.nextTurn();
+    return t.kind === "unit" ? t.unit : null;
+  }
+
+  /**
+   * Drive the timeline to its next turn and hand it to a unit **or** the registered
+   * {@link TempoSource} (the Deployment front), or report `idle` if it can't progress.
+   * Tick until a unit *or* the tempo source is ready, take the readiest unit
+   * ({@link byReadiest}), and let the tempo source win **only** on its lead policy
+   * (`strictLeadTie` ⇒ a strict CT lead; units take ties — the front's deliberate
+   * rule). A clock with a tempo source never stalls (the front always charges), so
+   * `idle` only arises for a unit-only (combat) clock with no one left to act.
+   */
+  nextTurn(): ClockTurn {
+    const canAct = this.participates;
+    const tempoReady = () => this.tempo !== undefined && this.tempo.ct >= TURN_THRESHOLD;
     const advanced = tickUntilReady(
-      () => this.units.some((u) => canAct(u) && u.ct >= TURN_THRESHOLD),
-      () => this.units.some(canAct),
+      () => this.units.some((u) => canAct(u) && u.ct >= TURN_THRESHOLD) || tempoReady(),
+      () => this.tempo !== undefined || this.units.some(canAct),
       () => this.tick(),
     );
-    if (!advanced) return null;
-    const ready = this.units.filter((u) => canAct(u) && u.ct >= TURN_THRESHOLD);
-    ready.sort(byReadiest);
-    return ready[0];
+    if (!advanced) return { kind: "idle" };
+    const ready = this.units.filter((u) => canAct(u) && u.ct >= TURN_THRESHOLD).sort(byReadiest);
+    const best = ready[0];
+    if (tempoReady()) {
+      const t = this.tempo!;
+      const leads = !best || (t.strictLeadTie ? t.ct > best.ct : t.ct >= best.ct);
+      if (leads) return { kind: "tempo", source: t };
+    }
+    return best ? { kind: "unit", unit: best } : { kind: "idle" };
+  }
+
+  /**
+   * Seed each participant's CT from its **own** Speed plus `bonus` (the Deployment
+   * seed, D63) — a warmer party acts first; the tempo source (the front) starts cold.
+   * Distinct from {@link seedInitiative}'s side-summed combat seed: deployment seeds
+   * per-unit because the front, not a side, is the opposing tempo.
+   */
+  seedFlat(bonus = 0): void {
+    for (const u of this.units) {
+      if (!this.participates(u)) continue; // the frozen enemies aren't seeded — only the party
+      u.ct = u.captured ? 0 : Math.max(0, u.speed + bonus);
+    }
+    if (this.tempo) this.tempo.ct = 0;
   }
 
   /**
@@ -266,6 +378,11 @@ export class CTClock {
     unit.ct -= cost;
   }
 
+  /** Spend the tempo source's CT after its turn (the front's net-closing step, D63). */
+  spendTempo(): void {
+    if (this.tempo) this.tempo.ct -= TURN_THRESHOLD;
+  }
+
   /**
    * Snapshot the clock's mutable state (the global time + the in-flight scheduled
    * effects) for a turn-undo checkpoint (the combat-actions Phase 2 substrate). The
@@ -274,18 +391,21 @@ export class CTClock {
    * units — so a {@link restore} re-binds nothing and a charge's closure stays valid.
    */
   snapshot(): ClockSnapshot {
-    return { time: this.time, scheduled: this.scheduled.map((e) => ({ ...e })) };
+    return { time: this.time, scheduled: this.scheduled.map((e) => ({ ...e })), tempoCt: this.tempo?.ct };
   }
 
   /** Roll the clock's mutable state back to a {@link snapshot} (undo). */
   restore(snap: ClockSnapshot): void {
     this.time = snap.time;
     this.scheduled = snap.scheduled.map((e) => ({ ...e }));
+    if (this.tempo && snap.tempoCt !== undefined) this.tempo.ct = snap.tempoCt;
   }
 }
 
-/** A captured clock state — the time cursor + the in-flight scheduled effects. */
+/** A captured clock state — the time cursor, in-flight scheduled effects, + tempo CT. */
 export interface ClockSnapshot {
   time: number;
   scheduled: ScheduledEffect[];
+  /** The tempo source's CT (deploy front), if one is registered — undefined in combat. */
+  tempoCt?: number;
 }

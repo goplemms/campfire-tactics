@@ -145,6 +145,27 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **One weighted move step for the whole board** (D-feel, internal — fixes a real drift).
+  Deployment and battle still ran **parallel** move methods (`deployMove` / `playerMoveStep`)
+  over **two** budgets (`deployMoveBudget` / `moveBudget`) that had drifted apart: deployment
+  clamped and spent by **raw tile count**, while battle — *and deployment's own reach wash +
+  forecast* — used the **weighted** reach cost. So a cost-changing effect (the Heavy-Knight
+  tarpit ring, D42, which costs extra to *enter*) was charged pre-combat in the wash a player
+  read but **not** in the step they actually paid, and the deploy forecast didn't match the
+  deploy clamp. Both phases now run one `moveStep(actor, tile, ctx)` over the **one**
+  `moveBudget`, charging the **weighted** cost of each leg from the same `reachByKey` the wash
+  is drawn from — the spend and the read can no longer diverge, in either phase. Deployment is
+  consequently **click-within-reach** like battle (the lit wash already showed exactly the
+  legal tiles). The after-step still branches by phase (`afterDeployMoveStep` relights the
+  smaller reach + chains click-ahead; `afterBattleMoveStep` keeps the D60 turn open or ends
+  it), and the deploy reach **data** folds onto the shared `reach`/`recomputeReach`
+  (`deployReachByKey` / `recomputeDeployReach` retired) — only the wash's own graphics layer
+  stays separate, because deployment paints zone washes the battle preview never draws past.
+  Pure render; no core touch, no rules/economy change (one Act per turn, same total range).
+  Seam: `BattleScene.moveStep`. Behavior-preserving for normal ground; the *intended* change
+  is that tarpit-ring tiles now cost the same to step onto in deployment as in battle. Guarded
+  green: tsc, 832 unit tests, build, deploy→battle e2e (46, incl. the weighted deploy-reach
+  assertion), sim unchanged.
 - **Med-heal works in both phases — the Medic can pre-heal in staging** (D67 W8). The last
   combat-only board skill joins the rest: the herb-stash heal is now a `pre-combat` + `combat`
   skill, so the demo Medic (who joins mid-run) can spend a carried herb to patch a wounded unit
@@ -313,10 +334,11 @@ Recent work that altered routing or the within-node experience. Newest first.
   take a `BoardCtx`), with a shared act-economy seam (`canFieldAct` / `commitFieldAct`) and
   the undo resync loop as the one spine. Only the genuinely phase-specific bits branch:
   the capture-wave row vs. the one-Act economy. Movement (`deployMove`/`playerMoveStep`)
-  and the action row stay separate where they diverge by design, but their **shared spines**
-  are now extracted too: `pushTrapVerbs` (the Search/Disarm row block) and `readStepTraps`
+  and the action row stayed separate here where they diverged by design — but their **shared
+  spines** were extracted too: `pushTrapVerbs` (the Search/Disarm row block) and `readStepTraps`
   (the per-step trap-read + balk) serve both phases, leaving only the divergent verb/economy
   in each caller. Behavior-preserving — the full deploy→battle e2e is unchanged and green.
+  (Movement has **since** folded into one weighted `moveStep` as well — see the top entry.)
 - **Deployment lights the reach like combat** (D-feel). A deploy turn now steps
   tile-by-tile (`deployMoveBudget`), but the board showed **no reach read** — the player
   couldn't see how far a step might go. The deploy actor's reachable tiles now light (the

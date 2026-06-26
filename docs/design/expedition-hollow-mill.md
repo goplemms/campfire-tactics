@@ -145,6 +145,22 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Deploy casts now cost a cooldown + show the impact pop** (D67 W5 — a deliberate
+  *behavior* change, unlike W1–W4). Treating a deploy skill as just *an action* rather than a
+  privileged "free" one: a skill cast in staging now **arms its cooldown** (one interpreter
+  line — `commitSkill` runs in both phases; only combat also ends the turn / spends CT), so an
+  ability used while setting up is genuinely used and cools toward combat. The cast also plays
+  the same `flashHeal` impact pop combat does (the damage/heal float + combat-log already rode
+  the bus since Increment 1). **What stays phase-specific is essential, not maintenance debt:**
+  the **strike** FX (`flashHit` — a lunge + screen-shake + hit-stop) stays combat-only because
+  it's a *strike telegraph*, and deployment shows no attacks (the stealth/alarm pillar); and
+  the post-cast **continuation** stays forked — combat auto-ends into the enemy's AI turn and
+  checks win/lose, while deployment waits for a deliberate *Advance Clock* to step the net and
+  has no AI/win-lose (the enemies are frozen). Both are already behind one seam
+  (`commitFieldAct`); merging the bodies would *add* `if (combat)` branches or delete the
+  manual net-pacing, so they're left as the two genuine continuations. Guarded: full suite
+  (829, incl. the repinned `deploy-skill-verb` cooldown split), the deploy→battle e2e (46),
+  and sim (summary **unchanged** — the headless runs don't cast cooldown skills in staging).
 - **One act-economy commit for the skill cast across both phases** (D67 W4, internal — no
   behavior change). The deploy cast (`castDeploySkill`) and the combat cast (`commitSkill`)
   each had their *own* "spend the Act + continue the turn" bookkeeping — `deployActed = true`

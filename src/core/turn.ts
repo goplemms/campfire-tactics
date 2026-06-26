@@ -398,10 +398,14 @@ export class Battle {
         const deploy = this.phase === "deploy";
         const context: UsableContext = deploy ? "pre-combat" : "combat";
         if (!skillContexts(skill).includes(context)) return { ok: false, reason: `${skill.name} can't be used in ${context}` };
-        // The **one** skill verb across both phases (D67): the effect resolves identically;
-        // only the *commit* is phase-aware. In **pre-combat** the deploy clock owns the turn,
-        // so we resolve the effect and stop — no CT/cooldown commit. In **combat** it commits
-        // per the skill's spend (D60), scheduling a charge on the timeline if any (D5/D37).
+        // The **one** skill verb across both phases (D67): the effect resolves identically,
+        // and the *commit* is now almost identical too (D67 W5). Both phases **arm the
+        // skill's cooldown** — an ability used in staging is genuinely used, cooling toward
+        // combat. Only the **turn** is phase-aware: in **combat** the cast ends the caster's
+        // turn per its spend (D60), scheduling a charge on the timeline if any (D5/D37); in
+        // **pre-combat** the deploy clock owns the turn, so the cast doesn't spend CT / end
+        // the turn here (the scene commits that at End Turn). A charged ability is combat-only
+        // anyway (usableContext), so the charge branch never runs pre-combat.
         let outcome: SkillOutcome;
         if (skill.effect.kind === "forced-move") {
           outcome = this.resolveShove(caster, target, skill.effect.tiles, skill.effect.bonusAttack ?? 0);
@@ -421,7 +425,9 @@ export class Battle {
         } else {
           outcome = resolveSkill(skill, caster, target, this.bus, this.units);
         }
-        if (!deploy) this.commitSkill(caster, skill, action.commitTurn ?? true);
+        // Arm the cooldown in both phases; end the turn only in combat (deploy commits its
+        // turn via the scene's End Turn). `!deploy && …` keeps the combat path byte-identical.
+        this.commitSkill(caster, skill, !deploy && (action.commitTurn ?? true));
         this._log.push(action);
         return { ok: true, outcome };
       }
@@ -526,9 +532,11 @@ export class Battle {
 
   /**
    * The shared **commit half** of a skill use: arm its cooldown (if any) and —
-   * unless the D60 free-move flow keeps the turn open (`commitTurn: false`) — end
-   * the caster's turn, spending CT per the skill's `spend`. Used by `useSkill`,
-   * `useHeal`, and `cleave` so the cooldown-arm + turn-end pair lives in one place.
+   * unless the turn is kept open (`commitTurn: false`: the D60 free-move flow, **or**
+   * a pre-combat cast, whose turn the deploy clock commits at End Turn) — end the
+   * caster's turn, spending CT per the skill's `spend`. Used by `useSkill`, `useHeal`,
+   * and `cleave` so the cooldown-arm + turn-end pair lives in one place (D67 W5: both
+   * phases arm the cooldown; only combat ends the turn here).
    */
   private commitSkill(caster: Unit, skill: SkillDef, commitTurn: boolean): void {
     if (skill.cost?.cooldown) armSkillCooldown(caster, skill.id, skill.cost.cooldown);

@@ -2,11 +2,12 @@
  * D67 — one skill verb across both phases (was: the drained `deploySkill` verb).
  *
  * Casting a skill pre-combat and casting it in combat now go through the **same** `useSkill`
- * verb; the interpreter detects the Battle's `phase` and only the *commit* differs. In
- * **combat** a skill commits the turn (spends CT, arms its cooldown); in **pre-combat** it
- * resolves its effect off the deploy clock with **no** commit — so a heal / buff / Dash is
- * castable in staging without ending a turn or arming a cooldown. The effect resolution is
- * identical; this pins that split.
+ * verb; the interpreter detects the Battle's `phase` and only the *turn* differs (D67 W5).
+ * Both phases **arm the skill's cooldown** — an ability used in staging is genuinely used,
+ * cooling toward combat. In **combat** the cast also commits the turn (spends CT); in
+ * **pre-combat** the deploy clock owns the turn, so no CT is spent here (the scene commits it
+ * at End Turn) — a heal / buff / Dash is still castable in staging without ending a turn. The
+ * effect resolution is identical; this pins that split.
  */
 import { describe, it, expect } from "vitest";
 import { Battle } from "./turn";
@@ -36,7 +37,7 @@ const GUARD_BREAK: SkillDef = {
 };
 
 /** A heal with a cooldown — **dual-context** support: castable in either phase, to observe
- *  the commit split (combat arms the cooldown + spends CT; pre-combat does neither). */
+ *  the turn split (both arm the cooldown; combat also spends CT, pre-combat doesn't). */
 const MENDER: SkillDef = {
   id: "mender", name: "Mender", description: "", phase: "battle", target: "ally", range: 2, spend: "act",
   cost: { cooldown: 200 }, effect: { kind: "heal", amount: 10 },
@@ -66,7 +67,7 @@ describe("D67 — one skill verb, phase-aware commit", () => {
     expect(hurt.hp).toBeGreaterThan(5); // healed, off the deploy clock
   });
 
-  it("pre-combat resolves a dual-context cast WITHOUT committing — no CT spent, no cooldown armed", () => {
+  it("pre-combat arms the cooldown but doesn't spend CT — the deploy clock owns the turn (W5)", () => {
     const battle = new Battle(new TileGrid(8, 1), [pawn("medic", 0), pawn("hurt", 1)]);
     battle.enterDeploy();
     const [medic, hurt] = battle.units;
@@ -74,11 +75,11 @@ describe("D67 — one skill verb, phase-aware commit", () => {
     medic.ct = TURN_THRESHOLD; // a warm unit
     battle.useSkill(medic, MENDER, hurt);
     expect(hurt.hp).toBeGreaterThan(5); // the heal landed
-    expect(medic.ct).toBe(TURN_THRESHOLD); // ...but no turn was committed (no CT spent)
-    expect(onSkillCooldown(medic, MENDER.id)).toBe(false); // ...and no cooldown armed
+    expect(medic.ct).toBe(TURN_THRESHOLD); // ...no CT spent here (the scene ends the deploy turn)
+    expect(onSkillCooldown(medic, MENDER.id)).toBe(true); // ...but the cooldown IS armed (used is used)
   });
 
-  it("combat DOES commit the same dual-context cast — spends CT and arms the cooldown", () => {
+  it("combat ALSO ends the turn on the same dual-context cast — spends CT (and arms the cooldown)", () => {
     const battle = new Battle(new TileGrid(8, 1), [pawn("medic", 0), pawn("hurt", 1)]);
     // default phase is combat
     const [medic, hurt] = battle.units;
@@ -87,7 +88,7 @@ describe("D67 — one skill verb, phase-aware commit", () => {
     battle.useSkill(medic, MENDER, hurt); // commitTurn defaults true
     expect(hurt.hp).toBeGreaterThan(5);
     expect(medic.ct).toBeLessThan(TURN_THRESHOLD); // CT spent (the turn committed)
-    expect(onSkillCooldown(medic, MENDER.id)).toBe(true); // cooldown armed
+    expect(onSkillCooldown(medic, MENDER.id)).toBe(true); // cooldown armed (as in deploy)
   });
 
   it("refuses a combat-only skill (an attack) cast in pre-combat — the engagement invariant", () => {

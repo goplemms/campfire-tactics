@@ -189,7 +189,10 @@ seed** for both sides.
   logged `beginBattle` boundary (also the `battleBegan` event) that sheds that config and
   re-seeds the clock for the full-roster fight. Repositioning and
   skill-casting use the **same** `moveUnit`/`useSkill` verbs as combat; the interpreter reads
-  `Battle.phase` and skips the combat turn-commit in pre-combat. **Engagement stays
+  `Battle.phase` and skips only the combat **turn-end** in pre-combat — the cast still **arms
+  its cooldown** (D67 W5: an ability used in staging cools toward combat), and the scene plays
+  the same heal/buff impact pop; only the **strike** FX and the auto-end-into-AI continuation
+  stay combat-only. **Engagement stays
   combat-only by an enforced invariant:** a skill must declare the current phase in its
   `usableContext`, so an attack can't be cast in staging at the core, not just the renderer.
   See the

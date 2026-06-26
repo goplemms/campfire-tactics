@@ -832,15 +832,19 @@ export class BattleScene extends Phaser.Scene {
 
   /**
    * Cast a dual-context ability during Deployment (D67) — the **same** `useSkill` verb as
-   * combat; because the Battle is in the pre-combat phase, the interpreter resolves the
-   * effect with **no CT commit** (the deploy clock owns the turn). Logged + undoable; it
-   * spends the unit's **act** (via the shared {@link commitFieldAct} seam, D67 W4), leaving
-   * its **move** free, so a Dash → reposition combo works.
+   * combat. The interpreter resolves the effect and **arms its cooldown** (D67 W5: a skill
+   * used in staging is genuinely used), but the deploy clock owns the turn, so no CT is spent
+   * here. Logged + undoable; it spends the unit's **act** (via the shared {@link
+   * commitFieldAct} seam, D67 W4), leaving its **move** free, so a Dash → reposition works.
+   * The damage/heal float + log already ride the bus (wired up front); the cast adds the same
+   * `flashHeal` impact pop combat plays — but **never** a strike telegraph (the engagement
+   * invariant: deployment shows support cues, never an attack; `flashHit` stays combat-only).
    */
   private castDeploySkill(actor: Unit, skill: SkillDef, target: Unit): void {
     if (this.busy || actor.captured || this.deployActed) return;
     this.armedSkill = null;
-    this.battle.useSkill(actor, skill, target); // pre-combat phase ⇒ resolve only, no commit
+    this.battle.useSkill(actor, skill, target); // pre-combat: resolve + arm cooldown, no CT
+    this.flashHeal(target); // the support/heal/buff pop (deploy casts are support — no strikes)
     // Skill-specific render (a cast may buff/move units): re-place tokens + relight the reach
     // (the move is still free). The act-economy commit + deploy-row refresh is the shared seam.
     this.refreshAuras();

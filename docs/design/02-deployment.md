@@ -65,6 +65,16 @@ at the cost of its turn (moving breaks the stance). Or simply **hold safe ground
 place nothing, take zero risk, be ready when Combat starts. Deployment is opt-in per
 unit: *range forward (more setup, more risk)* vs. *hold / dig in (safe, less setup)*.
 
+> **Render parity with Combat (the shared scene path).** A deploy turn now reads like a
+> combat turn: the active unit's **reachable tiles light** (the reach wash) and a hover
+> lights the **route** for its remaining move budget, and a unit that takes an HP hit —
+> e.g. springing a concealed enemy trap — **floats its damage and writes the combat log**,
+> exactly as it would mid-battle (the FX bus is wired up front, not only at Start Battle).
+> Only the genuinely **phase-specific** behavior branches: the capture-wave layer above is
+> unchanged, and **engagement stays combat-only** — there are no attacks or strike
+> telegraphs in deployment (the stealth/alarm invariant), so the deploy preview shows the
+> *movement* read but never offers a strike.
+
 What shapes the gamble (see [Stats](systems/stats.md)):
 
 | Lever | Role in Deployment |

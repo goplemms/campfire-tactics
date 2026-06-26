@@ -291,6 +291,15 @@ export class BattleScene extends Phaser.Scene {
   /** The walkable tile under the cursor (Deployment) — drives the capture-risk preview. */
   private deployHoverTile: GridCoord | null = null;
   /**
+   * Deployment reach read (D-feel: parity with the battle turn). The reach wash +
+   * lit hover path now light the deploy actor's reachable tiles for its remaining
+   * {@link deployMoveBudget}, so a player can see how far a step may go. Its own graphics
+   * layer (over the zone washes, under the markers) and a `"col,row"`→reach map for the
+   * O(1) hover-path lookup — the deploy twin of {@link reachByKey}.
+   */
+  private deployReachGfx?: Phaser.GameObjects.Graphics;
+  private deployReachByKey = new Map<string, ReturnType<typeof reachableTiles>[number]>();
+  /**
    * Click-ahead (micro-movement): the latest plain board click made **while a step was
    * animating**. Replayed the instant that step finishes ({@link processQueuedClick}),
    * so rapid tile-by-tile clicking never drops an input. Cleared at every turn boundary.
@@ -436,6 +445,8 @@ export class BattleScene extends Phaser.Scene {
     this.safeZoneGfx = undefined;
     this.dangerZoneGfx?.destroy();
     this.dangerZoneGfx = undefined;
+    this.deployReachGfx?.destroy();
+    this.deployReachGfx = undefined;
     clearLayer(this.deployMarkers);
     this.highlight.clear();
     this.view.clearPreview(this.preview);
@@ -558,6 +569,8 @@ export class BattleScene extends Phaser.Scene {
       : [];
     if (spotted.length > 0) this.redrawTrapMarkers();
     this.selectDeployActor(unit);
+    this.recomputeDeployReach(unit); // light the reachable tiles for this turn's budget
+    this.drawDeployReach();
     this.setPrimary("End Turn");
     const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0;
     this.setHint(
@@ -574,6 +587,7 @@ export class BattleScene extends Phaser.Scene {
     this.queuedTile = null;
     this.deployHoverTile = null;
     this.highlightTile(null);
+    this.drawDeployReach(); // no actor between turns → clears the reach wash
     this.setPrimary("Advance Clock");
     this.refreshDeployButtons();
     this.refreshDeployStatus();
@@ -664,6 +678,8 @@ export class BattleScene extends Phaser.Scene {
     this.highlightTile(actor.pos);
     this.refreshDeployButtons();
     this.refreshDeployStatus();
+    this.recomputeDeployReach(actor); // budget restored to full range — relight the reach
+    this.drawDeployReach();
     this.setHint(`${actor.name}'s deploy turn reset — reposition, Dig In, place a trap, or End Turn (Space).`);
   }
 
@@ -778,6 +794,7 @@ export class BattleScene extends Phaser.Scene {
     if (skill.id === "dig-in") return this.digIn();
     if (skill.target === "self") return this.castDeploySkill(actor, skill, actor);
     this.armedSkill = skill;
+    this.drawDeployReach(); // aiming a skill: clear the movement wash (the armed read is combat-only)
     this.setHint(`${skill.name}: click a valid target (or click ${actor.name} to cancel).`);
   }
 
@@ -796,6 +813,7 @@ export class BattleScene extends Phaser.Scene {
     this.highlightTile(actor.pos);
     this.refreshDeployButtons();
     this.refreshDeployStatus();
+    this.drawDeployReach(); // un-armed again; the move is still free, so relight the reach
     this.setHint(`${actor.name} used ${skill.name}. Reposition or End Turn (Space) to advance the net.`);
   }
 
@@ -838,6 +856,48 @@ export class BattleScene extends Phaser.Scene {
     this.titleText.setText(`Deployment — ${who} · reach ${reach} · safe ${safeR} · ${kits} kit${kits === 1 ? "" : "s"}`);
     this.refreshFocusCard();
     this.refreshPreviewCard();
+  }
+
+  /**
+   * Recompute the deploy actor's reachable tiles for its *remaining* move budget — the
+   * deploy twin of {@link recomputeReach}. Called when the budget changes (turn start,
+   * after a step, after undo); the wash itself is repainted by {@link drawDeployReach}.
+   */
+  private recomputeDeployReach(actor: Unit): void {
+    const reach = this.deployMoveBudget > 0 && !isImmobilized(actor)
+      ? reachableTiles(actor, this.battle.units, this.grid, this.deployMoveBudget)
+      : [];
+    this.deployReachByKey = new Map(reach.map((r) => [`${r.tile.col},${r.tile.row}`, r]));
+  }
+
+  /**
+   * Light the deploy actor's reach (D-feel: the deploy turn now reads like a battle turn).
+   * Reuses {@link CombatView.drawPreview} in `"deploy"` mode — the reach wash for the
+   * remaining {@link deployMoveBudget} plus the lit hover path — which **suppresses the
+   * strike telegraph and enemy intents** (engagement is combat-only; the deploy preview
+   * must never offer a strike). Layered over the green/red zone washes, under the markers.
+   * Clears when it's not a live deploy turn (between turns, captured, busy, or aiming a
+   * skill — the armed footprint is the combat read, not part of this movement wash).
+   */
+  private drawDeployReach(): void {
+    if (!this.deployReachGfx) {
+      this.deployReachGfx = this.add.graphics().setDepth(0.47); // over the zone washes (0.4/0.45), under markers/tokens
+      this.boardObjects.push(this.deployReachGfx);
+    }
+    const actor = this.deployActor;
+    if (!actor || actor.captured || this.busy || this.over || this.phase !== "deployment" || this.armedSkill) {
+      this.deployReachGfx.clear();
+      return;
+    }
+    const hoverPath = this.deployHoverTile
+      ? this.deployReachByKey.get(`${this.deployHoverTile.col},${this.deployHoverTile.row}`)?.path
+      : undefined;
+    this.view.drawPreview(this.deployReachGfx, actor, this.battle.units, this.grid, {
+      moveBudget: this.deployMoveBudget,
+      acted: true, // no strike telegraph (also gated by mode) — engagement is combat-only
+      hoverPath,
+      mode: "deploy",
+    });
   }
 
   /**
@@ -1025,6 +1085,8 @@ export class BattleScene extends Phaser.Scene {
       if (spot.spotted) this.redrawTrapMarkers(); // a sensed trap — draw its fresh marker
       this.refreshDeployButtons();
       this.refreshDeployStatus();
+      this.recomputeDeployReach(actor); // budget spent + new position — relight the smaller reach
+      this.drawDeployReach();
       const moreMoves = this.deployMoveBudget > 0 && !spot.spotted;
       this.setHint(
         spot.spotted
@@ -1087,6 +1149,7 @@ export class BattleScene extends Phaser.Scene {
     this.deployActor = null;
     this.safeZoneGfx?.clear();
     this.dangerZoneGfx?.clear();
+    this.deployReachGfx?.clear(); // the deploy reach wash retires with the staging overlays
     clearLayer(this.deployMarkers);
     this.highlightTile(null);
 
@@ -1732,6 +1795,7 @@ export class BattleScene extends Phaser.Scene {
         if (clicked === actor) {
           this.armedSkill = null;
           this.refreshDeployButtons();
+          this.drawDeployReach(); // un-armed by clicking self — relight the movement wash
           this.setHint(`${actor.name}'s turn — reposition, use an ability, or End Turn (Space).`);
           return;
         }
@@ -1842,6 +1906,7 @@ export class BattleScene extends Phaser.Scene {
       if ((t?.col ?? -1) === (this.deployHoverTile?.col ?? -1) && (t?.row ?? -1) === (this.deployHoverTile?.row ?? -1)) return;
       this.deployHoverTile = t;
       this.refreshPreviewCard();
+      this.drawDeployReach(); // relight the route to the hovered tile (FE-style path read)
       return;
     }
     if (this.phase !== "battle" || !this.waitingFor || this.bribeArmed) return;

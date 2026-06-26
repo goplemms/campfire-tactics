@@ -112,6 +112,37 @@ async function main() {
       check("the per-turn header stays combat-only in deployment", fx.skip || fx.headers === 0);
       await shot("deploy-trap-fx");
 
+      // --- Stage: reach wash + lit hover path in deployment (feel parity) ------
+      // The deploy turn now reads like a battle turn: the actor's reachable tiles light for
+      // its remaining move budget and a hover lights the route — but the strike telegraph /
+      // enemy intents stay off (engagement is combat-only; the deploy preview must never
+      // offer a strike). Assert the reach graphic painted, a hover adds a lit path on top,
+      // and no strike-forecast badge appears.
+      const reach = await g.bsEval(`
+        const a = s.deployActor; if (!a) return { skip: true };
+        s.deployHoverTile = null; s.drawDeployReach();             // wash only (no hover)
+        const reachCount = s.deployReachByKey.size;
+        const washCmds = s.deployReachGfx ? s.deployReachGfx.commandBuffer.length : 0;
+        const r = [...s.deployReachByKey.values()].find(x => x.path && x.path.length > 0);
+        let pathLit = false, washWithHover = washCmds, badges = s.view.forecastLabels.size;
+        if (r) {
+          s.deployHoverTile = { col: r.tile.col, row: r.tile.row };
+          s.drawDeployReach();
+          washWithHover = s.deployReachGfx.commandBuffer.length;
+          pathLit = true;
+          badges = s.view.forecastLabels.size;
+          s.drawDeployReach(); // leave the route lit so the screenshot shows wash + path
+        }
+        return { budget: s.deployMoveBudget, reachCount, washCmds, washWithHover, pathLit, badges };
+      `);
+      console.log("• Reach wash + hover path in deployment");
+      check("the deploy actor has a move budget to light", reach.skip || reach.budget > 0);
+      check("deployment paints the reachable tiles (reach wash)", reach.skip || (reach.reachCount > 0 && reach.washCmds > 0));
+      check("a deploy hover lights the route to the tile", reach.skip || (reach.pathLit && reach.washWithHover > reach.washCmds));
+      check("no strike telegraph in deployment (engagement is combat-only)", reach.skip || reach.badges === 0);
+      await shot("deploy-reach-wash"); // wash + lit hover path layered over the zone washes
+      await g.bsEval(`s.deployHoverTile = null; s.drawDeployReach();`); // reset to the plain wash
+
       const startPos = st.pos;
 
       // --- Stage: a real tile click repositions the unit (and arms undo) ------

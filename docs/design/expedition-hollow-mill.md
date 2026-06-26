@@ -145,6 +145,17 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Deployment lights the reach like combat** (D-feel). A deploy turn now steps
+  tile-by-tile (`deployMoveBudget`), but the board showed **no reach read** — the player
+  couldn't see how far a step might go. The deploy actor's reachable tiles now light (the
+  amber **reach wash**) and a hover lights the **route** to a tile (the FE-style path
+  read), reusing `CombatView.drawPreview` in a new `"deploy"` mode that **suppresses the
+  strike telegraph and enemy intents** — engagement is combat-only (the stealth/alarm
+  invariant), so the deploy preview never offers a strike. The wash is its own graphics
+  layer over the green/red zone washes (under the markers); it relights as the budget
+  spends down (step / undo) and clears between turns and at Start Battle. Pure render.
+  Seams: `BattleScene.drawDeployReach` / `recomputeDeployReach`, `CombatView.drawPreview`
+  `mode`. See [02-deployment](02-deployment.md).
 - **Deployment surfaces damage feedback like combat** (D-feel). The combat FX bus
   (floating damage, the combat log, impact scaling, the heal/defeat readouts) was wired
   only at **Start Battle**, so a unit that sprang a concealed enemy trap **during

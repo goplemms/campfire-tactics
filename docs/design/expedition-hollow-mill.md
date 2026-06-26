@@ -145,6 +145,16 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **One shared scene path for deployment + combat** (D-feel, internal — no behavior
+  change). With deployment now carrying combat's damage feedback and reach read, the
+  parallel *render twins* that had drifted into two copies — **Search**, **Disarm**, the
+  **click-ahead** replay, and the whole-turn **Undo** — collapsed into single
+  context-parameterized helpers (`doSearch`/`doDisarm`/`processQueuedClick`/`undoTurn`
+  take a `BoardCtx`), with a shared act-economy seam (`canFieldAct` / `commitFieldAct`) and
+  the undo resync loop as the one spine. Only the genuinely phase-specific bits branch:
+  the capture-wave row vs. the one-Act economy. Movement (`deployMove`/`playerMoveStep`)
+  and the action row stay separate where they diverge by design. Behavior-preserving — the
+  full deploy→battle e2e is unchanged and green.
 - **Deployment lights the reach like combat** (D-feel). A deploy turn now steps
   tile-by-tile (`deployMoveBudget`), but the board showed **no reach read** — the player
   couldn't see how far a step might go. The deploy actor's reachable tiles now light (the

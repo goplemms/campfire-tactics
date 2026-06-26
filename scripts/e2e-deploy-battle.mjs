@@ -260,7 +260,7 @@ async function main() {
               if (!a || !d) return { skip: true };
               const from = { col: a.pos.col, row: a.pos.row };
               s.queuedTile = { col: d.tile.col, row: d.tile.row }; // a click that arrived mid-step
-              s.processQueuedClick(a);                              // replay it now the step finished
+              s.processQueuedClick(a, "battle");                    // replay it now the step finished
               return { from, queuedCleared: s.queuedTile === null };
             `);
             check("a click-ahead clears the queue when replayed", qb && (qb.skip || qb.queuedCleared));

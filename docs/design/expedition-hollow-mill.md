@@ -145,6 +145,20 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Unification finish: one RNG seed + the last shared spines** (D67, internal — no
+  behavior change). Two closing passes. (1) **RNG seam:** the scene reached into `run.seed`
+  for its two deploy streams while the `Battle`'s own seed sat dormant; the run seed is now
+  wired onto the `Battle` and deployment draws via a label-keyed `Battle.stream()` — one
+  seed owner, byte-identical streams. (`Battle.roll` stays the separate drawCount-keyed seam
+  for apply-driven combat draws; routing deploy rolls through it would desync replay, since
+  they run outside the turn loop and their outcomes are logged or render-only.) (2) The last
+  cleanly-shared **turn-loop spines** fold into helpers: `scanTrapsOnTurnOpen` (the on-open
+  Awareness scan, both phases) and `armTargetedSkill` (the arm-a-skill-and-prompt tail). What
+  *stays* phase-specific by design — the per-turn controllers (`deployNextActor`/`onAdvance`),
+  the begin/end-turn bodies, and the skill *cast* (`castDeploySkill`/`commitSkill`) — diverges
+  genuinely on the capture-wave vs. AI/win-lose, the two clock instances, and the drained
+  `deploySkill` verb vs. the combat skill verb; forcing those into one branchy function would
+  cost more than it saves. Guarded byte-identical (golden trace, sim, e2e).
 - **One clock for deployment + combat** (D67, internal — no behavior change). Deployment
   ran on a bespoke `DeployClock` that re-implemented `CTClock`'s seed/tick/ready/next/spend
   beside it. That class is **retired**: `CTClock` gained an optional **tempo source** (a

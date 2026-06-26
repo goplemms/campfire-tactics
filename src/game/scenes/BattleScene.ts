@@ -593,12 +593,9 @@ export class BattleScene extends Phaser.Scene {
     // trap becomes undoable back to the turn's start, exactly like a combat turn.
     this.battle.beginUndo();
     // The active unit looks around as it steps up — a passive Awareness scan may spot
-    // nearby traps (D12 parity with the combat turn-open). Reveal *before* the buttons
-    // render so a freshly-spotted adjacent trap surfaces its Disarm verb this turn.
-    const spotted = hiddenTraps(this.battle.entities).length > 0
-      ? revealTrapsNear(unit, this.battle.entities, this.spotRng)
-      : [];
-    if (spotted.length > 0) this.redrawTrapMarkers();
+    // nearby traps (D12 parity with the combat turn-open, the same shared helper). Reveal
+    // *before* the buttons render so a freshly-spotted adjacent trap surfaces its Disarm verb.
+    const spotted = this.scanTrapsOnTurnOpen(unit);
     this.selectDeployActor(unit);
     this.recomputeDeployReach(unit); // light the reachable tiles for this turn's budget
     this.drawDeployReach();
@@ -606,7 +603,7 @@ export class BattleScene extends Phaser.Scene {
     const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0;
     this.setHint(
       `${unit.name}'s turn — click a tile to reposition, Dig In, or place a trap, then End Turn (Space). ` +
-        (spotted.length > 0 ? `Spots ${spotted.length} hidden trap${spotted.length > 1 ? "s" : ""} (${ICON.trapArmed.glyph})! ` : "") +
+        (spotted > 0 ? `Spots ${spotted} hidden trap${spotted > 1 ? "s" : ""} (${ICON.trapArmed.glyph})! ` : "") +
         (trapsAfield ? `Search to scan further, or a trapper can Disarm. ` : "") +
         `The enemy's reach is ${this.front.radius} step${this.front.radius === 1 ? "" : "s"} and growing.`,
     );
@@ -804,8 +801,22 @@ export class BattleScene extends Phaser.Scene {
     if (skill.effect.kind === "placeTrap") return this.placeTrap(skill.effect);
     if (skill.id === "dig-in") return this.digIn();
     if (skill.target === "self") return this.castDeploySkill(actor, skill, actor);
+    this.armTargetedSkill(actor, skill, "deployment");
+  }
+
+  /**
+   * Arm a targeted ability for a click — the shared tail of both skill routers: set the
+   * armed skill, repaint the board read for the new aim (the deploy reach wash vs. the
+   * combat footprint preview), and prompt for a target with the same message in either phase.
+   */
+  private armTargetedSkill(actor: Unit, skill: SkillDef, ctx: BoardCtx): void {
     this.armedSkill = skill;
-    this.drawDeployReach(); // aiming a skill: clear the movement wash (the armed read is combat-only)
+    if (ctx === "deployment") {
+      this.drawDeployReach(); // aiming clears the movement wash (the armed read is combat-only)
+    } else {
+      this.armedAim = null;
+      this.drawPreview();
+    }
     this.setHint(`${skill.name}: click a valid target (or click ${actor.name} to cancel).`);
   }
 
@@ -1221,7 +1232,7 @@ export class BattleScene extends Phaser.Scene {
     this.armedAim = null;
     this.recomputeReach(actor);
     // The active unit looks around — an Awareness roll may spot nearby traps (D12).
-    this.spotTrapsForActor(actor);
+    this.scanTrapsOnTurnOpen(actor); // combat lets the generic turn hint stand below
     if (this.noActionsAvailable(actor)) {
       this.setHint(`${actor.name} has no available action — turn passed. Advance Clock.`);
       this.endPlayerTurn(actor);
@@ -1398,14 +1409,18 @@ export class BattleScene extends Phaser.Scene {
 
   // --- Trap-field: spotting, searching, disarming (D12) ----------------------
 
-  /** Roll the active unit's Awareness against nearby hidden traps; draw any spotted. */
-  private spotTrapsForActor(actor: Unit, search = false): void {
-    if (hiddenTraps(this.battle.entities).length === 0) return;
-    const found = revealTrapsNear(actor, this.battle.entities, this.spotRng, { search });
-    if (found.length > 0) {
-      this.redrawTrapMarkers();
-      this.setHint(`${actor.name} spots ${found.length} hidden trap${found.length > 1 ? "s" : ""}! (${ICON.trapArmed.glyph})`);
-    }
+  /**
+   * The on-turn-open Awareness scan (D12), shared by **both** phases' turn-start: a unit
+   * stepping up may passively spot nearby concealed traps. Reveals them, redraws the
+   * markers if any surfaced, and returns the count — the caller folds it into its turn
+   * hint (deployment names the spot; combat lets the generic turn hint stand). A no-op
+   * when no traps are afield.
+   */
+  private scanTrapsOnTurnOpen(actor: Unit): number {
+    if (hiddenTraps(this.battle.entities).length === 0) return 0;
+    const found = revealTrapsNear(actor, this.battle.entities, this.spotRng);
+    if (found.length > 0) this.redrawTrapMarkers();
+    return found.length;
   }
 
   /** A revealed, un-sprung concealed trap adjacent to `actor` (the disarm target). */
@@ -1603,10 +1618,7 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     if (skill.target === "self") return this.commitSkill(actor, skill, actor);
-    this.armedSkill = skill;
-    this.armedAim = null;
-    this.setHint(`${skill.name}: click a valid target (or click ${actor.name} to cancel).`);
-    this.drawPreview();
+    this.armTargetedSkill(actor, skill, "battle");
   }
 
   private commitSkill(actor: Unit, skill: SkillDef, target: Unit): void {

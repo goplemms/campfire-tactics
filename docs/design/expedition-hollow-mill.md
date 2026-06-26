@@ -145,6 +145,23 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **The engagement axis is gone — combat in pre-combat is allowed, just untargeted** (D67 W7,
+  internal — byte-identical for current content). Engagement is no longer a *per-skill phase
+  rule*; it's *board state*. `skillContexts` no longer classifies attacks as combat-only — every
+  board skill (offensive or support) is usable in both phases — and the interpreter's old
+  `usableContext` refusal is replaced by one target check: a skill aimed at a **concealed** unit
+  has no engageable target, so it's refused. That single rule *is* the stealth invariant now
+  ("an attack in staging finds no one to hit"), and it does double duty: a scenario that stages
+  **un-concealed** defenders (a keep assault) lets the very same attack land in pre-combat, no
+  new code. The deploy row surfaces offensive skills only when a foe is actually engageable
+  (`canEngage`), so default staging — which conceals the whole enemy roster — reads exactly as
+  before (no attack buttons), making this byte-identical today. Two combat-only defaults remain,
+  and they're **not** the engagement axis: **charged** (a CT-clock mechanic with no deploy
+  equivalent) and **med-heal** (its herb-pick menu is combat-wired UX — a render-scope limit,
+  trivially liftable by wiring a deploy herb-menu). Guarded: full suite (831, incl. a new
+  keep-assault test — the same attack lands once the foe is un-concealed), e2e (46), sim
+  (unchanged). The render *ghost* token (info-hiding stand-in for a concealed/intel-revealed
+  foe) is the natural next layer on this flag — deferred until intel-reveal is on the table.
 - **A `concealed` flag makes "no targets in pre-combat" true — the engagement substrate**
   (D67 W6, internal — byte-identical). Groundwork for treating engagement as *board state*
   rather than a per-skill phase rule. A new per-unit `concealed` flag means "not yet

@@ -110,12 +110,25 @@ describe("D67 — one skill verb, phase-aware commit", () => {
     expect(isValidSkillTarget(GUARD_BREAK, a, foe)).toBe(true);
   });
 
-  it("refuses a combat-only skill (an attack) cast in pre-combat — the engagement invariant", () => {
+  it("an attack in pre-combat finds no engageable target (the foe is concealed) — refused, nothing lands (W7)", () => {
+    const battle = new Battle(new TileGrid(8, 1), [pawn("a", 0), pawn("foe", 1, "enemy")]);
+    battle.enterDeploy(); // conceals the enemy roster
+    const [a, foe] = battle.units;
+    // No per-phase ban any more (W7): the cast is refused because the foe isn't engageable —
+    // the stealth/alarm invariant as board state. (A keep-assault would leave the foe
+    // un-concealed, and the same attack would land — that's the point of the substrate.)
+    battle.useSkill(a, GUARD_BREAK, foe);
+    expect(foe.hp).toBe(20); // the attack never landed in staging (stealth preserved)
+    expect(battle.log.length).toBe(0); // a refused action isn't logged
+  });
+
+  it("the SAME attack lands once the foe is engageable (the keep-assault path — un-concealed in pre-combat)", () => {
     const battle = new Battle(new TileGrid(8, 1), [pawn("a", 0), pawn("foe", 1, "enemy")]);
     battle.enterDeploy();
     const [a, foe] = battle.units;
-    battle.useSkill(a, GUARD_BREAK, foe); // damage → combat-only; refused pre-combat
-    expect(foe.hp).toBe(20); // the attack never landed in staging (stealth/alarm preserved)
-    expect(battle.log.length).toBe(0); // a refused action isn't logged
+    foe.concealed = false; // a scenario stages this defender as a present, targetable foe
+    battle.useSkill(a, GUARD_BREAK, foe); // no ban, an engageable target → it resolves pre-combat
+    expect(foe.hp).toBeLessThan(20); // the strike landed in staging — combat in pre-combat, by design
+    expect(battle.log[battle.log.length - 1]).toMatchObject({ kind: "skill", unit: "a" });
   });
 });

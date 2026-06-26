@@ -761,7 +761,13 @@ export class BattleScene extends Phaser.Scene {
     // pre-combat skills + the universal Dig In / Defend, from availableSkills — so a Set-Trap
     // skill surfaces because it's pre-combat *data*, not via a hand-computed `canTrap`.
     if (actor && !actor.captured && !this.deployActed) {
+      // Offensive skills are board skills now (D67 W7) — not banned pre-combat, just idle
+      // without a target. Surface them only when a foe is actually **engageable** (un-concealed
+      // — a keep-assault stages defenders that way); the default staging conceals the enemy
+      // roster, so this stays empty and the deploy row reads exactly as before.
+      const canEngage = this.battle.units.some((u) => u.alive && !u.concealed && u.side !== actor.side);
       for (const skill of availableSkills(actor, "pre-combat")) {
+        if (skill.target === "enemy" && !canEngage) continue;
         const text = skill.effect.kind === "placeTrap" ? "Place Trap Here" : skill.name;
         specs.push({ text, description: skill.description, onClick: () => this.onDeploySkillButton(actor, skill) });
       }
@@ -837,14 +843,20 @@ export class BattleScene extends Phaser.Scene {
    * here. Logged + undoable; it spends the unit's **act** (via the shared {@link
    * commitFieldAct} seam, D67 W4), leaving its **move** free, so a Dash → reposition works.
    * The damage/heal float + log already ride the bus (wired up front); the cast adds the same
-   * `flashHeal` impact pop combat plays — but **never** a strike telegraph (the engagement
-   * invariant: deployment shows support cues, never an attack; `flashHit` stays combat-only).
+   * impact pop combat plays — a heal/buff pop on a friendly target, or a strike on a foe. In
+   * the **default** staging the enemy roster is concealed (W6), so only friendly targets are
+   * castable and it's always the support pop; a strike would only fire against an *engageable*
+   * pre-combat foe (a keep-assault scenario, W7) — there's no longer a blanket "no strikes in
+   * staging" rule, only "no engaging the concealed."
    */
   private castDeploySkill(actor: Unit, skill: SkillDef, target: Unit): void {
     if (this.busy || actor.captured || this.deployActed) return;
     this.armedSkill = null;
     this.battle.useSkill(actor, skill, target); // pre-combat: resolve + arm cooldown, no CT
-    this.flashHeal(target); // the support/heal/buff pop (deploy casts are support — no strikes)
+    // Friendly target → the heal/buff pop; an engageable foe → the strike (keep-assault only —
+    // the default staging conceals enemies, so this is the support pop in all current content).
+    if (target.side === actor.side) this.flashHeal(target);
+    else this.flashAttack(actor, target);
     // Skill-specific render (a cast may buff/move units): re-place tokens + relight the reach
     // (the move is still free). The act-economy commit + deploy-row refresh is the shared seam.
     this.refreshAuras();

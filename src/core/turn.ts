@@ -32,11 +32,9 @@ import { stampPassives } from "./jobs";
 import {
   resolveSkill,
   resolveMedHeal,
-  skillContexts,
   type SkillDef,
   type SkillOutcome,
   type PlaceTrapEffect,
-  type UsableContext,
 } from "./skills";
 import {
   commitsTurn,
@@ -394,13 +392,15 @@ export class Battle {
         const target = this.unit(action.target);
         const skill = action.skill;
         if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
-        // Engagement invariant (D67): the skill must declare the current phase in its
-        // `usableContext` — so an attack / charged ability can't be cast in pre-combat (the
-        // stealth/alarm rule), and a deploy-only Set Trap can't be cast mid-combat. Enforced
-        // here at the core, not just hidden by the renderer's row gating.
+        // Engagement is **board state, not a per-phase skill ban** (D67 W7): a skill aimed at a
+        // concealed unit has no engageable target, so it's refused. That *is* the stealth/alarm
+        // invariant now — an attack cast in staging finds no one to hit (the foe is concealed
+        // until the battle opens) — and it's the only target gate the verb needs. A scenario
+        // that stages targetable pre-combat foes (a keep assault) leaves them un-concealed, and
+        // the same attack just works. Self/ally targets are never concealed, so support is
+        // unaffected. Replaces the old `usableContext` phase refusal.
+        if (target.concealed) return { ok: false, reason: `${skill.name}: no engageable target` };
         const deploy = this.phase === "deploy";
-        const context: UsableContext = deploy ? "pre-combat" : "combat";
-        if (!skillContexts(skill).includes(context)) return { ok: false, reason: `${skill.name} can't be used in ${context}` };
         // The **one** skill verb across both phases (D67): the effect resolves identically,
         // and the *commit* is now almost identical too (D67 W5). Both phases **arm the
         // skill's cooldown** — an ability used in staging is genuinely used, cooling toward

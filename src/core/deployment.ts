@@ -19,7 +19,7 @@
  * seed, a rescuable sub-objective in the battle. Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit } from "./units";
+import { isActive, type Unit } from "./units";
 import type { Rng } from "./rng";
 import type { TileGrid } from "./grid";
 import type { GridCoord } from "./iso";
@@ -576,17 +576,21 @@ export function safeGroundRemains(grid: TileGrid, camp: DeploySource, front: Dep
 
 /**
  * Build the Deployment clock (D67 clock fold) as a {@link CTClock} carrying the **front**
- * as a strict-lead {@link TempoSource}. Player units charge on the **one** clock element —
- * the same {@link CTClock} combat runs on — and the front rides it as a non-unit
- * participant that takes the net-closing turn only on a strict CT lead (players win ties,
- * the front's deliberate rule). Because capture is rolled on the front's turn, a faster
- * party simply earns more positioning turns between net-closings. Drive it with
- * `seedFlat()` (the per-unit deploy seed), `nextTurn()` (a `{kind:"unit"|"tempo"}` result),
- * `spend(unit, …)`, and `spendTempo()` (the front's net step). Replaces the bespoke
- * DeployClock — deployment and combat no longer maintain parallel clocks.
+ * as a strict-lead {@link TempoSource}. The clock is built over **all** units — the same
+ * roster combat runs on — but its participant predicate is **narrowed to active players**
+ * (`setParticipants`), so the pre-positioned enemies are frozen off the clock while the
+ * front rides it as a non-unit participant that takes the net-closing turn only on a strict
+ * CT lead (players win ties, the front's deliberate rule). Because capture is rolled on the
+ * front's turn, a faster party simply earns more positioning turns between net-closings.
+ * Drive it with `seedFlat()` (the per-unit deploy seed), `nextTurn()` (a
+ * `{kind:"unit"|"tempo"}` result), `spend(unit, …)`, and `spendTempo()` (the front's net
+ * step). Replaces the bespoke DeployClock — deployment and combat no longer maintain
+ * parallel clocks, and (D67 W-series) no longer even separate *rosters*: one clock, one
+ * unit list, the phase chosen by the participant predicate.
  */
 export function createDeployClock(units: readonly Unit[], front: DeployFront): CTClock {
-  const players = units.filter((u) => u.side === "player");
   const tempo: TempoSource = { id: "front", ct: 0, speed: front.speed, strictLeadTie: true };
-  return new CTClock(players, undefined, tempo);
+  const clock = new CTClock([...units], undefined, tempo);
+  clock.setParticipants((u) => isActive(u) && u.side === "player");
+  return clock;
 }

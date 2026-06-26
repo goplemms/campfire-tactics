@@ -591,4 +591,29 @@ describe("D63/D67 deploy clock — the front folds onto the one CTClock as a tem
     const front = createFront(grid(), enemies);
     expect(front.speed).toBe(frontSpeed(enemies, FRONT_SPEED_LEAN));
   });
+
+  it("freezes the enemies off the one clock (W1 — built over the WHOLE roster, narrowed to players)", () => {
+    // The deploy clock now carries the *same* roster combat runs on — players AND the
+    // pre-positioned enemies — but its participant predicate narrows turn-taking to the
+    // active party. The enemies must neither tick toward CT nor ever be handed a turn.
+    const players = [unit("p1", "player", 2, 8), unit("p2", "player", 2, 8)];
+    const enemies = [unit("e1", "enemy", 2, 30), unit("e2", "enemy", 2, 30)]; // fast, but frozen
+    const front = createFront(grid(), enemies);
+    const clock = createDeployClock([...players, ...enemies], front);
+    clock.seedFlat();
+    expect(enemies.every((e) => e.ct === 0)).toBe(true); // not seeded — only the party is
+
+    const actors = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const t = clock.nextTurn();
+      if (t.kind !== "unit") {
+        clock.spendTempo();
+        continue;
+      }
+      actors.add(t.unit.id);
+      clock.spend(t.unit, { moved: true });
+    }
+    expect([...actors].sort()).toEqual(["p1", "p2"]); // never an enemy
+    expect(enemies.every((e) => e.ct === 0)).toBe(true); // never charged, despite their high Speed
+  });
 });

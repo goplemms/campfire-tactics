@@ -177,10 +177,24 @@ export class CTClock {
    */
   private readonly tempo?: TempoSource;
 
+  /**
+   * Which units **participate** in this clock's turn order — they tick toward CT and can
+   * be handed a turn (D67 one-clock fold). Defaults to {@link isActive} (alive + not
+   * captured), so a combat clock is byte-identical to before. The Deployment phase narrows
+   * it to active *players* (the enemies are frozen, pre-positioned and concealed, while the
+   * front rides the clock as the tempo source). Settable so one clock can serve both phases.
+   */
+  private participates: (u: Unit) => boolean = isActive;
+
   constructor(units: Unit[], bus?: EventBus, tempo?: TempoSource) {
     this.units = units;
     this.bus = bus;
     this.tempo = tempo;
+  }
+
+  /** Narrow (or restore) which units participate in the turn order — the phase seam. */
+  setParticipants(predicate: (u: Unit) => boolean): void {
+    this.participates = predicate;
   }
 
   /**
@@ -262,11 +276,13 @@ export class CTClock {
       }
     }
 
-    // 2) Every living, non-captured unit charges by its **effective** Speed
+    // 2) Every **participating** unit charges by its **effective** Speed
     //    (Slowed/Hastened, D41) and burns down its cooldowns by the same amount
-    //    (D37) — a captured unit is bound and ticks toward neither.
+    //    (D37). The default predicate is {@link isActive} (alive + not captured —
+    //    a captured unit is bound and ticks toward neither); Deployment narrows it
+    //    to active players, freezing the pre-positioned enemies off the same clock.
     for (const u of this.units) {
-      if (!u.alive || u.captured) continue;
+      if (!this.participates(u)) continue;
       const sp = effectiveSpeed(u);
       u.ct += sp;
       tickSkillCooldowns(u, sp);
@@ -300,7 +316,7 @@ export class CTClock {
    * `idle` only arises for a unit-only (combat) clock with no one left to act.
    */
   nextTurn(): ClockTurn {
-    const canAct = isActive;
+    const canAct = this.participates;
     const tempoReady = () => this.tempo !== undefined && this.tempo.ct >= TURN_THRESHOLD;
     const advanced = tickUntilReady(
       () => this.units.some((u) => canAct(u) && u.ct >= TURN_THRESHOLD) || tempoReady(),
@@ -325,7 +341,10 @@ export class CTClock {
    * per-unit because the front, not a side, is the opposing tempo.
    */
   seedFlat(bonus = 0): void {
-    for (const u of this.units) u.ct = u.captured ? 0 : Math.max(0, u.speed + bonus);
+    for (const u of this.units) {
+      if (!this.participates(u)) continue; // the frozen enemies aren't seeded — only the party
+      u.ct = u.captured ? 0 : Math.max(0, u.speed + bonus);
+    }
     if (this.tempo) this.tempo.ct = 0;
   }
 

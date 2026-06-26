@@ -145,6 +145,19 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **One clock *instance* can serve both phases — the participant seam** (D67 W-series,
+  internal — no behavior change). The last thing keeping deployment on a *separate* `CTClock`
+  was the roster: deploy built its clock over **players only**, combat over everyone. Now the
+  clock carries a settable **participant predicate** (`setParticipants`) — who ticks toward CT
+  and can be handed a turn — defaulting to `isActive` (alive + uncaptured), so a combat clock
+  is byte-identical to before. `createDeployClock` builds over the **whole roster** (players
+  *and* the pre-positioned enemies) and narrows the predicate to *active players*, so the
+  enemies are **frozen off the same clock** — they neither charge nor ever take a turn — while
+  the front rides it as the tempo source. This proves one clock element can stage *and* fight,
+  the phase chosen by the predicate; the actual fold onto the Battle's own clock is the next
+  step (deploy is still on its own instance here). `seedFlat` skips non-participants too, so
+  the frozen enemies aren't deploy-seeded. Guarded byte-identical: golden trace, full suite,
+  e2e (46), and sim all green; a new test pins the enemies frozen off a mixed-roster clock.
 - **One skill verb across pre-combat + combat** (D67, internal — no behavior change). The
   deploy `deploySkill`/`deployMove` verbs are **retired**: repositioning and skill-casting
   now go through the **same** `moveUnit`/`useSkill` the combat turn uses, and the

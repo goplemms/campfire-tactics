@@ -310,13 +310,13 @@ export interface SkillDef {
  * idle in staging rather than being banned. The rule, in one place:
  *
  * - **board** (every offensive/support/buff effect: damage/cleave/forced-move/channel/status/
- *   heal/cleanse/guard-allies, and a move self-buff) ⇒ both `pre-combat` + `combat`;
+ *   heal/med-heal/cleanse/guard-allies, and a move self-buff) ⇒ both `pre-combat` + `combat`;
  * - a **trap** ⇒ `pre-combat`; **camp/morale/recon** ⇒ `overworld`.
  *
  * The few genuinely **single-phase mechanics** carry an explicit {@link SkillDef.usableContext}
  * (Dig In is `pre-combat`; the Scout's stealth is `combat`) — those are phase-native, not the
- * engagement axis. **Charged** + **med-heal** stay `combat` here for mechanic/UX reasons noted
- * below, not because engagement is phase-gated. The switch is exhaustive over the effect union.
+ * engagement axis. The one remaining default exception is **charged** (it resolves on the CT
+ * clock, a combat-only mechanic). The switch is exhaustive over the effect union.
  */
 export function skillContexts(skill: SkillDef): UsableContext[] {
   if (skill.usableContext) return skill.usableContext;
@@ -336,10 +336,10 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
       // Camp/overworld economy + recon mechanisms (D72) — surfaced on the between-nodes beat.
       return ["overworld"];
     case "med-heal":
-      // The herb-stash heal (D40): its stash-pick menu is combat-wired UX, and no deploy
-      // herb-menu is built yet — so it stays combat-only for now. A render-scope limit, not
-      // an engagement rule; wiring a deploy herb-menu would make it board like the rest.
-      return ["combat"];
+      // The herb-stash heal (D40) — a support action like any other now (D67 W8): the deploy
+      // herb-pick menu is wired, so the demo Medic can pre-heal a wounded unit in staging. It
+      // spends a carried herb in either phase; only the surrounding turn-commit is phase-aware.
+      return ["pre-combat", "combat"];
     case "damage":
     case "cleave":
     case "forced-move":

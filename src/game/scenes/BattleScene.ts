@@ -816,6 +816,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.busy || this.deployActor !== actor || actor.captured || this.deployActed) return;
     if (skill.effect.kind === "placeTrap") return this.placeTrap(skill.effect);
     if (skill.id === "dig-in") return this.digIn();
+    if (skill.effect.kind === "med-heal") return this.openHerbMenu(actor, skill, "deployment"); // the Medic pre-heals (D67 W8)
     if (skill.target === "self") return this.castDeploySkill(actor, skill, actor);
     this.armTargetedSkill(actor, skill, "deployment");
   }
@@ -837,6 +838,28 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
+   * Med-heal's two-step pick (D44/D67 W8): choose a carried herb, then arm the skill for an
+   * ally click — the **same** flow in either phase. Picking a herb sets `pendingHerb` and hands
+   * off to {@link armTargetedSkill} (which paints the right per-phase aim read), so the deploy
+   * Medic pre-heals a wounded unit exactly as the combat Medic heals mid-fight.
+   */
+  private openHerbMenu(actor: Unit, skill: SkillDef, ctx: BoardCtx): void {
+    const herbs = ["salve", "stimulant", "antidote"].filter((h) => countOf(this.run.inventory, h) > 0);
+    if (herbs.length === 0) return void this.setHint("No herbs carried — provision some at camp.");
+    this.layoutActionMenu(
+      herbs.map((h) => ({
+        text: `${h} (${countOf(this.run.inventory, h)})`,
+        description: `Heal with ${h}.`,
+        onClick: () => {
+          this.pendingHerb = h;
+          this.armTargetedSkill(actor, skill, ctx); // armedSkill + the ctx aim read + the prompt
+          this.setHint(`Heal (${h}): click a wounded ally (or click ${actor.name} to cancel).`);
+        },
+      })),
+    );
+  }
+
+  /**
    * Cast a dual-context ability during Deployment (D67) — the **same** `useSkill` verb as
    * combat. The interpreter resolves the effect and **arms its cooldown** (D67 W5: a skill
    * used in staging is genuinely used), but the deploy clock owns the turn, so no CT is spent
@@ -851,8 +874,21 @@ export class BattleScene extends Phaser.Scene {
    */
   private castDeploySkill(actor: Unit, skill: SkillDef, target: Unit): void {
     if (this.busy || actor.captured || this.deployActed) return;
+    const herb = this.pendingHerb;
     this.armedSkill = null;
-    this.battle.useSkill(actor, skill, target); // pre-combat: resolve + arm cooldown, no CT
+    this.pendingHerb = null;
+    // Med-heal spends a carried herb (the Medic, D67 W8); every other skill resolves via the
+    // one useSkill verb. Both pre-combat: resolve + arm cooldown, no CT (the deploy clock owns
+    // the turn). If the herb vanished between pick and click, nothing committed — reopen the row.
+    if (skill.effect.kind === "med-heal" && herb) {
+      const out = this.battle.useHeal(actor, skill, target, herb, this.run.inventory, { commitTurn: false });
+      if (out.healed === undefined && out.cleansed === undefined) {
+        this.refreshDeployButtons();
+        return void this.setHint("That herb isn't carried anymore.");
+      }
+    } else {
+      this.battle.useSkill(actor, skill, target);
+    }
     // Friendly target → the heal/buff pop; an engageable foe → the strike (keep-assault only —
     // the default staging conceals enemies, so this is the support pop in all current content).
     if (target.side === actor.side) this.flashHeal(target);
@@ -1628,25 +1664,7 @@ export class BattleScene extends Phaser.Scene {
     // Respect the per-skill cooldown for the keyboard path too (D37).
     if (onSkillCooldown(actor, skill.id)) return void this.setHint(`${skill.name} is still cooling down.`);
     // Medic med-heal (D44): pick a herb from the carried stash, then a target ally.
-    // Makes the medic work in **every** fight, not just the demo.
-    if (skill.effect.kind === "med-heal") {
-      const herbs = ["salve", "stimulant", "antidote"].filter((h) => countOf(this.run.inventory, h) > 0);
-      if (herbs.length === 0) return this.setHint("No herbs carried — provision some at camp.");
-      this.layoutActionMenu(
-        herbs.map((h) => ({
-          text: `${h} (${countOf(this.run.inventory, h)})`,
-          description: `Heal with ${h}.`,
-          onClick: () => {
-            this.pendingHerb = h;
-            this.armedSkill = skill;
-            this.armedAim = null;
-            this.setHint(`Heal (${h}): click a wounded ally (or click ${actor.name} to cancel).`);
-            this.drawPreview();
-          },
-        })),
-      );
-      return;
-    }
+    if (skill.effect.kind === "med-heal") return this.openHerbMenu(actor, skill, "battle");
     if (skill.target === "self") return this.commitSkill(actor, skill, actor);
     this.armTargetedSkill(actor, skill, "battle");
   }
@@ -1852,6 +1870,7 @@ export class BattleScene extends Phaser.Scene {
       if (this.armedSkill) {
         if (clicked === actor) {
           this.armedSkill = null;
+          this.pendingHerb = null; // cancel a half-made med-heal pick too (D67 W8)
           this.refreshDeployButtons();
           this.drawDeployReach(); // un-armed by clicking self — relight the movement wash
           this.setHint(`${actor.name}'s turn — reposition, use an ability, or End Turn (Space).`);

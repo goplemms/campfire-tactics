@@ -14,6 +14,7 @@ import { Battle } from "./turn";
 import { effectiveMove } from "./combat";
 import { onSkillCooldown, TURN_THRESHOLD } from "./clock";
 import { TileGrid } from "./grid";
+import { createInventory, countOf } from "./inventory";
 import { createUnit, type Side, type Unit } from "./units";
 import { isValidSkillTarget, type SkillDef } from "./skills";
 
@@ -43,6 +44,9 @@ const MENDER: SkillDef = {
   cost: { cooldown: 200 }, effect: { kind: "heal", amount: 10 },
 };
 
+/** The Medic's herb-stash heal — a board skill in both phases now (W8). */
+const MED_HEAL: SkillDef = { id: "heal", name: "Heal", description: "", phase: "battle", target: "ally", range: 2, spend: "act", effect: { kind: "med-heal" } };
+
 function pawn(id: string, col: number, side: Side = "player"): Unit {
   return createUnit({ id, side, pos: { col, row: 0 }, awareness: 2, speed: 10, maxHp: 20, attack: 5, defense: 1, moveRange: 3, sightRadius: 4 });
 }
@@ -65,6 +69,19 @@ describe("D67 — one skill verb, phase-aware commit", () => {
     hurt.hp = 5;
     battle.useSkill(medic, PLAIN_HEAL, hurt);
     expect(hurt.hp).toBeGreaterThan(5); // healed, off the deploy clock
+  });
+
+  it("the Medic's herb-stash med-heal works pre-combat — spends a carried herb, heals, no CT (W8)", () => {
+    const battle = new Battle(new TileGrid(8, 1), [pawn("medic", 0), pawn("hurt", 1)]);
+    battle.enterDeploy();
+    const [medic, hurt] = battle.units;
+    hurt.hp = 5;
+    medic.ct = TURN_THRESHOLD;
+    const inv = createInventory(6, { salve: 1 });
+    battle.useHeal(medic, MED_HEAL, hurt, "salve", inv, { commitTurn: false });
+    expect(hurt.hp).toBeGreaterThan(5); // the Medic pre-heals a wounded unit in staging
+    expect(countOf(inv, "salve")).toBe(0); // the herb was spent (same logistics as combat)
+    expect(medic.ct).toBe(TURN_THRESHOLD); // ...but no CT spent — the deploy clock owns the turn
   });
 
   it("pre-combat arms the cooldown but doesn't spend CT — the deploy clock owns the turn (W5)", () => {

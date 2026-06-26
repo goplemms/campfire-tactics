@@ -145,6 +145,21 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Med-heal works in both phases — the Medic can pre-heal in staging** (D67 W8). The last
+  combat-only board skill joins the rest: the herb-stash heal is now a `pre-combat` + `combat`
+  skill, so the demo Medic (who joins mid-run) can spend a carried herb to patch a wounded unit
+  *before* the fight, not only during it. The two-step herb pick (choose salve/stimulant/
+  antidote → click a wounded ally) is one shared `openHerbMenu(actor, skill, ctx)` helper that
+  reuses the existing `armTargetedSkill` arming, so the combat and deploy flows are the same code
+  — only the per-phase aim read differs. The cast routes through the same `useHeal` verb in
+  either phase (resolve + arm cooldown + spend the herb; the deploy clock owns the turn, so no
+  CT). The only remaining default that's still combat-only is **charged** (a CT-clock mechanic
+  with no deploy equivalent) — that one is genuinely phase-native, not UX. *Caveat, shared with
+  combat:* med-heal resolves outside the action log (`useHeal` → `resolveMedHeal`, not `apply`),
+  so it isn't undoable/replayable in **either** phase — a pre-existing gap deploy inherits, not a
+  new one; making med-heal a logged action would close it in both at once (a separate change).
+  Guarded: full suite (832, incl. a new pre-combat med-heal test — heals, spends the herb, no
+  CT), e2e (46, the refactored combat herb-menu unbroken), sim (unchanged).
 - **The engagement axis is gone — combat in pre-combat is allowed, just untargeted** (D67 W7,
   internal — byte-identical for current content). Engagement is no longer a *per-skill phase
   rule*; it's *board state*. `skillContexts` no longer classifies attacks as combat-only — every

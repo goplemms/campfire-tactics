@@ -47,13 +47,13 @@ describe("skillContexts — engagement is board state, not a combat-only ban (W7
     const debuff = mk({ target: "enemy", effect: { kind: "status", status: { id: "exposed", name: "Exposed", duration: 2 } } });
     expect(skillContexts(debuff)).toEqual(BOTH);
   });
+
+  it("the herb-stash med-heal ⇒ both board phases now (the deploy herb-menu is wired, W8)", () => {
+    expect(skillContexts(mk({ target: "ally", effect: { kind: "med-heal" } }))).toEqual(BOTH);
+  });
 });
 
-describe("skillContexts — the two remaining combat-only defaults (mechanic / UX, not engagement)", () => {
-  it("the herb-stash med-heal ⇒ combat only (its stash-pick menu is combat-wired UX; no deploy herb-menu yet)", () => {
-    expect(skillContexts(mk({ target: "ally", effect: { kind: "med-heal" } }))).toEqual(["combat"]);
-  });
-
+describe("skillContexts — the one remaining combat-only default (a CT-clock mechanic, not engagement)", () => {
   it("a charged ability ⇒ combat only (it resolves later on the CT clock, no deploy equivalent)", () => {
     const charged = mk({ target: "ally", cost: { charge: 50 }, effect: { kind: "heal", amount: 16 } });
     expect(skillContexts(charged)).toEqual(["combat"]);
@@ -168,13 +168,13 @@ describe("availableSkills — the guild context is a wired placeholder (D67 incr
   });
 });
 
-describe("availableSkills — combat-bound abilities don't leak into the deploy surface (D67 increment 6c)", () => {
-  it("the Medic's herb Heal surfaces in combat but NOT pre-combat (its stash pick is engagement-bound); Dig In / Defend remain pre-combat", () => {
+describe("availableSkills — the Medic's herb Heal now surfaces in both board phases (D67 W8)", () => {
+  it("the Medic's herb Heal surfaces in combat AND pre-combat (the deploy herb-menu is wired); Dig In / Defend remain pre-combat", () => {
     const medic = jobUnit("medic");
     const pre = availableSkills(medic, "pre-combat").map((s) => s.id);
     const combat = availableSkills(medic, "combat").map((s) => s.id);
     expect(combat).toContain("heal"); // the med-heal "Heal" is a combat skill
-    expect(pre).not.toContain("heal"); // ...but never offered pre-combat (would crash the drained verb)
+    expect(pre).toContain("heal"); // ...and now a pre-combat one too — the demo Medic can pre-heal
     expect(pre).toEqual(expect.arrayContaining(["dig-in", "defend"]));
   });
 });

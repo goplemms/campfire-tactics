@@ -171,19 +171,23 @@ Recent work that altered routing or the within-node experience. Newest first.
   They're now **two stacked boxes** with a gap: the unit's **verbs** on top, and a separate
   **turn-control box** below. The control box stacks any full-width control rows (**Start
   Battle**, deploy) above a **bottom row** that pairs **Undo** *side-by-side* with the clock
-  primary as equal halves — or the primary alone, full width, when there's nothing to take
-  back. (The primary is, and always was, *one* button that flips **End Turn** ↔ **Advance
-  Clock** by state; since Undo is only live *during* a player turn, it only ever pairs with
-  End Turn, never the between-turns Advance Clock.) This mirrors the taxonomy
+  primary as equal halves. During a unit's turn **Undo is persistent** — it sits there from
+  turn-open, **greyed/inert** until there's something on the stack, then lights up after the
+  first move/act — so the take-back is a visible affordance, not a button that only appears
+  once you've already acted. (The primary is, and always was, *one* button that flips **End
+  Turn** ↔ **Advance Clock** by state; since Undo is only live *during* a player turn, it
+  only pairs with End Turn — between turns there's no active unit to undo, so Undo is omitted
+  and Advance Clock keeps the full width.) This mirrors the taxonomy
   [`systems/actions.md`](systems/actions.md) already draws — *Undo / Advance Clock / Start
   Battle* are "pure UI/flow controls that carry no game decision," distinct from the
   state-changing verbs — so the layout now matches the model. Both phases share it
   (`layoutActionMenu(verbs, { undo, controls })` lays the verb box via `drawMenuBox` and the
   control box via `drawControlBox`; the primary reflows full-width ↔ half-width via a new
-  `Button.setWidth` that refreshes its hit area). Pure render; no core touch, no key/verb
-  change (Space / W / Esc unchanged). Seam: `BattleScene.layoutActionMenu` / `drawControlBox`,
-  `Button.setWidth`. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (55), sim
-  (summary **unchanged**).
+  `Button.setWidth` that refreshes its hit area; a disabled `ActionSpec` renders greyed +
+  inert through `makeTextButton`, keeping its hover-hint). Pure render; no core touch, no
+  key/verb change (Space / W / Esc unchanged). Seam: `BattleScene.layoutActionMenu` /
+  `drawControlBox`, `Button.setWidth`. Guarded green: tsc, 837 unit tests, build, deploy→battle
+  e2e (55), sim (summary **unchanged**).
 - **L1: Pip is a real on-board captive — "isolating the captor IS the rescue"** (D52 — a
   deliberate *behavior* change). The L1 Cook no longer joins via a **silent post-win grant**
   (`E1_SKIRMISH.grants: { recruit: PIP_COOK }`); he now **starts the Skirmish bound on the

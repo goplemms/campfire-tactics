@@ -161,7 +161,7 @@ interface ResolutionReport {
 type BoardCtx = "deployment" | "battle";
 
 /** One entry in the bottom-left command row — a labelled button with an optional tooltip. */
-type ActionSpec = { text: string; description?: string; onClick: () => void };
+type ActionSpec = { text: string; description?: string; onClick: () => void; enabled?: boolean };
 
 /** Command-menu geometry (the bottom-left stacked action box) — shared so the docked
  *  primary and the verb stack agree on width/pitch/anchor. */
@@ -608,10 +608,10 @@ export class BattleScene extends Phaser.Scene {
     // nearby traps (D12 parity with the combat turn-open, the same shared helper). Reveal
     // *before* the buttons render so a freshly-spotted adjacent trap surfaces its Disarm verb.
     const spotted = this.scanTrapsOnTurnOpen(unit);
+    this.setPrimary("End Turn"); // before the row builds, so the half-width pair labels correctly
     this.selectDeployActor(unit);
     this.recomputeReach(unit); // light the reachable tiles for this turn's budget (shared with battle)
     this.drawDeployReach();
-    this.setPrimary("End Turn");
     const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0;
     this.setHint(
       `${unit.name}'s turn — click a tile to reposition, Dig In, or place a trap, then End Turn (Space). ` +
@@ -753,17 +753,22 @@ export class BattleScene extends Phaser.Scene {
     const actor = this.deployActor;
     const specs: ActionSpec[] = [];
     // Turn-control box (pure decision, D63/D67): Undo + Start Battle + the Advance Clock /
-    // End Turn primary, kept apart from the unit's verbs. Undo pairs side-by-side with the
-    // primary's bottom row when there's something to take back.
+    // End Turn primary, kept apart from the unit's verbs. During a unit's turn, Undo is
+    // **persistent** beside End Turn (greyed/inert until there's something to take back);
+    // between turns there's no active unit to undo, so it's omitted and Advance Clock stays
+    // full-width.
     const ids = deployActions({ hasActor: !!actor, captured: !!actor?.captured, canUndo: this.battle.canUndo() });
-    const undo: ActionSpec | undefined =
-      ids.includes("undo") && actor
-        ? {
-            text: "Undo",
-            description: "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc).",
-            onClick: () => this.undoTurn(actor, "deployment"),
-          }
-        : undefined;
+    const canUndo = ids.includes("undo");
+    const undo: ActionSpec | undefined = actor
+      ? {
+          text: "Undo",
+          description: canUndo
+            ? "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc)."
+            : "Nothing to take back yet — move, dig in, or place a trap, then Undo returns the unit to where it started.",
+          enabled: canUndo,
+          onClick: () => this.undoTurn(actor, "deployment"),
+        }
+      : undefined;
     // The ability buttons are the **same data-driven projection as combat** (D67): the unit's
     // pre-combat skills + the universal Dig In / Defend, from availableSkills — so a Set-Trap
     // skill surfaces because it's pre-combat *data*, not via a hand-computed `canTrap`.
@@ -1446,10 +1451,17 @@ export class BattleScene extends Phaser.Scene {
     // available whenever this turn's actions can be taken back (a move *or* a strike/skill),
     // as long as no sprung trap has locked it (no take-back on damage taken, D60). Routes
     // through the action log (Phase 2).
-    const undo: ActionSpec | undefined =
-      this.battle.canUndo() && !this.turnLocked
-        ? { text: "Undo", description: "Take back everything this unit did this turn — moves and strikes — back to where it started (Esc).", onClick: () => this.undoTurn(actor, "battle") }
-        : undefined;
+    // Undo is **persistent** beside End Turn so the take-back affordance is always visible —
+    // greyed/inert until there's something on this turn's stack (and no sprung-trap lock).
+    const canUndo = this.battle.canUndo() && !this.turnLocked;
+    const undo: ActionSpec = {
+      text: "Undo",
+      description: canUndo
+        ? "Take back everything this unit did this turn — moves and strikes — back to where it started (Esc)."
+        : "Nothing to take back yet — move or act, then Undo returns the unit to where it started.",
+      enabled: canUndo,
+      onClick: () => this.undoTurn(actor, "battle"),
+    };
     // The Act buttons (skill / Bribe / Search / Disarm / Defend) are the unit's one
     // action this turn — surfaced only until that Act is spent (D60).
     if (!this.acted) {
@@ -2806,13 +2818,17 @@ export class BattleScene extends Phaser.Scene {
 
   // --- Buttons ---------------------------------------------------------------
 
-  private makeTextButton(x: number, y: number, w: number, h: number, text: string, fill: number, stroke: number, onClick: () => void, description?: string): Button {
+  private makeTextButton(x: number, y: number, w: number, h: number, text: string, fill: number, stroke: number, onClick: () => void, description?: string, enabled = true): Button {
     const btn = new Button(this, x, y, {
       text,
       w,
       h,
-      fill,
-      stroke,
+      // A disabled button renders greyed + inert (no click/hover/cursor) but keeps its
+      // hover-hint, so an unavailable control stays a visible, self-explaining affordance.
+      fill: enabled ? fill : COLOR.surfaceRaised,
+      stroke: enabled ? stroke : COLOR.border,
+      color: enabled ? undefined : INK.disabled,
+      enabled,
       onClick,
       hint: { bar: this.hintPanel, description, idle: () => this.lastHint },
     });
@@ -2884,13 +2900,14 @@ export class BattleScene extends Phaser.Scene {
     controls.forEach((spec, i) => {
       this.actionButtons.push(this.makeTextButton(cx, topY + i * MENU_PITCH, MENU_BW, MENU_BH, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
     });
-    // Bottom row: Undo | primary side-by-side (equal halves), or the primary alone.
+    // Bottom row: Undo | primary side-by-side (equal halves), or the primary alone. Undo
+    // renders greyed/inert when `enabled === false` (a visible-but-disabled affordance).
     if (undo && dockPrimary) {
       const half = (MENU_BW - PAIR_GAP) / 2;
-      this.actionButtons.push(this.makeTextButton(cx - (half + PAIR_GAP) / 2, bottomY, half, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description));
+      this.actionButtons.push(this.makeTextButton(cx - (half + PAIR_GAP) / 2, bottomY, half, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description, undo.enabled !== false));
       this.primary.setWidth(half).setPosition(cx + (half + PAIR_GAP) / 2, bottomY);
     } else if (undo) {
-      this.actionButtons.push(this.makeTextButton(cx, bottomY, MENU_BW, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description));
+      this.actionButtons.push(this.makeTextButton(cx, bottomY, MENU_BW, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description, undo.enabled !== false));
     } else if (dockPrimary) {
       this.primary.setWidth(MENU_BW).setPosition(cx, bottomY);
     }

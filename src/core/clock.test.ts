@@ -104,7 +104,7 @@ describe("CTClock", () => {
 });
 
 // The shared CT stepping engine (D63 unification, Phase 2) — the single comparator
-// and tick-until-ready loop both CTClock and DeployClock are built on.
+// and tick-until-ready loop the one CTClock is built on (combat + the deploy front).
 describe("shared clock engine", () => {
   it("byReadiest orders by CT desc, then Speed desc, then id", () => {
     const a = { id: "a", ct: 100, speed: 10 };

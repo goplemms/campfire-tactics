@@ -36,7 +36,7 @@ import {
   // deployment clock); the danger overrides the campfire, shrinking your territory.
   createFront,
   createCampfire,
-  DeployClock,
+  createDeployClock,
   resolveFrontTurn,
   inDangerZone,
   inSafeZone,
@@ -88,6 +88,7 @@ import {
   type RunLoop,
   type IntelReport,
   type IntelTier,
+  type CTClock,
   type DeployFront,
   type DeploySource,
   type Rng,
@@ -253,7 +254,7 @@ export class BattleScene extends Phaser.Scene {
   private front!: DeployFront;
   /** On-board source markers (campfire + enemy), cleared when battle begins. */
   private deployMarkers: Phaser.GameObjects.GameObject[] = [];
-  private deployClock!: DeployClock;
+  private deployClock!: CTClock;
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
@@ -534,8 +535,11 @@ export class BattleScene extends Phaser.Scene {
     // the immune zone (see deployMods().exposureMultiplier, threaded into the net rolls).
     this.campfire = createCampfire(this.grid, this.battle.units);
     this.front = createFront(this.grid, enemies);
-    this.deployClock = new DeployClock(this.battle.units, this.front);
-    this.deployClock.seed();
+    // The front folds onto the one CT clock as a strict-lead tempo source (D67) — the
+    // same CTClock combat runs on, no parallel DeployClock. Seeded per-unit (a warmer
+    // party acts first); the front starts cold.
+    this.deployClock = createDeployClock(this.battle.units, this.front);
+    this.deployClock.seedFlat();
     this.drawZones();
     this.drawSourceMarkers();
     // Trap-field (D12): enemy hazards are live across *both* phases, so the party's
@@ -558,9 +562,9 @@ export class BattleScene extends Phaser.Scene {
    */
   private deployNextActor(): void {
     if (this.over || this.phase !== "deployment" || this.busy) return;
-    const turn = this.deployClock.next();
-    if (turn.isFront || !turn.unit) this.runFrontTurn();
-    else this.beginDeployTurn(turn.unit);
+    const turn = this.deployClock.nextTurn();
+    if (turn.kind === "unit") this.beginDeployTurn(turn.unit);
+    else this.runFrontTurn(); // "tempo" (the front leads) or "idle" (never, the front always charges)
   }
 
   /** Open one player unit's deployment turn: it may move, dig in, or set a trap. */
@@ -618,7 +622,7 @@ export class BattleScene extends Phaser.Scene {
     const out = resolveFrontTurn(this.front, this.campfire, this.battle.units, this.deployRng, {
       exposureMultiplier: this.deployMods().exposureMultiplier,
     });
-    this.deployClock.spendFront();
+    this.deployClock.spendTempo();
     this.deployActor = null;
     this.clearActionButtons();
     this.drawZones();

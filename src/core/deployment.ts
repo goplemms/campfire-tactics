@@ -25,7 +25,7 @@ import type { TileGrid } from "./grid";
 import type { GridCoord } from "./iso";
 import { findPath } from "./pathfinding";
 import { occupiedGrid } from "./ai";
-import { effectiveSpeed, byReadiest, tickUntilReady, TURN_THRESHOLD, ACT_COST, MOVE_COST, type TurnSpend } from "./clock";
+import { CTClock, type TempoSource } from "./clock";
 import { PASSIVE } from "./combat";
 import { hasStatus, SWIFT } from "./status";
 
@@ -574,79 +574,19 @@ export function safeGroundRemains(grid: TileGrid, camp: DeploySource, front: Dep
   return false;
 }
 
-/** Whose turn it is in the deployment clock — a player unit, or the front. */
-export interface DeployTurn {
-  /** The player unit to act, or null when it's the front's turn. */
-  unit: Unit | null;
-  /** True when the front acts this step. */
-  isFront: boolean;
-}
-
 /**
- * The deployment-phase clock (D63): player units and the enemy front share one CT
- * timeline, exactly like combat's {@link CTClock}, so initiative reads the same.
- * Player units charge by their effective Speed; the front charges by its derived
- * Speed. Because capture is rolled on the front's turn (not per player turn), a
- * faster party simply earns more positioning turns between net-closings.
+ * Build the Deployment clock (D67 clock fold) as a {@link CTClock} carrying the **front**
+ * as a strict-lead {@link TempoSource}. Player units charge on the **one** clock element —
+ * the same {@link CTClock} combat runs on — and the front rides it as a non-unit
+ * participant that takes the net-closing turn only on a strict CT lead (players win ties,
+ * the front's deliberate rule). Because capture is rolled on the front's turn, a faster
+ * party simply earns more positioning turns between net-closings. Drive it with
+ * `seedFlat()` (the per-unit deploy seed), `nextTurn()` (a `{kind:"unit"|"tempo"}` result),
+ * `spend(unit, …)`, and `spendTempo()` (the front's net step). Replaces the bespoke
+ * DeployClock — deployment and combat no longer maintain parallel clocks.
  */
-export class DeployClock {
-  /** The front's charge-time accumulator. */
-  frontCt = 0;
-  private readonly players: Unit[];
-
-  constructor(units: readonly Unit[], private readonly front: DeployFront) {
-    this.players = units.filter((u) => u.side === "player");
-  }
-
-  /** Seed player CT from Speed (a warmer party acts first); the front starts cold. */
-  seed(bonus = 0): void {
-    for (const u of this.players) u.ct = u.captured ? 0 : Math.max(0, u.speed + bonus);
-    this.frontCt = 0;
-  }
-
-  private tick(): void {
-    for (const u of this.players) {
-      if (!u.alive || u.captured) continue;
-      u.ct += effectiveSpeed(u);
-    }
-    this.frontCt += this.front.speed;
-  }
-
-  private ready(): boolean {
-    return this.frontCt >= TURN_THRESHOLD || this.players.some((u) => u.alive && !u.captured && u.ct >= TURN_THRESHOLD);
-  }
-
-  /**
-   * Tick until a player unit or the front is ready, then return the readiest. The
-   * front wins only on a strict CT lead — players take ties, so Speed and Awareness
-   * keep buying the party its turns. Returns the front if no player can act.
-   *
-   * Shares combat's stepping engine ({@link tickUntilReady} + {@link byReadiest});
-   * the **front-vs-player strict-lead tie rule** below is deployment's own policy —
-   * the reason the front stays a distinct actor rather than a unit in the pool.
-   */
-  next(): DeployTurn {
-    // The front always charges, so the timeline can always progress (never stalls).
-    if (!tickUntilReady(() => this.ready(), () => true, () => this.tick())) {
-      return { unit: null, isFront: true };
-    }
-    const readyPlayers = this.players
-      .filter((u) => u.alive && !u.captured && u.ct >= TURN_THRESHOLD)
-      .sort(byReadiest);
-    const best = readyPlayers[0];
-    if (this.frontCt >= TURN_THRESHOLD && (!best || this.frontCt > best.ct)) {
-      return { unit: null, isFront: true };
-    }
-    return best ? { unit: best, isFront: false } : { unit: null, isFront: true };
-  }
-
-  /** Spend a player unit's CT after its turn (acting costs more than only moving). */
-  spend(unit: Unit, spend: TurnSpend): void {
-    unit.ct -= spend.acted ? ACT_COST : MOVE_COST;
-  }
-
-  /** Spend the front's CT after its turn. */
-  spendFront(): void {
-    this.frontCt -= TURN_THRESHOLD;
-  }
+export function createDeployClock(units: readonly Unit[], front: DeployFront): CTClock {
+  const players = units.filter((u) => u.side === "player");
+  const tempo: TempoSource = { id: "front", ct: 0, speed: front.speed, strictLeadTie: true };
+  return new CTClock(players, undefined, tempo);
 }

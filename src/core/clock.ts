@@ -53,9 +53,9 @@ export function armSkillCooldown(unit: Unit, skillId: string, ct: number): void 
 
 /**
  * Determinism-stable "who acts next" order for CT actors: **highest CT first**,
- * ties broken by **Speed**, then **id**. The single comparator both the combat
- * clock ({@link CTClock}) and the deployment clock ({@link "./deployment".DeployClock})
- * sort their ready actors by — so initiative reads identically in either phase.
+ * ties broken by **Speed**, then **id**. The single comparator the one {@link CTClock}
+ * sorts its ready actors by, in **both** phases (combat, and deployment via the front
+ * tempo source) — so initiative reads identically whichever phase is running.
  */
 export function byReadiest<T extends { ct: number; speed: number; id: string }>(a: T, b: T): number {
   return b.ct - a.ct || b.speed - a.speed || a.id.localeCompare(b.id);

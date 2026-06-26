@@ -171,6 +171,7 @@ const MENU_PITCH = 31;
 const MENU_PAD = 7;
 const MENU_LEFT = 12; // box left margin
 const MENU_CX = MENU_LEFT + MENU_PAD + MENU_BW / 2; // button centre x (bottom-left)
+const MENU_GAP = 12; // vertical gap between the verb box and the turn-control box below it
 
 /**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
@@ -750,10 +751,13 @@ export class BattleScene extends Phaser.Scene {
   private refreshDeployButtons(): void {
     const actor = this.deployActor;
     const specs: ActionSpec[] = [];
-    // Meta-controls (pure decision, D63/D67): Undo leads when there's something to take back.
+    // Turn-control box (pure decision, D63/D67): Undo + Start Battle + the Advance Clock /
+    // End Turn primary, kept apart from the unit's verbs. Undo leads when there's something
+    // to take back.
+    const controls: ActionSpec[] = [];
     const ids = deployActions({ hasActor: !!actor, captured: !!actor?.captured, canUndo: this.battle.canUndo() });
     if (ids.includes("undo") && actor) {
-      specs.push({
+      controls.push({
         text: "Undo",
         description: "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc).",
         onClick: () => this.undoTurn(actor, "deployment"),
@@ -775,13 +779,14 @@ export class BattleScene extends Phaser.Scene {
       }
       this.pushTrapVerbs(specs, actor, "deployment"); // Search / Disarm — the shared trap-field verbs
     }
-    // Start Battle always closes the row (commit early at any point).
-    specs.push({
+    // Start Battle is a turn-control (commit early at any point), so it sits in the control
+    // box with the clock primary — not among the unit's verbs.
+    controls.push({
       text: "Start Battle",
       description: "Commit now — begin the fight with the party where it stands.",
       onClick: () => { if (!this.busy) this.startBattle(); },
     });
-    this.layoutActionMenu(specs);
+    this.layoutActionMenu(specs, controls);
   }
 
   /**
@@ -1436,11 +1441,13 @@ export class BattleScene extends Phaser.Scene {
 
   private showSkillButtons(actor: Unit): void {
     const specs: ActionSpec[] = [];
-    // Undo leads whenever this turn's actions can be taken back — anything done this
-    // turn (a move *or* a strike/skill), as long as no sprung trap has locked it (no
-    // take-back on damage taken, D60). Routes through the action log (Phase 2).
+    // Turn-control: Undo lives in the control box (with End Turn), apart from the verbs —
+    // available whenever this turn's actions can be taken back (a move *or* a strike/skill),
+    // as long as no sprung trap has locked it (no take-back on damage taken, D60). Routes
+    // through the action log (Phase 2).
+    const controls: ActionSpec[] = [];
     if (this.battle.canUndo() && !this.turnLocked) {
-      specs.push({ text: "Undo Turn", description: "Take back everything this unit did this turn — moves and strikes — back to where it started (Esc).", onClick: () => this.undoTurn(actor, "battle") });
+      controls.push({ text: "Undo Turn", description: "Take back everything this unit did this turn — moves and strikes — back to where it started (Esc).", onClick: () => this.undoTurn(actor, "battle") });
     }
     // The Act buttons (skill / Bribe / Search / Disarm / Defend) are the unit's one
     // action this turn — surfaced only until that Act is spent (D60).
@@ -1496,8 +1503,9 @@ export class BattleScene extends Phaser.Scene {
       if (defend) specs.push({ text: "Defend (D)", description: `${defend.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, defend) });
     }
     // The turn's explicit close is the prominent green primary button (plus Space and
-    // W) — so the action row carries only the unit's *verbs*, not a second End Turn.
-    this.layoutActionMenu(specs);
+    // W) — so the verb box carries only the unit's *verbs*; Undo + End Turn sit in the
+    // separate control box below.
+    this.layoutActionMenu(specs, controls);
   }
 
   // --- Trap-field: spotting, searching, disarming (D12) ----------------------
@@ -2828,24 +2836,46 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * Lay the unit's verbs as a **vertical command menu** (D-UX): a translucent box of
-   * stacked, full-width buttons docked **bottom-left**, with the green End Turn /
-   * Advance Clock primary **docked as the bottom entry** so the whole command cluster —
-   * verbs and the turn's close — sits in one place and the pointer barely travels
-   * between choices (the traditional tactics command box, vs. the old wide row). Reads
-   * top to bottom in the order the callers build them. Shared by both phases and the
-   * herb submenu, so every in-combat menu looks and sits the same. The backing box is
-   * tracked with the buttons; {@link clearActionButtons} tears it down and floats the
-   * primary back to its lone resting spot.
+   * Lay the command menu as **two** stacked boxes docked **bottom-left** (D-UX): the
+   * unit's **verbs** on top, and a separate **turn-control** box below it — Undo, Start
+   * Battle, and the green End Turn / Advance Clock primary docked as its bottom entry —
+   * with a {@link MENU_GAP} between them. "What this unit does" reads apart from
+   * "control the turn/clock", instead of the two intents sharing one stack. Each box
+   * reads top to bottom in the order the callers build it. Shared by both phases and the
+   * herb submenu (which passes verbs only). The boxes are tracked with the buttons;
+   * {@link clearActionButtons} tears them down and floats the primary back to its lone
+   * resting spot.
    */
-  private layoutActionMenu(specs: ActionSpec[]): void {
+  private layoutActionMenu(verbs: ActionSpec[], controls: ActionSpec[] = []): void {
     this.clearActionButtons();
-    if (specs.length === 0) return;
-    const cx = MENU_CX;
     const dockPrimary = this.primary.visible;
-    // The primary docks as the bottom slot; the verbs stack above it.
+    // The turn-control cluster anchors the bottom-left; its top edge is where the verb
+    // box must stop (they sit a gap apart). A lone primary keeps its boxless resting slot.
+    let clusterTopEdge: number;
+    if (controls.length > 0) {
+      clusterTopEdge = this.drawMenuBox(controls, this.primaryRestY(), dockPrimary);
+    } else if (dockPrimary) {
+      clusterTopEdge = this.primaryRestY() - MENU_BH / 2 - MENU_PAD;
+    } else {
+      clusterTopEdge = this.primaryRestY() + MENU_BH / 2 + MENU_PAD; // nothing below — verbs take the bottom
+    }
+    if (verbs.length > 0) {
+      const hasCluster = controls.length > 0 || dockPrimary;
+      const verbsBottomY = hasCluster ? clusterTopEdge - MENU_GAP - MENU_BH / 2 - MENU_PAD : this.primaryRestY();
+      this.drawMenuBox(verbs, verbsBottomY, false);
+    }
+  }
+
+  /**
+   * Draw one stacked, bordered box of buttons whose **bottom button centre** sits at
+   * `bottomY`. When `dockPrimary`, the green primary takes the box's bottom slot and the
+   * specs stack above it. Returns the box's **top edge** Y so a caller can stack another
+   * box above it.
+   */
+  private drawMenuBox(specs: ActionSpec[], bottomY: number, dockPrimary: boolean): number {
+    const cx = MENU_CX;
     const slots = specs.length + (dockPrimary ? 1 : 0);
-    const bottomY = this.primaryRestY();
+    if (slots === 0) return bottomY - MENU_BH / 2 - MENU_PAD;
     const topY = bottomY - (slots - 1) * MENU_PITCH;
     const box = this.add
       .rectangle(cx, (topY + bottomY) / 2, MENU_BW + 2 * MENU_PAD, (slots - 1) * MENU_PITCH + MENU_BH + 2 * MENU_PAD, COLOR.surface, 0.85)
@@ -2856,6 +2886,7 @@ export class BattleScene extends Phaser.Scene {
       this.actionButtons.push(this.makeTextButton(cx, topY + i * MENU_PITCH, MENU_BW, MENU_BH, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
     });
     if (dockPrimary) this.primary.setPosition(cx, topY + specs.length * MENU_PITCH);
+    return topY - MENU_BH / 2 - MENU_PAD;
   }
 
   // --- Animation -------------------------------------------------------------

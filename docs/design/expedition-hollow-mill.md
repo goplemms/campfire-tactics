@@ -163,6 +163,22 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Turn-controls split out of the unit-action box** (D-feel, render-only). The bottom-left
+  command menu used to stack *everything* in one box — **Undo** leading, the unit's verbs
+  (skills / Search / Disarm / Dig In / Defend / Bribe / place-trap) in the middle, and the
+  green **End Turn / Advance Clock** primary docked as the bottom slot — so "what this unit
+  does" and "control the turn/clock" shared one column and read as one undifferentiated list.
+  They're now **two stacked boxes** with a gap: the unit's **verbs** on top, and a separate
+  **turn-control box** below holding **Undo**, **Start Battle** (deploy), and the clock
+  primary. This mirrors the taxonomy [`systems/actions.md`](systems/actions.md) already
+  draws — *Undo / Advance Clock / Start Battle* are "pure UI/flow controls that carry no game
+  decision," distinct from the state-changing verbs — so the layout now matches the model.
+  Both phases share the split (`layoutActionMenu` now takes `verbs` + `controls`, laying each
+  via the new `drawMenuBox`); the combat box shows a bare **End Turn** under the gap until a
+  take-back exists, at which point **Undo** joins it in its own bordered box. Pure render; no
+  core touch, no key/verb change (Space / W / Esc unchanged). Seam: `BattleScene.layoutActionMenu`
+  / `drawMenuBox`. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (55), sim
+  (summary **unchanged**).
 - **L1: Pip is a real on-board captive — "isolating the captor IS the rescue"** (D52 — a
   deliberate *behavior* change). The L1 Cook no longer joins via a **silent post-win grant**
   (`E1_SKIRMISH.grants: { recruit: PIP_COOK }`); he now **starts the Skirmish bound on the

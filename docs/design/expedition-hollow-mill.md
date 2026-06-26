@@ -163,6 +163,25 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **A dug-in unit reads as "out of action" — minimal Take Action menu** (D-feel + a small
+  status-trigger change). Dig In is a deployment brace (lower capture chance, at the cost of
+  the turn) whose stance **persists across turns**, but a dug-in unit's next turn used to open
+  to the *full* deploy row — nothing signalled that the player had deliberately sat it out. Now
+  a unit that **opens a turn already dug in** (distinguished from one that just dug in this turn
+  by `deployActed`) shows a single **Take Action** verb in place of the row, beside the usual
+  End Turn / Start Battle — so the intentional hold reads from the UI. **Take Action** stands it
+  back up into a normal turn (reveals the full row via a per-turn `deployReveal` flag) *without*
+  breaking the stance; the dig-in capture benefit now holds until the unit actually **moves**
+  (already cleared in `moveUnit`) or **commits an act** (cleared in the deploy act seams —
+  `commitFieldAct` / `placeTrap` — the "on action" trigger, modelling dig-in like a status
+  effect). As a QoL shortcut, the reach stays lit and **clicking a tile to move** re-engages a
+  dug-in unit directly (the move clears the stance) — Take Action is the no-move path back in;
+  either way an Undo rolls it back to the dug-in turn-open. Render + a contained scene-side
+  status trigger; the capture roll is live-only and the headless sim never digs-in-then-acts, so
+  determinism is untouched. Seams: `BattleScene.takeAction` / `deployReveal`; the act-clear in
+  `commitFieldAct` / `placeTrap`. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e
+  (60, incl. the minimal-menu / reveal / benefit-holds assertions + `dug-in-minimal-menu` /
+  `dug-in-take-action` screenshots), sim (summary **unchanged**).
 - **Obstacles are raised 3D blocks, not flat tile-markers** (D-feel, render-only). An
   impassable tile used to be a **flat diamond** in a different colour (`tileBlocked`) — the
   same shape and read as the translucent **capture-zone washes** (safe/danger/neutral),

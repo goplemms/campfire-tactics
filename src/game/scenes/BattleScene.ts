@@ -255,6 +255,13 @@ export class BattleScene extends Phaser.Scene {
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
+  /**
+   * A dug-in unit's turn opens to a minimal **Take Action / End Turn** menu (it chose to sit
+   * out the maneuver). This flag, set by **Take Action**, reveals the unit's full deploy row
+   * for the turn without yet breaking the stance — the dig-in capture benefit still holds
+   * until it actually moves or commits an act (the status-effect trigger). Reset per turn.
+   */
+  private deployReveal = false;
   /** The party's Set Trap spec (damage + snare status), resolved at deploy; undefined = no trapper. */
   /** Board markers for the player's own placed traps, keyed by the registered entity id. */
   private playerTrapMarkers = new Map<string, Phaser.GameObjects.Text>();
@@ -598,6 +605,7 @@ export class BattleScene extends Phaser.Scene {
   private beginDeployTurn(unit: Unit): void {
     this.deployMoved = false;
     this.deployActed = false;
+    this.deployReveal = false;
     this.moveBudget = moveBudget(unit);
     this.deployHoverTile = null;
     this.queuedTile = null;
@@ -613,12 +621,18 @@ export class BattleScene extends Phaser.Scene {
     this.recomputeReach(unit); // light the reachable tiles for this turn's budget (shared with battle)
     this.drawDeployReach();
     const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0;
-    this.setHint(
-      `${unit.name}'s turn — click a tile to reposition, Dig In, or place a trap, then End Turn (Space). ` +
-        (spotted > 0 ? `Spots ${spotted} hidden trap${spotted > 1 ? "s" : ""} (${ICON.trapArmed.glyph})! ` : "") +
-        (trapsAfield ? `Search to scan further, or a trapper can Disarm. ` : "") +
-        `The enemy's reach is ${this.front.radius} step${this.front.radius === 1 ? "" : "s"} and growing.`,
-    );
+    if (unit.dugIn) {
+      // The unit chose to sit this out: a minimal menu. Moving (a map click) still re-engages
+      // it directly — Take Action is the no-move way back in.
+      this.setHint(`${unit.name} is dug in (lower capture risk). Click a tile to move (re-engaging), press Take Action to act in place, or End Turn (Space) to stay hunkered.`);
+    } else {
+      this.setHint(
+        `${unit.name}'s turn — click a tile to reposition, Dig In, or place a trap, then End Turn (Space). ` +
+          (spotted > 0 ? `Spots ${spotted} hidden trap${spotted > 1 ? "s" : ""} (${ICON.trapArmed.glyph})! ` : "") +
+          (trapsAfield ? `Search to scan further, or a trapper can Disarm. ` : "") +
+          `The enemy's reach is ${this.front.radius} step${this.front.radius === 1 ? "" : "s"} and growing.`,
+      );
+    }
   }
 
   /** Between deploy turns the clock rests on the player — Advance Clock steps it. */
@@ -706,6 +720,20 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Take Action — re-engage a unit that began its turn dug in: reveal its full deploy row for
+   * the turn. Doesn't break the stance itself; the dig-in capture benefit holds until the unit
+   * actually moves (clears it in `moveUnit`) or commits an act (cleared in the act seams), so a
+   * reveal that ends in "End Turn" leaves the unit hunkered.
+   */
+  private takeAction(actor: Unit): void {
+    if (this.busy || actor.captured || this.deployActor !== actor) return;
+    this.deployReveal = true;
+    this.refreshDeployButtons();
+    this.refreshDeployStatus();
+    this.setHint(`${actor.name} re-engages — move, place a trap, or use a skill (the dug-in benefit holds until it does). Or End Turn (Space) to stay hunkered.`);
+  }
+
   /** Dig In (D63): hunker on this tile for a sharply reduced capture chance. */
   private digIn(): void {
     const actor = this.deployActor;
@@ -769,10 +797,23 @@ export class BattleScene extends Phaser.Scene {
           onClick: () => this.undoTurn(actor, "deployment"),
         }
       : undefined;
+    // A unit that **began** the turn dug in (vs. one that just dug in this turn — `deployActed`)
+    // sits out the maneuver: a minimal **Take Action** verb stands in for the full row, so the
+    // player sees the unit was intentionally taken out of action. Take Action reveals the row
+    // for this turn (`deployReveal`) without breaking the stance yet. Moving (a map click) still
+    // re-engages it directly — the reach stays lit.
+    const hunkered = !!actor && !!actor.dugIn && !actor.captured && !this.deployActed && !this.deployReveal;
+    if (hunkered) {
+      specs.push({
+        text: "Take Action",
+        description: "Stand this unit up to act this turn — its full options return. The dug-in capture benefit holds until it actually moves or acts.",
+        onClick: () => this.takeAction(actor!),
+      });
+    }
     // The ability buttons are the **same data-driven projection as combat** (D67): the unit's
     // pre-combat skills + the universal Dig In / Defend, from availableSkills — so a Set-Trap
     // skill surfaces because it's pre-combat *data*, not via a hand-computed `canTrap`.
-    if (actor && !actor.captured && !this.deployActed) {
+    if (actor && !actor.captured && !this.deployActed && !hunkered) {
       // Offensive skills are board skills now (D67 W7) — not banned pre-combat, just idle
       // without a target. Surface them only when a foe is actually **engageable** (un-concealed
       // — a keep-assault stages defenders that way); the default staging conceals the enemy
@@ -1217,6 +1258,7 @@ export class BattleScene extends Phaser.Scene {
     this.playerTrapMarkers.set(id, marker);
     this.refreshCampText();
     this.deployActed = true;
+    actor.dugIn = false; // placing a trap is an act — breaks the hunker (the "on action" trigger)
     this.refreshDeployButtons();
     this.refreshDeployStatus();
     this.setHint((res.levels ?? 0) > 0
@@ -1570,6 +1612,7 @@ export class BattleScene extends Phaser.Scene {
   private commitFieldAct(actor: Unit, ctx: BoardCtx, hint?: string, charged = true): void {
     if (ctx === "deployment") {
       this.deployActed = true;
+      actor.dugIn = false; // acting breaks the hunker (the status-effect "on action" trigger); moving already clears it in moveUnit
       this.refreshDeployButtons();
       this.refreshDeployStatus();
     } else {
@@ -2132,6 +2175,7 @@ export class BattleScene extends Phaser.Scene {
     if (ctx === "deployment") {
       this.deployMoved = false;
       this.deployActed = false;
+      this.deployReveal = false; // back to the minimal menu if the unit began the turn dug in
       this.moveBudget = moveBudget(actor); // the whole turn rolled back — full range again
       this.queuedTile = null;
     } else {
@@ -2154,7 +2198,9 @@ export class BattleScene extends Phaser.Scene {
       this.refreshDeployStatus();
       this.recomputeReach(actor); // budget restored to full range — relight the reach (shared with battle)
       this.drawDeployReach();
-      this.setHint(`${actor.name}'s deploy turn reset — reposition, Dig In, place a trap, or End Turn (Space).`);
+      this.setHint(actor.dugIn
+        ? `${actor.name}'s deploy turn reset — dug in again. Click a tile to move, Take Action to act in place, or End Turn (Space).`
+        : `${actor.name}'s deploy turn reset — reposition, Dig In, place a trap, or End Turn (Space).`);
     } else {
       refreshAuras(this.battle.units); // confirm the tarpit ring matches the restored positions (D40)
       this.recomputeReach(actor);

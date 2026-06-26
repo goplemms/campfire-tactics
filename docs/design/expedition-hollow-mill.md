@@ -153,8 +153,10 @@ Recent work that altered routing or the within-node experience. Newest first.
   take a `BoardCtx`), with a shared act-economy seam (`canFieldAct` / `commitFieldAct`) and
   the undo resync loop as the one spine. Only the genuinely phase-specific bits branch:
   the capture-wave row vs. the one-Act economy. Movement (`deployMove`/`playerMoveStep`)
-  and the action row stay separate where they diverge by design. Behavior-preserving — the
-  full deploy→battle e2e is unchanged and green.
+  and the action row stay separate where they diverge by design, but their **shared spines**
+  are now extracted too: `pushTrapVerbs` (the Search/Disarm row block) and `readStepTraps`
+  (the per-step trap-read + balk) serve both phases, leaving only the divergent verb/economy
+  in each caller. Behavior-preserving — the full deploy→battle e2e is unchanged and green.
 - **Deployment lights the reach like combat** (D-feel). A deploy turn now steps
   tile-by-tile (`deployMoveBudget`), but the board showed **no reach read** — the player
   couldn't see how far a step might go. The deploy actor's reachable tiles now light (the

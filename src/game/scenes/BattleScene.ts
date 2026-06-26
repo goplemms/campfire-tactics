@@ -163,6 +163,9 @@ interface ResolutionReport {
  */
 type BoardCtx = "deployment" | "battle";
 
+/** One entry in the bottom-left command row — a labelled button with an optional tooltip. */
+type ActionSpec = { text: string; description?: string; onClick: () => void };
+
 /** Command-menu geometry (the bottom-left stacked action box) — shared so the docked
  *  primary and the verb stack agree on width/pitch/anchor. */
 const MENU_BW = 150;
@@ -718,7 +721,7 @@ export class BattleScene extends Phaser.Scene {
 
   private refreshDeployButtons(): void {
     const actor = this.deployActor;
-    const specs: { text: string; description?: string; onClick: () => void }[] = [];
+    const specs: ActionSpec[] = [];
     // Meta-controls (pure decision, D63/D67): Undo leads when there's something to take back.
     const ids = deployActions({ hasActor: !!actor, captured: !!actor?.captured, canUndo: this.battle.canUndo() });
     if (ids.includes("undo") && actor) {
@@ -736,23 +739,7 @@ export class BattleScene extends Phaser.Scene {
         const text = skill.effect.kind === "placeTrap" ? "Place Trap Here" : skill.name;
         specs.push({ text, description: skill.description, onClick: () => this.onDeploySkillButton(actor, skill) });
       }
-      // Trap-field verbs (D12) carried into Deployment: Search scans the ground ahead,
-      // and a trapper Disarms a spotted, adjacent trap — both spend the unit's act.
-      if (hiddenTraps(this.battle.entities).length > 0) {
-        specs.push({
-          text: "Search",
-          description: "Spend this unit's act scanning the ground ahead for concealed traps (a wider, better look).",
-          onClick: () => this.doSearch(actor, "deployment"),
-        });
-      }
-      const adjTrap = this.adjacentRevealedTrap(actor);
-      if (adjTrap && canDisarm(actor)) {
-        specs.push({
-          text: "Disarm trap",
-          description: "Disarm the adjacent spotted trap and pocket its kit (a trap-trained unit only).",
-          onClick: () => this.doDisarm(actor, adjTrap.id, "deployment"),
-        });
-      }
+      this.pushTrapVerbs(specs, actor, "deployment"); // Search / Disarm — the shared trap-field verbs
     }
     // Start Battle always closes the row (commit early at any point).
     specs.push({
@@ -761,6 +748,31 @@ export class BattleScene extends Phaser.Scene {
       onClick: () => { if (!this.busy) this.startBattle(); },
     });
     this.layoutActionMenu(specs);
+  }
+
+  /**
+   * Push the trap-field verbs (D12) onto an action row when concealed traps are afield:
+   * **Search** scans the ground ahead, and a trap-trained unit **Disarms** a spotted,
+   * adjacent one to pocket its kit — both spend the unit's Act. Shared by the deploy row
+   * and the combat row (D-feel: one shared scene path); only the phase context differs.
+   */
+  private pushTrapVerbs(specs: ActionSpec[], actor: Unit, ctx: BoardCtx): void {
+    const noun = ctx === "deployment" ? "act" : "action"; // the deploy row says "act"; combat "action"
+    if (hiddenTraps(this.battle.entities).length > 0) {
+      specs.push({
+        text: "Search",
+        description: `Spend this unit's ${noun} scanning the ground ahead for concealed traps (a wider, better look).`,
+        onClick: () => this.doSearch(actor, ctx),
+      });
+    }
+    const adjTrap = this.adjacentRevealedTrap(actor);
+    if (adjTrap && canDisarm(actor)) {
+      specs.push({
+        text: "Disarm trap",
+        description: "Disarm the adjacent spotted trap and pocket its kit (a trap-trained unit only).",
+        onClick: () => this.doDisarm(actor, adjTrap.id, ctx),
+      });
+    }
   }
 
   /**
@@ -1011,17 +1023,12 @@ export class BattleScene extends Phaser.Scene {
     // Per-step trap read (D12): before each step the unit may sense a hidden enemy
     // trap and balk — or blunder onto one it missed. Truncate the route to what it
     // actually walks; an already-spotted trap simply stops it short of itself.
-    const spot = spotWhileMoving(actor, steps, this.battle.entities, this.spotRng);
+    const spot = this.readStepTraps(actor, steps, (sensed) =>
+      `${actor.name} ${sensed ? "senses a hidden trap" : "won't step onto the spotted trap"} just ahead ` +
+        `(${ICON.trapArmed.glyph}) — route around it, Disarm it, or End Turn.`,
+    );
+    if (!spot) return; // balked on a trap — hold ground (hint already set)
     const walked = spot.path;
-    if (walked.length === 0) {
-      // A trap sits on the very next tile (sensed now, or already known) — hold ground.
-      if (spot.spotted) this.redrawTrapMarkers();
-      this.setHint(
-        `${actor.name} ${spot.spotted ? "senses a hidden trap" : "won't step onto the spotted trap"} just ahead ` +
-          `(${ICON.trapArmed.glyph}) — route around it, Disarm it, or End Turn.`,
-      );
-      return;
-    }
     const hpBefore = actor.hp;
     // Route the reposition through the one interpreter (D63): it walks the path
     // (logged + undoable), springs any entity crossed, and breaks the dig-in stance.
@@ -1306,7 +1313,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showSkillButtons(actor: Unit): void {
-    const specs: { text: string; description?: string; onClick: () => void }[] = [];
+    const specs: ActionSpec[] = [];
     // Undo leads whenever this turn's actions can be taken back — anything done this
     // turn (a move *or* a strike/skill), as long as no sprung trap has locked it (no
     // take-back on damage taken, D60). Routes through the action log (Phase 2).
@@ -1356,23 +1363,9 @@ export class BattleScene extends Phaser.Scene {
           },
         });
       }
-      // Trap-field verbs (D12): Search to scan for hidden traps; the trapper disarms
-      // a spotted, adjacent one to pocket its kit. Only surfaced when traps are afield.
-      if (hiddenTraps(this.battle.entities).length > 0) {
-        specs.push({
-          text: "Search",
-          description: "Spend this unit's action scanning the ground ahead for concealed traps (a wider, better look).",
-          onClick: () => this.doSearch(actor, "battle"),
-        });
-      }
-      const adjTrap = this.adjacentRevealedTrap(actor);
-      if (adjTrap && canDisarm(actor)) {
-        specs.push({
-          text: "Disarm trap",
-          description: "Disarm the adjacent spotted trap and pocket its kit (a trap-trained unit only).",
-          onClick: () => this.doDisarm(actor, adjTrap.id, "battle"),
-        });
-      }
+      // Trap-field verbs (D12): Search to scan for hidden traps; the trapper disarms a
+      // spotted, adjacent one to pocket its kit. The same shared row helper as deployment.
+      this.pushTrapVerbs(specs, actor, "battle");
       // The universal Defend (D41): every unit can brace until its next turn — the
       // always-available defensive verb, even for a unit with no job actives.
       // The universal Defend (D41) keeps its dedicated "D" key, sourced from the same
@@ -1509,6 +1502,28 @@ export class BattleScene extends Phaser.Scene {
     }
     if (this.trapMarkers.size > 0 || sprang) this.redrawTrapMarkers();
     if (sprang) this.setHint(`${ICON.trapSprung.glyph} A hidden trap sprang!`);
+  }
+
+  /**
+   * The per-step trap read shared by both phases' movement (D12): walk `steps` until a
+   * hidden enemy trap is sensed (stop short) or an already-spotted one blocks the next
+   * tile. Returns the spot result — the caller walks `spot.path`; on a full balk (nothing
+   * walked) it draws any freshly sensed marker, sets the phase's `balkHint`, and returns
+   * `null` so the caller bails. The move verb itself stays phase-specific (deployMove vs
+   * moveUnit — the replay-load-bearing distinction), as does the post-walk continuation.
+   */
+  private readStepTraps(
+    actor: Unit,
+    steps: readonly GridCoord[],
+    balkHint: (sensed: boolean) => string,
+  ): ReturnType<typeof spotWhileMoving> | null {
+    const spot = spotWhileMoving(actor, steps, this.battle.entities, this.spotRng);
+    if (spot.path.length === 0) {
+      if (spot.spotted) this.redrawTrapMarkers(); // a trap sensed *now* on the blocked tile — mark it
+      this.setHint(balkHint(!!spot.spotted));
+      return null;
+    }
+    return spot;
   }
 
   /** The current combat node's banded preview (D24) — leverage for the Noble's bribe. */
@@ -1980,15 +1995,12 @@ export class BattleScene extends Phaser.Scene {
     // Per-step trap read (D12): the unit may sense a hidden enemy trap and stop short,
     // or blunder onto one it missed. Truncate the click's route to what it actually
     // walks; a trap it already spotted halts it short (you don't step onto one you see).
-    const spot = spotWhileMoving(actor, r.path, this.battle.entities, this.spotRng);
+    const spot = this.readStepTraps(actor, r.path, (sensed) =>
+      `${actor.name} ${sensed ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
+        `(${ICON.trapArmed.glyph}) — route around it, Disarm it, strike, or End Turn.`,
+    );
+    if (!spot) return; // balked on a trap — hold ground (hint already set)
     const walked = spot.path;
-    if (walked.length === 0) {
-      if (spot.spotted) this.redrawTrapMarkers();
-      return this.setHint(
-        `${actor.name} ${spot.spotted ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
-          `(${ICON.trapArmed.glyph}) — route around it, Disarm it, strike, or End Turn.`,
-      );
-    }
     // The walked route ends on a tile from the original reach, so its weighted cost is
     // exactly the reach cost to that halt tile (a tarpit ring costs extra to enter, D42).
     const halt = walked[walked.length - 1];
@@ -2764,7 +2776,7 @@ export class BattleScene extends Phaser.Scene {
    * tracked with the buttons; {@link clearActionButtons} tears it down and floats the
    * primary back to its lone resting spot.
    */
-  private layoutActionMenu(specs: { text: string; description?: string; onClick: () => void }[]): void {
+  private layoutActionMenu(specs: ActionSpec[]): void {
     this.clearActionButtons();
     if (specs.length === 0) return;
     const cx = MENU_CX;

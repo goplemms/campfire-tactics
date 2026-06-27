@@ -163,6 +163,21 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Top-strip rework: phase/turn to the corner, objectives as a check-list box** (D-feel,
+  render-only — layout revisit). The old centred "situation strip" (one title line over a
+  shared objective + intel row) was cleared to evaluate a bare top, then rebuilt deliberately:
+  the **phase + whose turn** heading (with the deploy global state — net reach / safe radius /
+  kits) moved to the **top-left corner**, and the objectives became a **vertically stacked
+  check-list box** (top-centre, styled like the action box) — one row per staged objective with
+  a left-hand status marker (green **✓** met · red **✗** failed · muted **○** pending, the live
+  **%** appended for a timed one). The box now **includes the default "Defeat all enemies"
+  goal** (previously left implicit), so it's always populated and reads as a real checklist, and
+  it shows in **both** phases (`refreshDeployStatus` + `refreshHud` call it). The **intel recap**
+  (tier · foes · types · shape) stays hidden behind a one-flag `SHOW_INTEL_RECAP` restore — the
+  remaining piece still looking for a home. Seams: `BattleScene.refreshObjectives` (replaces the
+  old `refreshObjectiveText` / `layoutSituationLine`), `objectiveObjects` layer. Pure render; no
+  core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (62, incl. the
+  objectives-box assertions), sim (summary **unchanged**).
 - **A dug-in unit reads as "out of action" — minimal Take Action menu** (D-feel + a small
   status-trigger change). Dig In is a deployment brace (lower capture chance, at the cost of
   the turn) whose stance **persists across turns**, but a dug-in unit's next turn used to open

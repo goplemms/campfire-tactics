@@ -311,6 +311,10 @@ async function main() {
         `return [...s.view.views.values()].filter(v => v.unit.side === "enemy" && v.unit.alive).some(v => v.container.visible === true);`,
       );
       check("enemy tokens are revealed once the battle opens", foeShownInBattle === true);
+      // The objectives check-list box (top-centre) lists the goal with a status marker.
+      const objBox = await g.bsEval(`return s.objectiveObjects.map(o => o.text).filter(t => typeof t === "string");`);
+      check("the objectives box lists the goal", objBox.includes("Defeat all enemies"));
+      check("a pending objective shows the hollow marker (not a check)", objBox.includes("○") && !objBox.includes("✓"));
       await shot("battle-start");
 
       // --- Stage: drive the CT clock; a player turn opens and can be ended ----

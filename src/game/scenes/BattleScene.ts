@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { COLOR, FONT, INK } from "../theme";
+import { COLOR, FONT, INK, WEIGHT } from "../theme";
 import { roleColor } from "../roles";
 import { CombatView } from "../combat-view";
 import { addVignette } from "../vignette";
@@ -175,17 +175,14 @@ const MENU_GAP = 12; // vertical gap between the verb box and the turn-control b
 const PAIR_GAP = 6; // horizontal gap between Undo and the primary in the control box's bottom row
 
 /**
- * Layout experiment (D-feel, revisit): hide the top **situation strip** — the phase/turn
- * title, the objective banner, and the intel recap — to evaluate the board with a clean top.
- * The compute paths still run (`refreshDeployStatus` / `refreshObjectiveText` / `refreshIntel`
- * keep setting the text); only the *render* is gated, so flipping this back to `true` restores
- * everything as-is. What this currently DROPS from view (to relocate, not lose):
- *   • phase + whose turn — also read from the focus card + the initiative rail.
- *   • deploy global state: net **reach**, **safe** radius, **kit** count — not surfaced elsewhere yet.
- *   • **objective** progress for non-elimination objectives — not surfaced elsewhere yet.
- *   • **intel** recap: tier · foe count · foe types (· encounter shape) — not surfaced elsewhere yet.
+ * Layout revisit (D-feel): the old top "situation strip" (one centred title + a shared
+ * objective/intel line) is broken up — the **phase + turn** title moved to the **top-left**,
+ * and the **objectives** became a stacked check-list box (see {@link BattleScene.refreshObjectives}).
+ * The **intel recap** stays hidden for now, gated here so it's a one-flag restore. It still
+ * computes (`refreshIntel` sets the text); only the render is gated. What intel DROPS from view
+ * (to relocate, not lose): tier · foe count · foe types (· encounter shape).
  */
-const SHOW_SITUATION_STRIP = false;
+const SHOW_INTEL_RECAP = false;
 
 /**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
@@ -229,7 +226,8 @@ export class BattleScene extends Phaser.Scene {
   // Persistent HUD.
   private titleText!: Phaser.GameObjects.Text;
   private intelText!: Phaser.GameObjects.Text;
-  private objectiveText!: Phaser.GameObjects.Text;
+  /** The objectives check-list box (top-centre) — rebuilt each refresh; cleared between nodes. */
+  private objectiveObjects: Phaser.GameObjects.GameObject[] = [];
   private orderText!: Phaser.GameObjects.Text;
   /** Active-unit focus card (left, the decision zone) + the peripheral camp-state card. */
   private focusCard!: MiniCard;
@@ -374,13 +372,12 @@ export class BattleScene extends Phaser.Scene {
     addVignette(this);
     // Persistent UI.
     // Top strip = "the situation": a prominent heading (phase + whose turn) over a
-    // single secondary line that composes the objective (the goal — leads) and the
-    // intel recap (passive reference — trails), laid out together by layoutSituationLine
-    // so the band stays two lines instead of three (D-UX compactness).
-    this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10).setVisible(SHOW_SITUATION_STRIP);
-    this.intelText = this.add.text(this.scale.width / 2, 42, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10).setVisible(SHOW_SITUATION_STRIP);
-    // Objective readout (label + gauge) — shares the secondary line, ahead of intel.
-    this.objectiveText = this.add.text(this.scale.width / 2, 42, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11).setVisible(SHOW_SITUATION_STRIP);
+    // Top-left = the **phase + turn** heading (whose turn it is + the deploy global state:
+    // net reach / safe radius / kits). Left-aligned in the corner, off the now-clear top band.
+    this.titleText = this.add.text(12, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(10);
+    // Intel recap — hidden for now (SHOW_INTEL_RECAP); still computed for an easy restore.
+    this.intelText = this.add.text(this.scale.width / 2, 42, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10).setVisible(SHOW_INTEL_RECAP);
+    // Objectives are now a stacked check-list box drawn top-centre by refreshObjectives().
     // Right column = "timing/history": the turn-order rail (drawn by CombatView) and
     // its label move here, off the left so the left can host the focus card. The label
     // sits below the camp card (above the rail) so it isn't occluded by it.
@@ -445,7 +442,7 @@ export class BattleScene extends Phaser.Scene {
     this.playerTrapMarkers.clear();
     this.trapSeq = 0;
     this.pendingHerb = null;
-    this.objectiveText.setText("");
+    clearLayer(this.objectiveObjects);
     this.rebuildBoard();
 
     // Intel read (D10), then straight into Deployment.
@@ -978,6 +975,7 @@ export class BattleScene extends Phaser.Scene {
     const safeR = this.campfire?.radius ?? "—";
     const who = actor ? (actor.captured ? `${actor.name} captured` : `${actor.name}'s turn`) : "set up";
     this.titleText.setText(`Deployment — ${who} · reach ${reach} · safe ${safeR} · ${kits} kit${kits === 1 ? "" : "s"}`);
+    this.refreshObjectives(); // the objectives check-list shows in deployment too
     this.refreshFocusCard();
     this.refreshPreviewCard();
   }
@@ -2275,7 +2273,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.refreshCampText();
     this.refreshHp();
-    this.refreshObjectiveText();
+    this.refreshObjectives();
     // Re-tint any freed allies (roster + the just-freed board captives) — skip the dead so a
     // freed-then-downed captive keeps its death visual instead of recoloring to a live ally.
     for (const u of this.battle.units) if (u.side === "player" && u.alive && !u.captured) this.tintCaptured(u, false);
@@ -2480,7 +2478,7 @@ export class BattleScene extends Phaser.Scene {
     const rail = this.view.drawInitiative(this.battle.units, this.scale.width - 158, 138, (u) => this.battle.clock.isCharging(u), limit);
     this.layoutRailChevron(rail);
     this.refreshHp();
-    this.refreshObjectiveText();
+    this.refreshObjectives();
     this.refreshFocusCard();
   }
 
@@ -2508,53 +2506,47 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * The objective banner (D50) — generic over the staged objectives, so any
-   * board/objective feature shows up in *every* fight that has it (the scene never
-   * names a specific kind). For each non-trivial objective it shows the authored
-   * label and, for a timed one, its gauge fill; the default elimination goal is
-   * left implicit (the field readout already conveys it).
+   * The **objectives check-list** (D50) — a vertically stacked box (top-centre, styled like
+   * the action box) listing every staged objective with a left-hand status marker: a green
+   * **✓** when met, a red **✗** when failed, else a muted **○** (with the live % appended for a
+   * timed one). Generic over the staged objectives — incl. the default "Defeat all enemies"
+   * goal, so the box is always populated — so any objective feature shows up in every fight
+   * that has it. Rebuilt each refresh; nothing drawn if (somehow) there are no objectives.
    */
-  private refreshObjectiveText(): void {
+  private refreshObjectives(): void {
+    clearLayer(this.objectiveObjects);
     const objs = this.loop.staged?.objectives ?? [];
-    const parts: string[] = [];
-    for (const o of objs) {
-      if (o.spec.kind === "eliminate-all") continue; // implicit — clear the field
+    if (objs.length === 0) return;
+    const rows = objs.map((o) => {
       const status = o.status();
       const prog = o.progress();
-      if (status === "failed") parts.push(`✗ ${o.spec.label} — failed`);
-      else if (status === "met") parts.push(`${ICON.check.glyph} ${o.spec.label} — secured`);
-      else if (prog !== undefined) parts.push(`${ICON.warn.glyph} ${o.spec.label} — ${Math.round(prog * 100)}%`);
-      else parts.push(`• ${o.spec.label}`);
-    }
-    this.objectiveText.setText(parts.join("    "));
-    this.layoutSituationLine();
-  }
+      if (status === "met") return { marker: ICON.check.glyph, color: INK.success, label: o.spec.label };
+      if (status === "failed") return { marker: "✗", color: INK.danger, label: o.spec.label };
+      const pct = prog !== undefined ? `  ${Math.round(prog * 100)}%` : "";
+      return { marker: "○", color: INK.muted, label: o.spec.label + pct };
+    });
 
-  /**
-   * Lay the **secondary situation line** (D-UX merge): the objective readout and the
-   * intel recap share one centred row at y=42 instead of stacking. The objective —
-   * the actionable goal — leads (left); the passive intel recap trails. With only one
-   * present the surviving piece simply centres; this keeps the top band two lines
-   * (heading + situation) however many of the pieces are live.
-   */
-  private layoutSituationLine(): void {
-    if (!SHOW_SITUATION_STRIP) return; // top strip hidden (layout experiment) — nothing to lay out
+    const padX = 10, padY = 7, rowPitch = 18, markerGap = 8, top = 30; // below the top-left title band
+    // Measure the widest label (off-screen) to size the box to its content, like the action box.
+    const probes = rows.map((r) => this.add.text(0, 0, r.label, { fontFamily: FONT.family, fontSize: FONT.label }).setVisible(false));
+    const labelW = Math.max(40, ...probes.map((t) => t.width));
+    probes.forEach((t) => t.destroy());
+    const markerW = 10;
+    const boxW = padX * 2 + markerW + markerGap + labelW;
+    const boxH = padY * 2 + 16 + (rows.length - 1) * rowPitch;
     const cx = this.scale.width / 2;
-    const y = 42;
-    const obj = this.objectiveText;
-    const intel = this.intelText;
-    const hasObj = obj.text.length > 0;
-    const hasIntel = intel.text.length > 0;
-    const gap = 18; // the " · " of breathing room between goal and recap
-    if (hasObj && hasIntel) {
-      const left = cx - (obj.width + gap + intel.width) / 2;
-      obj.setOrigin(0, 0.5).setPosition(left, y);
-      intel.setOrigin(0, 0.5).setPosition(left + obj.width + gap, y);
-    } else if (hasObj) {
-      obj.setOrigin(0.5, 0.5).setPosition(cx, y);
-    } else {
-      intel.setOrigin(0.5, 0.5).setPosition(cx, y);
-    }
+    const left = cx - boxW / 2;
+
+    this.objectiveObjects.push(
+      this.add.rectangle(cx, top + boxH / 2, boxW, boxH, COLOR.surface, 0.85).setStrokeStyle(1, COLOR.borderSoft).setDepth(10),
+    );
+    rows.forEach((r, i) => {
+      const y = top + padY + 8 + i * rowPitch;
+      this.objectiveObjects.push(
+        this.add.text(left + padX, y, r.marker, { color: r.color, fontFamily: FONT.family, fontSize: FONT.label, fontStyle: WEIGHT.bold }).setOrigin(0, 0.5).setDepth(11),
+        this.add.text(left + padX + markerW + markerGap, y, r.label, { color: r.color, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11),
+      );
+    });
   }
 
   /** True once the staged encounter has reached a graded terminal (D50/D51). */
@@ -2684,7 +2676,6 @@ export class BattleScene extends Phaser.Scene {
       .setText(parts.join("  ·  ") + (shape ? `   (${shape})` : ""))
       .setColor(battle ? INK.muted : INK.gold)
       .setFontSize(battle ? FONT.caption : FONT.label);
-    this.layoutSituationLine();
   }
 
   private setHint(text: string): void {

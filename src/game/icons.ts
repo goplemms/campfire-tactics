@@ -54,6 +54,9 @@ export const ICON = {
   trapArmed: { glyph: "▲", label: "trap (armed)", color: INK.danger },
   trapSprung: { glyph: "✕", label: "trap (sprung)", color: INK.disabled },
   trapMine: { glyph: "✸", label: "your trap", color: INK.ember },
+  // Deploy influence sources (D63): the party's warm safe core, and the closing net's origin.
+  campfire: { glyph: "♨", label: "your camp", color: INK.gold },
+  netSource: { glyph: "❖", label: "the net's source", color: INK.danger },
 
   // --- UI affordances ---
   expand: { glyph: "▸", label: "expand" },

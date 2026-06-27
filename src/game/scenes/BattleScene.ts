@@ -104,7 +104,7 @@ import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
 import { MiniCard, type CardRow } from "../info-cards";
 import { dropNet as dropNetCage } from "../deploy-fx";
-import { ICON, type IconKey, type IconSpec } from "../icons";
+import { ICON, placeIcon, type IconKey, type IconSpec } from "../icons";
 
 /**
  * Board zoom for the real combat field (D-UX): enlarge tiles + tokens so details
@@ -1122,20 +1122,20 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  /** Mark the two sources on the board: an ember star at the campfire, a red one at the foe. */
+  /** Mark the two sources on the board: a campfire glyph at the camp, the net's source at the foe. */
   private drawSourceMarkers(): void {
     clearLayer(this.deployMarkers);
     if (!this.campfire || !this.front) return;
     const camp = this.tileToWorld(this.campfire.origin);
     const foe = this.tileToWorld(this.front.origin);
-    // Sit the source stars in the lower half of their tile: trap glyphs anchor at the tile's
-    // top vertex (y − halfH), so a star at tile-centre collides with a trap placed on the same
+    // Sit the source markers in the lower half of their tile: trap glyphs anchor at the tile's
+    // top vertex (y − halfH), so a marker at tile-centre collides with a trap placed on the same
     // tile (the campfire core is exactly where the party — and its traps — cluster). The drop
-    // tucks the star under the trap, clear of it.
+    // tucks the marker under the trap, clear of it.
     const drop = this.view.halfH() * 0.5;
     this.deployMarkers.push(
-      this.add.star(camp.x, camp.y + drop, 5, 5, 11, COLOR.accent).setStrokeStyle(2, COLOR.gold).setDepth(0.9),
-      this.add.star(foe.x, foe.y + drop, 6, 5, 11, COLOR.danger).setStrokeStyle(2, COLOR.foeEdge).setDepth(0.9),
+      placeIcon(this, camp.x, camp.y + drop, "campfire", { size: FONT.display }).setDepth(0.9),
+      placeIcon(this, foe.x, foe.y + drop, "netSource", { size: FONT.display }).setDepth(0.9),
     );
   }
 

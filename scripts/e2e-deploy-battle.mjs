@@ -320,11 +320,11 @@ async function main() {
         const def = s.cardView;
         s.setCardView("intel"); const i = s.cardView;
         s.setCardView("camp"); const c = s.cardView;
-        return { def, i, c, hasTabs: !!s.campTab && !!s.intelTab };
+        return { def, i, c, tabs: s.cardTabs.map(t => t.view) };
       `);
       check("the situation card defaults to Camp in battle", card.def === "camp");
       check("the Camp/Intel toggle flips the view both ways", card.i === "intel" && card.c === "camp");
-      check("the situation card has both tabs", card.hasTabs === true);
+      check("the situation card has Camp + Intel tabs", card.tabs.includes("camp") && card.tabs.includes("intel"));
       await shot("battle-start");
 
       // --- Stage: drive the CT clock; a player turn opens and can be ended ----

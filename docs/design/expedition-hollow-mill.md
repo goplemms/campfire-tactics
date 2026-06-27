@@ -169,11 +169,13 @@ Recent work that altered routing or the within-node experience. Newest first.
   card**. Tabs over the card flip between **Camp** (morale / purse / storage) and **Intel** (foe
   count · intel tier · field shape in deploy · a wrapped foe-type note). It **defaults per phase**
   — Intel in deployment (where it informs placement), Camp in battle (the foes are on the board by
-  then) — and either tab can be clicked anytime. This retires the old hidden `intelText` /
-  `SHOW_INTEL_RECAP` and the de-emphasis-in-battle styling: the toggle subsumes both. Seams:
-  `BattleScene.renderCampCard` / `renderIntelCard` (dispatched by `refreshCampText`),
-  `makeCardTab` / `setCardView`; `MiniCard.set` gained an optional wrapped `note` line. Pure
-  render; no core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (65, incl.
+  then) — and either tab can be clicked anytime. The tabs render as proper **bordered chips**
+  forming the card's header (active = lighter `surfaceAlt` fill + bright text + a gold top
+  accent bar; inactive recessed) so it reads as a switching-context area, not two labels. This
+  retires the old hidden `intelText` / `SHOW_INTEL_RECAP` and the de-emphasis-in-battle styling:
+  the toggle subsumes both. Seams: `BattleScene.renderCampCard` / `renderIntelCard` (dispatched
+  by `refreshCampText`), `makeCardTab` / `updateCardTabs` / `setCardView`; `MiniCard.set` gained
+  an optional wrapped `note` line. Pure render; no core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (65, incl.
   the toggle assertions), sim (summary **unchanged**).
 - **Top-strip rework: phase/turn to the corner, objectives as a check-list box** (D-feel,
   render-only — layout revisit). The old centred "situation strip" (one title line over a

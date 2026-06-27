@@ -228,8 +228,8 @@ export class BattleScene extends Phaser.Scene {
    */
   private campCard!: MiniCard;
   private cardView: "camp" | "intel" = "intel";
-  private campTab!: Phaser.GameObjects.Text;
-  private intelTab!: Phaser.GameObjects.Text;
+  /** The Camp/Intel tab chips over the situation card — restyled by {@link updateCardTabs}. */
+  private cardTabs: { view: "camp" | "intel"; bg: Phaser.GameObjects.Rectangle; accent: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }[] = [];
   /**
    * The docked **preview card** — the "before you commit" read (docked just under the
    * focus card): the armed-ability forecast (D64), or, on hover, the move-tile (cost +
@@ -386,11 +386,13 @@ export class BattleScene extends Phaser.Scene {
     // the move-tile / enemy / deploy-tile outcome before you commit.
     this.previewCard = new MiniCard(this, 8, 184, { w: 150 }).hide();
     this.campCard = new MiniCard(this, this.scale.width - 158, 42, { w: 150 });
-    // The Camp ↔ Intel toggle: two tabs over the card's title row. The active one reads bright,
-    // the other dim; clicking flips the view. The card title is left blank so the tabs own the row.
-    const tabX = this.scale.width - 158 + 8;
-    this.campTab = this.makeCardTab("Camp", tabX, 48, "camp");
-    this.intelTab = this.makeCardTab("Intel", tabX + 40, 48, "intel");
+    // The Camp ↔ Intel toggle: two tab chips forming the card's header row, so it reads as a
+    // switching-context area. The active chip is lighter, brighter, and gold-barred; the inactive
+    // one recedes. The card title is left blank so the chips own the row.
+    const cardLeft = this.scale.width - 158, cardW = 150, tabH = 18, tabGap = 2, tabY = 42;
+    const tabW = (cardW - tabGap) / 2;
+    this.makeCardTab("Camp", "camp", cardLeft, tabY, tabW, tabH);
+    this.makeCardTab("Intel", "intel", cardLeft + tabW + tabGap, tabY, tabW, tabH);
     this.hintPanel = new HintPanel(this);
     // The persistent board colour key — the same component carries across phases,
     // re-keyed in enterDeploy / startBattle so the wash language is always legible.
@@ -2619,13 +2621,15 @@ export class BattleScene extends Phaser.Scene {
     this.campCard.set("", rows, undefined, note);
   }
 
-  /** One Camp/Intel tab over the situation card — flips the view on click. */
-  private makeCardTab(label: string, x: number, y: number, view: "camp" | "intel"): Phaser.GameObjects.Text {
-    const t = this.add.text(x, y, label, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(12);
-    t.setInteractive({ useHandCursor: true });
-    t.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.setCardView(view));
-    t.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(view === "intel" ? "Show the scouted foe intel." : "Show the camp economy (morale / purse / storage)."));
-    return t;
+  /** Build one Camp/Intel tab chip (bordered, with a top accent bar for the active state). */
+  private makeCardTab(label: string, view: "camp" | "intel", x: number, y: number, w: number, h: number): void {
+    const bg = this.add.rectangle(x, y, w, h, COLOR.surfaceRaised).setOrigin(0, 0).setStrokeStyle(1, COLOR.border).setDepth(12);
+    const accent = this.add.rectangle(x, y, w, 2, COLOR.accent).setOrigin(0, 0).setDepth(13).setVisible(false); // active-tab selection bar
+    const text = this.add.text(x + w / 2, y + h / 2 + 1, label, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(13);
+    bg.setInteractive({ useHandCursor: true });
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.setCardView(view));
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(view === "intel" ? "Show the scouted foe intel." : "Show the camp economy (morale / purse / storage)."));
+    this.cardTabs.push({ view, bg, accent, label: text });
   }
 
   /** Flip the situation card to Camp or Intel and re-render. */
@@ -2635,10 +2639,14 @@ export class BattleScene extends Phaser.Scene {
     this.refreshCampText();
   }
 
-  /** Tint the tabs by the active view — the active one bright, the other dim. */
+  /** Restyle the tab chips by the active view — active = lighter fill + bright text + gold bar. */
   private updateCardTabs(): void {
-    this.campTab.setColor(this.cardView === "camp" ? INK.bright : INK.disabled);
-    this.intelTab.setColor(this.cardView === "intel" ? INK.bright : INK.disabled);
+    for (const t of this.cardTabs) {
+      const active = t.view === this.cardView;
+      t.bg.setFillStyle(active ? COLOR.surfaceAlt : COLOR.surfaceRaised).setStrokeStyle(1, active ? COLOR.borderSoft : COLOR.border);
+      t.label.setColor(active ? INK.bright : INK.muted);
+      t.accent.setVisible(active);
+    }
   }
 
   /**

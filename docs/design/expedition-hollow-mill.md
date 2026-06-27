@@ -163,6 +163,17 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Bugfix: the primary (End Turn / Advance Clock) was unclickable after resizing** (regression from
+  the side-by-side Undo). `Button.setWidth` re-created the hit area via
+  `removeInteractive()`/`setInteractive()`, which **dropped the clickable region** for this
+  container-child shape — the button still fired on its keyboard shortcut (Space), so tests (which
+  press Space) never caught it, but a **mouse click did nothing**. Fixed by resizing the existing
+  hit area in place. Also fixed a paired cosmetic bug: `fitText`'s ellipsis is destructive, so a
+  half-width "End Turn" → full "Advance Clock" transition left the label stuck at "Advanc…";
+  `Button` now keeps the untruncated text and re-fits from it, and `setPrimary` fits at full width
+  first. Seams: `Button.setWidth` / `setLabel` / `fullText`, `BattleScene.setPrimary`. Guarded
+  green: tsc, 837 unit tests, build, deploy→battle e2e (73, incl. a **real mouse-click** End-Turn
+  test + a no-truncation check), sim (unchanged).
 - **CT rail shows in deployment too — with the net's next sweep as a row** (D-feel, render-only).
   The initiative rail was battle-only; a diligent player had no read on **when the net closes next**.
   It now renders during **deployment** as well, showing the **player units** (their deploy order)

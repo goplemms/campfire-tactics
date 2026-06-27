@@ -2970,7 +2970,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private setPrimary(text: string, visible = true): void {
-    this.primary.setLabel(text).setVisible(visible);
+    // Fit the label at *full* width first: a long label (e.g. "Advance Clock") set while the
+    // primary is still half-width (paired with Undo on the turn just ended) would over-fit and
+    // ellipsize. The control-box layout re-narrows to half afterward for the short "End Turn".
+    this.primary.setWidth(MENU_BW).setLabel(text).setVisible(visible);
   }
 
   /** The resting Y of the End Turn / Advance Clock primary — the box's bottom slot. */

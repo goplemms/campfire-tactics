@@ -285,6 +285,17 @@ async function main() {
       check("the deploy rail lists the net's next sweep", deployRail.names.includes("The net"));
       check("the deploy rail shows player units + the net only (no concealed foes)", deployRail.names.length === deployRail.players + 1);
 
+      // A *real mouse click* on the half-width End Turn primary must end the deploy turn — Space
+      // routes through onPrimary, so only a click exercises the button's (resized) hit area.
+      const beforeClick = await g.bsEval(`s.refreshDeployButtons(); return { label: s.primary.label.text, x: s.primary.x, y: s.primary.y };`);
+      check("the deploy primary reads End Turn before the click", beforeClick.label === "End Turn");
+      await g.clickScene(beforeClick.x, beforeClick.y);
+      await sleep(150);
+      const afterClick = await g.bsEval(`return { label: s.primary.label.text, actor: s.deployActor ? s.deployActor.id : null };`);
+      console.log("• Click End Turn (deploy)");
+      check("clicking End Turn ends the deploy turn (button is clickable)", afterClick.actor === null);
+      check("the idle primary re-fits to full 'Advance Clock' (no truncation)", afterClick.label === "Advance Clock");
+
       // --- Stage: commit to Battle -------------------------------------------
       // The deploy→battle handoff runs off a single bus event (D67): the seam is wired up
       // front (wireBattleFx), and firing it tears down the staging visuals (veil + overlays).

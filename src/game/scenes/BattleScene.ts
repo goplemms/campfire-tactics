@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { COLOR, FONT, INK } from "../theme";
+import { COLOR, FONT, INK, WEIGHT } from "../theme";
 import { roleColor } from "../roles";
 import { CombatView } from "../combat-view";
 import { addVignette } from "../vignette";
@@ -104,7 +104,7 @@ import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
 import { MiniCard, type CardRow } from "../info-cards";
 import { dropNet as dropNetCage } from "../deploy-fx";
-import { ICON, type IconKey, type IconSpec } from "../icons";
+import { ICON, placeIcon, type IconKey, type IconSpec } from "../icons";
 
 /**
  * Board zoom for the real combat field (D-UX): enlarge tiles + tokens so details
@@ -161,7 +161,7 @@ interface ResolutionReport {
 type BoardCtx = "deployment" | "battle";
 
 /** One entry in the bottom-left command row — a labelled button with an optional tooltip. */
-type ActionSpec = { text: string; description?: string; onClick: () => void };
+type ActionSpec = { text: string; description?: string; onClick: () => void; enabled?: boolean };
 
 /** Command-menu geometry (the bottom-left stacked action box) — shared so the docked
  *  primary and the verb stack agree on width/pitch/anchor. */
@@ -171,6 +171,8 @@ const MENU_PITCH = 31;
 const MENU_PAD = 7;
 const MENU_LEFT = 12; // box left margin
 const MENU_CX = MENU_LEFT + MENU_PAD + MENU_BW / 2; // button centre x (bottom-left)
+const MENU_GAP = 12; // vertical gap between the verb box and the turn-control box below it
+const PAIR_GAP = 6; // horizontal gap between Undo and the primary in the control box's bottom row
 
 /**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
@@ -213,12 +215,21 @@ export class BattleScene extends Phaser.Scene {
 
   // Persistent HUD.
   private titleText!: Phaser.GameObjects.Text;
-  private intelText!: Phaser.GameObjects.Text;
-  private objectiveText!: Phaser.GameObjects.Text;
+  /** The objectives check-list box (far-left, under the title) — rebuilt each refresh. */
+  private objectiveObjects: Phaser.GameObjects.GameObject[] = [];
   private orderText!: Phaser.GameObjects.Text;
-  /** Active-unit focus card (left, the decision zone) + the peripheral camp-state card. */
+  /** Active-unit focus card (left, the decision zone) + the peripheral situation card. */
   private focusCard!: MiniCard;
+  /**
+   * The top-right **situation card** — a Camp ↔ Intel toggle (D-feel). It shows the run's
+   * **camp** economy (morale / purse / storage) or the encounter **intel** (foes / tier / shape /
+   * types), flipped by the two tabs over the card. Defaults per phase: **Intel** in deployment
+   * (it informs placement), **Camp** in battle (the foes are on the board by then).
+   */
   private campCard!: MiniCard;
+  private cardView: "camp" | "intel" = "intel";
+  /** The Camp/Intel tab chips over the situation card — restyled by {@link updateCardTabs}. */
+  private cardTabs: { view: "camp" | "intel"; bg: Phaser.GameObjects.Rectangle; accent: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }[] = [];
   /**
    * The docked **preview card** — the "before you commit" read (docked just under the
    * focus card): the armed-ability forecast (D64), or, on hover, the move-tile (cost +
@@ -253,6 +264,13 @@ export class BattleScene extends Phaser.Scene {
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
+  /**
+   * A dug-in unit's turn opens to a minimal **Take Action / End Turn** menu (it chose to sit
+   * out the maneuver). This flag, set by **Take Action**, reveals the unit's full deploy row
+   * for the turn without yet breaking the stance — the dig-in capture benefit still holds
+   * until it actually moves or commits an act (the status-effect trigger). Reset per turn.
+   */
+  private deployReveal = false;
   /** The party's Set Trap spec (damage + snare status), resolved at deploy; undefined = no trapper. */
   /** Board markers for the player's own placed traps, keyed by the registered entity id. */
   private playerTrapMarkers = new Map<string, Phaser.GameObjects.Text>();
@@ -352,13 +370,10 @@ export class BattleScene extends Phaser.Scene {
     addVignette(this);
     // Persistent UI.
     // Top strip = "the situation": a prominent heading (phase + whose turn) over a
-    // single secondary line that composes the objective (the goal — leads) and the
-    // intel recap (passive reference — trails), laid out together by layoutSituationLine
-    // so the band stays two lines instead of three (D-UX compactness).
-    this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
-    this.intelText = this.add.text(this.scale.width / 2, 42, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10);
-    // Objective readout (label + gauge) — shares the secondary line, ahead of intel.
-    this.objectiveText = this.add.text(this.scale.width / 2, 42, "", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body, align: "center" }).setOrigin(0.5).setDepth(11);
+    // Top-left = the **phase + turn** heading (whose turn it is + the deploy global state:
+    // net reach / safe radius / kits). Left-aligned in the corner, off the now-clear top band.
+    this.titleText = this.add.text(12, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(10);
+    // Objectives are now a stacked check-list box drawn far-left by refreshObjectives().
     // Right column = "timing/history": the turn-order rail (drawn by CombatView) and
     // its label move here, off the left so the left can host the focus card. The label
     // sits below the camp card (above the rail) so it isn't occluded by it.
@@ -371,10 +386,20 @@ export class BattleScene extends Phaser.Scene {
     // the move-tile / enemy / deploy-tile outcome before you commit.
     this.previewCard = new MiniCard(this, 8, 184, { w: 150 }).hide();
     this.campCard = new MiniCard(this, this.scale.width - 158, 42, { w: 150 });
+    // The Camp ↔ Intel toggle: two tab chips forming the card's header row, so it reads as a
+    // switching-context area. The active chip is lighter, brighter, and gold-barred; the inactive
+    // one recedes. The card title is left blank so the chips own the row.
+    const cardLeft = this.scale.width - 158, cardW = 150, tabH = 18, tabGap = 2, tabY = 42;
+    const tabW = (cardW - tabGap) / 2;
+    this.makeCardTab("Camp", "camp", cardLeft, tabY, tabW, tabH);
+    this.makeCardTab("Intel", "intel", cardLeft + tabW + tabGap, tabY, tabW, tabH);
     this.hintPanel = new HintPanel(this);
-    // The persistent board colour key — the same component carries across phases,
-    // re-keyed in enterDeploy / startBattle so the wash language is always legible.
-    this.legendStrip = new LegendStrip(this);
+    // The persistent board colour key — the same component carries across phases, re-keyed in
+    // enterDeploy / startBattle so the wash language is always legible. Docked bottom, just right
+    // of the command box (its backing spans MENU_LEFT..MENU_LEFT+MENU_BW+2·MENU_PAD), so the
+    // bottom-right column stays clear for the combat log + the Session-log chip that opens there.
+    const legendX = MENU_LEFT + MENU_BW + 2 * MENU_PAD + 14;
+    this.legendStrip = new LegendStrip(this, legendX, this.scale.height - 20);
     this.threatGfx = this.add.graphics().setDepth(0.36);
     // The tarpit-aura ring (D64) sits just above the zone washes but below the move/
     // footprint preview, so a Heavy Knight's taxed tiles read in both phases.
@@ -423,13 +448,13 @@ export class BattleScene extends Phaser.Scene {
     this.playerTrapMarkers.clear();
     this.trapSeq = 0;
     this.pendingHerb = null;
-    this.objectiveText.setText("");
+    clearLayer(this.objectiveObjects);
     this.rebuildBoard();
 
     // Intel read (D10), then straight into Deployment.
     this.intel = this.loop.intel();
+    this.cardView = "intel"; // a fresh node opens in deployment — lead the situation card with intel
     this.refreshCampText();
-    this.refreshIntelText();
     const upkeepNote =
       camp.upkeep.underfunded.length > 0
         ? `Underfunded ${camp.upkeep.underfunded.join(" + ")} — morale took a hit.`
@@ -596,6 +621,7 @@ export class BattleScene extends Phaser.Scene {
   private beginDeployTurn(unit: Unit): void {
     this.deployMoved = false;
     this.deployActed = false;
+    this.deployReveal = false;
     this.moveBudget = moveBudget(unit);
     this.deployHoverTile = null;
     this.queuedTile = null;
@@ -606,17 +632,23 @@ export class BattleScene extends Phaser.Scene {
     // nearby traps (D12 parity with the combat turn-open, the same shared helper). Reveal
     // *before* the buttons render so a freshly-spotted adjacent trap surfaces its Disarm verb.
     const spotted = this.scanTrapsOnTurnOpen(unit);
+    this.setPrimary("End Turn"); // before the row builds, so the half-width pair labels correctly
     this.selectDeployActor(unit);
     this.recomputeReach(unit); // light the reachable tiles for this turn's budget (shared with battle)
     this.drawDeployReach();
-    this.setPrimary("End Turn");
     const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0;
-    this.setHint(
-      `${unit.name}'s turn — click a tile to reposition, Dig In, or place a trap, then End Turn (Space). ` +
-        (spotted > 0 ? `Spots ${spotted} hidden trap${spotted > 1 ? "s" : ""} (${ICON.trapArmed.glyph})! ` : "") +
-        (trapsAfield ? `Search to scan further, or a trapper can Disarm. ` : "") +
-        `The enemy's reach is ${this.front.radius} step${this.front.radius === 1 ? "" : "s"} and growing.`,
-    );
+    if (unit.dugIn) {
+      // The unit chose to sit this out: a minimal menu. Moving (a map click) still re-engages
+      // it directly — Take Action is the no-move way back in.
+      this.setHint(`${unit.name} is dug in (lower capture risk). Click a tile to move (re-engaging), press Take Action to act in place, or End Turn (Space) to stay hunkered.`);
+    } else {
+      this.setHint(
+        `${unit.name}'s turn — click a tile to reposition, Dig In, or place a trap, then End Turn (Space). ` +
+          (spotted > 0 ? `Spots ${spotted} hidden trap${spotted > 1 ? "s" : ""} (${ICON.trapArmed.glyph})! ` : "") +
+          (trapsAfield ? `Search to scan further, or a trapper can Disarm. ` : "") +
+          `The enemy's reach is ${this.front.radius} step${this.front.radius === 1 ? "" : "s"} and growing.`,
+      );
+    }
   }
 
   /** Between deploy turns the clock rests on the player — Advance Clock steps it. */
@@ -704,6 +736,20 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Take Action — re-engage a unit that began its turn dug in: reveal its full deploy row for
+   * the turn. Doesn't break the stance itself; the dig-in capture benefit holds until the unit
+   * actually moves (clears it in `moveUnit`) or commits an act (cleared in the act seams), so a
+   * reveal that ends in "End Turn" leaves the unit hunkered.
+   */
+  private takeAction(actor: Unit): void {
+    if (this.busy || actor.captured || this.deployActor !== actor) return;
+    this.deployReveal = true;
+    this.refreshDeployButtons();
+    this.refreshDeployStatus();
+    this.setHint(`${actor.name} re-engages — move, place a trap, or use a skill (the dug-in benefit holds until it does). Or End Turn (Space) to stay hunkered.`);
+  }
+
   /** Dig In (D63): hunker on this tile for a sharply reduced capture chance. */
   private digIn(): void {
     const actor = this.deployActor;
@@ -750,19 +796,40 @@ export class BattleScene extends Phaser.Scene {
   private refreshDeployButtons(): void {
     const actor = this.deployActor;
     const specs: ActionSpec[] = [];
-    // Meta-controls (pure decision, D63/D67): Undo leads when there's something to take back.
+    // Turn-control box (pure decision, D63/D67): Undo + Start Battle + the Advance Clock /
+    // End Turn primary, kept apart from the unit's verbs. During a unit's turn, Undo is
+    // **persistent** beside End Turn (greyed/inert until there's something to take back);
+    // between turns there's no active unit to undo, so it's omitted and Advance Clock stays
+    // full-width.
     const ids = deployActions({ hasActor: !!actor, captured: !!actor?.captured, canUndo: this.battle.canUndo() });
-    if (ids.includes("undo") && actor) {
+    const canUndo = ids.includes("undo");
+    const undo: ActionSpec | undefined = actor
+      ? {
+          text: "Undo",
+          description: canUndo
+            ? "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc)."
+            : "Nothing to take back yet — move, dig in, or place a trap, then Undo returns the unit to where it started.",
+          enabled: canUndo,
+          onClick: () => this.undoTurn(actor, "deployment"),
+        }
+      : undefined;
+    // A unit that **began** the turn dug in (vs. one that just dug in this turn — `deployActed`)
+    // sits out the maneuver: a minimal **Take Action** verb stands in for the full row, so the
+    // player sees the unit was intentionally taken out of action. Take Action reveals the row
+    // for this turn (`deployReveal`) without breaking the stance yet. Moving (a map click) still
+    // re-engages it directly — the reach stays lit.
+    const hunkered = !!actor && !!actor.dugIn && !actor.captured && !this.deployActed && !this.deployReveal;
+    if (hunkered) {
       specs.push({
-        text: "Undo",
-        description: "Take back everything this unit did this deploy turn — moves, dig-in, traps (kit refunded) — back to where it started (Esc).",
-        onClick: () => this.undoTurn(actor, "deployment"),
+        text: "Take Action",
+        description: "Stand this unit up to act this turn — its full options return. The dug-in capture benefit holds until it actually moves or acts.",
+        onClick: () => this.takeAction(actor!),
       });
     }
     // The ability buttons are the **same data-driven projection as combat** (D67): the unit's
     // pre-combat skills + the universal Dig In / Defend, from availableSkills — so a Set-Trap
     // skill surfaces because it's pre-combat *data*, not via a hand-computed `canTrap`.
-    if (actor && !actor.captured && !this.deployActed) {
+    if (actor && !actor.captured && !this.deployActed && !hunkered) {
       // Offensive skills are board skills now (D67 W7) — not banned pre-combat, just idle
       // without a target. Surface them only when a foe is actually **engageable** (un-concealed
       // — a keep-assault stages defenders that way); the default staging conceals the enemy
@@ -775,13 +842,14 @@ export class BattleScene extends Phaser.Scene {
       }
       this.pushTrapVerbs(specs, actor, "deployment"); // Search / Disarm — the shared trap-field verbs
     }
-    // Start Battle always closes the row (commit early at any point).
-    specs.push({
+    // Start Battle is a turn-control (commit early at any point), so it sits in the control
+    // box (a full-width row above the Undo/primary pair) — not among the unit's verbs.
+    const controls: ActionSpec[] = [{
       text: "Start Battle",
       description: "Commit now — begin the fight with the party where it stands.",
       onClick: () => { if (!this.busy) this.startBattle(); },
-    });
-    this.layoutActionMenu(specs);
+    }];
+    this.layoutActionMenu(specs, { undo, controls });
   }
 
   /**
@@ -913,6 +981,7 @@ export class BattleScene extends Phaser.Scene {
     const safeR = this.campfire?.radius ?? "—";
     const who = actor ? (actor.captured ? `${actor.name} captured` : `${actor.name}'s turn`) : "set up";
     this.titleText.setText(`Deployment — ${who} · reach ${reach} · safe ${safeR} · ${kits} kit${kits === 1 ? "" : "s"}`);
+    this.refreshObjectives(); // the objectives check-list shows in deployment too
     this.refreshFocusCard();
     this.refreshPreviewCard();
   }
@@ -1053,15 +1122,20 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  /** Mark the two sources on the board: an ember star at the campfire, a red one at the foe. */
+  /** Mark the two sources on the board: a campfire glyph at the camp, the net's source at the foe. */
   private drawSourceMarkers(): void {
     clearLayer(this.deployMarkers);
     if (!this.campfire || !this.front) return;
     const camp = this.tileToWorld(this.campfire.origin);
     const foe = this.tileToWorld(this.front.origin);
+    // Sit the source markers in the lower half of their tile: trap glyphs anchor at the tile's
+    // top vertex (y − halfH), so a marker at tile-centre collides with a trap placed on the same
+    // tile (the campfire core is exactly where the party — and its traps — cluster). The drop
+    // tucks the marker under the trap, clear of it.
+    const drop = this.view.halfH() * 0.5;
     this.deployMarkers.push(
-      this.add.star(camp.x, camp.y, 5, 5, 11, COLOR.accent).setStrokeStyle(2, COLOR.gold).setDepth(0.9),
-      this.add.star(foe.x, foe.y, 6, 5, 11, COLOR.danger).setStrokeStyle(2, COLOR.foeEdge).setDepth(0.9),
+      placeIcon(this, camp.x, camp.y + drop, "campfire", { size: FONT.display }).setDepth(0.9),
+      placeIcon(this, foe.x, foe.y + drop, "netSource", { size: FONT.display }).setDepth(0.9),
     );
   }
 
@@ -1206,6 +1280,7 @@ export class BattleScene extends Phaser.Scene {
     this.playerTrapMarkers.set(id, marker);
     this.refreshCampText();
     this.deployActed = true;
+    actor.dugIn = false; // placing a trap is an act — breaks the hunker (the "on action" trigger)
     this.refreshDeployButtons();
     this.refreshDeployStatus();
     this.setHint((res.levels ?? 0) > 0
@@ -1223,7 +1298,8 @@ export class BattleScene extends Phaser.Scene {
     // deploy overlays + markers — and the log marker lets replay delimit the deploy prelude.
     this.battle.beginBattle();
     this.titleText.setText("Battle");
-    this.refreshIntelText(); // re-style the roster line down to passive reference (D-UX)
+    this.cardView = "camp"; // foes are on the board now — default the situation card back to Camp
+    this.refreshCampText();
     this.legendStrip.setItems(BATTLE_LEGEND);
     this.clearActionButtons();
     this.theftAttempts.clear();
@@ -1436,12 +1512,21 @@ export class BattleScene extends Phaser.Scene {
 
   private showSkillButtons(actor: Unit): void {
     const specs: ActionSpec[] = [];
-    // Undo leads whenever this turn's actions can be taken back — anything done this
-    // turn (a move *or* a strike/skill), as long as no sprung trap has locked it (no
-    // take-back on damage taken, D60). Routes through the action log (Phase 2).
-    if (this.battle.canUndo() && !this.turnLocked) {
-      specs.push({ text: "Undo Turn", description: "Take back everything this unit did this turn — moves and strikes — back to where it started (Esc).", onClick: () => this.undoTurn(actor, "battle") });
-    }
+    // Turn-control: Undo lives in the control box (with End Turn), apart from the verbs —
+    // available whenever this turn's actions can be taken back (a move *or* a strike/skill),
+    // as long as no sprung trap has locked it (no take-back on damage taken, D60). Routes
+    // through the action log (Phase 2).
+    // Undo is **persistent** beside End Turn so the take-back affordance is always visible —
+    // greyed/inert until there's something on this turn's stack (and no sprung-trap lock).
+    const canUndo = this.battle.canUndo() && !this.turnLocked;
+    const undo: ActionSpec = {
+      text: "Undo",
+      description: canUndo
+        ? "Take back everything this unit did this turn — moves and strikes — back to where it started (Esc)."
+        : "Nothing to take back yet — move or act, then Undo returns the unit to where it started.",
+      enabled: canUndo,
+      onClick: () => this.undoTurn(actor, "battle"),
+    };
     // The Act buttons (skill / Bribe / Search / Disarm / Defend) are the unit's one
     // action this turn — surfaced only until that Act is spent (D60).
     if (!this.acted) {
@@ -1496,8 +1581,9 @@ export class BattleScene extends Phaser.Scene {
       if (defend) specs.push({ text: "Defend (D)", description: `${defend.description}  ·  key D.`, onClick: () => this.onSkillButton(actor, defend) });
     }
     // The turn's explicit close is the prominent green primary button (plus Space and
-    // W) — so the action row carries only the unit's *verbs*, not a second End Turn.
-    this.layoutActionMenu(specs);
+    // W) — so the verb box carries only the unit's *verbs*; Undo sits side-by-side with
+    // End Turn in the separate control box below.
+    this.layoutActionMenu(specs, { undo });
   }
 
   // --- Trap-field: spotting, searching, disarming (D12) ----------------------
@@ -1549,6 +1635,7 @@ export class BattleScene extends Phaser.Scene {
   private commitFieldAct(actor: Unit, ctx: BoardCtx, hint?: string, charged = true): void {
     if (ctx === "deployment") {
       this.deployActed = true;
+      actor.dugIn = false; // acting breaks the hunker (the status-effect "on action" trigger); moving already clears it in moveUnit
       this.refreshDeployButtons();
       this.refreshDeployStatus();
     } else {
@@ -2111,6 +2198,7 @@ export class BattleScene extends Phaser.Scene {
     if (ctx === "deployment") {
       this.deployMoved = false;
       this.deployActed = false;
+      this.deployReveal = false; // back to the minimal menu if the unit began the turn dug in
       this.moveBudget = moveBudget(actor); // the whole turn rolled back — full range again
       this.queuedTile = null;
     } else {
@@ -2133,7 +2221,9 @@ export class BattleScene extends Phaser.Scene {
       this.refreshDeployStatus();
       this.recomputeReach(actor); // budget restored to full range — relight the reach (shared with battle)
       this.drawDeployReach();
-      this.setHint(`${actor.name}'s deploy turn reset — reposition, Dig In, place a trap, or End Turn (Space).`);
+      this.setHint(actor.dugIn
+        ? `${actor.name}'s deploy turn reset — dug in again. Click a tile to move, Take Action to act in place, or End Turn (Space).`
+        : `${actor.name}'s deploy turn reset — reposition, Dig In, place a trap, or End Turn (Space).`);
     } else {
       refreshAuras(this.battle.units); // confirm the tarpit ring matches the restored positions (D40)
       this.recomputeReach(actor);
@@ -2195,7 +2285,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.refreshCampText();
     this.refreshHp();
-    this.refreshObjectiveText();
+    this.refreshObjectives();
     // Re-tint any freed allies (roster + the just-freed board captives) — skip the dead so a
     // freed-then-downed captive keeps its death visual instead of recoloring to a live ally.
     for (const u of this.battle.units) if (u.side === "player" && u.alive && !u.captured) this.tintCaptured(u, false);
@@ -2400,7 +2490,7 @@ export class BattleScene extends Phaser.Scene {
     const rail = this.view.drawInitiative(this.battle.units, this.scale.width - 158, 138, (u) => this.battle.clock.isCharging(u), limit);
     this.layoutRailChevron(rail);
     this.refreshHp();
-    this.refreshObjectiveText();
+    this.refreshObjectives();
     this.refreshFocusCard();
   }
 
@@ -2428,52 +2518,47 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * The objective banner (D50) — generic over the staged objectives, so any
-   * board/objective feature shows up in *every* fight that has it (the scene never
-   * names a specific kind). For each non-trivial objective it shows the authored
-   * label and, for a timed one, its gauge fill; the default elimination goal is
-   * left implicit (the field readout already conveys it).
+   * The **objectives check-list** (D50) — a vertically stacked box (top-centre, styled like
+   * the action box) listing every staged objective with a left-hand status marker: a green
+   * **✓** when met, a red **✗** when failed, else a muted **○** (with the live % appended for a
+   * timed one). Generic over the staged objectives — incl. the default "Defeat all enemies"
+   * goal, so the box is always populated — so any objective feature shows up in every fight
+   * that has it. Rebuilt each refresh; nothing drawn if (somehow) there are no objectives.
    */
-  private refreshObjectiveText(): void {
+  private refreshObjectives(): void {
+    clearLayer(this.objectiveObjects);
     const objs = this.loop.staged?.objectives ?? [];
-    const parts: string[] = [];
-    for (const o of objs) {
-      if (o.spec.kind === "eliminate-all") continue; // implicit — clear the field
+    if (objs.length === 0) return;
+    const rows = objs.map((o) => {
       const status = o.status();
       const prog = o.progress();
-      if (status === "failed") parts.push(`✗ ${o.spec.label} — failed`);
-      else if (status === "met") parts.push(`${ICON.check.glyph} ${o.spec.label} — secured`);
-      else if (prog !== undefined) parts.push(`${ICON.warn.glyph} ${o.spec.label} — ${Math.round(prog * 100)}%`);
-      else parts.push(`• ${o.spec.label}`);
-    }
-    this.objectiveText.setText(parts.join("    "));
-    this.layoutSituationLine();
-  }
+      if (status === "met") return { marker: ICON.check.glyph, color: INK.success, label: o.spec.label };
+      if (status === "failed") return { marker: "✗", color: INK.danger, label: o.spec.label };
+      const pct = prog !== undefined ? `  ${Math.round(prog * 100)}%` : "";
+      return { marker: "○", color: INK.muted, label: o.spec.label + pct };
+    });
 
-  /**
-   * Lay the **secondary situation line** (D-UX merge): the objective readout and the
-   * intel recap share one centred row at y=42 instead of stacking. The objective —
-   * the actionable goal — leads (left); the passive intel recap trails. With only one
-   * present the surviving piece simply centres; this keeps the top band two lines
-   * (heading + situation) however many of the pieces are live.
-   */
-  private layoutSituationLine(): void {
-    const cx = this.scale.width / 2;
-    const y = 42;
-    const obj = this.objectiveText;
-    const intel = this.intelText;
-    const hasObj = obj.text.length > 0;
-    const hasIntel = intel.text.length > 0;
-    const gap = 18; // the " · " of breathing room between goal and recap
-    if (hasObj && hasIntel) {
-      const left = cx - (obj.width + gap + intel.width) / 2;
-      obj.setOrigin(0, 0.5).setPosition(left, y);
-      intel.setOrigin(0, 0.5).setPosition(left + obj.width + gap, y);
-    } else if (hasObj) {
-      obj.setOrigin(0.5, 0.5).setPosition(cx, y);
-    } else {
-      intel.setOrigin(0.5, 0.5).setPosition(cx, y);
-    }
+    // Far-left, directly under the top-left phase/turn line (x matches the title's 12px inset) —
+    // a left-column "mission" stack above the focus card.
+    const padX = 10, padY = 7, rowPitch = 18, markerGap = 8, top = 28, left = 12;
+    // Measure the widest label (off-screen) to size the box to its content, like the action box.
+    const probes = rows.map((r) => this.add.text(0, 0, r.label, { fontFamily: FONT.family, fontSize: FONT.label }).setVisible(false));
+    const labelW = Math.max(40, ...probes.map((t) => t.width));
+    probes.forEach((t) => t.destroy());
+    const markerW = 10;
+    const boxW = padX * 2 + markerW + markerGap + labelW;
+    const boxH = padY * 2 + 16 + (rows.length - 1) * rowPitch;
+
+    this.objectiveObjects.push(
+      this.add.rectangle(left + boxW / 2, top + boxH / 2, boxW, boxH, COLOR.surface, 0.85).setStrokeStyle(1, COLOR.borderSoft).setDepth(10),
+    );
+    rows.forEach((r, i) => {
+      const y = top + padY + 8 + i * rowPitch;
+      this.objectiveObjects.push(
+        this.add.text(left + padX, y, r.marker, { color: r.color, fontFamily: FONT.family, fontSize: FONT.label, fontStyle: WEIGHT.bold }).setOrigin(0, 0.5).setDepth(11),
+        this.add.text(left + padX + markerW + markerGap, y, r.label, { color: r.color, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11),
+      );
+    });
   }
 
   /** True once the staged encounter has reached a graded terminal (D50/D51). */
@@ -2495,23 +2580,81 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * The peripheral **camp-state** card (top-right): passive reference you can't
-   * change mid-mission (morale, purse, storage), grouped out of the decision zone.
-   * Figures owned by core (`campReadout`); the camp-time levers it omits (RP/Upkeep)
-   * live on the overworld camp where they're actually spent.
+   * The top-right **situation card** — renders whichever view the Camp/Intel toggle has active,
+   * then re-tints the tabs. Called wherever camp economy *or* intel might have changed; cheap to
+   * re-render either side. (The name stays `refreshCampText` for its many call sites.)
    */
   private refreshCampText(): void {
+    if (this.cardView === "intel") this.renderIntelCard();
+    else this.renderCampCard();
+    this.updateCardTabs();
+  }
+
+  /**
+   * The **camp** view (passive reference you can't change mid-mission — morale, purse, storage),
+   * grouped out of the decision zone. Figures owned by core (`campReadout`); the camp-time levers
+   * it omits (RP/Upkeep) live on the overworld camp where they're actually spent.
+   */
+  private renderCampCard(): void {
     const r = campReadout(this.run);
     // Attribute morale to its *effect* here (D-UX): in Deployment high morale trims the
     // capture risk on open (neutral) ground, so the otherwise-inert tier reads as
     // "High (−20% open risk)" — its mechanical pull legible where it lands, not a bare stat.
     const em = this.phase === "deployment" ? this.moraleMods().exposureMultiplier : 1;
     const morale = em < 1 ? `${r.moraleTier} (−${Math.round((1 - em) * 100)}% open risk)` : r.moraleTier;
-    this.campCard.set(`Camp · Night ${this.run.night + 1}`, [
+    this.campCard.set("", [
       { label: "Morale", value: morale },
       { label: "Purse", value: `${r.purse}g` },
       { label: "Storage", value: `${r.storageUsed}/${r.storageCap}` },
     ]);
+  }
+
+  /**
+   * The **intel** view (D10) — the scouted encounter: foe count, intel tier, and (in deployment,
+   * where they inform placement) the field shape + a granted-vision flag, with the foe-type roster
+   * as a wrapped note. The foes are on the board once battle joins, so this recedes to a recap.
+   */
+  private renderIntelCard(): void {
+    const r = this.intel;
+    if (!r) return void this.campCard.set("", [{ label: "Intel", value: "—" }]);
+    const battle = this.phase === "battle";
+    const def = currentEncounter(this.run);
+    const shape = !battle && !isAuthoredEncounter(def) ? def.type : undefined;
+    const rows: CardRow[] = [];
+    if (r.count !== undefined) rows.push({ label: "Foes", value: `${r.count}` });
+    rows.push({ label: "Intel", value: `T${r.tier}` });
+    if (shape) rows.push({ label: "Field", value: shape });
+    if (!battle && r.grantsVision) rows.push({ label: "Vision", value: "yes" });
+    const note = r.types && r.types.length ? compactFoeTypes(r.types) : undefined;
+    this.campCard.set("", rows, undefined, note);
+  }
+
+  /** Build one Camp/Intel tab chip (bordered, with a top accent bar for the active state). */
+  private makeCardTab(label: string, view: "camp" | "intel", x: number, y: number, w: number, h: number): void {
+    const bg = this.add.rectangle(x, y, w, h, COLOR.surfaceRaised).setOrigin(0, 0).setStrokeStyle(1, COLOR.border).setDepth(12);
+    const accent = this.add.rectangle(x, y, w, 2, COLOR.accent).setOrigin(0, 0).setDepth(13).setVisible(false); // active-tab selection bar
+    const text = this.add.text(x + w / 2, y + h / 2 + 1, label, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(13);
+    bg.setInteractive({ useHandCursor: true });
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.setCardView(view));
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(view === "intel" ? "Show the scouted foe intel." : "Show the camp economy (morale / purse / storage)."));
+    this.cardTabs.push({ view, bg, accent, label: text });
+  }
+
+  /** Flip the situation card to Camp or Intel and re-render. */
+  private setCardView(view: "camp" | "intel"): void {
+    if (this.cardView === view) return;
+    this.cardView = view;
+    this.refreshCampText();
+  }
+
+  /** Restyle the tab chips by the active view — active = lighter fill + bright text + gold bar. */
+  private updateCardTabs(): void {
+    for (const t of this.cardTabs) {
+      const active = t.view === this.cardView;
+      t.bg.setFillStyle(active ? COLOR.surfaceAlt : COLOR.surfaceRaised).setStrokeStyle(1, active ? COLOR.borderSoft : COLOR.border);
+      t.label.setColor(active ? INK.bright : INK.muted);
+      t.accent.setVisible(active);
+    }
   }
 
   /**
@@ -2573,37 +2716,6 @@ export class BattleScene extends Phaser.Scene {
       }
     }
     this.focusCard.set(actor.name, rows, { frac: actor.maxHp > 0 ? actor.hp / actor.maxHp : 0, cur: actor.hp, max: actor.maxHp });
-  }
-
-  private refreshIntelText(): void {
-    const r = this.intel;
-    if (!r) {
-      this.intelText.setText("");
-      return;
-    }
-    // Intel drives the *deployment* decision — where to stand against the scouted
-    // roster — so it leads there: gold and prominent. Once the fight is joined the
-    // foes are on the board and there's no re-scouting; it becomes passive reference,
-    // so in Battle it recedes (muted, caption-sized) and sheds the deploy-only tier /
-    // vision / encounter-shape, keeping just the roster as a quiet recap (D-UX rule:
-    // prominence follows whether you can act on the info in this phase).
-    const battle = this.phase === "battle";
-    const parts: string[] = [];
-    if (!battle) parts.push(`Intel T${r.tier}`);
-    if (r.count !== undefined) parts.push(`${r.count} foe${r.count === 1 ? "" : "s"}`);
-    if (r.types && r.types.length) parts.push(compactFoeTypes(r.types));
-    if (!battle && r.grantsVision) parts.push("vision");
-    // Show the *tactical* encounter shape (open-field vs. fortified = pre-placed
-    // hazards, D12) only in Deployment, where it informs placement; an authored
-    // set-piece reveals no such banner, so we drop the parenthetical rather than leak
-    // the "authored" dev tag.
-    const def = currentEncounter(this.run);
-    const shape = !battle && !isAuthoredEncounter(def) ? def.type : undefined;
-    this.intelText
-      .setText(parts.join("  ·  ") + (shape ? `   (${shape})` : ""))
-      .setColor(battle ? INK.muted : INK.gold)
-      .setFontSize(battle ? FONT.caption : FONT.label);
-    this.layoutSituationLine();
   }
 
   private setHint(text: string): void {
@@ -2797,13 +2909,17 @@ export class BattleScene extends Phaser.Scene {
 
   // --- Buttons ---------------------------------------------------------------
 
-  private makeTextButton(x: number, y: number, w: number, h: number, text: string, fill: number, stroke: number, onClick: () => void, description?: string): Button {
+  private makeTextButton(x: number, y: number, w: number, h: number, text: string, fill: number, stroke: number, onClick: () => void, description?: string, enabled = true): Button {
     const btn = new Button(this, x, y, {
       text,
       w,
       h,
-      fill,
-      stroke,
+      // A disabled button renders greyed + inert (no click/hover/cursor) but keeps its
+      // hover-hint, so an unavailable control stays a visible, self-explaining affordance.
+      fill: enabled ? fill : COLOR.surfaceRaised,
+      stroke: enabled ? stroke : COLOR.border,
+      color: enabled ? undefined : INK.disabled,
+      enabled,
       onClick,
       hint: { bar: this.hintPanel, description, idle: () => this.lastHint },
     });
@@ -2823,29 +2939,82 @@ export class BattleScene extends Phaser.Scene {
   private clearActionButtons(): void {
     clearLayer(this.actionButtons);
     // With no command menu up, the primary (End Turn / Advance Clock / …) stands alone,
-    // bottom-left; layoutActionMenu re-docks it into the box's bottom slot.
-    this.primary?.setPosition(MENU_CX, this.primaryRestY());
+    // bottom-left at full width; layoutActionMenu re-docks (and may halve) it as needed.
+    this.primary?.setWidth(MENU_BW).setPosition(MENU_CX, this.primaryRestY());
   }
 
   /**
-   * Lay the unit's verbs as a **vertical command menu** (D-UX): a translucent box of
-   * stacked, full-width buttons docked **bottom-left**, with the green End Turn /
-   * Advance Clock primary **docked as the bottom entry** so the whole command cluster —
-   * verbs and the turn's close — sits in one place and the pointer barely travels
-   * between choices (the traditional tactics command box, vs. the old wide row). Reads
-   * top to bottom in the order the callers build them. Shared by both phases and the
-   * herb submenu, so every in-combat menu looks and sits the same. The backing box is
-   * tracked with the buttons; {@link clearActionButtons} tears it down and floats the
-   * primary back to its lone resting spot.
+   * Lay the command menu as **two** stacked boxes docked **bottom-left** (D-UX): the
+   * unit's **verbs** on top, and a separate **turn-control** box below it, with a
+   * {@link MENU_GAP} between them. "What this unit does" reads apart from "control the
+   * turn/clock". The control box stacks any full-width `controls` rows (e.g. Start
+   * Battle) above a **bottom row** that pairs **Undo** side-by-side with the green End
+   * Turn / Advance Clock primary (equal halves) — or the primary alone, full width, when
+   * there's nothing to take back. Undo is only ever live *during* a player turn, so it
+   * only pairs with **End Turn** (never the between-turns Advance Clock). Shared by both
+   * phases and the herb submenu (which passes verbs only). Boxes are tracked with the
+   * buttons; {@link clearActionButtons} tears them down and floats the primary back to
+   * its lone, full-width resting spot.
    */
-  private layoutActionMenu(specs: ActionSpec[]): void {
+  private layoutActionMenu(verbs: ActionSpec[], opts: { undo?: ActionSpec; controls?: ActionSpec[] } = {}): void {
     this.clearActionButtons();
-    if (specs.length === 0) return;
-    const cx = MENU_CX;
     const dockPrimary = this.primary.visible;
-    // The primary docks as the bottom slot; the verbs stack above it.
-    const slots = specs.length + (dockPrimary ? 1 : 0);
+    const controls = opts.controls ?? [];
+    const hasCluster = dockPrimary || controls.length > 0 || !!opts.undo;
+    const clusterTopEdge = hasCluster
+      ? this.drawControlBox(controls, opts.undo, dockPrimary)
+      : this.primaryRestY() + MENU_BH / 2 + MENU_PAD; // nothing below — verbs take the bottom
+    if (verbs.length > 0) {
+      const verbsBottomY = hasCluster ? clusterTopEdge - MENU_GAP - MENU_BH / 2 - MENU_PAD : this.primaryRestY();
+      this.drawMenuBox(verbs, verbsBottomY, false);
+    }
+  }
+
+  /**
+   * Draw the bottom-left **turn-control box**: `controls` (full-width rows, e.g. Start
+   * Battle) stacked above a bottom row that pairs {@link undo} with the docked primary as
+   * equal halves (or the primary alone, full width, when there's no `undo`). Returns the
+   * box's **top edge** Y so the verb box can stack above it.
+   */
+  private drawControlBox(controls: ActionSpec[], undo: ActionSpec | undefined, dockPrimary: boolean): number {
+    const cx = MENU_CX;
     const bottomY = this.primaryRestY();
+    const rows = controls.length + (dockPrimary || undo ? 1 : 0); // +1 for the bottom Undo/primary row
+    const topY = bottomY - (Math.max(rows, 1) - 1) * MENU_PITCH;
+    this.actionButtons.push(
+      this.add
+        .rectangle(cx, (topY + bottomY) / 2, MENU_BW + 2 * MENU_PAD, (Math.max(rows, 1) - 1) * MENU_PITCH + MENU_BH + 2 * MENU_PAD, COLOR.surface, 0.85)
+        .setStrokeStyle(1, COLOR.borderSoft)
+        .setDepth(11),
+    );
+    // Full-width control rows (Start Battle …) above the bottom Undo/primary row.
+    controls.forEach((spec, i) => {
+      this.actionButtons.push(this.makeTextButton(cx, topY + i * MENU_PITCH, MENU_BW, MENU_BH, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
+    });
+    // Bottom row: Undo | primary side-by-side (equal halves), or the primary alone. Undo
+    // renders greyed/inert when `enabled === false` (a visible-but-disabled affordance).
+    if (undo && dockPrimary) {
+      const half = (MENU_BW - PAIR_GAP) / 2;
+      this.actionButtons.push(this.makeTextButton(cx - (half + PAIR_GAP) / 2, bottomY, half, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description, undo.enabled !== false));
+      this.primary.setWidth(half).setPosition(cx + (half + PAIR_GAP) / 2, bottomY);
+    } else if (undo) {
+      this.actionButtons.push(this.makeTextButton(cx, bottomY, MENU_BW, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description, undo.enabled !== false));
+    } else if (dockPrimary) {
+      this.primary.setWidth(MENU_BW).setPosition(cx, bottomY);
+    }
+    return topY - MENU_BH / 2 - MENU_PAD;
+  }
+
+  /**
+   * Draw one stacked, bordered box of buttons whose **bottom button centre** sits at
+   * `bottomY`. When `dockPrimary`, the green primary takes the box's bottom slot and the
+   * specs stack above it. Returns the box's **top edge** Y so a caller can stack another
+   * box above it.
+   */
+  private drawMenuBox(specs: ActionSpec[], bottomY: number, dockPrimary: boolean): number {
+    const cx = MENU_CX;
+    const slots = specs.length + (dockPrimary ? 1 : 0);
+    if (slots === 0) return bottomY - MENU_BH / 2 - MENU_PAD;
     const topY = bottomY - (slots - 1) * MENU_PITCH;
     const box = this.add
       .rectangle(cx, (topY + bottomY) / 2, MENU_BW + 2 * MENU_PAD, (slots - 1) * MENU_PITCH + MENU_BH + 2 * MENU_PAD, COLOR.surface, 0.85)
@@ -2856,6 +3025,7 @@ export class BattleScene extends Phaser.Scene {
       this.actionButtons.push(this.makeTextButton(cx, topY + i * MENU_PITCH, MENU_BW, MENU_BH, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
     });
     if (dockPrimary) this.primary.setPosition(cx, topY + specs.length * MENU_PITCH);
+    return topY - MENU_BH / 2 - MENU_PAD;
   }
 
   // --- Animation -------------------------------------------------------------

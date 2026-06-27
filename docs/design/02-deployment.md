@@ -60,10 +60,18 @@ netted**. The **first** catch raises the alarm and Combat begins; if no one is c
 but the net has **reached the protected core** (or overrun the last safe tile), Combat
 begins anyway — with **nobody taken**.
 
-A unit may **Dig In**: hunker on its tile for a **sharply reduced** capture chance,
-at the cost of its turn (moving breaks the stance). Or simply **hold safe ground** —
-place nothing, take zero risk, be ready when Combat starts. Deployment is opt-in per
-unit: *range forward (more setup, more risk)* vs. *hold / dig in (safe, less setup)*.
+A unit may **Dig In**: hunker on its tile for a **sharply reduced** capture chance, at
+the cost of its turn. The stance **holds across turns** until the unit moves or acts
+(modelled like a status effect — moving clears it in `moveUnit`, an act clears it in the
+deploy act seams). A unit that **opens a turn already dug in** is shown as *intentionally
+out of action*: its row collapses to a single **Take Action** button (beside the usual End
+Turn / Start Battle), signalling the deliberate hold. **Take Action** stands it back up into
+a normal turn (revealing the full row) without breaking the stance — the capture benefit
+holds until the unit actually moves or acts. As a QoL shortcut, **clicking a tile to move**
+also re-engages a dug-in unit directly (the move clears the stance), so the reach stays lit;
+Take Action is the no-move path back in. Or simply **hold safe ground** — place nothing,
+take zero risk, be ready when Combat starts. Deployment is opt-in per unit: *range forward
+(more setup, more risk)* vs. *hold / dig in (safe, less setup)*.
 
 > **Render parity with Combat (the shared scene path).** A deploy turn now reads like a
 > combat turn: the active unit's **reachable tiles light** (the reach wash) and a hover

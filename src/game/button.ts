@@ -128,6 +128,22 @@ export class Button extends Phaser.GameObjects.Container {
     return this;
   }
 
+  /**
+   * Resize the button's width, re-fitting the label and refreshing the hit area so the
+   * clickable region tracks the new size (a persistent button the layout reflows — e.g.
+   * the End Turn primary going full-width ↔ half-width when it pairs with Undo). Chainable.
+   */
+  setWidth(w: number): this {
+    this.bg.setSize(w, this.bg.height);
+    fitText(this.label, w - this.pad);
+    if (this.bg.input) {
+      // Re-create the default hit area at the new size (listeners persist across this).
+      this.bg.removeInteractive();
+      this.bg.setInteractive({ useHandCursor: true });
+    }
+    return this;
+  }
+
   /** Tween to a target scale, cancelling any scale tween already in flight. */
   private scaleTo(s: number): void {
     this.scene.tweens.killTweensOf(this);

@@ -21,9 +21,10 @@ export interface LegendItem {
  * the same corner** carries across Deployment and Battle (and any future scene that
  * washes tiles).
  *
- * Docked **bottom-right**, stacked vertically and anchored by its bottom edge so it
- * sits clear above the Session-log chip — out of the bottom-left command box and the
- * combat log. Sizes itself to its items; an empty list hides it (e.g. under a
+ * Positioned by the caller (BattleScene docks it along the bottom, just right of the
+ * command box), stacked vertically and anchored by its **bottom edge** so it grows
+ * upward from there — keeping the bottom-right column clear for the combat log and the
+ * Session-log chip. Sizes itself to its items; an empty list hides it (e.g. under a
  * resolution overlay).
  */
 export class LegendStrip extends Phaser.GameObjects.Container {

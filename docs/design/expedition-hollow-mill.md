@@ -163,6 +163,110 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Campfire/foe source markers: glyphs, dropped clear of the trap glyph** (D-feel, render-only).
+  The deploy source markers (campfire core, the net's origin) were plain Phaser **star shapes** at
+  **tile-centre** — generic, and colliding with trap glyphs (which anchor at the tile's **top
+  vertex**, `y − halfH`) when a trap landed on the campfire tile (exactly where the party and its
+  traps cluster). They're now **registry glyphs** via `placeIcon` — a warm **♨** for the camp, a
+  **❖** for the net's source (both monospace-safe, same blocks as the shipped `♛`/`✸`) — and sit in
+  the **lower half** of their tile (`+halfH·0.5`), tucked under the trap. Seams: `ICON.campfire` /
+  `ICON.netSource`, `drawSourceMarkers`. Pure render; no core touch. Guarded green: tsc, 837 unit
+  tests, build, deploy→battle e2e (65), sim (unchanged).
+- **Board-key legend moved next to the command box** (D-feel, render-only). The legend used to
+  dock bottom-**right**, where it shared the column with the combat log and got overlapped by the
+  Session-log panel when it opened. It now docks along the **bottom, just right of the command
+  box** (anchored by its bottom edge, growing upward), leaving the whole bottom-right column clear
+  for the log + Session-log chip. `LegendStrip` is now positioned by the caller. Pure render; no
+  core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (65), sim (unchanged).
+- **The top-right card is now a Camp ↔ Intel toggle** (D-feel, render-only). With the top strip
+  gone, the **intel recap** (foes / tier / field shape / foe-type roster) had no home; rather than
+  a new always-on element, the existing peripheral **camp card** became a two-tab **situation
+  card**. Tabs over the card flip between **Camp** (morale / purse / storage) and **Intel** (foe
+  count · intel tier · field shape in deploy · a wrapped foe-type note). It **defaults per phase**
+  — Intel in deployment (where it informs placement), Camp in battle (the foes are on the board by
+  then) — and either tab can be clicked anytime. The tabs render as proper **bordered chips**
+  forming the card's header (active = lighter `surfaceAlt` fill + bright text + a gold top
+  accent bar; inactive recessed) so it reads as a switching-context area, not two labels. This
+  retires the old hidden `intelText` / `SHOW_INTEL_RECAP` and the de-emphasis-in-battle styling:
+  the toggle subsumes both. Seams: `BattleScene.renderCampCard` / `renderIntelCard` (dispatched
+  by `refreshCampText`), `makeCardTab` / `updateCardTabs` / `setCardView`; `MiniCard.set` gained
+  an optional wrapped `note` line. Pure render; no core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (65, incl.
+  the toggle assertions), sim (summary **unchanged**).
+- **Top-strip rework: phase/turn to the corner, objectives as a check-list box** (D-feel,
+  render-only — layout revisit). The old centred "situation strip" (one title line over a
+  shared objective + intel row) was cleared to evaluate a bare top, then rebuilt deliberately:
+  the **phase + whose turn** heading (with the deploy global state — net reach / safe radius /
+  kits) moved to the **top-left corner**, and the objectives became a **vertically stacked
+  check-list box** (far-left, directly under the phase/turn line — a left-column "mission" stack
+  above the focus card — styled like the action box) — one row per staged objective with
+  a left-hand status marker (green **✓** met · red **✗** failed · muted **○** pending, the live
+  **%** appended for a timed one). The box now **includes the default "Defeat all enemies"
+  goal** (previously left implicit), so it's always populated and reads as a real checklist, and
+  it shows in **both** phases (`refreshDeployStatus` + `refreshHud` call it). (The **intel recap**
+  was the last homeless piece at this point — since rehomed into the Camp↔Intel toggle card, see
+  the newer entry above.) Seams: `BattleScene.refreshObjectives` (replaces the
+  old `refreshObjectiveText` / `layoutSituationLine`), `objectiveObjects` layer. Pure render; no
+  core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (62, incl. the
+  objectives-box assertions), sim (summary **unchanged**).
+- **A dug-in unit reads as "out of action" — minimal Take Action menu** (D-feel + a small
+  status-trigger change). Dig In is a deployment brace (lower capture chance, at the cost of
+  the turn) whose stance **persists across turns**, but a dug-in unit's next turn used to open
+  to the *full* deploy row — nothing signalled that the player had deliberately sat it out. Now
+  a unit that **opens a turn already dug in** (distinguished from one that just dug in this turn
+  by `deployActed`) shows a single **Take Action** verb in place of the row, beside the usual
+  End Turn / Start Battle — so the intentional hold reads from the UI. **Take Action** stands it
+  back up into a normal turn (reveals the full row via a per-turn `deployReveal` flag) *without*
+  breaking the stance; the dig-in capture benefit now holds until the unit actually **moves**
+  (already cleared in `moveUnit`) or **commits an act** (cleared in the deploy act seams —
+  `commitFieldAct` / `placeTrap` — the "on action" trigger, modelling dig-in like a status
+  effect). As a QoL shortcut, the reach stays lit and **clicking a tile to move** re-engages a
+  dug-in unit directly (the move clears the stance) — Take Action is the no-move path back in;
+  either way an Undo rolls it back to the dug-in turn-open. Render + a contained scene-side
+  status trigger; the capture roll is live-only and the headless sim never digs-in-then-acts, so
+  determinism is untouched. Seams: `BattleScene.takeAction` / `deployReveal`; the act-clear in
+  `commitFieldAct` / `placeTrap`. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e
+  (60, incl. the minimal-menu / reveal / benefit-holds assertions + `dug-in-minimal-menu` /
+  `dug-in-take-action` screenshots), sim (summary **unchanged**).
+- **Obstacles are raised 3D blocks, not flat tile-markers** (D-feel, render-only). An
+  impassable tile used to be a **flat diamond** in a different colour (`tileBlocked`) — the
+  same shape and read as the translucent **capture-zone washes** (safe/danger/neutral),
+  so a wall and a zone tint were easy to confuse. Obstacles now render as a **raised
+  isometric block**: a lit top face floating a block-height above the tile plus the two
+  visible (down-left / down-right) side faces shaded progressively darker, outlined for a
+  crisp silhouette — so an obstacle reads as a *solid standing in the world*, distinct from
+  any tile overlay. `drawGrid` now paints in two passes — the flat checker floor for every
+  tile, then the blocks **back-to-front** (`col + row` ascending) so a nearer block occludes
+  the one behind it. The blocks sit on the grid layer (depth 0); zone washes already skip
+  non-walkable tiles, so nothing tints them. Pure render; no core touch (the grid's `blocked`
+  data is unchanged). Seam: `CombatView.drawGrid` / `drawObstacle`; palette `COLOR.obstacle*`.
+  Felt on every board with interior cover — the Hollow Mill encounters scatter 1–3 blocked
+  tiles each. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (55), sim
+  (summary **unchanged**).
+- **Turn-controls split out of the unit-action box** (D-feel, render-only). The bottom-left
+  command menu used to stack *everything* in one box — **Undo** leading, the unit's verbs
+  (skills / Search / Disarm / Dig In / Defend / Bribe / place-trap) in the middle, and the
+  green **End Turn / Advance Clock** primary docked as the bottom slot — so "what this unit
+  does" and "control the turn/clock" shared one column and read as one undifferentiated list.
+  They're now **two stacked boxes** with a gap: the unit's **verbs** on top, and a separate
+  **turn-control box** below. The control box stacks any full-width control rows (**Start
+  Battle**, deploy) above a **bottom row** that pairs **Undo** *side-by-side* with the clock
+  primary as equal halves. During a unit's turn **Undo is persistent** — it sits there from
+  turn-open, **greyed/inert** until there's something on the stack, then lights up after the
+  first move/act — so the take-back is a visible affordance, not a button that only appears
+  once you've already acted. (The primary is, and always was, *one* button that flips **End
+  Turn** ↔ **Advance Clock** by state; since Undo is only live *during* a player turn, it
+  only pairs with End Turn — between turns there's no active unit to undo, so Undo is omitted
+  and Advance Clock keeps the full width.) This mirrors the taxonomy
+  [`systems/actions.md`](systems/actions.md) already draws — *Undo / Advance Clock / Start
+  Battle* are "pure UI/flow controls that carry no game decision," distinct from the
+  state-changing verbs — so the layout now matches the model. Both phases share it
+  (`layoutActionMenu(verbs, { undo, controls })` lays the verb box via `drawMenuBox` and the
+  control box via `drawControlBox`; the primary reflows full-width ↔ half-width via a new
+  `Button.setWidth` that refreshes its hit area; a disabled `ActionSpec` renders greyed +
+  inert through `makeTextButton`, keeping its hover-hint). Pure render; no core touch, no
+  key/verb change (Space / W / Esc unchanged). Seam: `BattleScene.layoutActionMenu` /
+  `drawControlBox`, `Button.setWidth`. Guarded green: tsc, 837 unit tests, build, deploy→battle
+  e2e (55), sim (summary **unchanged**).
 - **L1: Pip is a real on-board captive — "isolating the captor IS the rescue"** (D52 — a
   deliberate *behavior* change). The L1 Cook no longer joins via a **silent post-win grant**
   (`E1_SKIRMISH.grants: { recruit: PIP_COOK }`); he now **starts the Skirmish bound on the

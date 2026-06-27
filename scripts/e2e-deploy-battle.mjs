@@ -250,6 +250,24 @@ async function main() {
       check("dig-in was logged", st.lastLog === "digIn");
       check("undo is available after dig-in", st.canUndo === true);
       await shot("dig-in");
+
+      // --- Stage: a dug-in unit's next turn shows the minimal Take Action menu ----
+      // The unit stays dug in across turns; when it *opens* a turn dug in (vs. having just
+      // dug in this turn), the row collapses to a single "Take Action". Take Action reveals
+      // the full row without breaking the stance (the capture benefit holds until move/act).
+      const labelExpr = `s.actionButtons.map(b => b.label && b.label.text).filter(Boolean)`;
+      const min = await g.bsEval(`s.deployActed = false; s.deployReveal = false; s.refreshDeployButtons(); return ${labelExpr};`);
+      await shot("dug-in-minimal-menu");
+      const full = await g.bsEval(`s.takeAction(s.deployActor); return { labels: ${labelExpr}, dugIn: s.deployActor.dugIn === true };`);
+      await shot("dug-in-take-action");
+      await g.bsEval(`s.deployActed = true;`); // restore the post-dig-in state for the undo stage below
+      console.log("• Dug-in unit → minimal Take Action menu");
+      check("a dug-in unit's turn offers Take Action", min.includes("Take Action"));
+      check("the minimal menu hides the normal verbs (no Dig In)", !min.includes("Dig In"));
+      check("Take Action reveals the full row (Dig In returns)", full.labels.includes("Dig In"));
+      check("Take Action itself is gone once revealed", !full.labels.includes("Take Action"));
+      check("the dig-in benefit holds through Take Action (until move/act)", full.dugIn === true);
+
       await g.key("Escape");
       await sleep(150);
       st = await snap();
@@ -293,6 +311,20 @@ async function main() {
         `return [...s.view.views.values()].filter(v => v.unit.side === "enemy" && v.unit.alive).some(v => v.container.visible === true);`,
       );
       check("enemy tokens are revealed once the battle opens", foeShownInBattle === true);
+      // The objectives check-list box (top-centre) lists the goal with a status marker.
+      const objBox = await g.bsEval(`return s.objectiveObjects.map(o => o.text).filter(t => typeof t === "string");`);
+      check("the objectives box lists the goal", objBox.includes("Defeat all enemies"));
+      check("a pending objective shows the hollow marker (not a check)", objBox.includes("○") && !objBox.includes("✓"));
+      // The top-right situation card toggles Camp <-> Intel; battle defaults to Camp.
+      const card = await g.bsEval(`
+        const def = s.cardView;
+        s.setCardView("intel"); const i = s.cardView;
+        s.setCardView("camp"); const c = s.cardView;
+        return { def, i, c, tabs: s.cardTabs.map(t => t.view) };
+      `);
+      check("the situation card defaults to Camp in battle", card.def === "camp");
+      check("the Camp/Intel toggle flips the view both ways", card.i === "intel" && card.c === "camp");
+      check("the situation card has Camp + Intel tabs", card.tabs.includes("camp") && card.tabs.includes("intel"));
       await shot("battle-start");
 
       // --- Stage: drive the CT clock; a player turn opens and can be ended ----

@@ -181,16 +181,63 @@ export class CombatView {
     return { col: Math.round(frac.col), row: Math.round(frac.row) };
   }
 
-  /** Paint the whole grid onto `g`: a checkered diamond per tile, blocked tiles flagged. */
+  /**
+   * Paint the whole grid onto `g`: a checkered floor diamond per tile, then **raised 3D
+   * blocks** on the impassable tiles so an obstacle reads as a solid standing in the world,
+   * not a flat tile-marker (which is what the capture-zone washes are). Two passes: the flat
+   * floor first, then the blocks back-to-front (by screen depth, `col + row` ascending) so a
+   * nearer block correctly occludes the one behind it.
+   */
   drawGrid(g: Phaser.GameObjects.Graphics, grid: TileGrid): void {
+    const blocked: GridCoord[] = [];
     for (let row = 0; row < grid.rows; row++) {
       for (let col = 0; col < grid.cols; col++) {
         const { x, y } = this.tileToWorld({ col, row });
-        const walkable = grid.isWalkable({ col, row });
-        const fill = !walkable ? COLOR.tileBlocked : (col + row) % 2 === 0 ? COLOR.tileLight : COLOR.tileDark;
+        // The floor under a block is hidden by it, but drawn so nothing peeks at small scales.
+        const fill = grid.isWalkable({ col, row }) ? ((col + row) % 2 === 0 ? COLOR.tileLight : COLOR.tileDark) : COLOR.tileDark;
         this.drawDiamond(g, x, y, fill);
+        if (!grid.isWalkable({ col, row })) blocked.push({ col, row });
       }
     }
+    blocked.sort((a, b) => a.col + a.row - (b.col + b.row));
+    for (const c of blocked) {
+      const { x, y } = this.tileToWorld(c);
+      this.drawObstacle(g, x, y);
+    }
+  }
+
+  /**
+   * Draw a raised isometric **obstacle block** centred on a tile at world `(cx, cy)`: a lit
+   * top face floating a block-height above the tile, plus the two visible (down-left /
+   * down-right) side faces shaded darker, outlined for a crisp silhouette. The three faces
+   * tile the block's hexagonal silhouette exactly, so it's an opaque solid.
+   */
+  private drawObstacle(g: Phaser.GameObjects.Graphics, cx: number, cy: number): void {
+    const hw = this.halfW();
+    const hh = this.halfH();
+    const H = hh * 1.3; // block elevation (in px, scaled with the board) — a chunky, readable rise
+    // Ground diamond + the same diamond raised by H (the top face).
+    const gB = { x: cx, y: cy + hh }, gL = { x: cx - hw, y: cy }, gR = { x: cx + hw, y: cy };
+    const tT = { x: cx, y: cy - hh - H }, tR = { x: cx + hw, y: cy - H }, tB = { x: cx, y: cy + hh - H }, tL = { x: cx - hw, y: cy - H };
+    const face = (color: number, pts: { x: number; y: number }[]) => {
+      g.fillStyle(color, 1);
+      g.beginPath();
+      g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+      g.closePath();
+      g.fillPath();
+    };
+    face(COLOR.obstacleLeft, [tL, tB, gB, gL]); // down-left side
+    face(COLOR.obstacleRight, [tB, tR, gR, gB]); // down-right side
+    face(COLOR.obstacleTop, [tT, tR, tB, tL]); // lit top
+    // Crisp edges: the top-face outline + the three vertical corners.
+    g.lineStyle(1, COLOR.obstacleEdge, 1);
+    g.beginPath();
+    g.moveTo(tT.x, tT.y); g.lineTo(tR.x, tR.y); g.lineTo(tB.x, tB.y); g.lineTo(tL.x, tL.y); g.closePath();
+    g.moveTo(tL.x, tL.y); g.lineTo(gL.x, gL.y);
+    g.moveTo(tB.x, tB.y); g.lineTo(gB.x, gB.y);
+    g.moveTo(tR.x, tR.y); g.lineTo(gR.x, gR.y);
+    g.strokePath();
   }
 
   /** A translucent wash over one tile (reach / threat / safe-zone), with an optional outline. */

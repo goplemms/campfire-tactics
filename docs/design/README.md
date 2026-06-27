@@ -4,11 +4,11 @@ This folder is the **living vision** for the game's systems. It is intentionally
 separate from the build plan in [`scratchpad/foundations/`](../../scratchpad/foundations/),
 which tracks *milestones and status*; these docs track *what the game is*.
 
-> Architectural calls that back these docs are logged as decisions **D1–D66 (and
+> Architectural calls that back these docs are logged as decisions **D1–D73 (and
 > counting)** in
 > [`scratchpad/foundations/decisions.md`](../../scratchpad/foundations/decisions.md) —
-> always read to the latest entry (the next queued is **D67**, the deployment↔combat
-> substrate unification). The early range no longer bounds the log.
+> always read to the latest entry (the latest is **D73**, the fatigue redesign). The
+> early range no longer bounds the log.
 
 ## Identity
 

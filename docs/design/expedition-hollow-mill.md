@@ -168,7 +168,8 @@ Recent work that altered routing or the within-node experience. Newest first.
   shared objective + intel row) was cleared to evaluate a bare top, then rebuilt deliberately:
   the **phase + whose turn** heading (with the deploy global state — net reach / safe radius /
   kits) moved to the **top-left corner**, and the objectives became a **vertically stacked
-  check-list box** (top-centre, styled like the action box) — one row per staged objective with
+  check-list box** (far-left, directly under the phase/turn line — a left-column "mission" stack
+  above the focus card — styled like the action box) — one row per staged objective with
   a left-hand status marker (green **✓** met · red **✗** failed · muted **○** pending, the live
   **%** appended for a timed one). The box now **includes the default "Defeat all enemies"
   goal** (previously left implicit), so it's always populated and reads as a real checklist, and

@@ -2526,7 +2526,9 @@ export class BattleScene extends Phaser.Scene {
       return { marker: "○", color: INK.muted, label: o.spec.label + pct };
     });
 
-    const padX = 10, padY = 7, rowPitch = 18, markerGap = 8, top = 30; // below the top-left title band
+    // Far-left, directly under the top-left phase/turn line (x matches the title's 12px inset) —
+    // a left-column "mission" stack above the focus card.
+    const padX = 10, padY = 7, rowPitch = 18, markerGap = 8, top = 28, left = 12;
     // Measure the widest label (off-screen) to size the box to its content, like the action box.
     const probes = rows.map((r) => this.add.text(0, 0, r.label, { fontFamily: FONT.family, fontSize: FONT.label }).setVisible(false));
     const labelW = Math.max(40, ...probes.map((t) => t.width));
@@ -2534,11 +2536,9 @@ export class BattleScene extends Phaser.Scene {
     const markerW = 10;
     const boxW = padX * 2 + markerW + markerGap + labelW;
     const boxH = padY * 2 + 16 + (rows.length - 1) * rowPitch;
-    const cx = this.scale.width / 2;
-    const left = cx - boxW / 2;
 
     this.objectiveObjects.push(
-      this.add.rectangle(cx, top + boxH / 2, boxW, boxH, COLOR.surface, 0.85).setStrokeStyle(1, COLOR.borderSoft).setDepth(10),
+      this.add.rectangle(left + boxW / 2, top + boxH / 2, boxW, boxH, COLOR.surface, 0.85).setStrokeStyle(1, COLOR.borderSoft).setDepth(10),
     );
     rows.forEach((r, i) => {
       const y = top + padY + 8 + i * rowPitch;

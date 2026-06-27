@@ -400,7 +400,19 @@ async function main() {
       console.log("• Initiative rail expand/collapse");
       check("collapsed rail caps the visible chips", collapsed <= 3);
       check("expanding reveals more chips", expanded > collapsed);
+      // The rail is bottom-anchored (bottom-right): its chips sit in the lower half of the screen.
+      const railTop = await g.bsEval(`return Math.min(...s.view.ctChips.filter(c => c.bg.visible).map(c => c.bg.y));`);
+      check("the CT rail is docked toward the bottom", railTop > 360);
       await shot("battle-rail-expanded");
+
+      // --- Stage: the centre combat-log feed collapses via its chevron --------
+      const logBefore = await g.bsEval(`return { shown: s.view.logLines.filter(l => l.visible).length, collapsed: s.logCollapsed };`);
+      await g.bsEval(`s.toggleLog();`);
+      const logAfter = await g.bsEval(`return { shown: s.view.logLines.filter(l => l.visible).length, collapsed: s.logCollapsed };`);
+      await g.bsEval(`s.toggleLog();`); // restore
+      console.log("• Combat-log collapse toggle");
+      check("the log feed shows lines by default", logBefore.collapsed === false && logBefore.shown > 0);
+      check("the chevron collapses the log feed", logAfter.collapsed === true && logAfter.shown === 0);
 
       assertNoProblems(g.problems);
     } catch (err) {

@@ -121,6 +121,10 @@ export class CombatView {
   /** The combat log's rolling message buffer (oldest first) + its pooled text lines. */
   private readonly logBuffer: { text: string; color: string }[] = [];
   private readonly logLines: Phaser.GameObjects.Text[] = [];
+  /** Where the log feed anchors (left x, bottom y) and whether it's shown — set by the scene. */
+  private logX = 0;
+  private logBottomY = 0;
+  private logShown = true;
   /**
    * A turn header held back until that turn actually logs something (D-UX): quiet
    * move/defend turns never flush it, so the feed carries *events* (who hit whom, who
@@ -557,15 +561,19 @@ export class CombatView {
     y: number,
     isCharging: (u: Unit) => boolean,
     limit?: number,
-  ): { total: number; shown: number; bottomY: number } {
+    bottomAnchorY?: number,
+  ): { total: number; shown: number; topY: number; bottomY: number } {
     const live = units.filter((u) => u.alive && !u.captured && !u.hidden).sort((a, b) => b.ct - a.ct);
     const fallen = units.filter((u) => !u.alive && !u.captured && !u.hidden);
     const rows = [...live.map((u) => ({ u, dead: false })), ...fallen.map((u) => ({ u, dead: true }))];
     const shown = limit === undefined ? rows.length : Math.min(rows.length, Math.max(0, limit));
+    // Bottom-anchored mode: the rail's *bottom* sits at `bottomAnchorY` and grows upward, so a
+    // bottom-of-screen rail never runs off as it expands (the top y is derived from the count).
+    const topY = bottomAnchorY !== undefined ? bottomAnchorY - shown * CombatView.CHIP_STEP : y;
     rows.slice(0, shown).forEach((r, i) => {
       const chip = this.ctChips[i] ?? this.makeCtChip();
       this.ctChips[i] = chip;
-      const top = y + i * CombatView.CHIP_STEP;
+      const top = topY + i * CombatView.CHIP_STEP;
       const mid = top + CombatView.CHIP_H / 2;
       const active = !r.dead && r.u.id === this.activeUnitId;
       const sideFill = r.u.side === "player" ? COLOR.ally : COLOR.foe;
@@ -587,7 +595,7 @@ export class CombatView {
       chip.status.setPosition(x + CombatView.CHIP_W - 7, mid + 6).setText(r.dead ? "" : glyphs).setColor(harmful ? INK.danger : helpful ? INK.success : INK.muted).setVisible(!r.dead && glyphs.length > 0);
     });
     for (let i = shown; i < this.ctChips.length; i++) this.hideCtChip(this.ctChips[i]);
-    return { total: rows.length, shown, bottomY: y + shown * CombatView.CHIP_STEP };
+    return { total: rows.length, shown, topY, bottomY: topY + shown * CombatView.CHIP_STEP };
   }
 
   /** Hide the whole initiative rail (between encounters / on non-battle beats). */
@@ -685,18 +693,29 @@ export class CombatView {
     for (const l of this.logLines) l.setVisible(false);
   }
 
-  /** Re-lay the pooled log lines bottom-anchored in the bottom-right, newest last. */
+  /** Place the log feed: left `x`, `bottomY` is the newest line's baseline. Re-renders. */
+  setLogLayout(x: number, bottomY: number): void {
+    this.logX = x;
+    this.logBottomY = bottomY;
+    this.renderLog();
+  }
+
+  /** Show or hide the whole log feed (the scene's collapse chevron drives this). Re-renders. */
+  setLogShown(shown: boolean): void {
+    this.logShown = shown;
+    this.renderLog();
+  }
+
+  /** Re-lay the pooled log lines, newest at `logBottomY`, older fading upward. */
   private renderLog(): void {
     const step = 14;
-    // Bottom-right column (left-aligned text), sitting above the vertical board key so
-    // the two right-side readouts stack instead of overprinting — the bottom-left is
-    // now the command box (D-UX zone separation).
-    const x = this.scene.scale.width - 244;
-    const bottomY = this.scene.scale.height - 108;
-    const n = this.logBuffer.length;
+    const x = this.logX || this.scene.scale.width - 244; // fall back to the old corner until placed
+    const bottomY = this.logBottomY || this.scene.scale.height - 108;
+    const n = this.logShown ? this.logBuffer.length : 0;
     this.logBuffer.forEach((entry, i) => {
       const line = this.logLines[i] ?? this.scene.add.text(0, 0, "", { fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
       this.logLines[i] = line;
+      if (!this.logShown) return void line.setVisible(false);
       // Older lines fade toward the top — the eye lands on the freshest.
       const age = n - 1 - i;
       line.setPosition(x, bottomY - age * step).setText(entry.text).setColor(entry.color).setAlpha(1 - age * 0.13).setVisible(true);

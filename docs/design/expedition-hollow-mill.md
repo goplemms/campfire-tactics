@@ -163,6 +163,12 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Board-key legend moved next to the command box** (D-feel, render-only). The legend used to
+  dock bottom-**right**, where it shared the column with the combat log and got overlapped by the
+  Session-log panel when it opened. It now docks along the **bottom, just right of the command
+  box** (anchored by its bottom edge, growing upward), leaving the whole bottom-right column clear
+  for the log + Session-log chip. `LegendStrip` is now positioned by the caller. Pure render; no
+  core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (65), sim (unchanged).
 - **The top-right card is now a Camp ↔ Intel toggle** (D-feel, render-only). With the top strip
   gone, the **intel recap** (foes / tier / field shape / foe-type roster) had no home; rather than
   a new always-on element, the existing peripheral **camp card** became a two-tab **situation

@@ -394,9 +394,12 @@ export class BattleScene extends Phaser.Scene {
     this.makeCardTab("Camp", "camp", cardLeft, tabY, tabW, tabH);
     this.makeCardTab("Intel", "intel", cardLeft + tabW + tabGap, tabY, tabW, tabH);
     this.hintPanel = new HintPanel(this);
-    // The persistent board colour key — the same component carries across phases,
-    // re-keyed in enterDeploy / startBattle so the wash language is always legible.
-    this.legendStrip = new LegendStrip(this);
+    // The persistent board colour key — the same component carries across phases, re-keyed in
+    // enterDeploy / startBattle so the wash language is always legible. Docked bottom, just right
+    // of the command box (its backing spans MENU_LEFT..MENU_LEFT+MENU_BW+2·MENU_PAD), so the
+    // bottom-right column stays clear for the combat log + the Session-log chip that opens there.
+    const legendX = MENU_LEFT + MENU_BW + 2 * MENU_PAD + 14;
+    this.legendStrip = new LegendStrip(this, legendX, this.scale.height - 20);
     this.threatGfx = this.add.graphics().setDepth(0.36);
     // The tarpit-aura ring (D64) sits just above the zone washes but below the move/
     // footprint preview, so a Heavy Knight's taxed tiles read in both phases.

@@ -273,6 +273,29 @@ async function main() {
       st = await snap();
       check("dig-in was taken back", st.dugIn === false);
 
+      // --- Stage: the CT rail shows in deployment, incl. the net's next sweep --
+      const deployRail = await g.bsEval(`
+        s.railExpanded = true; s.refreshDeployStatus(); // expand so every row is visible to count
+        const names = s.view.ctChips.filter(c => c.name.visible).map(c => c.name.text);
+        const players = s.battle.units.filter(u => u.side === "player" && u.alive && !u.captured && !u.hidden).length;
+        s.railExpanded = false; s.refreshDeployStatus();
+        return { names, players };
+      `);
+      console.log("• CT rail in deployment");
+      check("the deploy rail lists the net's next sweep", deployRail.names.includes("The net"));
+      check("the deploy rail shows player units + the net only (no concealed foes)", deployRail.names.length === deployRail.players + 1);
+
+      // A *real mouse click* on the half-width End Turn primary must end the deploy turn — Space
+      // routes through onPrimary, so only a click exercises the button's (resized) hit area.
+      const beforeClick = await g.bsEval(`s.refreshDeployButtons(); return { label: s.primary.label.text, x: s.primary.x, y: s.primary.y };`);
+      check("the deploy primary reads End Turn before the click", beforeClick.label === "End Turn");
+      await g.clickScene(beforeClick.x, beforeClick.y);
+      await sleep(150);
+      const afterClick = await g.bsEval(`return { label: s.primary.label.text, actor: s.deployActor ? s.deployActor.id : null };`);
+      console.log("• Click End Turn (deploy)");
+      check("clicking End Turn ends the deploy turn (button is clickable)", afterClick.actor === null);
+      check("the idle primary re-fits to full 'Advance Clock' (no truncation)", afterClick.label === "Advance Clock");
+
       // --- Stage: commit to Battle -------------------------------------------
       // The deploy→battle handoff runs off a single bus event (D67): the seam is wired up
       // front (wireBattleFx), and firing it tears down the staging visuals (veil + overlays).
@@ -400,7 +423,19 @@ async function main() {
       console.log("• Initiative rail expand/collapse");
       check("collapsed rail caps the visible chips", collapsed <= 3);
       check("expanding reveals more chips", expanded > collapsed);
+      // The rail is bottom-anchored (bottom-right): its chips sit in the lower half of the screen.
+      const railTop = await g.bsEval(`return Math.min(...s.view.ctChips.filter(c => c.bg.visible).map(c => c.bg.y));`);
+      check("the CT rail is docked toward the bottom", railTop > 360);
       await shot("battle-rail-expanded");
+
+      // --- Stage: the centre combat-log feed collapses via its chevron --------
+      const logBefore = await g.bsEval(`return { shown: s.view.logLines.filter(l => l.visible).length, collapsed: s.logCollapsed };`);
+      await g.bsEval(`s.toggleLog();`);
+      const logAfter = await g.bsEval(`return { shown: s.view.logLines.filter(l => l.visible).length, collapsed: s.logCollapsed };`);
+      await g.bsEval(`s.toggleLog();`); // restore
+      console.log("• Combat-log collapse toggle");
+      check("the log feed shows lines by default", logBefore.collapsed === false && logBefore.shown > 0);
+      check("the chevron collapses the log feed", logAfter.collapsed === true && logAfter.shown === 0);
 
       assertNoProblems(g.problems);
     } catch (err) {

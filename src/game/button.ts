@@ -64,6 +64,9 @@ export class Button extends Phaser.GameObjects.Container {
   readonly bg: Phaser.GameObjects.Rectangle;
   readonly label: Phaser.GameObjects.Text;
   private readonly pad: number;
+  /** The untruncated label text — kept so a width change can re-fit from the original (fitText's
+   *  ellipsis is destructive, so re-fitting the current text could never recover it). */
+  private fullText: string;
   /** Animate hover/press juice — off under the screenshot harness for stable frames. */
   private readonly animate: boolean;
   private hovered = false;
@@ -72,6 +75,7 @@ export class Button extends Phaser.GameObjects.Container {
     super(scene, x, y);
     this.pad = o.pad ?? 10;
     this.animate = !isScreenshotMode();
+    this.fullText = o.text;
     this.bg = scene.add.rectangle(0, 0, o.w, o.h, o.fill).setStrokeStyle(o.strokeWidth ?? 2, o.stroke);
     this.label = scene.add.text(0, 0, o.text, { color: o.color ?? INK.onSuccess, fontFamily: FONT.family, fontSize: o.fontSize ?? FONT.body }).setOrigin(0.5);
     // Left-aligned labels pin to the left edge, inset by half the pad (matching the
@@ -123,6 +127,7 @@ export class Button extends Phaser.GameObjects.Container {
 
   /** Replace the label text and re-fit it to the button. Chainable. */
   setLabel(text: string): this {
+    this.fullText = text;
     this.label.setText(text);
     fitText(this.label, this.bg.width - this.pad);
     return this;
@@ -135,12 +140,13 @@ export class Button extends Phaser.GameObjects.Container {
    */
   setWidth(w: number): this {
     this.bg.setSize(w, this.bg.height);
+    this.label.setText(this.fullText); // restore the original before re-fitting (ellipsis is one-way)
     fitText(this.label, w - this.pad);
-    if (this.bg.input) {
-      // Re-create the default hit area at the new size (listeners persist across this).
-      this.bg.removeInteractive();
-      this.bg.setInteractive({ useHandCursor: true });
-    }
+    // Resize the existing hit area in place (the documented way). Re-creating it via
+    // removeInteractive()/setInteractive() drops the clickable region for this container-child
+    // shape — the button still fired on its keyboard shortcut but no longer on a mouse click.
+    const ha = this.bg.input?.hitArea;
+    if (ha instanceof Phaser.Geom.Rectangle) ha.setTo(0, 0, w, this.bg.height);
     return this;
   }
 

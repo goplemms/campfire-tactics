@@ -163,6 +163,39 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Bugfix: the primary (End Turn / Advance Clock) was unclickable after resizing** (regression from
+  the side-by-side Undo). `Button.setWidth` re-created the hit area via
+  `removeInteractive()`/`setInteractive()`, which **dropped the clickable region** for this
+  container-child shape — the button still fired on its keyboard shortcut (Space), so tests (which
+  press Space) never caught it, but a **mouse click did nothing**. Fixed by resizing the existing
+  hit area in place. Also fixed a paired cosmetic bug: `fitText`'s ellipsis is destructive, so a
+  half-width "End Turn" → full "Advance Clock" transition left the label stuck at "Advanc…";
+  `Button` now keeps the untruncated text and re-fits from it, and `setPrimary` fits at full width
+  first. Seams: `Button.setWidth` / `setLabel` / `fullText`, `BattleScene.setPrimary`. Guarded
+  green: tsc, 837 unit tests, build, deploy→battle e2e (73, incl. a **real mouse-click** End-Turn
+  test + a no-truncation check), sim (unchanged).
+- **CT rail shows in deployment too — with the net's next sweep as a row** (D-feel, render-only).
+  The initiative rail was battle-only; a diligent player had no read on **when the net closes next**.
+  It now renders during **deployment** as well, showing the **player units** (their deploy order)
+  with **the net** injected as a CT row ("The net", danger-tinted, ⏳ countdown) sorted in by charge
+  — so you can see the next capture step relative to your own turns. The **concealed foes are
+  filtered out** (no info leak): `drawInitiative` gained a `filter` predicate (deploy passes
+  "player-only") and a `tempo` row, fed by a new `CTClock.tempoState()`; a shared `BattleScene.drawRail`
+  serves both phases (deploy = player+net, battle = full roster). Pure render; no core touch beyond
+  the read-only clock accessor. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (70,
+  incl. deploy-rail net + no-foe-leak assertions), sim (summary **unchanged**).
+- **Bottom bar: CT rail to the bottom-right, log to the centre + collapsible** (D-feel, render-only).
+  The initiative rail moved from the top-right down to the **bottom-right**, now **bottom-anchored**
+  (it grows *upward* as it expands, so it never runs off the bottom; `drawInitiative` gained a
+  `bottomAnchorY` and returns `topY`), with its "Turn order" label + expand chevron riding above
+  the top chip. The combat **log feed** moved from the bottom-right to the **centre-bottom** (between
+  the legend and the rail) and gained a **collapse chevron** ("▾ Log" ↔ "▸ Log") — `CombatView`
+  gained `setLogLayout` / `setLogShown`, and `BattleScene.toggleLog` drives the chevron. The result
+  is a clean four-zone bottom bar: command box · legend · log · CT rail (with the corner Session-log
+  chip clear). Seams: `CombatView.drawInitiative` / `setLogLayout` / `setLogShown`,
+  `BattleScene.refreshHud` / `layoutRailChevron` / `toggleLog`. Pure render; no core touch. Guarded
+  green: tsc, 837 unit tests, build, deploy→battle e2e (68, incl. rail-docked + log-collapse
+  assertions), sim (unchanged).
 - **Campfire/foe source markers: glyphs, dropped clear of the trap glyph** (D-feel, render-only).
   The deploy source markers (campfire core, the net's origin) were plain Phaser **star shapes** at
   **tile-centre** — generic, and colliding with trap glyphs (which anchor at the tile's **top

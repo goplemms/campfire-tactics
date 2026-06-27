@@ -240,6 +240,9 @@ export class BattleScene extends Phaser.Scene {
   private static readonly RAIL_COLLAPSED = 3;
   private railExpanded = false;
   private railChevron?: Phaser.GameObjects.Text;
+  /** The combat-log collapse toggle (centre-bottom): a chevron that shows/hides the feed. */
+  private logCollapsed = false;
+  private logChevron?: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
   /** The always-on board colour key (safe/danger washes), set per phase. */
   private legendStrip!: LegendStrip;
@@ -400,6 +403,18 @@ export class BattleScene extends Phaser.Scene {
     // bottom-right column stays clear for the combat log + the Session-log chip that opens there.
     const legendX = MENU_LEFT + MENU_BW + 2 * MENU_PAD + 14;
     this.legendStrip = new LegendStrip(this, legendX, this.scale.height - 20);
+    // The combat log feed sits centre-bottom (between the legend and the CT rail), its lines
+    // stacking up from just above a collapse chevron. The chevron flips the whole feed on/off.
+    const logX = 350, logHeaderY = this.scale.height - 14;
+    this.view.setLogLayout(logX, logHeaderY - 16);
+    this.logChevron = this.add
+      .text(logX, logHeaderY, "▾  Log", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption })
+      .setOrigin(0, 0.5)
+      .setDepth(10)
+      .setInteractive({ useHandCursor: true });
+    this.logChevron.on(Phaser.Input.Events.POINTER_DOWN, () => this.toggleLog());
+    this.logChevron.on(Phaser.Input.Events.POINTER_OVER, () => this.logChevron?.setColor(INK.bright));
+    this.logChevron.on(Phaser.Input.Events.POINTER_OUT, () => this.logChevron?.setColor(INK.muted));
     this.threatGfx = this.add.graphics().setDepth(0.36);
     // The tarpit-aura ring (D64) sits just above the zone washes but below the move/
     // footprint preview, so a Heavy Knight's taxed tiles read in both phases.
@@ -982,6 +997,7 @@ export class BattleScene extends Phaser.Scene {
     const who = actor ? (actor.captured ? `${actor.name} captured` : `${actor.name}'s turn`) : "set up";
     this.titleText.setText(`Deployment — ${who} · reach ${reach} · safe ${safeR} · ${kits} kit${kits === 1 ? "" : "s"}`);
     this.refreshObjectives(); // the objectives check-list shows in deployment too
+    this.drawRail(true); // the CT rail (player units + the net's next sweep) shows in deployment too
     this.refreshFocusCard();
     this.refreshPreviewCard();
   }
@@ -1300,6 +1316,7 @@ export class BattleScene extends Phaser.Scene {
     this.titleText.setText("Battle");
     this.cardView = "camp"; // foes are on the board now — default the situation card back to Camp
     this.refreshCampText();
+    this.drawRail(false); // swap the deploy rail (player + net) for the full combat roster
     this.legendStrip.setItems(BATTLE_LEGEND);
     this.clearActionButtons();
     this.theftAttempts.clear();
@@ -2268,6 +2285,9 @@ export class BattleScene extends Phaser.Scene {
     this.legendStrip.setItems([]); // board key is meaningless under the result overlay
     this.focusCard.hide();
     this.railChevron?.setVisible(false);
+    this.view.hideInitiative(); // clear the rail under the result overlay
+    this.logChevron?.setVisible(false);
+    this.view.setLogShown(false); // the feed is meaningless under the result overlay
     this.highlightTile(null);
     this.clearActionButtons();
 
@@ -2482,25 +2502,47 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private refreshHud(): void {
-    // The shared visual initiative rail (CombatView): chips sorted by charge time,
-    // the acting unit lit, each carrying side/role, HP and the CT readout. Docked
-    // right (the timing/history column) so the left can host the focus card.
-    this.orderText.setText("Turn order");
-    const limit = this.railExpanded ? undefined : BattleScene.RAIL_COLLAPSED;
-    const rail = this.view.drawInitiative(this.battle.units, this.scale.width - 158, 138, (u) => this.battle.clock.isCharging(u), limit);
-    this.layoutRailChevron(rail);
+    this.drawRail(false);
     this.refreshHp();
     this.refreshObjectives();
     this.refreshFocusCard();
   }
 
   /**
-   * Place the rail's expand/collapse chevron just below the last shown chip. Shown
-   * only when the rail actually overflows the collapsed cap (or is expanded past it);
-   * clicking toggles {@link railExpanded} and redraws. The chevron lives off-board on
-   * the right, so the scene's board click-router no-ops on it.
+   * Draw the **initiative rail** (CombatView) docked **bottom-right** and **bottom-anchored** —
+   * it grows upward as it expands, so it never runs off the bottom — with the "Turn order" label +
+   * expand chevron above its top chip. In **deployment** it shows the **player units + the net**
+   * (the concealed foes are filtered out, and the net rides in as a CT row so the player can read
+   * when the next capture step lands); in **battle** it's the full roster.
    */
-  private layoutRailChevron(rail: { total: number; shown: number; bottomY: number }): void {
+  private drawRail(deploy: boolean): void {
+    this.orderText.setText("Turn order");
+    const limit = this.railExpanded ? undefined : BattleScene.RAIL_COLLAPSED;
+    const railX = this.scale.width - 158;
+    const railBottom = this.scale.height - 48; // clear of the bottom-right Session-log chip
+    const tempo = deploy ? this.battle.clock.tempoState() : undefined;
+    const opts = deploy
+      ? { filter: (u: Unit) => u.side === "player", tempo: tempo ? { name: "The net", ct: tempo.ct } : undefined }
+      : {};
+    const rail = this.view.drawInitiative(this.battle.units, railX, 0, (u) => this.battle.clock.isCharging(u), limit, railBottom, opts);
+    this.orderText.setPosition(railX, rail.topY - 15);
+    this.layoutRailChevron(rail);
+  }
+
+  /** Collapse/expand the centre-bottom combat-log feed (the chevron's toggle). */
+  private toggleLog(): void {
+    this.logCollapsed = !this.logCollapsed;
+    this.view.setLogShown(!this.logCollapsed);
+    this.logChevron?.setText(this.logCollapsed ? "▸  Log" : "▾  Log");
+  }
+
+  /**
+   * Place the rail's expand/collapse chevron beside the "Turn order" label (above the top
+   * chip) — the rail is bottom-anchored, so there's no room below it for the chevron, and the
+   * very bottom-right corner is taken by the Session-log chip. Shown only when the rail
+   * overflows the collapsed cap; clicking toggles {@link railExpanded} and redraws.
+   */
+  private layoutRailChevron(rail: { total: number; shown: number; topY: number; bottomY: number }): void {
     const hidden = rail.total - rail.shown;
     const collapsible = rail.total > BattleScene.RAIL_COLLAPSED;
     if (!collapsible) return void this.railChevron?.setVisible(false);
@@ -2513,8 +2555,8 @@ export class BattleScene extends Phaser.Scene {
       this.railChevron.on(Phaser.Input.Events.POINTER_OVER, () => this.railChevron?.setColor(INK.bright));
       this.railChevron.on(Phaser.Input.Events.POINTER_OUT, () => this.railChevron?.setColor(INK.muted));
     }
-    const label = this.railExpanded ? "▴  less" : `▾  ${hidden} more`;
-    this.railChevron.setText(label).setPosition(this.scale.width - 158, rail.bottomY + 3).setVisible(true);
+    const label = this.railExpanded ? "▴ less" : `▾ ${hidden} more`;
+    this.railChevron.setText(label).setPosition(this.scale.width - 158 + 86, rail.topY - 15).setVisible(true);
   }
 
   /**
@@ -2928,7 +2970,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private setPrimary(text: string, visible = true): void {
-    this.primary.setLabel(text).setVisible(visible);
+    // Fit the label at *full* width first: a long label (e.g. "Advance Clock") set while the
+    // primary is still half-width (paired with Undo on the turn just ended) would over-fit and
+    // ellipsize. The control-box layout re-narrows to half afterward for the short "End Turn".
+    this.primary.setWidth(MENU_BW).setLabel(text).setVisible(visible);
   }
 
   /** The resting Y of the End Turn / Advance Clock primary — the box's bottom slot. */

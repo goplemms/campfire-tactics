@@ -163,6 +163,13 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Campfire/foe source stars dropped clear of the trap glyph** (D-feel, render-only). The deploy
+  source markers (ember star = campfire core, red star = the net) drew at **tile-centre**, but trap
+  glyphs anchor at the tile's **top vertex** (`y − halfH`) — so a trap placed on the campfire tile
+  (exactly where the party and its traps cluster) overlapped the star. The stars now sit in the
+  **lower half** of their tile (`+halfH·0.5`), tucked under the trap. Seam: `drawSourceMarkers`.
+  Pure render; no core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (65),
+  sim (unchanged).
 - **Board-key legend moved next to the command box** (D-feel, render-only). The legend used to
   dock bottom-**right**, where it shared the column with the combat log and got overlapped by the
   Session-log panel when it opened. It now docks along the **bottom, just right of the command

@@ -204,6 +204,15 @@ export class CTClock {
   }
 
   /**
+   * Read-only snapshot of the tempo source's charge (the Deployment front's progress toward its
+   * next net-closing turn), or `undefined` in combat — for the HUD rail. `threshold` is the CT a
+   * turn fires at, so a renderer can show how close the next capture step is.
+   */
+  tempoState(): { ct: number; speed: number; threshold: number } | undefined {
+    return this.tempo ? { ct: this.tempo.ct, speed: this.tempo.speed, threshold: TURN_THRESHOLD } : undefined;
+  }
+
+  /**
    * Shed the Deployment configuration and restore combat defaults at the pre-combat →
    * combat boundary (D67 W2): detach the front, re-widen participation to every active
    * unit, and clear the staging timeline so combat opens on a fresh clock. A **no-op** for

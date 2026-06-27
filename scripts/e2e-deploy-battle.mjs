@@ -273,6 +273,18 @@ async function main() {
       st = await snap();
       check("dig-in was taken back", st.dugIn === false);
 
+      // --- Stage: the CT rail shows in deployment, incl. the net's next sweep --
+      const deployRail = await g.bsEval(`
+        s.railExpanded = true; s.refreshDeployStatus(); // expand so every row is visible to count
+        const names = s.view.ctChips.filter(c => c.name.visible).map(c => c.name.text);
+        const players = s.battle.units.filter(u => u.side === "player" && u.alive && !u.captured && !u.hidden).length;
+        s.railExpanded = false; s.refreshDeployStatus();
+        return { names, players };
+      `);
+      console.log("• CT rail in deployment");
+      check("the deploy rail lists the net's next sweep", deployRail.names.includes("The net"));
+      check("the deploy rail shows player units + the net only (no concealed foes)", deployRail.names.length === deployRail.players + 1);
+
       // --- Stage: commit to Battle -------------------------------------------
       // The deploy→battle handoff runs off a single bus event (D67): the seam is wired up
       // front (wireBattleFx), and firing it tears down the staging visuals (veil + overlays).

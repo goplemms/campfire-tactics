@@ -562,10 +562,18 @@ export class CombatView {
     isCharging: (u: Unit) => boolean,
     limit?: number,
     bottomAnchorY?: number,
+    opts: { filter?: (u: Unit) => boolean; tempo?: { name: string; ct: number } } = {},
   ): { total: number; shown: number; topY: number; bottomY: number } {
-    const live = units.filter((u) => u.alive && !u.captured && !u.hidden).sort((a, b) => b.ct - a.ct);
-    const fallen = units.filter((u) => !u.alive && !u.captured && !u.hidden);
-    const rows = [...live.map((u) => ({ u, dead: false })), ...fallen.map((u) => ({ u, dead: true }))];
+    // `filter` narrows which units appear (deployment passes "player only" so concealed foes
+    // don't leak); `tempo` injects a non-unit row (the Deployment net) sorted in by its CT, so
+    // the player can read when the next capture step lands relative to their own turns.
+    type Row = { kind: "unit"; u: Unit; dead: boolean; ct: number } | { kind: "tempo"; name: string; ct: number };
+    const base = (u: Unit) => !u.captured && !u.hidden && (opts.filter ? opts.filter(u) : true);
+    const liveRows: Row[] = units.filter((u) => base(u) && u.alive).map((u) => ({ kind: "unit", u, dead: false, ct: u.ct }));
+    if (opts.tempo) liveRows.push({ kind: "tempo", name: opts.tempo.name, ct: opts.tempo.ct });
+    liveRows.sort((a, b) => b.ct - a.ct);
+    const fallenRows: Row[] = units.filter((u) => base(u) && !u.alive).map((u) => ({ kind: "unit", u, dead: true, ct: u.ct }));
+    const rows: Row[] = [...liveRows, ...fallenRows];
     const shown = limit === undefined ? rows.length : Math.min(rows.length, Math.max(0, limit));
     // Bottom-anchored mode: the rail's *bottom* sits at `bottomAnchorY` and grows upward, so a
     // bottom-of-screen rail never runs off as it expands (the top y is derived from the count).
@@ -575,6 +583,17 @@ export class CombatView {
       this.ctChips[i] = chip;
       const top = topY + i * CombatView.CHIP_STEP;
       const mid = top + CombatView.CHIP_H / 2;
+      if (r.kind === "tempo") {
+        // The net (Deployment capture wave): danger-tinted, no HP/status, a ⏳ CT readout.
+        chip.bg.setPosition(x, top).setFillStyle(COLOR.surface, 0.55).setStrokeStyle(1, COLOR.foeEdge).setAlpha(1).setVisible(true);
+        chip.dot.setPosition(x + 13, mid).setFillStyle(COLOR.danger).setStrokeStyle(2, COLOR.foeEdge).setVisible(true);
+        chip.name.setPosition(x + 24, mid).setText(r.name).setColor(INK.danger).setVisible(true);
+        chip.ct.setPosition(x + CombatView.CHIP_W - 7, mid).setText(`${Math.round(r.ct)}${ICON.charging.glyph}`).setColor(INK.ember).setVisible(true);
+        chip.hpBg.setVisible(false);
+        chip.hpFill.setVisible(false);
+        chip.status.setVisible(false);
+        return;
+      }
       const active = !r.dead && r.u.id === this.activeUnitId;
       const sideFill = r.u.side === "player" ? COLOR.ally : COLOR.foe;
       const sideEdge = r.u.side === "player" ? COLOR.allyEdge : COLOR.foeEdge;

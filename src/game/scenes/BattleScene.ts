@@ -997,6 +997,7 @@ export class BattleScene extends Phaser.Scene {
     const who = actor ? (actor.captured ? `${actor.name} captured` : `${actor.name}'s turn`) : "set up";
     this.titleText.setText(`Deployment — ${who} · reach ${reach} · safe ${safeR} · ${kits} kit${kits === 1 ? "" : "s"}`);
     this.refreshObjectives(); // the objectives check-list shows in deployment too
+    this.drawRail(true); // the CT rail (player units + the net's next sweep) shows in deployment too
     this.refreshFocusCard();
     this.refreshPreviewCard();
   }
@@ -1315,6 +1316,7 @@ export class BattleScene extends Phaser.Scene {
     this.titleText.setText("Battle");
     this.cardView = "camp"; // foes are on the board now — default the situation card back to Camp
     this.refreshCampText();
+    this.drawRail(false); // swap the deploy rail (player + net) for the full combat roster
     this.legendStrip.setItems(BATTLE_LEGEND);
     this.clearActionButtons();
     this.theftAttempts.clear();
@@ -2283,6 +2285,7 @@ export class BattleScene extends Phaser.Scene {
     this.legendStrip.setItems([]); // board key is meaningless under the result overlay
     this.focusCard.hide();
     this.railChevron?.setVisible(false);
+    this.view.hideInitiative(); // clear the rail under the result overlay
     this.logChevron?.setVisible(false);
     this.view.setLogShown(false); // the feed is meaningless under the result overlay
     this.highlightTile(null);
@@ -2499,20 +2502,31 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private refreshHud(): void {
-    // The shared visual initiative rail (CombatView): chips sorted by charge time, the acting
-    // unit lit, each carrying side/role, HP and the CT readout. Docked **bottom-right** (right of
-    // the centre log) and **bottom-anchored** — it grows upward as it expands, so it never runs
-    // off the bottom — with the "Turn order" label riding just above its top chip.
+    this.drawRail(false);
+    this.refreshHp();
+    this.refreshObjectives();
+    this.refreshFocusCard();
+  }
+
+  /**
+   * Draw the **initiative rail** (CombatView) docked **bottom-right** and **bottom-anchored** —
+   * it grows upward as it expands, so it never runs off the bottom — with the "Turn order" label +
+   * expand chevron above its top chip. In **deployment** it shows the **player units + the net**
+   * (the concealed foes are filtered out, and the net rides in as a CT row so the player can read
+   * when the next capture step lands); in **battle** it's the full roster.
+   */
+  private drawRail(deploy: boolean): void {
     this.orderText.setText("Turn order");
     const limit = this.railExpanded ? undefined : BattleScene.RAIL_COLLAPSED;
     const railX = this.scale.width - 158;
     const railBottom = this.scale.height - 48; // clear of the bottom-right Session-log chip
-    const rail = this.view.drawInitiative(this.battle.units, railX, 0, (u) => this.battle.clock.isCharging(u), limit, railBottom);
+    const tempo = deploy ? this.battle.clock.tempoState() : undefined;
+    const opts = deploy
+      ? { filter: (u: Unit) => u.side === "player", tempo: tempo ? { name: "The net", ct: tempo.ct } : undefined }
+      : {};
+    const rail = this.view.drawInitiative(this.battle.units, railX, 0, (u) => this.battle.clock.isCharging(u), limit, railBottom, opts);
     this.orderText.setPosition(railX, rail.topY - 15);
     this.layoutRailChevron(rail);
-    this.refreshHp();
-    this.refreshObjectives();
-    this.refreshFocusCard();
   }
 
   /** Collapse/expand the centre-bottom combat-log feed (the chevron's toggle). */

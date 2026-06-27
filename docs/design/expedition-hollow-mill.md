@@ -163,6 +163,16 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **CT rail shows in deployment too — with the net's next sweep as a row** (D-feel, render-only).
+  The initiative rail was battle-only; a diligent player had no read on **when the net closes next**.
+  It now renders during **deployment** as well, showing the **player units** (their deploy order)
+  with **the net** injected as a CT row ("The net", danger-tinted, ⏳ countdown) sorted in by charge
+  — so you can see the next capture step relative to your own turns. The **concealed foes are
+  filtered out** (no info leak): `drawInitiative` gained a `filter` predicate (deploy passes
+  "player-only") and a `tempo` row, fed by a new `CTClock.tempoState()`; a shared `BattleScene.drawRail`
+  serves both phases (deploy = player+net, battle = full roster). Pure render; no core touch beyond
+  the read-only clock accessor. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (70,
+  incl. deploy-rail net + no-foe-leak assertions), sim (summary **unchanged**).
 - **Bottom bar: CT rail to the bottom-right, log to the centre + collapsible** (D-feel, render-only).
   The initiative rail moved from the top-right down to the **bottom-right**, now **bottom-anchored**
   (it grows *upward* as it expands, so it never runs off the bottom; `drawInitiative` gained a

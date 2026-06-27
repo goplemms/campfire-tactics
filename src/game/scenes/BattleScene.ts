@@ -175,16 +175,6 @@ const MENU_GAP = 12; // vertical gap between the verb box and the turn-control b
 const PAIR_GAP = 6; // horizontal gap between Undo and the primary in the control box's bottom row
 
 /**
- * Layout revisit (D-feel): the old top "situation strip" (one centred title + a shared
- * objective/intel line) is broken up — the **phase + turn** title moved to the **top-left**,
- * and the **objectives** became a stacked check-list box (see {@link BattleScene.refreshObjectives}).
- * The **intel recap** stays hidden for now, gated here so it's a one-flag restore. It still
- * computes (`refreshIntel` sets the text); only the render is gated. What intel DROPS from view
- * (to relocate, not lose): tier · foe count · foe types (· encounter shape).
- */
-const SHOW_INTEL_RECAP = false;
-
-/**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
  * run the {@link "./OverworldScene"} hands it. It owns no rules — the
  * {@link RunLoop} (already positioned at the chosen node) stages the encounter and
@@ -225,13 +215,21 @@ export class BattleScene extends Phaser.Scene {
 
   // Persistent HUD.
   private titleText!: Phaser.GameObjects.Text;
-  private intelText!: Phaser.GameObjects.Text;
-  /** The objectives check-list box (top-centre) — rebuilt each refresh; cleared between nodes. */
+  /** The objectives check-list box (far-left, under the title) — rebuilt each refresh. */
   private objectiveObjects: Phaser.GameObjects.GameObject[] = [];
   private orderText!: Phaser.GameObjects.Text;
-  /** Active-unit focus card (left, the decision zone) + the peripheral camp-state card. */
+  /** Active-unit focus card (left, the decision zone) + the peripheral situation card. */
   private focusCard!: MiniCard;
+  /**
+   * The top-right **situation card** — a Camp ↔ Intel toggle (D-feel). It shows the run's
+   * **camp** economy (morale / purse / storage) or the encounter **intel** (foes / tier / shape /
+   * types), flipped by the two tabs over the card. Defaults per phase: **Intel** in deployment
+   * (it informs placement), **Camp** in battle (the foes are on the board by then).
+   */
   private campCard!: MiniCard;
+  private cardView: "camp" | "intel" = "intel";
+  private campTab!: Phaser.GameObjects.Text;
+  private intelTab!: Phaser.GameObjects.Text;
   /**
    * The docked **preview card** — the "before you commit" read (docked just under the
    * focus card): the armed-ability forecast (D64), or, on hover, the move-tile (cost +
@@ -375,9 +373,7 @@ export class BattleScene extends Phaser.Scene {
     // Top-left = the **phase + turn** heading (whose turn it is + the deploy global state:
     // net reach / safe radius / kits). Left-aligned in the corner, off the now-clear top band.
     this.titleText = this.add.text(12, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(10);
-    // Intel recap — hidden for now (SHOW_INTEL_RECAP); still computed for an easy restore.
-    this.intelText = this.add.text(this.scale.width / 2, 42, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(10).setVisible(SHOW_INTEL_RECAP);
-    // Objectives are now a stacked check-list box drawn top-centre by refreshObjectives().
+    // Objectives are now a stacked check-list box drawn far-left by refreshObjectives().
     // Right column = "timing/history": the turn-order rail (drawn by CombatView) and
     // its label move here, off the left so the left can host the focus card. The label
     // sits below the camp card (above the rail) so it isn't occluded by it.
@@ -390,6 +386,11 @@ export class BattleScene extends Phaser.Scene {
     // the move-tile / enemy / deploy-tile outcome before you commit.
     this.previewCard = new MiniCard(this, 8, 184, { w: 150 }).hide();
     this.campCard = new MiniCard(this, this.scale.width - 158, 42, { w: 150 });
+    // The Camp ↔ Intel toggle: two tabs over the card's title row. The active one reads bright,
+    // the other dim; clicking flips the view. The card title is left blank so the tabs own the row.
+    const tabX = this.scale.width - 158 + 8;
+    this.campTab = this.makeCardTab("Camp", tabX, 48, "camp");
+    this.intelTab = this.makeCardTab("Intel", tabX + 40, 48, "intel");
     this.hintPanel = new HintPanel(this);
     // The persistent board colour key — the same component carries across phases,
     // re-keyed in enterDeploy / startBattle so the wash language is always legible.
@@ -447,8 +448,8 @@ export class BattleScene extends Phaser.Scene {
 
     // Intel read (D10), then straight into Deployment.
     this.intel = this.loop.intel();
+    this.cardView = "intel"; // a fresh node opens in deployment — lead the situation card with intel
     this.refreshCampText();
-    this.refreshIntelText();
     const upkeepNote =
       camp.upkeep.underfunded.length > 0
         ? `Underfunded ${camp.upkeep.underfunded.join(" + ")} — morale took a hit.`
@@ -1287,7 +1288,8 @@ export class BattleScene extends Phaser.Scene {
     // deploy overlays + markers — and the log marker lets replay delimit the deploy prelude.
     this.battle.beginBattle();
     this.titleText.setText("Battle");
-    this.refreshIntelText(); // re-style the roster line down to passive reference (D-UX)
+    this.cardView = "camp"; // foes are on the board now — default the situation card back to Camp
+    this.refreshCampText();
     this.legendStrip.setItems(BATTLE_LEGEND);
     this.clearActionButtons();
     this.theftAttempts.clear();
@@ -2568,23 +2570,75 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * The peripheral **camp-state** card (top-right): passive reference you can't
-   * change mid-mission (morale, purse, storage), grouped out of the decision zone.
-   * Figures owned by core (`campReadout`); the camp-time levers it omits (RP/Upkeep)
-   * live on the overworld camp where they're actually spent.
+   * The top-right **situation card** — renders whichever view the Camp/Intel toggle has active,
+   * then re-tints the tabs. Called wherever camp economy *or* intel might have changed; cheap to
+   * re-render either side. (The name stays `refreshCampText` for its many call sites.)
    */
   private refreshCampText(): void {
+    if (this.cardView === "intel") this.renderIntelCard();
+    else this.renderCampCard();
+    this.updateCardTabs();
+  }
+
+  /**
+   * The **camp** view (passive reference you can't change mid-mission — morale, purse, storage),
+   * grouped out of the decision zone. Figures owned by core (`campReadout`); the camp-time levers
+   * it omits (RP/Upkeep) live on the overworld camp where they're actually spent.
+   */
+  private renderCampCard(): void {
     const r = campReadout(this.run);
     // Attribute morale to its *effect* here (D-UX): in Deployment high morale trims the
     // capture risk on open (neutral) ground, so the otherwise-inert tier reads as
     // "High (−20% open risk)" — its mechanical pull legible where it lands, not a bare stat.
     const em = this.phase === "deployment" ? this.moraleMods().exposureMultiplier : 1;
     const morale = em < 1 ? `${r.moraleTier} (−${Math.round((1 - em) * 100)}% open risk)` : r.moraleTier;
-    this.campCard.set(`Camp · Night ${this.run.night + 1}`, [
+    this.campCard.set("", [
       { label: "Morale", value: morale },
       { label: "Purse", value: `${r.purse}g` },
       { label: "Storage", value: `${r.storageUsed}/${r.storageCap}` },
     ]);
+  }
+
+  /**
+   * The **intel** view (D10) — the scouted encounter: foe count, intel tier, and (in deployment,
+   * where they inform placement) the field shape + a granted-vision flag, with the foe-type roster
+   * as a wrapped note. The foes are on the board once battle joins, so this recedes to a recap.
+   */
+  private renderIntelCard(): void {
+    const r = this.intel;
+    if (!r) return void this.campCard.set("", [{ label: "Intel", value: "—" }]);
+    const battle = this.phase === "battle";
+    const def = currentEncounter(this.run);
+    const shape = !battle && !isAuthoredEncounter(def) ? def.type : undefined;
+    const rows: CardRow[] = [];
+    if (r.count !== undefined) rows.push({ label: "Foes", value: `${r.count}` });
+    rows.push({ label: "Intel", value: `T${r.tier}` });
+    if (shape) rows.push({ label: "Field", value: shape });
+    if (!battle && r.grantsVision) rows.push({ label: "Vision", value: "yes" });
+    const note = r.types && r.types.length ? compactFoeTypes(r.types) : undefined;
+    this.campCard.set("", rows, undefined, note);
+  }
+
+  /** One Camp/Intel tab over the situation card — flips the view on click. */
+  private makeCardTab(label: string, x: number, y: number, view: "camp" | "intel"): Phaser.GameObjects.Text {
+    const t = this.add.text(x, y, label, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(12);
+    t.setInteractive({ useHandCursor: true });
+    t.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.setCardView(view));
+    t.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(view === "intel" ? "Show the scouted foe intel." : "Show the camp economy (morale / purse / storage)."));
+    return t;
+  }
+
+  /** Flip the situation card to Camp or Intel and re-render. */
+  private setCardView(view: "camp" | "intel"): void {
+    if (this.cardView === view) return;
+    this.cardView = view;
+    this.refreshCampText();
+  }
+
+  /** Tint the tabs by the active view — the active one bright, the other dim. */
+  private updateCardTabs(): void {
+    this.campTab.setColor(this.cardView === "camp" ? INK.bright : INK.disabled);
+    this.intelTab.setColor(this.cardView === "intel" ? INK.bright : INK.disabled);
   }
 
   /**
@@ -2646,36 +2700,6 @@ export class BattleScene extends Phaser.Scene {
       }
     }
     this.focusCard.set(actor.name, rows, { frac: actor.maxHp > 0 ? actor.hp / actor.maxHp : 0, cur: actor.hp, max: actor.maxHp });
-  }
-
-  private refreshIntelText(): void {
-    const r = this.intel;
-    if (!r) {
-      this.intelText.setText("");
-      return;
-    }
-    // Intel drives the *deployment* decision — where to stand against the scouted
-    // roster — so it leads there: gold and prominent. Once the fight is joined the
-    // foes are on the board and there's no re-scouting; it becomes passive reference,
-    // so in Battle it recedes (muted, caption-sized) and sheds the deploy-only tier /
-    // vision / encounter-shape, keeping just the roster as a quiet recap (D-UX rule:
-    // prominence follows whether you can act on the info in this phase).
-    const battle = this.phase === "battle";
-    const parts: string[] = [];
-    if (!battle) parts.push(`Intel T${r.tier}`);
-    if (r.count !== undefined) parts.push(`${r.count} foe${r.count === 1 ? "" : "s"}`);
-    if (r.types && r.types.length) parts.push(compactFoeTypes(r.types));
-    if (!battle && r.grantsVision) parts.push("vision");
-    // Show the *tactical* encounter shape (open-field vs. fortified = pre-placed
-    // hazards, D12) only in Deployment, where it informs placement; an authored
-    // set-piece reveals no such banner, so we drop the parenthetical rather than leak
-    // the "authored" dev tag.
-    const def = currentEncounter(this.run);
-    const shape = !battle && !isAuthoredEncounter(def) ? def.type : undefined;
-    this.intelText
-      .setText(parts.join("  ·  ") + (shape ? `   (${shape})` : ""))
-      .setColor(battle ? INK.muted : INK.gold)
-      .setFontSize(battle ? FONT.caption : FONT.label);
   }
 
   private setHint(text: string): void {

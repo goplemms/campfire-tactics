@@ -57,7 +57,7 @@ export class MiniCard extends Phaser.GameObjects.Container {
    * Replace the card's content and re-fit its height. `hp` draws the bar when enabled;
    * `cur`/`max`, when given, also print the absolute HP on the title row.
    */
-  set(title: string, rows: CardRow[], hp?: { frac: number; cur?: number; max?: number }): this {
+  set(title: string, rows: CardRow[], hp?: { frac: number; cur?: number; max?: number }, note?: string): this {
     this.titleText.setText(title);
     for (const o of this.rowObjs) o.destroy();
     this.rowObjs = [];
@@ -93,6 +93,16 @@ export class MiniCard extends Phaser.GameObjects.Container {
       this.add([label, value]);
       this.rowObjs.push(label, value);
       y += big ? 19 : 15;
+    }
+    // An optional full-width wrapped note under the rows (e.g. a foe-type list too long for
+    // a right-aligned value column).
+    if (note) {
+      const noteText = this.scene.add
+        .text(8, y, note, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption, wordWrap: { width: this.cardW - 16 }, lineSpacing: 2 })
+        .setOrigin(0, 0);
+      this.add(noteText);
+      this.rowObjs.push(noteText);
+      y += noteText.height + 2;
     }
     this.bg.setSize(this.cardW, y + 4);
     this.setVisible(true);

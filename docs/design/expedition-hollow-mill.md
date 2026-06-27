@@ -163,6 +163,18 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **The top-right card is now a Camp ↔ Intel toggle** (D-feel, render-only). With the top strip
+  gone, the **intel recap** (foes / tier / field shape / foe-type roster) had no home; rather than
+  a new always-on element, the existing peripheral **camp card** became a two-tab **situation
+  card**. Tabs over the card flip between **Camp** (morale / purse / storage) and **Intel** (foe
+  count · intel tier · field shape in deploy · a wrapped foe-type note). It **defaults per phase**
+  — Intel in deployment (where it informs placement), Camp in battle (the foes are on the board by
+  then) — and either tab can be clicked anytime. This retires the old hidden `intelText` /
+  `SHOW_INTEL_RECAP` and the de-emphasis-in-battle styling: the toggle subsumes both. Seams:
+  `BattleScene.renderCampCard` / `renderIntelCard` (dispatched by `refreshCampText`),
+  `makeCardTab` / `setCardView`; `MiniCard.set` gained an optional wrapped `note` line. Pure
+  render; no core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (65, incl.
+  the toggle assertions), sim (summary **unchanged**).
 - **Top-strip rework: phase/turn to the corner, objectives as a check-list box** (D-feel,
   render-only — layout revisit). The old centred "situation strip" (one title line over a
   shared objective + intel row) was cleared to evaluate a bare top, then rebuilt deliberately:
@@ -173,9 +185,9 @@ Recent work that altered routing or the within-node experience. Newest first.
   a left-hand status marker (green **✓** met · red **✗** failed · muted **○** pending, the live
   **%** appended for a timed one). The box now **includes the default "Defeat all enemies"
   goal** (previously left implicit), so it's always populated and reads as a real checklist, and
-  it shows in **both** phases (`refreshDeployStatus` + `refreshHud` call it). The **intel recap**
-  (tier · foes · types · shape) stays hidden behind a one-flag `SHOW_INTEL_RECAP` restore — the
-  remaining piece still looking for a home. Seams: `BattleScene.refreshObjectives` (replaces the
+  it shows in **both** phases (`refreshDeployStatus` + `refreshHud` call it). (The **intel recap**
+  was the last homeless piece at this point — since rehomed into the Camp↔Intel toggle card, see
+  the newer entry above.) Seams: `BattleScene.refreshObjectives` (replaces the
   old `refreshObjectiveText` / `layoutSituationLine`), `objectiveObjects` layer. Pure render; no
   core touch. Guarded green: tsc, 837 unit tests, build, deploy→battle e2e (62, incl. the
   objectives-box assertions), sim (summary **unchanged**).

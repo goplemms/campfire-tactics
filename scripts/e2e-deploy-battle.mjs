@@ -315,6 +315,16 @@ async function main() {
       const objBox = await g.bsEval(`return s.objectiveObjects.map(o => o.text).filter(t => typeof t === "string");`);
       check("the objectives box lists the goal", objBox.includes("Defeat all enemies"));
       check("a pending objective shows the hollow marker (not a check)", objBox.includes("○") && !objBox.includes("✓"));
+      // The top-right situation card toggles Camp <-> Intel; battle defaults to Camp.
+      const card = await g.bsEval(`
+        const def = s.cardView;
+        s.setCardView("intel"); const i = s.cardView;
+        s.setCardView("camp"); const c = s.cardView;
+        return { def, i, c, hasTabs: !!s.campTab && !!s.intelTab };
+      `);
+      check("the situation card defaults to Camp in battle", card.def === "camp");
+      check("the Camp/Intel toggle flips the view both ways", card.i === "intel" && card.c === "camp");
+      check("the situation card has both tabs", card.hasTabs === true);
       await shot("battle-start");
 
       // --- Stage: drive the CT clock; a player turn opens and can be ended ----

@@ -251,8 +251,8 @@ export interface DamageGlyphs {
  *   a trap "if a foe enters: dmg + rider").
  * - `deferred` — `0 now → <per-future-hit>` / `<outcome> in ~Nt` (Mark Prey ramp,
  *   a charged Mend).
- * - `banked` — an outcome that lands **next battle** (Chef's party heal).
- * - `tiered` — `<from> → <to>` + the bundle the tier grants (Chef morale).
+ * - `banked` — an outcome that lands **next battle** (Cook's party heal).
+ * - `tiered` — `<from> → <to>` + the bundle the tier grants (Cook morale).
  * - `branching` — one row per inventory-gated sub-choice (Medic Heal per herb).
  */
 export type AbilityForecast =
@@ -290,7 +290,7 @@ export interface ForecastCtx {
   units?: readonly Unit[];
   /** The shared stash, so a Medic Heal forecast gates each herb row (D64). */
   inventory?: Inventory;
-  /** Current party morale value, so the Chef's tiered forecast reads from→to (D8). */
+  /** Current party morale value, so the Cook's tiered forecast reads from→to (D8). */
   morale?: number;
 }
 
@@ -413,7 +413,7 @@ const FORECAST_HANDLERS: {
 
   // --- Camp partition ------------------------------------------------------
   morale: (effect, { morale }) => {
-    // Banked + tiered (D64): the Chef's stew lifts morale a tier (from → to, with
+    // Banked + tiered (D64): the Cook's stew lifts morale a tier (from → to, with
     // the bundle the new tier grants, D8) AND banks a between-battle party heal
     // (cross-screen). The render shows both — the tier transition and the banked HP.
     const from = moraleTier(morale ?? 0);

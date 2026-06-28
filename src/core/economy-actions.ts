@@ -254,10 +254,13 @@ export interface BankerProtectResult extends VerbResult {
  * Spends from the purse; refuses if it can't be covered. Purse only — never the
  * treasury (D34).
  */
+/** Banker theft-protection cost (D61) — gold-priced; hoisted so the D61 guard test can validate it. */
+export const BANKER_PROTECT_COST: OverworldCost = { gold: ECONOMY.banker.protectionCost };
+
 export function bankerProtect(run: RunState): BankerProtectResult {
   if (!hasBanker(run.party)) return { applied: false, reason: "No Banker in the party to guard the purse." };
   // Gold-priced through the shared gate (D61) — same path as Patronize / the Merchant buy.
-  const cost: OverworldCost = { gold: ECONOMY.banker.protectionCost };
+  const cost = BANKER_PROTECT_COST;
   const check = checkOverworldCost(run, "banker-protect", cost, "theft protection");
   if (!check.ok) return { applied: false, reason: check.reason };
   commitOverworldCost(run, "banker-protect", cost, check.fatigueSpend);
@@ -343,7 +346,7 @@ export interface PatronizeResult extends VerbResult {
 }
 
 /** Patronize's two-axis cost (D61/D62): once per node (pacing) × purse gold (price). */
-const PATRONIZE_COST: OverworldCost = { usesPerNode: 1, gold: ECONOMY.noble.patronizeCost };
+export const PATRONIZE_COST: OverworldCost = { usesPerNode: 1, gold: ECONOMY.noble.patronizeCost };
 
 /**
  * **Noble PATRONIZE** (D62): spend purse gold to court patrons — an *active* Influence

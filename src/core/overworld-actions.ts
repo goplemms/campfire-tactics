@@ -92,9 +92,19 @@ export interface OverworldCost {
   fatigue?: number;
   /** Run gold spent from the purse (`camp.gold`, D34/D30) — static, or a {@link CostKnob} provider. */
   gold?: CostKnob;
-  /** Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider. */
+  /**
+   * Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider.
+   * **Reserved (no verb prices in it yet):** the gate fully checks + spends it ({@link
+   * checkOverworldCost}/{@link commitOverworldCost}), kept for the planned **Influence revamp** —
+   * the intended home for routing Bribe's spend through the shared gate (it currently spends
+   * Influence directly via `spendInfluence`, off-gate). Declared-but-unused **on purpose**, not dead.
+   */
   influence?: CostKnob;
-  /** Rest Points spent. Static or a provider. */
+  /**
+   * Rest Points spent. Static or a provider. **Reserved (no verb prices in it yet):** the gate
+   * honors it for a future RP-priced overworld/clearing verb (RP is live — banked nightly, spent on
+   * healing; D73's Weary heal-cost is recovery-side, not this knob). Declared-but-unused on purpose.
+   */
   rp?: CostKnob;
   // --- Escape hatch: an intrinsic limiter outside the two-knob menu ---
   /**
@@ -158,7 +168,7 @@ export interface OverworldEconomy {
   scouted: Record<string, number>;
   /**
    * Times each **camp job skill** has been used **at the current node**, keyed by
-   * skill id — the limiter for costless signature actions (D35; Chef stew, Merchant
+   * skill id — the limiter for costless signature actions (D35; Cook stew, Merchant
    * trade). Compared against {@link "./skills".SkillDef.usesPerNode} and **reset to
    * empty each node-step** ({@link tickCooldowns}), so the allowance is per-node, not
    * per-run.
@@ -506,6 +516,13 @@ export const TRIAGE = {
 } as const;
 
 /**
+ * Triage's two-axis cost (D61) — the **demanding** fatigue price the shared gate validates +
+ * spends. Hoisted to a named export so the D61 guard test can assert it stays paced-or-priced:
+ * Triage is a **standalone** verb, outside the `JobDef.skills` load-time validator.
+ */
+export const TRIAGE_COST: OverworldCost = { fatigue: TRIAGE.fatigue };
+
+/**
  * True if `unit` is a **healing class** — a job stamped with the Medic's Triage
  * passive ({@link "./combat".PASSIVE.triage}). The capability gate for {@link triage},
  * now the `healer` entry of the shared {@link "./jobs".unitHasCapability} taxonomy
@@ -547,7 +564,7 @@ export function triage(run: RunState, healer: Unit): TriageResult {
     .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
   if (!wounded) return { applied: false, reason: "No wounded fighter to triage." };
 
-  const cost: OverworldCost = { fatigue: TRIAGE.fatigue };
+  const cost = TRIAGE_COST;
   const check = checkOverworldCost(run, "triage", cost, "Triage", healer);
   if (!check.ok) return { applied: false, reason: check.reason };
 

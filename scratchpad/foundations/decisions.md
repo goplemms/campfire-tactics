@@ -2567,6 +2567,59 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D73 — Fatigue redesign: banded consequences + the clearing currency
+
+- **Status:** Decided (design), **build pending** (a numbers/mechanics pass — not yet wired). A
+  re-evaluation of **D29/D35** in light of the cost machinery built since (D61 two-axis limiter,
+  D72 substrate): with cooldowns, per-node caps, gold/influence/rp knobs and capability gates now
+  carrying pacing, price and access, fatigue's original job as "the single overworld limiter" is
+  gone. This record re-scopes it to the niche nothing else fills and gives its bands real teeth.
+- **Context:** fatigue (D29) predates almost the whole cost menu and was demoted by D35 ("not the
+  spine — cooldowns are"). The result was a mechanism with no live job: only **Survey** (cost 1,
+  also cooldown-paced) and **Triage** (cost 2) spend it, so in a ~7-layer demo it **never crosses
+  the floor** — invisible because nothing *costs* enough, not because the floor is mis-set. Meanwhile
+  the bands (Worn/Weary/Exhausted) carried only a soft surcharge + a near-vestigial lock (one user,
+  Triage). The fix is content + consequences, not retuning the constants.
+- **Decision 1 — fatigue is the *clearing currency* (re-scope).** It is the only **per-character**
+  cost (every other knob is per-ability pacing or a shared run pool), so it is reserved for the
+  **clearing-verb family**: slow, repeatable, **gold-free**, personal-effort verbs done *at* a node —
+  **Forage, Train, Triage**. Cheap recon (Survey) is paced by its cooldown and should shed fatigue
+  (or keep a vestigial 1). Legible rule: *if a verb costs fatigue, it's a clearing verb.*
+- **Decision 2 — banded consequences (replace surcharge+lock).** **Worn** (0…`floor`) = safe, **wiped
+  by any night**. **Weary** (`floor`…`exhausted`) = this unit's nightly **rest-heal costs more RP**
+  (shared pool, floored ≥1) **and** it **carries `level − floor` fatigue into the next day** (only an
+  improved rest clears the carryover). **Exhausted** (≥`exhausted`) = heaviest heal cost + full
+  carryover + a **combat tempo debuff** (fields **Slowed**). **No hard action-lock** —
+  consequence-based, not prohibition-based ("recoverable and outplayable"); the `ceiling` clamp stops
+  runaway. Constants (`floor 6` / `exhausted 12` / `ceiling 18`) survive; the change is semantic +
+  cost-side (give clearing verbs real cost: Train ≈ `floor+2`, Forage 2, Triage 2).
+- **Decision 3 — fatigue reaches combat, at Exhausted only (revises D29).** The hard rule "fatigue
+  never touches combat" is **dropped** — a consequence that never reaches the main loop is weak. Only
+  **Exhausted** bleeds in, and only as a **tempo status (the existing `slowed`)**, never a flat power
+  debuff (preserves "punish choices, not execution"). Universal across playstyles: a Slowed combatant
+  loses tempo/output, a Slowed engine unit (which fields too — D38) is harder to protect. Sharpens the
+  **eggs-in-one-basket** pressure (a unit exercising two clearing roles tires faster).
+- **Decision 4 — the two-tier recovery is the wipe topology (D47).** An **ordinary night** (combat
+  camp / in-place rest) wipes Worn and carries Weary; the **improved rest at a clearing/rest node**
+  clears *all* fatigue + lifts the heal-penalty — so a heavy verb (Train) is free at a clearing but a
+  gamble on the march. Fatigue is the rest node's **exclusive customer** (in-place rest can't clear
+  Weary), giving the premium tier its reason to exist.
+- **Worked verb (Forage):** `overworldCost { usesPerNode: 2, fatigue: 2 }` (within-clearing pace ×
+  across-clearing stake); a new `forage` effect with a **guaranteed floor + job-level-scaled rolls**
+  drawn via `streamFor(seed, "forage:<nodeId>:<night>:<useIndex>")` (the night + use-index are
+  **required** for replay determinism — the prompt's `"forage:"+nodeId` alone would repeat rolls).
+- **Open / tuning:** RP heal-cost multipliers; the Slowed magnitude + duration (start gentle,
+  whole-encounter, CT-only; consider gating L2 charged moves later); whether Weary also bleeds a
+  milder combat effect (start Exhausted-only); fully dropping the demanding-action lock (leaning yes);
+  clearing/rest-node **frequency** as a balance lever (sparse clearings make Exhausted punishing).
+- **Reuses / consistent with:** **D29/D35** (revised — the bands + shallow floor kept, the
+  "overworld-only" rule and the surcharge/lock dropped), **D47** (the wipe topology), **D9** (RP — the
+  heal-cost lever), **D61/D72** (the cost menu fatigue now sits *beside*, not atop), **D38** (engine
+  units field, so the combat consequence reaches them).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

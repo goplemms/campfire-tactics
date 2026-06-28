@@ -139,11 +139,14 @@ The overworld is a **second hook surface** — the twin of the combat tier (D3/D
 combat CT clock (D5). An **overworld ability** is **data declaring a phase + a cost**,
 drawn from a deliberately short limiter menu (D15 restraint):
 
-- **Fatigue** (a new per-character meter, see [stats](stats.md)) — a single shared
-  stamina pool overworld actions spend and **rest restores**. The Merchant *can* hike to
-  town, but not every single night.
-- **Vancian charges** — spells with overworld effects (scry for intel, forage) spend
-  castings from the [magic](magic.md) pool.
+- **Fatigue** (a **per-character** meter — one per unit, not a shared party pool; see
+  [stats](stats.md)) — spent by slow personal clearing verbs and **restored by nights / rest**
+  (D73). The forager *can* work every node, but not without tiring.
+- **Vancian charges** *(not yet built)* — the intended magic-pool lever for spell-shaped
+  overworld effects (scry, forage). **No `charge` cost knob or magic system exists in code today**
+  — `OverworldCost` carries cooldown / per-node cap / fatigue / gold / influence / rp only. Treat
+  this as future scope until a magic system lands; the fatigue-priced **Forage** (D73) is the
+  near-term version, not the Vancian one.
 - **Node-refresh / gold cost / step-cooldown** — for whatever else fits.
 
 ## The overworld action economy (D35)
@@ -170,16 +173,21 @@ combat CT clock** (D5), one tier up.
     knobs — **pacing** (`cooldown` *or* a per-node use cap *or* none) and a per-cast
     **price** (fatigue / gold / Vancian charge / RP / Influence) — with the invariant that
     **no action may be both unpaced *and* unpriced** (that loophole is what let the costless
-    job meta-skills — Chef's stew, Merchant's trade — fire unlimited times for free). A
+    job meta-skills — Cook's stew, Merchant's trade — fire unlimited times for free). A
     resource-paid action (a Vancian cast) leaves *pacing* off and is bounded by its price —
     so it can **fire as many times per node as the party can afford**. (Interim: a
     `usesPerNode` cap on the costless jobs ships ahead of the full model.)
-- **Guardrail — loose fatigue.** [Fatigue](stats.md#fatigue-overworld-meter-d29) is **not**
-  a tight rationed pool — it follows the codebase's **shallow asymmetric-floor** shape
-  (D7/D11 deployment overdraw, D8 morale): a **generous allowance, invisible in normal
-  play, that bites only when you greedily skip rest and over-extend**. It keeps the
-  over-extension stake and gives **rest a second job** (restore fatigue) without per-camp
-  agony. **Overworld-only** — no bleed into combat readiness.
+- **Guardrail — fatigue, the clearing currency (redesigned D73).**
+  [Fatigue](stats.md#fatigue-overworld-meter-d29) is **not** a tight rationed pool and **not**
+  the spine — it is the one **per-character** cost, reserved for slow gold-free **clearing
+  verbs** (Forage, Train, Triage). It keeps the D35 shallow-floor shape (invisible in normal
+  play) but each band now bites: **Worn** is the safe allowance (wiped by any night); **Weary**
+  makes that unit's rest-heal **cost more RP** and **carries `level − floor` fatigue to the next
+  day** (only a clearing/rest node clears the carryover); **Exhausted** adds a **combat tempo
+  debuff** (the unit fields **Slowed**). The bite is **consequence-based, not a lock** —
+  recoverable and outplayable, cleared in full only by routing to a clearing (rest's second job).
+  Revises D29: fatigue now **does** reach combat, but **only at Exhausted and only as tempo**
+  (never a flat power debuff). See [stats](stats.md#fatigue-overworld-meter-d29) for the band table.
 - **Per-ability costs.** **Vancian charges** ([magic](magic.md)) and **purse gold** (D34)
   ride on top as costs *specific* abilities name — not the global pace.
 
@@ -249,8 +257,8 @@ Recovery is a **gold spend**, in **two tiers**, built almost entirely on existin
 
 | Tier | Where | What it does |
 |---|---|---|
-| **In-place rest** | any *finished* node (the Survey beat) | Pay **a night's rations** (Upkeep) → bank RP (support classes boost it via `rpPerNight` — the class-boost is already in the model) → a **small** heal. **Repeatable** until the purse can't afford another night. **Each rest is a full node-step** — it **ticks cooldowns + accrues interest** (a deliberate lever: buy HP *and* cooldown progress). |
-| **Rest node** | routed-to on the map (D23) | The **premium**: a **large/full** heal in one stop, **+ full fatigue restore** (D35's guardrail stays rest-node-only) **+ clears accumulated debt in one swipe** (hunger / worn gear from voluntary underfunding). The payoff for *routing* there. |
+| **In-place rest** | any *finished* node (the Survey beat) | Pay **a night's rations** (Upkeep) → bank RP (support classes boost it via `rpPerNight` — the class-boost is already in the model) → a **small** heal. **Repeatable** until the purse can't afford another night. **Each rest is a full node-step** — it **ticks cooldowns + accrues interest** (a deliberate lever: buy HP *and* cooldown progress). **Fatigue (D73):** an ordinary night **wipes Worn** but only **carries** Weary/Exhausted excess (`level − floor`), and the **Weary heal-penalty applies here** — so over-extension still drags you toward a clearing. |
+| **Rest node / clearing** | routed-to on the map (D23) | The **premium / improved rest**: a **large/full** heal in one stop, **+ clears *all* fatigue** including Weary/Exhausted carryover and **lifts the heal-penalty** (D73 — fatigue's exclusive customer; this is what makes a heavy clearing verb like **Train** consequence-free *here* but a gamble on the march), **+ clears accumulated debt in one swipe** (hunger / worn gear from voluntary underfunding). The payoff for *routing* there. |
 
 **Two caps by design:** **gold** (can you afford another rations night?) and the per-night
 **RP rate** (one night banks only so much → healing is rate-limited regardless of wealth →

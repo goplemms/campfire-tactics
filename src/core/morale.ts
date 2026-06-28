@@ -50,7 +50,7 @@ const NEUTRAL: MoraleModifiers = {
  * the bundle sat below player perception (a tester couldn't feel keeping spirits
  * up), so morale read as decorative. These values make a High/Inspired party
  * *visibly* hit harder, find more gold, and hold formation — a felt reward for
- * the Chef's work — while the Low penalty stays gentle (the asymmetry is intact).
+ * the Cook's work — while the Low penalty stays gentle (the asymmetry is intact).
  */
 const TABLE: Record<MoraleTier, MoraleModifiers> = {
   Low: { ...NEUTRAL, initiativeBonus: -4, critBonus: -0.04 },

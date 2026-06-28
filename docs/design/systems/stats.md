@@ -40,22 +40,43 @@ so they don't overlap.
 - **Naming note:** "Intelligence" may collide with a future magic-power stat; treat
   it as provisional (candidates: Insight, Lore, Cunning). The role is settled.
 
-#### Fatigue *(overworld meter, D29 · shaped by D35)*
+#### Fatigue *(overworld meter, D29 · shaped by D35 · redesigned D73)*
 
-- **Overworld:** a single **per-character** stamina meter that **overworld abilities
-  spend and rest restores** — restored chiefly at **rest nodes** (rest's second job).
-  Deliberately **one meter, not per-ability** (D15 restraint).
-- **A LOOSE guardrail, not a tight pool (D35).** Fatigue is **not** the spine of the
-  overworld action economy — **per-ability cooldowns are** (see
-  [the overworld action economy](overworld.md#the-overworld-action-economy-d35)). Fatigue
-  follows the codebase's **shallow asymmetric-floor** shape (D7/D11 deployment overdraw,
-  D8 morale): a **generous allowance, invisible in normal play, that bites only when you
-  greedily skip rest and over-extend** night after night. The point is the
-  *over-extension stake*, not a per-camp rationing chore — a depleting meter is used here
-  *because* it has been given the shallow-floor shape that avoids hoarding/agony.
-- **Not a combat stat:** Fatigue governs the *overworld* action economy (node-steps),
-  not the CT clock, and **does not affect combat readiness** (D29's two-economies
-  separation). Keep it off the combat block.
+- **Overworld:** a **per-character** stamina meter — one per roster unit, on the Unit
+  (like awareness), **not** a shared party pool and **not** per-ability. Slow,
+  personal, gold-free overworld verbs **spend** it; **nights restore** it (below).
+- **The clearing currency, not a general tax (D73).** Fatigue is **not** the spine of
+  the overworld economy — **per-ability cooldowns / per-node caps are** (see
+  [the overworld action economy](overworld.md#the-overworld-action-economy-d35)). It is the
+  one cost that is **per-character**, so it is reserved for the **clearing-verb family**:
+  slow, repeatable, gold-free actions done *at* a node (Forage, Train, Triage). Cheap
+  recon (Survey) is paced by its cooldown and should **not** lean on fatigue. The rule the
+  bands make legible: *if a verb costs fatigue, it's a clearing verb.*
+- **Banded consequences (D73).** Fatigue keeps the D35 bands but each now does real work,
+  shaped as the codebase's **shallow asymmetric floor** (D7/D11, D8) — invisible in normal
+  play, biting only on deliberate over-extension:
+
+  | Band | Range | Consequence |
+  |---|---|---|
+  | **Rested / Worn** | 0 … `floor` | none — the safe allowance; **wiped by any night** |
+  | **Weary** | `floor` … `exhausted` | this unit's nightly **rest-heal costs more RP** (the shared pool, floored ≥1) **and** it **carries `level − floor` fatigue into the next day** — only an *improved rest* (a clearing/rest node) clears the carryover; an ordinary night just carries it |
+  | **Exhausted** | ≥ `exhausted` | heaviest RP heal cost **and** full carryover **and** a **combat consequence**: the unit enters its next battle **Slowed** (a tempo/CT debuff, the `slowed` status) |
+
+  No hard action-lock — the model is **consequence-based, not prohibition-based** ("recoverable
+  and outplayable"); the `ceiling` clamp prevents runaway. Carryover compounds if you over-extend
+  the same unit day after day, and resets the moment you back off (one easy day in Worn wipes it).
+- **Reaches combat only at Exhausted (revises D29).** The old hard rule "fatigue never
+  touches combat" is **dropped** (a consequence that never reaches the main loop is a weak
+  consequence). Worn/Weary stay overworld-only; **only Exhausted** bleeds into battle, and only
+  as a **tempo status (Slowed)** — *never* a flat power debuff (−attack/−defense), preserving
+  "punish choices, not execution." The effect is **universal across playstyles**: a Slowed
+  combatant loses turns/output; a Slowed engine unit (which fields too — D38) is harder to
+  protect (slower to retreat/brace). It also concentrates **eggs-in-one-basket** risk — a unit
+  *exercising* two clearing roles hard tires faster, so spreading verbs across bodies is rewarded.
+- **Open / tuning (D73):** the RP heal-cost multipliers, the Slowed magnitude + duration
+  (start gentle, whole-encounter, CT-only), whether Weary also bleeds a milder combat effect
+  (start Exhausted-only), and clearing/rest-node **frequency** (sparse clearings make Exhausted
+  punishing — a map-density balance lever).
 
 ### The deliberate split
 

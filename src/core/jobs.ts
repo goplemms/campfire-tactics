@@ -76,20 +76,15 @@ export interface JobDef {
   growth?: GrowthTable;
   /**
    * Rest Points this role banks per night (D9 recovery) — data, so adding a
-   * healer is adding a number. Support roles (Chef, Medic, …) contribute; pure
+   * healer is adding a number. Support roles (Cook, Medic, …) contribute; pure
    * combatants leave it undefined (0).
    */
   restPoints?: number;
   /**
-   * Per-night Upkeep budget lines this job owns (D15). The Chef owns Food, the
+   * Per-night Upkeep budget lines this job owns (D15). The Cook owns Food, the
    * Blacksmith Repairs; collapsed to a single gold figure in {@link "./upkeep"}.
    */
   upkeep?: { food?: number; repairs?: number };
-  /**
-   * True for camp-only roles (Chef, Merchant) that act in Meta but never take the
-   * field — kept in the roster for Upkeep/RP/morale, excluded from combat.
-   */
-  noncombat?: boolean;
   /**
    * Prestige branches (D65): the **depth** evolutions this job can take, each gated
    * by a {@link "./grants".Predicate} (the default floor is `jobLevel ≥ N`). Chains
@@ -238,7 +233,6 @@ export const COOK: JobDef = {
   description: "Camp-support: keeps the party fed cheaply, cooks the day's food into recovery, and rallies morale.",
   restPoints: 1, // a small floor — the Cook's recovery is now active (Cook Stew banks RP)
   upkeep: { food: 1 }, // Field Kitchen — the Cook lowers the per-unit food cost (D15)
-  noncombat: true,
   skills: [COOK_STEW, FEAST],
 };
 
@@ -297,7 +291,6 @@ export const MERCHANT: JobDef = {
   id: "merchant",
   name: "Merchant",
   description: "Works the economy: appraises markets, drums up trade anywhere, and drives a hard bargain.",
-  noncombat: true,
   presence: { marketTierBonus: 1 }, // Appraisal — lifts an existing market one tier
   skills: [FIND_TRADE, SAVVY_BARTER],
 };
@@ -317,7 +310,6 @@ export const NOBLE: JobDef = {
   id: "noble",
   name: "Noble",
   description: "Works the standing economy: courts patrons for Influence and sways enemies with bribes.",
-  noncombat: true,
   // Renown (D71/D72): the Noble's presence accrues Influence each node-step — the standing
   // anchor as data, read by accrueDeclaredFaucets in breakCamp (mirrors ECONOMY.noble.incomePerStep = 1).
   faucet: { influencePerStep: 1 },
@@ -337,7 +329,6 @@ export const BANKER: JobDef = {
   id: "banker",
   name: "Banker",
   description: "Works the purse economy: interest on the carried purse, loans against future loot, and theft protection.",
-  noncombat: true,
   skills: [],
 };
 

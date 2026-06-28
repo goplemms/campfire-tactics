@@ -3,8 +3,8 @@
  *
  * The signature jobs hook *different* phases (D3): the **Merchant** works the
  * economy (trading goods for gold at a market, {@link "./economy-actions"}), the
- * **Chef** raises **morale** (D8) and banks a between-battle **party heal**. The
- * Chef acts here, in camp, then its effect carries into the following battle. This
+ * **Cook** raises **morale** (D8) and banks a between-battle **party heal**. The
+ * Cook acts here, in camp, then its effect carries into the following battle. This
  * module is the small state object + the pure functions that apply those effects.
  *
  * Pure logic: no Phaser, no DOM.
@@ -33,7 +33,7 @@ export interface Camp {
   storageCap: number;
   /** Party morale, a banded value (D8); higher is better. */
   morale: number;
-  /** HP the Chef has banked to heal each unit at the next battle's start. */
+  /** HP the Cook has banked to heal each unit at the next battle's start. */
   pendingHeal: number;
   /**
    * The player's **voluntary** Upkeep-skip selection (D45) — the line ids the
@@ -104,7 +104,7 @@ export interface CampOutcome {
 }
 
 /**
- * Apply a Meta-phase skill's effect to the camp. Handles the Chef's `morale`
+ * Apply a Meta-phase skill's effect to the camp. Handles the Cook's `morale`
  * effect; other effect kinds are not camp effects and throw. (The Merchant's old
  * `economy` mint was retired in D61 — see {@link "./economy-actions".merchantSell}.)
  */
@@ -122,7 +122,7 @@ export function applyCampSkill(skill: SkillDef, camp: Camp): CampOutcome {
 /**
  * Use a camp job skill **as its owner** (D32/D53): apply the effect *and* grant
  * the actor ability-use XP, so a job levels from its own signature work — the
- * Chef from cooking, the Merchant from trading. (Previously camp actions applied
+ * Cook from cooking, the Merchant from trading. (Previously camp actions applied
  * their effect but granted no XP, so a non-combat job only levelled by overworld
  * scouting — its identity disconnected from its growth.) Returns the camp outcome
  * plus the character levels the use granted.

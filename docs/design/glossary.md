@@ -157,7 +157,7 @@ the drift found in the current build.
 | **Patronize** | The Noble's active INFLUENCE verb (D62): spend purse gold to court patrons → **Influence**, once per node. Passive presence accrual rides alongside it. | "Curry favor"/"Schmooze" (in the label); "Buy influence" (collides with Buy) |
 | ~~**Gather Influence**~~ | **Retired (D62).** The spammable political-income faucet is gone; Influence now comes from a Noble's **passive presence accrual** + **Patronize**. Don't reintroduce an unpaced Influence button. | — |
 | ~~**Trade**~~ | **Retired (D61).** The Merchant's gold-minting `+gold/+storage` camp skill is gone; its economy is now **Buy** + **Sell** against a node's **Market** tier. Don't reintroduce `Trade` as a verb. | — |
-| **Cook Stew** | The Chef camp skill (+morale, banks heal). | "Cook" alone if other dishes ever exist |
+| **Cook Stew** | The Cook camp skill (+morale, banks heal). | "Cook" alone if other dishes ever exist |
 | **Set Trap** | The Survivalist deployment skill. | "Lay trap"; "Plant trap" |
 
 ### The "Rest" overload — the headline fix

@@ -477,7 +477,7 @@ export class RunLoop {
   }
 
   /**
-   * Begin the staged battle: apply the Chef's banked heal and seed initiative
+   * Begin the staged battle: apply the Cook's banked heal and seed initiative
    * warmed by the current morale tier (D8). Returns the HP healed.
    */
   beginBattle(): number {

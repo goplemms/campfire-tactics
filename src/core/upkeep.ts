@@ -74,7 +74,7 @@ function hasCook(party: readonly Unit[]): boolean {
 
 /**
  * Compute the night's Upkeep bill for a roster (D15). Food scales per unit
- * (cheaper with a Chef); Repairs scale per unit. The total is the single number
+ * (cheaper with a Cook); Repairs scale per unit. The total is the single number
  * shown on the camp menu.
  */
 export function computeUpkeep(party: readonly Unit[]): UpkeepBill {

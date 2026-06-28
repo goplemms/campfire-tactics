@@ -97,7 +97,7 @@ The predicate kinds **compose** and are **default-open** (anyone meeting them qu
 |---|---|---|
 | `jobLevel ≥ N` | **the default** prestige trigger | grind the job, earn its capstone |
 | `charLevel ≥ N` | authored coming-of-age | the nomad child who joins the hunt at L5 → Hunter |
-| `holdsItem(x)` | the **Master-Seal** pattern (consumed) | a **recipe book** grants Chef |
+| `holdsItem(x)` | the **Master-Seal** pattern (consumed) | a **recipe book** grants Cook |
 | `atNode(x)` / event-choice | a special node or interaction | the **thieves'-guild** invitation |
 | `unitId(x)` / story-flag | **select characters** | a one-off / story-gated path only *they* can take |
 | `unitMemory(flag)` | linked events (see below) | *helped the beggar* → later *invited to the guild* |
@@ -154,28 +154,23 @@ holds, how long it persists (a run? the guild?) — is deferred.
 
 ## Emergent combat / non-combat (no authored flag)
 
-The combat / non-combat split is **descriptive, not prescriptive** — it should *arise* from a
-job's kit, not be stamped on it. Today's `noncombat: boolean` (`jobs.ts`) actually **conflates
-two different questions**:
+The combat / non-combat split is **descriptive, not prescriptive** — it *arises* from a job's
+kit, it is not stamped on it. The old `noncombat: boolean` (`jobs.ts`) conflated **two different
+questions** — a **descriptor** (*is this a battle kit?*) and a **permission** (*may this unit take
+the map at all?*) — which is why it was set on the pure-meta economy classes but **not** on the
+**Survivalist**, whose kit is non-combat yet is **fielded in Deployment** to place traps. Both are
+now resolved and the flag has been **removed** (a future need can return as a **keyword tag**, not
+a one-size bucket):
 
-- a **descriptor** — *is this a battle kit?*
-- a **permission** — *may this unit take the map at all?*
-
-…which is why the flag is set on the pure-meta economy classes but **not** on the
-**Survivalist**, whose kit is non-combat yet is **fielded in Deployment** to place traps.
-Splitting them:
-
-- **Descriptor → derive it.** A job with **no `battle`-phase skills** *is* non-combat (every
-  skill already carries a `phase`). It's a **center-of-gravity** read — *which phase does this
-  job's value concentrate in?* — so the Survivalist (deployment), the Chef (meta), and the
-  Banker (overworld) place naturally on a spectrum instead of being forced into a bucket. No
-  authored field required.
-- **Permission → an open call (parked).** Keep the current **hard fielding ban** (a Banker
-  literally cannot deploy), or go **fully emergent** (anyone can be placed; a Banker simply has
-  nothing useful to do but Defend). The emergent answer is more consistent with **uniform
-  slots** and the **universal Defend / move / attack** every unit has (`jobs.ts:DEFEND`), but
-  it requires **auditing every consumer** of the flag (upkeep / Rest-Point / morale roster
-  handling, deploy filtering) before it can change.
+- **Descriptor → derived.** A job with **no `battle`-phase skills** *is* non-combat (every skill
+  already carries a `phase`). It's a **center-of-gravity** read — *which phase does this job's
+  value concentrate in?* — so the Survivalist (deployment), the Cook (meta), and the Banker
+  (overworld) place on a spectrum instead of being forced into a bucket.
+- **Permission → fully emergent (D38).** Any class can take the field; `combatRoster` is simply
+  `activeRoster` (a Banker *can* deploy — it just has nothing to do but Defend / move / attack,
+  the universal verbs every unit has, `jobs.ts:DEFEND`). The consumer audit the change required is
+  **done**: nothing read the flag — the camp / Rest-Point / Upkeep economy keys off `restPoints` /
+  `upkeep` / the job lookup, never `noncombat` — so the removal is behaviour-neutral.
 
 ## Authored identity, flexible class (refines D33)
 
@@ -397,18 +392,15 @@ clean loop: **accrue → Patronize → Bribe.**
 
 ## Open questions / future scope
 
-- **The per-class design pass (one at a time)** — **Soldier = pass 1** (D66) · **Scout = pass 2**
-  (D68 — built) · **Merchant = pass 3** (D70) · **Cook = pass 4** & **Noble = pass 5** (D71) — the
-  non-combat triad now designed. The **action-registration substrate** these non-combat kits need is
-  **built (D72** — one home on `JobDef.skills`, `availableSkills` the projection, the effect registry,
-  computed costs, the flag bag, presence/faucet, capability gates; fixtures only). Still ahead: the
-  **triad kits** that consume it (the next content pass), the **Banker's** own 2+1 pass (+ its missing
-  presence anchor), the **prestige forks** (combat — the Soldier's; non-combat — Merchant / Cook /
-  Noble), and the remaining combat classes' kits.
+- **The per-class design pass (one at a time)** — passes 1–5 are **done & built**: Soldier (D66),
+  Scout (D68), Merchant (D70), Cook & Noble (D71), on the **action-registration substrate** (D72 —
+  one home on `JobDef.skills`, `availableSkills` the projection, the effect registry, computed costs,
+  the flag bag, presence/faucet, capability gates; fixtures only). **Still ahead:** the **triad kits**
+  that consume the substrate (the content pass), the **Banker's** own 2+1 pass (+ its missing presence
+  anchor), the **prestige forks** (combat — the Soldier's; non-combat — Merchant / Cook / Noble), and
+  the remaining combat classes' kits.
 - **Chain pacing** — job levels between hops so a tier-3 capstone feels earned.
 - **The acquisition agency model** — automatic (authored beats) vs. choice/item (generics).
 - **The per-unit-memory data shape** — contents + persistence scope (node / run / guild).
 - **Acquired-job starting level** — assumed **job-level 1** (you just started); confirm.
-- **The fielding-permission call** — keep the hard ban or go fully emergent, plus the
-  `noncombat`-consumer audit it implies.
 - **Glossary** — add a **Prestige** keyword (one word per concept).

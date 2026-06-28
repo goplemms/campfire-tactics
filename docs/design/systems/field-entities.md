@@ -84,7 +84,7 @@ than a vague escort. The non-combat **support units** that fielded with the cara
   seeks the supplies. That single exception *is* the bodyguard gameplay (and the reason
   it doesn't degrade into a constant babysit).
 - Support units have **positional abilities** — strong in their home zone, weak if
-  dragged out (e.g. the **Chef by the campfire** deals bonus damage with a hot pan),
+  dragged out (e.g. the **Cook by the campfire** deals bonus damage with a hot pan),
   which both rewards smart positioning and naturally keeps them back where they're safe.
 
 > Implementation note: the wagon reuses the entity `owner`/`state` plumbing; "thief
@@ -103,7 +103,7 @@ Combat is built around an **event/trigger bus**. The loop announces moments and
 - `onChargeResolved`
 
 Field entities are just listeners. So are many other things later (opportunity
-attacks, nest auras, Chef buffs applied at battle start). **M3 builds this bus
+attacks, nest auras, Cook buffs applied at battle start). **M3 builds this bus
 before any field entity exists** — that's the cheap insurance that stops traps and
 runes from becoming bolt-ons. Today the bus may have zero or one listener; the
 shape is what matters.

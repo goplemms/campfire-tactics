@@ -102,7 +102,7 @@ The between-battle surface (`OverworldScene` Survey screen + the camp panel).
 
 | Verb | Gate | Owner | Cost | Effect | Code |
 |---|---|---|---|---|---|
-| **Cook Stew** | **Class** | Chef | 1×/node | +1 morale, bank +8 HP/unit next battle | `jobs.ts` `CHEF` → `camp.ts` |
+| **Cook Stew** | **Class** | Cook | 1×/node | +1 morale, bank +8 HP/unit next battle | `jobs.ts` `COOK` → `camp.ts` |
 | **Rest** (in-place / node) | Universal | — | rations (gold) + RP | Small party heal (node = full recovery + fatigue wipe + debt clear) | `runloop.ts` `inPlaceRest`/`restNode` → `upkeep.ts` `restHeal` |
 | **Triage** | **Capability** (Triage passive) | Medic | the healer's **fatigue** (worn out) | Heal the most-wounded for *more* than Rest, scaling with the wound | `overworld-actions.ts` `triage` / `isHealer` |
 | **Skip an Upkeep line** | Universal | — | — | Cross a Food/Repairs line off the Ledger to free its gold — a deliberate gamble (hunger / worn-gear debt) | `OverworldScene.toggleSkip` → `camp.skippedUpkeep` |

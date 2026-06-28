@@ -55,7 +55,7 @@ partition is *by which interpreter owns the kind* ([combat-actions](combat-actio
 **The forecast registry must mirror the full `SkillEffect` union — all four partitions —
 not just `BATTLE_EFFECT_HANDLERS`.** This is a correction the per-job audit forced: three
 of the five signature jobs act through a *non-battle* partition (Survivalist `placeTrap`,
-Chef `morale`, the Heavy Knight's own `cleave`/`forced-move`). A registry keyed only on
+Cook `morale`, the Heavy Knight's own `cleave`/`forced-move`). A registry keyed only on
 `BattleEffect` would silently omit them.
 
 So the keystone is a `FORECAST_HANDLERS` map whose key set is the **same exhaustive union**
@@ -97,8 +97,8 @@ structure, because outcomes come in kinds:
 | **computed** | a value derived live from caster/target/passive state | `Heal +16` = base + level-scale + ⌊triage × missingHP⌋ (Medic) |
 | **conditional** | `if <cond>: <outcome>` | `vs debuffed +4` (Hunter Deadeye); `if a foe enters: 12 + Immobilize 2t` (trap) |
 | **deferred** | `<outcome> in ~Nt` / per-future-hit | Mark: `0 now → +2/hit (cap +8)`; Mend: `+18 in ~2t` |
-| **banked** | `<outcome> next battle` (cross-screen) | Chef: `+8 HP party · next battle` |
-| **tiered** | `<from> → <to>` + the bundle the tier grants | Chef: `Morale Neutral → High (+6 init, +1 depth, −20% capture…)` |
+| **banked** | `<outcome> next battle` (cross-screen) | Cook: `+8 HP party · next battle` |
+| **tiered** | `<from> → <to>` + the bundle the tier grants | Cook: `Morale Neutral → High (+6 init, +1 depth, −20% capture…)` |
 | **branching** | one row per sub-choice, inventory-gated | Medic Heal: `Salve +24 · Stimulant +16 & Hastened · Antidote +16 & cleanse` |
 
 The forecast box reuses the docked `MiniCard` (label→value rows, optional HP bar, per-row
@@ -166,7 +166,7 @@ second source):
 
 - **Variance display.** Best-case today; whether to band forecasts (min–max) like the route
   loot band (D48) is deferred until accuracy/variance lands.
-- **Tier-bundle verbosity.** A tiered forecast (Chef) could dump the whole modifier bundle
+- **Tier-bundle verbosity.** A tiered forecast (Cook) could dump the whole modifier bundle
   or just the delta vs the current tier — to be decided when the morale tier UI is built.
 - **Mobile/touch.** Hover-driven telegraphs (and sub-choice arming) need a tap-to-arm,
   tap-to-preview, tap-to-confirm equivalent on touch — tracked with the platform wrappers (D1).
@@ -182,4 +182,4 @@ constraint a Heavy-Knight-only design would have missed:
 | **Hunter** | computed/conditional damage (Deadeye vs debuffed, Mark stacks); deferred channel value; mutable reach (Swift); dual move-vs-strike reach |
 | **Medic** | branching-by-sub-choice + inventory-gated forecast; computed target-dependent heal; charge-vs-cooldown timing; the read-only / single-source-of-truth rule |
 | **Survivalist** (& Scout snare) | tile/placement footprint; cross-phase deferred, movement-conditional trigger; persistent-hazard telegraph; the full-union registry correction |
-| **Chef** | no-footprint floating forecast; tiered (banded) outcome; banked cross-screen payoff; `usesPerNode` availability in-preview |
+| **Cook** | no-footprint floating forecast; tiered (banded) outcome; banked cross-screen payoff; `usesPerNode` availability in-preview |

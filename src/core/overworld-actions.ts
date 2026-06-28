@@ -36,7 +36,7 @@ import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
 import { skillContexts } from "./skills";
 import { getJob, unitHasCapability, JOBS } from "./jobs";
 import { PASSIVE } from "./combat";
-import { spendFatigue, fatiguePenalty } from "./fatigue";
+import { spendFatigue } from "./fatigue";
 import { decayCounters, bumpCounter, nonNegInt } from "./num";
 import { earn, spend } from "./purse-journal";
 import { spendInfluence } from "./economy";
@@ -374,17 +374,12 @@ export function checkOverworldCost(run: RunState, id: string, cost: OverworldCos
   if (cost.usesPerNode !== undefined && campSkillUses(eco, id) >= cost.usesPerNode) {
     return { ok: false, reason: `${label} is spent for tonight — Break Camp to use it again.` };
   }
-  // Price — the loose fatigue guardrail. Only *demanding* actions lock, and only once
-  // the actor is over-extended; the cheap things always stay available.
-  let fatigueSpend = 0;
-  const baseFatigue = cost.fatigue ?? 0;
-  if (baseFatigue > 0 && unit) {
-    const penalty = fatiguePenalty(unit.fatigue);
-    if (baseFatigue >= penalty.lockAtOrAbove) {
-      return { ok: false, reason: `${unit.name} is too exhausted for ${label} — rest first.` };
-    }
-    fatigueSpend = baseFatigue + penalty.surcharge;
-  }
+  // Price — the loose fatigue guardrail (D73): a clearing verb spends only its **base** fatigue
+  // on the acting unit. Over-extension is **never gated here** (no surcharge, no lock) — the bite
+  // is deferred to the recovery/combat consequences (pricier rest-heal, next-day carryover, the
+  // Exhausted Slow). A fatigue price still needs an actor to spend it on (an actorless economy
+  // verb declares no fatigue).
+  const fatigueSpend = unit ? (cost.fatigue ?? 0) : 0;
   // Price — gold (the run purse). The knob may be a provider (D72) — resolve it now.
   const goldCost = resolveKnob(cost.gold, run);
   if (goldCost > 0 && run.camp.gold < goldCost) {
@@ -505,9 +500,9 @@ export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): 
 /** Triage tuning — the healer's between-nodes heal, all data. */
 export const TRIAGE = {
   /**
-   * Fatigue the healer spends per Triage — a **demanding** cost (≥ the
-   * {@link "./fatigue".fatiguePenalty} lock threshold), so a worn-out healer can't
-   * keep triaging until they rest. *Being worn out* is the whole limiter (pure
+   * Fatigue the healer spends per Triage — a **demanding** cost (D73): over-triaging pushes the
+   * healer through Weary into Exhausted, where their own rest-heal costs more RP and they field
+   * **Slowed** next fight. That mounting consequence — not a hard lock — is the limiter (pure
    * fatigue — no RP, the Rest's currency).
    */
   fatigue: 2,
@@ -550,9 +545,9 @@ export interface TriageResult extends ActionOutcome {
  * fatigue** (worn out) to mend the party's **most-wounded** fighter for *more* than a
  * Rest — scaling with the Medic's Triage (heal harder the worse the wound). Job-gated to
  * a {@link isHealer} (only a healer can triage); the fatigue rides the shared
- * {@link checkOverworldCost} gate, so a worn-out healer's Triage **locks** until they
- * rest. Pure fatigue — no RP. Refuses (spending nothing) without a healer, with no one
- * wounded, or when the healer is too worn out.
+ * {@link checkOverworldCost} gate. Over-triaging is **not** locked (D73) — it accrues fatigue
+ * toward the Exhausted consequences (pricier rest-heal, the combat Slow), the consequence-based
+ * limiter. Pure fatigue — no RP. Refuses (spending nothing) without a healer or with no one wounded.
  */
 export function triage(run: RunState, healer: Unit): TriageResult {
   if (!isHealer(healer)) {

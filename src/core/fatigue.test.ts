@@ -4,7 +4,10 @@ import {
   fatigueTier,
   spendFatigue,
   restoreFatigue,
-  fatiguePenalty,
+  nightlyFatigue,
+  restCostMultiplier,
+  isExhausted,
+  exhaustionSlowSpeed,
   fatigueRisk,
 } from "./fatigue";
 import { createUnit, type Unit } from "./units";
@@ -23,57 +26,69 @@ function newRun(seed: string): RunState {
   return createRun(seed, { party: roster(), difficultyId: "normal", gold: 200 });
 }
 
-describe("fatigue — defaults & banding (D35)", () => {
+describe("fatigue — defaults & banding (D35/D73)", () => {
   it("a fresh unit starts Rested at 0", () => {
     const u = roster()[0];
     expect(u.fatigue).toBe(0);
     expect(fatigueTier(0)).toBe("Rested");
   });
 
-  it("the floor is a wide, invisible allowance — normal play never bites", () => {
-    // Every level within the allowance bands as Rested/Worn with no penalty.
+  it("the floor is a wide, invisible allowance — no consequence within it", () => {
+    // Every level within the allowance bands as Rested/Worn: no heal penalty, wiped by any night.
     for (let level = 0; level <= FATIGUE.floor; level++) {
-      const p = fatiguePenalty(level);
-      expect(p.surcharge).toBe(0);
-      expect(p.lockAtOrAbove).toBe(Infinity);
+      expect(restCostMultiplier(level)).toBe(1);
+      expect(nightlyFatigue(level, false)).toBe(0);
+      expect(isExhausted(level)).toBe(false);
       expect(["Rested", "Worn"]).toContain(fatigueTier(level));
     }
   });
 });
 
-describe("fatigue — the asymmetric floor bites only past the threshold", () => {
-  it("sustained over-extension (repeated spends, no rest) eventually bites", () => {
+describe("fatigue — the bands bite past the floor (D73)", () => {
+  it("Weary: pricier rest-heal + carries the excess over the floor into the next day", () => {
+    const weary = FATIGUE.floor + 2;
+    expect(fatigueTier(weary)).toBe("Weary");
+    // recovers poorly — heal chunks cost more RP
+    expect(restCostMultiplier(weary)).toBe(FATIGUE.wearyRestMult);
+    expect(restCostMultiplier(weary)).toBeGreaterThan(1);
+    // an ordinary night carries the excess over the floor…
+    expect(nightlyFatigue(weary, false)).toBe(weary - FATIGUE.floor);
+    // …an improved rest (a clearing) wipes it.
+    expect(nightlyFatigue(weary, true)).toBe(0);
+    expect(isExhausted(weary)).toBe(false);
+  });
+
+  it("Exhausted: heaviest heal cost, full carryover, and the band that reaches combat", () => {
+    const spent = FATIGUE.exhausted;
+    expect(fatigueTier(spent)).toBe("Exhausted");
+    expect(restCostMultiplier(spent)).toBe(FATIGUE.exhaustedRestMult);
+    expect(restCostMultiplier(spent)).toBeGreaterThan(FATIGUE.wearyRestMult);
+    expect(isExhausted(spent)).toBe(true);
+    expect(nightlyFatigue(spent, false)).toBe(spent - FATIGUE.floor);
+    expect(nightlyFatigue(spent, true)).toBe(0);
+  });
+
+  it("carryover compounds across un-rested days; a clearing resets it", () => {
+    const HEAVY = 8; // a Train-like clearing verb: Rested → Weary in one exertion
     let level = 0;
-    // A handful of spends stays within the allowance — no bite.
-    for (let i = 0; i < 3; i++) level = spendFatigue(level, 2);
-    expect(level).toBeLessThanOrEqual(FATIGUE.floor);
-    expect(fatiguePenalty(level).surcharge).toBe(0);
-
-    // Keep greedily spending without resting — now it bites.
-    for (let i = 0; i < 4; i++) level = spendFatigue(level, 2);
-    expect(level).toBeGreaterThan(FATIGUE.floor);
-    expect(fatiguePenalty(level).surcharge).toBeGreaterThan(0);
-    expect(fatigueTier(level)).not.toBe("Rested");
-  });
-
-  it("the bite is bounded and gentle (surcharge never runs away)", () => {
-    // Even at the hard ceiling the surcharge is capped — never a wall.
-    for (let level = 0; level <= FATIGUE.ceiling; level++) {
-      expect(fatiguePenalty(level).surcharge).toBeLessThanOrEqual(FATIGUE.maxSurcharge);
+    const peaks: number[] = [];
+    for (let day = 0; day < 3; day++) {
+      const peak = spendFatigue(level, HEAVY); // the day's exertion
+      peaks.push(peak);
+      level = nightlyFatigue(peak, false); // an ordinary night carries the excess
     }
-    expect(fatiguePenalty(FATIGUE.ceiling).surcharge).toBe(FATIGUE.maxSurcharge);
+    // each un-rested day starts deeper, so the in-day peak climbs into Exhausted
+    expect(peaks[0]).toBeLessThan(FATIGUE.exhausted);
+    expect(peaks[2]).toBeGreaterThanOrEqual(FATIGUE.exhausted);
+    // a clearing wipes the accumulated carryover clean
+    expect(nightlyFatigue(level, true)).toBe(0);
   });
 
-  it("only deep exhaustion locks the most-demanding actions; cheap ones never lock", () => {
-    // Over the floor but not yet exhausted: a surcharge, but nothing locks.
-    const weary = fatiguePenalty(FATIGUE.floor + 1);
-    expect(weary.surcharge).toBeGreaterThan(0);
-    expect(weary.lockAtOrAbove).toBe(Infinity);
-
-    // Exhausted: demanding actions lock, but the threshold leaves cheap ones open.
-    const spent = fatiguePenalty(FATIGUE.exhausted);
-    expect(spent.lockAtOrAbove).toBe(FATIGUE.demandingCost);
-    expect(FATIGUE.demandingCost).toBeGreaterThan(1); // a 1-cost action is never locked
+  it("the Exhausted Slow is gentle and per-unit (a CT cap, never a power debuff)", () => {
+    expect(exhaustionSlowSpeed(12)).toBe(Math.floor(12 * FATIGUE.slowKeepFraction));
+    expect(exhaustionSlowSpeed(12)).toBeLessThan(12); // slower…
+    expect(exhaustionSlowSpeed(12)).toBeGreaterThan(0); // …but never frozen
+    expect(exhaustionSlowSpeed(1)).toBeGreaterThanOrEqual(1); // floored at 1
   });
 
   it("spend clamps at the hard ceiling (no unbounded runaway)", () => {
@@ -89,7 +104,7 @@ describe("fatigue — the asymmetric floor bites only past the threshold", () =>
   });
 });
 
-describe("fatigue — rest restores (rest's second job, D35)", () => {
+describe("fatigue — rest restores (rest's second job, D47/D73)", () => {
   it("restoreFatigue wipes any level back to Rested", () => {
     expect(restoreFatigue(FATIGUE.exhausted)).toBe(FATIGUE.rested);
     expect(restoreFatigue(3)).toBe(0);
@@ -113,10 +128,10 @@ describe("fatigue — rest restores (rest's second job, D35)", () => {
   });
 });
 
-describe("fatigue — never a combat stat (D29 two-economies separation)", () => {
-  it("a full battle leaves the actors' fatigue untouched", () => {
+describe("fatigue — combat reads it but never writes it (D29/D73)", () => {
+  it("a full battle leaves the actors' fatigue value untouched", () => {
     const run = newRun("fatigue-combat");
-    // Pre-load fatigue, then play a combat node to a decision.
+    // Pre-load fatigue (below Exhausted, so no Slow), then play a combat node to a decision.
     for (const u of run.party) u.fatigue = 4;
     const before = run.party.map((u) => u.fatigue);
 
@@ -134,7 +149,7 @@ describe("fatigue — never a combat stat (D29 two-economies separation)", () =>
     loop.autoBattle();
     loop.resolve();
 
-    // Combat touched HP/CT/etc. but never the overworld fatigue meter.
+    // Combat may *read* fatigue (to Slow the Exhausted) but never *writes* the meter.
     expect(run.party.map((u) => u.fatigue)).toEqual(before);
   });
 });

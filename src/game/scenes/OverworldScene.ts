@@ -16,7 +16,7 @@ import {
   cooldownRemaining,
   scoutedTier,
   campSkillUsesLeft,
-  fatiguePenalty,
+  fatigueTier,
   projectDossier,
   attentionCount,
   captainsJournal,
@@ -718,21 +718,23 @@ export class OverworldScene extends Phaser.Scene {
     const parts = [`cd: ${cdStr}`];
     const baseFat = cost.fatigue ?? 0;
     if (baseFat > 0) {
-      const surcharge = fatiguePenalty(actor.fatigue).surcharge;
-      parts.push(`fatigue: ${baseFat + surcharge}${surcharge > 0 ? " (tired)" : ""}`);
+      // D73: a clearing verb costs only its base fatigue; flag a tired actor since the bite is the
+      // deferred consequence (pricier rest-heal, carryover, the Exhausted Slow), not a surcharge.
+      const tier = fatigueTier(actor.fatigue);
+      const tired = tier === "Weary" || tier === "Exhausted";
+      parts.push(`fatigue: ${baseFat}${tired ? " (tired)" : ""}`);
     }
     const gold = resolveKnob(cost.gold, this.run);
     if (gold > 0) parts.push(`gold: ${gold}`);
     return parts.join(", ");
   }
 
-  /** Why an overworld skill would refuse right now (cooldown / exhaustion / gold), or null. */
-  private refusal(skill: SkillDef, actor: Unit): string | null {
+  /** Why an overworld skill would refuse right now (cooldown / gold), or null. */
+  private refusal(skill: SkillDef, _actor: Unit): string | null {
     const cost = overworldCostOf(skill);
     const cd = cooldownRemaining(this.run.overworld, skill.id);
     if (cd > 0) return `On cooldown — ${cd} more node${cd === 1 ? "" : "s"}.`;
-    const baseFat = cost.fatigue ?? 0;
-    if (baseFat >= fatiguePenalty(actor.fatigue).lockAtOrAbove) return `${actor.name} is too exhausted — rest first.`;
+    // D73: fatigue never refuses an action (no lock) — over-extension is paid via consequences.
     const gold = resolveKnob(cost.gold, this.run);
     if (gold > 0 && this.run.camp.gold < gold) return `Not enough gold (${gold}g).`;
     return null;

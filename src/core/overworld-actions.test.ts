@@ -132,30 +132,29 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
 });
 
 describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
-  it("never locks out a cheap action, even when the actor is exhausted", () => {
+  it("never refuses an action for fatigue, even when the actor is exhausted (D73)", () => {
     const run = newRun("fatigue-lock");
     const a = actor(run);
     a.fatigue = FATIGUE.exhausted; // deeply over-extended
 
-    // Scout is cheap (cost 1 < demandingCost 2) → still available even when exhausted.
-    // (The demanding-action *lock* itself is unit-tested in fatigue.test via
-    // fatiguePenalty; no demanding overworld ability exists post-D61.)
+    // D73 dropped the demanding-action lock — fatigue never gates a cast; the bite is the
+    // deferred consequence (pricier rest-heal, carryover, the Exhausted combat Slow).
     const target = reachableNodes(run)[0];
     const scout = useOverworldSkill(run, a, SURVEY, { targetNodeId: target.id });
     expect(scout.applied).toBe(true);
   });
 
-  it("an over-extended actor pays the gentle surcharge on top of the base cost", () => {
+  it("an over-extended actor pays only the base fatigue — no surcharge (D73)", () => {
     const run = newRun("fatigue-surcharge");
     const actor = run.party[0];
-    actor.fatigue = FATIGUE.floor + 1; // just over the floor → surcharge of 1
+    actor.fatigue = FATIGUE.floor + 1; // over the floor (Weary)
     const target = reachableNodes(run)[0];
     const before = actor.fatigue;
     const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent!).toBeGreaterThan(SURVEY.overworldCost!.fatigue!); // base + surcharge
-    expect(actor.fatigue).toBe(before + res.fatigueSpent!);
+    expect(res.fatigueSpent!).toBe(SURVEY.overworldCost!.fatigue!); // base only — no over-extension surcharge
+    expect(actor.fatigue).toBe(before + SURVEY.overworldCost!.fatigue!);
   });
 });
 
@@ -241,16 +240,17 @@ describe("overworld-actions — Triage is the healer's fatigue-fuelled camp heal
     expect(doc.fatigue).toBe(0); // nothing spent
   });
 
-  it("a worn-out healer's Triage locks until they rest (the fatigue limiter)", () => {
+  it("an exhausted healer can still Triage (no lock, D73) — the consequence is the limiter", () => {
     const run = newRun("triage-exhausted");
     const doc = medic();
-    doc.fatigue = FATIGUE.exhausted; // too worn out for a demanding action
+    doc.fatigue = FATIGUE.exhausted; // deeply over-extended — but D73 has no hard lock
     run.party.push(doc);
     run.party[0].hp = 1;
     const res = triage(run, doc);
-    expect(res.applied).toBe(false);
-    expect(res.reason).toMatch(/exhausted|worn|rest/i);
-    expect(run.party[0].hp).toBe(1);
+    expect(res.applied).toBe(true); // applies — the mounting consequence (pricier heal, the Slow) limits it, not a lock
+    expect(run.party[0].hp).toBeGreaterThan(1);
+    expect(res.fatigueSpent).toBe(TRIAGE.fatigue); // base only (no surcharge)
+    expect(doc.fatigue).toBeGreaterThanOrEqual(FATIGUE.exhausted); // stays Exhausted → fields Slowed next fight
   });
 });
 

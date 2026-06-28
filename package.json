@@ -15,6 +15,7 @@
     "shots:mill": "node scripts/shots-hollow-mill.mjs",
     "shots:dossier": "node scripts/shots-dossier.mjs",
     "shots:inventory": "node scripts/shots-inventory.mjs",
+    "shots:discard": "node scripts/shots-discard.mjs",
     "shots:guild": "node scripts/shots-guild.mjs",
     "shots:deploy": "node scripts/shots-deploy.mjs",
     "shots:telegraph": "node scripts/shots-telegraph.mjs",

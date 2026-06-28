@@ -146,15 +146,56 @@ export const SOLDIER: JobDef = {
   ],
 };
 
+/** Forage kit tuning (D73) — within-clearing pace × across-clearing fatigue + the yield; numbers pass. */
+export const FORAGE_KIT = {
+  /** Forages per clearing — the within-clearing budget (generous; no agony). */
+  usesPerNode: 2,
+  /** Fatigue per forage — the across-clearing stake (demanding, like Triage). */
+  fatigue: 2,
+  /** Bonus rolls at job level 1. */
+  baseRolls: 1,
+  /** Extra bonus rolls per Survivalist job level (floored). */
+  rollsPerLevel: 0.5,
+} as const;
+
+/**
+ * **Forage** (D73) — the Survivalist's clearing verb: comb the surroundings for supplies. The worked
+ * example of the **two-budget model** — `usesPerNode` paces it *within* a clearing (twice a night),
+ * `fatigue` is the *across*-clearing stake (forage hard for several un-rested nights and the forager
+ * goes Weary → Exhausted). Always yields the guaranteed floor, then job-level-scaled rolls (a veteran
+ * forager finds more), drawn deterministically via `streamFor` (replayable). Class-gated by living on
+ * the Survivalist job (surfaced through {@link "./leveling".availableSkills}), like Survey on the Scout.
+ */
+export const FORAGE: SkillDef = {
+  id: "forage",
+  name: "Forage",
+  description: "Comb the surroundings for supplies — a guaranteed find plus more the deeper your field-craft (twice per clearing).",
+  phase: "meta",
+  target: "camp",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: FORAGE_KIT.usesPerNode, fatigue: FORAGE_KIT.fatigue },
+  effect: {
+    kind: "forage",
+    guaranteed: ["wild-herbs"],
+    table: [
+      { id: "wild-herbs", weight: 3 },
+      { id: "salve", weight: 1 },
+    ],
+    baseRolls: FORAGE_KIT.baseRolls,
+    rollsPerLevel: FORAGE_KIT.rollsPerLevel,
+  },
+};
+
 /**
  * The Survivalist — the signature **Deployment**-phase job (D3). Carries a
  * placeable trap (the first real field entity, D4): placed before battle, it
- * springs on an enemy in Combat.
+ * springs on an enemy in Combat. Forages supplies at a clearing (D73).
  */
 export const SURVIVALIST: JobDef = {
   id: "survivalist",
   name: "Survivalist",
-  description: "Field-craft specialist: lays traps before the fight begins.",
+  description: "Field-craft specialist: lays traps before the fight, and forages supplies at a clearing.",
   restPoints: 1,
   skills: [
     {
@@ -167,6 +208,7 @@ export const SURVIVALIST: JobDef = {
       spend: "act",
       effect: { kind: "placeTrap", damage: 12 },
     },
+    FORAGE,
   ],
 };
 

@@ -21,6 +21,7 @@
 import { healUnit, primaryJobOf, type Unit } from "./units";
 import type { Camp } from "./camp";
 import { getJob } from "./jobs";
+import { restCostMultiplier } from "./fatigue";
 import type { DifficultyPolicy } from "./mortality";
 import { DYING_COUNTER } from "./mortality";
 import { spend } from "./purse-journal";
@@ -255,12 +256,16 @@ export function restHeal(
   }
   const perChunk = chunkHp(unit);
   const missing = unit.maxHp - unit.hp;
-  const maxChunksByRp = Math.floor(availableRp / policy.rpPerChunk);
+  // D73: an over-extended (Weary/Exhausted) unit recovers poorly — each heal chunk costs more of
+  // the shared RP pool. 1× within the safe bands (and an improved rest wipes fatigue *before*
+  // healing, so a rest node always heals at 1×); the multiplier is the ordinary-night penalty.
+  const rpPerChunk = Math.ceil(policy.rpPerChunk * restCostMultiplier(unit.fatigue));
+  const maxChunksByRp = Math.floor(availableRp / rpPerChunk);
   const maxChunksByHp = Math.ceil(missing / perChunk);
   const chunks = Math.min(maxChunksByRp, maxChunksByHp);
   if (chunks <= 0) return { rpSpent: 0, chunks: 0, hpHealed: 0 };
   const hpHealed = healUnit(unit, chunks * perChunk);
-  return { rpSpent: chunks * policy.rpPerChunk, chunks, hpHealed };
+  return { rpSpent: chunks * rpPerChunk, chunks, hpHealed };
 }
 
 // --- The cleric (D9 economy sink) -------------------------------------------

@@ -33,14 +33,15 @@ import {
   type OverworldCost,
 } from "./overworld-actions";
 import { PATRONIZE_COST, BANKER_PROTECT_COST } from "./economy-actions";
-import { getJob, JOBS, SURVEY, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
+import { getJob, JOBS, SURVEY, FORAGE, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
 import { skillContexts } from "./skills";
 import { availableSkills } from "./leveling";
 import { computeUpkeep, payUpkeep, satisfyUpkeepLine } from "./upkeep";
 import { effectiveMarketTier, marketOpenedFlag, type MapNode } from "./overworld";
-import type { SkillDef } from "./skills";
+import type { SkillDef, OverworldActionEffect } from "./skills";
 import { previewNode } from "./intel";
+import { countOf } from "./inventory";
 import { FATIGUE } from "./fatigue";
 
 function roster(): Unit[] {
@@ -132,30 +133,29 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
 });
 
 describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
-  it("never locks out a cheap action, even when the actor is exhausted", () => {
+  it("never refuses an action for fatigue, even when the actor is exhausted (D73)", () => {
     const run = newRun("fatigue-lock");
     const a = actor(run);
     a.fatigue = FATIGUE.exhausted; // deeply over-extended
 
-    // Scout is cheap (cost 1 < demandingCost 2) → still available even when exhausted.
-    // (The demanding-action *lock* itself is unit-tested in fatigue.test via
-    // fatiguePenalty; no demanding overworld ability exists post-D61.)
+    // D73 dropped the demanding-action lock — fatigue never gates a cast; the bite is the
+    // deferred consequence (pricier rest-heal, carryover, the Exhausted combat Slow).
     const target = reachableNodes(run)[0];
     const scout = useOverworldSkill(run, a, SURVEY, { targetNodeId: target.id });
     expect(scout.applied).toBe(true);
   });
 
-  it("an over-extended actor pays the gentle surcharge on top of the base cost", () => {
+  it("an over-extended actor pays only the base fatigue — no surcharge (D73)", () => {
     const run = newRun("fatigue-surcharge");
     const actor = run.party[0];
-    actor.fatigue = FATIGUE.floor + 1; // just over the floor → surcharge of 1
+    actor.fatigue = FATIGUE.floor + 1; // over the floor (Weary)
     const target = reachableNodes(run)[0];
     const before = actor.fatigue;
     const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent!).toBeGreaterThan(SURVEY.overworldCost!.fatigue!); // base + surcharge
-    expect(actor.fatigue).toBe(before + res.fatigueSpent!);
+    expect(res.fatigueSpent!).toBe(SURVEY.overworldCost!.fatigue!); // base only — no over-extension surcharge
+    expect(actor.fatigue).toBe(before + SURVEY.overworldCost!.fatigue!);
   });
 });
 
@@ -241,16 +241,17 @@ describe("overworld-actions — Triage is the healer's fatigue-fuelled camp heal
     expect(doc.fatigue).toBe(0); // nothing spent
   });
 
-  it("a worn-out healer's Triage locks until they rest (the fatigue limiter)", () => {
+  it("an exhausted healer can still Triage (no lock, D73) — the consequence is the limiter", () => {
     const run = newRun("triage-exhausted");
     const doc = medic();
-    doc.fatigue = FATIGUE.exhausted; // too worn out for a demanding action
+    doc.fatigue = FATIGUE.exhausted; // deeply over-extended — but D73 has no hard lock
     run.party.push(doc);
     run.party[0].hp = 1;
     const res = triage(run, doc);
-    expect(res.applied).toBe(false);
-    expect(res.reason).toMatch(/exhausted|worn|rest/i);
-    expect(run.party[0].hp).toBe(1);
+    expect(res.applied).toBe(true); // applies — the mounting consequence (pricier heal, the Slow) limits it, not a lock
+    expect(run.party[0].hp).toBeGreaterThan(1);
+    expect(res.fatigueSpent).toBe(TRIAGE.fatigue); // base only (no surcharge)
+    expect(doc.fatigue).toBeGreaterThanOrEqual(FATIGUE.exhausted); // stays Exhausted → fields Slowed next fight
   });
 });
 
@@ -570,5 +571,69 @@ describe("the overworld-effect registry (D72)", () => {
     expect(skillContexts({ id: "a", ...base, effect: { kind: "openMarket" } })).toEqual(["overworld"]);
     expect(skillContexts({ id: "b", ...base, effect: { kind: "primeDeal" } })).toEqual(["overworld"]);
     expect(skillContexts({ id: "c", ...base, effect: { kind: "provisionMeal", rp: 1 } })).toEqual(["overworld"]);
+    expect(skillContexts({ id: "d", ...base, effect: { kind: "forage", guaranteed: ["wild-herbs"], table: [{ id: "wild-herbs", weight: 1 }], baseRolls: 1, rollsPerLevel: 0 } })).toEqual(["overworld"]);
+  });
+});
+
+describe("Forage — the Survivalist's clearing verb (D73)", () => {
+  const countAll = (inv: { counts: Record<string, number> }) =>
+    Object.values(inv.counts).reduce((a, b) => a + b, 0);
+  function survivalist(): Unit {
+    return createUnit({ id: "Bram", side: "player", pos: { col: -1, row: -1 }, jobId: "survivalist", speed: 10, maxHp: 24, attack: 11, defense: 2, moveRange: 4, sightRadius: 5 });
+  }
+  const forageEffect = FORAGE.effect as OverworldActionEffect; // FORAGE.effect is the broad SkillEffect; narrow for applyOverworldEffect
+
+  it("Forage lives on the Survivalist and surfaces on the overworld beat (class-gated)", () => {
+    expect(getJob("survivalist")!.skills).toContain(FORAGE);
+    expect(skillContexts(FORAGE)).toEqual(["overworld"]);
+    expect(availableSkills(survivalist(), "overworld").map((s) => s.id)).toContain("forage");
+    expect(availableSkills(roster()[0], "overworld").map((s) => s.id)).not.toContain("forage"); // a Scout doesn't forage
+    // the two-budget cost: paced within a clearing × priced in fatigue across clearings
+    expect(FORAGE.overworldCost!.usesPerNode).toBeGreaterThan(0);
+    expect(FORAGE.overworldCost!.fatigue).toBeGreaterThan(0);
+  });
+
+  it("always yields the guaranteed floor + job-level-scaled rolls", () => {
+    const run = newRun("forage-yield");
+    const before = countAll(run.inventory);
+    const res = applyOverworldEffect(forageEffect,{ run, unit: survivalist(), opts: {} });
+    expect(res.ok).toBe(true);
+    expect(countOf(run.inventory, "wild-herbs")).toBeGreaterThan(0); // the guaranteed floor
+    expect(countAll(run.inventory)).toBeGreaterThan(before); // net items gained
+  });
+
+  it("is deterministic — same seed + node + night replays the same haul (no live RNG)", () => {
+    const a = newRun("forage-determinism");
+    const b = newRun("forage-determinism");
+    applyOverworldEffect(forageEffect,{ run: a, unit: survivalist(), opts: {} });
+    applyOverworldEffect(forageEffect,{ run: b, unit: survivalist(), opts: {} });
+    expect(a.inventory.counts).toEqual(b.inventory.counts);
+  });
+
+  it("higher job level forages more (the non-combat use-leveling payoff)", () => {
+    const lowRun = newRun("forage-lvl-low");
+    const highRun = newRun("forage-lvl-high");
+    const veteran = survivalist();
+    veteran.jobLevels = { survivalist: { level: 5, xp: 0 } };
+    applyOverworldEffect(forageEffect,{ run: lowRun, unit: survivalist(), opts: {} }); // job level 1
+    applyOverworldEffect(forageEffect,{ run: highRun, unit: veteran, opts: {} }); // job level 5
+    expect(countAll(highRun.inventory)).toBeGreaterThan(countAll(lowRun.inventory));
+  });
+
+  it("full path: spends base fatigue, paced at twice per node", () => {
+    const run = newRun("forage-path");
+    const bram = survivalist();
+    run.party.push(bram);
+    const first = useOverworldSkill(run, bram, FORAGE);
+    expect(first.applied).toBe(true);
+    expect(first.fatigueSpent).toBe(FORAGE.overworldCost!.fatigue); // base only (no surcharge, D73)
+    expect(bram.fatigue).toBe(FORAGE.overworldCost!.fatigue);
+
+    const second = useOverworldSkill(run, bram, FORAGE);
+    expect(second.applied).toBe(true); // usesPerNode 2 — a second forage this night
+
+    const third = useOverworldSkill(run, bram, FORAGE);
+    expect(third.applied).toBe(false); // spent for tonight
+    expect(third.reason).toMatch(/spent for tonight/i);
   });
 });

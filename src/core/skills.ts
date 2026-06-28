@@ -209,13 +209,31 @@ export interface SurveyNodeEffect {
   tierBump: number;
 }
 /**
+ * **Overworld**: comb the surroundings for supplies (D73 — the Survivalist's clearing verb). Always
+ * yields each `guaranteed` material (the no-wasted-action floor), then `baseRolls + floor(jobLevel ×
+ * rollsPerLevel)` weighted draws from `table` — so a veteran forager finds more (non-combat
+ * use-leveling, D32). Rolls derive from `streamFor` (node + night + the per-night use index), so they
+ * are deterministic and replayable; the haul is capped by caravan storage (overflow is simply lost).
+ */
+export interface ForageEffect {
+  kind: "forage";
+  /** Material ids always found — the guaranteed floor (forage is never a wasted action). */
+  guaranteed: string[];
+  /** Weighted bonus-roll table: a material id and its relative draw weight. */
+  table: { id: string; weight: number }[];
+  /** Bonus rolls at job level 1. */
+  baseRolls: number;
+  /** Extra bonus rolls per job level (floored): `rolls = baseRolls + floor(level × rollsPerLevel)`. */
+  rollsPerLevel: number;
+}
+/**
  * **Overworld / camp economy** effects (D72) — resolved by the exhaustive
  * {@link "./overworld-actions".OVERWORLD_EFFECT_HANDLERS} registry (the overworld twin of
  * {@link BattleEffect}'s, the way {@link CampEffect} resolves in {@link "./camp"}). The
  * generic *mechanisms* the non-combat triad needs (plus migrated Survey); a class's actual
  * verbs (Find Trade / Savvy Barter / Cook Stew) wire them onto a job in the content pass.
  */
-export type OverworldActionEffect = OpenMarketEffect | PrimeDealEffect | ProvisionMealEffect | SurveyNodeEffect;
+export type OverworldActionEffect = OpenMarketEffect | PrimeDealEffect | ProvisionMealEffect | SurveyNodeEffect | ForageEffect;
 
 /**
  * The declarative effect a skill applies when it resolves — **partitioned by the
@@ -333,7 +351,8 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
     case "primeDeal":
     case "provisionMeal":
     case "survey":
-      // Camp/overworld economy + recon mechanisms (D72) — surfaced on the between-nodes beat.
+    case "forage":
+      // Camp/overworld economy + recon mechanisms (D72/D73) — surfaced on the between-nodes beat.
       return ["overworld"];
     case "med-heal":
       // The herb-stash heal (D40) — a support action like any other now (D67 W8): the deploy

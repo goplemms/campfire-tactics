@@ -50,6 +50,7 @@ import {
   type OverworldEconomy,
 } from "./overworld-actions";
 import { accrueDeclaredFaucets, deftHandsSkim } from "./economy-actions";
+import { nightlyFatigue } from "./fatigue";
 
 /** A recorded node outcome, for the run history / run-end screen. */
 export interface EncounterRecord {
@@ -388,6 +389,12 @@ export function isRunComplete(run: RunState): boolean {
 export function recordNight(run: RunState, record: Omit<EncounterRecord, "night">): boolean {
   run.history.push({ ...record, night: run.night });
   run.night += 1;
+  // D73: a night passed — resolve fatigue. A **rest** node is the improved rest (its full wipe is
+  // handled in RunLoop.restNode, *before* healing); every other kind is an ordinary night — wipe
+  // the safe Worn band, carry the excess over the floor into the next day.
+  if (record.kind !== "rest") {
+    for (const u of run.party) u.fatigue = nightlyFatigue(u.fatigue, false);
+  }
   run.over = run.over || isRunOver(run);
   // Graded final terminal (D51): clearing the final node = **complete** only when
   // all required objectives were **met** (a `win`); a graded combat record carries

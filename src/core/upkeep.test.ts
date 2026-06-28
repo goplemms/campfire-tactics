@@ -3,6 +3,7 @@ import { createUnit, type Unit } from "./units";
 import type { JobId } from "./jobs";
 import { createCamp } from "./camp";
 import { DIFFICULTIES } from "./mortality";
+import { FATIGUE } from "./fatigue";
 import {
   computeUpkeep,
   payUpkeep,
@@ -153,6 +154,25 @@ describe("recovery — Rest Points (D9)", () => {
     const hard = restHeal({ ...u, hp: 1, counters: {}, statuses: [] } as Unit, 100, DIFFICULTIES.hardest);
     // The same 100 RP buys more chunks on Easy than on Hardest.
     expect(easy.chunks).toBeGreaterThanOrEqual(hard.chunks);
+  });
+
+  it("an over-extended (Weary/Exhausted) unit's heal costs more RP per chunk (D73)", () => {
+    const policy = DIFFICULTIES.normal;
+    const mk = (fatigue: number) => {
+      const u = member("hurt");
+      u.hp = 1; // deeply wounded → the RP budget, not the wound, is the binding constraint
+      u.fatigue = fatigue;
+      return u;
+    };
+    const budget = policy.rpPerChunk * 6;
+    const rested = restHeal(mk(0), budget, policy);
+    const weary = restHeal(mk(FATIGUE.floor + 2), budget, policy); // Weary → ×1.5
+    const exhausted = restHeal(mk(FATIGUE.exhausted), budget, policy); // Exhausted → ×2
+    // Same wound + same RP budget: the more tired, the dearer each chunk → fewer chunks healed.
+    expect(weary.chunks).toBeLessThan(rested.chunks);
+    expect(exhausted.chunks).toBeLessThanOrEqual(weary.chunks);
+    // RP spent per chunk rises with fatigue.
+    expect(weary.rpSpent / weary.chunks).toBeGreaterThan(rested.rpSpent / rested.chunks);
   });
 });
 

@@ -10,6 +10,7 @@ import {
   countOf,
   canAdd,
   removeItem,
+  slotsFor,
   slotsUsed,
   slotsOver,
   campReadoutLine,
@@ -1525,13 +1526,15 @@ export class OverworldScene extends Phaser.Scene {
     for (const id of carried) {
       const mat = getMaterial(id);
       const count = countOf(inv, id);
+      const slots = mat ? slotsFor(mat, count) : count; // the row's current slot footprint (stacks pack)
       const val = mat?.saleValue ? ` · ${mat.saleValue}g ea` : "";
-      const btn = this.makeTextButton(cx, y, 380, 30, `Discard 1 — ${mat?.name ?? id} ×${count}${val}`, COLOR.surfaceRaised, COLOR.danger, () => {
+      const btn = this.makeTextButton(cx, y, 400, 30, `Discard 1 — ${mat?.name ?? id} ×${count} (${slots} slot${slots === 1 ? "" : "s"})${val}`, COLOR.surfaceRaised, COLOR.danger, () => {
         removeItem(inv, id, 1);
         this.refreshCampText();
         this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap
       }).setDepth(26);
-      btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(`Drop one ${mat?.name ?? id} to free a slot. Lowest-value gear is the usual cut.`));
+      // Stacked goods (a half-stack of herbs) share a slot — dropping one may not free space until the stack empties.
+      btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(`Drop one ${mat?.name ?? id}. Whole stacks free a slot; a partial stack frees one only when it empties. Lowest-value gear is the usual cut.`));
       this.overlay.push(btn);
       y += 38;
     }

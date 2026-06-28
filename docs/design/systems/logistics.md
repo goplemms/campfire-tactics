@@ -65,6 +65,23 @@ than **storage** allows. Resource logistics gates spatial logistics gates Combat
   (see below). Food is part of Upkeep, *not* a carried item — so it never competes
   for storage slots.
 
+### Storage overflow — grants land, then you discard (D75)
+
+The storage cap is **felt, not silent**. A **grant** — a reward, the relic, a Forage
+find, recovered/harvested gear, a gift — **always lands, even over the cap**
+(`grantItem`), so loot you earned never vanishes the way an over-cap `addItem` used
+to drop it. The resulting over-capacity (`slotsOver`) is then cleared by a
+**deliberate discard**: at Break Camp the player gets a **discard menu** (each row
+shows its slot footprint; drop one per click, auto-closes once back within cap), and
+the headless sim falls back to **`autoTrim`** — a deterministic shed of the
+**lowest sale-value first** (ties by id), so high-value loot like the relic survives.
+One honest rule: *items don't disappear; you choose what to let go.*
+
+A **buy** stays **cap-enforced** (`addItem` — you can't buy what won't fit), and so
+does an **equip/unequip** move ([Equipment](#equipment--blanket-condition--per-unit-arms-d76),
+below): moving an item stash↔slot can't overflow by construction, so the gear paths
+keep `addItem`/`canAdd`/`removeItem`. Only *grants* over-stuff.
+
 ### Upkeep — gold as the solvent for chores (D15)
 
 Per the **gold-as-solvent** convention, *maintenance* (a chore) collapses into a

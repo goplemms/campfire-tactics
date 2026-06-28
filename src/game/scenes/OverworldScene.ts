@@ -9,6 +9,9 @@ import {
   previewNode,
   countOf,
   canAdd,
+  removeItem,
+  slotsUsed,
+  slotsOver,
   campReadoutLine,
   // M8 — the overworld action economy (D35) · D72 unified onto SkillDef
   overworldCostOf,
@@ -1474,8 +1477,68 @@ export class OverworldScene extends Phaser.Scene {
     this.showSurvey();
   }
 
-  /** Break Camp → the soft, intent-aware gate (D45) → the map. */
+  /**
+   * Break Camp → the storage-overflow discard (D75, a hard gate) → the soft
+   * intent-aware night-end gate (D45) → the map. Grants land over the cap, so a
+   * stash can leave a node over capacity; the player must choose what to let go
+   * before they march. Within cap, this falls straight through to the soft gate.
+   */
   private breakCampToMap(): void {
+    if (slotsOver(this.run.inventory) > 0) {
+      this.showDiscardMenu(() => this.breakCampGate());
+      return;
+    }
+    this.breakCampGate();
+  }
+
+  /**
+   * The storage-overflow discard menu (D75): the stash is over its cap because a
+   * grant (a Forage haul, a traveler's gift, recovered gear) always lands. The
+   * player picks what to drop — the interactive twin of {@link autoTrim} — and the
+   * menu closes itself the moment the stash is back within cap, continuing to
+   * `onDone`. Forced before the march so storage stays an honest, *felt* limit.
+   */
+  private showDiscardMenu(onDone: () => void): void {
+    const inv = this.run.inventory;
+    const over = slotsOver(inv);
+    if (over <= 0) {
+      clearLayer(this.overlay);
+      return onDone();
+    }
+
+    clearLayer(this.overlay);
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2 - 10;
+    const carried = Object.keys(inv.counts)
+      .filter((id) => inv.counts[id] > 0)
+      .sort((a, b) => (getMaterial(a)?.name ?? a).localeCompare(getMaterial(b)?.name ?? b));
+    const w = 560;
+    const h = 140 + carried.length * 38;
+
+    this.overlay.push(
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.danger).setDepth(24),
+      this.add.text(cx, cy - h / 2 + 24, "Storage overflowing — let something go", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
+      this.add.text(cx, cy - h / 2 + 54, `Storage ${slotsUsed(inv)}/${inv.storageCap} — ${over} slot${over === 1 ? "" : "s"} over the cap. Discard until it fits to break camp.`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(25),
+    );
+
+    let y = cy - h / 2 + 96;
+    for (const id of carried) {
+      const mat = getMaterial(id);
+      const count = countOf(inv, id);
+      const val = mat?.saleValue ? ` · ${mat.saleValue}g ea` : "";
+      const btn = this.makeTextButton(cx, y, 380, 30, `Discard 1 — ${mat?.name ?? id} ×${count}${val}`, COLOR.surfaceRaised, COLOR.danger, () => {
+        removeItem(inv, id, 1);
+        this.refreshCampText();
+        this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap
+      }).setDepth(26);
+      btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(`Drop one ${mat?.name ?? id} to free a slot. Lowest-value gear is the usual cut.`));
+      this.overlay.push(btn);
+      y += 38;
+    }
+  }
+
+  /** The soft, intent-aware night-end gate (D45) → the map (overflow already cleared). */
+  private breakCampGate(): void {
     const gate = nightEndGate(this.run);
     if (!gate.warn) return this.toMap();
     // Hard-stop with a forced look only when warranted; never a per-night chore.

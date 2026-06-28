@@ -54,7 +54,7 @@ import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, ty
 import { rpPerNight, payUpkeep, restHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
-import { restoreFatigue } from "./fatigue";
+import { restoreFatigue, nightlyFatigue } from "./fatigue";
 import { useOverworldSkill, scoutedTier, type ActionOpts, type CampSkillResult } from "./overworld-actions";
 import { gainRunGold } from "./economy";
 import { applyGearCondition } from "./gear-condition";
@@ -352,6 +352,10 @@ export class RunLoop {
       hpHealed += healUnit(target, RECOVERY.inPlaceFloorHp);
     }
     if (hpHealed > 0) healed.push({ unitId: target.id, hp: hpHealed });
+
+    // D73: an in-place rest is an ordinary night — wipe Worn, carry the Weary/Exhausted excess.
+    // (The heal above already paid any Weary RP surcharge; the carryover follows it.)
+    for (const u of this.run.party) u.fatigue = nightlyFatigue(u.fatigue, false);
 
     // Each rest is a full node-step (D47): Break Camp ticks the spine + accrues
     // interest, and a night passes — but the run stays at this node (repeatable).

@@ -13,7 +13,7 @@ import {
 import { createUnit, type Unit } from "./units";
 import { createRun, type RunState } from "./run";
 import { RunLoop } from "./runloop";
-import { currentNode, reachableNodes, chooseNode } from "./run";
+import { currentNode, reachableNodes, chooseNode, recordNight } from "./run";
 
 function roster(): Unit[] {
   return [
@@ -147,10 +147,32 @@ describe("fatigue — combat reads it but never writes it (D29/D73)", () => {
     loop.startEncounter();
     loop.beginBattle();
     loop.autoBattle();
-    loop.resolve();
-
-    // Combat may *read* fatigue (to Slow the Exhausted) but never *writes* the meter.
+    // The battle itself never *writes* the fatigue meter (it only *reads* it, to Slow the Exhausted).
     expect(run.party.map((u) => u.fatigue)).toEqual(before);
+
+    // Resolving the node is a **night** on the overworld clock (D73) — it wipes the safe Worn band.
+    loop.resolve();
+    for (const u of run.party) expect(u.fatigue).toBe(0);
+  });
+});
+
+describe("fatigue — the nightly resolution (ordinary vs improved, D73)", () => {
+  it("an ordinary night (recordNight) carries a Weary unit's excess but wipes a Worn unit", () => {
+    const run = newRun("nightly-ordinary");
+    run.party[0].fatigue = FATIGUE.floor + 3; // Weary (9) → carries 3
+    run.party[1].fatigue = FATIGUE.floor - 1; // Worn (5) → wiped
+    const node = currentNode(run);
+    recordNight(run, { nodeId: node.id, layer: node.layer, kind: "combat", goldEarned: 0, fallen: [] });
+    expect(run.party[0].fatigue).toBe(3);
+    expect(run.party[1].fatigue).toBe(0);
+  });
+
+  it("a rest-kind night does not resolve here — the improved wipe lives in RunLoop.restNode", () => {
+    const run = newRun("nightly-rest");
+    run.party[0].fatigue = FATIGUE.floor + 3; // 9
+    const node = currentNode(run);
+    recordNight(run, { nodeId: node.id, layer: node.layer, kind: "rest", goldEarned: 0, fallen: [] });
+    expect(run.party[0].fatigue).toBe(9); // untouched — recordNight skips rest (restNode does the wipe)
   });
 });
 

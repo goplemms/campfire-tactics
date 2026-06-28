@@ -516,6 +516,13 @@ export const TRIAGE = {
 } as const;
 
 /**
+ * Triage's two-axis cost (D61) — the **demanding** fatigue price the shared gate validates +
+ * spends. Hoisted to a named export so the D61 guard test can assert it stays paced-or-priced:
+ * Triage is a **standalone** verb, outside the `JobDef.skills` load-time validator.
+ */
+export const TRIAGE_COST: OverworldCost = { fatigue: TRIAGE.fatigue };
+
+/**
  * True if `unit` is a **healing class** — a job stamped with the Medic's Triage
  * passive ({@link "./combat".PASSIVE.triage}). The capability gate for {@link triage},
  * now the `healer` entry of the shared {@link "./jobs".unitHasCapability} taxonomy
@@ -557,7 +564,7 @@ export function triage(run: RunState, healer: Unit): TriageResult {
     .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
   if (!wounded) return { applied: false, reason: "No wounded fighter to triage." };
 
-  const cost: OverworldCost = { fatigue: TRIAGE.fatigue };
+  const cost = TRIAGE_COST;
   const check = checkOverworldCost(run, "triage", cost, "Triage", healer);
   if (!check.ok) return { applied: false, reason: check.reason };
 

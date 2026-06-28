@@ -17,6 +17,7 @@ import {
   triage,
   isHealer,
   TRIAGE,
+  TRIAGE_COST,
   resolveKnob,
   knobDeclared,
   checkOverworldCost,
@@ -31,6 +32,7 @@ import {
   DEAL_PRIMED_FLAG,
   type OverworldCost,
 } from "./overworld-actions";
+import { PATRONIZE_COST, BANKER_PROTECT_COST } from "./economy-actions";
 import { getJob, JOBS, SURVEY, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
 import { skillContexts } from "./skills";
@@ -340,6 +342,29 @@ describe("the two-axis limiter invariant (D61)", () => {
       }
     }
   });
+});
+
+describe("standalone overworld-verb costs satisfy the D61 invariant (guard)", () => {
+  // The load-time validator only runs over JobDef.skills. These verbs build their
+  // OverworldCost in standalone functions (Triage, the economy verbs), so they satisfy
+  // "no action unpaced AND unpriced" only by this guard. ADD EVERY NEW standalone verb's
+  // cost object here — a free-and-unlimited one (`{}`) fails the assertion.
+  const STANDALONE: Record<string, OverworldCost> = {
+    Triage: TRIAGE_COST,                   // priced: fatigue
+    Patronize: PATRONIZE_COST,             // paced: usesPerNode × priced: gold
+    "Banker Protect": BANKER_PROTECT_COST, // priced: gold
+  };
+  for (const [label, cost] of Object.entries(STANDALONE)) {
+    it(`${label} is paced or priced`, () => {
+      expect(() => validateOverworldCost(label, cost)).not.toThrow();
+    });
+  }
+
+  // The other standalone economy verbs satisfy the invariant by construction, not a static
+  // cost object: Merchant Buy is always gold-priced (refused at a `none` market); Merchant
+  // Sell / Banker Borrow are selfLimited (only what you carry / can repay); Bribe is
+  // Influence-priced (spent off-gate via spendInfluence). Give any of them a declared
+  // OverworldCost and it joins STANDALONE above.
 });
 
 describe("computed (provider) costs (D72)", () => {

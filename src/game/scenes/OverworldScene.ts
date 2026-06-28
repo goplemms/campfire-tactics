@@ -117,6 +117,16 @@ interface CampAction {
  * for replay); on clearing the final node, a **run complete** screen. It owns no
  * rules — every decision flows through the loop.
  */
+/**
+ * Does this skill aim at a *map node* on the overworld (the Survey beat's node-picker),
+ * vs. a no-target camp action (the recovery drawer)? A **dual-surface** skill (D74, the
+ * Scout's Recon) is node-aimed by its `survey` overworld face even though its base `target`
+ * is `self` (for combat); a camp-targeted skill (Forage) is node-aimed by `target`.
+ */
+function isNodeAimedOverworld(s: SkillDef): boolean {
+  return s.overworldEffect?.kind === "survey" || s.target === "camp";
+}
+
 export class OverworldScene extends Phaser.Scene {
   private run!: RunState;
   private loop!: RunLoop;
@@ -762,12 +772,12 @@ export class OverworldScene extends Phaser.Scene {
    * the gate (class + capability + unlock) is the single projection — no hardcoded id.
    */
   private overworldNodeSkills(u: Unit): SkillDef[] {
-    return availableSkills(u, "overworld").filter((s) => s.target === "camp");
+    return availableSkills(u, "overworld").filter((s) => isNodeAimedOverworld(s));
   }
 
   /** A unit's **no-target** overworld camp skills (Cook Stew etc.) — the recovery drawer (D72). */
   private overworldCampSkills(u: Unit): SkillDef[] {
-    return availableSkills(u, "overworld").filter((s) => s.target !== "camp");
+    return availableSkills(u, "overworld").filter((s) => !isNodeAimedOverworld(s));
   }
 
   /**
@@ -1393,7 +1403,7 @@ export class OverworldScene extends Phaser.Scene {
     if (surveyor && survey) {
       for (const target of this.loop.reachable()) {
         const refusal = this.refusal(survey, surveyor);
-        intel.push({ label: `Survey → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description });
+        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description });
       }
     }
     y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());

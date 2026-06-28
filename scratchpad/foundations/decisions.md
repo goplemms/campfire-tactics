@@ -2621,6 +2621,45 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D74 — Scout kit reorder + Recon, the dual-surface verb (Set Trap L1 · Recon L2)
+
+- **Status:** Decided + built. A revision of **D68** (the Scout pass) made while building **Node 2**
+  (the L2 clearing) so the demo can teach **leveling → a new overworld action** there, and a small
+  reusable skill-framework extension (`overworldEffect`).
+- **Context:** D68 had **Dash** at L1, **Set Trap** at L2, and **Survey** as a *separate* overworld
+  skill (ungated, L1). Two demo problems: (1) the L1 Scout's only usable active was Dash (a +3 move)
+  — thin; Set Trap (lay a snare) is the more engaging starter. (2) Survey at L1 meant the
+  overworld-action layer was already live from the first node, so Node 2 couldn't *introduce* it.
+  And conceptually the player wanted **one verb** that reads on both surfaces.
+- **Decision 1 — Set Trap → L1.** The Scout fields its full combat kit (Set Trap + the base move)
+  from L1. Still resource-gated on a **trap-kit** item, so "fun initially" needs the party to carry
+  one (Decision 4).
+- **Decision 2 — fold Dash + Survey into one verb, *Recon*, at L2.** Recon is **dual-surface**: in
+  **battle/deployment** it darts +3 tiles (the old Dash — Swift); on the **overworld** it scouts a
+  node ahead (the retired Survey — `survey` tier-bump). The Scout's **L2 growth is the overworld**,
+  not a 2nd battle active — on-theme for the recon specialist, and it keeps the 2-active count
+  (Set Trap + Recon), so the Scout *re-joins* the D40 "2nd active at L2" cadence rather than being an
+  exception. Because L1's reward levels every survivor to L2, **Recon's overworld face first becomes
+  usable exactly at Node 2** — the demo's intro to overworld actions, tied to a felt level-up.
+- **Decision 3 — the skill-framework seam (`overworldEffect`).** A skill can declare a combat
+  `effect` **and** an `overworldEffect` (its between-nodes face). `useOverworldSkill` resolves
+  `overworldEffect ?? effect`; the render surfaces a node-aimed one (a `survey` overworldEffect) on
+  the Survey beat; `usableContext: [pre-combat, combat, overworld]` spans the three surfaces; the
+  dossier tag shows both (`Battle · Move / Camp`). Reusable for any future dual-surface verb. (The
+  name **Recon** is a placeholder — renameable later.)
+- **Decision 4 — demo bundle: `trap-kit×2`, storage cap 8 → 10.** So Set Trap is usable in the Node 1
+  deployment ("let the player try it"). The +2 cap offsets the +2 starting load so run loot headroom
+  is unchanged — else `addItem` drops rewards at cap, dropping the **Den relic** (caught by the 4B
+  clear test). General-game Scouts are unaffected (no starting kit); demo tuning only.
+- **Reuses / consistent with:** **D68** (revised — kit reorder only; the Assassin/Thief fork
+  untouched), **D40** (the 2-active + 1-passive count holds), **D72** (Recon is the unified overworld
+  SkillDef the gate rides), **D24/D48** (the survey face = the banded intel preview / route forecast),
+  **D67** (Dash's dual-context-by-shape carries into Recon's combat face), **D14/D20** (the
+  storage-cap scarcity the bundle tunes).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

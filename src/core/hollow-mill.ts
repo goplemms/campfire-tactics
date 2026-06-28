@@ -335,8 +335,10 @@ export const THE_HOLLOW_MILL: AuthoredExpedition = registerExpedition({
   bundle: {
     party: HOLLOW_MILL_PARTY,
     purse: 120,
-    supplies: { salve: 2, stimulant: 1, antidote: 2 },
-    storageCap: 8,
+    supplies: { salve: 2, stimulant: 1, antidote: 2, "trap-kit": 2 },
+    // +2 over the original 8 to make room for the 2 starting trap-kits (D74) — keeps the run's
+    // loot headroom unchanged so picked-up rewards (incl. the Den relic) aren't squeezed out.
+    storageCap: 10,
     morale: 2,
     difficultyId: "normal",
   },

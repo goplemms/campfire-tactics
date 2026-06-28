@@ -224,6 +224,19 @@ export function unlockedSkills(unit: Unit, phase?: Phase): SkillDef[] {
 }
 
 /**
+ * The skills a unit **newly unlocked** by crossing from `fromLevel` to `toLevel` (D74) — its
+ * job skills whose `unlockLevel` lands in `(fromLevel, toLevel]`, across **all** surfaces
+ * (battle / deployment / overworld). Drives the resolution "you leveled → unlocked X" readout
+ * (vs {@link unlockedSkills}, the cumulative set). Empty when the level-up crossed no threshold.
+ */
+export function skillsUnlockedBetween(unit: Unit, fromLevel: number, toLevel: number): SkillDef[] {
+  return unitSkills(unit).filter((s) => {
+    const lvl = s.unlockLevel ?? 1;
+    return lvl > fromLevel && lvl <= toLevel;
+  });
+}
+
+/**
  * The skills a unit can surface/use in a given **context** (D67) — the level-gated job
  * skills (like {@link unlockedSkills}) **plus the universal capabilities** ({@link
  * "./jobs".DEFEND} / {@link "./jobs".DIG_IN}), all filtered to those whose {@link

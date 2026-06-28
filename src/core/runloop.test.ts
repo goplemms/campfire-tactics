@@ -4,7 +4,7 @@ import { createRun, currentNode, reachableNodes, chooseNode, type RunState } fro
 import { RunLoop, REST } from "./runloop";
 import { getNode } from "./overworld";
 import { cooldownRemaining } from "./overworld-actions";
-import { SURVEY } from "./jobs";
+import { RECON } from "./jobs";
 import { computeUpkeep } from "./upkeep";
 import { FATIGUE } from "./fatigue";
 
@@ -108,11 +108,11 @@ describe("runloop — the two-tier recovery economy (D47)", () => {
     const run = newRun("inplace-tick");
     const loop = new RunLoop(run);
     run.party.find((u) => u.id === "Rook")!.hp = 4;
-    run.overworld.cooldowns["survey"] = 3;
+    run.overworld.cooldowns["recon"] = 3;
     const nightBefore = run.night;
 
     loop.inPlaceRest();
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(2); // the spine ticked
+    expect(cooldownRemaining(run.overworld, "recon")).toBe(2); // the spine ticked
     expect(run.night).toBe(nightBefore + 1); // a night passed
   });
 
@@ -202,10 +202,10 @@ describe("runloop — the unified camp at every node (D35)", () => {
     const actor = run.party[0];
     const ahead = reachableNodes(run)[0];
     if (ahead) {
-      const res = loop.useOverworldSkill(actor, SURVEY, { targetNodeId: ahead.id });
+      const res = loop.useOverworldSkill(actor, RECON, { targetNodeId: ahead.id });
       expect(res.applied).toBe(true);
-      expect(actor.fatigue).toBe(SURVEY.overworldCost!.fatigue);
-      expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown);
+      expect(actor.fatigue).toBe(RECON.overworldCost!.fatigue);
+      expect(cooldownRemaining(run.overworld, "recon")).toBe(RECON.overworldCost!.cooldown);
     }
 
     // Commit: the existing camp → encounter → resolution still runs.
@@ -219,12 +219,12 @@ describe("runloop — the unified camp at every node (D35)", () => {
     // Resolving the fight does NOT tick the spine — the node-step fires at
     // *departure* now (D46), so the scout's cooldown is still full here…
     if (ahead) {
-      expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown);
+      expect(cooldownRemaining(run.overworld, "recon")).toBe(RECON.overworldCost!.cooldown);
       // …and Break Camp (choosing the next edge) is what ticks it down.
       const next = reachableNodes(run)[0];
       if (next) {
         chooseNode(run, next.id);
-        expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown! - 1);
+        expect(cooldownRemaining(run.overworld, "recon")).toBe(RECON.overworldCost!.cooldown! - 1);
       }
     }
   });
@@ -238,7 +238,7 @@ describe("runloop — the unified camp at every node (D35)", () => {
     // The camp surface is the same at a rest node — fire an action, spend fatigue.
     const actor = run.party[0];
     const ahead = reachableNodes(run)[0]!;
-    const res = loop.useOverworldSkill(actor, SURVEY, { targetNodeId: ahead.id });
+    const res = loop.useOverworldSkill(actor, RECON, { targetNodeId: ahead.id });
     expect(res.applied).toBe(true);
     expect(actor.fatigue).toBeGreaterThan(0);
 
@@ -255,7 +255,7 @@ describe("runloop — the unified camp at every node (D35)", () => {
     const run = newRun("camp-traverse");
     const loop = new RunLoop(run);
     // Arm a cooldown up front, then let the traversal tick it down node by node.
-    run.overworld.cooldowns["survey"] = 99;
+    run.overworld.cooldowns["recon"] = 99;
     const route = loop.autoTraverse();
     expect(loop.isTerminal()).toBe(true);
     expect(route.length).toBeGreaterThan(1);
@@ -264,6 +264,6 @@ describe("runloop — the unified camp at every node (D35)", () => {
     // edges walked = path length minus the start node (which is never departed-from
     // by a prior step, but every other visited node was arrived at by a choose).
     const steps = run.path.length - 1;
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(99 - steps);
+    expect(cooldownRemaining(run.overworld, "recon")).toBe(99 - steps);
   });
 });

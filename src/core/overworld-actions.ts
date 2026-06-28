@@ -464,7 +464,9 @@ export function useOverworldSkill(run: RunState, unit: Unit, skill: SkillDef, op
   const check = checkOverworldCost(run, skill.id, cost, skill.name, unit);
   if (!check.ok) return { applied: false, reason: check.reason };
 
-  const effect = skill.effect;
+  // A dual-surface skill (D74, the Scout's Recon) resolves its **overworld** face here; a
+  // single-surface overworld skill (Cook Stew, Forage) has no `overworldEffect` and uses `effect`.
+  const effect = skill.overworldEffect ?? skill.effect;
   // The overworld-economy partition (incl. migrated Survey) — the exhaustive registry.
   if (isOverworldActionEffect(effect)) {
     const applied = applyOverworldEffect(effect, { run, unit, opts });

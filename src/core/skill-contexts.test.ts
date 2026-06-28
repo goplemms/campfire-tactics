@@ -136,10 +136,11 @@ describe("availableSkills — parity with today's surfacing + the dual-context w
     expect(availableSkills(u, "combat").map((s) => s.id)).not.toContain("set-trap");
   });
 
-  it("the Scout's Dash is dual-context — surfaced in BOTH pre-combat and combat (the F2 win)", () => {
+  it("the Scout's Recon is dual-context — surfaced in BOTH pre-combat and combat (the F2 win, D74)", () => {
     const u = jobUnit("scout");
-    expect(availableSkills(u, "pre-combat").map((s) => s.id)).toContain("dash");
-    expect(availableSkills(u, "combat").map((s) => s.id)).toContain("dash");
+    u.jobLevels = { scout: { level: 2, xp: 0 } }; // Recon is the Scout's L2 unlock (D74)
+    expect(availableSkills(u, "pre-combat").map((s) => s.id)).toContain("recon");
+    expect(availableSkills(u, "combat").map((s) => s.id)).toContain("recon");
   });
 });
 

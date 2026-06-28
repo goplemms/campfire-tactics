@@ -105,17 +105,27 @@ purse, load supplies. No combat.
   the Road), the demo's introduction to the overworld-action layer. *(Her L1 combat kit — Set Trap
   + the base move — is already up.)*
 
-### L2 — Camp on the Road (`camp2`, event → `provision-choice`)
-**Goal:** the first **scarcity choice** and the Cook payoff. No combat.
-- **Pick-one** (two finds, room for one):
+### L2 — Camp on the Road (`camp2`, event → `provision-choice`) — the first **clearing**
+**Goal:** the **camp tutorial** — *what you do at a clearing between fights* (D74): make a
+logistics choice, act on the overworld, and cash your growth. No combat. Three beats under
+one roof:
+- **The scarcity choice (`provision-choice`)** — pick-one (two finds, room for one):
   - **Trap Kit** — more snares for Vale's field-craft (gated on storage room); a **restock**
     for L3 atop the two she already carries (D74).
   - **Iron Weapons** — party-wide **+attack that decays** without a smith (sets the
     `iron-weapons` flag; rides gear-wear).
   - **Cook a Stew** — *only if Pip is alive* — banks **+2 RP** (the L1 rescue paying
     forward).
-- **Teaches:** logistics-as-choice; reusable utility vs. decaying power; the recruit
-  economy compounding.
+- **The overworld-action layer — Recon (D74).** The first clearing where Vale's **Recon**
+  (her L2 unlock) is usable on the **overworld**: scout a reachable node up a tier of intel.
+  Aimed at the **L3 snares**, it sharpens that fight's pre-combat read — lesson and payoff a
+  node apart. Paced by Recon's cooldown + fatigue (the overworld action economy).
+- **The leveling payoff (D74).** The L1 win banked everyone to **L2**; the resolution readout
+  announced Vale's **Recon** unlock, and this clearing is where that new overworld action first
+  *matters* — growth made tangible.
+- **Teaches:** logistics-as-choice (reusable vs. decaying power; the recruit economy
+  compounding); the **overworld-action surface** + intel-as-investment (scout to see farther);
+  and that **leveling unlocks abilities you cash at a clearing**.
 
 ### L3 — The Sapper's Snares (`snares`, combat)
 **Goal:** a **strong-field / weak-enemy** encounter — the threat is the terrain.
@@ -168,6 +178,22 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Bugfix: the L2 scarcity choice never rendered — it auto-resolved.** `OverworldScene.playEvent`
+  had no `case "provision"`, so the `provision`-kind `camp2` node fell through to the **thief**
+  handler and silently **auto-resolved** (the headless default — take the trap-kit); the player
+  never saw the pick-one. Added the dispatch case (`showProvisionScreen` → the shared
+  `renderEventChoicePanel`, the same flow `story` uses), so the trap-kit / iron-weapons / cook-stew
+  choice now actually surfaces — **restoring Node 2's first lesson.** Guard: a new `node-events`
+  test pins the provision pick-one (choices + apply); the render dispatch itself is Phaser-side.
+- **L2 becomes the first *clearing* — the camp tutorial (D74).** Node 2's purpose was widened from a
+  bare scarcity choice to *"what you do at a clearing between fights":* (1) the `provision-choice`,
+  (2) the **overworld-action layer** — Vale's **Recon** (her L2 unlock) scouts the L3 snares a node
+  early, and (3) the **leveling payoff** that hands it over (the L1-win resolution readout announces
+  the unlock). Driven by the Scout-kit reorder: **Set Trap → L1** (the fun starter) and **Dash +
+  Survey fold into one dual-surface verb, Recon, at L2** (darts in battle, scouts on the map, via the
+  new `SkillDef.overworldEffect` seam); demo bundle gains `trap-kit×2` + cap 8→10 so Set Trap is
+  usable from Node 1 without squeezing run loot. See **D74**. (Next candidate beat under review: the
+  **Ledger / route-forecast** read, to arm the L3→L4 fork — not yet decided.)
 - **Bugfix: the primary (End Turn / Advance Clock) was unclickable after resizing** (regression from
   the side-by-side Undo). `Button.setWidth` re-created the hit area via
   `removeInteractive()`/`setInteractive()`, which **dropped the clickable region** for this

@@ -178,6 +178,13 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Bugfix: the L2 scarcity choice never rendered — it auto-resolved.** `OverworldScene.playEvent`
+  had no `case "provision"`, so the `provision`-kind `camp2` node fell through to the **thief**
+  handler and silently **auto-resolved** (the headless default — take the trap-kit); the player
+  never saw the pick-one. Added the dispatch case (`showProvisionScreen` → the shared
+  `renderEventChoicePanel`, the same flow `story` uses), so the trap-kit / iron-weapons / cook-stew
+  choice now actually surfaces — **restoring Node 2's first lesson.** Guard: a new `node-events`
+  test pins the provision pick-one (choices + apply); the render dispatch itself is Phaser-side.
 - **L2 becomes the first *clearing* — the camp tutorial (D74).** Node 2's purpose was widened from a
   bare scarcity choice to *"what you do at a clearing between fights":* (1) the `provision-choice`,
   (2) the **overworld-action layer** — Vale's **Recon** (her L2 unlock) scouts the L3 snares a node

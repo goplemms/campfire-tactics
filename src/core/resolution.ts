@@ -13,7 +13,7 @@
 import type { FieldEntity } from "./entities";
 import { isRecoverable } from "./entities";
 import type { Inventory } from "./inventory";
-import { addItem } from "./inventory";
+import { grantItem } from "./inventory";
 import type { Side } from "./units";
 
 /** What Resolution reclaimed. */
@@ -37,7 +37,10 @@ export function recoverMaterials(
   for (const e of entities) {
     if (!isRecoverable(e)) continue;
     if (e.sprung || !e.recoverable) continue;
-    if (addItem(inv, e.materialId, 1)) recovered.push(e.materialId);
+    // Recovered gear lands unconditionally (D75) — even over cap; the discard
+    // step (menu / autoTrim) resolves any overflow afterward.
+    grantItem(inv, e.materialId, 1);
+    recovered.push(e.materialId);
   }
   return { recovered };
 }

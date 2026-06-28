@@ -45,7 +45,7 @@ import { satisfyUpkeepLine } from "./upkeep";
 import { applyCampSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp, jobLevelOf } from "./leveling";
 import { streamFor } from "./rng";
-import { addItem } from "./inventory";
+import { grantItem } from "./inventory";
 
 /**
  * A **price knob** (D72): either a fixed number, or a **provider** computed from the
@@ -646,16 +646,22 @@ const OVERWORLD_EFFECT_HANDLERS: {
     // (read pre-commit from campUses, so the 1st forage this night is 0 and the 2nd is 1) — two
     // forages at one node roll differently, and re-foraging across in-place rests (night bumps) too.
     const found: string[] = [];
-    for (const id of effect.guaranteed) if (addItem(run.inventory, id)) found.push(id);
+    // Grants land unconditionally (D75) — a Forage find never silently vanishes at the cap;
+    // any over-capacity is resolved later by the discard menu / autoTrim.
+    for (const id of effect.guaranteed) {
+      grantItem(run.inventory, id);
+      found.push(id);
+    }
     const lvl = jobLevelOf(unit, primaryJobOf(unit));
     const rolls = effect.baseRolls + Math.floor(lvl * effect.rollsPerLevel);
     const idx = campSkillUses(run.overworld, "forage");
     const rng = streamFor(run.seed, `forage:${run.mapNodeId}:${run.night}:${idx}`);
     for (let i = 0; i < rolls; i++) {
       const pick = rng.pickWeighted(effect.table, (e) => e.weight);
-      if (addItem(run.inventory, pick.id)) found.push(pick.id);
+      grantItem(run.inventory, pick.id);
+      found.push(pick.id);
     }
-    return { ok: true, detail: found.length ? `Foraged: ${found.join(", ")}.` : "Foraged, but storage is full." };
+    return { ok: true, detail: found.length ? `Foraged: ${found.join(", ")}.` : "Foraged, but found nothing." };
   },
 };
 

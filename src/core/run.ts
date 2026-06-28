@@ -24,7 +24,7 @@
 
 import { Rng, type RngState } from "./rng";
 import { createUnit, type Unit } from "./units";
-import { createInventory, type Inventory } from "./inventory";
+import { createInventory, autoTrim, type Inventory } from "./inventory";
 import { createCamp, type Camp } from "./camp";
 import { getDifficulty, type DifficultyPolicy, type RescueQuest } from "./mortality";
 import { accrueDeployedXp } from "./leveling";
@@ -289,6 +289,10 @@ export function nodeAccessible(run: RunState, node: MapNode): boolean {
  * D47). A pure **purse** faucet — it never touches the guild treasury (D34).
  */
 export function breakCamp(run: RunState): void {
+  // Overflow safety net (D75): grants land over the cap, then are discarded back down. The
+  // interactive camp shows the player a discard menu *before* this; here is the headless
+  // fallback (a no-op once the stash is already within cap) so the sim stays bounded + deterministic.
+  autoTrim(run.inventory);
   tickCooldowns(run.overworld);
   accruePurseInterest(run.overworld, run.camp);
   accrueDeclaredFaucets(run); // declared per-step Influence faucets (D72) — the Noble's Renown (D71) + any future declarer

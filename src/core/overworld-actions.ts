@@ -92,9 +92,19 @@ export interface OverworldCost {
   fatigue?: number;
   /** Run gold spent from the purse (`camp.gold`, D34/D30) — static, or a {@link CostKnob} provider. */
   gold?: CostKnob;
-  /** Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider. */
+  /**
+   * Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider.
+   * **Reserved (no verb prices in it yet):** the gate fully checks + spends it ({@link
+   * checkOverworldCost}/{@link commitOverworldCost}), kept for the planned **Influence revamp** —
+   * the intended home for routing Bribe's spend through the shared gate (it currently spends
+   * Influence directly via `spendInfluence`, off-gate). Declared-but-unused **on purpose**, not dead.
+   */
   influence?: CostKnob;
-  /** Rest Points spent. Static or a provider. */
+  /**
+   * Rest Points spent. Static or a provider. **Reserved (no verb prices in it yet):** the gate
+   * honors it for a future RP-priced overworld/clearing verb (RP is live — banked nightly, spent on
+   * healing; D73's Weary heal-cost is recovery-side, not this knob). Declared-but-unused on purpose.
+   */
   rp?: CostKnob;
   // --- Escape hatch: an intrinsic limiter outside the two-knob menu ---
   /**

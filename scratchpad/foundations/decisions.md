@@ -2660,6 +2660,73 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D76 — The gear / item system: blanket Condition × per-unit Arms
+
+- **Status:** Decided + built (the substrate + the aggregate stamp, in green increments;
+  per-unit item *content* — the relic effect, a weapon market — is deferred, see below). A
+  design pass over the half-built gear models (the D52 blanket gear-condition, the
+  iron-weapons holdover, the unbuilt relic), realizing the per-unit **locked equipment**
+  scarcity **D25** named but never built.
+- **Context:** Three gear models were partly in conflict: (1) the **blanket gear-condition**
+  (D52) — one party-wide axis, durability = the D15 Repairs upkeep, **no per-weapon meter**;
+  (2) the **iron-weapons holdover** — a single boolean that shifts the blanket axis and decays;
+  (3) the **relic** (`relic-hollow-blade`) — a build-defining unique weapon with no equip slot
+  and no effect. The crux: does a unique weapon get a real per-unit slot (seeming to overturn
+  "no per-weapon meter"), and does it carry its own condition? *(Housekeeping: the build prompt
+  cited a "just-landed D75" pulling iron-weapons out of Node 2 — **no D75 exists in this repo**
+  at authoring time and the Node-2 `provision-choice` still offers `take:iron-weapons`. D76
+  captures the gear substrate D75 gestured at and **leaves the Node-2 beat where it is**; if a
+  real D75 surfaces, reconcile then.)*
+- **Decision — two orthogonal axes, one stamp.** The conflict dissolves once *durability* and
+  *equip-location* are separated:
+  - **Condition** (blanket, the maintenance chore, D15): the party-wide `gearWear` axis paid
+    down by Repairs. It stays the **only** durability axis — **no per-weapon meter** is
+    preserved (logistics L86–88). It **degrades** equipment rather than carrying a private
+    meter.
+  - **Arms** (the discrete gear you acquire & equip): **grants** stat deltas (+ optional
+    keyworded passives). Two scopes share the model — the **party set** (iron-weapons, still
+    computed by `gearDelta(run)` unchanged) and **per-unit slots**.
+  - **Per-unit equip slots:** a fixed three — `weapon`, `armor`, `accessory` — on
+    `Unit.equipment` (D25 "can't field one good sword twice"; the home for build-defining
+    uniques). **Equipped gear is caravan-locked to the unit**, so it lives on the unit, *not*
+    in the D14 shared stash.
+  - **Condition × Arms coupling:** the shared `gearWear` dulls a *maintained* item's positive
+    attack/defense (eroded to 0, never flipped negative); a `maintained: false` item (a relic)
+    shrugs off wear ("legendary doesn't rust"). The degradation **reads the shared axis**,
+    never a per-item number — so the rejected meter does not return.
+  - **One revertible stamp:** `applyGearCondition` folds the blanket delta **+** each unit's
+    `equipDelta` into a single signed `StatDelta` (+ granted passives), stamped at staging and
+    reverted between battles. An un-equipped, un-worn, no-iron run is the **identity** — so it
+    stays **byte-identical** (verified: the 853 prior tests are untouched; +23 new).
+  - **Acquisition & storage:** an equippable-from-stash item is **dual** — a `MaterialDef`
+    (D14 storage accounting) **and** an `EquipmentDef` (effect) sharing one id. The relic
+    already has the `MaterialDef`; `equip()`/`unequip()` move an item stash↔slot (a
+    Camp/Pre-deployment verb). Faucets: authored grants (the relic, via `grants.item`) and a
+    future weapon **market** (the def carries `saleValue`). A **smith-that-upgrades is
+    explicitly out of scope** (it muddies D15's "Repairs = chore" line; belongs to a future
+    Blacksmith per-class pass).
+- **Deferred (own follow-ups):**
+  - **The relic's effect** — `relic-hollow-blade` stays an **inert stash material**; the
+    `EquipmentDef` (its `mods`/`passive`, `unique: true`, `maintained: false`) is added when
+    its effect is designed with the user.
+  - **`steel-armor` / a second party set** — held; iron-weapons is the single party-set
+    example for now. The `PARTY_GEAR` registry generalization rides the *second* set (today
+    `gearDelta(run)` is the party-set computation, kept as-is for byte-identical behavior).
+  - **Full loadout / armory UI / guild-level locking** — only the three core slots + pure
+    equip verbs ship; the render and the guild armory are later.
+- **Reuses / consistent with:** **D14** (the stash is unchanged; equipment is the per-unit
+  counterpart to "wide logistics"), **D15/D52** (Condition stays the one blanket durability
+  axis, no per-weapon meter), **D25** (realizes the "locked equipment" scarcity), **D40**
+  (equipment passives reuse the `passives` bag combat already reads), **D2** (pure core, no
+  RNG; revertible like `gearStamp`).
+- **Spec:** `src/core/equipment.ts` (registries + `equipDelta`/`equip`/`unequip` + stat
+  apply/revert), `src/core/gear-condition.ts` (the aggregate stamp), `src/core/units.ts`
+  (`equipment`, `EquipSlot`, `StatDelta`, the generalized `gearStamp`),
+  [`docs/design/systems/logistics.md`](../../docs/design/systems/logistics.md) (Equipment).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

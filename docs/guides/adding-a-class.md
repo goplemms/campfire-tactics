@@ -126,9 +126,10 @@ touches **two** places: the `PASSIVE` key set and its read-site in resolution.
   `debug-battle.ts` predate `baseline` and hardcode stat blocks. If your class
   belongs in the guild starting roster, add it there too — and consider deriving
   from `getJob().baseline` rather than re-inlining (a known cleanup).
-- **`noncombat` no longer gates fielding** (D38): any class can take the field.
-  The flag now only informs camp/Upkeep/RP. Use `restPoints`/`upkeep` for a
-  support role's camp economy.
+- **No `noncombat` flag** (D38): any class can take the field — `combatRoster` is
+  just `activeRoster`, and nothing reads a non-combat flag (it was removed). Use
+  `restPoints`/`upkeep` for a support role's camp economy; a future fielding gate
+  can return as a keyword tag rather than a bucket.
 - **Identity colour ≠ side colour.** The token *fill* stays side-coloured (gold
   ally / red foe); `roleColor` only recolours the *ring*. Enemies without a job
   fall back to the `FOE_COLORS` name-regex.

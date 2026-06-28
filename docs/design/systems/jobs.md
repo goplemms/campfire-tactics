@@ -154,28 +154,23 @@ holds, how long it persists (a run? the guild?) — is deferred.
 
 ## Emergent combat / non-combat (no authored flag)
 
-The combat / non-combat split is **descriptive, not prescriptive** — it should *arise* from a
-job's kit, not be stamped on it. Today's `noncombat: boolean` (`jobs.ts`) actually **conflates
-two different questions**:
+The combat / non-combat split is **descriptive, not prescriptive** — it *arises* from a job's
+kit, it is not stamped on it. The old `noncombat: boolean` (`jobs.ts`) conflated **two different
+questions** — a **descriptor** (*is this a battle kit?*) and a **permission** (*may this unit take
+the map at all?*) — which is why it was set on the pure-meta economy classes but **not** on the
+**Survivalist**, whose kit is non-combat yet is **fielded in Deployment** to place traps. Both are
+now resolved and the flag has been **removed** (a future need can return as a **keyword tag**, not
+a one-size bucket):
 
-- a **descriptor** — *is this a battle kit?*
-- a **permission** — *may this unit take the map at all?*
-
-…which is why the flag is set on the pure-meta economy classes but **not** on the
-**Survivalist**, whose kit is non-combat yet is **fielded in Deployment** to place traps.
-Splitting them:
-
-- **Descriptor → derive it.** A job with **no `battle`-phase skills** *is* non-combat (every
-  skill already carries a `phase`). It's a **center-of-gravity** read — *which phase does this
-  job's value concentrate in?* — so the Survivalist (deployment), the Cook (meta), and the
-  Banker (overworld) place naturally on a spectrum instead of being forced into a bucket. No
-  authored field required.
-- **Permission → an open call (parked).** Keep the current **hard fielding ban** (a Banker
-  literally cannot deploy), or go **fully emergent** (anyone can be placed; a Banker simply has
-  nothing useful to do but Defend). The emergent answer is more consistent with **uniform
-  slots** and the **universal Defend / move / attack** every unit has (`jobs.ts:DEFEND`), but
-  it requires **auditing every consumer** of the flag (upkeep / Rest-Point / morale roster
-  handling, deploy filtering) before it can change.
+- **Descriptor → derived.** A job with **no `battle`-phase skills** *is* non-combat (every skill
+  already carries a `phase`). It's a **center-of-gravity** read — *which phase does this job's
+  value concentrate in?* — so the Survivalist (deployment), the Cook (meta), and the Banker
+  (overworld) place on a spectrum instead of being forced into a bucket.
+- **Permission → fully emergent (D38).** Any class can take the field; `combatRoster` is simply
+  `activeRoster` (a Banker *can* deploy — it just has nothing to do but Defend / move / attack,
+  the universal verbs every unit has, `jobs.ts:DEFEND`). The consumer audit the change required is
+  **done**: nothing read the flag — the camp / Rest-Point / Upkeep economy keys off `restPoints` /
+  `upkeep` / the job lookup, never `noncombat` — so the removal is behaviour-neutral.
 
 ## Authored identity, flexible class (refines D33)
 
@@ -408,6 +403,4 @@ clean loop: **accrue → Patronize → Bribe.**
 - **The acquisition agency model** — automatic (authored beats) vs. choice/item (generics).
 - **The per-unit-memory data shape** — contents + persistence scope (node / run / guild).
 - **Acquired-job starting level** — assumed **job-level 1** (you just started); confirm.
-- **The fielding-permission call** — keep the hard ban or go fully emergent, plus the
-  `noncombat`-consumer audit it implies.
 - **Glossary** — add a **Prestige** keyword (one word per concept).

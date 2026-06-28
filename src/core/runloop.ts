@@ -49,7 +49,7 @@ import { moraleTier } from "./camp";
 import { applyCampToParty } from "./camp";
 import { freeCaptive } from "./deployment";
 import { recoverMaterials } from "./resolution";
-import { addItem } from "./inventory";
+import { grantItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
 import { rpPerNight, payUpkeep, restHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
@@ -585,8 +585,8 @@ export class RunLoop {
     // Loot routes to the PURSE (D34), auto-repaying any Banker debt first (D30).
     gainRunGold(this.run, goldEarned);
     for (const drop of source.reward.materials) {
-      // Add drops up to the storage cap; overflow is simply lost (D6).
-      for (let i = 0; i < drop.count; i++) addItem(this.run.inventory, drop.id);
+      // Drops always land (D75) — overflow is resolved by a discard at Break Camp, never silently lost.
+      grantItem(this.run.inventory, drop.id, drop.count);
     }
     const recovered = recoverMaterials(battle.entities.all(), "player", this.run.inventory).recovered;
 
@@ -616,7 +616,7 @@ export class RunLoop {
     if (grant.recruit && !this.run.party.some((u) => u.id === grant.recruit!.id)) {
       this.run.party.push(createUnit({ ...grant.recruit, authored: true }));
     }
-    if (grant.item) addItem(this.run.inventory, grant.item);
+    if (grant.item) grantItem(this.run.inventory, grant.item); // the relic always lands (D75)
     if (grant.flag) this.run.flags[grant.flag] = true;
   }
 

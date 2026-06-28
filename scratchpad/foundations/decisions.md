@@ -2660,6 +2660,48 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D75 — The inventory overflow substrate (grants land, then discard) + Node 2's storage lesson
+
+- **Status:** Decided + built. A general logistics-feel change made while building **Node 2** (the L2
+  clearing) so the demo can *teach the storage limit* there, plus the reusable substrate it rides on.
+- **Context:** Storage was a **hard invariant** — `addItem` refused any add over the cap and returned
+  `false`, so a reward/relic/Forage find that didn't fit was **silently dropped** (a known sharp edge:
+  the **Den relic** could vanish if the stash was full; D74 padded the cap to dodge it). And Node 2's
+  "storage lesson" wasn't landing: the demo bundle sat at **5/10 slots** (slack), so the cap was never
+  felt. Herbs beyond a Medic are dead weight in the demo (no Medic until L4B), so the medical-heavy
+  starting kit was both inert *and* not pressing on storage.
+- **Decision 1 — the over-stuff-then-discard model.** A **grant** (a reward, the relic, a Forage find,
+  recovered/harvested gear, a gift) now **always lands — even over the cap** — via a new unconditional
+  **`grantItem`**. The resulting over-capacity (`slotsOver`) is cleared by a **deliberate discard**:
+  the interactive **discard menu** (the player picks what to drop) or **`autoTrim`** (the headless
+  default — sheds **lowest sale-value first**, ties by id, so high-value loot like the **relic
+  survives**). One honest rule across the whole game: *items don't disappear; you choose what to let
+  go.* A player **buy** stays **cap-enforced** (`addItem` kept — you can't buy what won't fit).
+- **Decision 2 — route every grant site onto `grantItem`.** Rewards + relic (`runloop`), the L2 gift +
+  patron gift (`node-events`), Forage finds (`overworld-actions`), win-recovery (`resolution`), trap
+  harvest (`traps`). `breakCamp` runs `autoTrim` as the headless safety net (a no-op once within cap),
+  keeping the sim bounded + deterministic; the interactive camp trims first via the menu.
+- **Decision 3 — make storage *felt* at Node 2.** Demo bundle slimmed to a **lean 4/4** —
+  `trap-kit×2, valuables×1, salve×1`, **cap 10→4** (exactly full). The L2 event became **A Traveler on
+  the Road**: a traveler **gifts two trap kits** that overflow the full stash, forcing the discard
+  back to the cap before Break Camp. The **Cook-Stew** payoff is kept — it now rides *alongside* the
+  gift (takes the kits **and** banks RP), not instead of it.
+- **Decision 4 — defer iron-weapons.** The old trap-kit-**vs**-iron-weapons pick-one is retired at L2;
+  the **iron-weapons / gear-condition** system is **deferred to its own design pass** (a holdover from
+  older designs). The `iron-weapons` flag + `gearDelta` plumbing is **untouched** — just no longer
+  reachable from this event.
+- **Reuses / consistent with:** **D14/D20** (the slotted-stack storage cap this makes felt), **D6**
+  (the provisioning constraint — now a *discard*, not a silent refusal), **D61** (sale-value orders
+  the headless trim; loot/relic survive), **D46** (the discard gates at **Break Camp**, before the
+  node-step tick), **D73/D74** (Forage finds + the L2 clearing the gift overflows), **D52** (the
+  authored Node 2 event + the Den relic the trim now protects).
+- **Open / deferred:** the **iron-weapons / gear-condition** pass (Decision 4); cap **4** is a
+  demo-tuning value (the run-wide cap — revisit if the mid/late economy feels too tight); a future
+  *expand-storage* faucet is unspecified.
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

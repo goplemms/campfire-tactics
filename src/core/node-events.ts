@@ -39,7 +39,7 @@ import { createUnit, primaryJobOf, remember, type Unit, type UnitSpec } from "./
 import { streamFor } from "./rng";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
 import { getJob, SCOUT_PRESTIGE_FLOOR } from "./jobs";
-import { MATERIALS, addItem, grantItem, canAdd } from "./inventory";
+import { MATERIALS, grantItem, canAdd } from "./inventory";
 import { addInfluence, influenceTier, type InfluenceTier } from "./economy";
 import { merchantBuy, merchantPrice } from "./economy-actions";
 import { rollMercenary } from "./guild";
@@ -702,38 +702,36 @@ export const EVENTS: readonly EventDef[] = [
     },
   },
   {
-    // The Hollow Mill node-2 "Camp on the Road" (D52): the two-item **pick-one**
-    // scarcity beat (trap-kit vs iron weapons) + the first **Cook Stew** (RP bank when
-    // a Cook is aboard). Authored — pinned to the node via `MapNode.eventId`, never in
-    // the seeded pool (weight 0). The iron pick sets the `iron-weapons` run flag the
-    // gear-condition combat link reads; the edge decays via worn gear thereafter.
+    // The Hollow Mill node-2 "A Traveler on the Road" (D52/D75): the **storage-scarcity**
+    // beat. A roadside traveler presses a bundle of trap kits on the party — a **grant that
+    // always lands**, over the storage cap (the stash starts near-full), so the player must
+    // **discard back to the cap** before they march (the discard menu / autoTrim). The Cook
+    // Stew payoff rides alongside (the first **Cook** verb, RP bank, when a Cook is aboard).
+    // Authored — pinned to the node via `MapNode.eventId`, never seeded (weight 0).
+    //
+    // (Was a trap-kit-vs-iron-weapons pick-one; the iron-weapons/gear-condition system is
+    // deferred to its own pass — the `iron-weapons` flag plumbing in gearDelta is untouched,
+    // just no longer reachable from this event.)
     id: "provision-choice",
     kind: "provision",
-    name: "Camp on the Road",
-    teaser: "A night's camp — two finds, room for one. (And a hot meal if a Cook rides along.)",
+    name: "A Traveler on the Road",
+    teaser: "A traveler shares your fire and presses a bundle of trap kits on you — more than your packs were built to hold. (And a hot meal, if a Cook rides along.)",
     weight: 0, // authored-only — pinned by node, never seeded
     autoResolve(run, _node) {
-      // Headless default: take the trap-kit (a deterministic, reusable-utility pick).
-      return applyProvisionChoice(run, "take:trap-kit");
+      // Headless default: accept the gift (it always lands; the overflow is autoTrimmed at Break Camp).
+      return applyProvisionChoice(run, "accept-gift");
     },
     choices(run, _node) {
       const cook = run.party.some((u) => primaryJobOf(u) === "cook" && u.alive);
-      const kitRoom = canAdd(run.inventory, "trap-kit");
       return [
         {
-          id: "take:trap-kit",
-          label: "Take the Trap Kit (reusable field-craft)",
-          available: kitRoom,
-          detail: kitRoom ? "A reusable snare kit for Vale's field-craft." : "No storage room.",
-        },
-        {
-          id: "take:iron-weapons",
-          label: "Take the Iron Weapons (a party-wide attack edge that decays)",
+          id: "accept-gift",
+          label: "Thank the traveler and take the kits",
           available: true,
-          detail: "A blanket gear-condition upgrade (+attack). It fades without a smith to maintain it.",
+          detail: `${TRAVELER_GIFT_KITS} trap kits join the stash — even over your cap. You'll choose what to drop before you break camp.`,
         },
         ...(cook
-          ? [{ id: "cook-stew", label: "Have Pip cook a stew (banks Rest Points)", available: true, detail: "The Cook banks RP and eases the food line." }]
+          ? [{ id: "cook-stew", label: "Share Pip's stew with the traveler (banks Rest Points)", available: true, detail: "Take the kits and break bread — Pip banks RP and eases the food line." }]
           : []),
       ];
     },
@@ -774,28 +772,27 @@ export const EVENTS: readonly EventDef[] = [
 
 // --- The Hollow Mill authored-event resolvers (D52) -------------------------
 
-/** Apply a node-2 provision pick (D52): the two-item pick-one + the Cook Stew RP bank. */
+/** How many trap kits the Node 2 traveler presses on the party (D75) — sized to overflow the near-full bundle. */
+const TRAVELER_GIFT_KITS = 2;
+
+/**
+ * Apply the Node 2 traveler-gift (D75): the trap kits **always land** — over the storage
+ * cap if need be — so the overflow forces a deliberate discard at Break Camp (the storage
+ * lesson). Every path takes the gift; `cook-stew` additionally banks RP (the Cook payoff).
+ */
 export function applyProvisionChoice(run: RunState, choiceId: string): EventOutcome {
   const out = emptyOutcome("provision");
-  if (choiceId === "take:iron-weapons") {
-    run.flags["iron-weapons"] = true;
-    out.summary = "You strap on the iron weapons — the whole party hits harder for now.";
-    return out;
-  }
+  // The gift lands unconditionally (D75) — grants don't vanish at the cap; the player chooses
+  // what to let go at Break Camp (the discard menu, or autoTrim headless).
+  grantItem(run.inventory, "trap-kit", TRAVELER_GIFT_KITS);
+  out.materials = ["trap-kit"];
   if (choiceId === "cook-stew") {
-    // The first Cook verb (E3): bank a little RP + ease the food line for the night.
+    // The first Cook verb (E3): bank a little RP + ease the food line, and still take the kits.
     run.rp += 2;
-    out.summary = "Pip cooks a hot stew — spirits and rations both hold (RP banked).";
+    out.summary = "Pip cooks a hot stew for the road and the traveler both — spirits and rations hold (RP banked). The parting bundle of trap kits rides on, packs be damned.";
     return out;
   }
-  // Default / take:trap-kit — a reusable kit into the stash under the cap.
-  if (canAdd(run.inventory, "trap-kit")) {
-    addItem(run.inventory, "trap-kit");
-    out.materials = ["trap-kit"];
-    out.summary = "You pack the trap kit for the road ahead.";
-  } else {
-    out.summary = "No room in the stash for the trap kit.";
-  }
+  out.summary = "You thank the traveler and pack the trap kits — more than the stash was built for. Something will have to go before you march.";
   return out;
 }
 

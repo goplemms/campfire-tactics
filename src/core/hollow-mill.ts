@@ -9,7 +9,7 @@
  *
  * Topology (locked):
  * ```
- *   L0 Camp ─► L1 Skirmish+Cook ─► L2 Camp(pick-one) ─► L3 Sapper's Snares
+ *   L0 Camp ─► L1 Skirmish+Cook ─► L2 Traveler's-gift (storage discard) ─► L3 Sapper's Snares
  *      ─► L4 FORK { 4A Rest (no Medic) | 4B Prison Wagon (frees Medic) }
  *      ─► L5 Market (hub — Merchant) ─► L6 { dug-in Wagon (Medic catch-up), Den (relic) }
  *      ─► L7 stub finale
@@ -295,7 +295,7 @@ function hollowMillMap(): OverworldMap {
   const nodes: Record<string, MapNode> = {
     start: node("start", 0, "rest", ["e1"]), // L0 — the provisioning camp
     e1: node("e1", 1, "combat", ["camp2"], { authoredId: E1_SKIRMISH.id }), // L1 — Skirmish + Cook rescue
-    camp2: node("camp2", 2, "event", ["snares"], { eventId: "provision-choice" }), // L2 — Camp on the Road (pick-one + Cook Stew)
+    camp2: node("camp2", 2, "event", ["snares"], { eventId: "provision-choice" }), // L2 — A Traveler on the Road (storage discard + Cook Stew)
     snares: node("snares", 3, "combat", ["rest4a", "wagon4b"], { authoredId: TRAP_FIELD.id }), // L3 — the trap-field → the FORK
     // L4 FORK
     rest4a: node("rest4a", 4, "rest", ["market"]), // 4A — Rest (no Medic)
@@ -335,10 +335,14 @@ export const THE_HOLLOW_MILL: AuthoredExpedition = registerExpedition({
   bundle: {
     party: HOLLOW_MILL_PARTY,
     purse: 120,
-    supplies: { salve: 2, stimulant: 1, antidote: 2, "trap-kit": 2 },
-    // +2 over the original 8 to make room for the 2 starting trap-kits (D74) — keeps the run's
-    // loot headroom unchanged so picked-up rewards (incl. the Den relic) aren't squeezed out.
-    storageCap: 10,
+    // A lean, near-full kit (D75) so storage is **felt** from the start: 2 trap-kits (Vale's
+    // field-craft + the node-3 snares), 1 sellable trinket, 1 salve. At slotCost 1 each (trap-kit
+    // ×2 = 2 slots, valuables 1, salve 1) this is 4/4 — exactly full. The Node 2 traveler then
+    // gifts more kits (a grant that always lands, D75), forcing the discard lesson at Break Camp.
+    // Herbs beyond the one salve are dropped from the bundle: the demo has no Medic until L4B, so
+    // a fuller medical kit is dead weight here — the player buys/forages herbs once a healer joins.
+    supplies: { "trap-kit": 2, valuables: 1, salve: 1 },
+    storageCap: 4,
     morale: 2,
     difficultyId: "normal",
   },

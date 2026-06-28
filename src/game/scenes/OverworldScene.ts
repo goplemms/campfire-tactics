@@ -1197,10 +1197,21 @@ export class OverworldScene extends Phaser.Scene {
       case "shop": return this.showShopScreen();
       case "recruiter": return this.showRecruiterScreen();
       case "story": return this.showStoryScreen();
+      case "provision": return this.showProvisionScreen();
       case "patron": return this.playPatronEvent();
       case "thief":
       default: return this.playThiefEvent();
     }
+  }
+
+  // Provision (D52/D74) — an authored **pick-one** (trap-kit / iron-weapons / cook-stew, the
+  // last only with a Cook aboard). A terminal choice like a story beat: the shared choice panel
+  // renders `eventDef().choices()` and `onEventChoice` applies the pick. Without this case a
+  // `provision` node fell through to the thief handler and silently auto-resolved (the scarcity
+  // choice never surfaced) — the fix that restores Node 2's first lesson.
+  private showProvisionScreen(): void {
+    const def = this.loop.eventDef();
+    this.renderEventChoicePanel(def.name, def.teaser);
   }
 
   // Patron's Welcome — a standing-gated boon (D62): auto-resolve the feast + report it.

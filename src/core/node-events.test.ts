@@ -383,7 +383,6 @@ describe("node-events — autoResolve keeps autoTraverse deterministic (D22)", (
     const thiefSeed = seedFor("thief");
     expect(eventChoices(newRun(thiefSeed), NODE)).toEqual([]); // no choice
   });
-
   it("a full map with event nodes auto-traverses identically for a seed", () => {
     // Find a seed whose map actually contains an event node.
     let seed = "";
@@ -461,5 +460,27 @@ describe("node-events — standing gates event quality (D62)", () => {
     expect(run.overworld.influence).toBeGreaterThan(infBefore); // goodwill compounds
     expect(out.goldDelta).toBe(0); // never mints gold
     expect(run.camp.gold).toBe(goldBefore);
+  });
+});
+
+describe("node-events — the provision pick-one is an interactive choice (D52/D74)", () => {
+  // Provision is `weight: 0` (never seeded — only pinned to a node by `eventId`), e.g. the
+  // Hollow Mill's `camp2`. The render must dispatch it as a *choice* (not auto-resolve), so the
+  // data it feeds the panel is pinned here.
+  const PROVISION_NODE: MapNode = { id: "camp2", layer: 2, index: 0, kind: "event", edges: [], eventId: "provision-choice" };
+
+  it("surfaces a pick-one: trap-kit + iron-weapons, and cook-stew only with a Cook aboard", () => {
+    const run = newRun("prov");
+    expect(eventChoices(run, PROVISION_NODE).map((c) => c.id)).toEqual(["take:trap-kit", "take:iron-weapons"]);
+    // A Cook in the party opens the third option (the L1 rescue paying forward).
+    run.party.push(createUnit({ id: "pip", side: "player", pos: { col: -1, row: -1 }, name: "Pip", jobId: "cook", speed: 8, maxHp: 18, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }));
+    expect(eventChoices(run, PROVISION_NODE).map((c) => c.id)).toContain("cook-stew");
+  });
+
+  it("a pick applies — taking the trap-kit lands it in storage", () => {
+    const run = newRun("prov2");
+    const before = countOf(run.inventory, "trap-kit");
+    chooseEventOption(run, PROVISION_NODE, "take:trap-kit");
+    expect(countOf(run.inventory, "trap-kit")).toBe(before + 1);
   });
 });

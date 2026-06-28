@@ -2569,7 +2569,8 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ## D73 — Fatigue redesign: banded consequences + the clearing currency
 
-- **Status:** Decided (design), **build pending** (a numbers/mechanics pass — not yet wired). A
+- **Status:** Decided **+ built** (the model + recovery wiring + combat hook + Forage, in 4 green
+  increments; numbers are first-pass and tunable). A
   re-evaluation of **D29/D35** in light of the cost machinery built since (D61 two-axis limiter,
   D72 substrate): with cooldowns, per-node caps, gold/influence/rp knobs and capability gates now
   carrying pacing, price and access, fatigue's original job as "the single overworld limiter" is

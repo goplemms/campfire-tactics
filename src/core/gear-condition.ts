@@ -1,24 +1,29 @@
 /**
- * Gear-condition combat link (D52 vertical-slice) — the **blanket** party
- * gear-condition modifier combat reads.
+ * Gear-condition combat link (D52/D76) — the gear modifier combat reads, stamped
+ * per combatant at staging.
  *
- * The Hollow Mill's node-2 "iron weapons" pick is a *party-wide* gear upgrade, not a
- * per-weapon item (logistics.md L86–88 explicitly rejects a per-weapon meter): it
- * raises a single party-wide gear-condition axis (+attack), and that edge **decays
- * back** through the existing worn-gear path (`camp.gearWear`) without a Blacksmith /
- * Repairs — "the no smith to maintain it decay *is* the designed mechanic." The
- * specced worn-gear penalty (−defense) rides the same axis from the negative side.
+ * Two axes fold into one stamp here (D76):
+ *   - **Blanket condition + party set** ({@link gearDelta}): the Hollow Mill's
+ *     "iron weapons" pick is a *party-wide* upgrade, not a per-weapon item
+ *     (logistics.md L86–88 rejects a per-weapon meter) — a single party axis (+attack)
+ *     that **decays** through the worn-gear path (`camp.gearWear`), with the specced
+ *     worn-gear −defense riding the same axis from the negative side.
+ *   - **Per-unit equipment** ({@link "./equipment".equipDelta}): the unit's worn
+ *     weapon/armor/accessory, degraded by the same `gearWear` for *maintained* gear.
  *
- * This is a **blanket stamp**, applied to player combatants at staging time (a small
- * per-unit attack/defense delta), so combat reads it for free through the unit's
- * existing `attack`/`defense` — no `camp` import threaded into `combat.ts` (which
- * would cycle). The deltas are recorded on the unit so they can be reverted cleanly.
+ * {@link applyGearCondition} sums them into one signed {@link StatDelta} (+ any granted
+ * passives) and stamps it onto each player combatant, so combat reads it for free
+ * through the unit's existing `attack`/`defense`/… — no `camp` import threaded into
+ * `combat.ts` (which would cycle). The applied delta is recorded on the unit
+ * (`gearStamp`) so it reverts cleanly between battles. With no iron pick, no wear, and
+ * no equipment the stamp is the identity, so an un-upgraded run is byte-identical.
  *
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
 
-import type { Unit } from "./units";
+import type { Unit, StatDelta } from "./units";
 import type { RunState } from "./run";
+import { applyStatDelta, equipDelta, revertStatDelta } from "./equipment";
 
 /** Gear-condition tuning — data, a numbers pass later (D52). */
 export const GEAR_CONDITION = {
@@ -60,18 +65,35 @@ export function gearDelta(run: RunState): GearDelta {
 }
 
 /**
- * Stamp the blanket gear-condition delta onto a set of player combatants for a battle
- * (D52). Records the applied delta on each unit (`gearStamp`) so it can be reverted.
+ * Stamp the aggregate gear delta onto a set of player combatants for a battle
+ * (D52/D76): the blanket {@link gearDelta} (iron edge + worn-gear −defense) **plus**
+ * each unit's per-unit {@link "./equipment".equipDelta} (degraded by the same wear),
+ * folded into one signed {@link StatDelta} and any granted passives. Records the
+ * **actually applied** delta on each unit (`gearStamp`) so it reverts exactly.
  * Re-applying first reverts any prior stamp (idempotent across re-stages). Mutates the
- * units; returns the delta applied.
+ * units; returns the blanket delta (the per-unit part varies by unit).
  */
 export function applyGearCondition(run: RunState, players: readonly Unit[]): GearDelta {
   const delta = gearDelta(run);
+  const wear = Math.max(0, run.camp.gearWear);
   for (const u of players) {
     revertGearStamp(u);
-    if (delta.attack !== 0) u.attack += delta.attack;
-    if (delta.defensePenalty !== 0) u.defense = Math.max(0, u.defense - delta.defensePenalty);
-    u.gearStamp = { attack: delta.attack, defensePenalty: delta.defensePenalty };
+    const eq = equipDelta(u, wear);
+    // Blanket axis as a signed stat delta, merged onto the unit's equipment delta.
+    const stats: StatDelta = { ...eq.stats };
+    if (delta.attack !== 0) stats.attack = (stats.attack ?? 0) + delta.attack;
+    if (delta.defensePenalty !== 0) stats.defense = (stats.defense ?? 0) - delta.defensePenalty;
+    const appliedStats = applyStatDelta(u, stats);
+    const appliedPassives: Record<string, number> = {};
+    for (const [k, v] of Object.entries(eq.passives)) {
+      if (!v) continue;
+      u.passives[k] = (u.passives[k] ?? 0) + v;
+      appliedPassives[k] = v;
+    }
+    u.gearStamp = {
+      stats: appliedStats,
+      passives: Object.keys(appliedPassives).length ? appliedPassives : undefined,
+    };
   }
   return delta;
 }
@@ -80,7 +102,13 @@ export function applyGearCondition(run: RunState, players: readonly Unit[]): Gea
 export function revertGearStamp(u: Unit): void {
   const s = u.gearStamp;
   if (!s) return;
-  if (s.attack !== 0) u.attack -= s.attack;
-  if (s.defensePenalty !== 0) u.defense += s.defensePenalty;
+  revertStatDelta(u, s.stats);
+  if (s.passives) {
+    for (const [k, v] of Object.entries(s.passives)) {
+      const next = (u.passives[k] ?? 0) - v;
+      if (next === 0) delete u.passives[k];
+      else u.passives[k] = next;
+    }
+  }
   u.gearStamp = undefined;
 }

@@ -47,6 +47,24 @@ export interface UnitStats {
    */
   attackRange?: number;
 }
+
+/**
+ * The per-unit equipment slots (D76): a small fixed loadout of **discrete worn
+ * gear**, distinct from the party-wide shared stash (D14). One id per slot; an
+ * empty slot is `undefined`. Equipped gear is **caravan-locked to the unit** (D25
+ * "can't field one good sword twice"), so it lives here rather than in the stash.
+ */
+export type EquipSlot = "weapon" | "armor" | "accessory";
+
+/** A unit's equipped items (D76) — slot → {@link "./equipment".EquipmentDef} id. */
+export type UnitEquipment = Partial<Record<EquipSlot, string>>;
+
+/**
+ * A signed per-stat delta (D76) — the actual change applied to a unit's
+ * {@link UnitStats} by a gear/equipment stamp, recorded key-by-key so a revert is
+ * exact (including any 0-clamp). An empty map is an identity (no change).
+ */
+export type StatDelta = Partial<Record<keyof UnitStats, number>>;
 /** The authored description of a unit — the data a designer writes. */
 export interface UnitSpec extends UnitStats {
   id: string;
@@ -126,6 +144,12 @@ export interface UnitSpec extends UnitStats {
   role?: string;
   /** Seed the unit's run-scoped {@link Unit.memory} flag bag (D65); defaults to empty. */
   memory?: Record<string, string | number | boolean>;
+  /**
+   * Pre-equipped per-unit gear (D76) — slot → equipment id; defaults to empty. A
+   * generic unit starts bare; authored content (or in-run {@link "./equipment".equip})
+   * fills slots. An empty loadout leaves a run byte-identical to the un-equipped one.
+   */
+  equipment?: UnitEquipment;
 }
 
 /**
@@ -181,12 +205,19 @@ export interface Unit extends UnitStats {
   /** Authored ambush body hidden until scouted (D44); a render/fog flag. */
   hidden?: boolean;
   /**
-   * The blanket **gear-condition** delta stamped onto this unit for the current
-   * battle (D52) — the iron-weapons +attack edge and the worn-gear −defense penalty
-   * ({@link "./gear-condition"}), recorded so it can be reverted cleanly between
-   * battles. Player combatants only; absent ⇒ no stamp in effect.
+   * Per-unit **equipped gear** (D76) — the weapon/armor/accessory slots. Combat
+   * reads its effect through the {@link gearStamp} (stamped at staging), not from
+   * here directly. Defaults to empty (a bare unit); see {@link "./equipment"}.
    */
-  gearStamp?: { attack: number; defensePenalty: number };
+  equipment: UnitEquipment;
+  /**
+   * The aggregate **gear** delta stamped onto this unit for the current battle
+   * (D52/D76) — the blanket gear-condition (iron-weapons edge + worn-gear penalty)
+   * **plus** the unit's equipped gear ({@link equipment}), folded into one signed
+   * {@link StatDelta} and an optional set of granted passives, recorded so it can be
+   * reverted cleanly between battles ({@link "./gear-condition"}). Absent ⇒ no stamp.
+   */
+  gearStamp?: { stats: StatDelta; passives?: Record<string, number> };
   /**
    * Captured (D7): bound on the map, doesn't take turns, excluded from the
    * initiative seed, but still "alive" — a rescuable sub-objective.
@@ -278,6 +309,7 @@ export function createUnit(spec: UnitSpec): Unit {
     cooldowns: {},
     passives: {},
     memory: { ...(spec.memory ?? {}) },
+    equipment: { ...(spec.equipment ?? {}) },
   };
 }
 

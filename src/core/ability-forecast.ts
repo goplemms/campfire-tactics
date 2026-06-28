@@ -214,8 +214,9 @@ export function abilityFootprint(
     case "primeDeal":
     case "provisionMeal":
     case "survey":
+    case "forage":
       // A party/camp/overworld meta target — no battle-board footprint (Survey aims at a
-      // *map* node via opts, not a grid tile; floating forecast box).
+      // *map* node via opts, Forage at the surroundings; floating forecast box).
       return { kind: "none" };
   }
 }
@@ -450,6 +451,7 @@ const FORECAST_HANDLERS: {
   primeDeal: () => ({ kind: "immediate", label: "Next deal primed", value: 1 }),
   provisionMeal: (effect) => ({ kind: "immediate", label: "Rest Points", value: effect.rp }),
   survey: (effect) => ({ kind: "immediate", label: "Intel tier", value: effect.tierBump }),
+  forage: (effect) => ({ kind: "immediate", label: "Supplies", value: effect.guaranteed.length + effect.baseRolls }),
 };
 
 /**

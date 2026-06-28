@@ -32,7 +32,7 @@ It resolves four things:
    the fight's true logistics cost is realized here.
 4. **Morale & state.** Outcomes adjust party **morale** (a clean rescue lifts it;
    *abandoning* an ally drops it more than a hard-fought loss — see
-   [morale](systems/morale.md)), and the **Chef's** banked buffs are reconciled. Run
+   [morale](systems/morale.md)), and the **Cook's** banked buffs are reconciled. Run
    state (survivors, inventory, gold, seed position) advances.
 
 The output is an updated **run state** that becomes the starting condition for the
@@ -51,7 +51,7 @@ next Meta/Pre-deployment phase, until the run ends in victory or death.
 > 3. **Rewards.** Loot + **180 gold** (Merchant bonus applied). Spent consumables
 >    (`18 net arrows`, `1 rune reagent`) **roll their recovery keyword** — a few net
 >    arrows return — and the rest are deducted from the ledger.
-> 4. **Morale & state.** The rescue lifts party **morale +1**; the Chef's banked
+> 4. **Morale & state.** The rescue lifts party **morale +1**; the Cook's banked
 >    stew heal was consumed at battle start, so it clears. Run state updates: 4
 >    survivors, storage now holding the recovered kit + salvaged snare, 180g — ready
 >    to pay next night's **Upkeep**.

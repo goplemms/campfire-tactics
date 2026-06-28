@@ -128,7 +128,7 @@ export interface CleanseEffect {
   kind: "cleanse";
 }
 
-/** Meta/camp: the Chef raises party morale and banks a between-battle heal. */
+/** Meta/camp: the Cook raises party morale and banks a between-battle heal. */
 export interface MoraleEffect {
   kind: "morale";
   morale: number;
@@ -272,7 +272,7 @@ export interface SkillDef {
    * For a **meta/camp** skill: the maximum times it may be fired **at a single
    * overworld node** (D35 spine). The overworld action economy gates every verb so
    * it can't be spammed; `usesPerNode` is the gate for a *costless* signature job
-   * action (Chef's stew, Merchant's trade), reset each node-step ({@link
+   * action (Cook's stew, Merchant's trade), reset each node-step ({@link
    * "./overworld-actions".tickCooldowns}). **Undefined ⇒ uncapped** — a skill that
    * pays its own way each cast (a Vancian charge, a gold/resource buy) is gated by
    * that cost and may fire as many times as it can afford. Enforced by {@link

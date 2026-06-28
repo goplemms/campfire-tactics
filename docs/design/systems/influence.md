@@ -41,9 +41,9 @@ happens on the map**.
 
 ## Faucets (where it comes from)
 
-Both are keyed to a **Noble in the party** (interim proxy: a member with Intelligence ≥ 3,
-the Noble's stat that already drives the intel floor — until a dedicated Noble job lands).
-With no Noble present there is **no faucet at all** (no free Influence from walking).
+Both are keyed to a **Noble in the party** — the dedicated **Noble job** (`hasNoble`, D71),
+which replaced the interim "a member with Intelligence ≥ 3" proxy. With no Noble present there
+is **no faucet at all** (no free Influence from walking).
 
 1. **Passive presence accrual** — a flat trickle per **node-step** (the Noble's twin of the
    Banker's interest), credited at Break Camp.
@@ -83,8 +83,6 @@ never live RNG — so a replay reproduces exactly.
 
 ## Open / deferred
 
-- **A dedicated Noble job** — today "a Noble is present" is proxied by Intelligence ≥ 3;
-  when the class is built, point `hasNoble` at its `jobId`.
 - **Richer sinks** — sway-to-avoid-a-fight, faction access/unlocks, recruitment gates.
 - **Tuning** — accrual rate, Patronize cost/yield, band thresholds, bribe cost/chance
   curves, and event-bias magnitudes are all first-pass numbers, parked for a balance sweep.

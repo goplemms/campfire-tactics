@@ -1,6 +1,6 @@
 # System — Morale
 
-> Referenced by: [Pre-deployment](../01-pre-deployment.md) (Chef),
+> Referenced by: [Pre-deployment](../01-pre-deployment.md) (Cook),
 > [Deployment](../02-deployment.md), [Combat](../03-combat.md),
 > [Resolution](../04-resolution.md). Decision: **D8**.
 
@@ -9,7 +9,7 @@
 Morale is a **passive, party-wide readiness meter**. It is *not* a resource you
 spend or a meter you actively manage — you simply *are* at a morale tier, and a
 small bundle of modifiers applies automatically. It is the connective tissue
-between the **Chef** (who cooks it up) and the rest of the systems.
+between the **Cook** (who cooks it up) and the rest of the systems.
 
 Two principles define it:
 
@@ -53,7 +53,7 @@ effects that reinforce systems we already have:
 
 ### What moves morale
 
-- **Up:** the Chef's **morale meals** (see
+- **Up:** the Cook's **morale meals** (see
   [Pre-deployment](../01-pre-deployment.md)); a clean **rescue**.
 - **Down:** **abandoning** a captured ally (declining/expiring their rescue quest);
   losing a unit; **underfunding [Upkeep](logistics.md)** — skipping **food** is a
@@ -66,7 +66,7 @@ effects that reinforce systems we already have:
 
 ## Pseudo-example
 
-> The party finishes a run of good fights well-fed (Chef active) and pulls off a
+> The party finishes a run of good fights well-fed (Cook active) and pulls off a
 > daring rescue → morale reaches **High**. The bundle applies: +1 Deployment safe
 > allowance, a warmer initiative seed, a touch more crit. None of it decides a
 > fight alone, but the party *feels* sharp and sets up boldly.

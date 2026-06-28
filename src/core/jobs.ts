@@ -76,17 +76,17 @@ export interface JobDef {
   growth?: GrowthTable;
   /**
    * Rest Points this role banks per night (D9 recovery) — data, so adding a
-   * healer is adding a number. Support roles (Chef, Medic, …) contribute; pure
+   * healer is adding a number. Support roles (Cook, Medic, …) contribute; pure
    * combatants leave it undefined (0).
    */
   restPoints?: number;
   /**
-   * Per-night Upkeep budget lines this job owns (D15). The Chef owns Food, the
+   * Per-night Upkeep budget lines this job owns (D15). The Cook owns Food, the
    * Blacksmith Repairs; collapsed to a single gold figure in {@link "./upkeep"}.
    */
   upkeep?: { food?: number; repairs?: number };
   /**
-   * True for camp-only roles (Chef, Merchant) that act in Meta but never take the
+   * True for camp-only roles (Cook, Merchant) that act in Meta but never take the
    * field — kept in the roster for Upkeep/RP/morale, excluded from combat.
    */
   noncombat?: boolean;

@@ -189,7 +189,7 @@ The guild is where character growth is managed.
 > 7-layer haul), two **authored sidequests**, and a stream of **generated** ones.
 >
 > The player assembles **two caravans**: the **supply train** (big, slow) for the main
-> quest — loaded with the lord **Edrin**, two soldiers, the Chef, and the enchanted
+> quest — loaded with the lord **Edrin**, two soldiers, the Cook, and the enchanted
 > blade — and a **scout cart** (small, fast) for a generated sidequest with two cheap
 > recruits. Committing both **locks** those people and that blade; neither is available
 > to a third caravan.

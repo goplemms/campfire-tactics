@@ -134,7 +134,7 @@ reference them rather than re-explain:
   an armed ability's footprint (arc/push/aura) + its forecasted outcome, via a
   forecast registry that mirrors the resolver (decision D64).
 - **[Morale](systems/morale.md)** — a passive, tiered bundle of minor modifiers
-  the Chef feeds (decision D8).
+  the Cook feeds (decision D8).
 - **[Mortality, recovery & difficulty](systems/mortality-recovery.md)** — how units
   leave the run, between-night Rest-Point healing, and the per-difficulty
   consequence policy (decision D9).
@@ -163,7 +163,7 @@ reference them rather than re-explain:
 > changes against. The sketch below is the short version.
 
 > **Meta.** The party has 8 storage slots (Merchant). The player buys 12 arrows,
-> 2 trap kits, and 1 fire-rune reagent, then has the Chef cook a hearty stew
+> 2 trap kits, and 1 fire-rune reagent, then has the Cook cook a hearty stew
 > (+morale, a small between-battle heal banked for the squad). Loadout locked.
 >
 > **Deployment.** On the map, the trapper **Bram** (high Awareness) safely plants

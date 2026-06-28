@@ -158,7 +158,7 @@ export interface OverworldEconomy {
   scouted: Record<string, number>;
   /**
    * Times each **camp job skill** has been used **at the current node**, keyed by
-   * skill id — the limiter for costless signature actions (D35; Chef stew, Merchant
+   * skill id — the limiter for costless signature actions (D35; Cook stew, Merchant
    * trade). Compared against {@link "./skills".SkillDef.usesPerNode} and **reset to
    * empty each node-step** ({@link tickCooldowns}), so the allowance is per-node, not
    * per-run.

@@ -173,7 +173,7 @@ combat CT clock** (D5), one tier up.
     knobs — **pacing** (`cooldown` *or* a per-node use cap *or* none) and a per-cast
     **price** (fatigue / gold / Vancian charge / RP / Influence) — with the invariant that
     **no action may be both unpaced *and* unpriced** (that loophole is what let the costless
-    job meta-skills — Chef's stew, Merchant's trade — fire unlimited times for free). A
+    job meta-skills — Cook's stew, Merchant's trade — fire unlimited times for free). A
     resource-paid action (a Vancian cast) leaves *pacing* off and is bounded by its price —
     so it can **fire as many times per node as the party can afford**. (Interim: a
     `usesPerNode` cap on the costless jobs ships ahead of the full model.)

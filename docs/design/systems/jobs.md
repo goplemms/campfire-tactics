@@ -97,7 +97,7 @@ The predicate kinds **compose** and are **default-open** (anyone meeting them qu
 |---|---|---|
 | `jobLevel ≥ N` | **the default** prestige trigger | grind the job, earn its capstone |
 | `charLevel ≥ N` | authored coming-of-age | the nomad child who joins the hunt at L5 → Hunter |
-| `holdsItem(x)` | the **Master-Seal** pattern (consumed) | a **recipe book** grants Chef |
+| `holdsItem(x)` | the **Master-Seal** pattern (consumed) | a **recipe book** grants Cook |
 | `atNode(x)` / event-choice | a special node or interaction | the **thieves'-guild** invitation |
 | `unitId(x)` / story-flag | **select characters** | a one-off / story-gated path only *they* can take |
 | `unitMemory(flag)` | linked events (see below) | *helped the beggar* → later *invited to the guild* |
@@ -167,7 +167,7 @@ Splitting them:
 
 - **Descriptor → derive it.** A job with **no `battle`-phase skills** *is* non-combat (every
   skill already carries a `phase`). It's a **center-of-gravity** read — *which phase does this
-  job's value concentrate in?* — so the Survivalist (deployment), the Chef (meta), and the
+  job's value concentrate in?* — so the Survivalist (deployment), the Cook (meta), and the
   Banker (overworld) place naturally on a spectrum instead of being forced into a bucket. No
   authored field required.
 - **Permission → an open call (parked).** Keep the current **hard fielding ban** (a Banker
@@ -397,14 +397,13 @@ clean loop: **accrue → Patronize → Bribe.**
 
 ## Open questions / future scope
 
-- **The per-class design pass (one at a time)** — **Soldier = pass 1** (D66) · **Scout = pass 2**
-  (D68 — built) · **Merchant = pass 3** (D70) · **Cook = pass 4** & **Noble = pass 5** (D71) — the
-  non-combat triad now designed. The **action-registration substrate** these non-combat kits need is
-  **built (D72** — one home on `JobDef.skills`, `availableSkills` the projection, the effect registry,
-  computed costs, the flag bag, presence/faucet, capability gates; fixtures only). Still ahead: the
-  **triad kits** that consume it (the next content pass), the **Banker's** own 2+1 pass (+ its missing
-  presence anchor), the **prestige forks** (combat — the Soldier's; non-combat — Merchant / Cook /
-  Noble), and the remaining combat classes' kits.
+- **The per-class design pass (one at a time)** — passes 1–5 are **done & built**: Soldier (D66),
+  Scout (D68), Merchant (D70), Cook & Noble (D71), on the **action-registration substrate** (D72 —
+  one home on `JobDef.skills`, `availableSkills` the projection, the effect registry, computed costs,
+  the flag bag, presence/faucet, capability gates; fixtures only). **Still ahead:** the **triad kits**
+  that consume the substrate (the content pass), the **Banker's** own 2+1 pass (+ its missing presence
+  anchor), the **prestige forks** (combat — the Soldier's; non-combat — Merchant / Cook / Noble), and
+  the remaining combat classes' kits.
 - **Chain pacing** — job levels between hops so a tier-3 capstone feels earned.
 - **The acquisition agency model** — automatic (authored beats) vs. choice/item (generics).
 - **The per-unit-memory data shape** — contents + persistence scope (node / run / guild).

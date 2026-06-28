@@ -3,7 +3,7 @@
  *
  * The combat loop announces moments; listeners react. This is the architectural
  * seam built **before any field entity exists** (D4): traps, nests, runes, nest
- * auras, opportunity attacks and Chef buffs are all later just listeners, never
+ * auras, opportunity attacks and Cook buffs are all later just listeners, never
  * special cases in the loop. M3 may have zero or one listener — the shape is the
  * point.
  *

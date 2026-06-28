@@ -53,7 +53,7 @@ resources before the big save, with real loss only as the back-stop.
 Between-battle healing is **not flat**; it scales with the party's support
 capability and is spent by **triage**.
 
-- Each night, **support roles** (Chef, Medic, Bard, Survivalist, …) add **Rest
+- Each night, **support roles** (Cook, Medic, Bard, Survivalist, …) add **Rest
   Points** to a pool — a **data-driven** value per role, so adding a healer is
   adding a number.
 - RP converts to healing at a threshold: **`RP_PER_CHUNK` rest points → one chunk
@@ -69,7 +69,7 @@ capability and is spent by **triage**.
 
 > **Hard difficulty.** After a brutal fight: **Rook** is *dying* (3 nights on the
 > cleric clock), **Vale** is at ¼ HP, **Ember** at ½ HP. The party's support
-> (Bard `+3`, Chef `+2`) banks **5 RP/night**; `RP_PER_CHUNK = 20`, chunk = 1/8 HP.
+> (Bard `+3`, Cook `+2`) banks **5 RP/night**; `RP_PER_CHUNK = 20`, chunk = 1/8 HP.
 >
 > - **Night 1.** The player has 240 gold. They pay the **cleric** to pull Rook out
 >   of *dying* (he survives, but battered). 5 RP banked → not yet a chunk; the

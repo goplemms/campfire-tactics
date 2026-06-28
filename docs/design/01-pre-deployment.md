@@ -20,7 +20,7 @@ that don't act on the map do their work:
   so otherwise market-less stops can trade (D61). Storage, the master cap on
   everything carried, is set by the **caravan/vessel** — *not* the Merchant (D61
   retired the old gold-mint and storage-stat).
-- **Chef** — owns the **Food** line of [Upkeep](systems/logistics.md) (lowers the
+- **Cook** — owns the **Food** line of [Upkeep](systems/logistics.md) (lowers the
   per-unit cost), and provides **morale** (see [morale](systems/morale.md)) via meals
   and a banked between-battle **heal/buff**. Food is paid as Upkeep gold, *not*
   carried as a storage item.
@@ -36,7 +36,7 @@ that don't act on the map do their work:
 ### Camp: Upkeep
 
 Each night the camp menu shows **Upkeep** — one **gold figure** covering party
-maintenance (Food via the Chef, Repairs via a Blacksmith, …), per the
+maintenance (Food via the Cook, Repairs via a Blacksmith, …), per the
 **gold-as-solvent** convention (D15). Pay it in full (the chore), or **underfund a
 line** when broke (the *choice*): skipping **food** is a fast, **high** morale hit;
 letting **repairs** slide is a slower, **moderate** hit that also drops **gear
@@ -48,7 +48,7 @@ Between battles (each **night**), the camp is also where units heal and the grav
 wounded are saved — both detailed in
 [mortality-recovery](systems/mortality-recovery.md):
 
-- **Recovery** — support roles (Chef, Medic, Bard, …) bank **Rest Points** that the
+- **Recovery** — support roles (Cook, Medic, Bard, …) bank **Rest Points** that the
   player spends by **triage** to heal chosen units. Scarce, so someone often rides
   into the next fight hurt.
 - **Cleric (Hard mode)** — paying a local cleric is **emergency life-saving** for a
@@ -78,7 +78,7 @@ Key tensions a crunch player optimizes here:
 >
 > 1. **Merchant.** The player sells salvaged scrap (+60g → 300g) and considers a
 >    storage upgrade (+2 slots for 150g) but holds off — too expensive this early.
-> 2. **Upkeep.** The camp shows Upkeep **6g** (Food `4g` after the Chef's discount,
+> 2. **Upkeep.** The camp shows Upkeep **6g** (Food `4g` after the Cook's discount,
 >    Repairs `2g`). The player pays it in full this night → no morale or gear hit.
 >    (300g → 294g.)
 > 3. **Loadout.** With 8 slots and a canyon ahead, the player loads:
@@ -88,7 +88,7 @@ Key tensions a crunch player optimizes here:
 >    - `1 × nest lumber` (2 slots, bulky).
 >    Storage is now **full (8/8)**. The player *wanted* a second rune but has no
 >    room — a direct consequence of not buying the storage upgrade.
-> 4. **Chef.** Buys a **hearty stew** morale meal (gold): party morale +1 and a
+> 4. **Cook.** Buys a **hearty stew** morale meal (gold): party morale +1 and a
 >    banked **squad heal** (small HP restore at the start of next battle).
 > 5. **Commit.** The player locks the loadout and advances to **Deployment**. The
 >    canyon map loads; the shop is now closed for this encounter.

@@ -78,10 +78,10 @@ line** when broke (the *choice* — what do I let slide?):
 
 | Category | Owner | Grace | Breach → morale | Breach → mechanical |
 |---|---|---|---|---|
-| **Food** | Chef | 1 night | **High** | — (hunger is morale only) |
+| **Food** | Cook | 1 night | **High** | — (hunger is morale only) |
 | **Repairs** | Blacksmith | ~3 nights | **Moderate** | **gear condition** drops: −defense, −crit |
 
-- The **Chef** lowers the per-unit food cost (e.g. 2g → 1g); special **morale meals**
+- The **Cook** lowers the per-unit food cost (e.g. 2g → 1g); special **morale meals**
   are optional gold purchases that boost/guarantee morale.
 - **Repairs replace per-item equipment durability:** one funded/unfunded state +
   grace, then blanket combat penalties — gear wear with no per-weapon meter. (Distinct
@@ -172,7 +172,7 @@ system.
 
 ## Pseudo-example
 
-> **Upkeep first.** The camp menu shows Upkeep **6g** (food `4g` after the Chef's
+> **Upkeep first.** The camp menu shows Upkeep **6g** (food `4g` after the Cook's
 > discount + repairs `2g`). Gold is tight, so the player **underfunds repairs** this
 > night — a moderate morale hit and gear condition starts to slide, but food stays
 > covered (skipping *that* would gut morale immediately).

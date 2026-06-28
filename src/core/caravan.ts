@@ -5,7 +5,7 @@
  * bundles the four committed scarcities the guild tier manufactures —
  *
  * 1. **Party slots** — who you bring. **Slots are UNIFORM** (D25): any character
- *    fits any slot, capped at the vessel's `capacity`, so bringing the Chef
+ *    fits any slot, capped at the vessel's `capacity`, so bringing the Cook
  *    genuinely costs a fighter. Caravan *size* is the only dial.
  * 2. **Storage** — the D14 shared-stack cap, now a **per-caravan** property.
  * 3. **Locked equipment** — gear committed here is **unavailable to other

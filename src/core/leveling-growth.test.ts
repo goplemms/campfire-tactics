@@ -6,6 +6,7 @@ import {
   routeCombatXp,
   jobLevelOf,
   unlockedSkills,
+  skillsUnlockedBetween,
   abilityScaleBonus,
   applyJobLevelGains,
 } from "./leveling";
@@ -57,6 +58,14 @@ describe("hybrid leveling — per-job stat growth (D39)", () => {
     const atL2 = unlockedSkills(k, "battle").map((s) => s.id);
     expect(atL2).toContain("shove");
     expect(atL2.length).toBe(HEAVY_KNIGHT.skills.length);
+  });
+
+  it("skillsUnlockedBetween reports only the threshold just crossed (the unlock readout, D74)", () => {
+    const scout = createUnit({ id: "vale", side: "player", pos: { col: 0, row: 0 }, jobId: "scout", speed: 14, maxHp: 24, attack: 9, defense: 2, moveRange: 5, sightRadius: 6 });
+    // The Scout's L1→L2 newly unlocks Recon (its dual-surface L2 growth); Set Trap is L1, not "new".
+    expect(skillsUnlockedBetween(scout, 1, 2).map((s) => s.id)).toEqual(["recon"]);
+    // No threshold crossed in this span → nothing new.
+    expect(skillsUnlockedBetween(scout, 2, 3)).toEqual([]);
   });
 
   it("ability magnitude scales with the primary job level", () => {

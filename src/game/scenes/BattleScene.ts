@@ -16,7 +16,7 @@ import {
   TileGrid,
   TILE_HEIGHT,
   Battle,
-  unlockedSkills,
+  skillsUnlockedBetween,
   availableSkills,
   getJob,
   primaryJobOf,
@@ -2394,8 +2394,15 @@ export class BattleScene extends Phaser.Scene {
       const was = this.preBattleJobLevels.get(u.id) ?? jobLevelOf(u, u.primaryJob);
       const now = jobLevelOf(u, u.primaryJob);
       if (now > was) {
-        const actives = unlockedSkills(u, "battle").map((s) => s.name).join(", ");
-        advancement.push({ icon: "levelUp", text: `${u.name} reached job L${now}${actives ? ` — ${actives}` : ""}`, color: INK.gold });
+        // The abilities this level-up just unlocked, across all surfaces (D74) — not the
+        // cumulative set, so the readout reads as a reveal ("unlocked Recon"), not a roster.
+        const fresh = skillsUnlockedBetween(u, was, now);
+        const names = fresh.map((s) => s.name).join(", ");
+        // Call out a newly-unlocked overworld/dual-surface verb — the scouting action the
+        // player can now use on the *map* (e.g. the Scout's Recon at L2): the teaching beat.
+        const overworld = fresh.some((s) => s.overworldEffect || s.phase === "meta");
+        const tail = names ? ` — unlocked ${names}${overworld ? " (now usable on the overworld — scout a node ahead)" : ""}` : "";
+        advancement.push({ icon: "levelUp", text: `${u.name} reached job L${now}${tail}`, color: INK.gold });
       }
     }
 

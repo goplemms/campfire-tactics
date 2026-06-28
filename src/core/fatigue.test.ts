@@ -14,6 +14,8 @@ import { createUnit, type Unit } from "./units";
 import { createRun, type RunState } from "./run";
 import { RunLoop } from "./runloop";
 import { currentNode, reachableNodes, chooseNode, recordNight } from "./run";
+import { hasStatus, SLOWED } from "./status";
+import { effectiveSpeed } from "./clock";
 
 function roster(): Unit[] {
   return [
@@ -173,6 +175,32 @@ describe("fatigue — the nightly resolution (ordinary vs improved, D73)", () =>
     const node = currentNode(run);
     recordNight(run, { nodeId: node.id, layer: node.layer, kind: "rest", goldEarned: 0, fallen: [] });
     expect(run.party[0].fatigue).toBe(9); // untouched — recordNight skips rest (restNode does the wipe)
+  });
+});
+
+describe("fatigue — Exhausted reaches combat as a tempo Slow (D73)", () => {
+  it("an Exhausted unit fields Slowed at battle setup; a Rested one doesn't", () => {
+    const run = newRun("fatigue-slow");
+    const loop = new RunLoop(run);
+    // Walk to a combat node.
+    while (true) {
+      const next = reachableNodes(run);
+      const combat = next.find((n) => n.kind === "combat") ?? next[0];
+      chooseNode(run, combat.id);
+      if (currentNode(run).kind === "combat") break;
+    }
+    run.party[0].fatigue = FATIGUE.exhausted; // Exhausted → fields Slowed
+    run.party[1].fatigue = 0; // Rested → not
+
+    loop.camp();
+    loop.startEncounter(); // the Battle constructor stamps the Slow from each unit's fatigue
+
+    expect(hasStatus(run.party[0], SLOWED)).toBe(true);
+    expect(hasStatus(run.party[1], SLOWED)).toBe(false);
+    // Tempo-only: effective speed is capped (gentle, ~70% of base); the rested unit is untouched.
+    expect(effectiveSpeed(run.party[0])).toBe(exhaustionSlowSpeed(run.party[0].speed));
+    expect(effectiveSpeed(run.party[0])).toBeLessThan(run.party[0].speed);
+    expect(effectiveSpeed(run.party[1])).toBe(run.party[1].speed);
   });
 });
 

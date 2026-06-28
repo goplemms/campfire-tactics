@@ -25,10 +25,11 @@ import {
   isAdjacent,
   type BattleOutcome,
 } from "./combat";
-import { tickStatuses, applyStatus, guarded, GUARDED } from "./status";
+import { tickStatuses, applyStatus, slowed, guarded, GUARDED } from "./status";
 import { computeVisibleTiles } from "./vision";
 import { PILOT_POLICY, type AIPlan, type BattlePolicy } from "./ai";
 import { stampPassives } from "./jobs";
+import { isExhausted, exhaustionSlowSpeed, FATIGUE } from "./fatigue";
 import {
   resolveSkill,
   resolveMedHeal,
@@ -203,7 +204,13 @@ export class Battle {
     this.rngSeed = opts.seed ?? 0;
     this.variance = opts.variance ?? 0;
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
-    for (const u of units) stampPassives(u);
+    for (const u of units) {
+      stampPassives(u);
+      // D73: a unit entering battle **Exhausted** fields a tempo debuff — Slowed for the encounter
+      // (a CT cap to ~70% of base, never a power debuff). Fatigue is player-overworld state, so an
+      // enemy (fatigue 0) is never exhausted; combat *reads* the meter here, never writes it.
+      if (isExhausted(u.fatigue)) applyStatus(u, slowed(FATIGUE.slowDuration, exhaustionSlowSpeed(u.speed)));
+    }
     refreshAuras(units);
   }
 

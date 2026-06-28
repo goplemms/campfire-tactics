@@ -37,11 +37,13 @@ const BS = `window.game.scene.getScene("BattleScene")`;
 const ov = (body) => `(()=>{const s=${OV};${body}})()`;
 const bs = (body) => `(()=>{const s=${BS};${body}})()`;
 
-// Advance a battle a few turns (resetting the busy/over guards between steps, as the
-// #battle harness does) to fill the clock + show the objective gauge mid-fight.
-const advance = (n) => bs(`if(s.phase==="deployment")s.onPrimary();for(let i=0;i<${n}&&!s.waitingFor;i++){s.busy=false;s.over=false;s.onAdvance();}`);
+// Advance a battle a few turns (clearing the busy *animation* lock so the clock keeps
+// moving) to fill the clock + show the objective gauge mid-fight. Stop the moment a player
+// turn opens (`waitingFor`) or the fight decides (`over`) — do NOT clear `over`, since that
+// would defeat `finishBattle`'s re-entry guard and double-call `resolve()` on a torn-down battle.
+const advance = (n) => bs(`if(s.phase==="deployment")s.onPrimary();for(let i=0;i<${n}&&!s.waitingFor&&!s.over;i++){s.busy=false;s.onAdvance();}`);
 // Force a clean win and finish: every enemy down ⇒ the field clears (gate met too).
-const forceWin = bs(`for(const u of s.battle.units)if(u.side==="enemy")u.alive=false;s.busy=false;s.over=false;s.waitingFor=null;s.finishBattle();`);
+const forceWin = bs(`if(s.over||!s.battle)return;for(const u of s.battle.units)if(u.side==="enemy")u.alive=false;s.busy=false;s.waitingFor=null;s.finishBattle();`);
 // Navigate the loop from wherever it is to a target combat node (resting at any rest
 // node on the way), then hand off to the real BattleScene. Idempotent if already there.
 // Branch-aware: when the target is a direct edge, take it; otherwise step the first

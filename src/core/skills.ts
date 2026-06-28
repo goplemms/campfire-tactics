@@ -317,6 +317,15 @@ export interface SkillDef {
    */
   overworldCost?: OverworldCost;
   effect: SkillEffect;
+  /**
+   * A **dual-surface** skill's overworld face (D74): the effect it resolves when used
+   * **between nodes**, distinct from the combat `effect`. The Scout's **Recon** darts in
+   * battle (`effect` = Swift) and scouts a node on the overworld (`overworldEffect` =
+   * survey) — one verb, two surfaces. Resolved by {@link "./overworld-actions".useOverworldSkill}
+   * (it reads `overworldEffect ?? effect`); the render surfaces a node-aimed one (a `survey`
+   * overworldEffect) on the Survey beat. Omitted ⇒ a single-surface skill (the common case).
+   */
+  overworldEffect?: OverworldActionEffect;
 }
 
 /**

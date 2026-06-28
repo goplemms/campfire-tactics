@@ -33,7 +33,7 @@ import {
   type OverworldCost,
 } from "./overworld-actions";
 import { PATRONIZE_COST, BANKER_PROTECT_COST } from "./economy-actions";
-import { getJob, JOBS, SURVEY, FORAGE, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
+import { getJob, JOBS, RECON, FORAGE, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
 import { skillContexts } from "./skills";
 import { availableSkills } from "./leveling";
@@ -70,14 +70,17 @@ function cookSkill(): SkillDef {
   return { id: "fx-stew", name: "Fixture Stew", description: "", phase: "meta", target: "party", range: 0, spend: "act", usesPerNode: 1, effect: { kind: "morale", morale: 1, partyHeal: 8 } };
 }
 
-describe("overworld-actions — Survey is a unified overworld SkillDef (D72)", () => {
-  it("Survey lives on the Scout job and surfaces through availableSkills (no hardcoded id)", () => {
-    expect(getJob("scout")!.skills).toContain(SURVEY);
-    expect(SURVEY.overworldCost!.cooldown).toBeGreaterThan(0); // the cooldown spine is present
-    // The render reads the one projection — a Scout surfaces Survey, a Merchant doesn't
-    // (the class gate now lives in availableSkills, not a getAbility("survey") special-case).
-    expect(availableSkills(roster()[0], "overworld").map((s) => s.id)).toContain("survey");
-    expect(availableSkills(roster()[1], "overworld").map((s) => s.id)).not.toContain("survey");
+describe("overworld-actions — Recon is a unified dual-surface SkillDef (D72/D74)", () => {
+  it("Recon lives on the Scout job and surfaces (at L2) through availableSkills (no hardcoded id)", () => {
+    expect(getJob("scout")!.skills).toContain(RECON);
+    expect(RECON.overworldCost!.cooldown).toBeGreaterThan(0); // the cooldown spine is present
+    expect(RECON.overworldEffect!.kind).toBe("survey"); // its overworld face folds in Survey
+    // Recon is the Scout's **L2** overworld growth (D74), so level the scout before checking.
+    const scout = roster()[0];
+    scout.jobLevels = { scout: { level: 2, xp: 0 } };
+    // The render reads the one projection — a leveled Scout surfaces Recon, a Merchant doesn't.
+    expect(availableSkills(scout, "overworld").map((s) => s.id)).toContain("recon");
+    expect(availableSkills(roster()[1], "overworld").map((s) => s.id)).not.toContain("recon");
   });
 });
 
@@ -86,20 +89,20 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
     const run = newRun("cd-arm");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
+    const res = useOverworldSkill(run, actor, RECON, { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent).toBe(SURVEY.overworldCost!.fatigue);
-    expect(actor.fatigue).toBe(SURVEY.overworldCost!.fatigue);
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown);
+    expect(res.fatigueSpent).toBe(RECON.overworldCost!.fatigue);
+    expect(actor.fatigue).toBe(RECON.overworldCost!.fatigue);
+    expect(cooldownRemaining(run.overworld, "recon")).toBe(RECON.overworldCost!.cooldown);
   });
 
   it("refuses while on cooldown, with a reason", () => {
     const run = newRun("cd-refuse");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
-    const again = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
+    useOverworldSkill(run, actor, RECON, { targetNodeId: target.id });
+    const again = useOverworldSkill(run, actor, RECON, { targetNodeId: target.id });
 
     expect(again.applied).toBe(false);
     expect(again.reason).toMatch(/cooldown/i);
@@ -107,28 +110,28 @@ describe("overworld-actions — the cooldown spine (D35)", () => {
 
   it("cooldowns tick per node-step; reaching 0 re-enables", () => {
     const eco = createOverworldEconomy();
-    eco.cooldowns["survey"] = 2;
+    eco.cooldowns["recon"] = 2;
     tickCooldowns(eco);
-    expect(cooldownRemaining(eco, "survey")).toBe(1);
+    expect(cooldownRemaining(eco, "recon")).toBe(1);
     tickCooldowns(eco);
-    expect(cooldownRemaining(eco, "survey")).toBe(0);
+    expect(cooldownRemaining(eco, "recon")).toBe(0);
     // Idle ticks never go negative.
     tickCooldowns(eco);
-    expect(cooldownRemaining(eco, "survey")).toBe(0);
+    expect(cooldownRemaining(eco, "recon")).toBe(0);
   });
 
   it("departing a node (breakCamp) ticks the spine — the node-step fires at departure (D46)", () => {
     const run = newRun("cd-node-tick");
     const actor = run.party[0];
     const target = reachableNodes(run)[0];
-    useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(SURVEY.overworldCost!.cooldown!);
+    useOverworldSkill(run, actor, RECON, { targetNodeId: target.id });
+    expect(cooldownRemaining(run.overworld, "recon")).toBe(RECON.overworldCost!.cooldown!);
 
     // Break Camp is the node-step that ticks cooldowns — at departure, not the event.
-    for (let i = 0; i < SURVEY.overworldCost!.cooldown!; i++) {
+    for (let i = 0; i < RECON.overworldCost!.cooldown!; i++) {
       breakCamp(run);
     }
-    expect(cooldownRemaining(run.overworld, "survey")).toBe(0);
+    expect(cooldownRemaining(run.overworld, "recon")).toBe(0);
   });
 });
 
@@ -141,7 +144,7 @@ describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
     // D73 dropped the demanding-action lock — fatigue never gates a cast; the bite is the
     // deferred consequence (pricier rest-heal, carryover, the Exhausted combat Slow).
     const target = reachableNodes(run)[0];
-    const scout = useOverworldSkill(run, a, SURVEY, { targetNodeId: target.id });
+    const scout = useOverworldSkill(run, a, RECON, { targetNodeId: target.id });
     expect(scout.applied).toBe(true);
   });
 
@@ -151,11 +154,11 @@ describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
     actor.fatigue = FATIGUE.floor + 1; // over the floor (Weary)
     const target = reachableNodes(run)[0];
     const before = actor.fatigue;
-    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
+    const res = useOverworldSkill(run, actor, RECON, { targetNodeId: target.id });
 
     expect(res.applied).toBe(true);
-    expect(res.fatigueSpent!).toBe(SURVEY.overworldCost!.fatigue!); // base only — no over-extension surcharge
-    expect(actor.fatigue).toBe(before + SURVEY.overworldCost!.fatigue!);
+    expect(res.fatigueSpent!).toBe(RECON.overworldCost!.fatigue!); // base only — no over-extension surcharge
+    expect(actor.fatigue).toBe(before + RECON.overworldCost!.fatigue!);
   });
 });
 
@@ -166,9 +169,9 @@ describe("overworld-actions — Survey raises a reachable node's preview tier", 
     const target = reachableNodes(run).find((n) => n.kind === "combat")!;
 
     const before = previewNode(run, target.id, scoutedTier(run.overworld, target.id));
-    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });
+    const res = useOverworldSkill(run, actor, RECON, { targetNodeId: target.id });
     expect(res.applied).toBe(true);
-    expect(scoutedTier(run.overworld, target.id)).toBe(SURVEY.effect.kind === "survey" ? SURVEY.effect.tierBump : 0);
+    expect(scoutedTier(run.overworld, target.id)).toBe((RECON.overworldEffect as { tierBump: number }).tierBump);
 
     const after = previewNode(run, target.id, scoutedTier(run.overworld, target.id));
     expect(after.intel!.tier).toBeGreaterThan(before.intel!.tier);
@@ -177,14 +180,14 @@ describe("overworld-actions — Survey raises a reachable node's preview tier", 
   it("refuses to scout an unreachable node", () => {
     const run = newRun("scout-unreach");
     const actor = run.party[0];
-    const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: run.map.finalIds[0] });
+    const res = useOverworldSkill(run, actor, RECON, { targetNodeId: run.map.finalIds[0] });
     expect(res.applied).toBe(false);
     expect(res.reason).toMatch(/reachable/i);
   });
 
   it("refuses with no target node", () => {
     const run = newRun("scout-notarget");
-    const res = useOverworldSkill(run, run.party[0], SURVEY);
+    const res = useOverworldSkill(run, run.party[0], RECON);
     expect(res.applied).toBe(false);
   });
 });

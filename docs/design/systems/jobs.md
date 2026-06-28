@@ -252,11 +252,16 @@ not a retrofit.
   Scout flanks **solo** (no second body) **and** moves unseen, **halving its capture chance** in
   deployment (compounding again while **Swift**). One passive, two reads — *quiet* means unseen by
   both the net and the target.
-- **Dash** *(Act, L1)* — dart **+3 tiles** this turn. **Dual-context by shape** (D67): it reaches a
-  flank in combat *and* infiltrates deep pre-combat, where Quiet Footsteps' evasion compounds. Kept
-  dead-useful in both phases on purpose.
-- **Set Trap** *(Act, L2, Deployment)* — plant a trap: **8 damage** + **Exposes** the first enemy
-  onto it (reuses Exposed; sets up the Hunter's Deadeye). The L2 payoff atop L1 Dash.
+- **Set Trap** *(Act, L1, Deployment)* — plant a trap: **8 damage** + **Exposes** the first enemy
+  onto it (reuses Exposed; sets up the Hunter's Deadeye). **Moved to L1 (D74)** — the fun starter,
+  so the Scout fields its full combat kit from the start (gated only on carrying a trap-kit).
+- **Recon** *(Act, L2)* — the Scout's **dual-surface** verb (D74), one ability across all three
+  surfaces. In **battle / deployment** it *darts* **+3 tiles** (the old **Dash** — reach a flank, or
+  infiltrate deep where Quiet Footsteps' evasion compounds, **dual-context by shape**, D67); on the
+  **overworld** it *scouts a node ahead*, raising its banded intel preview a tier (the retired
+  **Survey**, D24/D48, folded in via `SkillDef.overworldEffect`). The Scout's **L2 growth is the
+  overworld**, not a 2nd battle active — on-theme for the recon specialist (and it keeps the *2 active
+  + 1 passive* count: Set Trap + Recon).
 
 **The fork — rogue → {Assassin · Thief}.** At a job-level floor **and** a met trigger, the Scout
 prestiges **in place** down one of two branches (replace-the-kit, keep the grind). Both share one

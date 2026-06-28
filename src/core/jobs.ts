@@ -465,25 +465,28 @@ export const SUBTLE_BLADE_BONUS = 8;
 export const SCOUT_PRESTIGE_FLOOR = 5;
 
 /**
- * **Survey** (D24/D72) — the Scout's overworld recon: raise a reachable node's banded
- * intel preview by a tier, tightening the route forecast (D48). This is the **unified
- * home** for what was the registry's only `OverworldAbility` (D72): an overworld
- * {@link SkillDef} carrying its own two-axis `overworldCost` (a short cooldown + light
- * fatigue) and a `survey` effect, **Class-gated by living on the Scout job** and surfaced
- * through {@link "./leveling".availableSkills} like every other action — no more
- * hardcoded `getAbility("survey")`. Target `camp` (it aims at a *map node* via the action
- * opts, not a unit), resolved by {@link "./overworld-actions".useOverworldSkill}.
+ * **Recon** (D74) — the Scout's signature **dual-surface** verb: one ability across all
+ * three surfaces. In **battle / deployment** it *darts* +3 tiles (the old Dash — reach a
+ * flank, or infiltrate deep where Quiet Footsteps' net-evasion compounds); on the
+ * **overworld** it *scouts a node ahead*, raising its banded intel preview a tier (D24/D48
+ * — the retired Survey, folded in here via {@link "./skills".SkillDef.overworldEffect}).
+ * Class-gated by living on the Scout job and surfaced through {@link
+ * "./leveling".availableSkills} like every other action; the overworld face aims at a *map
+ * node* via the action opts. The Scout's **L2 growth** (its combat kit is already up at L1).
  */
-export const SURVEY: SkillDef = {
-  id: "survey",
-  name: "Survey",
-  description: "Survey a node ahead — raise its intel preview by one tier (the Scout's recon).",
-  phase: "meta",
-  target: "camp",
+export const RECON: SkillDef = {
+  id: "recon",
+  name: "Recon",
+  description: "Break for a flank or scout the road ahead — dart +3 tiles (slipping the net deeper pre-combat), or recon a node ahead to sharpen its intel.",
+  phase: "battle",
+  usableContext: ["pre-combat", "combat", "overworld"], // explicit — its two faces span all three
+  target: "self", // combat/deploy: dart self. The overworld face aims at a node via opts.
   range: 0,
-  spend: "act",
-  overworldCost: { cooldown: 2, fatigue: 1 },
-  effect: { kind: "survey", tierBump: 1 },
+  spend: "move",
+  unlockLevel: 2, // the Scout's L2 growth (D74) — Set Trap holds L1.
+  overworldCost: { cooldown: 2, fatigue: 1 }, // the overworld (scout) cost; combat uses `spend`.
+  effect: { kind: "status", status: swift(1, 3) }, // combat/deploy face — the dart (was Dash).
+  overworldEffect: { kind: "survey", tierBump: 1 }, // overworld face — folds in the retired Survey.
 };
 
 /** The **Scout** — infiltrator / flank engine; manufactures isolation, slips the net, weakens the approach. */
@@ -496,23 +499,10 @@ export const SCOUT_JOB: JobDef = {
   growth: { speed: 2, moveRange: 1 },
   skills: [
     {
-      // Dual-context by shape (move + self ⇒ pre-combat & combat, D67): the +move reaches a
-      // flank in battle and infiltrates deep in deployment, where Quiet Footsteps' net-evasion
-      // compounds (the capture read halves again while Swift). The Scout's core mobility —
-      // available from L1.
-      id: "dash",
-      name: "Dash",
-      description: "Dart +3 tiles to reach a flank or infiltrate deep (this turn; slips the net further while pre-combat).",
-      phase: "battle",
-      target: "self",
-      range: 0,
-      spend: "move",
-      effect: { kind: "status", status: swift(1, 3) },
-    },
-    {
       // Field-craft: the fast infiltrator plants (and, holding a trap skill, disarms) traps.
       // The Scout's trap **Exposes** its prey — weakening the approach and still setting up the
-      // Hunter's Deadeye (Exposed is a debuff). The L2 rest-beat payoff atop L1 Dash.
+      // Hunter's Deadeye (Exposed is a debuff). **L1 (D74)** — the fun starter (gated only on
+      // carrying a trap-kit); the Scout fields its full combat kit from the start.
       id: "set-snare",
       name: "Set Trap",
       description: "Plant a trap in Deployment: 8 damage and Exposes the first enemy onto it (it takes +damage; sets up Deadeye).",
@@ -520,13 +510,11 @@ export const SCOUT_JOB: JobDef = {
       target: "camp",
       range: 0,
       spend: "act",
-      unlockLevel: 2,
       effect: { kind: "placeTrap", damage: 8, status: exposed(2) },
     },
-    // The Scout's overworld recon (D24/D72) — a meta/overworld verb alongside the two
-    // battle/deploy actives (the house style flexes; this is the Scout's signature
-    // between-nodes action, now a first-class skill rather than a registry special-case).
-    SURVEY,
+    // Recon (D74) — the Scout's L2 growth: one verb that darts in battle/deployment AND
+    // scouts a node on the overworld (its dual-surface face folds in the retired Survey).
+    RECON,
   ],
   // The fork (D68): a Scout that grinds to the floor and meets a branch trigger may
   // prestige in place. The Assassin is the lethal payoff of the flank identity.

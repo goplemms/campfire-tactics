@@ -104,27 +104,26 @@ describe("projectDossier (party dossier projection — pure read)", () => {
     const u = mkUnit("vale", { jobId: "scout" });
     const row = projectDossier(mkRun([u])).members[0];
 
-    // All Scout actives, in kit order, each tagged by when/how it's used. Survey is now a
-    // first-class overworld ability on the sheet (D72), tagged "Camp" — surfaced like any other.
-    expect(row.actives.map((a) => a.name)).toEqual(["Dash", "Set Trap", "Survey"]);
+    // The Scout kit (D74): Set Trap (L1 starter) + Recon (the L2 dual-surface verb that
+    // folds in the old Dash + Survey). Recon's tag shows both faces ("Battle · Move / Camp").
+    expect(row.actives.map((a) => a.name)).toEqual(["Set Trap", "Recon"]);
     const byName = (n: string) => row.actives.find((a) => a.name === n)!;
-    expect(byName("Dash").tag).toBe("Battle · Move");
     expect(byName("Set Trap").tag).toBe("Deploy");
-    expect(byName("Survey").tag).toBe("Camp");
+    expect(byName("Recon").tag).toBe("Battle · Move / Camp");
 
-    // The 2nd active (Set Trap) gates at job level 2 — locked at level 1; Dash is ready.
-    expect(byName("Set Trap").lockedUntil).toBe(2);
-    expect(byName("Dash").lockedUntil).toBeUndefined();
+    // Set Trap is L1 (ready); Recon is the Scout's L2 growth (locked at level 1).
+    expect(byName("Set Trap").lockedUntil).toBeUndefined();
+    expect(byName("Recon").lockedUntil).toBe(2);
 
     // The single identity-anchor passive surfaces with its label + description.
     expect(row.passives.map((p) => p.name)).toEqual(["Quiet Footsteps"]);
     expect(row.passives.every((p) => p.description.length > 0)).toBe(true);
   });
 
-  it("unlocks the gated active once the owning job reaches its level", () => {
+  it("unlocks the gated ability once the owning job reaches its level (Recon at L2, D74)", () => {
     const u = mkUnit("vale", { jobId: "scout", jobLevels: { scout: { level: 2, xp: 0 } } });
-    const setTrap = projectDossier(mkRun([u])).members[0].actives.find((a) => a.name === "Set Trap")!;
-    expect(setTrap.lockedUntil).toBeUndefined();
+    const recon = projectDossier(mkRun([u])).members[0].actives.find((a) => a.name === "Recon")!;
+    expect(recon.lockedUntil).toBeUndefined();
   });
 
   it("a jobless unit has no abilities", () => {

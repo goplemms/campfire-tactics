@@ -61,8 +61,10 @@ Recruits join via their nodes (not the starting bundle):
   grant); opens sustain.
 - **Mira the Merchant** — recruited at the **L5 Market** (event); opens markets.
 
-**Starting bundle:** purse 120 · supplies `salve×2, stimulant×1, antidote×2` ·
-storage cap 8 · morale 2 · difficulty normal.
+**Starting bundle:** purse 120 · supplies `salve×2, stimulant×1, antidote×2, trap-kit×2` ·
+storage cap 10 · morale 2 · difficulty normal. *(D74: Vale carries two trap-kits and knows **Set
+Trap** from L1, so the Scout has a field-craft toy in the very first deployment; the cap is +2 to
+keep run loot headroom unchanged.)*
 
 ---
 
@@ -98,13 +100,16 @@ purse, load supplies. No combat.
   unwinnable or fail it (a captive is off the clock, not a target, and not a required
   objective).
 - **Reward:** 60g, 1 salve, 100 XP — XP tuned so every survivor's primary job reaches
-  **L2 (the 2nd-active unlock)** right after this fight.
+  **L2** right after this fight. For **Vale** that L2 unlocks **Recon** (D74) — her dual-surface
+  verb whose *overworld* face (scout a node ahead) is first usable at the **L2 clearing** (Camp on
+  the Road), the demo's introduction to the overworld-action layer. *(Her L1 combat kit — Set Trap
+  + the base move — is already up.)*
 
 ### L2 — Camp on the Road (`camp2`, event → `provision-choice`)
 **Goal:** the first **scarcity choice** and the Cook payoff. No combat.
 - **Pick-one** (two finds, room for one):
-  - **Trap Kit** — reusable snare for Vale's field-craft (gated on storage room); prep
-    for L3.
+  - **Trap Kit** — more snares for Vale's field-craft (gated on storage room); a **restock**
+    for L3 atop the two she already carries (D74).
   - **Iron Weapons** — party-wide **+attack that decays** without a smith (sets the
     `iron-weapons` flag; rides gear-wear).
   - **Cook a Stew** — *only if Pip is alive* — banks **+2 RP** (the L1 rescue paying

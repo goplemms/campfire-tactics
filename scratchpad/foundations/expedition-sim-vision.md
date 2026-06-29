@@ -93,6 +93,21 @@ Full path enumeration is exponential in branchiness. Hollow Mill is tiny, but th
 engine must **bound enumeration and sample routes** past a cap — and **report the cap**
 (`sampling.capped`), never silently analyze a fraction and call it complete.
 
+## Decisions (locked)
+
+- **Scoring default = run-strength/run-health**, percentile-based best/avg/worst. The
+  heuristic must measure best/average/worst-survivor *as functionality* even when a
+  given expedition's spread is narrow. Drama-weighting stays a deferred, overridable
+  alternative (just a different `ScoreWeights`).
+- **Hollow Mill's narrow spread is expected and correct** — the slice is tutorial-like
+  / hand-tuned to be winnable-clean, so best/avg/worst land close together. A balanced
+  quest *should* have a tight survivable band; spread widens on its own for harder /
+  generated content (the validator's domain).
+- **Variety lever (policy spread / soft-choice variation) is deferred but must stay
+  first-class-able.** Keep the `policies` axis and `PopulationOpts` threaded through the
+  boot/selection path so promoting variety to a real harness feature later is *config,
+  not rework*. Soft-choice variation is a planned `TraverseOpts` extension seam.
+
 ## Honest caveats to keep visible
 
 - Scoring is a heuristic; the default encodes "strongest run," which may not equal

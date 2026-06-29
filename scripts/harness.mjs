@@ -140,6 +140,23 @@ export async function withGame(fn, opts = {}) {
     const session = {
       page,
       problems,
+      // The resolved dev-server base URL withGame computed — exposed so a script can
+      // re-boot a fresh hash within one session (see `boot`).
+      url,
+      // Re-boot the page at a new hash on the SAME server/browser session — far cheaper
+      // than one withGame per shot. Lets a script step through different `#demo?...`
+      // hashes (e.g. node×arrival jump-boots) without tearing down Chrome each time.
+      //
+      // A bare goto that differs only in the hash fragment is a *same-document*
+      // navigation in Chrome — it would NOT reload the module graph, so the game's
+      // boot config (which reads window.location.hash once at module init) would keep
+      // the previous scene. We bounce through about:blank to force a fresh document
+      // load so the new hash actually takes effect.
+      async boot(hash) {
+        await page.goto("about:blank", { waitUntil: "load", timeout: 30000 });
+        await page.goto(`${url}${hash}`, { waitUntil: "load", timeout: 30000 });
+        await page.waitForSelector("canvas", { timeout: 15000 });
+      },
       eval: (body) => page.evaluate(body),
       bsEval: (body) => page.evaluate(bs(body)),
       async clickScene(x, y) {

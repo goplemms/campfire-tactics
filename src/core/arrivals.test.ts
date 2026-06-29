@@ -4,9 +4,11 @@ import { enumeratePaths, traverseRoute } from "./expedition-sim";
 import {
   scoreArrival,
   samplePopulation,
+  pickRepresentatives,
   DEFAULT_SCORE_WEIGHTS,
   DEFAULT_SEED_SALTS,
   type Population,
+  type Sample,
 } from "./arrivals";
 import type { RunState } from "./run";
 
@@ -190,6 +192,115 @@ describe("samplePopulation (Phase 3)", () => {
     expect(pop.samples.length).toBe(pop.sampling.generated);
     for (const s of pop.samples) {
       expect(s.score.total).toBeTypeOf("number");
+    }
+  });
+});
+
+describe("pickRepresentatives (Phase 4)", () => {
+  /** Build a minimal survivor {@link Sample} at a synthetic score (for literal-population tests). */
+  function sampleAt(total: number, survived: boolean, salt: number): Sample {
+    return {
+      descriptor: { route: ["start", "den"], targetId: "den", seedSalt: salt, policyName: "pilot" },
+      score: { total, parts: {} },
+      survived,
+    };
+  }
+
+  /** Wrap bare samples into a {@link Population} with a coherent sampling report. */
+  function popOf(samples: Sample[]): Population {
+    return {
+      samples,
+      sampling: {
+        routes: 1,
+        salts: samples.length,
+        policies: 1,
+        generated: samples.length,
+        capped: false,
+        inaccessibleRoutes: 0,
+      },
+    };
+  }
+
+  it("orders best ≥ average ≥ worst over survivors, with a correct stats band", () => {
+    const pop = samplePopulation(EXP, "den");
+    const picks = pickRepresentatives(pop);
+    expect(picks.best && picks.average && picks.worst).toBeTruthy();
+    expect(picks.best!.score.total).toBeGreaterThanOrEqual(picks.average!.score.total);
+    expect(picks.average!.score.total).toBeGreaterThanOrEqual(picks.worst!.score.total);
+    // Picks are survivors only.
+    for (const p of [picks.best!, picks.average!, picks.worst!]) expect(p.survived).toBe(true);
+    // Stats band == [min, max] over survivors.
+    const survivorTotals = pop.samples.filter((s) => s.survived).map((s) => s.score.total);
+    expect(picks.stats.scoreRange[0]).toBe(Math.min(...survivorTotals));
+    expect(picks.stats.scoreRange[1]).toBe(Math.max(...survivorTotals));
+    expect(picks.stats.sampled).toBe(pop.samples.length);
+    expect(picks.stats.survived).toBe(survivorTotals.length);
+    expect(picks.stats.excludedLosses).toBe(pop.samples.length - survivorTotals.length);
+  });
+
+  it("excludes a wiped (low-score non-survivor) sample from worst and counts it in excludedLosses", () => {
+    // A low-scoring LOSS plus three real survivors. The loss must NOT become `worst`,
+    // and it must be tallied as an excluded loss.
+    const loss = sampleAt(-100, false, 99);
+    const pop = popOf([sampleAt(30, true, 0), sampleAt(10, true, 1), sampleAt(20, true, 2), loss]);
+    const picks = pickRepresentatives(pop);
+    expect(picks.worst!.score.total).toBe(10); // lowest SURVIVOR, not the -100 loss
+    expect(picks.best!.score.total).toBe(30);
+    expect(picks.worst).not.toBe(loss);
+    expect(picks.stats.sampled).toBe(4);
+    expect(picks.stats.survived).toBe(3);
+    expect(picks.stats.excludedLosses).toBe(1);
+    expect(picks.stats.scoreRange).toEqual([10, 30]);
+  });
+
+  it("median takes the lower-middle on an even survivor count (documented tie-break)", () => {
+    // Four survivors 10,20,30,40 → median is the lower-middle (20), not 30 or an average.
+    const pop = popOf([sampleAt(40, true, 0), sampleAt(10, true, 1), sampleAt(30, true, 2), sampleAt(20, true, 3)]);
+    const picks = pickRepresentatives(pop);
+    expect(picks.average!.score.total).toBe(20);
+  });
+
+  it("no survivors ⇒ all picks undefined, survived 0, scoreRange [NaN, NaN]", () => {
+    const pop = popOf([sampleAt(5, false, 0), sampleAt(3, false, 1)]);
+    const picks = pickRepresentatives(pop);
+    expect(picks.best).toBeUndefined();
+    expect(picks.average).toBeUndefined();
+    expect(picks.worst).toBeUndefined();
+    expect(picks.stats.survived).toBe(0);
+    expect(picks.stats.excludedLosses).toBe(2);
+    expect(picks.stats.scoreRange[0]).toBeNaN();
+    expect(picks.stats.scoreRange[1]).toBeNaN();
+  });
+
+  it("one survivor ⇒ best === average === worst === that sample (same reference)", () => {
+    const only = sampleAt(42, true, 7);
+    const pop = popOf([only, sampleAt(1, false, 8)]);
+    const picks = pickRepresentatives(pop);
+    expect(picks.best).toBe(only);
+    expect(picks.average).toBe(only);
+    expect(picks.worst).toBe(only);
+    expect(picks.stats.survived).toBe(1);
+    expect(picks.stats.scoreRange).toEqual([42, 42]);
+  });
+
+  it("is deterministic — the same population yields the same picks", () => {
+    const pop = samplePopulation(EXP, "den");
+    const a = pickRepresentatives(pop);
+    const b = pickRepresentatives(pop);
+    expect(b.stats).toEqual(a.stats);
+    expect(b.best!.descriptor).toEqual(a.best!.descriptor);
+    expect(b.average!.descriptor).toEqual(a.average!.descriptor);
+    expect(b.worst!.descriptor).toEqual(a.worst!.descriptor);
+  });
+
+  it("re-materialization fidelity — a chosen descriptor re-traversed reproduces its score", () => {
+    const pop = samplePopulation(EXP, "den");
+    const picks = pickRepresentatives(pop);
+    for (const pick of [picks.best!, picks.average!, picks.worst!]) {
+      const { run } = traverseRoute(EXP, pick.descriptor.route, {
+        seedSalt: pick.descriptor.seedSalt,
+      });
+      expect(scoreArrival(run).total).toBeCloseTo(pick.score.total, 10);
     }
   });
 });

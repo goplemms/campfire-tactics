@@ -13,9 +13,15 @@ import {
   THE_HOLLOW_MILL,
   enumeratePaths,
   traverseRoute,
+  samplePopulation,
+  pickRepresentatives,
+  DEFAULT_POLICIES,
   getNode,
   type Unit,
   type MapNode,
+  type PopulationOpts,
+  type SampleDescriptor,
+  type BattlePolicy,
 } from "../core";
 import type { RunHandoff } from "./scenes/OverworldScene";
 import { installPlaytestLogUI } from "./playtest-log-ui";
@@ -218,21 +224,85 @@ export class HollowMillBootScene extends Phaser.Scene {
  * ({@link enumeratePaths} + {@link traverseRoute}) so the jump replays the real
  * overworld pipeline headlessly instead of re-walking the run by hand.
  *
- * The route is resolved from `opts.route` when given (the exact, hand-picked
- * scenario), else defaulted to the **first enumerated** simple path to the node.
- * An unreachable node (no route from the start) is a surfaced error, not a silent
- * empty boot. The playtest log is installed for parity with {@link buildHollowMill}.
+ * **Route resolution order:**
+ * 1. `opts.route` given → that exact, hand-picked route (existing behavior; `arrival` is
+ *    ignored — an explicit scenario wins).
+ * 2. else `opts.arrival` given (`"best" | "average" | "worst"`) → sample a population at the
+ *    node ({@link samplePopulation}, threading {@link PopulationOpts}), pick representatives
+ *    ({@link pickRepresentatives}), and take the chosen pick's {@link SampleDescriptor}.
+ *    If that pick is absent (no survivors at the node) this is a **surfaced error**.
+ * 3. else (neither) → the **first enumerated** simple path to the node (existing default).
+ *
+ * A chosen *descriptor* is then re-materialized into the real arrival via
+ * {@link traverseRoute} with the descriptor's salt and its named policy (resolved by name
+ * from the sampling policy set — see {@link resolvePolicy}), so the booted run is byte-for-byte
+ * the same one the population scored. An unreachable node (no route from the start) is a
+ * surfaced error, not a silent empty boot. The playtest log is installed for parity with
+ * {@link buildHollowMill}.
+ *
+ * `opts.populationOpts` is the **first-class-able variety seam** (the vision's "config not
+ * rework" decision): it threads straight into {@link samplePopulation}. The boot seam passes
+ * defaults today, but promoting variety (more salts, A/B policies) later is config, not a
+ * code change here.
  */
-export function buildArrivalJump(opts: { node: string; route?: string[]; salt?: number }): RunHandoff {
-  const route = opts.route ?? enumeratePaths(THE_HOLLOW_MILL.map, opts.node)[0];
+export function buildArrivalJump(opts: {
+  node: string;
+  route?: string[];
+  salt?: number;
+  arrival?: "best" | "average" | "worst";
+  populationOpts?: PopulationOpts;
+}): RunHandoff {
+  let route: string[] | undefined;
+  let seedSalt: number | undefined = opts.salt;
+  let policy: { player: BattlePolicy; enemy: BattlePolicy } | undefined;
+
+  if (opts.route) {
+    // (1) Explicit, hand-picked route wins — existing behavior; ignore `arrival`.
+    route = opts.route;
+  } else if (opts.arrival) {
+    // (2) Percentile pick: sample → pick → re-materialize the chosen descriptor.
+    const population = samplePopulation(THE_HOLLOW_MILL, opts.node, opts.populationOpts);
+    const picks = pickRepresentatives(population);
+    const pick = picks[opts.arrival];
+    if (!pick) {
+      throw new Error(
+        `buildArrivalJump: no "${opts.arrival}" arrival at "${opts.node}" — ` +
+          `0 of ${picks.stats.sampled} sampled runs survived to it (all wiped on the way)`,
+      );
+    }
+    const descriptor: SampleDescriptor = pick.descriptor;
+    route = descriptor.route;
+    seedSalt = descriptor.seedSalt;
+    policy = resolvePolicy(descriptor.policyName, opts.populationOpts);
+  } else {
+    // (3) Default — the first enumerated simple path to the node.
+    route = enumeratePaths(THE_HOLLOW_MILL.map, opts.node)[0];
+  }
+
   if (!route) {
     throw new Error(`buildArrivalJump: "${opts.node}" is unreachable from the start (no route)`);
   }
-  const arrival = traverseRoute(THE_HOLLOW_MILL, route, { seedSalt: opts.salt });
+  const arrival = traverseRoute(THE_HOLLOW_MILL, route, { seedSalt, policy });
   // Instrument for parity with buildHollowMill (the showcase playtest telemetry).
   arrival.loop.log = createPlaytestLog(arrival.run, THE_HOLLOW_MILL.id);
   installPlaytestLogUI(arrival.loop.log);
   return { run: arrival.run, loop: arrival.loop, demoIntro: false };
+}
+
+/**
+ * Resolve a {@link SampleDescriptor}'s `policyName` back to its battle-policy pair, from the
+ * **same policy set the population was sampled under** (`populationOpts.policies`, defaulting
+ * to {@link DEFAULT_POLICIES}). Falls back to the first default policy when the name isn't
+ * found (defensive — with today's single "pilot" policy this is trivial, but it's written so
+ * multiple named policies re-materialize correctly).
+ */
+function resolvePolicy(
+  policyName: string,
+  populationOpts?: PopulationOpts,
+): { player: BattlePolicy; enemy: BattlePolicy } {
+  const policies = populationOpts?.policies ?? DEFAULT_POLICIES;
+  const named = policies.find((p) => p.name === policyName);
+  return (named ?? DEFAULT_POLICIES[0]).policy;
 }
 
 /** Parsed `#demo?node=…` jump params (see {@link JumpBootScene}). */
@@ -240,6 +310,12 @@ export interface JumpParams {
   node: string;
   route?: string[];
   salt?: number;
+  /**
+   * The **percentile pick** (the magic button): boot the best / average / worst-survivor
+   * arrival at the node. Only those three values are accepted; anything else (or absent) is
+   * treated as unset. Ignored when an explicit `route` is given.
+   */
+  arrival?: "best" | "average" | "worst";
   into?: "overworld" | "battle";
 }
 
@@ -250,17 +326,27 @@ export function parseJumpParams(query: string): JumpParams | null {
   if (!node) return null;
   const routeRaw = params.get("route");
   const saltRaw = params.get("salt");
+  const arrivalRaw = params.get("arrival");
   const intoRaw = params.get("into");
   return {
     node,
     route: routeRaw ? routeRaw.split(",").filter((s) => s.length > 0) : undefined,
     salt: saltRaw != null && saltRaw !== "" ? Number(saltRaw) : undefined,
+    arrival:
+      arrivalRaw === "best" || arrivalRaw === "average" || arrivalRaw === "worst"
+        ? arrivalRaw
+        : undefined,
     into: intoRaw === "overworld" || intoRaw === "battle" ? intoRaw : undefined,
   };
 }
 
 /**
- * A headless boot scene for the jump tool: `#demo?node=<id>&route=<id,id,…>&salt=<n>&into=<overworld|battle>`.
+ * A headless boot scene for the jump tool:
+ * `#demo?node=<id>&route=<id,id,…>&salt=<n>&arrival=<best|average|worst>&into=<overworld|battle>`.
+ *
+ * `arrival=best|average|worst` is the **magic button**: it samples a population at the node
+ * and boots the best / average / worst-*survivor* arrival (see {@link buildArrivalJump}).
+ * An explicit `route` overrides it.
  *
  * Re-reads `window.location.hash` (config already matched it; reading it here keeps
  * the scene self-contained and the seam in one place). Builds the arrival, then

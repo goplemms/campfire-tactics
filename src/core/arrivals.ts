@@ -462,3 +462,114 @@ export function samplePopulation(
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Representative selection (Phase 4) — the "magic button"
+// ---------------------------------------------------------------------------
+
+/**
+ * The three **representative arrivals** the jump tool boots, plus an honest report.
+ *
+ * {@link best}, {@link average} and {@link worst} are picked from the **survivors** of a
+ * {@link Population} (samples whose run did not wipe on the way) — losses are excluded so
+ * "worst" is the worst *survivable* arrival, not "the player threw the run". Any pick can be
+ * `undefined` when there are no survivors (see {@link pickRepresentatives}); with a single
+ * survivor all three are that same sample.
+ *
+ * {@link stats} surfaces *why* — how many were sampled, how many survived, how many losses
+ * were excluded, and the survivor score band — so a collapse (every run wiped, or the band
+ * pinching to a point) is visible rather than hidden, exactly the vision's "surface the
+ * stats so a collapse isn't hidden" requirement.
+ */
+export interface ArrivalPicks {
+  /** The highest-scoring survivor (best-case arrival). Absent ⇒ no survivors. */
+  best?: Sample;
+  /** The median survivor (typical arrival). Absent ⇒ no survivors. */
+  average?: Sample;
+  /** The lowest-scoring survivor (worst *survivable* arrival; losses excluded). Absent ⇒ no survivors. */
+  worst?: Sample;
+  /** The honest selection report. */
+  stats: {
+    /** Total samples considered (`population.samples.length`). */
+    sampled: number;
+    /** Survivor count (samples with `survived === true`). */
+    survived: number;
+    /** Sampled minus survived — the losses excluded from the picks. */
+    excludedLosses: number;
+    /** `[min, max]` of `score.total` over **survivors**; `[NaN, NaN]` when there are none. */
+    scoreRange: [number, number];
+  };
+}
+
+/**
+ * Pick the **median** element of an already-ascending-sorted, non-empty array. On an **even**
+ * count the **lower-middle** is taken (index `floor((n - 1) / 2)`) — a deliberate, documented
+ * tie-break so the choice is fully deterministic given the population (no averaging of two
+ * samples, which a `Sample` can't represent anyway). Factored out as the single place the
+ * percentile choice lives: today it's a literal max/median/min over survivors, and swapping
+ * in an outlier-robust percentile (e.g. p95/p5) later is a change here and at the call site
+ * only, not a rework of the selector.
+ */
+function medianOf<T>(sortedAscending: T[]): T {
+  return sortedAscending[Math.floor((sortedAscending.length - 1) / 2)];
+}
+
+/**
+ * **Pick representative arrivals** from a scored {@link Population} — the data behind the
+ * jump tool's "best / average / worst" magic button.
+ *
+ * Survivors only: samples with `survived === true` are kept; wipe-on-the-way losses are
+ * **excluded** (counted in `stats.excludedLosses`) so "worst" is the worst *survivable*
+ * arrival rather than a run the player lost through poor choices. Survivors are sorted by
+ * `score.total` **ascending** (a stable sort — ties keep population/iteration order, which is
+ * itself deterministic, so identical populations yield identical picks). Then:
+ *
+ * - **best** = the highest-scoring survivor (the literal best case).
+ * - **average** = the **median** survivor (see {@link medianOf} — lower-middle on an even count).
+ * - **worst** = the lowest-scoring survivor (the literal worst *survivable* case).
+ *
+ * These are a max / median / min over survivors today. The vision notes outlier-robust
+ * percentiles (p95/p5) as a future option; the selection is kept to one small helper so that
+ * swap stays trivial.
+ *
+ * **Edge cases (never throws):**
+ * - *No survivors* ⇒ all three picks `undefined`, `stats.survived === 0`, and
+ *   `scoreRange === [NaN, NaN]` (a deliberate "no band exists" sentinel — `NaN`, not `[0,0]`,
+ *   so an empty band is never confused with a real band that happens to sit at zero).
+ * - *One survivor* ⇒ `best === average === worst === that sample` (the same object reference).
+ *
+ * Pure; reads the population, never mutates it. Deterministic given the population.
+ */
+export function pickRepresentatives(population: Population): ArrivalPicks {
+  const sampled = population.samples.length;
+  const survivors = population.samples.filter((s) => s.survived);
+  const survived = survivors.length;
+  const excludedLosses = sampled - survived;
+
+  if (survived === 0) {
+    return {
+      best: undefined,
+      average: undefined,
+      worst: undefined,
+      stats: { sampled, survived, excludedLosses, scoreRange: [NaN, NaN] },
+    };
+  }
+
+  // Ascending by score.total; stable (preserves the deterministic population order on ties).
+  const sorted = [...survivors].sort((a, b) => a.score.total - b.score.total);
+  const worst = sorted[0];
+  const best = sorted[sorted.length - 1];
+  const average = medianOf(sorted);
+
+  return {
+    best,
+    average,
+    worst,
+    stats: {
+      sampled,
+      survived,
+      excludedLosses,
+      scoreRange: [worst.score.total, best.score.total],
+    },
+  };
+}

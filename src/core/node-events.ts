@@ -39,7 +39,7 @@ import { createUnit, primaryJobOf, remember, type Unit, type UnitSpec } from "./
 import { streamFor } from "./rng";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
 import { getJob, SCOUT_PRESTIGE_FLOOR } from "./jobs";
-import { MATERIALS, addItem, canAdd } from "./inventory";
+import { MATERIALS, addItem, grantItem, canAdd } from "./inventory";
 import { addInfluence, influenceTier, type InfluenceTier } from "./economy";
 import { merchantBuy, merchantPrice } from "./economy-actions";
 import { rollMercenary } from "./guild";
@@ -509,10 +509,9 @@ export function applyStoryChoice(run: RunState, node: MapNode, story: StorySpec,
     out.fatigueDelta = spec.fatigueDelta;
   }
   if (spec.material) {
-    // Reuse the inventory cap (D6): a full stash simply drops the reward.
-    const before = run.inventory.counts[spec.material] ?? 0;
-    addItem(run.inventory, spec.material);
-    if ((run.inventory.counts[spec.material] ?? 0) > before) out.materials = [spec.material];
+    // The reward always lands (D75); over-cap is resolved by a discard at Break Camp.
+    grantItem(run.inventory, spec.material);
+    out.materials = [spec.material];
   }
   // D65 — a unit-targeted choice writes memory and/or applies a grant to that member.
   // (autoResolve picks the base id, so it targets no unit and applies neither — the
@@ -695,10 +694,8 @@ export const EVENTS: readonly EventDef[] = [
       const out = emptyOutcome("patron", "A patron feasts the company — spirits lift, and a parting gift is pressed into your hands.");
       run.camp.morale += PATRON.morale;
       out.moraleDelta = PATRON.morale;
-      if (canAdd(run.inventory, PATRON.gift)) {
-        addItem(run.inventory, PATRON.gift);
-        out.materials = [PATRON.gift];
-      }
+      grantItem(run.inventory, PATRON.gift); // the gift always lands (D75)
+      out.materials = [PATRON.gift];
       // Goodwill compounds: the welcome itself nudges standing up a touch (D62).
       addInfluence(run.overworld, PATRON.influence);
       return out;

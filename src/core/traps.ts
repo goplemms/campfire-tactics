@@ -13,7 +13,7 @@
  */
 import { primaryJobOf, type Unit } from "./units";
 import type { Inventory } from "./inventory";
-import { addItem, countOf, removeItem } from "./inventory";
+import { grantItem, countOf, removeItem } from "./inventory";
 import type { Rng } from "./rng";
 import { chebyshev, type GridCoord } from "./iso";
 import { clamp01 } from "./num";
@@ -249,6 +249,8 @@ export function disarmTrap(
   if (!canDisarm(unit)) return { ok: false, reason: "Only a trap-trained unit can disarm a trap." };
   if (chebyshev(unit.pos, e.pos) > 1) return { ok: false, reason: "Move adjacent to disarm it." };
   entities.remove(e.id);
-  const stored = addItem(inv, e.materialId, 1);
-  return { ok: true, harvested: stored ? e.materialId : undefined };
+  // Harvested kit lands unconditionally (D75) — overflow is resolved by the
+  // discard step, so disarming never silently drops the kit at the cap.
+  grantItem(inv, e.materialId, 1);
+  return { ok: true, harvested: e.materialId };
 }

@@ -163,3 +163,45 @@ export function removeItem(inv: Inventory, materialId: string, n = 1): boolean {
   if (inv.counts[materialId] === 0) delete inv.counts[materialId];
   return true;
 }
+
+// --- The overflow substrate (D75): grants land, then you discard back to cap ---------
+//
+// `addItem` is the **cap-enforced** add — used for a player **buy** (you can't buy what
+// won't fit). A **grant** (a reward, the relic, a Forage find, a gift) instead uses
+// `grantItem`, which **always lands** — even over the cap — so loot never silently vanishes.
+// The over-capacity is then resolved by a deliberate **discard**: the interactive camp menu
+// (the player picks what to drop) or {@link autoTrim} (the headless default). One honest
+// rule across the whole game: *items don't disappear; you choose what to let go.*
+
+/**
+ * Grant `n` of a material **unconditionally** — over the storage cap if need be (D75). A grant
+ * always lands; the resulting over-capacity (see {@link slotsOver}) is cleared later by a player
+ * discard or {@link autoTrim}. Contrast {@link addItem} (cap-enforced, for buys).
+ */
+export function grantItem(inv: Inventory, materialId: string, n = 1): void {
+  if (!getMaterial(materialId) || n <= 0) return;
+  inv.counts[materialId] = countOf(inv, materialId) + n;
+}
+
+/** Slots the stash is **over** its cap (0 when within) — the overflow a discard must clear (D75). */
+export function slotsOver(inv: Inventory): number {
+  return Math.max(0, slotsUsed(inv) - inv.storageCap);
+}
+
+/**
+ * Deterministically discard down to the cap — the **headless default** for an over-capacity
+ * stash (D75; the interactive path is the player's discard menu). Sheds the **lowest sale-value**
+ * material first (ties broken by id), so high-value loot — the relic — survives. Returns the ids
+ * discarded, in order. A no-op when already within cap.
+ */
+export function autoTrim(inv: Inventory): string[] {
+  const discarded: string[] = [];
+  while (slotsUsed(inv) > inv.storageCap) {
+    const carried = Object.keys(inv.counts).filter((id) => inv.counts[id] > 0);
+    if (carried.length === 0) break; // nothing left to shed (shouldn't happen)
+    carried.sort((a, b) => (getMaterial(a)?.saleValue ?? 0) - (getMaterial(b)?.saleValue ?? 0) || a.localeCompare(b));
+    removeItem(inv, carried[0], 1);
+    discarded.push(carried[0]);
+  }
+  return discarded;
+}

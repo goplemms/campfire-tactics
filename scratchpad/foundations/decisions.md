@@ -2660,6 +2660,44 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D75 — The inventory overflow substrate (grants land, then discard)
+
+- **Status:** Decided + built. A general logistics-feel change: the reusable "over-stuff then trim"
+  model and its discard screen. (The Node 2 *storage beat* that will teach this limit on the demo
+  route is a separate design decision, tracked elsewhere; this record covers only the general system.)
+- **Context:** Storage was a **hard invariant** — `addItem` refused any add over the cap and returned
+  `false`, so a reward/relic/Forage find that didn't fit was **silently dropped** (a known sharp edge:
+  the **Den relic** could vanish if the stash was full; D74 padded the cap to dodge it). A silent drop
+  is a bad teacher: the player never sees the limit bite, and the loot they earned just disappears.
+- **Decision 1 — the over-stuff-then-discard model.** A **grant** (a reward, the relic, a Forage find,
+  recovered/harvested gear, a gift) now **always lands — even over the cap** — via a new unconditional
+  **`grantItem`**. The resulting over-capacity (`slotsOver`) is cleared by a **deliberate discard**:
+  the interactive **discard menu** (the player picks what to drop) or **`autoTrim`** (the headless
+  default — sheds **lowest sale-value first**, ties by id, so high-value loot like the **relic
+  survives**). One honest rule across the whole game: *items don't disappear; you choose what to let
+  go.* A player **buy** stays **cap-enforced** (`addItem` kept — you can't buy what won't fit), and an
+  **equip/unequip** move (D76) stays cap-enforced too (it can't overflow by construction).
+- **Decision 2 — route every grant site onto `grantItem`.** Rewards + relic (`runloop`), the event
+  reward + patron gift (`node-events`), Forage finds (`overworld-actions`), win-recovery
+  (`resolution`), trap harvest (`traps`). `breakCamp` runs `autoTrim` as the headless safety net (a
+  no-op once within cap), keeping the sim bounded + deterministic; the interactive camp trims first via
+  the menu. The discard menu shows each row's **slot footprint**, so the slot-per-unit cuts are obvious
+  and a half-stack (goods that share a slot) reads as a stacking lesson.
+- **D76 reconciliation:** the gear system's `equip`/`unequip` move items stash↔slot via
+  `addItem`/`canAdd`/`removeItem` — that stays correct (you can't overflow by equipping), so the
+  substrate **adds** `grantItem` without re-routing any equip path. D76 added no new grant site.
+- **Reuses / consistent with:** **D14/D20** (the slotted-stack storage cap this makes felt), **D6**
+  (the provisioning constraint — now a *discard*, not a silent refusal), **D61** (sale-value orders
+  the headless trim; loot/relic survive), **D46** (the discard gates at **Break Camp**, before the
+  node-step tick), **D52** (the Den relic the trim now protects), **D76** (equip/unequip stay
+  cap-enforced alongside the new grant path).
+- **Open / deferred:** the **Node 2 storage beat** (the authored event + bundle tuning that will make
+  this limit *felt* on the demo route) is its own decision; a future *expand-storage* faucet is
+  unspecified; the run-wide storage **cap** value remains demo-tuning.
+- **Superseded by:** —
+
+---
+
 ## D76 — The gear / item system: blanket Condition × per-unit Arms
 
 - **Status:** Decided + built (the substrate + the aggregate stamp, in green increments;

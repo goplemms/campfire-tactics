@@ -84,7 +84,10 @@ generic *structural* check; this engine is its *dynamic*, played-through counter
    `analyzeExpedition(exp) → FeasibilityReport` { completable, completingRoutes,
    perNode survival/casualties, unreachablePayloads, violations[], determinismOk,
    sampling{routesSampled,capped} }. CLI/test harness.
-6. **Future:** point `analyzeExpedition` at a real `generateExpedition()` output — no
+6. **Representative screenshots:** a shots script that boots each best/average/worst
+   (and hand-picked) arrival via the `#demo?node=…&arrival=…` seam and captures it —
+   reusing the puppeteer harness. `npm run shots:arrivals`.
+7. **Future:** point `analyzeExpedition` at a real `generateExpedition()` output — no
    engine change needed.
 
 ## Scale caveat (and itself a corner case)

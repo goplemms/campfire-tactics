@@ -57,5 +57,6 @@ export * from "./traps";
 export * from "./gear-condition";
 export * from "./equipment";
 export * from "./expedition";
+export * from "./expedition-sim";
 export * from "./hollow-mill";
 export * from "./sim";

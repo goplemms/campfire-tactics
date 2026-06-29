@@ -13,6 +13,7 @@
 
 import type { RunState } from "./run";
 import { MATERIALS, countOf, slotsFor, slotsUsed, type MaterialDef } from "./inventory";
+import { getEquipment } from "./equipment";
 import { moraleTier, type MoraleTier } from "./camp";
 import { computeUpkeep } from "./upkeep";
 
@@ -145,7 +146,10 @@ export function projectManifest(run: RunState, opts: ManifestOptions = {}): Cara
     const count = countOf(inv, mat.id);
     return { id: mat.id, name: mat.name, count, slots: slotsFor(mat, count), recoverable: mat.recoverable, effect: itemEffect(mat) };
   };
-  const all = Object.values(MATERIALS);
+  // Show every known material — but equippable gear (D77) only when actually carried:
+  // an empty-slot weapon belongs to the Arms surface, not the consumables catalog, so
+  // a zero-count equippable never pads the manifest (keeps un-equipped runs identical).
+  const all = Object.values(MATERIALS).filter((m) => !getEquipment(m.id) || countOf(inv, m.id) > 0);
   const used = slotsUsed(inv);
   return {
     vesselLabel: opts.vesselLabel,

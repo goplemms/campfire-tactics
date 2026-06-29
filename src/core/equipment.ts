@@ -86,12 +86,24 @@ export interface EquipmentDef {
 
 /**
  * The equipment registry — the single source equippable items load from (sibling of
- * {@link "./inventory".MATERIALS}). **Empty for now**: the per-unit substrate ships
- * ahead of its content — the relic (`relic-hollow-blade`) stays an inert stash
- * material until its effect is designed, and the party set (iron-weapons) lives in
- * {@link "./gear-condition"}. Authored/test content registers entries by id.
+ * {@link "./inventory".MATERIALS}). The first content lands with the equip surface
+ * (D77): the **Wayfarer's Blade**, a modest maintained weapon — a worked teaching
+ * example of gear (its +2 attack dulls with `gearWear`). The relic
+ * (`relic-hollow-blade`) stays an inert stash material until its effect is designed,
+ * and the party set (iron-weapons) lives in {@link "./gear-condition"}. Each entry is
+ * **dual-registered** with a {@link "./inventory".MaterialDef} of the same id (storage
+ * accounting); authored/test content registers further entries by id.
  */
-export const EQUIPMENT: Record<string, EquipmentDef> = {};
+export const EQUIPMENT: Record<string, EquipmentDef> = {
+  "wayfarer-blade": {
+    id: "wayfarer-blade",
+    name: "Wayfarer's Blade",
+    slot: "weapon",
+    mods: { attack: 2 },
+    maintained: true, // the gearWear axis dulls the +2 — the teaching example (D77)
+    saleValue: 30,
+  },
+};
 
 /** Look up an equipment definition by id. */
 export function getEquipment(id: string): EquipmentDef | undefined {

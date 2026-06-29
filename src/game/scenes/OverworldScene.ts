@@ -56,6 +56,9 @@ import {
   buildLedger,
   nightEndGate,
   computeUpkeep,
+  // D77 — the equip surface verbs (pure core; the scene only calls + redraws)
+  equip,
+  unequip,
   type RunState,
   type MapNode,
   type NodePreview,
@@ -71,6 +74,7 @@ import {
   type RouteForecast,
   type UpkeepLine,
   type JournalConcern,
+  type EquipSlot,
 } from "../../core";
 import { fitText, clearLayer } from "../ui";
 import { Button } from "../button";
@@ -907,7 +911,9 @@ export class OverworldScene extends Phaser.Scene {
     this.input.keyboard?.once("keydown-ESC", () => this.closeTent());
   }
 
-  /** Party tab — the bounds-driven dossier view, embedded (the Tent owns the chrome). */
+  /** Party tab — the bounds-driven dossier view, embedded (the Tent owns the chrome).
+   *  The equip intents (D77) call the pure core verbs and redraw the Tent; all the
+   *  rules (slot-match, unique-gating, cap-safe swap) live in {@link equip}/{@link unequip}. */
   private drawTentParty(bounds: Phaser.Geom.Rectangle): void {
     this.tentDossier = new PartyDossierView(this, {
       bounds,
@@ -915,6 +921,14 @@ export class OverworldScene extends Phaser.Scene {
       embedded: true,
       data: projectDossier(this.run),
       onClose: () => this.closeTent(),
+      onEquip: (unitId, itemId) => {
+        const unit = this.run.party.find((u) => u.id === unitId);
+        if (unit && equip(this.run.inventory, unit, itemId, { party: this.run.party })) this.renderTent();
+      },
+      onUnequip: (unitId, slot: EquipSlot) => {
+        const unit = this.run.party.find((u) => u.id === unitId);
+        if (unit && unequip(this.run.inventory, unit, slot)) this.renderTent();
+      },
     });
   }
 

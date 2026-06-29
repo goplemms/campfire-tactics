@@ -18,6 +18,8 @@ import {
   primaryJobOf,
   type AbilityRow,
   type DossierProjection,
+  type EquipSlot,
+  type EquipSlotView,
   type Jeopardy,
   type MemberRow,
 } from "../core";
@@ -38,6 +40,16 @@ export interface DossierViewOptions {
   data: DossierProjection;
   /** Intent: the player asked to leave the dossier. */
   onClose: () => void;
+  /**
+   * Intent: equip a carried item onto a member's matching slot (D77). When set, the
+   * member card shows an interactive **Arms** panel (click a slot → pick a fitting
+   * carried item). Omitted ⇒ the panel renders read-only (worn gear, no verbs). The
+   * host owns the rules: it calls core `equip`/`unequip` and re-renders — the view
+   * never touches the inventory or the unit, preserving the "data in / intent out" line.
+   */
+  onEquip?: (unitId: string, itemId: string) => void;
+  /** Intent: unequip a member's slot back to the stash (D77). See {@link onEquip}. */
+  onUnequip?: (unitId: string, slot: EquipSlot) => void;
   /**
    * Embedded in a host that already provides the frame (the Captain's Tent tab
    * bar + Close + backdrop). When set, the view draws **only** its rail + detail —
@@ -81,6 +93,10 @@ export class PartyDossierView {
   /** The floating description tooltip (one, reused) shown on ability hover/focus. */
   private tip?: Phaser.GameObjects.Container;
 
+  /** The floating equip picker (bg + rows + hit zones) shown when an Arms slot is
+   *  clicked (D77) — tracked flat (not a container) so its hit zones place cleanly. */
+  private picker: Phaser.GameObjects.GameObject[] = [];
+
   constructor(scene: Phaser.Scene, o: DossierViewOptions) {
     this.scene = scene;
     this.o = o;
@@ -89,6 +105,7 @@ export class PartyDossierView {
 
   destroy(): void {
     this.hideTip();
+    this.hidePicker();
     this.clear(this.detail);
     this.clear(this.objects);
     this.tabs = [];
@@ -188,6 +205,7 @@ export class PartyDossierView {
     for (const t of this.tabs) t.rect.setFillStyle(t.index === index ? COLOR.surfaceAlt : COLOR.surfaceRaised);
     this.clear(this.detail);
     this.hideTip();
+    this.hidePicker();
     if (index === -1) this.renderOverview();
     else this.renderMember(this.o.data.members[index]);
   }
@@ -284,7 +302,20 @@ export class PartyDossierView {
         s.add.text(px + col * colW + colW - 16, statTop + row * 20, `${val}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(43),
       );
     });
-    const leftBottom = statTop + Math.ceil(stats.length / 2) * 20;
+    let leftBottom = statTop + Math.ceil(stats.length / 2) * 20;
+
+    // --- Arms (D77): the three equip slots + worn gear. Interactive when the host
+    // wired equip intents; read-only otherwise. The view only calls back + redraws.
+    y = leftBottom + 6;
+    y = this.subheading("Arms", y);
+    if (this.o.onEquip || this.o.onUnequip) {
+      this.detail.push(
+        s.add.text(this.px, y - 6, "click a slot to equip / swap", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(43),
+      );
+      y += 10;
+    }
+    for (const sv of m.slots) y = this.armsRow(u.id, sv, y);
+    leftBottom = y;
 
     // --- Right column: jobs + abilities ---
     this.px = rightX;
@@ -373,6 +404,98 @@ export class PartyDossierView {
     if (a.lockedUntil !== undefined) lines.push(`Locked until Lv ${a.lockedUntil}.`);
     lines.push(`— ${a.jobName}`);
     return lines.join("\n");
+  }
+
+  // ---- Arms (the equip surface, D77) ---------------------------------------
+
+  /**
+   * One equip-slot line: label + worn item (or "—" / its mods). When the host wired
+   * equip intents, the whole row is a click zone that opens the picker; otherwise it
+   * renders read-only. The row reads its data from the projection — never the unit.
+   */
+  private armsRow(unitId: string, sv: EquipSlotView, y: number): number {
+    const s = this.scene;
+    const rowH = 20;
+    const interactive = !!(this.o.onEquip || this.o.onUnequip);
+    const worn = !!sv.itemId;
+    const value = worn ? `${sv.itemName}${sv.summary ? ` · ${sv.summary}` : ""}` : "—";
+
+    // Interactive slots read in the accent ink (a clickable affordance); the value
+    // gets the full column width (no right-edge hint to collide with in the narrow column).
+    const labelColor = interactive ? INK.gold : INK.muted;
+    this.detail.push(
+      s.add.text(this.px, y, sv.label, { color: labelColor, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(43),
+      s.add.text(this.px + 86, y, value, { color: worn ? INK.secondary : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(43),
+    );
+
+    if (interactive) {
+      const z = s.add.zone(this.px, y - rowH / 2, this.pw, rowH).setOrigin(0, 0).setDepth(45).setInteractive({ useHandCursor: true });
+      z.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.showEquipPicker(unitId, sv, y));
+      this.detail.push(z);
+    }
+    return y + rowH;
+  }
+
+  /**
+   * Open the equip picker for a slot: an **Unequip** (when worn) plus every carried
+   * item that fits the slot ({@link DossierProjection.equippables} filtered by slot).
+   * Picking a row fires the host intent (`onEquip`/`onUnequip`) — the host applies the
+   * core rule and redraws, so this view stays purely intent-out.
+   */
+  private showEquipPicker(unitId: string, sv: EquipSlotView, anchorY: number): void {
+    this.hideTip();
+    this.hidePicker();
+    const s = this.scene;
+    const b = this.o.bounds;
+    const pad = 8;
+    const headerH = 22;
+    const w = 240;
+
+    type Row = { label: string; color: string; onPick: () => void };
+    const rows: Row[] = [];
+    if (sv.itemId && this.o.onUnequip) {
+      rows.push({ label: `↩ Unequip ${sv.itemName}`, color: INK.ember, onPick: () => this.o.onUnequip!(unitId, sv.slot) });
+    }
+    if (this.o.onEquip) {
+      for (const e of this.o.data.equippables.filter((x) => x.slot === sv.slot)) {
+        const qty = e.count > 1 ? ` ×${e.count}` : "";
+        rows.push({ label: `${e.name}${e.summary ? ` · ${e.summary}` : ""}${qty}`, color: INK.bright, onPick: () => this.o.onEquip!(unitId, e.id) });
+      }
+    }
+    if (rows.length === 0) rows.push({ label: "Nothing carried fits this slot.", color: INK.disabled, onPick: () => this.hidePicker() });
+
+    // Build + measure each row's text, then size and clamp the popup before placing it.
+    const texts = rows.map((r) =>
+      s.add.text(0, 0, r.label, { color: r.color, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - pad * 2 } }).setOrigin(0, 0).setDepth(63),
+    );
+    const rowHs = texts.map((t) => Math.max(20, t.height) + 6);
+    const totalH = pad + headerH + rowHs.reduce((a, h) => a + h, 0) + pad;
+
+    let x = this.px + this.pw + 12;
+    if (x + w > b.right - 8) x = b.right - 8 - w;
+    x = Math.max(b.left + 8, x);
+    let top = anchorY - 10;
+    if (top + totalH > b.bottom - 8) top = b.bottom - 8 - totalH;
+    top = Math.max(b.top + 8, top);
+
+    this.picker.push(
+      s.add.rectangle(x, top, w, totalH, COLOR.surface, 0.99).setOrigin(0, 0).setStrokeStyle(1, COLOR.gold).setDepth(62),
+      s.add.text(x + pad, top + pad, sv.label, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0).setDepth(63),
+    );
+    let ry = top + pad + headerH;
+    texts.forEach((t, i) => {
+      t.setPosition(x + pad, ry);
+      const z = s.add.zone(x, ry - 2, w, rowHs[i]).setOrigin(0, 0).setDepth(64).setInteractive({ useHandCursor: true });
+      const pick = rows[i].onPick;
+      z.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => { this.hidePicker(); pick(); });
+      this.picker.push(t, z);
+      ry += rowHs[i];
+    });
+  }
+
+  private hidePicker(): void {
+    for (const o of this.picker) o.destroy();
+    this.picker = [];
   }
 
   // ---- the description tooltip ---------------------------------------------

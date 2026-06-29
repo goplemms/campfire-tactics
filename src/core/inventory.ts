@@ -95,6 +95,18 @@ export const MATERIALS: Record<string, MaterialDef> = {
     recoverable: false,
     saleValue: 80,
   },
+  // The first **real equippable** (D77) — a modest, maintained traveler's weapon. It is
+  // **dual-registered**: this MaterialDef gives it a storage slot (D14), and an
+  // EquipmentDef ({@link "./equipment".EQUIPMENT}) sharing this id gives it its effect
+  // (+2 attack, dulled by gearWear). The worked teaching example of the equip surface.
+  "wayfarer-blade": {
+    id: "wayfarer-blade",
+    name: "Wayfarer's Blade",
+    stackSize: 1,
+    slotCost: 1,
+    recoverable: false,
+    saleValue: 30,
+  },
 };
 
 /** Gold a unit of `material` fetches at a full market (0 if not sellable) — read by sell. */

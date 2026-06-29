@@ -105,28 +105,36 @@ line** when broke (the *choice* — what do I let slide?):
   from entity `durability`, D13.)
 - Sustained **Low** [morale](morale.md), night over night, risks **desertion**.
 
-### Equipment — blanket Condition × per-unit Arms (D76)
+### Equipment — blanket Condition × per-unit Arms × party-gear (D76/D78)
 
-Gear lives on **two orthogonal axes** — one a chore, one a choice:
+Gear lives on **two orthogonal axes** — one a chore, one a choice — and the "choice" axis
+comes in **two scopes** (carried party-gear, per-unit equipment):
 
 - **Condition** (blanket, the chore) — the party-wide `gearWear` axis above, paid down by
   **Repairs**. This stays the **only** durability axis: **no per-weapon meter** (the L86–88
   stance holds). Condition *degrades* gear; it never tracks a number per item.
-- **Arms** (the choice) — discrete gear you **acquire and equip**, which *grants* bonuses.
-  Two scopes share one model:
-  - **Party set** — a party-wide upgrade (the **iron-weapons** edge: +attack to all, decayed
-    by wear). The generalization to a registry of named sets (steel-armor, …) waits for the
-    second set.
+- **Arms** (the choice) — discrete gear you **acquire**, which *grants* bonuses. Two scopes
+  share one degradation rule:
+  - **Party-gear** (D78) — a **carried material** that confers a **party-wide** effect simply
+    by sitting in the shared stash (the **iron-weapons** edge: +attack to all, decayed by
+    wear). It is **never equipped to a unit** and **never leaves the stash** — owning it
+    permanently spends a storage slot, so it competes with consumables (the keep-the-buff-or-
+    the-utility discard). Possession is **boolean** (carrying ≥1 confers it once; copies don't
+    stack). The old `iron-weapons` run flag is gone; a registry of further sets (steel-armor,
+    …) is now just more `partyGear` materials.
   - **Per-unit slots** — a fixed three, **weapon / armor / accessory**, the home of
     build-defining **uniques** (the relic). Equipped gear is **caravan-locked to the unit**
     (D25 "can't field one good sword twice"), so it sits on the unit, **not** in the shared
     stash.
 
 **How the axes meet:** the shared `gearWear` *dulls* a **maintained** item's attack/defense
-bonus (eroded toward 0, never flipped negative); an **unmaintained** item — a relic —
-shrugs off wear ("legendary doesn't rust"). Degradation reads the shared axis, so no private
-meter returns. Combat reads gear for free: the blanket set **+** a unit's equipped gear fold
-into one revertible **stamp** at staging (mirrors the D52 `gearStamp`), so an un-equipped run
+bonus (eroded toward 0, never flipped negative) — **one rule** for both party-gear and per-unit
+equipment; an **unmaintained** item — a relic — shrugs off wear ("legendary doesn't rust").
+Degradation reads the shared axis, so no private meter returns. The +bonus side of party-gear
+is **possession-driven** (you only get it while carrying the item), but the worn-gear
+**−defense penalty stays blanket** — driven by `gearWear` alone, so it bites an **un-geared**
+party too. Combat reads gear for free: carried party-gear **+** a unit's equipped gear fold
+into one revertible **stamp** at staging (mirrors the D52 `gearStamp`), so an un-upgraded run
 stays byte-identical.
 
 **Acquire & store:** an equippable-from-stash item is **dual** — a material (storage slot,
@@ -142,8 +150,9 @@ move applies. The surface only *calls the core verbs and redraws* — every rule
 unique-gating, cap-safe swap) stays in `equipment.ts`. The first equippable ships with it: the
 **Wayfarer's Blade**, a modest maintained `+2 attack` weapon — the worked teaching example,
 since `gearWear` visibly dulls its bonus toward 0. *(Deferred to its own session: the Node-2
-traveler weapon-**gift** event — gift→overflow→discard→equip — which waits on the D75 discard
-substrate and carries the iron-weapons reconciliation.)*
+traveler-**event rework** — an auto pop-up that gifts trap-kits **+** iron-weapons (D78) into a
+near-full bundle so it overflows into the D75 forced-discard, making the keep-the-buff-or-the-
+utility beat felt. D78 already moved iron-weapons onto the party-gear shape it needs.)*
 
 ### Gold as the routing currency & the economy (D28, D30)
 

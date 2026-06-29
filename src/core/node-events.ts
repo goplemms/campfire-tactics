@@ -203,11 +203,13 @@ export function shopStock(seed: string | number, node: MapNode): ShopOffer[] {
   const rng = streamFor(seed, `event:${node.id}:shop`);
   const price = merchantPrice(SHOP_MARKET_TIER);
   // Medical herbs (D40) are authored-quest provisioning, not overworld shop
-  // stock; sell-only loot (D61) is never bought; equippable gear (D77) is not
-  // generic shuffle stock (it comes from authored grants / a future weapon
-  // market) — all excluded so the seeded shop selection stays stable (and adding
-  // an equippable to MATERIALS leaves un-equipped runs byte-identical).
-  const stockable = Object.keys(MATERIALS).filter((id) => !MATERIALS[id].medical && !MATERIALS[id].loot && !getEquipment(id));
+  // stock; sell-only loot (D61) is never bought; equippable gear (D77) and party-gear
+  // (D78) are not generic shuffle stock (they come from authored grants / a future
+  // weapon market) — all excluded so the seeded shop selection stays stable (and adding
+  // them to MATERIALS leaves un-upgraded runs byte-identical).
+  const stockable = Object.keys(MATERIALS).filter(
+    (id) => !MATERIALS[id].medical && !MATERIALS[id].loot && !MATERIALS[id].partyGear && !getEquipment(id),
+  );
   const ids = rng.shuffle(stockable).slice(0, NODE_EVENTS.shopStockSize);
   return ids.map((id) => ({ materialId: id, name: MATERIALS[id].name, price }));
 }
@@ -708,8 +710,8 @@ export const EVENTS: readonly EventDef[] = [
     // The Hollow Mill node-2 "Camp on the Road" (D52): the two-item **pick-one**
     // scarcity beat (trap-kit vs iron weapons) + the first **Cook Stew** (RP bank when
     // a Cook is aboard). Authored — pinned to the node via `MapNode.eventId`, never in
-    // the seeded pool (weight 0). The iron pick sets the `iron-weapons` run flag the
-    // gear-condition combat link reads; the edge decays via worn gear thereafter.
+    // the seeded pool (weight 0). The iron pick grants the `iron-weapons` **party-gear**
+    // material (D78) the gear-condition combat link reads; the edge decays via worn gear.
     id: "provision-choice",
     kind: "provision",
     name: "Camp on the Road",
@@ -781,7 +783,11 @@ export const EVENTS: readonly EventDef[] = [
 export function applyProvisionChoice(run: RunState, choiceId: string): EventOutcome {
   const out = emptyOutcome("provision");
   if (choiceId === "take:iron-weapons") {
-    run.flags["iron-weapons"] = true;
+    // D78: iron-weapons is now **party-gear** — a carried material, not a run flag. The
+    // grant always lands (over-cap if need be, D75); carrying it confers the party-wide
+    // +attack edge (decayed by gearWear) the gear-condition combat link reads.
+    grantItem(run.inventory, "iron-weapons");
+    out.materials = ["iron-weapons"];
     out.summary = "You strap on the iron weapons — the whole party hits harder for now.";
     return out;
   }

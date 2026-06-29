@@ -18,6 +18,7 @@ import { intelFloor } from "./intel";
 import { createUnit } from "./units";
 import { freeCaptive } from "./deployment";
 import { gearDelta } from "./gear-condition";
+import { grantItem } from "./inventory";
 
 function freshLoop(): RunLoop {
   return new RunLoop(createRunFromExpedition(THE_HOLLOW_MILL));
@@ -218,15 +219,15 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(reachable).toContain("den");
   });
 
-  it("the iron-weapons pick sets the gear flag and a blanket +attack edge", () => {
+  it("the iron-weapons pick grants party-gear that confers a blanket +attack edge (D78)", () => {
     const run = createRunFromExpedition(THE_HOLLOW_MILL);
-    // No pick yet ⇒ identity delta.
-    expect(gearDelta(run)).toEqual({ attack: 0, defensePenalty: 0 });
-    run.flags["iron-weapons"] = true;
-    expect(gearDelta(run).attack).toBeGreaterThan(0);
-    // The edge decays with worn gear.
+    // Nothing carried ⇒ identity delta.
+    expect(gearDelta(run)).toEqual({ stats: {}, passives: {}, defensePenalty: 0 });
+    grantItem(run.inventory, "iron-weapons");
+    expect(gearDelta(run).stats.attack).toBeGreaterThan(0);
+    // The edge decays with worn gear; the blanket −defense penalty appears with wear.
     run.camp.gearWear = 99;
-    expect(gearDelta(run).attack).toBe(0);
+    expect(gearDelta(run).stats.attack ?? 0).toBe(0);
     expect(gearDelta(run).defensePenalty).toBeGreaterThan(0);
   });
 

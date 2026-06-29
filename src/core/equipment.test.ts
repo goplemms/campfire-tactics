@@ -10,8 +10,8 @@ import {
   revertStatDelta,
   type EquipmentDef,
 } from "./equipment";
-import { MATERIALS, createInventory, countOf, type MaterialDef } from "./inventory";
-import { applyGearCondition, revertGearStamp } from "./gear-condition";
+import { MATERIALS, createInventory, countOf, removeItem, type MaterialDef } from "./inventory";
+import { applyGearCondition, revertGearStamp, gearDelta } from "./gear-condition";
 import type { RunState } from "./run";
 
 // --- fixtures ---------------------------------------------------------------
@@ -63,9 +63,9 @@ function mkUnit(over: Partial<UnitSpec> = {}): Unit {
   });
 }
 
-/** A minimal run stub for the gear-condition aggregate (reads camp.gearWear + flags). */
-function mkRun(gearWear = 0, flags: Record<string, boolean> = {}): RunState {
-  return { camp: { gearWear }, flags } as RunState;
+/** A minimal run stub for the gear-condition aggregate (reads camp.gearWear + the stash). */
+function mkRun(gearWear = 0, carried: Record<string, number> = {}): RunState {
+  return { camp: { gearWear }, flags: {}, inventory: createInventory(99, carried) } as RunState;
 }
 
 // --- equipDelta -------------------------------------------------------------
@@ -167,11 +167,11 @@ describe("applyGearCondition with equipment", () => {
     expect(u.defense).toBe(5);
   });
 
-  it("combines the blanket party set (iron-weapons) with per-unit gear and shared wear", () => {
+  it("combines carried party-gear (iron-weapons) with per-unit gear and shared wear", () => {
     const u = mkUnit({ equipment: { weapon: "iron-sword" } });
-    // iron flag (+3 attack, decays 1/wear) + worn-gear (−1 defense/wear) at wear 1,
-    // plus the maintained iron-sword (+4 attack, −1 from wear).
-    applyGearCondition(mkRun(1, { "iron-weapons": true }), [u]);
+    // iron-weapons party-gear (+3 attack, decays 1/wear) + worn-gear (−1 defense/wear) at
+    // wear 1, plus the maintained iron-sword (+4 attack, −1 from wear).
+    applyGearCondition(mkRun(1, { "iron-weapons": 1 }), [u]);
     // attack: 8 + (iron 3-1) + (sword 4-1) = 8 + 2 + 3 = 13
     expect(u.attack).toBe(13);
     // defense: 5 − 1 (worn-gear penalty) = 4
@@ -195,6 +195,59 @@ describe("applyGearCondition with equipment", () => {
     applyGearCondition(mkRun(), [u]);
     applyGearCondition(mkRun(), [u]);
     expect(u.attack).toBe(12); // not double-stamped to 16
+  });
+});
+
+// --- party-gear (D78): possession-driven, never equipped, never leaves the stash -------
+
+describe("party-gear (D78)", () => {
+  it("confers the party-wide bonus while ≥1 is carried, and drops it when discarded", () => {
+    const run = mkRun(0, { "iron-weapons": 1 });
+    expect(gearDelta(run).stats).toEqual({ attack: 3 }); // carried → +3 (no wear)
+    removeItem(run.inventory, "iron-weapons");
+    expect(gearDelta(run).stats).toEqual({}); // discarded → no bonus
+  });
+
+  it("degrades a maintained item's bonus with the shared gearWear, floored at 0", () => {
+    expect(gearDelta(mkRun(1, { "iron-weapons": 1 })).stats).toEqual({ attack: 2 }); // 3 − 1
+    expect(gearDelta(mkRun(99, { "iron-weapons": 1 })).stats).toEqual({}); // eroded to nothing
+  });
+
+  it("possession is boolean — copies don't stack", () => {
+    // Carrying 3 still confers the effect once (a tuning choice).
+    expect(gearDelta(mkRun(0, { "iron-weapons": 3 })).stats).toEqual({ attack: 3 });
+  });
+
+  it("sums the contributions of distinct party-gear items (each degraded by its own rule)", () => {
+    MATERIALS["steel-plate"] = {
+      id: "steel-plate",
+      name: "Steel Plate",
+      stackSize: 1,
+      slotCost: 1,
+      recoverable: false,
+      partyGear: { mods: { defense: 2 }, maintained: false }, // unmaintained: shrugs off wear
+    };
+    try {
+      const d = gearDelta(mkRun(1, { "iron-weapons": 1, "steel-plate": 1 }));
+      expect(d.stats).toEqual({ attack: 2, defense: 2 }); // iron 3−1 (worn) + steel 2 (undecayed)
+    } finally {
+      delete MATERIALS["steel-plate"];
+    }
+  });
+
+  it("the blanket −defense penalty still applies to an un-geared party (possession-independent)", () => {
+    const u = mkUnit();
+    applyGearCondition(mkRun(1), [u]); // nothing carried, wear 1
+    expect(u.attack).toBe(8); // no possession bonus
+    expect(u.defense).toBe(4); // 5 − 1 blanket worn-gear penalty still bites
+  });
+
+  it("folds carried party-gear into each unit's stamp and reverts it cleanly", () => {
+    const u = mkUnit();
+    applyGearCondition(mkRun(0, { "iron-weapons": 1 }), [u]);
+    expect(u.attack).toBe(11); // 8 + 3 party-gear
+    revertGearStamp(u);
+    expect(u.attack).toBe(8); // reverts to the bare stat
   });
 });
 

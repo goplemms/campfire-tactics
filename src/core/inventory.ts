@@ -11,6 +11,8 @@
  * Pure logic: no Phaser, no DOM.
  */
 
+import type { StatDelta } from "./units";
+
 /** A material definition — pure data. */
 export interface MaterialDef {
   id: string;
@@ -47,6 +49,19 @@ export interface MaterialDef {
    * haul-vs-gear decision). Never bought/stocked (excluded from shop stock), only sold.
    */
   loot?: boolean;
+  /**
+   * Party-gear (D78) — a material that confers a **party-wide combat effect simply by
+   * being carried**: no equip slot, never moved onto a unit, never leaving the shared
+   * stash. While ≥1 is carried the party gets `mods` (a signed {@link StatDelta}) and any
+   * `passive`; the shared `gearWear` **dulls** a `maintained` item's positive bonus (the
+   * same degradation rule as per-unit equipment — no per-weapon meter, D15/L86–88). Its
+   * persistent stash footprint is the point: it competes for storage (the keep-the-buff-or-
+   * the-utility discard). Read by {@link "./gear-condition".gearDelta}; the +bonus side is
+   * **possession-driven** (the blanket worn-gear −defense stays driven by `gearWear` alone).
+   * Possession is **boolean** — carrying ≥1 confers the effect once; copies don't stack
+   * (a tuning choice). Distinct from a per-unit {@link "./equipment".EquipmentDef}.
+   */
+  partyGear?: { mods?: StatDelta; passive?: { key: string; value: number }; maintained?: boolean };
 }
 
 /** The carried stash: a storage cap (in slots) and per-material counts. */
@@ -106,6 +121,20 @@ export const MATERIALS: Record<string, MaterialDef> = {
     slotCost: 1,
     recoverable: false,
     saleValue: 30,
+  },
+  // The first **party-gear** (D78) — the Hollow Mill's iron-weapons edge, now a carried
+  // material instead of a run flag. It **persistently occupies a stash slot** and confers
+  // a party-wide +attack simply by being carried (no equip slot, never moved onto a unit).
+  // The shared `gearWear` dulls its bonus (the `maintained` rule, same as per-unit gear);
+  // its felt power carries over the old `GEAR_CONDITION.ironAttack` (+3) and decay unchanged.
+  "iron-weapons": {
+    id: "iron-weapons",
+    name: "Iron Weapons",
+    stackSize: 1,
+    slotCost: 1,
+    recoverable: false,
+    saleValue: 30,
+    partyGear: { mods: { attack: 3 }, maintained: true },
   },
 };
 

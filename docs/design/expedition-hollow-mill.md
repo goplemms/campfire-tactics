@@ -112,8 +112,8 @@ one roof:
 - **The scarcity choice (`provision-choice`)** — pick-one (two finds, room for one):
   - **Trap Kit** — more snares for Vale's field-craft (gated on storage room); a **restock**
     for L3 atop the two she already carries (D74).
-  - **Iron Weapons** — party-wide **+attack that decays** without a smith (sets the
-    `iron-weapons` flag; rides gear-wear).
+  - **Iron Weapons** — party-wide **+attack that decays** without a smith (grants the
+    `iron-weapons` **party-gear** material, D78; rides gear-wear).
   - **Cook a Stew** — *only if Pip is alive* — banks **+2 RP** (the L1 rescue paying
     forward).
 - **The overworld-action layer — Recon (D74).** The first clearing where Vale's **Recon**

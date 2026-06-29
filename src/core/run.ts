@@ -146,10 +146,10 @@ export interface RunState {
   complete: boolean;
   /**
    * Run-scoped boolean flags (D52 vertical-slice) — authored expedition state that
-   * isn't a roster/inventory fact: the node-2 **iron-weapons** pick (`iron-weapons`,
-   * read by the gear-condition combat link), and a recruit-held marker the
-   * conditional map access reads (e.g. `medic-freed`). Set by authored grants /
-   * event choices; never by procedural generation. Absent flag ⇒ false.
+   * isn't a roster/inventory fact: e.g. a recruit-held marker the conditional map
+   * access reads (`medic-freed`). Set by authored grants / event choices; never by
+   * procedural generation. Absent flag ⇒ false. *(The node-2 iron-weapons pick moved
+   * off a flag to a carried **party-gear** material in D78.)*
    */
   flags: Record<string, boolean>;
 }

@@ -21,7 +21,7 @@ holdout, not the authored ending.
 ## Topology (locked)
 
 ```
-  L0 Camp ─► L1 Skirmish+Cook ─► L2 Camp(pick-one) ─► L3 Sapper's Snares
+  L0 Camp ─► L1 Skirmish+Cook ─► L2 Traveler's-gift (storage discard) ─► L3 Sapper's Snares
      ─► L4 FORK { 4A Rest (no Medic) | 4B Prison Wagon (frees Medic) }
      ─► L5 Market (hub — Merchant) ─► L6 { Secured Wagon (Medic catch-up), Den (relic) }
      ─► L7 stub finale
@@ -32,7 +32,7 @@ holdout, not the authored ending.
 |---|---|---|---|---|
 | L0 | `start` | rest | Provisioning camp | `e1` |
 | L1 | `e1` | combat | Skirmish at the Mill Yard | `camp2` |
-| L2 | `camp2` | event | Camp on the Road | `snares` |
+| L2 | `camp2` | event | A Traveler on the Road | `snares` |
 | L3 | `snares` | combat | The Sapper's Snares | `rest4a`, `wagon4b` |
 | L4A | `rest4a` | rest | Rest (no Medic) | `market` |
 | L4B | `wagon4b` | combat | The Prison Wagon | `market`, `den` |
@@ -62,9 +62,11 @@ Recruits join via their nodes (not the starting bundle):
 - **Mira the Merchant** — recruited at the **L5 Market** (event); opens markets.
 
 **Starting bundle:** purse 120 · supplies `salve×2, stimulant×1, antidote×2, trap-kit×2` ·
-storage cap 10 · morale 2 · difficulty normal. *(D74: Vale carries two trap-kits and knows **Set
-Trap** from L1, so the Scout has a field-craft toy in the very first deployment; the cap is +2 to
-keep run loot headroom unchanged.)*
+storage cap **5** · morale 2 · difficulty normal. *(D74: Vale carries two trap-kits and knows
+**Set Trap** from L1. **D79: the cap is now 5 — exactly the 5 starting slots** (salve/stimulant/
+antidote pack to 1 each; the 2 trap-kits cost 2), so the stash starts **full** and storage is
+felt from step one. The L2 traveler-gift then overflows it, forcing the discard lesson. Tuned
+tight on purpose — the run-wide squeeze is the storage through-line.)*
 
 ---
 
@@ -105,17 +107,22 @@ purse, load supplies. No combat.
   the Road), the demo's introduction to the overworld-action layer. *(Her L1 combat kit — Set Trap
   + the base move — is already up.)*
 
-### L2 — Camp on the Road (`camp2`, event → `provision-choice`) — the first **clearing**
-**Goal:** the **camp tutorial** — *what you do at a clearing between fights* (D74): make a
-logistics choice, act on the overworld, and cash your growth. No combat. Three beats under
-one roof:
-- **The scarcity choice (`provision-choice`)** — pick-one (two finds, room for one):
-  - **Trap Kit** — more snares for Vale's field-craft (gated on storage room); a **restock**
-    for L3 atop the two she already carries (D74).
-  - **Iron Weapons** — party-wide **+attack that decays** without a smith (grants the
-    `iron-weapons` **party-gear** material, D78; rides gear-wear).
-  - **Cook a Stew** — *only if Pip is alive* — banks **+2 RP** (the L1 rescue paying
-    forward).
+### L2 — A Traveler on the Road (`camp2`, event → `provision-choice`) — the first **clearing**
+**Goal:** the **camp tutorial** — *what you do at a clearing between fights* (D74): **feel the
+storage limit**, act on the overworld, and cash your growth. No combat. Three beats under one
+roof:
+- **The storage lesson — the traveler's gift (`provision-choice`, D79).** No longer a pick-one.
+  A roadside traveler **presses gifts on the party unconditionally** — **2 trap kits + the iron
+  weapons** — a grant that **always lands, even over the storage cap** (D75). The bundle starts
+  **exactly full** (cap 5), so the gift forces a **discard back to the cap** before Break Camp
+  (the discard menu / headless `autoTrim`), *whether or not* the player spent traps at Node 1
+  (using them only frees slots; the 3-slot gift still overflows — a discard of **1–3** items).
+  - The iron weapons are the **`iron-weapons` party-gear** material (D78) — *carrying* them is
+    the party-wide +attack edge — so the discard is a real trade: **keep the buff, the snares,
+    or shed the pre-Medic medical dead-weight?** The honest rule the game now shares: *grants
+    don't vanish; you choose what to let go.*
+  - **Cook a Stew** — *only if Pip is alive* — takes the gifts **and** banks **+2 RP** (the L1
+    rescue paying forward; the Cook payoff rides *alongside* the gift, not instead of it).
 - **The overworld-action layer — Recon (D74).** The first clearing where Vale's **Recon**
   (her L2 unlock) is usable on the **overworld**: scout a reachable node up a tier of intel.
   Aimed at the **L3 snares**, it sharpens that fight's pre-combat read — lesson and payoff a
@@ -123,9 +130,10 @@ one roof:
 - **The leveling payoff (D74).** The L1 win banked everyone to **L2**; the resolution readout
   announced Vale's **Recon** unlock, and this clearing is where that new overworld action first
   *matters* — growth made tangible.
-- **Teaches:** logistics-as-choice (reusable vs. decaying power; the recruit economy
-  compounding); the **overworld-action surface** + intel-as-investment (scout to see farther);
-  and that **leveling unlocks abilities you cash at a clearing**.
+- **Teaches:** **storage-as-a-felt-limit** (grants always land → you choose what to drop; a
+  party buff competes with utility for slots); the **overworld-action surface** +
+  intel-as-investment (scout to see farther); and that **leveling unlocks abilities you cash at
+  a clearing**.
 
 ### L3 — The Sapper's Snares (`snares`, combat)
 **Goal:** a **strong-field / weak-enemy** encounter — the threat is the terrain.
@@ -178,6 +186,18 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **L2 is now the *storage* lesson — the traveler's gift (D79).** The pick-one became an
+  **unconditional traveler-gift that overflows**: the bundle cap dropped **10→5** so the 5
+  starting supplies fill it **exactly**, and the L2 event now **gives 2 trap kits + the iron
+  weapons** (the D78 party-gear material) — a grant that **always lands over the cap** (D75) —
+  forcing a **discard back to the cap** at Break Camp (a discard of **1–3**, robust across
+  trap-usage: spending traps at Node 1 only frees slots, and the 3-slot gift still overflows).
+  Iron-weapons being a *carried* party-gear item makes the discard a real trade (**keep the
+  +attack buff, the snares, or shed pre-Medic medical?**). The Cook-Stew payoff is kept — it now
+  rides *alongside* the gift (takes the gifts **and** banks RP). All on the systems already in
+  `main`: grant→overflow→discard (D75), party-gear iron-weapons (D78). Guards: tsc · 898 unit
+  tests (incl. gift-lands-over-cap + emptied-stash-still-overflows) · build · e2e · sim (Hollow
+  Mill completes, storagePressure lever engaged). See **D79**.
 - **Bugfix: the L2 scarcity choice never rendered — it auto-resolved.** `OverworldScene.playEvent`
   had no `case "provision"`, so the `provision`-kind `camp2` node fell through to the **thief**
   handler and silently **auto-resolved** (the headless default — take the trap-kit); the player

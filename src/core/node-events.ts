@@ -39,7 +39,7 @@ import { createUnit, primaryJobOf, remember, type Unit, type UnitSpec } from "./
 import { streamFor } from "./rng";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
 import { getJob, SCOUT_PRESTIGE_FLOOR } from "./jobs";
-import { MATERIALS, addItem, grantItem, canAdd } from "./inventory";
+import { MATERIALS, grantItem, canAdd } from "./inventory";
 import { getEquipment } from "./equipment";
 import { addInfluence, influenceTier, type InfluenceTier } from "./economy";
 import { merchantBuy, merchantPrice } from "./economy-actions";
@@ -707,38 +707,34 @@ export const EVENTS: readonly EventDef[] = [
     },
   },
   {
-    // The Hollow Mill node-2 "Camp on the Road" (D52): the two-item **pick-one**
-    // scarcity beat (trap-kit vs iron weapons) + the first **Cook Stew** (RP bank when
-    // a Cook is aboard). Authored — pinned to the node via `MapNode.eventId`, never in
-    // the seeded pool (weight 0). The iron pick grants the `iron-weapons` **party-gear**
-    // material (D78) the gear-condition combat link reads; the edge decays via worn gear.
+    // The Hollow Mill node-2 "A Traveler on the Road" (D52/D79): the **storage-scarcity**
+    // beat. No longer a pick-one — a roadside traveler **presses gifts on the party
+    // unconditionally** (trap kits + iron weapons), a grant that **always lands over the cap**
+    // (D75) onto a full stash, so the player must **discard back to the cap** at Break Camp.
+    // The iron weapons are the `iron-weapons` **party-gear** material (D78) — carrying them is
+    // the party-wide +attack edge — so the discard is a real trade ("keep the buff or the
+    // snares?"). The first **Cook Stew** (RP bank) rides *alongside* the gift when a Cook is
+    // aboard. Authored — pinned to the node via `MapNode.eventId`, never seeded (weight 0).
     id: "provision-choice",
     kind: "provision",
-    name: "Camp on the Road",
-    teaser: "A night's camp — two finds, room for one. (And a hot meal if a Cook rides along.)",
+    name: "A Traveler on the Road",
+    teaser: "A traveler shares your fire and presses gifts on you — trap kits and old iron weapons, more than your packs were built to hold. (And a hot meal, if a Cook rides along.)",
     weight: 0, // authored-only — pinned by node, never seeded
     autoResolve(run, _node) {
-      // Headless default: take the trap-kit (a deterministic, reusable-utility pick).
-      return applyProvisionChoice(run, "take:trap-kit");
+      // Headless default: accept the gifts (they always land; the overflow is autoTrimmed at Break Camp).
+      return applyProvisionChoice(run, "accept-gift");
     },
     choices(run, _node) {
       const cook = run.party.some((u) => primaryJobOf(u) === "cook" && u.alive);
-      const kitRoom = canAdd(run.inventory, "trap-kit");
       return [
         {
-          id: "take:trap-kit",
-          label: "Take the Trap Kit (reusable field-craft)",
-          available: kitRoom,
-          detail: kitRoom ? "A reusable snare kit for Vale's field-craft." : "No storage room.",
-        },
-        {
-          id: "take:iron-weapons",
-          label: "Take the Iron Weapons (a party-wide attack edge that decays)",
+          id: "accept-gift",
+          label: "Accept the gifts and camp for the night",
           available: true,
-          detail: "A blanket gear-condition upgrade (+attack). It fades without a smith to maintain it.",
+          detail: "Trap kits + iron weapons (a party-wide attack edge) join the stash — even over your cap. You'll choose what to drop before you break camp.",
         },
         ...(cook
-          ? [{ id: "cook-stew", label: "Have Pip cook a stew (banks Rest Points)", available: true, detail: "The Cook banks RP and eases the food line." }]
+          ? [{ id: "cook-stew", label: "Accept, and have Pip cook a stew (banks Rest Points)", available: true, detail: "Take the gifts and break bread — Pip banks RP and eases the food line." }]
           : []),
       ];
     },
@@ -779,32 +775,37 @@ export const EVENTS: readonly EventDef[] = [
 
 // --- The Hollow Mill authored-event resolvers (D52) -------------------------
 
-/** Apply a node-2 provision pick (D52): the two-item pick-one + the Cook Stew RP bank. */
+/**
+ * The Node 2 traveler's gifts (D79): trap kits + the iron-weapons **party-gear** material,
+ * sized to **overflow the full bundle** (the cap-5 start) so a discard is forced at Break Camp
+ * whether or not the player spent traps at Node 1. Grant-order is fixed (deterministic).
+ */
+const TRAVELER_GIFT: ReadonlyArray<readonly [string, number]> = [
+  ["trap-kit", 2],
+  ["iron-weapons", 1],
+];
+
+/**
+ * Apply the Node 2 traveler-gift (D79): the gifts **always land** — over the storage cap if
+ * need be (D75) — so the overflow forces a deliberate discard at Break Camp (the storage
+ * lesson; carrying the iron weapons is the D78 party-wide +attack edge, so the discard is a
+ * real trade). Every path takes the gifts; `cook-stew` additionally banks RP (the Cook payoff).
+ */
 export function applyProvisionChoice(run: RunState, choiceId: string): EventOutcome {
   const out = emptyOutcome("provision");
-  if (choiceId === "take:iron-weapons") {
-    // D78: iron-weapons is now **party-gear** — a carried material, not a run flag. The
-    // grant always lands (over-cap if need be, D75); carrying it confers the party-wide
-    // +attack edge (decayed by gearWear) the gear-condition combat link reads.
-    grantItem(run.inventory, "iron-weapons");
-    out.materials = ["iron-weapons"];
-    out.summary = "You strap on the iron weapons — the whole party hits harder for now.";
-    return out;
-  }
+  // The gifts land unconditionally (D75) — grants don't vanish at the cap; the player chooses
+  // what to let go at Break Camp (the discard menu, or autoTrim headless).
+  for (const [id, n] of TRAVELER_GIFT) grantItem(run.inventory, id, n);
+  out.materials = TRAVELER_GIFT.map(([id]) => id);
   if (choiceId === "cook-stew") {
-    // The first Cook verb (E3): bank a little RP + ease the food line for the night.
+    // The first Cook verb (E3): bank a little RP + ease the food line, and still take the gifts.
     run.rp += 2;
-    out.summary = "Pip cooks a hot stew — spirits and rations both hold (RP banked).";
+    out.summary =
+      "Pip cooks a hot stew for the road and the traveler both — spirits and rations hold (RP banked). The parting gifts, trap kits and old iron, ride on, packs be damned.";
     return out;
   }
-  // Default / take:trap-kit — a reusable kit into the stash under the cap.
-  if (canAdd(run.inventory, "trap-kit")) {
-    addItem(run.inventory, "trap-kit");
-    out.materials = ["trap-kit"];
-    out.summary = "You pack the trap kit for the road ahead.";
-  } else {
-    out.summary = "No room in the stash for the trap kit.";
-  }
+  out.summary =
+    "You thank the traveler and stow the gifts — trap kits and iron weapons, more than the stash was built for. Something will have to go before you march.";
   return out;
 }
 

@@ -2892,11 +2892,9 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   unconditionally and the persistent slot makes the discard menu bite), **D14** (lives in the one
   shared stash; storage accounting unchanged), **D15/L86–88** (no per-weapon meter; one durability
   axis), **D2** (pure core, deterministic, revertible).
-- **Deferred (own follow-up):** the **Node-2 traveler-event rework** — auto pop-up that gifts
-  trap-kits **+** iron-weapons unconditionally, with near-full bundle tuning so it overflows into a
-  forced discard (the keep-the-buff-or-the-utility beat made *felt*). This record builds the
-  party-gear **shape** + migrates iron-weapons to it; wiring the new beat is next. (`steel-armor`
-  / further party-gear is now just content.)
+- **Deferred (own follow-up):** ~~the **Node-2 traveler-event rework**~~ — **done: D79.** (The
+  shape this record built is now consumed by the Node-2 beat.) `steel-armor` / further party-gear
+  is now just content.
 - **Spec:** `src/core/inventory.ts` (the `partyGear` marker + the iron-weapons material),
   `src/core/equipment.ts` (the shared `degradedMods` + exported `addDelta`), `src/core/gear-condition.ts`
   (possession-driven `gearDelta` + the generalized `GearDelta`; flag dropped), `src/core/node-events.ts`
@@ -2904,6 +2902,53 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   `src/core/run.ts` (the flag-comment sync), `src/core/equipment.test.ts` (+7) /
   `src/core/hollow-mill.test.ts` (the pick test),
   [`docs/design/systems/logistics.md`](../../docs/design/systems/logistics.md) (Equipment).
+- **Superseded by:** —
+
+---
+
+## D79 — Node 2's storage lesson: the traveler-gift that overflows (the beat, on D75/D78)
+
+- **Status:** Decided + built. The **content/assembly** beat that consumes the systems landed
+  in D75 (overflow→discard) and D78 (party-gear iron-weapons) — no new mechanic, pure wiring +
+  tuning of the authored Hollow Mill Node 2. (Closes D78's deferred "Node-2 traveler-event rework.")
+- **Context:** Node 2 ("the first clearing", D74) was meant to teach **storage scarcity**, but
+  the beat never bit: it was a **pick-one** ("Camp on the Road" — trap-kit / iron-weapons /
+  cook-stew) on a **slack** bundle (5 of 10 slots), so nothing ever overflowed and the player
+  never faced a discard. Meanwhile the dependencies had all shipped (grant→overflow→discard D75,
+  iron-weapons as a slot-consuming party-gear material D78), so the beat was now pure assembly.
+- **Decision 1 — the gift is unconditional, not a pick-one.** A roadside traveler **presses
+  gifts on the party** — **2 trap kits + 1 iron-weapons** — granted on *any* path via
+  `grantItem` (they always land, over the cap, D75). The event is no longer a choice *between*
+  finds; the real decision is **which to discard afterward**. The Cook-Stew payoff is **kept**,
+  riding *alongside* the gift (a second choice that takes the gifts **and** banks +2 RP when a
+  Cook is aboard — and in the demo Pip is, recruited at Node 1).
+- **Decision 2 — a deliberately full bundle (cap 10 → 5).** The 5 starting supplies (salve×2,
+  stimulant×1, antidote×2 each pack to 1 slot; trap-kit×2 = 2) fill the cap **exactly**, so
+  storage is felt from step one and the gift is guaranteed to overflow. Tuned tight on purpose;
+  the run-wide squeeze is the storage through-line, not a Node-2-only stunt.
+- **Decision 3 — robust across trap usage.** D74 lets the player spend trap-kits at Node 1, so
+  arrivals vary (2/1/0 traps left). Spending traps only **frees** slots, but the **3-slot gift**
+  (trap-kit×2 + iron-weapons×1) overflows every case — a forced discard of **3 / 2 / 1** for
+  kept-both / used-one / used-both. "Either way, something must go" holds for all play.
+- **Why it teaches.** Iron-weapons being a **carried** party-gear item (D78) makes the discard a
+  real trade: **keep the +attack buff, keep the snares for L3, or shed the pre-Medic medical
+  dead-weight?** The honest rule the whole game now shares — *grants don't vanish; you choose
+  what to let go* — lands here for the first time the player feels it.
+- **No render change.** The event still dispatches through `showProvisionScreen` →
+  `renderEventChoicePanel`, and the **discard menu already gates Break Camp** (D75) — so the
+  overflow surfaces with zero new UI. Headless stays bounded via `autoTrim` in `breakCamp`.
+- **Reuses / consistent with:** **D75** (the grant lands; the discard menu/`autoTrim` clears the
+  overflow), **D78** (iron-weapons is the slot-consuming party-gear that makes the discard a
+  trade), **D74** (the clearing frame + the Node-1 trap-spend that the tuning is robust to),
+  **D52** (the authored Node-2 event + bundle), **D14** (the one shared slotted stash).
+- **Open / tuning:** cap **5** is a demo-wide value (revisit if the mid/late economy feels too
+  tight — autoTrim protects high-value loot like the relic, and the L5 market lets the player
+  sell to free slots); the gift is fixed `trap-kit×2 + iron-weapons×1`.
+- **Spec:** `src/core/hollow-mill.ts` (cap 10→5; topology comment), `src/core/node-events.ts`
+  (the unconditional-gift provision event + `applyProvisionChoice` + `TRAVELER_GIFT`),
+  `src/core/node-events.test.ts` (the overflow tests),
+  [`docs/design/expedition-hollow-mill.md`](../../docs/design/expedition-hollow-mill.md) (L2
+  section, bundle, topology, route-change log).
 - **Superseded by:** —
 
 ---

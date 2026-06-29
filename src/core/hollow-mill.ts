@@ -9,7 +9,7 @@
  *
  * Topology (locked):
  * ```
- *   L0 Camp ─► L1 Skirmish+Cook ─► L2 Camp(pick-one) ─► L3 Sapper's Snares
+ *   L0 Camp ─► L1 Skirmish+Cook ─► L2 Traveler's-gift (storage discard) ─► L3 Sapper's Snares
  *      ─► L4 FORK { 4A Rest (no Medic) | 4B Prison Wagon (frees Medic) }
  *      ─► L5 Market (hub — Merchant) ─► L6 { dug-in Wagon (Medic catch-up), Den (relic) }
  *      ─► L7 stub finale
@@ -336,9 +336,13 @@ export const THE_HOLLOW_MILL: AuthoredExpedition = registerExpedition({
     party: HOLLOW_MILL_PARTY,
     purse: 120,
     supplies: { salve: 2, stimulant: 1, antidote: 2, "trap-kit": 2 },
-    // +2 over the original 8 to make room for the 2 starting trap-kits (D74) — keeps the run's
-    // loot headroom unchanged so picked-up rewards (incl. the Den relic) aren't squeezed out.
-    storageCap: 10,
+    // A **deliberately full** stash (D79): the 5 starting supplies (salve+stimulant+antidote
+    // each pack to 1 slot; the 2 trap-kits cost 2) fill the cap **exactly**, so storage is felt
+    // from the first step. The Node-2 traveler then *gifts* trap-kits + iron-weapons (a grant that
+    // always lands over the cap, D75/D78), forcing the **discard** lesson at Break Camp — whether
+    // or not the player spent traps at Node 1 (using them only frees slots; the 3-slot gift still
+    // overflows). Tuned tight on purpose; the run-wide squeeze is the storage through-line.
+    storageCap: 5,
     morale: 2,
     difficultyId: "normal",
   },

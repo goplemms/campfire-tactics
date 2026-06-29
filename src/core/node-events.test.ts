@@ -3,7 +3,7 @@ import { createUnit, type Unit } from "./units";
 import { createRun, type RunState } from "./run";
 import { RunLoop } from "./runloop";
 import { generateOverworld, getNode, type MapNode } from "./overworld";
-import { countOf } from "./inventory";
+import { countOf, slotsOver } from "./inventory";
 import { merchantPrice } from "./economy-actions";
 import {
   EVENTS,
@@ -463,24 +463,45 @@ describe("node-events — standing gates event quality (D62)", () => {
   });
 });
 
-describe("node-events — the provision pick-one is an interactive choice (D52/D74)", () => {
+describe("node-events — the Node 2 traveler-gift overflows storage (D79)", () => {
   // Provision is `weight: 0` (never seeded — only pinned to a node by `eventId`), e.g. the
-  // Hollow Mill's `camp2`. The render must dispatch it as a *choice* (not auto-resolve), so the
+  // Hollow Mill's `camp2`. The render dispatches it as a *choice* (not auto-resolve); the
   // data it feeds the panel is pinned here.
   const PROVISION_NODE: MapNode = { id: "camp2", layer: 2, index: 0, kind: "event", edges: [], eventId: "provision-choice" };
 
-  it("surfaces a pick-one: trap-kit + iron-weapons, and cook-stew only with a Cook aboard", () => {
+  it("offers accept-gift, and cook-stew only with a Cook aboard (no pick-one anymore)", () => {
     const run = newRun("prov");
-    expect(eventChoices(run, PROVISION_NODE).map((c) => c.id)).toEqual(["take:trap-kit", "take:iron-weapons"]);
-    // A Cook in the party opens the third option (the L1 rescue paying forward).
+    expect(eventChoices(run, PROVISION_NODE).map((c) => c.id)).toEqual(["accept-gift"]);
+    // A Cook in the party opens the second option (the L1 rescue paying forward).
     run.party.push(createUnit({ id: "pip", side: "player", pos: { col: -1, row: -1 }, name: "Pip", jobId: "cook", speed: 8, maxHp: 18, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }));
-    expect(eventChoices(run, PROVISION_NODE).map((c) => c.id)).toContain("cook-stew");
+    expect(eventChoices(run, PROVISION_NODE).map((c) => c.id)).toEqual(["accept-gift", "cook-stew"]);
   });
 
-  it("a pick applies — taking the trap-kit lands it in storage", () => {
-    const run = newRun("prov2");
-    const before = countOf(run.inventory, "trap-kit");
-    chooseEventOption(run, PROVISION_NODE, "take:trap-kit");
-    expect(countOf(run.inventory, "trap-kit")).toBe(before + 1);
+  it("the gifts (trap kits + iron-weapons) always land — even over the cap (D75/D78)", () => {
+    const run = newRun("prov2", 200, 5);
+    // A full stash (mirrors the mill bundle): the gifts land anyway, over the cap.
+    run.inventory.counts = { salve: 2, stimulant: 1, antidote: 2, "trap-kit": 2 }; // 5/5 — exactly full
+    const trapsBefore = countOf(run.inventory, "trap-kit");
+    chooseEventOption(run, PROVISION_NODE, "accept-gift");
+    expect(countOf(run.inventory, "trap-kit")).toBe(trapsBefore + 2); // +2 gifted
+    expect(countOf(run.inventory, "iron-weapons")).toBe(1); // the party-gear edge
+    expect(slotsOver(run.inventory)).toBe(3); // 8 slots used over cap 5 — the discard to clear
+  });
+
+  it("even on an emptied stash (all traps spent at Node 1) the gift still overflows", () => {
+    const run = newRun("prov3", 200, 5);
+    run.inventory.counts = { salve: 3, stimulant: 1, antidote: 2 }; // 3 slots (traps all used)
+    chooseEventOption(run, PROVISION_NODE, "accept-gift");
+    expect(slotsOver(run.inventory)).toBeGreaterThan(0); // a discard is still forced
+  });
+
+  it("the cook-stew path takes the gifts AND banks RP", () => {
+    const run = newRun("prov4", 200, 5);
+    const rpBefore = run.rp;
+    const out = chooseEventOption(run, PROVISION_NODE, "cook-stew");
+    expect(countOf(run.inventory, "trap-kit")).toBe(2); // the gift still lands
+    expect(countOf(run.inventory, "iron-weapons")).toBe(1);
+    expect(out.materials).toEqual(expect.arrayContaining(["trap-kit", "iron-weapons"]));
+    expect(run.rp).toBeGreaterThan(rpBefore); // plus the RP payoff
   });
 });

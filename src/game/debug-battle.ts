@@ -11,6 +11,9 @@ import {
   createRunFromExpedition,
   createPlaytestLog,
   THE_HOLLOW_MILL,
+  enumeratePaths,
+  traverseRoute,
+  getNode,
   type Unit,
   type MapNode,
 } from "../core";
@@ -205,5 +208,82 @@ export class HollowMillBootScene extends Phaser.Scene {
 
   create(): void {
     this.scene.start("OverworldScene", buildHollowMill());
+  }
+}
+
+/**
+ * The **boot seam** for the jump tool (Phase 2) — turn a `node`/`route`/`salt`
+ * request into a ready-to-hand {@link RunHandoff} positioned *at* a Hollow Mill
+ * node, pre-resolution. Reuses the Phase-1 expedition-sim substrate
+ * ({@link enumeratePaths} + {@link traverseRoute}) so the jump replays the real
+ * overworld pipeline headlessly instead of re-walking the run by hand.
+ *
+ * The route is resolved from `opts.route` when given (the exact, hand-picked
+ * scenario), else defaulted to the **first enumerated** simple path to the node.
+ * An unreachable node (no route from the start) is a surfaced error, not a silent
+ * empty boot. The playtest log is installed for parity with {@link buildHollowMill}.
+ */
+export function buildArrivalJump(opts: { node: string; route?: string[]; salt?: number }): RunHandoff {
+  const route = opts.route ?? enumeratePaths(THE_HOLLOW_MILL.map, opts.node)[0];
+  if (!route) {
+    throw new Error(`buildArrivalJump: "${opts.node}" is unreachable from the start (no route)`);
+  }
+  const arrival = traverseRoute(THE_HOLLOW_MILL, route, { seedSalt: opts.salt });
+  // Instrument for parity with buildHollowMill (the showcase playtest telemetry).
+  arrival.loop.log = createPlaytestLog(arrival.run, THE_HOLLOW_MILL.id);
+  installPlaytestLogUI(arrival.loop.log);
+  return { run: arrival.run, loop: arrival.loop, demoIntro: false };
+}
+
+/** Parsed `#demo?node=…` jump params (see {@link JumpBootScene}). */
+export interface JumpParams {
+  node: string;
+  route?: string[];
+  salt?: number;
+  into?: "overworld" | "battle";
+}
+
+/** Parse the hash query into {@link JumpParams} (URLSearchParams; `route` comma-split). */
+export function parseJumpParams(query: string): JumpParams | null {
+  const params = new URLSearchParams(query);
+  const node = params.get("node");
+  if (!node) return null;
+  const routeRaw = params.get("route");
+  const saltRaw = params.get("salt");
+  const intoRaw = params.get("into");
+  return {
+    node,
+    route: routeRaw ? routeRaw.split(",").filter((s) => s.length > 0) : undefined,
+    salt: saltRaw != null && saltRaw !== "" ? Number(saltRaw) : undefined,
+    into: intoRaw === "overworld" || intoRaw === "battle" ? intoRaw : undefined,
+  };
+}
+
+/**
+ * A headless boot scene for the jump tool: `#demo?node=<id>&route=<id,id,…>&salt=<n>&into=<overworld|battle>`.
+ *
+ * Re-reads `window.location.hash` (config already matched it; reading it here keeps
+ * the scene self-contained and the seam in one place). Builds the arrival, then
+ * decides the destination scene: `into=battle` → BattleScene, `into=overworld` →
+ * OverworldScene. With `into` absent, the **default** follows the target node's
+ * kind — a `combat` node hands off to the BattleScene (which stages it in
+ * `create()`), anything else parks on the OverworldScene.
+ */
+export class JumpBootScene extends Phaser.Scene {
+  constructor() {
+    super("JumpBootScene");
+  }
+
+  create(): void {
+    const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
+    const parsed = parseJumpParams(query);
+    if (!parsed) {
+      // No node param reached us (config should have routed elsewhere) — fail loud.
+      throw new Error("JumpBootScene: no `node` param in the hash");
+    }
+    const handoff = buildArrivalJump(parsed);
+    const into = parsed.into ?? (getNode(THE_HOLLOW_MILL.map, parsed.node).kind === "combat" ? "battle" : "overworld");
+    this.scene.start(into === "battle" ? "BattleScene" : "OverworldScene", handoff);
   }
 }

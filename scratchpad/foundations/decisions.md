@@ -2765,6 +2765,79 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D77 — The equip surface: the render half of the gear system + the first equippable
+
+- **Status:** Decided + built (the reusable equip UI + the first real equippable, in green
+  increments). D76 shipped the equip **core** (`equip`/`unequip`/`equipDelta`/`equippedIds`,
+  the per-unit slots, all the rules) but left it **unreachable in play** — `grep equip
+  src/game/` returned nothing, and `EQUIPMENT` was empty (the relic still an inert
+  `MATERIALS`-only stub). D77 is the missing render half.
+- **Context:** Three gaps blocked the gear system from being playable: (1) **no equip UI** —
+  the core was code-only; (2) **no real equippable** — `EQUIPMENT` had no content, so even a
+  UI had nothing to show; (3) the surface's **natural home** (the Captain's Tent party
+  dossier) is a deliberately **pure, read-only projection** ("data in, `onClose` out, never
+  reaches into a scene"), so adding a *mutating* equip verb risked breaking that decoupling.
+- **Scope call (agreed with the user):** this PR ships the **reusable equip surface** + the
+  **first equippable** only. The Node-2 traveler weapon-**gift** special event (the
+  gift→overflow→discard→equip teaching arc the build brief framed) is **deferred to its own
+  session**, because (a) it depends on **D75** (the discard substrate: `grantItem`/`slotsOver`/
+  `autoTrim`), which is **built on its branch but unmerged** at authoring time, and (b) the
+  user wants the Node-2 beat (and the iron-weapons reconciliation it implies) handled
+  dedicated. So Node-2 `provision-choice` and the `iron-weapons` pick are **untouched**.
+- **Decision — the surface is the dossier's Arms panel; the core owns every rule.**
+  - **Where it lives:** the per-member detail card in the **party dossier** (Captain's Tent
+    → Party tab) grows an **Arms** section — the three slots (weapon/armor/accessory) + worn
+    gear and its mods. Click a slot → a **picker** of the carried equippables that fit (plus
+    **Unequip** when worn) → the chosen verb fires.
+  - **Decoupling preserved:** the view stays "data in / intent out". It gained two optional
+    intents — `onEquip(unitId, itemId)` / `onUnequip(unitId, slot)` — and reads everything it
+    draws from the **projection**, never the unit/inventory. The **host** (`OverworldScene`)
+    owns the rules: the intents call the pure `equip`/`unequip` and re-`renderTent()`. No rule
+    lives in the scene; the view touches neither inventory nor unit.
+  - **Projection extension:** `DossierProjection` gains per-member `slots: EquipSlotView[]`
+    (worn id/name + a compact `+2 Atk` mods summary) and a run-level `equippables:
+    EquippableLine[]` (carried stash ids that are also `EquipmentDef`s — the picker
+    candidates). Both are **empty for an un-equipped run**.
+  - **The first equippable — the Wayfarer's Blade (`wayfarer-blade`):** a modest, **dual-
+    registered** weapon (a `MaterialDef` for storage + an `EquipmentDef` for effect, one id —
+    the relic's intended pattern). A `maintained: true`, `+2 attack`, **non-unique** weapon,
+    `saleValue: 30` — the **worked teaching example**: the D76 condition axis (`gearWear`)
+    dulls its bonus (2 → 1 → 0, floored, never negative), so a player *sees* gear degrade.
+- **Byte-identical guard (the D76 identity holds).** Registering an equippable in `MATERIALS`
+  would otherwise leak into two seeded/rendered reads, so both **exclude equipment**:
+  - `shopStock` (node-events) — equippables are **not** generic roadside shuffle stock (they
+    come from authored grants / a future weapon market), so they're filtered out of the pool;
+    the seeded shop selection is unchanged.
+  - `projectManifest` (the Stores catalog, which pads every known material) — a **zero-count**
+    equippable is omitted (it belongs to the Arms surface, not the consumables catalog); a
+    *carried* one is itemized. Storage slot accounting (`slotsUsed`) is unaffected either way.
+  Both filters are **no-ops while no equipment is carried** → an un-equipped run is identical
+  (verified: the 876 prior tests are untouched; +8 new).
+- **Combat is free (D76).** Equipping changes nothing in combat code: `applyGearCondition`
+  already folds each unit's `equipDelta` into the staging `gearStamp`, so the next battle
+  reads the new gear (degraded by the shared `gearWear`) with no new wiring.
+- **Deferred (own follow-ups):**
+  - **The Node-2 weapon-gift special event** — the gift→overflow→discard→equip arc, **once
+    D75 merges**: the traveler `grantItem`s the blade (lands over-cap), it overflows a
+    near-full bundle into the D75 discard menu at Break Camp, then the player equips it at this
+    surface. Carries the **iron-weapons reconciliation** (4th option / supersede / move) the
+    build brief flagged. Its dedicated session.
+  - **The relic's effect / a weapon market / a fuller armory** — unchanged from D76's deferrals.
+- **Reuses / consistent with:** **D76** (calls the pure core verbs unchanged; the identity
+  stamp does the combat work), **D58** (the Captain's Tent is the deep-info hub; Arms joins
+  the Party tab rather than adding a fifth tab), **D2** (pure core, deterministic projection;
+  the render only calls + redraws), **D14** (the stash is unchanged; equip moves stash↔slot).
+- **Spec:** `src/core/equipment.ts` (the `EQUIPMENT` first entry) + `src/core/inventory.ts`
+  (its dual `MaterialDef`), `src/core/dossier.ts` (the equip projection), `src/core/index.ts`
+  (the barrel now exports `equipment`), `src/core/node-events.ts` + `src/core/manifest.ts`
+  (the byte-identical filters), `src/game/party-dossier-view.ts` (the Arms panel + picker +
+  equip intents), `src/game/scenes/OverworldScene.ts` (the host wiring),
+  `src/core/equip-surface.test.ts` (+8), `scripts/shots-dossier.mjs` (the surface capture),
+  [`docs/design/systems/logistics.md`](../../docs/design/systems/logistics.md) (Equipment).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

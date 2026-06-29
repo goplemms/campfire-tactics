@@ -40,6 +40,7 @@ import { streamFor } from "./rng";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
 import { getJob, SCOUT_PRESTIGE_FLOOR } from "./jobs";
 import { MATERIALS, addItem, grantItem, canAdd } from "./inventory";
+import { getEquipment } from "./equipment";
 import { addInfluence, influenceTier, type InfluenceTier } from "./economy";
 import { merchantBuy, merchantPrice } from "./economy-actions";
 import { rollMercenary } from "./guild";
@@ -202,9 +203,11 @@ export function shopStock(seed: string | number, node: MapNode): ShopOffer[] {
   const rng = streamFor(seed, `event:${node.id}:shop`);
   const price = merchantPrice(SHOP_MARKET_TIER);
   // Medical herbs (D40) are authored-quest provisioning, not overworld shop
-  // stock; sell-only loot (D61) is never bought — both excluded so the seeded
-  // shop selection stays stable.
-  const stockable = Object.keys(MATERIALS).filter((id) => !MATERIALS[id].medical && !MATERIALS[id].loot);
+  // stock; sell-only loot (D61) is never bought; equippable gear (D77) is not
+  // generic shuffle stock (it comes from authored grants / a future weapon
+  // market) — all excluded so the seeded shop selection stays stable (and adding
+  // an equippable to MATERIALS leaves un-equipped runs byte-identical).
+  const stockable = Object.keys(MATERIALS).filter((id) => !MATERIALS[id].medical && !MATERIALS[id].loot && !getEquipment(id));
   const ids = rng.shuffle(stockable).slice(0, NODE_EVENTS.shopStockSize);
   return ids.map((id) => ({ materialId: id, name: MATERIALS[id].name, price }));
 }

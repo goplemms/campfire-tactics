@@ -55,6 +55,7 @@ export * from "./authored";
 export * from "./staging";
 export * from "./traps";
 export * from "./gear-condition";
+export * from "./equipment";
 export * from "./expedition";
 export * from "./hollow-mill";
 export * from "./sim";

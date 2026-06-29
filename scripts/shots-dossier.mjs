@@ -47,6 +47,24 @@ const STEPS = [
   { name: "03-dossier-overview", eval: wrap(`s.openTent(()=>s.renderCamp(),"party");`) },
   { name: "04-dossier-member", eval: wrap(`s.tentDossier.select(1);`) },
   { name: "05-dossier-dying", eval: wrap(`s.tentDossier.select(0);`) },
+  // The equip surface (D77): arm a member with the Wayfarer's Blade and leave a spare in
+  // the stash, then open their dossier — the Arms panel shows the worn weapon + its mods.
+  {
+    name: "06-dossier-arms",
+    eval: wrap(`
+      const u=s.run.party[1]; u.equipment={...u.equipment,weapon:"wayfarer-blade"};
+      s.run.inventory.counts["wayfarer-blade"]=1;
+      s.openTent(()=>s.renderCamp(),"party"); s.tentDossier.select(1);
+    `),
+  },
+  // Open the slot picker over the worn weapon so its candidate list reads (Unequip + spare).
+  {
+    name: "07-dossier-arms-picker",
+    eval: wrap(`
+      const d=s.tentDossier, m=d.o.data.members[1];
+      d.showEquipPicker(m.unit.id, m.slots[0], d.ptop+220);
+    `),
+  },
 ];
 
 async function ensureChrome() {

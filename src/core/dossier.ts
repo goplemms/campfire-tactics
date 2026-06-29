@@ -16,7 +16,8 @@
  */
 
 import type { RunState } from "./run";
-import { primaryJobOf, type Unit } from "./units";
+import { primaryJobOf, type Unit, type EquipSlot } from "./units";
+import { getEquipment, type EquipmentDef } from "./equipment";
 import { getJob } from "./jobs";
 import { PASSIVE_INFO } from "./combat";
 import type { SkillDef } from "./skills";
@@ -68,12 +69,67 @@ export interface MemberRow {
   actives: AbilityRow[];
   /** Passive abilities the unit's jobs grant — for the card. */
   passives: AbilityRow[];
+  /** The unit's three equip slots + worn gear (D77), in display order. */
+  slots: EquipSlotView[];
 }
 
 /** One carried-supply line in the party "stock vs need" readout. */
 export interface StockLine {
   id: string;
   name: string;
+  count: number;
+}
+
+/** Display order + labels for the per-unit equip slots (D77). */
+const SLOT_LABEL: Record<EquipSlot, string> = { weapon: "Weapon", armor: "Armor", accessory: "Accessory" };
+const SLOT_ORDER = ["weapon", "armor", "accessory"] as const satisfies readonly EquipSlot[];
+
+/** Compact stat-mod abbreviations for an equip summary (e.g. `+2 Atk`). */
+const STAT_ABBR: Record<string, string> = {
+  attack: "Atk",
+  defense: "Def",
+  speed: "Spd",
+  maxHp: "HP",
+  moveRange: "Move",
+  sightRadius: "Sight",
+  attackRange: "Range",
+};
+
+/** A one-line signed mods summary for an equippable (e.g. `+2 Atk`; `""` if none). */
+export function equipModsSummary(def: EquipmentDef): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(def.mods ?? {})) {
+    if (!v) continue;
+    parts.push(`${v > 0 ? "+" : ""}${v} ${STAT_ABBR[k] ?? k}`);
+  }
+  return parts.join(", ");
+}
+
+/** One per-unit equip slot, projected for the Arms surface (D77). */
+export interface EquipSlotView {
+  slot: EquipSlot;
+  /** Display label ("Weapon" / "Armor" / "Accessory"). */
+  label: string;
+  /** The worn item's id, or undefined for an empty slot. */
+  itemId?: string;
+  /** The worn item's display name (falls back to the id if its def is missing). */
+  itemName?: string;
+  /** A compact mods summary for the worn item (e.g. `+2 Atk`). */
+  summary?: string;
+}
+
+/**
+ * A carried equippable (D77) — a stash item that is **also** an {@link EquipmentDef},
+ * so it can be worn. The Arms surface filters these by `slot` to offer a slot's
+ * candidates; equip's rules (slot-match, unique-gating) are re-checked by the core.
+ */
+export interface EquippableLine {
+  id: string;
+  name: string;
+  slot: EquipSlot;
+  /** Compact mods summary (e.g. `+2 Atk`). */
+  summary: string;
+  /** How many are carried in the stash. */
   count: number;
 }
 
@@ -100,6 +156,11 @@ export interface PartySummary {
 export interface DossierProjection {
   members: MemberRow[];
   party: PartySummary;
+  /**
+   * Carried equippables (D77) — the stash items the Arms surface can equip, deduped by
+   * id. Empty when nothing equippable is carried (so an un-equipped run is unchanged).
+   */
+  equippables: EquippableLine[];
 }
 
 /** Classify a unit's standout danger (worst-first). See {@link Jeopardy}. */
@@ -172,6 +233,21 @@ export function unitAbilityRows(u: Unit): { actives: AbilityRow[]; passives: Abi
   return { actives, passives };
 }
 
+/** Project a unit's three equip slots + worn gear for the Arms surface (D77). */
+function equipSlotViews(u: Unit): EquipSlotView[] {
+  return SLOT_ORDER.map((slot) => {
+    const id = u.equipment[slot];
+    const def = id ? getEquipment(id) : undefined;
+    return {
+      slot,
+      label: SLOT_LABEL[slot],
+      itemId: id,
+      itemName: id ? def?.name ?? id : undefined,
+      summary: def ? equipModsSummary(def) : undefined,
+    };
+  });
+}
+
 function memberRow(u: Unit): MemberRow {
   const job = getJob(primaryJobOf(u));
   const dying = u.counters?.[DYING_COUNTER] ?? 0;
@@ -194,6 +270,7 @@ function memberRow(u: Unit): MemberRow {
     jeopardy: jeopardyOf(u),
     actives,
     passives,
+    slots: equipSlotViews(u),
   };
 }
 
@@ -206,6 +283,13 @@ export function projectDossier(run: RunState): DossierProjection {
     name: getMaterial(id)?.name ?? id,
     count: countOf(run.inventory, id),
   }));
+  // Carried equippables (D77): stash ids that are also EquipmentDefs, in stash order.
+  const equippables: EquippableLine[] = Object.keys(run.inventory.counts)
+    .filter((id) => countOf(run.inventory, id) > 0 && getEquipment(id))
+    .map((id) => {
+      const def = getEquipment(id)!;
+      return { id, name: def.name, slot: def.slot, summary: equipModsSummary(def), count: countOf(run.inventory, id) };
+    });
   return {
     members,
     party: {
@@ -220,6 +304,7 @@ export function projectDossier(run: RunState): DossierProjection {
       stock,
       rp: run.rp,
     },
+    equippables,
   };
 }
 

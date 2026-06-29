@@ -135,6 +135,16 @@ Camp/Pre-deployment. Weapons re-enter via **authored grants/drops** (the relic) 
 **market** good. *(Out of scope: a smith that **upgrades** gear — Repairs stays maintenance
 only, D15; upgrading is a later Blacksmith pass.)*
 
+**Where you equip — the Arms surface (D77).** The equip *render* lives in the **Captain's
+Tent → Party** dossier: each member's card shows an **Arms** panel (the three slots + worn
+gear and its mods). Click a slot → pick a carried equippable that fits (or **Unequip**) → the
+move applies. The surface only *calls the core verbs and redraws* — every rule (slot-match,
+unique-gating, cap-safe swap) stays in `equipment.ts`. The first equippable ships with it: the
+**Wayfarer's Blade**, a modest maintained `+2 attack` weapon — the worked teaching example,
+since `gearWear` visibly dulls its bonus toward 0. *(Deferred to its own session: the Node-2
+traveler weapon-**gift** event — gift→overflow→discard→equip — which waits on the D75 discard
+substrate and carries the iron-weapons reconciliation.)*
+
 ### Gold as the routing currency & the economy (D28, D30)
 
 Once the run is wrapped in [the overworld](overworld.md), logistics scales up from a

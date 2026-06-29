@@ -2747,9 +2747,10 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   - **The relic's effect** — `relic-hollow-blade` stays an **inert stash material**; the
     `EquipmentDef` (its `mods`/`passive`, `unique: true`, `maintained: false`) is added when
     its effect is designed with the user.
-  - **`steel-armor` / a second party set** — held; iron-weapons is the single party-set
-    example for now. The `PARTY_GEAR` registry generalization rides the *second* set (today
-    `gearDelta(run)` is the party-set computation, kept as-is for byte-identical behavior).
+  - ~~**`steel-armor` / a second party set**~~ — **generalized in D78.** The `PARTY_GEAR`
+    shape now exists: party-set gear is a **carried material** with a `partyGear` marker, and
+    iron-weapons is the first such item (off its run flag). A second set is just another
+    material; `steel-armor` is content, no longer a substrate gap.
   - **Full loadout / armory UI / guild-level locking** — only the three core slots + pure
     equip verbs ship; the render and the guild armory are later.
 - **Reuses / consistent with:** **D14** (the stash is unchanged; equipment is the per-unit
@@ -2833,6 +2834,75 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   (the byte-identical filters), `src/game/party-dossier-view.ts` (the Arms panel + picker +
   equip intents), `src/game/scenes/OverworldScene.ts` (the host wiring),
   `src/core/equip-surface.test.ts` (+8), `scripts/shots-dossier.mjs` (the surface capture),
+  [`docs/design/systems/logistics.md`](../../docs/design/systems/logistics.md) (Equipment).
+- **Superseded by:** —
+
+---
+
+## D78 — Party-gear: possession-driven party-wide gear as a stash material
+
+- **Status:** Decided + built (the party-gear shape + iron-weapons migrated to it, in green
+  increments). Realizes the `PARTY_GEAR` generalization **D76 named and deferred** (its
+  "second party set" follow-up), and pulls the last gear model off a run flag.
+- **Context:** After D76/D77 the gear system had two clean shapes — the blanket **Condition**
+  axis and **per-unit Arms** (equipment, caravan-locked to a unit) — but the **party set**
+  (iron-weapons) was still a one-off: a `run.flags["iron-weapons"]` boolean that `gearDelta`
+  special-cased into a blanket +attack. That left three loose ends: the party-set effect
+  wasn't a *thing you carry* (so it cost no storage and couldn't be a discard decision), the
+  flag was bespoke state outside the inventory, and D76 had explicitly deferred a real
+  `PARTY_GEAR` registry to "the second set."
+- **Decision — party-gear is a material that confers a party-wide effect by being carried.**
+  A new **third gear shape**, distinct from per-unit equipment in two ways: it is **never
+  equipped to a unit** and it **never leaves the shared stash** — owning it permanently spends
+  a slot.
+  - **The marker:** `MaterialDef.partyGear?: { mods?: StatDelta; passive?; maintained? }`. A
+    material carrying it **is** party-gear — it sits in `MATERIALS`, in the shared stash, and
+    counts against the storage cap like any material. That persistent footprint is the point:
+    it competes for storage, so a near-full discard becomes a real "keep the buff or the
+    utility?" choice.
+  - **Possession-driven effect:** while **≥1 is carried**, the party gets the effect.
+    Possession is **boolean** by default — copies don't stack (carrying three confers it once);
+    a tuning choice, easy to revisit.
+  - **One degradation rule, shared:** the shared `gearWear` **dulls** a `maintained` party-gear
+    item's positive bonus toward 0 (never flipping negative) — the *same* rule per-unit
+    equipment uses, factored into `equipment.ts`'s exported `degradedMods({mods, maintained},
+    wear)` so both gear scopes share one code path. **No per-weapon meter** (D15/L86–88):
+    durability stays the single shared `gearWear` axis; party-gear adds no private meter.
+  - **The split is preserved.** Only the **+attack/bonus side** is possession-driven. The
+    worn-gear **−defense penalty stays blanket** — driven by `gearWear` alone, so it still bites
+    an **un-geared** party. `gearDelta(run)` now returns `{ stats, passives, defensePenalty }`:
+    `stats`/`passives` are the summed carried-party-gear contributions (degraded), `defensePenalty`
+    the unchanged blanket worn-gear bite.
+  - **Combat is free (D76 path).** `applyGearCondition` already folds the party-wide delta +
+    per-unit `equipDelta` into the one revertible `gearStamp`; the new party-gear `stats`/
+    `passives` route through that same fold, so combat reads it for nothing and it reverts cleanly.
+  - **iron-weapons migrated:** registered in `MATERIALS` (`stackSize 1, slotCost 1, recoverable
+    false, saleValue 30, partyGear: { mods: { attack: 3 }, maintained: true }`) — its felt power
+    (the old `GEAR_CONDITION.ironAttack` +3 and the per-wear decay) carries over unchanged. The
+    Node-2 `take:iron-weapons` provision pick now `grantItem`s the material instead of setting the
+    flag; the `IRON_WEAPONS_FLAG`/`ironAttack`/`ironDecayPerWear` constants are gone.
+- **Byte-identical guard.** A new material in `MATERIALS` would otherwise leak into two seeded/
+  rendered reads, so both now **also exclude party-gear** (as they already excluded equipment,
+  D77): `shopStock` (party-gear isn't generic roadside stock) and `projectManifest` (a zero-count
+  party-gear doesn't pad the Stores catalog). With nothing carried, `gearDelta` is the identity —
+  so an un-upgraded run is unchanged; the procedural sim (default `take:trap-kit`, never iron) is
+  stable (the 896-test suite is green: this was a flag→possession move, not a numbers change).
+- **Reuses / consistent with:** **D76** (the third shape slots beside Condition × Arms; the
+  identity stamp does the combat work; `degradedMods` is the shared rule), **D75** (the grant lands
+  unconditionally and the persistent slot makes the discard menu bite), **D14** (lives in the one
+  shared stash; storage accounting unchanged), **D15/L86–88** (no per-weapon meter; one durability
+  axis), **D2** (pure core, deterministic, revertible).
+- **Deferred (own follow-up):** the **Node-2 traveler-event rework** — auto pop-up that gifts
+  trap-kits **+** iron-weapons unconditionally, with near-full bundle tuning so it overflows into a
+  forced discard (the keep-the-buff-or-the-utility beat made *felt*). This record builds the
+  party-gear **shape** + migrates iron-weapons to it; wiring the new beat is next. (`steel-armor`
+  / further party-gear is now just content.)
+- **Spec:** `src/core/inventory.ts` (the `partyGear` marker + the iron-weapons material),
+  `src/core/equipment.ts` (the shared `degradedMods` + exported `addDelta`), `src/core/gear-condition.ts`
+  (possession-driven `gearDelta` + the generalized `GearDelta`; flag dropped), `src/core/node-events.ts`
+  (the provision pick grants the item; `shopStock` filter), `src/core/manifest.ts` (the catalog filter),
+  `src/core/run.ts` (the flag-comment sync), `src/core/equipment.test.ts` (+7) /
+  `src/core/hollow-mill.test.ts` (the pick test),
   [`docs/design/systems/logistics.md`](../../docs/design/systems/logistics.md) (Equipment).
 - **Superseded by:** —
 

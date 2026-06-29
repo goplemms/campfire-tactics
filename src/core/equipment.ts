@@ -114,7 +114,7 @@ export function getEquipment(id: string): EquipmentDef | undefined {
 export type EquipLookup = (id: string) => EquipmentDef | undefined;
 
 /** Add `src` into `dst` key-by-key (summing), in place. Returns `dst`. */
-function addDelta(dst: StatDelta, src: StatDelta | undefined): StatDelta {
+export function addDelta(dst: StatDelta, src: StatDelta | undefined): StatDelta {
   if (!src) return dst;
   for (const k of STAT_KEYS) {
     const v = src[k];
@@ -123,15 +123,27 @@ function addDelta(dst: StatDelta, src: StatDelta | undefined): StatDelta {
   return dst;
 }
 
-/** The mods one equipped item contributes, after `wear` degradation if maintained. */
-function itemDelta(def: EquipmentDef, wear: number): StatDelta {
-  const out: StatDelta = { ...def.mods };
-  if (def.maintained === false || wear <= 0) return out;
+/**
+ * The signed mods a gear-bearer (`{ mods, maintained }`) contributes after `wear`
+ * degradation — the **one shared degradation rule** for both per-unit equipment
+ * ({@link itemDelta}) and party-gear ({@link "./gear-condition".gearDelta}, D78). The
+ * shared `gearWear` shaves each point off a `maintained` item's **positive**
+ * attack/defense (floored at 0 — a bonus erodes to nothing but never flips into a
+ * penalty); a `maintained: false` bearer shrugs off wear. Pure; returns a fresh delta.
+ */
+export function degradedMods(spec: { mods?: StatDelta; maintained?: boolean }, wear: number): StatDelta {
+  const out: StatDelta = { ...spec.mods };
+  if (spec.maintained === false || wear <= 0) return out;
   for (const k of DEGRADABLE_STATS) {
     const v = out[k];
     if (v && v > 0) out[k] = Math.max(0, v - wear * EQUIP_DECAY_PER_WEAR);
   }
   return out;
+}
+
+/** The mods one equipped item contributes, after `wear` degradation if maintained. */
+function itemDelta(def: EquipmentDef, wear: number): StatDelta {
+  return degradedMods(def, wear);
 }
 
 /**

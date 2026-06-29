@@ -1222,11 +1222,11 @@ export class OverworldScene extends Phaser.Scene {
     }
   }
 
-  // Provision (D52/D74) — an authored **pick-one** (trap-kit / iron-weapons / cook-stew, the
-  // last only with a Cook aboard). A terminal choice like a story beat: the shared choice panel
-  // renders `eventDef().choices()` and `onEventChoice` applies the pick. Without this case a
-  // `provision` node fell through to the thief handler and silently auto-resolved (the scarcity
-  // choice never surfaced) — the fix that restores Node 2's first lesson.
+  // Provision (D52/D79) — the Node 2 **traveler-gift**: an *unconditional* gift (trap kits +
+  // iron weapons, the cook-stew variant only with a Cook aboard), no longer a pick-one. The
+  // shared choice panel renders `eventDef().choices()` and `onEventChoice` applies it; the
+  // gift lands over the full stash (D75) so Break Camp then forces the discard. Without this
+  // case a `provision` node fell through to the thief handler and silently auto-resolved.
   private showProvisionScreen(): void {
     const def = this.loop.eventDef();
     this.renderEventChoicePanel(def.name, def.teaser);

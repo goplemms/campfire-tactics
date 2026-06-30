@@ -1374,7 +1374,7 @@ export class OverworldScene extends Phaser.Scene {
 
   private playRest(): void {
     // A rest node elapses a night and pays a night's rations — show the spend first.
-    this.showLedgerTransition("Before you rest…", () => {
+    this.showLedgerTransition("Before resting for the night…", () => {
       const res = this.loop.restNode();
       this.refreshCampText();
       this.showRestScreen(res);
@@ -1501,7 +1501,7 @@ export class OverworldScene extends Phaser.Scene {
 
   private doInPlaceRest(): void {
     // In-place rest is a node-step that pays a night's rations — show the spend first.
-    this.showLedgerTransition("Before you rest…", () => {
+    this.showLedgerTransition("Before resting for the night…", () => {
       const res: InPlaceRestResult = this.loop.inPlaceRest();
       this.refreshCampText();
       if (res.applied) this.setHint(`Rested in place: −${res.goldSpent}g rations, +${res.hpHealed} HP, +${res.rpAdded} RP. Cooldowns ticked (a node-step passed).`);

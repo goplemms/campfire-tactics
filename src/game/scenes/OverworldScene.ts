@@ -1520,7 +1520,7 @@ export class OverworldScene extends Phaser.Scene {
   private breakCampToMap(): void {
     // The night elapses at departure (D46) — show the ledger first so the spend is
     // seen (and Upkeep still crossable) before the soft gate and the march.
-    const toGate = () => this.showLedgerTransition("Before you break camp…", () => this.breakCampGate(), true);
+    const toGate = () => this.showLedgerTransition("Before resting for the night…", () => this.breakCampGate(), true);
     if (slotsOver(this.run.inventory) > 0) {
       this.showDiscardMenu(toGate);
       return;
@@ -1810,7 +1810,7 @@ export class OverworldScene extends Phaser.Scene {
     });
     this.overlay.push(btn.setDepth(26));
     this.setHint(interactive
-      ? "Tonight's tab. Cross an Upkeep line off to free its gold (you'll take the consequence). Continue to break camp."
+      ? "Tonight's tab. Cross an Upkeep line off to free its gold (you'll take the consequence). Continue to rest for the night."
       : "Tonight's tab — what this rest will spend. Continue to proceed.");
   }
 

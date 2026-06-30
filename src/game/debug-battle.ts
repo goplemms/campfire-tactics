@@ -325,7 +325,20 @@ export function jumpToArrival(game: Phaser.Game, params: JumpParams): void {
   const into =
     params.into ??
     (getNode(THE_HOLLOW_MILL.map, params.node).kind === "combat" ? "battle" : "overworld");
-  game.scene.start(into === "battle" ? "BattleScene" : "OverworldScene", handoff);
+  const key = into === "battle" ? "BattleScene" : "OverworldScene";
+  // Drive the transition through a *running scene's* plugin (`scene.start`), the same
+  // path the normal game flow uses: it stops the calling scene, then starts the target
+  // — a properly-sequenced handoff. The global `game.scene.start` (the obvious call
+  // from the menu, which has no scene of its own) stops nothing, so jumps would layer
+  // the new scene on top of the boot scene + every prior arrival — stacking entities and
+  // crashing a stale scene mid-deploy. So: collapse any prior stack to one running scene,
+  // then let that one hand off to the target. The DOM debug overlay is a canvas sibling,
+  // not a scene, so it survives the transition untouched.
+  const running = game.scene.getScenes(true);
+  for (let i = 1; i < running.length; i++) game.scene.stop(running[i].scene.key);
+  const driver = running[0];
+  if (driver) driver.scene.start(key, handoff);
+  else game.scene.start(key, handoff);
 }
 
 /** Parsed `#demo?node=…` jump params (see {@link JumpBootScene}). */

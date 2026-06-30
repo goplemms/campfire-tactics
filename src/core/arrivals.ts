@@ -261,6 +261,66 @@ export function scoreArrival(
 }
 
 // ---------------------------------------------------------------------------
+// Arrival digest — a legible, display-ready state preview
+// ---------------------------------------------------------------------------
+
+/**
+ * A small, **pure, display-ready** description of a run's state at an arrival — the
+ * legible struct the jump-tool UI renders into a one-line preview (e.g.
+ * `Lv 66 · HP 100% · 210g · 4 units · [medic-freed]`). Unlike {@link scoreArrival}
+ * (a single weighted *number* for ranking), this is the **human-readable** breakdown:
+ * the totals a developer eyeballs to recognize "is this the arrival I wanted".
+ */
+export interface ArrivalDigest {
+  /** Σ(character level + primary-job level) over the {@link activeRoster}. */
+  levelTotal: number;
+  /** Mean current-HP fraction (`hp/maxHp`) over the active roster, as a 0..100 percent (rounded). 0 for an empty roster. */
+  avgHpPct: number;
+  /** The run purse (`camp.gold`). */
+  gold: number;
+  /** The active roster's unit ids (alive, uncaptured), in roster order. */
+  rosterIds: string[];
+  /** The keys of the run's **set** flags (build-progress markers like `medic-freed`). */
+  flags: string[];
+}
+
+/**
+ * **Digest a run's state for display** — the pure, testable struct the jump-tool UI
+ * formats into a one-line preview. Reads the run, never mutates it; deterministic
+ * (the same run yields the same digest).
+ *
+ * - **levelTotal** — `Σ(level + primaryJobLevel)` over {@link activeRoster}.
+ * - **avgHpPct** — mean `hp/maxHp` over the active roster, ×100 rounded (0 for an empty roster).
+ * - **gold** — `run.camp.gold`.
+ * - **rosterIds** — the active roster's unit ids, in roster order.
+ * - **flags** — the keys of the run's **set** flags.
+ */
+export function arrivalDigest(run: RunState): ArrivalDigest {
+  const roster = activeRoster(run);
+  const levelTotal = roster.reduce(
+    (acc, u: Unit) => acc + u.level + jobLevelOf(u, primaryJobOf(u)),
+    0,
+  );
+  const avgHpPct =
+    roster.length === 0
+      ? 0
+      : Math.round(
+          (roster.reduce((acc, u) => acc + (u.maxHp > 0 ? u.hp / u.maxHp : 0), 0) /
+            roster.length) *
+            100,
+        );
+  return {
+    levelTotal,
+    avgHpPct,
+    gold: run.camp.gold,
+    rosterIds: roster.map((u) => u.id),
+    flags: Object.entries(run.flags)
+      .filter(([, set]) => set)
+      .map(([key]) => key),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Population sampling
 // ---------------------------------------------------------------------------
 

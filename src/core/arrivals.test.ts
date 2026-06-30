@@ -3,6 +3,7 @@ import { THE_HOLLOW_MILL } from "./hollow-mill";
 import { enumeratePaths, traverseRoute } from "./expedition-sim";
 import {
   scoreArrival,
+  arrivalDigest,
   samplePopulation,
   pickRepresentatives,
   DEFAULT_SCORE_WEIGHTS,
@@ -10,7 +11,7 @@ import {
   type Population,
   type Sample,
 } from "./arrivals";
-import type { RunState } from "./run";
+import { activeRoster, type RunState } from "./run";
 
 const EXP = THE_HOLLOW_MILL;
 
@@ -95,6 +96,53 @@ describe("scoreArrival (Phase 3)", () => {
     // A re-traversal (same args) also reproduces the score exactly.
     const again = traverseRoute(EXP, DEN_VIA_WAGON).run;
     expect(scoreArrival(again)).toEqual(scoreArrival(run));
+  });
+});
+
+describe("arrivalDigest (Phase 5)", () => {
+  it("has the expected shape — totals, percent HP, gold, roster ids, flags", () => {
+    const { run } = traverseRoute(EXP, DEN_VIA_WAGON); // frees the Medic → medic-freed flag
+    const d = arrivalDigest(run);
+
+    // Shape: every field present with the right primitive type.
+    expect(typeof d.levelTotal).toBe("number");
+    expect(typeof d.avgHpPct).toBe("number");
+    expect(typeof d.gold).toBe("number");
+    expect(Array.isArray(d.rosterIds)).toBe(true);
+    expect(Array.isArray(d.flags)).toBe(true);
+
+    // avgHpPct is a 0..100 percent.
+    expect(d.avgHpPct).toBeGreaterThanOrEqual(0);
+    expect(d.avgHpPct).toBeLessThanOrEqual(100);
+
+    // The roster ids match the run's active roster, and this route freed Sela the Medic.
+    expect(d.rosterIds).toEqual(activeRoster(run).map((u) => u.id));
+    expect(d.rosterIds).toContain("sela");
+    expect(d.flags).toContain("medic-freed");
+
+    // gold mirrors the purse.
+    expect(d.gold).toBe(run.camp.gold);
+  });
+
+  it("monotonic-ish — a stronger/healthier/richer run reads higher across the fields", () => {
+    const { run } = traverseRoute(EXP, DEN_VIA_WAGON);
+    const base = arrivalDigest(run);
+
+    const strong = cloneRun(run);
+    for (const u of strong.party) {
+      u.level += 5;
+      u.hp = u.maxHp; // full health → avgHpPct 100
+    }
+    strong.camp.gold += 250;
+    const strongDigest = arrivalDigest(strong);
+
+    expect(strongDigest.levelTotal).toBeGreaterThan(base.levelTotal);
+    expect(strongDigest.avgHpPct).toBeGreaterThanOrEqual(base.avgHpPct);
+    expect(strongDigest.avgHpPct).toBe(100);
+    expect(strongDigest.gold).toBe(base.gold + 250);
+    // Roster + flags unchanged by stat tweaks.
+    expect(strongDigest.rosterIds).toEqual(base.rosterIds);
+    expect(strongDigest.flags).toEqual(base.flags);
   });
 });
 

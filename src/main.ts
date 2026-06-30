@@ -22,6 +22,17 @@ if (expeditionBtn) {
   };
 }
 
+// The run-bar "Debug: Jump" button (dev-only): set the #debug hash and reload so the
+// game boots the DebugBootScene, which mounts the "jump to any node" DOM overlay. The
+// config reads the hash once at module init, so a reload is required for it to take.
+const debugBtn = document.getElementById("debugbtn") as HTMLButtonElement | null;
+if (debugBtn) {
+  debugBtn.onclick = () => {
+    window.location.hash = "debug";
+    window.location.reload();
+  };
+}
+
 /**
  * Boot the Phaser game into #app — the only file that owns a live engine
  * instance; everything testable lives under `core/`.

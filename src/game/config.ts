@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { GuildScene } from "./scenes/GuildScene";
 import { OverworldScene } from "./scenes/OverworldScene";
 import { BattleScene } from "./scenes/BattleScene";
-import { BattleBootScene, OverworldBootScene, ExpeditionBootScene, HollowMillBootScene, JumpBootScene } from "./debug-battle";
+import { BattleBootScene, OverworldBootScene, ExpeditionBootScene, HollowMillBootScene, JumpBootScene, DebugBootScene } from "./debug-battle";
 import { COLOR } from "./theme";
 
 // Standalone **Hollow Mill** mode (M14/D44/D52): `#demo` boots the authored
@@ -32,6 +32,10 @@ const isOverworld = base === "overworld";
 // OverworldScene — the full expedition loop (fog/ledger/forecast/recovery/lifecycle
 // + real combats) on a hand-picked, deterministic showcase map.
 const isExpedition = base === "expedition";
+// `#debug` (dev-only): boot a minimal landing scene that mounts the "jump to node"
+// DOM overlay (debug-menu.ts) — the clickable front-end over the jump tooling. The
+// menu mounts ONLY here, so it never appears on `#demo`/`#expedition`/the default.
+const isDebug = base === "debug";
 
 /** Phaser game configuration for the web build. */
 export const gameConfig: Phaser.Types.Core.GameConfig = {
@@ -40,7 +44,9 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   width: 800,
   height: 600,
   backgroundColor: COLOR.bg,
-  scene: isJump
+  scene: isDebug
+    ? [DebugBootScene, GuildScene, OverworldScene, BattleScene]
+    : isJump
     ? [JumpBootScene, GuildScene, OverworldScene, BattleScene]
     : isExpedition
       ? [ExpeditionBootScene, GuildScene, OverworldScene, BattleScene]

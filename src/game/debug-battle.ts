@@ -25,6 +25,8 @@ import {
 } from "../core";
 import type { RunHandoff } from "./scenes/OverworldScene";
 import { installPlaytestLogUI } from "./playtest-log-ui";
+import { installDebugMenu } from "./debug-menu";
+import { COLOR, INK, FONT } from "./theme";
 
 /** The shared demo/debug starting party (the authored cast the Guild hall seeds). */
 function demoRoster(): Unit[] {
@@ -305,6 +307,27 @@ function resolvePolicy(
   return (named ?? DEFAULT_POLICIES[0]).policy;
 }
 
+/**
+ * **Jump a live game into an arrival** — the shared boot seam behind both the
+ * `#demo?node=…` URL jump ({@link JumpBootScene}) and the in-game debug menu
+ * ({@link installDebugMenu}). Builds the {@link RunHandoff} from `params`
+ * ({@link buildArrivalJump}) and starts the destination scene with it.
+ *
+ * The destination follows the same rule {@link JumpBootScene} used to inline: an
+ * explicit `params.into` wins (`battle` → BattleScene, `overworld` → OverworldScene);
+ * otherwise it's chosen by the **target node's kind** — a `combat` node hands off to
+ * the BattleScene (which stages the encounter in its `create()`), anything else parks
+ * on the OverworldScene. Centralizing it here keeps the scene-decision logic in one
+ * place (the menu and the boot scene can't drift apart).
+ */
+export function jumpToArrival(game: Phaser.Game, params: JumpParams): void {
+  const handoff = buildArrivalJump(params);
+  const into =
+    params.into ??
+    (getNode(THE_HOLLOW_MILL.map, params.node).kind === "combat" ? "battle" : "overworld");
+  game.scene.start(into === "battle" ? "BattleScene" : "OverworldScene", handoff);
+}
+
 /** Parsed `#demo?node=…` jump params (see {@link JumpBootScene}). */
 export interface JumpParams {
   node: string;
@@ -368,8 +391,43 @@ export class JumpBootScene extends Phaser.Scene {
       // No node param reached us (config should have routed elsewhere) — fail loud.
       throw new Error("JumpBootScene: no `node` param in the hash");
     }
-    const handoff = buildArrivalJump(parsed);
-    const into = parsed.into ?? (getNode(THE_HOLLOW_MILL.map, parsed.node).kind === "combat" ? "battle" : "overworld");
-    this.scene.start(into === "battle" ? "BattleScene" : "OverworldScene", handoff);
+    // The scene-decision lives in jumpToArrival (shared with the debug menu).
+    jumpToArrival(this.game, parsed);
+  }
+}
+
+/**
+ * A dev-only **landing scene** for `#debug` — a minimal backdrop + title that mounts
+ * the {@link installDebugMenu} DOM overlay (the clickable "jump to any node in a
+ * plausible state" front-end). Mirrors {@link HollowMillBootScene} in being a thin
+ * boot scene, but unlike the jump boot scenes it **renders** (a backdrop + heading)
+ * rather than immediately handing off — the developer then drives the jump from the
+ * overlay, which persists across the `scene.start` calls it triggers.
+ */
+export class DebugBootScene extends Phaser.Scene {
+  constructor() {
+    super("DebugBootScene");
+  }
+
+  create(): void {
+    const { width, height } = this.scale;
+    this.add.rectangle(0, 0, width, height, COLOR.bg, 1).setOrigin(0, 0);
+    this.add
+      .text(width / 2, height / 2 - 16, "Debug — Jump to Node", {
+        color: INK.bright,
+        fontFamily: FONT.family,
+        fontSize: FONT.title,
+      })
+      .setOrigin(0.5);
+    this.add
+      .text(width / 2, height / 2 + 18, "Use the ≡ Debug Jump panel (top-left) to boot a node in a plausible arrival state.", {
+        color: INK.secondary,
+        fontFamily: FONT.family,
+        fontSize: FONT.body,
+        align: "center",
+        wordWrap: { width: width - 80 },
+      })
+      .setOrigin(0.5);
+    installDebugMenu(this.game);
   }
 }

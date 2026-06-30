@@ -16,6 +16,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { ov, bs, navTo } from "./harness.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CFT_VERSION = process.env.CFT_VERSION ?? "131.0.6778.204";
@@ -32,10 +33,8 @@ const PLATFORMS = {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const exists = (p) => access(p).then(() => true, () => false);
 
-const OV = `window.game.scene.getScene("OverworldScene")`;
-const BS = `window.game.scene.getScene("BattleScene")`;
-const ov = (body) => `(()=>{const s=${OV};${body}})()`;
-const bs = (body) => `(()=>{const s=${BS};${body}})()`;
+// `ov`, `bs` (scene-eval string builders) and `navTo` (the run-loop navigator) are
+// shared with the harness/e2e — imported from ./harness.mjs (single source of truth).
 
 // Advance a battle a few turns (clearing the busy *animation* lock so the clock keeps
 // moving) to fill the clock + show the objective gauge mid-fight. Stop the moment a player
@@ -44,17 +43,6 @@ const bs = (body) => `(()=>{const s=${BS};${body}})()`;
 const advance = (n) => bs(`if(s.phase==="deployment")s.onPrimary();for(let i=0;i<${n}&&!s.waitingFor&&!s.over;i++){s.busy=false;s.onAdvance();}`);
 // Force a clean win and finish: every enemy down ⇒ the field clears (gate met too).
 const forceWin = bs(`if(s.over||!s.battle)return;for(const u of s.battle.units)if(u.side==="enemy")u.alive=false;s.busy=false;s.waitingFor=null;s.finishBattle();`);
-// Navigate the loop from wherever it is to a target combat node (resting at any rest
-// node on the way), then hand off to the real BattleScene. Idempotent if already there.
-// Branch-aware: when the target is a direct edge, take it; otherwise step the first
-// reachable node (playing rests/events) until the target becomes directly reachable.
-const navTo = (id) => ov(
-  `const T=${JSON.stringify(id)};` +
-  `while(s.run.mapNodeId!==T){const r=s.loop.reachable();if(r.length===0)break;` +
-  `const n=r.find(x=>x.id===T)||r[0];s.loop.choose(n.id);` +
-  `if(n.id!==T&&n.kind!=="combat")s.loop.playCurrentNode();}` +
-  `s.scene.start("BattleScene",{run:s.run,loop:s.loop});`,
-);
 
 const STEPS = [
   { name: "01-intro", minMs: 800 }, // the expedition orientation card over the fogged map

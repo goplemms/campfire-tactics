@@ -61,12 +61,39 @@ export const BS = `window.game.scene.getScene("BattleScene")`;
 export const ov = (body) => `(()=>{const s=${OV};${body}})()`;
 export const bs = (body) => `(()=>{const s=${BS};${body}})()`;
 
-/** Navigate the run loop to a target combat node, then hand off to the real BattleScene. */
-export const navTo = (id) => ov(
-  `const T=${JSON.stringify(id)};` +
-  `while(s.run.mapNodeId!==T){const r=s.loop.reachable();if(r.length===0)break;const n=r[0];s.loop.choose(n.id);if(n.id!==T&&n.kind!=="combat")s.loop.playCurrentNode();}` +
-  `s.scene.start("BattleScene",{run:s.run,loop:s.loop});`,
-);
+/**
+ * In-page run-loop navigator → hand off to a scene. Builds an `ov(...)` snippet
+ * that walks the loop from wherever it is to `target`, then starts a scene with the
+ * run/loop (default BattleScene — staged from the loop's current node in `create`).
+ *
+ *  - `route` given: follow it **exactly** — choose each step in order, playing rests/
+ *    events along the way but never the target/combats (so the target lands chosen-
+ *    but-unplayed, ready for the BattleScene to stage).
+ *  - `route` absent: the branch-aware walk — at each step take the target if it's a
+ *    direct edge, else the first reachable node (playing rests/events) until the
+ *    target becomes reachable.
+ *  - `into`: `"overworld"` parks on the OverworldScene; default `"battle"` hands off
+ *    to the BattleScene.
+ */
+export const jumpTo = ({ target, route, into = "battle" } = {}) => {
+  const scene = into === "overworld" ? "OverworldScene" : "BattleScene";
+  const handoff = `s.scene.start(${JSON.stringify(scene)},{run:s.run,loop:s.loop});`;
+  const walk = route
+    ? `const R=${JSON.stringify(route)},T=${JSON.stringify(target ?? route[route.length-1])};` +
+      `for(let i=1;i<R.length;i++){const id=R[i];const node=s.run.map.nodes[id]||s.loop.reachable().find(x=>x.id===id);` +
+      `s.loop.choose(id);if(id!==T&&node&&node.kind!=="combat")s.loop.playCurrentNode();}`
+    : `const T=${JSON.stringify(target)};` +
+      `while(s.run.mapNodeId!==T){const r=s.loop.reachable();if(r.length===0)break;` +
+      `const n=r.find(x=>x.id===T)||r[0];s.loop.choose(n.id);` +
+      `if(n.id!==T&&n.kind!=="combat")s.loop.playCurrentNode();}`;
+  return ov(walk + handoff);
+};
+
+/**
+ * Navigate the run loop to a target combat node, then hand off to the real
+ * BattleScene — a thin back-compat wrapper over {@link jumpTo} (branch-aware walk).
+ */
+export const navTo = (id) => jumpTo({ target: id });
 
 /**
  * Boot the game in a headless browser and hand a {@link GameSession} to `fn`. The
@@ -113,6 +140,23 @@ export async function withGame(fn, opts = {}) {
     const session = {
       page,
       problems,
+      // The resolved dev-server base URL withGame computed — exposed so a script can
+      // re-boot a fresh hash within one session (see `boot`).
+      url,
+      // Re-boot the page at a new hash on the SAME server/browser session — far cheaper
+      // than one withGame per shot. Lets a script step through different `#demo?...`
+      // hashes (e.g. node×arrival jump-boots) without tearing down Chrome each time.
+      //
+      // A bare goto that differs only in the hash fragment is a *same-document*
+      // navigation in Chrome — it would NOT reload the module graph, so the game's
+      // boot config (which reads window.location.hash once at module init) would keep
+      // the previous scene. We bounce through about:blank to force a fresh document
+      // load so the new hash actually takes effect.
+      async boot(hash) {
+        await page.goto("about:blank", { waitUntil: "load", timeout: 30000 });
+        await page.goto(`${url}${hash}`, { waitUntil: "load", timeout: 30000 });
+        await page.waitForSelector("canvas", { timeout: 15000 });
+      },
       eval: (body) => page.evaluate(body),
       bsEval: (body) => page.evaluate(bs(body)),
       async clickScene(x, y) {

@@ -19,8 +19,10 @@
     "shots:traveler": "node scripts/shots-traveler-gift.mjs",
     "shots:guild": "node scripts/shots-guild.mjs",
     "shots:deploy": "node scripts/shots-deploy.mjs",
+    "shots:arrivals": "node scripts/shots-arrivals.mjs",
     "shots:telegraph": "node scripts/shots-telegraph.mjs",
     "sim": "vitest run src/core/sim.test.ts",
+    "validate": "vitest run src/core/feasibility.report.test.ts",
     "verify": "npm run test && npm run build && npm run shots:mill"
   },
   "dependencies": {

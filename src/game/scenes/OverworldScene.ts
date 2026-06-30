@@ -732,7 +732,7 @@ export class OverworldScene extends Phaser.Scene {
   private costReadout(skill: SkillDef, actor: Unit): string {
     const cost = overworldCostOf(skill);
     const cd = cooldownRemaining(this.run.overworld, skill.id);
-    const cdStr = cd > 0 ? `${cd} node${cd === 1 ? "" : "s"}` : "ready";
+    const cdStr = cd > 0 ? `${cd} night${cd === 1 ? "" : "s"}` : "ready";
     const parts = [`cd: ${cdStr}`];
     const baseFat = cost.fatigue ?? 0;
     if (baseFat > 0) {
@@ -751,7 +751,7 @@ export class OverworldScene extends Phaser.Scene {
   private refusal(skill: SkillDef, _actor: Unit): string | null {
     const cost = overworldCostOf(skill);
     const cd = cooldownRemaining(this.run.overworld, skill.id);
-    if (cd > 0) return `On cooldown — ${cd} more node${cd === 1 ? "" : "s"}.`;
+    if (cd > 0) return `On cooldown — ${cd} more night${cd === 1 ? "" : "s"}.`;
     // D73: fatigue never refuses an action (no lock) — over-extension is paid via consequences.
     const gold = resolveKnob(cost.gold, this.run);
     if (gold > 0 && this.run.camp.gold < gold) return `Not enough gold (${gold}g).`;

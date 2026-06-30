@@ -973,6 +973,21 @@ export class OverworldScene extends Phaser.Scene {
 
   /** Ledger tab — gold flow (realized + projected) + the route forecast (D45/D48). */
   private drawTentLedger(b: Phaser.Geom.Rectangle): void {
+    const ledger = this.drawLedgerSheet(b, { rerender: () => this.renderTent() });
+    if (ledger.marketReady) {
+      this.overlay.push(this.makeTextButton(b.left + 22 + 90, b.bottom - 16, 170, 28, "Open Market", COLOR.btnFill, COLOR.gold, () => { this.tentDossier?.destroy(); this.tentDossier = undefined; const back = this.tentReturn ?? (() => this.renderCamp()); this.tentReturn = null; this.openMarket(back); }).setDepth(26));
+    }
+  }
+
+  /**
+   * The ledger sheet itself (D45/D48) — Balance/Influence header, the category rows,
+   * and the route forecast — drawn into `b`. Shared by the Captain's Tent ledger tab
+   * and the night-end {@link showLedgerTransition}; returns the built {@link Ledger}
+   * so the caller can add its own chrome (the Tent's Market shortcut). `rerender`
+   * fires after an Upkeep line is crossed off so the owning surface redraws itself;
+   * `interactive: false` makes the sheet read-only (the rest tiers force-pay Upkeep).
+   */
+  private drawLedgerSheet(b: Phaser.Geom.Rectangle, opts: { rerender: () => void; interactive?: boolean }): Ledger {
     const node = this.campNode ?? currentNode(this.run);
     const merchantReady = node.kind === "rest" && this.run.party.some((u) => u.alive && u.jobId === "merchant") && cooldownRemaining(this.run.overworld, "market") === 0;
     const ledger: Ledger = buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: merchantReady });
@@ -991,14 +1006,12 @@ export class OverworldScene extends Phaser.Scene {
     g.lineBetween(leftX, b.top + 24, rightX, b.top + 24);
     g.lineBetween(leftX, b.top + 26, rightX, b.top + 26);
 
-    let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx: b.centerX, pad, w: b.width }, b.top + 26 + 18);
+    let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx: b.centerX, pad, w: b.width }, b.top + 26 + 18, opts);
     y += 8;
     this.overlay.push(this.add.text(leftX, y, "Forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
     y += 16;
     this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
-    if (ledger.marketReady) {
-      this.overlay.push(this.makeTextButton(leftX + 90, b.bottom - 16, 170, 28, "Open Market", COLOR.btnFill, COLOR.gold, () => { this.tentDossier?.destroy(); this.tentDossier = undefined; const back = this.tentReturn ?? (() => this.renderCamp()); this.tentReturn = null; this.openMarket(back); }).setDepth(26));
-    }
+    return ledger;
   }
 
   private useCampSkill(actor: Unit, skill: SkillDef): void {
@@ -1360,9 +1373,12 @@ export class OverworldScene extends Phaser.Scene {
   // --- Rest node (D23) -------------------------------------------------------
 
   private playRest(): void {
-    const res = this.loop.restNode();
-    this.refreshCampText();
-    this.showRestScreen(res);
+    // A rest node elapses a night and pays a night's rations — show the spend first.
+    this.showLedgerTransition("Before you rest…", () => {
+      const res = this.loop.restNode();
+      this.refreshCampText();
+      this.showRestScreen(res);
+    });
   }
 
   private showRestScreen(res: RestResult): void {
@@ -1484,12 +1500,15 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private doInPlaceRest(): void {
-    const res: InPlaceRestResult = this.loop.inPlaceRest();
-    this.refreshCampText();
-    if (res.applied) this.setHint(`Rested in place: −${res.goldSpent}g rations, +${res.hpHealed} HP, +${res.rpAdded} RP. Cooldowns ticked (a node-step passed).`);
-    else this.setHint(`Can't rest: ${res.reason}`);
-    if (this.loop.isOver()) return this.runEnd();
-    this.showSurvey();
+    // In-place rest is a node-step that pays a night's rations — show the spend first.
+    this.showLedgerTransition("Before you rest…", () => {
+      const res: InPlaceRestResult = this.loop.inPlaceRest();
+      this.refreshCampText();
+      if (res.applied) this.setHint(`Rested in place: −${res.goldSpent}g rations, +${res.hpHealed} HP, +${res.rpAdded} RP. Cooldowns ticked (a node-step passed).`);
+      else this.setHint(`Can't rest: ${res.reason}`);
+      if (this.loop.isOver()) return this.runEnd();
+      this.showSurvey();
+    });
   }
 
   /**
@@ -1499,11 +1518,14 @@ export class OverworldScene extends Phaser.Scene {
    * before they march. Within cap, this falls straight through to the soft gate.
    */
   private breakCampToMap(): void {
+    // The night elapses at departure (D46) — show the ledger first so the spend is
+    // seen (and Upkeep still crossable) before the soft gate and the march.
+    const toGate = () => this.showLedgerTransition("Before you break camp…", () => this.breakCampGate(), true);
     if (slotsOver(this.run.inventory) > 0) {
-      this.showDiscardMenu(() => this.breakCampGate());
+      this.showDiscardMenu(toGate);
       return;
     }
-    this.breakCampGate();
+    toGate();
   }
 
   /**
@@ -1602,6 +1624,7 @@ export class OverworldScene extends Phaser.Scene {
     g: Phaser.GameObjects.Graphics,
     geom: { leftX: number; rightX: number; colX: number; rowH: number; cx: number; pad: number; w: number },
     startY: number,
+    opts: { rerender: () => void; interactive?: boolean } = { rerender: () => this.renderTent() },
   ): number {
     const { leftX, rightX, colX, rowH, cx, pad, w } = geom;
     let y = startY;
@@ -1619,8 +1642,8 @@ export class OverworldScene extends Phaser.Scene {
 
       for (const l of cat.lines) {
         const skipped = l.note === "voluntarily skipped";
-        const interactive = cat.id === "upkeep"; // only Upkeep lines are skippable
-        const labelInk = skipped ? INK.disabled : interactive ? INK.bright : INK.secondary;
+        const skippable = (opts.interactive ?? true) && cat.id === "upkeep"; // only Upkeep lines are skippable, and only when the surface allows it
+        const labelInk = skipped ? INK.disabled : skippable ? INK.bright : INK.secondary;
         this.overlay.push(
           this.add.text(leftX + 18, y, l.label, { color: labelInk, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
         );
@@ -1641,7 +1664,7 @@ export class OverworldScene extends Phaser.Scene {
 
         // Upkeep rows are clickable: cross off (skip) / restore. The hit rect sits
         // below the text (depth 24) so its hover wash reads behind the ink.
-        if (interactive) {
+        if (skippable) {
           const lineId = l.id.replace("upkeep:", "") as UpkeepLine["id"];
           const hit = this.add.rectangle(cx, y, w - 2 * pad + 12, rowH, COLOR.surfaceAlt, 0).setDepth(24).setInteractive({ useHandCursor: true });
           hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {
@@ -1649,7 +1672,7 @@ export class OverworldScene extends Phaser.Scene {
             this.setHint(skipped ? `Click to restore ${l.label} to the ledger (fund it again).` : `Click to cross ${l.label} off the ledger — frees its gold; you'll take the consequence and the gate won't nag.`);
           });
           hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => hit.setFillStyle(COLOR.surfaceAlt, 0));
-          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.toggleSkip(lineId));
+          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.toggleSkip(lineId, opts.rerender));
           this.overlay.push(hit);
         }
         y += rowH;
@@ -1667,15 +1690,16 @@ export class OverworldScene extends Phaser.Scene {
     return `${n >= 0 ? "+" : ""}${n}g`;
   }
 
-  /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. */
-  private toggleSkip(id: UpkeepLine["id"]): void {
+  /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. The
+   *  owning surface (Tent or night-end transition) supplies its own `rerender`. */
+  private toggleSkip(id: UpkeepLine["id"], rerender: () => void = () => this.renderTent()): void {
     const set = new Set(this.run.camp.skippedUpkeep);
     if (set.has(id)) set.delete(id);
     else set.add(id);
     this.run.camp.skippedUpkeep = [...set] as ("food" | "repairs")[];
     this.refreshCampText();
     this.setHint(set.has(id) ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
-    this.renderTent();
+    rerender();
   }
 
   // --- Terminal screens ------------------------------------------------------
@@ -1745,6 +1769,49 @@ export class OverworldScene extends Phaser.Scene {
 
   private setHint(text: string): void {
     this.hintPanel.setResting(text);
+  }
+
+  /**
+   * The night-end ledger transition (D45) — a full-screen readout of what the night
+   * costs, shown the instant **before** a night elapses (Break Camp, either rest tier)
+   * so the spend is seen before it's locked in. On Break Camp the Upkeep lines stay
+   * crossable (the soft gate honors the skip); the rest tiers force-pay, so there the
+   * sheet is read-only. **Continue** runs `onContinue` — the deferred night action.
+   */
+  private showLedgerTransition(title: string, onContinue: () => void, interactive = false): void {
+    clearLayer(this.overlay);
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+    const w = 760;
+    const h = Math.min(this.scale.height - 24, 540);
+    const left = cx - w / 2;
+    const top = cy - h / 2;
+
+    // Full-screen backdrop (dims + swallows clicks behind) + the framed sheet.
+    const backdrop = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(22).setInteractive();
+    this.overlay.push(
+      backdrop,
+      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
+      this.add.text(left + 24, top + 22, title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(left + w - 24, top + 22, "The night's tab — what camp spends before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+    );
+    const rule = this.add.graphics().setDepth(24);
+    rule.lineStyle(1, COLOR.borderSoft, 0.9);
+    rule.lineBetween(left + 16, top + 44, left + w - 16, top + 44);
+    this.overlay.push(rule);
+
+    const contentTop = top + 56;
+    const bounds = new Phaser.Geom.Rectangle(left + 8, contentTop, w - 16, h - (contentTop - top) - 52);
+    this.drawLedgerSheet(bounds, { rerender: () => this.showLedgerTransition(title, onContinue, interactive), interactive });
+
+    const btn = this.makeTextButton(cx, top + h - 24, 240, 32, "Continue →", COLOR.successDeep, COLOR.success, () => {
+      clearLayer(this.overlay);
+      onContinue();
+    });
+    this.overlay.push(btn.setDepth(26));
+    this.setHint(interactive
+      ? "Tonight's tab. Cross an Upkeep line off to free its gold (you'll take the consequence). Continue to break camp."
+      : "Tonight's tab — what this rest will spend. Continue to proceed.");
   }
 
   private showOverlay(title: string, body: string, good: boolean, w = 480, h = 200, onContinue?: () => void): void {

@@ -14,6 +14,7 @@ import {
   slotsUsed,
   slotsOver,
   campReadoutLine,
+  campReadout,
   // M8 — the overworld action economy (D35) · D72 unified onto SkillDef
   overworldCostOf,
   resolveKnob,
@@ -276,6 +277,9 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.nodeObjects);
     this.graph?.destroy();
     this.nodePos.clear();
+    // The map has no action column to sit beside, so the caravan's figures ride the
+    // top HUD line here (the camp/survey beats move them into a right-side panel).
+    this.campText.setVisible(true);
 
     const map = this.run.map;
     const reachableIds = new Set(this.loop.reachable().map((n) => n.id));
@@ -501,18 +505,26 @@ export class OverworldScene extends Phaser.Scene {
     const top = 84;
     const colX = cx - panelW / 2 + 30;
     const rowH = 30;
+    const readoutCardW = 200;
+    const readoutX = cx + panelW / 2 - 30 - readoutCardW;
+
+    // The live figures move off the static top line into a right-side state panel
+    // (below) — hide the header line so the caravan's state reads in one place.
+    this.campText.setVisible(false);
 
     // --- Areas toolbar (D58): the "different areas" ---------------------------
     // A compact top row of deep-links to the *places you go* (Captain's Tent tabs, the
     // Market, the route map), kept above the left column's *actions you take here* so the
     // two purposes read distinctly — and so the full width below is free for the drawers.
     const areasBottom = this.renderAreaLinks(colX, top, () => this.renderCamp());
+    const bodyTop = areasBottom + 20;
 
-    // --- The action drawers, below the toolbar --------------------------------
-    const actionsBottom = this.renderCampActions(colX, areasBottom + 20, rowH);
+    // --- The action drawers (left) + the live state readouts (right) ----------
+    const actionsBottom = this.renderCampActions(colX, bodyTop, rowH);
+    this.renderReadouts(readoutX, bodyTop, readoutCardW);
 
-    // The captain's running to-do sits below the actions.
-    this.renderCaptainsJournal(colX, actionsBottom + 12, panelW - 60);
+    // The captain's running to-do sits below the actions, kept clear of the readouts.
+    this.renderCaptainsJournal(colX, actionsBottom + 12, readoutX - 16 - colX);
 
     // --- End the Night — the prep→event gate (D46); anchored to the panel's bottom ---
     // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
@@ -703,6 +715,38 @@ export class OverworldScene extends Phaser.Scene {
       }
     }
     return y;
+  }
+
+  /**
+   * The caravan's live **state readouts** (D58) — Purse / Morale / Storage / Kits / RP /
+   * Upkeep as a vertical stack of value tiles, drawn to the right of the action column so
+   * the figures read as live gauges of the caravan's state rather than a static header
+   * line. Each tile pairs a muted label with a semantically-coloured, prominent value
+   * (purse gold, morale by tier, storage ember when full, upkeep as a warm drain). Pure
+   * figures come from {@link "../../core".campReadout}. Returns the `y` past the stack.
+   */
+  private renderReadouts(x: number, top: number, cardW: number): number {
+    const r = campReadout(this.run);
+    const moraleInk = r.moraleTier === "Low" ? INK.ember : r.moraleTier === "Neutral" ? INK.secondary : INK.success;
+    const tiles: { label: string; value: string; ink: string }[] = [
+      { label: "Purse", value: `${r.purse}g`, ink: INK.gold },
+      { label: "Morale", value: `${r.moraleTier} (${r.morale >= 0 ? "+" : ""}${r.morale})`, ink: moraleInk },
+      { label: "Storage", value: `${r.storageUsed}/${r.storageCap}`, ink: r.storageUsed >= r.storageCap ? INK.ember : INK.secondary },
+      { label: "Trap Kits", value: `${r.kits}`, ink: r.kits > 0 ? INK.secondary : INK.disabled },
+      { label: "Rest Pts", value: `${r.rp}`, ink: r.rp > 0 ? INK.success : INK.secondary },
+      { label: "Upkeep", value: `${r.upkeep}g/night`, ink: INK.ember },
+    ];
+    const cardH = 34;
+    const pitch = 42;
+    tiles.forEach((t, i) => {
+      const cy = top + i * pitch;
+      this.campObjects.push(
+        this.add.rectangle(x, cy, cardW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0.5).setDepth(10),
+        this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11),
+        this.add.text(x + cardW - 12, cy, t.value, { color: t.ink, fontFamily: FONT.family, fontSize: FONT.heading }).setOrigin(1, 0.5).setDepth(11),
+      );
+    });
+    return top + (tiles.length - 1) * pitch + cardH / 2;
   }
 
   /**
@@ -1427,6 +1471,8 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.overlay);
     this.campNode = currentNode(this.run);
     this.refreshCampText();
+    // The live figures move to the right-side state panel on this beat — hide the line.
+    this.campText.setVisible(false);
 
     this.titleText.setText(`Survey — Night ${this.run.night} · plan your route`);
     this.setHint("Survey: read the forecast, rest in place (a night's rations, repeatable), survey ahead — then Break Camp to the map.");
@@ -1445,10 +1491,15 @@ export class OverworldScene extends Phaser.Scene {
       this.add.text(colX - 10, top + 18, this.forecastSummary(forecast), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 5, wordWrap: { width: panelW - 60 } }).setOrigin(0, 0).setDepth(11),
     );
     const colTop = top + 26 + (forecast.perEdge.length + 1) * 18 + 14;
+    const readoutCardW = 200;
+    const readoutX = cx + panelW / 2 - 30 - readoutCardW;
 
     // Areas toolbar across the top of the action area (frees the width below for drawers).
     const areasBottom = this.renderAreaLinks(colX, colTop, () => this.showSurvey());
     let y = areasBottom + 20;
+
+    // Live state readouts, stacked on the right of the action drawers.
+    this.renderReadouts(readoutX, y, readoutCardW);
 
     // Recovery drawer: the route-planning heal (in-place rest — repeatable, costed; greys
     // at full HP / when broke). The same category vocabulary as the camp beat.

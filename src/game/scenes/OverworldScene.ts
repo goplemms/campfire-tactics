@@ -15,6 +15,7 @@ import {
   slotsOver,
   campReadoutLine,
   campReadout,
+  type CampReadout,
   // M8 — the overworld action economy (D35) · D72 unified onto SkillDef
   overworldCostOf,
   resolveKnob,
@@ -77,7 +78,7 @@ import {
   type JournalConcern,
   type EquipSlot,
 } from "../../core";
-import { fitText, clearLayer } from "../ui";
+import { fitText, clearLayer, isScreenshotMode } from "../ui";
 import { Button } from "../button";
 import { HintPanel } from "../hint-panel";
 import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
@@ -175,6 +176,15 @@ export class OverworldScene extends Phaser.Scene {
   private campText!: Phaser.GameObjects.Text;
   private previewText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
+
+  // The right-side state readouts (D58): the day's opening figures (to colour each value
+  // by its net move *this day*, keyed by the node we're camped at), the previous render's
+  // figures (to pulse a tile the instant a value changes), and the live pulse tweens (torn
+  // down with the camp so a tween never ticks a destroyed tile).
+  private readoutBaseline?: CampReadout;
+  private readoutBaselineKey?: string;
+  private readoutLast?: CampReadout;
+  private readoutTweens: Phaser.Tweens.Tween[] = [];
 
   constructor() {
     super("OverworldScene");
@@ -727,26 +737,66 @@ export class OverworldScene extends Phaser.Scene {
    */
   private renderReadouts(x: number, top: number, cardW: number): number {
     const r = campReadout(this.run);
+
+    // Anchor the "this day" comparison to the node we're camped at: the baseline is the
+    // figures on arrival, so a value's colour tracks its **net move since we made camp
+    // here**. A fresh node (or a fresh scene, e.g. back from battle) re-baselines and
+    // suppresses the change-pulse for that first paint.
+    const nodeKey = this.run.mapNodeId;
+    const fresh = this.readoutBaselineKey !== nodeKey;
+    if (fresh) {
+      this.readoutBaseline = r;
+      this.readoutBaselineKey = nodeKey;
+      this.readoutLast = r;
+    }
+    const base = this.readoutBaseline!;
+    const last = this.readoutLast!;
+
     const moraleInk = r.moraleTier === "Low" ? INK.ember : r.moraleTier === "Neutral" ? INK.secondary : INK.success;
-    const tiles: { label: string; value: string; ink: string }[] = [
-      { label: "Purse", value: `${r.purse}g`, ink: INK.gold },
-      { label: "Morale", value: `${r.moraleTier} (${r.morale >= 0 ? "+" : ""}${r.morale})`, ink: moraleInk },
-      { label: "Storage", value: `${r.storageUsed}/${r.storageCap}`, ink: r.storageUsed >= r.storageCap ? INK.ember : INK.secondary },
-      { label: "Trap Kits", value: `${r.kits}`, ink: r.kits > 0 ? INK.secondary : INK.disabled },
-      { label: "Rest Pts", value: `${r.rp}`, ink: r.rp > 0 ? INK.success : INK.secondary },
-      { label: "Upkeep", value: `${r.upkeep}g/night`, ink: INK.ember },
+    // `betterHigher` gives each value a *sense* — so a rising purse reads good (green) but a
+    // rising Upkeep reads bad (red). Storage carries no valence (loot vs. headroom cut both
+    // ways), so it keeps its semantic ink and never day-colours. `ink` is the unchanged look.
+    type Tile = { label: string; value: string; ink: string; cur: number; base: number; last: number; betterHigher?: boolean };
+    const tiles: Tile[] = [
+      { label: "Purse", value: `${r.purse}g`, ink: INK.gold, cur: r.purse, base: base.purse, last: last.purse, betterHigher: true },
+      { label: "Morale", value: `${r.moraleTier} (${r.morale >= 0 ? "+" : ""}${r.morale})`, ink: moraleInk, cur: r.morale, base: base.morale, last: last.morale, betterHigher: true },
+      { label: "Storage", value: `${r.storageUsed}/${r.storageCap}`, ink: r.storageUsed >= r.storageCap ? INK.ember : INK.secondary, cur: r.storageUsed, base: base.storageUsed, last: last.storageUsed },
+      { label: "Trap Kits", value: `${r.kits}`, ink: r.kits > 0 ? INK.secondary : INK.disabled, cur: r.kits, base: base.kits, last: last.kits, betterHigher: true },
+      { label: "Rest Pts", value: `${r.rp}`, ink: INK.secondary, cur: r.rp, base: base.rp, last: last.rp, betterHigher: true },
+      { label: "Upkeep", value: `${r.upkeep}g/night`, ink: INK.ember, cur: r.upkeep, base: base.upkeep, last: last.upkeep, betterHigher: false },
     ];
     const cardH = 34;
     const pitch = 42;
     tiles.forEach((t, i) => {
       const cy = top + i * pitch;
-      this.campObjects.push(
-        this.add.rectangle(x, cy, cardW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0.5).setDepth(10),
-        this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11),
-        this.add.text(x + cardW - 12, cy, t.value, { color: t.ink, fontFamily: FONT.family, fontSize: FONT.heading }).setOrigin(1, 0.5).setDepth(11),
-      );
+      // Day-move colour: green when the value improved since we made camp, red when it
+      // worsened — otherwise the tile's unchanged semantic ink.
+      let ink = t.ink;
+      if (t.betterHigher !== undefined && t.cur !== t.base) {
+        ink = (t.cur > t.base) === t.betterHigher ? INK.success : INK.danger;
+      }
+      const rect = this.add.rectangle(x, cy, cardW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0.5).setDepth(10);
+      const label = this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11);
+      const value = this.add.text(x + cardW - 12, cy, t.value, { color: ink, fontFamily: FONT.family, fontSize: FONT.heading }).setOrigin(1, 0.5).setDepth(11);
+      this.campObjects.push(rect, label, value);
+      // Pulse a tile the instant its figure changes from the previous paint (an action's
+      // effect landing) — but not on the first paint of a camp (`fresh`), which isn't a move.
+      if (!fresh && t.cur !== t.last && !isScreenshotMode()) this.pulseTile(x, cy, cardW, cardH, value);
     });
+    this.readoutLast = r;
     return top + (tiles.length - 1) * pitch + cardH / 2;
+  }
+
+  /** A one-shot attention pulse on a just-changed readout tile: a quick value bump + a
+   *  fading firelight glow. Tweens are tracked so {@link clearCamp} can tear them down. */
+  private pulseTile(x: number, cy: number, cardW: number, cardH: number, value: Phaser.GameObjects.Text): void {
+    value.setScale(1.4);
+    this.readoutTweens.push(this.tweens.add({ targets: value, scale: 1, duration: 360, ease: "Back.out" }));
+    // A translucent glow over the tile (no numeric colour-tween — that would lerp to muddy
+    // in-between hues), faded to nothing so the eye catches the change then settles.
+    const glow = this.add.rectangle(x, cy, cardW, cardH, COLOR.accent, 0.3).setOrigin(0, 0.5).setDepth(12);
+    this.campObjects.push(glow);
+    this.readoutTweens.push(this.tweens.add({ targets: glow, alpha: 0, duration: 460, ease: "Cubic.out" }));
   }
 
   /**
@@ -1261,6 +1311,9 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private clearCamp(): void {
+    // Stop any in-flight readout pulses before their tiles are destroyed below.
+    this.readoutTweens.forEach((t) => t.remove());
+    this.readoutTweens = [];
     clearLayer(this.campObjects);
   }
 

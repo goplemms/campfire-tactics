@@ -191,10 +191,8 @@ export interface AbilityRow {
 
 /** A compact "when · how" tag for an active ability (D65 ability surfacing). */
 function abilityTag(s: SkillDef): string {
-  // A dual-surface skill (D74, Recon) carries an overworld face too — show both.
-  const camp = s.overworldEffect ? " / Camp" : "";
-  if (s.phase === "battle") return `Battle · ${s.spend === "act" ? "Act" : "Move"}${camp}`;
-  if (s.phase === "deployment") return `Deploy${camp}`;
+  if (s.phase === "battle") return `Battle · ${s.spend === "act" ? "Act" : "Move"}`;
+  if (s.phase === "deployment") return "Deploy";
   if (s.phase === "meta") return "Camp";
   return s.phase;
 }

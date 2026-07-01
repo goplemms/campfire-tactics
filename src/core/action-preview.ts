@@ -36,10 +36,9 @@ export interface PreviewChange {
 
 /**
  * The projected effect of a no-target camp/overworld skill (Cook Stew, Feast, Find Trade,
- * Savvy Barter, Recon's Survey face, Forage) — from its declared cost + effect. Reads the
- * **overworld face** (`overworldEffect ?? effect`) exactly as the resolver does
- * ({@link "./overworld-actions".useOverworldSkill}), so a two-faced skill like Recon
- * previews its intel bump, not its combat dart.
+ * Savvy Barter, Survey, Forage) — from its declared cost + `effect`. One effect per skill
+ * (D74), so this reads the sole `effect` the resolver applies; a combat-only skill (no
+ * overworld effect kind) simply projects its cost.
  */
 export function skillEffectPreview(skill: SkillDef, run: RunState): PreviewChange[] {
   const changes: PreviewChange[] = [];
@@ -47,7 +46,7 @@ export function skillEffectPreview(skill: SkillDef, run: RunState): PreviewChang
   const gold = resolveKnob(cost.gold, run);
   if (gold > 0) changes.push({ stat: "purse", label: "Purse", amount: -gold });
   if (cost.fatigue) changes.push({ label: "Fatigue", amount: cost.fatigue, good: false });
-  const eff = skill.overworldEffect ?? skill.effect;
+  const eff = skill.effect;
   switch (eff?.kind) {
     case "provisionMeal":
       changes.push({ stat: "rp", label: "Rest Pts", amount: eff.rp });

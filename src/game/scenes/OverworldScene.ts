@@ -145,12 +145,11 @@ interface CampAction {
  */
 /**
  * Does this skill aim at a *map node* on the overworld (the Survey beat's node-picker),
- * vs. a no-target camp action (the recovery drawer)? A **dual-surface** skill (D74, the
- * Scout's Recon) is node-aimed by its `survey` overworld face even though its base `target`
- * is `self` (for combat); a camp-targeted skill (Forage) is node-aimed by `target`.
+ * vs. a no-target camp action (the recovery drawer)? The Scout's **Survey** is node-aimed by
+ * its `survey` effect; a camp-targeted skill (Forage) is node-aimed by its `target`.
  */
 function isNodeAimedOverworld(s: SkillDef): boolean {
-  return s.overworldEffect?.kind === "survey" || s.target === "camp";
+  return s.effect.kind === "survey" || s.target === "camp";
 }
 
 export class OverworldScene extends Phaser.Scene {

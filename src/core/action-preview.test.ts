@@ -4,15 +4,15 @@
  * Pins the exact projected changes each camp/overworld action reports on hover, for a
  * fixed party + purse. It's the guard on the projection kernel: if a skill's cost/effect
  * moves, or an ECONOMY/upkeep knob changes, the snapshot diverges and we re-bless it on
- * purpose — never by accident. Also pins that Recon previews its **overworld face** (the
- * intel bump), not its combat dart — the `overworldEffect ?? effect` seam the resolver uses.
+ * purpose — never by accident. Also pins that Survey previews its intel bump — the
+ * standalone overworld ability split out of the old two-faced Recon (D74).
  *
  * Pure logic: no Phaser, no DOM.
  */
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import { createRun, type RunState } from "./run";
-import { COOK_STEW, FEAST, FIND_TRADE, SAVVY_BARTER, FORAGE, RECON, type JobId } from "./jobs";
+import { COOK_STEW, FEAST, FIND_TRADE, SAVVY_BARTER, FORAGE, SURVEY, type JobId } from "./jobs";
 import {
   skillEffectPreview,
   triageActionPreview,
@@ -50,7 +50,7 @@ describe("D58 — action-effect preview projection (golden)", () => {
       feast: skillEffectPreview(FEAST, run),
       findTrade: skillEffectPreview(FIND_TRADE, run),
       savvyBarter: skillEffectPreview(SAVVY_BARTER, run),
-      recon: skillEffectPreview(RECON, run),
+      survey: skillEffectPreview(SURVEY, run),
       forage: skillEffectPreview(FORAGE, run),
       triage: triageActionPreview(),
       inPlaceRest: inPlaceRestPreview(run),
@@ -169,7 +169,14 @@ describe("D58 — action-effect preview projection (golden)", () => {
             "label": "Influence",
           },
         ],
-        "recon": [
+        "savvyBarter": [
+          {
+            "good": true,
+            "label": "Next deal",
+            "text": "primed",
+          },
+        ],
+        "survey": [
           {
             "amount": 1,
             "good": false,
@@ -179,13 +186,6 @@ describe("D58 — action-effect preview projection (golden)", () => {
             "good": true,
             "label": "Intel",
             "text": "+1 tier",
-          },
-        ],
-        "savvyBarter": [
-          {
-            "good": true,
-            "label": "Next deal",
-            "text": "primed",
           },
         ],
         "triage": [
@@ -204,12 +204,10 @@ describe("D58 — action-effect preview projection (golden)", () => {
     `);
   });
 
-  it("previews Recon's overworld face (the intel bump), not its combat dart", () => {
-    const recon = skillEffectPreview(RECON, fixedRun());
-    // The bug this guards: reading `skill.effect` (the combat `status` dart) instead of
-    // `overworldEffect ?? effect` would drop the intel change entirely.
-    expect(recon.some((c) => c.label === "Intel")).toBe(true);
-    expect(recon.some((c) => c.text === "swift")).toBe(false);
+  it("previews Survey's intel bump (its sole overworld effect)", () => {
+    const survey = skillEffectPreview(SURVEY, fixedRun());
+    expect(survey.some((c) => c.label === "Intel")).toBe(true);
+    expect(survey.some((c) => c.label === "Fatigue")).toBe(true); // its declared cost
   });
 
   it("is deterministic — the same run projects identically", () => {

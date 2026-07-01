@@ -52,13 +52,16 @@ describe("Scout — base kit shape (D68)", () => {
     if (trap.effect.kind === "placeTrap") expect(trap.effect.status?.id).toBe(EXPOSED);
   });
 
-  it("Set Trap is the L1 starter; Recon is the dual-surface L2 growth (D74)", () => {
+  it("Set Trap is the L1 starter; Recon (combat) + Survey (overworld) are the L2 growth (D74)", () => {
     const byId = (id: string) => SCOUT_JOB.skills.find((s) => s.id === id)!;
     expect(byId("set-snare").unlockLevel ?? 1).toBe(1); // moved to L1 — full combat kit from the start
     const recon = byId("recon");
     expect(recon.unlockLevel).toBe(2); // the Scout's 2nd-tier unlock
-    expect(recon.effect.kind).toBe("status"); // combat face — the dart (Swift), was Dash
-    expect(recon.overworldEffect?.kind).toBe("survey"); // overworld face — folds in Survey
+    expect(recon.effect.kind).toBe("status"); // combat-only now — the dart (Swift), was Dash
+    // The overworld face is its own ability (split from Recon): Survey, same L2 tier.
+    const survey = byId("survey");
+    expect(survey.unlockLevel).toBe(2);
+    expect(survey.effect.kind).toBe("survey"); // scouts a node's intel on the overworld
   });
 
   it("carries exactly one identity-anchor passive (the twin flank keys are merged)", () => {

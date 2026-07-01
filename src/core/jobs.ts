@@ -465,28 +465,43 @@ export const SUBTLE_BLADE_BONUS = 8;
 export const SCOUT_PRESTIGE_FLOOR = 5;
 
 /**
- * **Recon** (D74) — the Scout's signature **dual-surface** verb: one ability across all
- * three surfaces. In **battle / deployment** it *darts* +3 tiles (the old Dash — reach a
- * flank, or infiltrate deep where Quiet Footsteps' net-evasion compounds); on the
- * **overworld** it *scouts a node ahead*, raising its banded intel preview a tier (D24/D48
- * — the retired Survey, folded in here via {@link "./skills".SkillDef.overworldEffect}).
- * Class-gated by living on the Scout job and surfaced through {@link
- * "./leveling".availableSkills} like every other action; the overworld face aims at a *map
- * node* via the action opts. The Scout's **L2 growth** (its combat kit is already up at L1).
+ * **Recon** (D74) — the Scout's combat/deployment *dart*: +3 tiles (the old Dash) to reach
+ * a flank or infiltrate deep, where Quiet Footsteps' net-evasion compounds. Context derives
+ * to pre-combat + combat from its `status` effect. The Scout's **L2 growth** (its combat kit
+ * is already up at L1). Its former overworld face is now the standalone {@link SURVEY} — one
+ * ability per context reads cleaner than a two-faced verb (D74 revisited).
  */
 export const RECON: SkillDef = {
   id: "recon",
   name: "Recon",
-  description: "Break for a flank or scout the road ahead — dart +3 tiles (slipping the net deeper pre-combat), or recon a node ahead to sharpen its intel.",
+  description: "Break for a flank — dart +3 tiles, slipping the net deeper pre-combat.",
   phase: "battle",
-  usableContext: ["pre-combat", "combat", "overworld"], // explicit — its two faces span all three
-  target: "self", // combat/deploy: dart self. The overworld face aims at a node via opts.
+  target: "self", // combat/deploy: dart self. Context derives to pre-combat + combat.
   range: 0,
   spend: "move",
   unlockLevel: 2, // the Scout's L2 growth (D74) — Set Trap holds L1.
-  overworldCost: { cooldown: 2, fatigue: 1 }, // the overworld (scout) cost; combat uses `spend`.
-  effect: { kind: "status", status: swift(1, 3) }, // combat/deploy face — the dart (was Dash).
-  overworldEffect: { kind: "survey", tierBump: 1 }, // overworld face — folds in the retired Survey.
+  effect: { kind: "status", status: swift(1, 3) }, // the dart (was Dash).
+};
+
+/**
+ * **Survey** (D74) — the Scout's overworld field-craft: scout a node on the road ahead to
+ * sharpen its banded intel (raise its preview tier, D24/D48). A standalone overworld ability
+ * — its `survey` effect derives the `overworld` context — gated to the Scout's **L2 growth**,
+ * the same tier the {@link RECON} dart unlocks. Aims at a *map node* via the action's
+ * `targetNodeId` opt. (Split from Recon: the 2+1 kit budget is the *combat* baseline, and
+ * context-specific utility like this sits outside it rather than overloading a combat verb.)
+ */
+export const SURVEY: SkillDef = {
+  id: "survey",
+  name: "Survey",
+  description: "Scout a node on the road ahead — sharpen its intel (raise its preview tier).",
+  phase: "meta",
+  target: "camp",
+  range: 0,
+  spend: "act",
+  unlockLevel: 2, // matches the Scout's L2 growth (was Recon's overworld face).
+  overworldCost: { cooldown: 2, fatigue: 1 },
+  effect: { kind: "survey", tierBump: 1 },
 };
 
 /** The **Scout** — infiltrator / flank engine; manufactures isolation, slips the net, weakens the approach. */
@@ -512,9 +527,10 @@ export const SCOUT_JOB: JobDef = {
       spend: "act",
       effect: { kind: "placeTrap", damage: 8, status: exposed(2) },
     },
-    // Recon (D74) — the Scout's L2 growth: one verb that darts in battle/deployment AND
-    // scouts a node on the overworld (its dual-surface face folds in the retired Survey).
+    // The Scout's L2 growth (D74), split by context: Recon darts in battle/deployment,
+    // Survey scouts a node on the overworld — one ability per surface, not a two-faced verb.
     RECON,
+    SURVEY,
   ],
   // The fork (D68): a Scout that grinds to the floor and meets a branch trigger may
   // prestige in place. The Assassin is the lethal payoff of the flank identity.

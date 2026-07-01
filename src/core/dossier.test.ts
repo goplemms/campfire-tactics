@@ -104,16 +104,18 @@ describe("projectDossier (party dossier projection — pure read)", () => {
     const u = mkUnit("vale", { jobId: "scout" });
     const row = projectDossier(mkRun([u])).members[0];
 
-    // The Scout kit (D74): Set Trap (L1 starter) + Recon (the L2 dual-surface verb that
-    // folds in the old Dash + Survey). Recon's tag shows both faces ("Battle · Move / Camp").
-    expect(row.actives.map((a) => a.name)).toEqual(["Set Trap", "Recon"]);
+    // The Scout kit (D74): Set Trap (L1 starter) + the L2 growth, split by surface — Recon
+    // (combat dart, "Battle · Move") and Survey (overworld scout, "Camp").
+    expect(row.actives.map((a) => a.name)).toEqual(["Set Trap", "Recon", "Survey"]);
     const byName = (n: string) => row.actives.find((a) => a.name === n)!;
     expect(byName("Set Trap").tag).toBe("Deploy");
-    expect(byName("Recon").tag).toBe("Battle · Move / Camp");
+    expect(byName("Recon").tag).toBe("Battle · Move");
+    expect(byName("Survey").tag).toBe("Camp");
 
-    // Set Trap is L1 (ready); Recon is the Scout's L2 growth (locked at level 1).
+    // Set Trap is L1 (ready); Recon + Survey are the Scout's L2 growth (locked at level 1).
     expect(byName("Set Trap").lockedUntil).toBeUndefined();
     expect(byName("Recon").lockedUntil).toBe(2);
+    expect(byName("Survey").lockedUntil).toBe(2);
 
     // The single identity-anchor passive surfaces with its label + description.
     expect(row.passives.map((p) => p.name)).toEqual(["Quiet Footsteps"]);

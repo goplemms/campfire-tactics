@@ -2398,9 +2398,9 @@ export class BattleScene extends Phaser.Scene {
         // cumulative set, so the readout reads as a reveal ("unlocked Recon"), not a roster.
         const fresh = skillsUnlockedBetween(u, was, now);
         const names = fresh.map((s) => s.name).join(", ");
-        // Call out a newly-unlocked overworld/dual-surface verb — the scouting action the
-        // player can now use on the *map* (e.g. the Scout's Recon at L2): the teaching beat.
-        const overworld = fresh.some((s) => s.overworldEffect || s.phase === "meta");
+        // Call out a newly-unlocked overworld verb — the between-nodes action the player can
+        // now use on the *map* (e.g. the Scout's Survey at L2): the teaching beat.
+        const overworld = fresh.some((s) => s.phase === "meta");
         const tail = names ? ` — unlocked ${names}${overworld ? " (now usable on the overworld — scout a node ahead)" : ""}` : "";
         advancement.push({ icon: "levelUp", text: `${u.name} reached job L${now}${tail}`, color: INK.gold });
       }

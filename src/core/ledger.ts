@@ -33,6 +33,12 @@ export interface LedgerLine {
   amount: number;
   /** Voluntary-skip / projected marker for the render (Upkeep lines, D45). */
   note?: string;
+  /**
+   * For a voluntarily-skipped line: the signed amount it *would* carry if restored (its
+   * cost), while {@link amount} is 0 so it stays out of the total. The render shows this —
+   * struck through — so the player sees what un-skipping the line would cost (D45).
+   */
+  restoreAmount?: number;
 }
 
 /** A ledger category — a broad total over its expandable {@link LedgerLine}s (D45). */
@@ -114,6 +120,7 @@ export function buildLedger(run: RunState, opts: BuildLedgerOptions = {}): Ledge
     label: l.name,
     amount: skip.has(l.id) ? 0 : -l.cost,
     note: skip.has(l.id) ? "voluntarily skipped" : undefined,
+    restoreAmount: -l.cost, // the funded cost — shown (struck) on a skipped line as the un-skip price
   }));
 
   // Banker: the standing position — the interest faucet, outstanding debt, and

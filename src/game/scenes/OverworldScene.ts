@@ -1848,11 +1848,12 @@ export class OverworldScene extends Phaser.Scene {
         this.overlay.push(
           this.add.text(leftX + 18, y, l.label, { color: labelInk, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
         );
-        // The amount on the right — gone when the line is crossed off (D45).
+        // The amount on the right stays even when crossed off (D45) — dimmed and struck (below),
+        // it's not in the total, but it tells the player what restoring the line would cost. A
+        // skipped line's `amount` is 0 (out of the total), so show its `restoreAmount` instead.
+        const shownAmount = skipped ? l.restoreAmount ?? l.amount : l.amount;
         this.overlay.push(
-          skipped
-            ? this.add.text(rightX, y, "— skipped —", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25)
-            : this.add.text(rightX, y, this.signed(l.amount), { color: l.amount < 0 ? INK.danger : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+          this.add.text(rightX, y, this.signed(shownAmount), { color: skipped ? INK.disabled : shownAmount < 0 ? INK.danger : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
         );
         // Strike the row through when crossed off — from the label (leftX + 18), so the
         // checkbox in the indent gutter stays legible rather than being slashed through.

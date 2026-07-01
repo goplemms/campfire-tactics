@@ -37,21 +37,25 @@ describe("projectManifest (caravan inventory projection — pure read)", () => {
     expect(m.partyCapacity).toBeUndefined();
   });
 
-  it("groups items by purpose and surfaces every known material (zero included)", () => {
+  it("groups items by category and surfaces every known material (zero included)", () => {
     const inv = createInventory(8, { "trap-kit": 1 });
     const m = projectManifest(mkRun([mkUnit("a")], inv));
-    const traps = m.groups.find((g) => g.title.startsWith("Traps"))!;
-    const medical = m.groups.find((g) => g.title.startsWith("Medical"))!;
-    expect(traps.items.map((i) => i.id)).toContain("trap-kit");
-    expect(traps.items.map((i) => i.id)).toContain("rune-reagent");
-    expect(medical.items.map((i) => i.id)).toEqual(["salve", "stimulant", "antidote"]);
+    const combat = m.groups.find((g) => g.title === "Combat consumables")!;
+    const healing = m.groups.find((g) => g.title === "Healing")!;
+    const valuables = m.groups.find((g) => g.title === "Valuables")!;
+    expect(combat.items.map((i) => i.id)).toContain("trap-kit");
+    expect(combat.items.map((i) => i.id)).toContain("rune-reagent");
+    expect(healing.items.map((i) => i.id)).toEqual(["salve", "stimulant", "antidote"]);
+    // Pure-value items shelve apart from the functional consumables.
+    expect(valuables.items.map((i) => i.id)).toContain("valuables");
+    expect(valuables.items.map((i) => i.id)).toContain("wild-herbs");
 
-    const kit = traps.items.find((i) => i.id === "trap-kit")!;
+    const kit = combat.items.find((i) => i.id === "trap-kit")!;
     expect(kit.count).toBe(1);
     expect(kit.slots).toBe(1);
     expect(kit.recoverable).toBe(true);
 
-    const stim = medical.items.find((i) => i.id === "stimulant")!;
+    const stim = healing.items.find((i) => i.id === "stimulant")!;
     expect(stim.count).toBe(0); // surfaced even when not carried
     expect(stim.recoverable).toBe(false);
   });

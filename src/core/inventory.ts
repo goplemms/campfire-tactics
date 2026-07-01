@@ -62,6 +62,15 @@ export interface MaterialDef {
    * (a tuning choice). Distinct from a per-unit {@link "./equipment".EquipmentDef}.
    */
   partyGear?: { mods?: StatDelta; passive?: { key: string; value: number }; maintained?: boolean };
+  /**
+   * Which shelf the item lists under on the Stores page — a **presentational** grouping
+   * only. Combat mechanics still read `medical` / `damage` / `partyGear`, never this, so the
+   * two can diverge on purpose: a healing item that isn't a medicinal herb (a rune component
+   * for a heal spell) shelves under `"healing"` without a `medical` flag, and a unique weapon
+   * shelves under `"equipment"` without an EquipmentDef. Defaults to `"combat"` (the generic
+   * functional consumable) when unset. Titles live in the manifest projection.
+   */
+  category?: "healing" | "combat" | "equipment" | "valuables";
 }
 
 /** The carried stash: a storage cap (in slots) and per-material counts. */
@@ -80,6 +89,7 @@ export const MATERIALS: Record<string, MaterialDef> = {
     recoverable: true,
     damage: 12,
     saleValue: 8, // resell surplus gear (D61) — under the buy price
+    category: "combat",
   },
   "rune-reagent": {
     id: "rune-reagent",
@@ -88,17 +98,18 @@ export const MATERIALS: Record<string, MaterialDef> = {
     slotCost: 1,
     recoverable: false, // consumed on use (rune dust)
     saleValue: 6,
+    category: "combat", // casting fuel — a combat consumable, not medicinal
   },
   // The three medical herbs (D40) — the Medic's Heal fuel. Each rider is keyed
   // by id in resolveMedHeal; they stack so a slot carries several.
-  salve: { id: "salve", name: "Salve", stackSize: 4, slotCost: 1, recoverable: false, medical: true, saleValue: 4 },
-  stimulant: { id: "stimulant", name: "Stimulant", stackSize: 4, slotCost: 1, recoverable: false, medical: true, saleValue: 4 },
-  antidote: { id: "antidote", name: "Antidote", stackSize: 4, slotCost: 1, recoverable: false, medical: true, saleValue: 4 },
+  salve: { id: "salve", name: "Salve", stackSize: 4, slotCost: 1, recoverable: false, medical: true, saleValue: 4, category: "healing" },
+  stimulant: { id: "stimulant", name: "Stimulant", stackSize: 4, slotCost: 1, recoverable: false, medical: true, saleValue: 4, category: "healing" },
+  antidote: { id: "antidote", name: "Antidote", stackSize: 4, slotCost: 1, recoverable: false, medical: true, saleValue: 4, category: "healing" },
   // Sell-only loot (D61): pure value, no function. The illiquid half of a reward —
   // hauled in scarce slots until Sold at a market. Never bought/stocked.
-  valuables: { id: "valuables", name: "Valuables", stackSize: 4, slotCost: 1, recoverable: false, loot: true, saleValue: 25 },
+  valuables: { id: "valuables", name: "Valuables", stackSize: 4, slotCost: 1, recoverable: false, loot: true, saleValue: 25, category: "valuables" },
   // Foraged provisions (D73) — a cheap, sellable foraged good; the Survivalist's Forage floor.
-  "wild-herbs": { id: "wild-herbs", name: "Wild Herbs", stackSize: 6, slotCost: 1, recoverable: false, saleValue: 3 },
+  "wild-herbs": { id: "wild-herbs", name: "Wild Herbs", stackSize: 6, slotCost: 1, recoverable: false, saleValue: 3, category: "valuables" },
   // A build-defining unique weapon (D52 placeholder) — the Thieves' Den relic. The
   // loadout/item system has no unique-weapon spec yet, so this is a grantable stash
   // item standing in for the relic; its combat effect is TBD with the user.
@@ -109,6 +120,7 @@ export const MATERIALS: Record<string, MaterialDef> = {
     slotCost: 1,
     recoverable: false,
     saleValue: 80,
+    category: "equipment", // a unique weapon — shelves as gear, not a build consumable
   },
   // The first **real equippable** (D77) — a modest, maintained traveler's weapon. It is
   // **dual-registered**: this MaterialDef gives it a storage slot (D14), and an
@@ -121,6 +133,7 @@ export const MATERIALS: Record<string, MaterialDef> = {
     slotCost: 1,
     recoverable: false,
     saleValue: 30,
+    category: "equipment",
   },
   // The first **party-gear** (D78) — the Hollow Mill's iron-weapons edge, now a carried
   // material instead of a run flag. It **persistently occupies a stash slot** and confers
@@ -135,6 +148,7 @@ export const MATERIALS: Record<string, MaterialDef> = {
     recoverable: false,
     saleValue: 30,
     partyGear: { mods: { attack: 3 }, maintained: true },
+    category: "equipment", // carried party-gear — shelves with the other gear
   },
 };
 

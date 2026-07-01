@@ -526,7 +526,7 @@ export class OverworldScene extends Phaser.Scene {
     // A compact top row of deep-links to the *places you go* (the Tent / Stores / Ledger /
     // Map pages, the Market), kept above the left column's *actions you take here* so the two
     // purposes read distinctly — and the same nav renders atop each of those pages.
-    const areasBottom = this.renderAreaNav(null, () => this.renderCamp(), this.campObjects, colX, top);
+    const areasBottom = this.renderAreaNav("camp", () => this.renderCamp(), this.campObjects, colX, top);
     const bodyTop = areasBottom + 20;
 
     // --- The action drawers (left) + the live state readouts (right) ----------
@@ -562,16 +562,20 @@ export class OverworldScene extends Phaser.Scene {
    * Returns the y-centre of the last link (for sizing the content below it).
    */
   /**
-   * The **areas nav** (D58) — the one consistent navigation for the Tent / Stores / Ledger /
-   * Map pages, a compact tab row pinned to the **upper left**. The very same row renders on
-   * the camp/survey beats (as entry links, `active === null`) and on each page (with the open
-   * tab highlighted + a **Camp →** return), so the nav never shifts between views. Market is a
-   * trailing entry, present only with market access (a shop overlay, not one of the pages).
-   * Buttons draw onto `layer` (camp beats → `campObjects`; pages → `overlay`). Returns the
-   * `y` just past the row.
+   * The **areas nav** (D58) — the one consistent navigation for the between-nodes surface: a
+   * compact tab row pinned to the **upper left**, with **Camp** as a peer tab alongside the
+   * Tent / Stores / Ledger / Map pages. The very same row renders on the camp/survey beats
+   * (`active === "camp"`) and atop each page (with the open tab highlighted), so the nav never
+   * shifts between views and Camp is always one click away. Market is a trailing entry, present
+   * only with market access (a shop overlay, not one of the pages). Buttons draw onto `layer`
+   * (camp beats → `campObjects`; pages → `overlay`). Returns the `y` just past the row.
    */
-  private renderAreaNav(active: TentTab | null, returnTo: () => void, layer: Phaser.GameObjects.GameObject[], x: number, y: number): number {
-    const entries: { id: TentTab | "market"; label: string; onClick: () => void; tip: string }[] = [
+  private renderAreaNav(active: TentTab | "camp", returnTo: () => void, layer: Phaser.GameObjects.GameObject[], x: number, y: number): number {
+    // Camp leads the row: on a page it returns to the between-nodes beat; on the beat itself
+    // it's the active tab (a harmless re-render). `returnTo` *is* the beat, so both go through it.
+    const toCamp = active === "camp" ? returnTo : () => this.closeTent();
+    const entries: { id: TentTab | "camp" | "market"; label: string; onClick: () => void; tip: string }[] = [
+      { id: "camp", label: "Camp", onClick: toCamp, tip: "The between-nodes camp — provision, heal, and end the night." },
       { id: "party", label: this.tentToolbarLabel(), onClick: () => this.openTent(returnTo, "party"), tip: "The Captain's Tent — the Party dossier (HP, fatigue, conditions, jeopardy, growth). ⚠ marks anyone hurt, dying or captured." },
       { id: "stores", label: "Stores", onClick: () => this.openTent(returnTo, "stores"), tip: "Caravan stores — party & storage caps, carried traps and herbs (with slots), and the purse." },
       { id: "ledger", label: "Ledger", onClick: () => this.openTent(returnTo, "ledger"), tip: "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here." },
@@ -590,11 +594,6 @@ export class OverworldScene extends Phaser.Scene {
       const bw = this.measureButtonWidth(e.label);
       this.navButton(bx, y, bw, h, e.label, e.id === active, e.onClick, e.tip, layer);
       bx += bw + gap;
-    }
-    // On a page, a return to the between-nodes beat sits at the end of the same row.
-    if (active !== null) {
-      const bw = this.measureButtonWidth("Camp →");
-      this.navButton(bx + 16, y, bw, h, "Camp →", false, () => this.closeTent(), "Return to camp.", layer);
     }
     return y + h / 2;
   }
@@ -1613,7 +1612,7 @@ export class OverworldScene extends Phaser.Scene {
     const readoutX = cx + panelW / 2 - 30 - readoutCardW;
 
     // Areas nav across the top of the action area (frees the width below for drawers).
-    const areasBottom = this.renderAreaNav(null, () => this.showSurvey(), this.campObjects, colX, colTop);
+    const areasBottom = this.renderAreaNav("camp", () => this.showSurvey(), this.campObjects, colX, colTop);
     let y = areasBottom + 20;
 
     // Live state readouts, stacked on the right of the action drawers.

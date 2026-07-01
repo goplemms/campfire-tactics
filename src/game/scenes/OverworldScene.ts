@@ -1854,10 +1854,11 @@ export class OverworldScene extends Phaser.Scene {
             ? this.add.text(rightX, y, "— skipped —", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25)
             : this.add.text(rightX, y, this.signed(l.amount), { color: l.amount < 0 ? INK.danger : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
         );
-        // Strike the row through when crossed off.
+        // Strike the row through when crossed off — from the label (leftX + 18), so the
+        // checkbox in the indent gutter stays legible rather than being slashed through.
         if (skipped) {
           g.lineStyle(1.5, COLOR.danger, 0.85);
-          g.lineBetween(leftX + 12, y, rightX, y);
+          g.lineBetween(leftX + 18, y, rightX, y);
         }
         // Faint per-entry rule (ledger paper).
         g.lineStyle(1, COLOR.border, 0.28);
@@ -1866,6 +1867,19 @@ export class OverworldScene extends Phaser.Scene {
         // Upkeep rows are clickable: cross off (skip) / restore. The hit rect sits
         // below the text (depth 24) so its hover wash reads behind the ink.
         if (skippable) {
+          // A checkbox in the indent gutter makes the "you can cross this off" affordance
+          // obvious at a glance (D45): checked (gold box + tick) = the expense stands;
+          // unchecked (empty box) + the strike above = crossed off.
+          const boxSize = 12;
+          const boxX = leftX;
+          const boxY = y - boxSize / 2;
+          g.lineStyle(1.2, skipped ? COLOR.borderSoft : COLOR.gold, skipped ? 0.7 : 0.95);
+          g.strokeRect(boxX, boxY, boxSize, boxSize);
+          if (!skipped) {
+            g.lineStyle(1.8, COLOR.success, 1);
+            g.lineBetween(boxX + 2.5, boxY + 6.5, boxX + 5, boxY + 9);
+            g.lineBetween(boxX + 5, boxY + 9, boxX + 9.5, boxY + 3);
+          }
           const lineId = l.id.replace("upkeep:", "") as UpkeepLine["id"];
           const hit = this.add.rectangle(cx, y, w - 2 * pad + 12, rowH, COLOR.surfaceAlt, 0).setDepth(24).setInteractive({ useHandCursor: true });
           hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {

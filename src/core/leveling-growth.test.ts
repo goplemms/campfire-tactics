@@ -62,8 +62,8 @@ describe("hybrid leveling — per-job stat growth (D39)", () => {
 
   it("skillsUnlockedBetween reports only the threshold just crossed (the unlock readout, D74)", () => {
     const scout = createUnit({ id: "vale", side: "player", pos: { col: 0, row: 0 }, jobId: "scout", speed: 14, maxHp: 24, attack: 9, defense: 2, moveRange: 5, sightRadius: 6 });
-    // The Scout's L1→L2 newly unlocks Recon (its dual-surface L2 growth); Set Trap is L1, not "new".
-    expect(skillsUnlockedBetween(scout, 1, 2).map((s) => s.id)).toEqual(["recon"]);
+    // The Scout's L1→L2 newly unlocks Recon (combat dart) + Survey (overworld scout); Set Trap is L1.
+    expect(skillsUnlockedBetween(scout, 1, 2).map((s) => s.id)).toEqual(["recon", "survey"]);
     // No threshold crossed in this span → nothing new.
     expect(skillsUnlockedBetween(scout, 2, 3)).toEqual([]);
   });

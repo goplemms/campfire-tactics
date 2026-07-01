@@ -14,6 +14,8 @@ import {
   slotsUsed,
   slotsOver,
   campReadoutLine,
+  campReadout,
+  type CampReadout,
   // M8 — the overworld action economy (D35) · D72 unified onto SkillDef
   overworldCostOf,
   resolveKnob,
@@ -56,6 +58,15 @@ import {
   buildLedger,
   nightEndGate,
   computeUpkeep,
+  type PreviewChange,
+  type PreviewStat,
+  skillEffectPreview,
+  triageActionPreview,
+  inPlaceRestPreview,
+  bankerInterestPreview,
+  bankerBorrowPreview,
+  bankerProtectPreview,
+  patronizePreview,
   // D77 — the equip surface verbs (pure core; the scene only calls + redraws)
   equip,
   unequip,
@@ -76,7 +87,7 @@ import {
   type JournalConcern,
   type EquipSlot,
 } from "../../core";
-import { fitText, clearLayer } from "../ui";
+import { fitText, clearLayer, isScreenshotMode } from "../ui";
 import { Button } from "../button";
 import { HintPanel } from "../hint-panel";
 import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
@@ -96,6 +107,11 @@ export interface RunHandoff {
 /** Buyable Market stock (D61) — trap kits first (the headline), then the Medic's herbs. */
 const MARKET_STOCK = ["trap-kit", "salve", "stimulant", "antidote"];
 
+/** The hover-preview projection (a list of {@link PreviewChange}) lives in core; the scene
+ *  only lays it out. `ReadoutStat`/`ActionPreview` alias the core names for local use. */
+type ReadoutStat = PreviewStat;
+type ActionPreview = PreviewChange[];
+
 /** One action row inside a collapsible camp category drawer (Recovery/Intel/Economy). */
 interface CampAction {
   /** The button label — already tagged with the acting member (` · Name`). */
@@ -105,6 +121,8 @@ interface CampAction {
   onClick: () => void;
   /** The hover hint explaining what it does (and why it's greyed, when it is). */
   tip: string;
+  /** The projected effect shown on hover (arrows on the readout tiles + off-panel area). */
+  preview?: ActionPreview;
 }
 
 /**
@@ -127,12 +145,11 @@ interface CampAction {
  */
 /**
  * Does this skill aim at a *map node* on the overworld (the Survey beat's node-picker),
- * vs. a no-target camp action (the recovery drawer)? A **dual-surface** skill (D74, the
- * Scout's Recon) is node-aimed by its `survey` overworld face even though its base `target`
- * is `self` (for combat); a camp-targeted skill (Forage) is node-aimed by `target`.
+ * vs. a no-target camp action (the recovery drawer)? The Scout's **Survey** is node-aimed by
+ * its `survey` effect; a camp-targeted skill (Forage) is node-aimed by its `target`.
  */
 function isNodeAimedOverworld(s: SkillDef): boolean {
-  return s.overworldEffect?.kind === "survey" || s.target === "camp";
+  return s.effect.kind === "survey" || s.target === "camp";
 }
 
 export class OverworldScene extends Phaser.Scene {
@@ -174,6 +191,19 @@ export class OverworldScene extends Phaser.Scene {
   private campText!: Phaser.GameObjects.Text;
   private previewText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
+
+  // The right-side state readouts (D58): the day's opening figures (to colour each value
+  // by its net move *this day*, keyed by the node we're camped at), the previous render's
+  // figures (to pulse a tile the instant a value changes), and the live pulse tweens (torn
+  // down with the camp so a tween never ticks a destroyed tile).
+  private readoutBaseline?: CampReadout;
+  private readoutBaselineKey?: string;
+  private readoutLast?: CampReadout;
+  private readoutTweens: Phaser.Tweens.Tween[] = [];
+  // The hover-preview layer: where each readout tile sits (to arrow its gutter) + the
+  // off-panel area geometry, and the transient preview objects (cleared on hover-out).
+  private readoutGeom?: { x: number; cardW: number; tileCy: Partial<Record<ReadoutStat, number>>; areaX: number; areaW: number; areaTop: number };
+  private previewObjects: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
     super("OverworldScene");
@@ -276,6 +306,9 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.nodeObjects);
     this.graph?.destroy();
     this.nodePos.clear();
+    // The map has no action column to sit beside, so the caravan's figures ride the
+    // top HUD line here (the camp/survey beats move them into a right-side panel).
+    this.campText.setVisible(true);
 
     const map = this.run.map;
     const reachableIds = new Set(this.loop.reachable().map((n) => n.id));
@@ -498,21 +531,29 @@ export class OverworldScene extends Phaser.Scene {
     const panelW = this.scale.width - 40; //  ~760 — nearly full width
     const panelTop = 60;
     const panelBottom = this.scale.height - 16; // ~584 — nearly full height
-    const top = 90;
+    const top = 84;
     const colX = cx - panelW / 2 + 30;
     const rowH = 30;
+    const readoutCardW = 200;
+    const readoutX = cx + panelW / 2 - 30 - readoutCardW;
 
-    // --- Left column: the action drawers --------------------------------------
-    const actionsBottom = this.renderCampActions(colX, top, rowH);
+    // The live figures move off the static top line into a right-side state panel
+    // (below) — hide the header line so the caravan's state reads in one place.
+    this.campText.setVisible(false);
 
-    // --- Right column: the "different areas" (D58) ----------------------------
-    // Deep-links to the Captain's Tent tabs, the Market and the route map — the *places
-    // you go*, kept on the right, apart from the left column's *actions you take here*, so
-    // the two purposes read distinctly at a glance.
-    const areasBottom = this.renderAreaLinks(cx + 60, top + 8, () => this.renderCamp());
+    // --- Areas toolbar (D58): the "different areas" ---------------------------
+    // A compact top row of deep-links to the *places you go* (Captain's Tent tabs, the
+    // Market, the route map), kept above the left column's *actions you take here* so the
+    // two purposes read distinctly — and so the full width below is free for the drawers.
+    const areasBottom = this.renderAreaLinks(colX, top, () => this.renderCamp());
+    const bodyTop = areasBottom + 20;
 
-    // The captain's running to-do spans the full width, so it sits below *both* columns.
-    this.renderCaptainsJournal(colX, Math.max(actionsBottom, areasBottom) + 12, panelW - 60);
+    // --- The action drawers (left) + the live state readouts (right) ----------
+    const actionsBottom = this.renderCampActions(colX, bodyTop, rowH);
+    this.renderReadouts(readoutX, bodyTop, readoutCardW);
+
+    // The captain's running to-do sits below the actions, kept clear of the readouts.
+    this.renderCaptainsJournal(colX, actionsBottom + 12, readoutX - 16 - colX);
 
     // --- End the Night — the prep→event gate (D46); anchored to the panel's bottom ---
     // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
@@ -539,10 +580,9 @@ export class OverworldScene extends Phaser.Scene {
    * don't blur. Shared by both camp beats; `rerender` is the beat to return to on close.
    * Returns the y-centre of the last link (for sizing the content below it).
    */
-  private renderAreaLinks(tx: number, top: number, rerender: () => void): number {
-    const w = 240;
+  private renderAreaLinks(x: number, y: number, rerender: () => void): number {
     const links: { label: string; onClick: () => void; tip: string }[] = [
-      { label: this.tentButtonLabel(), onClick: () => this.openTent(rerender, "party"), tip: "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured." },
+      { label: this.tentToolbarLabel(), onClick: () => this.openTent(rerender, "party"), tip: "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured." },
     ];
     // Market — a *place you visit*, listed only when you have access (a market node or a
     // Merchant in the party). Hidden otherwise, so trap-kit/herb restock is a real
@@ -553,10 +593,33 @@ export class OverworldScene extends Phaser.Scene {
     links.push(
       { label: "Stores", onClick: () => this.openTent(rerender, "stores"), tip: "Caravan stores — party & storage caps, carried traps and herbs (with slots), and the purse (a Captain's Tent tab)." },
       { label: "Ledger", onClick: () => this.openTent(rerender, "ledger"), tip: "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here (a Captain's Tent tab)." },
-      { label: "Review Route Map", onClick: () => this.reviewMap(rerender), tip: "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return." },
+      { label: "Map", onClick: () => this.reviewMap(rerender), tip: "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return." },
     );
-    links.forEach((l, i) => this.campButton(tx, top + i * 30, w, 24, l.label, true, l.onClick, l.tip));
-    return top + (links.length - 1) * 30;
+    // Pack the links left→right on one row, each sized to its own label — a compact
+    // toolbar rather than a stacked column, so the width below is free for the actions.
+    const h = 24;
+    const gap = 8;
+    let bx = x;
+    for (const l of links) {
+      const bw = this.measureButtonWidth(l.label);
+      this.campButton(bx, y, bw, h, l.label, true, l.onClick, l.tip);
+      bx += bw + gap;
+    }
+    return y + h / 2;
+  }
+
+  /** Compact toolbar variant of the tent label — "Tent" (+ a ⚠ attention badge). */
+  private tentToolbarLabel(): string {
+    const n = attentionCount(projectDossier(this.run));
+    return n > 0 ? `Tent  ⚠${n}` : "Tent";
+  }
+
+  /** Width for a compact toolbar button sized to fit its label (measured + side padding). */
+  private measureButtonWidth(label: string): number {
+    const probe = this.add.text(0, 0, label, { fontFamily: FONT.family, fontSize: FONT.label }).setVisible(false);
+    const w = Math.ceil(probe.width) + 24;
+    probe.destroy();
+    return w;
   }
 
   /**
@@ -592,7 +655,7 @@ export class OverworldScene extends Phaser.Scene {
         const tip = capped
           ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Break Camp.)`
           : `${skill.name} — ${skill.description}`;
-        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip });
+        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run) });
       }
     }
     const healer = this.triageActor();
@@ -601,7 +664,7 @@ export class OverworldScene extends Phaser.Scene {
       const tip = someoneWounded
         ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
         : "No wounded fighter to triage.";
-      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip });
+      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview: triageActionPreview() });
     }
     return out;
   }
@@ -625,18 +688,19 @@ export class OverworldScene extends Phaser.Scene {
     // The Banker's purse-finance verbs (D30) — directly under Economy (single nesting),
     // tagged with the Banker who works them; shown only when one is aboard.
     if (banker) {
-      this.campButton(childX, y, childW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.");
+      this.campButton(childX, y, childW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.", bankerInterestPreview(this.run));
       y += rowH;
-      this.campButton(childX, y, childW, 24, `Borrow 40g · ${banker.name}`, true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.");
+      this.campButton(childX, y, childW, 24, `Borrow 40g · ${banker.name}`, true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.", bankerBorrowPreview(40));
       y += rowH;
-      this.campButton(childX, y, childW, 24, `Guard the Purse (${ECONOMY.banker.protectionCost}g) · ${banker.name}`, this.run.camp.gold >= ECONOMY.banker.protectionCost, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.");
+      const protCost = ECONOMY.banker.protectionCost;
+      this.campButton(childX, y, childW, 24, `Guard the Purse (${protCost}g) · ${banker.name}`, this.run.camp.gold >= protCost, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.", bankerProtectPreview());
       y += rowH;
     }
     // The Noble's Patronize (D62) — gold → Influence, once per node; tagged with the Noble.
     if (noble) {
       const patronCost = ECONOMY.noble.patronizeCost;
       const patronTip = `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`;
-      this.campButton(childX, y, childW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence) · ${noble.name}`, this.run.camp.gold >= patronCost, () => this.patronize(), patronTip);
+      this.campButton(childX, y, childW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence) · ${noble.name}`, this.run.camp.gold >= patronCost, () => this.patronize(), patronTip, patronizePreview());
       y += rowH;
     }
     // The Banker's purse-state, surfaced in context (D58).
@@ -676,11 +740,145 @@ export class OverworldScene extends Phaser.Scene {
     y = this.drawerHeader(colX, y, 360, id, label, actions.length, rerender);
     if (this.campDrawers[id] ?? true) {
       for (const a of actions) {
-        this.campButton(colX + 14, y, 346, 24, a.label, a.enabled, a.onClick, a.tip);
+        this.campButton(colX + 14, y, 346, 24, a.label, a.enabled, a.onClick, a.tip, a.preview);
         y += rowH;
       }
     }
     return y;
+  }
+
+  /**
+   * The caravan's live **state readouts** (D58) — Purse / Morale / Storage / Kits / RP /
+   * Upkeep as a vertical stack of value tiles, drawn to the right of the action column so
+   * the figures read as live gauges of the caravan's state rather than a static header
+   * line. Each tile pairs a muted label with a semantically-coloured, prominent value
+   * (purse gold, morale by tier, storage ember when full, upkeep as a warm drain). Pure
+   * figures come from {@link "../../core".campReadout}. Returns the `y` past the stack.
+   */
+  private renderReadouts(x: number, top: number, cardW: number): number {
+    const r = campReadout(this.run);
+
+    // Anchor the "this day" comparison to the node we're camped at: the baseline is the
+    // figures on arrival, so a value's colour tracks its **net move since we made camp
+    // here**. A fresh node (or a fresh scene, e.g. back from battle) re-baselines and
+    // suppresses the change-pulse for that first paint.
+    const nodeKey = this.run.mapNodeId;
+    const fresh = this.readoutBaselineKey !== nodeKey;
+    if (fresh) {
+      this.readoutBaseline = r;
+      this.readoutBaselineKey = nodeKey;
+      this.readoutLast = r;
+    }
+    const base = this.readoutBaseline!;
+    const last = this.readoutLast!;
+
+    const moraleInk = r.moraleTier === "Low" ? INK.ember : r.moraleTier === "Neutral" ? INK.secondary : INK.success;
+    // `betterHigher` gives each value a *sense* — so a rising purse reads good (green) but a
+    // rising Upkeep reads bad (red). Storage carries no valence (loot vs. headroom cut both
+    // ways), so it keeps its semantic ink and never day-colours. `ink` is the unchanged look.
+    type Tile = { stat: ReadoutStat; label: string; value: string; ink: string; cur: number; base: number; last: number; betterHigher?: boolean };
+    const tiles: Tile[] = [
+      { stat: "purse", label: "Purse", value: `${r.purse}g`, ink: INK.gold, cur: r.purse, base: base.purse, last: last.purse, betterHigher: true },
+      { stat: "morale", label: "Morale", value: `${r.moraleTier} (${r.morale >= 0 ? "+" : ""}${r.morale})`, ink: moraleInk, cur: r.morale, base: base.morale, last: last.morale, betterHigher: true },
+      { stat: "storage", label: "Storage", value: `${r.storageUsed}/${r.storageCap}`, ink: r.storageUsed >= r.storageCap ? INK.ember : INK.secondary, cur: r.storageUsed, base: base.storageUsed, last: last.storageUsed },
+      { stat: "kits", label: "Trap Kits", value: `${r.kits}`, ink: r.kits > 0 ? INK.secondary : INK.disabled, cur: r.kits, base: base.kits, last: last.kits, betterHigher: true },
+      { stat: "rp", label: "Rest Pts", value: `${r.rp}`, ink: INK.secondary, cur: r.rp, base: base.rp, last: last.rp, betterHigher: true },
+      { stat: "upkeep", label: "Upkeep", value: `${r.upkeep}g/night`, ink: INK.ember, cur: r.upkeep, base: base.upkeep, last: last.upkeep, betterHigher: false },
+    ];
+    const cardH = 34;
+    const pitch = 42;
+    const tileCy: Partial<Record<ReadoutStat, number>> = {};
+    tiles.forEach((t, i) => {
+      const cy = top + i * pitch;
+      tileCy[t.stat] = cy;
+      // Day-move colour: green when the value improved since we made camp, red when it
+      // worsened — otherwise the tile's unchanged semantic ink.
+      let ink = t.ink;
+      if (t.betterHigher !== undefined && t.cur !== t.base) {
+        ink = (t.cur > t.base) === t.betterHigher ? INK.success : INK.danger;
+      }
+      const rect = this.add.rectangle(x, cy, cardW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0.5).setDepth(10);
+      const label = this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11);
+      const value = this.add.text(x + cardW - 12, cy, t.value, { color: ink, fontFamily: FONT.family, fontSize: FONT.heading }).setOrigin(1, 0.5).setDepth(11);
+      this.campObjects.push(rect, label, value);
+      // Pulse a tile the instant its figure changes from the previous paint (an action's
+      // effect landing) — but not on the first paint of a camp (`fresh`), which isn't a move.
+      if (!fresh && t.cur !== t.last && !isScreenshotMode()) this.pulseTile(x, cy, cardW, cardH, value);
+    });
+    this.readoutLast = r;
+
+    // The off-panel preview area, below the tiles: a header + a rule, then the transient
+    // body ({@link showActionPreview}) — arrows land in the gutter beside the tiles above,
+    // off-panel effects (HP/Fatigue/Influence/…) list here. Reserve it so hover has a home.
+    const tilesBottom = top + (tiles.length - 1) * pitch + cardH / 2;
+    const areaTop = tilesBottom + 14;
+    this.campObjects.push(this.add.text(x, areaTop, "EFFECT PREVIEW", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
+    const rule = this.add.graphics().setDepth(11);
+    rule.lineStyle(1, COLOR.borderSoft, 0.7);
+    rule.lineBetween(x, areaTop + 12, x + cardW, areaTop + 12);
+    this.campObjects.push(rule);
+    this.readoutGeom = { x, cardW, tileCy, areaX: x, areaW: cardW, areaTop: areaTop + 12 };
+    this.showActionPreview(null);
+
+    return tilesBottom;
+  }
+
+  /**
+   * Paint the hover preview for one action (or clear it, `preview === null`, to the resting
+   * "hover an action" prompt). Panel changes draw a signed arrow in the gutter *left of*
+   * their readout tile; off-panel changes (HP, Fatigue, Influence, Debt, …) list in the
+   * preview area below the tiles. Lives on its own {@link previewObjects} layer so a
+   * hover-out redraws just this, never the whole camp. Colour follows each change's `good`.
+   */
+  private showActionPreview(preview: ActionPreview | null): void {
+    clearLayer(this.previewObjects);
+    const g = this.readoutGeom;
+    if (!g) return;
+    if (!preview || preview.length === 0) {
+      this.previewObjects.push(this.add.text(g.areaX, g.areaTop + 14, "Hover an action to preview its effect.", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption, lineSpacing: 3, wordWrap: { width: g.areaW } }).setOrigin(0, 0).setDepth(13));
+      return;
+    }
+    const disp = (c: PreviewChange): { text: string; ink: string } => {
+      const good = c.good ?? (c.amount ?? 0) >= 0;
+      const arrow = c.amount === undefined ? "" : c.amount >= 0 ? "▲" : "▼";
+      const text = c.text ?? `${c.amount! >= 0 ? "+" : ""}${c.amount}`;
+      return { text: `${arrow}${arrow ? " " : ""}${text}`, ink: good ? INK.success : INK.danger };
+    };
+    // Panel changes → an arrow in the gutter beside the matching tile.
+    for (const c of preview) {
+      if (!c.stat) continue;
+      const cy = g.tileCy[c.stat];
+      if (cy === undefined) continue;
+      const d = disp(c);
+      this.previewObjects.push(this.add.text(g.x - 12, cy, d.text, { color: d.ink, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(13));
+    }
+    // Off-panel changes → the reserved area below the tiles.
+    const off = preview.filter((c) => !c.stat);
+    if (off.length === 0) {
+      this.previewObjects.push(this.add.text(g.areaX, g.areaTop + 14, "No off-panel effects.", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(13));
+      return;
+    }
+    let ay = g.areaTop + 20;
+    for (const c of off) {
+      const d = disp(c);
+      this.previewObjects.push(
+        this.add.text(g.areaX, ay, c.label, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(13),
+        this.add.text(g.areaX + g.areaW, ay, d.text, { color: d.ink, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(13),
+      );
+      ay += 20;
+    }
+  }
+
+  /** A one-shot attention pulse on a just-changed readout tile: a quick value bump + a
+   *  fading firelight glow. Tweens are tracked so {@link clearCamp} can tear them down. */
+  private pulseTile(x: number, cy: number, cardW: number, cardH: number, value: Phaser.GameObjects.Text): void {
+    value.setScale(1.4);
+    this.readoutTweens.push(this.tweens.add({ targets: value, scale: 1, duration: 360, ease: "Back.out" }));
+    // A translucent glow over the tile (no numeric colour-tween — that would lerp to muddy
+    // in-between hues), faded to nothing so the eye catches the change then settles.
+    const glow = this.add.rectangle(x, cy, cardW, cardH, COLOR.accent, 0.3).setOrigin(0, 0.5).setDepth(12);
+    this.campObjects.push(glow);
+    this.readoutTweens.push(this.tweens.add({ targets: glow, alpha: 0, duration: 460, ease: "Cubic.out" }));
   }
 
   /**
@@ -732,7 +930,7 @@ export class OverworldScene extends Phaser.Scene {
   private costReadout(skill: SkillDef, actor: Unit): string {
     const cost = overworldCostOf(skill);
     const cd = cooldownRemaining(this.run.overworld, skill.id);
-    const cdStr = cd > 0 ? `${cd} node${cd === 1 ? "" : "s"}` : "ready";
+    const cdStr = cd > 0 ? `${cd} night${cd === 1 ? "" : "s"}` : "ready";
     const parts = [`cd: ${cdStr}`];
     const baseFat = cost.fatigue ?? 0;
     if (baseFat > 0) {
@@ -751,7 +949,7 @@ export class OverworldScene extends Phaser.Scene {
   private refusal(skill: SkillDef, _actor: Unit): string | null {
     const cost = overworldCostOf(skill);
     const cd = cooldownRemaining(this.run.overworld, skill.id);
-    if (cd > 0) return `On cooldown — ${cd} more node${cd === 1 ? "" : "s"}.`;
+    if (cd > 0) return `On cooldown — ${cd} more night${cd === 1 ? "" : "s"}.`;
     // D73: fatigue never refuses an action (no lock) — over-extension is paid via consequences.
     const gold = resolveKnob(cost.gold, this.run);
     if (gold > 0 && this.run.camp.gold < gold) return `Not enough gold (${gold}g).`;
@@ -813,12 +1011,6 @@ export class OverworldScene extends Phaser.Scene {
    * without pausing). The dossier reads the live run, so its numbers are current.
    */
   // --- The Captain's Tent (D58): the one deep-info hub ------------------------
-
-  /** The camp/survey button that opens the Tent, badged with anyone needing a look. */
-  private tentButtonLabel(): string {
-    const n = attentionCount(projectDossier(this.run));
-    return n > 0 ? `Captain's Tent  ⚠${n}` : "Captain's Tent";
-  }
 
   /**
    * Open the Captain's Tent — the run's single deep-info hub, an in-scene **overlay**
@@ -973,6 +1165,21 @@ export class OverworldScene extends Phaser.Scene {
 
   /** Ledger tab — gold flow (realized + projected) + the route forecast (D45/D48). */
   private drawTentLedger(b: Phaser.Geom.Rectangle): void {
+    const ledger = this.drawLedgerSheet(b, { rerender: () => this.renderTent() });
+    if (ledger.marketReady) {
+      this.overlay.push(this.makeTextButton(b.left + 22 + 90, b.bottom - 16, 170, 28, "Open Market", COLOR.btnFill, COLOR.gold, () => { this.tentDossier?.destroy(); this.tentDossier = undefined; const back = this.tentReturn ?? (() => this.renderCamp()); this.tentReturn = null; this.openMarket(back); }).setDepth(26));
+    }
+  }
+
+  /**
+   * The ledger sheet itself (D45/D48) — Balance/Influence header, the category rows,
+   * and the route forecast — drawn into `b`. Shared by the Captain's Tent ledger tab
+   * and the night-end {@link showLedgerTransition}; returns the built {@link Ledger}
+   * so the caller can add its own chrome (the Tent's Market shortcut). `rerender`
+   * fires after an Upkeep line is crossed off so the owning surface redraws itself;
+   * `interactive: false` makes the sheet read-only (the rest tiers force-pay Upkeep).
+   */
+  private drawLedgerSheet(b: Phaser.Geom.Rectangle, opts: { rerender: () => void; interactive?: boolean }): Ledger {
     const node = this.campNode ?? currentNode(this.run);
     const merchantReady = node.kind === "rest" && this.run.party.some((u) => u.alive && u.jobId === "merchant") && cooldownRemaining(this.run.overworld, "market") === 0;
     const ledger: Ledger = buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: merchantReady });
@@ -991,14 +1198,12 @@ export class OverworldScene extends Phaser.Scene {
     g.lineBetween(leftX, b.top + 24, rightX, b.top + 24);
     g.lineBetween(leftX, b.top + 26, rightX, b.top + 26);
 
-    let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx: b.centerX, pad, w: b.width }, b.top + 26 + 18);
+    let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx: b.centerX, pad, w: b.width }, b.top + 26 + 18, opts);
     y += 8;
     this.overlay.push(this.add.text(leftX, y, "Forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
     y += 16;
     this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
-    if (ledger.marketReady) {
-      this.overlay.push(this.makeTextButton(leftX + 90, b.bottom - 16, 170, 28, "Open Market", COLOR.btnFill, COLOR.gold, () => { this.tentDossier?.destroy(); this.tentDossier = undefined; const back = this.tentReturn ?? (() => this.renderCamp()); this.tentReturn = null; this.openMarket(back); }).setDepth(26));
-    }
+    return ledger;
   }
 
   private useCampSkill(actor: Unit, skill: SkillDef): void {
@@ -1174,7 +1379,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /** A camp button that greys out (non-interactive) when disabled, with a reason on hover. */
-  private campButton(x: number, y: number, w: number, h: number, text: string, enabled: boolean, onClick: () => void, description: string): void {
+  private campButton(x: number, y: number, w: number, h: number, text: string, enabled: boolean, onClick: () => void, description: string, preview?: ActionPreview): void {
     const fill = enabled ? COLOR.surfaceAlt : COLOR.surfaceRaised;
     const bg = this.add.rectangle(x, y, w, h, fill).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.surfaceAlt).setOrigin(0, 0.5).setDepth(10);
     const label = this.add.text(x + 8, y, text, { color: enabled ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
@@ -1184,10 +1389,21 @@ export class OverworldScene extends Phaser.Scene {
       bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
     }
     bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hintPanel.setText(description));
+    // Preview the action's effect on the readout panel while hovered (even when greyed —
+    // seeing *what it would do* explains the grey), snapping back to the resting prompt out.
+    if (preview) {
+      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showActionPreview(preview));
+      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showActionPreview(null));
+    }
     this.campObjects.push(bg, label);
   }
 
   private clearCamp(): void {
+    // Stop any in-flight readout pulses before their tiles are destroyed below.
+    this.readoutTweens.forEach((t) => t.remove());
+    this.readoutTweens = [];
+    clearLayer(this.previewObjects);
+    this.readoutGeom = undefined;
     clearLayer(this.campObjects);
   }
 
@@ -1360,9 +1576,12 @@ export class OverworldScene extends Phaser.Scene {
   // --- Rest node (D23) -------------------------------------------------------
 
   private playRest(): void {
-    const res = this.loop.restNode();
-    this.refreshCampText();
-    this.showRestScreen(res);
+    // A rest node elapses a night and pays a night's rations — show the spend first.
+    this.showLedgerTransition("Before resting for the night…", () => {
+      const res = this.loop.restNode();
+      this.refreshCampText();
+      this.showRestScreen(res);
+    });
   }
 
   private showRestScreen(res: RestResult): void {
@@ -1395,6 +1614,8 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.overlay);
     this.campNode = currentNode(this.run);
     this.refreshCampText();
+    // The live figures move to the right-side state panel on this beat — hide the line.
+    this.campText.setVisible(false);
 
     this.titleText.setText(`Survey — Night ${this.run.night} · plan your route`);
     this.setHint("Survey: read the forecast, rest in place (a night's rations, repeatable), survey ahead — then Break Camp to the map.");
@@ -1413,13 +1634,21 @@ export class OverworldScene extends Phaser.Scene {
       this.add.text(colX - 10, top + 18, this.forecastSummary(forecast), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 5, wordWrap: { width: panelW - 60 } }).setOrigin(0, 0).setDepth(11),
     );
     const colTop = top + 26 + (forecast.perEdge.length + 1) * 18 + 14;
-    let y = colTop;
+    const readoutCardW = 200;
+    const readoutX = cx + panelW / 2 - 30 - readoutCardW;
+
+    // Areas toolbar across the top of the action area (frees the width below for drawers).
+    const areasBottom = this.renderAreaLinks(colX, colTop, () => this.showSurvey());
+    let y = areasBottom + 20;
+
+    // Live state readouts, stacked on the right of the action drawers.
+    this.renderReadouts(readoutX, y, readoutCardW);
 
     // Recovery drawer: the route-planning heal (in-place rest — repeatable, costed; greys
     // at full HP / when broke). The same category vocabulary as the camp beat.
     const rest = this.inPlaceRestReadout();
     const recovery: CampAction[] = [
-      { label: `Rest in place — ${rest.label}`, enabled: rest.enabled, onClick: () => this.doInPlaceRest(), tip: rest.detail },
+      { label: `Rest in place — ${rest.label}`, enabled: rest.enabled, onClick: () => this.doInPlaceRest(), tip: rest.detail, preview: inPlaceRestPreview(this.run) },
     ];
     y = this.renderDrawer("recovery", "Recovery", colX, y, rowH, recovery, () => this.showSurvey());
 
@@ -1432,19 +1661,13 @@ export class OverworldScene extends Phaser.Scene {
     if (surveyor && survey) {
       for (const target of this.loop.reachable()) {
         const refusal = this.refusal(survey, surveyor);
-        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description });
+        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run) });
       }
     }
     y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());
 
-    const leftBottom = y;
-
-    // Right column: the "different areas" — Tent tabs, the Market and the route map —
-    // kept apart from the left-column actions (the same right-hand cluster Make Camp uses).
-    const areasBottom = this.renderAreaLinks(cx + 60, colTop, () => this.showSurvey());
-
-    // The captain's running to-do spans the full width, so it sits below *both* columns.
-    this.renderCaptainsJournal(colX, Math.max(leftBottom, areasBottom) + 12, panelW - 60);
+    // The captain's running to-do sits below the actions.
+    this.renderCaptainsJournal(colX, y + 12, panelW - 60);
 
     // Break Camp anchors the bottom of the near-full-screen box (matching Make Camp).
     const breakBtn = this.makeTextButton(cx, panelBottom - 30, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
@@ -1484,12 +1707,15 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private doInPlaceRest(): void {
-    const res: InPlaceRestResult = this.loop.inPlaceRest();
-    this.refreshCampText();
-    if (res.applied) this.setHint(`Rested in place: −${res.goldSpent}g rations, +${res.hpHealed} HP, +${res.rpAdded} RP. Cooldowns ticked (a node-step passed).`);
-    else this.setHint(`Can't rest: ${res.reason}`);
-    if (this.loop.isOver()) return this.runEnd();
-    this.showSurvey();
+    // In-place rest is a node-step that pays a night's rations — show the spend first.
+    this.showLedgerTransition("Before resting for the night…", () => {
+      const res: InPlaceRestResult = this.loop.inPlaceRest();
+      this.refreshCampText();
+      if (res.applied) this.setHint(`Rested in place: −${res.goldSpent}g rations, +${res.hpHealed} HP, +${res.rpAdded} RP. Cooldowns ticked (a node-step passed).`);
+      else this.setHint(`Can't rest: ${res.reason}`);
+      if (this.loop.isOver()) return this.runEnd();
+      this.showSurvey();
+    });
   }
 
   /**
@@ -1499,11 +1725,14 @@ export class OverworldScene extends Phaser.Scene {
    * before they march. Within cap, this falls straight through to the soft gate.
    */
   private breakCampToMap(): void {
+    // The night elapses at departure (D46) — show the ledger first so the spend is
+    // seen (and Upkeep still crossable) before the soft gate and the march.
+    const toGate = () => this.showLedgerTransition("Before resting for the night…", () => this.breakCampGate(), true);
     if (slotsOver(this.run.inventory) > 0) {
-      this.showDiscardMenu(() => this.breakCampGate());
+      this.showDiscardMenu(toGate);
       return;
     }
-    this.breakCampGate();
+    toGate();
   }
 
   /**
@@ -1602,6 +1831,7 @@ export class OverworldScene extends Phaser.Scene {
     g: Phaser.GameObjects.Graphics,
     geom: { leftX: number; rightX: number; colX: number; rowH: number; cx: number; pad: number; w: number },
     startY: number,
+    opts: { rerender: () => void; interactive?: boolean } = { rerender: () => this.renderTent() },
   ): number {
     const { leftX, rightX, colX, rowH, cx, pad, w } = geom;
     let y = startY;
@@ -1619,8 +1849,8 @@ export class OverworldScene extends Phaser.Scene {
 
       for (const l of cat.lines) {
         const skipped = l.note === "voluntarily skipped";
-        const interactive = cat.id === "upkeep"; // only Upkeep lines are skippable
-        const labelInk = skipped ? INK.disabled : interactive ? INK.bright : INK.secondary;
+        const skippable = (opts.interactive ?? true) && cat.id === "upkeep"; // only Upkeep lines are skippable, and only when the surface allows it
+        const labelInk = skipped ? INK.disabled : skippable ? INK.bright : INK.secondary;
         this.overlay.push(
           this.add.text(leftX + 18, y, l.label, { color: labelInk, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
         );
@@ -1641,7 +1871,7 @@ export class OverworldScene extends Phaser.Scene {
 
         // Upkeep rows are clickable: cross off (skip) / restore. The hit rect sits
         // below the text (depth 24) so its hover wash reads behind the ink.
-        if (interactive) {
+        if (skippable) {
           const lineId = l.id.replace("upkeep:", "") as UpkeepLine["id"];
           const hit = this.add.rectangle(cx, y, w - 2 * pad + 12, rowH, COLOR.surfaceAlt, 0).setDepth(24).setInteractive({ useHandCursor: true });
           hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {
@@ -1649,7 +1879,7 @@ export class OverworldScene extends Phaser.Scene {
             this.setHint(skipped ? `Click to restore ${l.label} to the ledger (fund it again).` : `Click to cross ${l.label} off the ledger — frees its gold; you'll take the consequence and the gate won't nag.`);
           });
           hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => hit.setFillStyle(COLOR.surfaceAlt, 0));
-          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.toggleSkip(lineId));
+          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.toggleSkip(lineId, opts.rerender));
           this.overlay.push(hit);
         }
         y += rowH;
@@ -1667,15 +1897,16 @@ export class OverworldScene extends Phaser.Scene {
     return `${n >= 0 ? "+" : ""}${n}g`;
   }
 
-  /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. */
-  private toggleSkip(id: UpkeepLine["id"]): void {
+  /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. The
+   *  owning surface (Tent or night-end transition) supplies its own `rerender`. */
+  private toggleSkip(id: UpkeepLine["id"], rerender: () => void = () => this.renderTent()): void {
     const set = new Set(this.run.camp.skippedUpkeep);
     if (set.has(id)) set.delete(id);
     else set.add(id);
     this.run.camp.skippedUpkeep = [...set] as ("food" | "repairs")[];
     this.refreshCampText();
     this.setHint(set.has(id) ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
-    this.renderTent();
+    rerender();
   }
 
   // --- Terminal screens ------------------------------------------------------
@@ -1745,6 +1976,49 @@ export class OverworldScene extends Phaser.Scene {
 
   private setHint(text: string): void {
     this.hintPanel.setResting(text);
+  }
+
+  /**
+   * The night-end ledger transition (D45) — a full-screen readout of what the night
+   * costs, shown the instant **before** a night elapses (Break Camp, either rest tier)
+   * so the spend is seen before it's locked in. On Break Camp the Upkeep lines stay
+   * crossable (the soft gate honors the skip); the rest tiers force-pay, so there the
+   * sheet is read-only. **Continue** runs `onContinue` — the deferred night action.
+   */
+  private showLedgerTransition(title: string, onContinue: () => void, interactive = false): void {
+    clearLayer(this.overlay);
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+    const w = 760;
+    const h = Math.min(this.scale.height - 24, 540);
+    const left = cx - w / 2;
+    const top = cy - h / 2;
+
+    // Full-screen backdrop (dims + swallows clicks behind) + the framed sheet.
+    const backdrop = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(22).setInteractive();
+    this.overlay.push(
+      backdrop,
+      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
+      this.add.text(left + 24, top + 22, title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(left + w - 24, top + 22, "The night's tab — what camp spends before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+    );
+    const rule = this.add.graphics().setDepth(24);
+    rule.lineStyle(1, COLOR.borderSoft, 0.9);
+    rule.lineBetween(left + 16, top + 44, left + w - 16, top + 44);
+    this.overlay.push(rule);
+
+    const contentTop = top + 56;
+    const bounds = new Phaser.Geom.Rectangle(left + 8, contentTop, w - 16, h - (contentTop - top) - 52);
+    this.drawLedgerSheet(bounds, { rerender: () => this.showLedgerTransition(title, onContinue, interactive), interactive });
+
+    const btn = this.makeTextButton(cx, top + h - 24, 240, 32, "Continue →", COLOR.successDeep, COLOR.success, () => {
+      clearLayer(this.overlay);
+      onContinue();
+    });
+    this.overlay.push(btn.setDepth(26));
+    this.setHint(interactive
+      ? "Tonight's tab. Cross an Upkeep line off to free its gold (you'll take the consequence). Continue to rest for the night."
+      : "Tonight's tab — what this rest will spend. Continue to proceed.");
   }
 
   private showOverlay(title: string, body: string, good: boolean, w = 480, h = 200, onContinue?: () => void): void {

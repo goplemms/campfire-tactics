@@ -45,7 +45,9 @@ export interface LedgerLine {
 export interface LedgerCategory {
   id: "opening" | "loot" | "field" | "upkeep" | "banker";
   label: string;
-  /** The category total — **always** the sum of its line amounts. */
+  /** The category total — the sum of its line amounts for itemized flows (loot/field/upkeep/
+   *  banker). The `opening` lump-sum is the exception: it carries its figure on the header
+   *  with no sub-lines. */
   total: number;
   lines: LedgerLine[];
   /**
@@ -138,7 +140,10 @@ export function buildLedger(run: RunState, opts: BuildLedgerOptions = {}): Ledge
   if (eco.protection > 0) bankerLines.push({ id: "banker:protection", label: "Theft protection", amount: 0, note: `${Math.round(eco.protection * 100)}%` });
 
   const categories: LedgerCategory[] = [
-    { id: "opening", label: "Carried purse", total: openingTotal, lines: [{ id: "opening", label: "Carried into the field", amount: openingTotal }] },
+    // Carried purse — a lump-sum header (no itemized lines): the caravan *is* the field, so
+    // "carried into the field" was a redundant restatement of this figure. Its total still
+    // reconciles the balance (opening + loot + field), it just isn't broken into a sub-line.
+    { id: "opening", label: "Carried purse", total: openingTotal, lines: [] },
     { id: "loot", label: "Loot", total: lootTotal, lines: lootLines },
     { id: "field", label: "Field spend", total: fieldTotal, lines: fieldLines },
     { id: "upkeep", label: "Upkeep (tonight)", total: upkeepLines.reduce((s, l) => s + l.amount, 0), lines: upkeepLines, projected: true },

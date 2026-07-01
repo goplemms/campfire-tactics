@@ -577,7 +577,7 @@ export class OverworldScene extends Phaser.Scene {
     const entries: { id: TentTab | "camp" | "market"; label: string; onClick: () => void; tip: string }[] = [
       { id: "camp", label: "Camp", onClick: toCamp, tip: "The between-nodes camp — provision, heal, and end the night." },
       { id: "party", label: this.tentToolbarLabel(), onClick: () => this.openTent(returnTo, "party"), tip: "The Captain's Tent — the Party dossier (HP, fatigue, conditions, jeopardy, growth). ⚠ marks anyone hurt, dying or captured." },
-      { id: "stores", label: "Stores", onClick: () => this.openTent(returnTo, "stores"), tip: "Caravan stores — party & storage caps, carried traps and herbs (with slots), and the purse." },
+      { id: "stores", label: "Stores", onClick: () => this.openTent(returnTo, "stores"), tip: "Caravan stores — carried gear and consumables with the space each takes, storage cap, and the purse." },
       { id: "ledger", label: "Ledger", onClick: () => this.openTent(returnTo, "ledger"), tip: "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here." },
       { id: "map", label: "Map", onClick: () => this.openTent(returnTo, "map"), tip: "The overworld node map (read-only) — route, reachable nodes, and fog." },
     ];
@@ -1136,12 +1136,12 @@ export class OverworldScene extends Phaser.Scene {
       y += rowH;
       for (const it of carried) {
         // Quantity rides next to the name (×N), shown only when we hold more than one — a
-        // lone item needs no count. The right column keeps the storage footprint (slots).
+        // lone item needs no count. The right column carries the storage footprint (Space: N).
         const qty = it.count > 1 ? `  ×${it.count}` : "";
         this.overlay.push(
           this.add.text(leftX + 8, y, `${it.name}${qty}`, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
           this.add.text(leftX + 160, y, `${it.effect} · ${it.recoverable ? "recoverable" : "consumed"}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25),
-          this.add.text(rightX, y, it.slots > 0 ? `${it.slots} sl` : "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+          this.add.text(rightX, y, it.slots > 0 ? `Space: ${it.slots}` : "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
         );
         y += rowH;
       }
@@ -1289,6 +1289,10 @@ export class OverworldScene extends Phaser.Scene {
       this.add.text(left + 122, top + 26, `· ${tier === "none" ? "no market" : `${tier} market`}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
     );
     this.overlay.push(this.makeTextButton(left + w - 60, top + 26, 96, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => this.closeMarket()).setDepth(26));
+    // Storage on the header so the space you're spending is visible while you shop — buys eat
+    // slots (see each row's Space) and a full stash blocks them, so surface the cap up front.
+    const invUsed = slotsUsed(this.run.inventory);
+    this.overlay.push(this.add.text(left + w - 24, top + 52, `Storage ${invUsed}/${this.run.inventory.storageCap} (free ${this.run.inventory.storageCap - invUsed})`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25));
 
     const leftX = left + 24;
     if (tier === "none") {
@@ -1315,6 +1319,10 @@ export class OverworldScene extends Phaser.Scene {
         this.overlay.push(this.add.text(leftX + 244, y, room ? `need ${price}g` : "storage full", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25));
       } else {
         const qty = Math.min(affordable, Math.max(1, this.marketQty[id] ?? 1));
+        // Space this purchase will add (stacks pack, so buying into a partial stack can add 0) —
+        // the "how much room am I about to spend" readout, live with the stepper.
+        const addSlots = slotsFor(mat, owned + qty) - slotsFor(mat, owned);
+        this.overlay.push(this.add.text(leftX + 200, y, `Space: +${addSlots}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25));
         this.overlay.push(this.makeTextButton(leftX + 268, y, 22, 22, "−", COLOR.surfaceRaised, COLOR.border, () => { this.marketQty[id] = Math.max(1, qty - 1); this.renderMarket(); }).setDepth(26));
         this.overlay.push(this.add.text(leftX + 292, y, `${qty}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5, 0.5).setDepth(25));
         this.overlay.push(this.makeTextButton(leftX + 316, y, 22, 22, "+", COLOR.surfaceRaised, COLOR.border, () => { this.marketQty[id] = Math.min(affordable, qty + 1); this.renderMarket(); }).setDepth(26));
@@ -1757,7 +1765,7 @@ export class OverworldScene extends Phaser.Scene {
       const count = countOf(inv, id);
       const slots = mat ? slotsFor(mat, count) : count; // the row's current slot footprint (stacks pack)
       const val = mat?.saleValue ? ` · ${mat.saleValue}g ea` : "";
-      const btn = this.makeTextButton(cx, y, 400, 30, `Discard 1 — ${mat?.name ?? id} ×${count} (${slots} slot${slots === 1 ? "" : "s"})${val}`, COLOR.surfaceRaised, COLOR.danger, () => {
+      const btn = this.makeTextButton(cx, y, 400, 30, `Discard 1 — ${mat?.name ?? id} ×${count} · Space: ${slots}${val}`, COLOR.surfaceRaised, COLOR.danger, () => {
         removeItem(inv, id, 1);
         this.refreshCampText();
         this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap

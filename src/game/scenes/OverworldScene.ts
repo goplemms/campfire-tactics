@@ -1134,11 +1134,13 @@ export class OverworldScene extends Phaser.Scene {
       this.overlay.push(this.add.text(leftX, y, grp.title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
       y += rowH;
       for (const it of carried) {
-        const slotStr = it.slots > 0 ? `  (${it.slots} sl)` : "";
+        // Quantity rides next to the name (×N), shown only when we hold more than one — a
+        // lone item needs no count. The right column keeps the storage footprint (slots).
+        const qty = it.count > 1 ? `  ×${it.count}` : "";
         this.overlay.push(
-          this.add.text(leftX + 8, y, it.name, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-          this.add.text(leftX + 130, y, `${it.effect} · ${it.recoverable ? "recoverable" : "consumed"}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25),
-          this.add.text(rightX, y, `×${it.count}${slotStr}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+          this.add.text(leftX + 8, y, `${it.name}${qty}`, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
+          this.add.text(leftX + 160, y, `${it.effect} · ${it.recoverable ? "recoverable" : "consumed"}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25),
+          this.add.text(rightX, y, it.slots > 0 ? `${it.slots} sl` : "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
         );
         y += rowH;
       }

@@ -1107,12 +1107,13 @@ export class OverworldScene extends Phaser.Scene {
     const leftX = b.left + pad;
     const rightX = b.right - pad;
     const rowH = 22;
-    const partyStr = m.partyCapacity != null ? `Party ${m.partyCount}/${m.partyCapacity}` : `Party ${m.partyCount}`;
+    // Party headcount belongs to the Tent's Party tab, not the stores sheet — this line is
+    // pure logistics (vessel + storage), so it stays about the cargo, not the roster.
     const vessel = m.vesselLabel ? `${m.vesselLabel} · ` : "";
     const g = this.add.graphics().setDepth(24);
     this.overlay.push(
       g,
-      this.add.text(leftX, b.top + 12, `${vessel}${partyStr}  ·  Storage ${m.storageUsed}/${m.storageCap} (free ${m.storageFree})`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(leftX, b.top + 12, `${vessel}Storage ${m.storageUsed}/${m.storageCap} (free ${m.storageFree})`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
       this.add.text(rightX, b.top + 12, `Purse ${m.purse}g`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
     );
     let y = b.top + 30;

@@ -498,21 +498,21 @@ export class OverworldScene extends Phaser.Scene {
     const panelW = this.scale.width - 40; //  ~760 — nearly full width
     const panelTop = 60;
     const panelBottom = this.scale.height - 16; // ~584 — nearly full height
-    const top = 90;
+    const top = 84;
     const colX = cx - panelW / 2 + 30;
     const rowH = 30;
 
-    // --- Left column: the action drawers --------------------------------------
-    const actionsBottom = this.renderCampActions(colX, top, rowH);
+    // --- Areas toolbar (D58): the "different areas" ---------------------------
+    // A compact top row of deep-links to the *places you go* (Captain's Tent tabs, the
+    // Market, the route map), kept above the left column's *actions you take here* so the
+    // two purposes read distinctly — and so the full width below is free for the drawers.
+    const areasBottom = this.renderAreaLinks(colX, top, () => this.renderCamp());
 
-    // --- Right column: the "different areas" (D58) ----------------------------
-    // Deep-links to the Captain's Tent tabs, the Market and the route map — the *places
-    // you go*, kept on the right, apart from the left column's *actions you take here*, so
-    // the two purposes read distinctly at a glance.
-    const areasBottom = this.renderAreaLinks(cx + 60, top + 8, () => this.renderCamp());
+    // --- The action drawers, below the toolbar --------------------------------
+    const actionsBottom = this.renderCampActions(colX, areasBottom + 20, rowH);
 
-    // The captain's running to-do spans the full width, so it sits below *both* columns.
-    this.renderCaptainsJournal(colX, Math.max(actionsBottom, areasBottom) + 12, panelW - 60);
+    // The captain's running to-do sits below the actions.
+    this.renderCaptainsJournal(colX, actionsBottom + 12, panelW - 60);
 
     // --- End the Night — the prep→event gate (D46); anchored to the panel's bottom ---
     // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
@@ -539,10 +539,9 @@ export class OverworldScene extends Phaser.Scene {
    * don't blur. Shared by both camp beats; `rerender` is the beat to return to on close.
    * Returns the y-centre of the last link (for sizing the content below it).
    */
-  private renderAreaLinks(tx: number, top: number, rerender: () => void): number {
-    const w = 240;
+  private renderAreaLinks(x: number, y: number, rerender: () => void): number {
     const links: { label: string; onClick: () => void; tip: string }[] = [
-      { label: this.tentButtonLabel(), onClick: () => this.openTent(rerender, "party"), tip: "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured." },
+      { label: this.tentToolbarLabel(), onClick: () => this.openTent(rerender, "party"), tip: "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured." },
     ];
     // Market — a *place you visit*, listed only when you have access (a market node or a
     // Merchant in the party). Hidden otherwise, so trap-kit/herb restock is a real
@@ -553,10 +552,33 @@ export class OverworldScene extends Phaser.Scene {
     links.push(
       { label: "Stores", onClick: () => this.openTent(rerender, "stores"), tip: "Caravan stores — party & storage caps, carried traps and herbs (with slots), and the purse (a Captain's Tent tab)." },
       { label: "Ledger", onClick: () => this.openTent(rerender, "ledger"), tip: "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here (a Captain's Tent tab)." },
-      { label: "Review Route Map", onClick: () => this.reviewMap(rerender), tip: "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return." },
+      { label: "Map", onClick: () => this.reviewMap(rerender), tip: "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return." },
     );
-    links.forEach((l, i) => this.campButton(tx, top + i * 30, w, 24, l.label, true, l.onClick, l.tip));
-    return top + (links.length - 1) * 30;
+    // Pack the links left→right on one row, each sized to its own label — a compact
+    // toolbar rather than a stacked column, so the width below is free for the actions.
+    const h = 24;
+    const gap = 8;
+    let bx = x;
+    for (const l of links) {
+      const bw = this.measureButtonWidth(l.label);
+      this.campButton(bx, y, bw, h, l.label, true, l.onClick, l.tip);
+      bx += bw + gap;
+    }
+    return y + h / 2;
+  }
+
+  /** Compact toolbar variant of the tent label — "Tent" (+ a ⚠ attention badge). */
+  private tentToolbarLabel(): string {
+    const n = attentionCount(projectDossier(this.run));
+    return n > 0 ? `Tent  ⚠${n}` : "Tent";
+  }
+
+  /** Width for a compact toolbar button sized to fit its label (measured + side padding). */
+  private measureButtonWidth(label: string): number {
+    const probe = this.add.text(0, 0, label, { fontFamily: FONT.family, fontSize: FONT.label }).setVisible(false);
+    const w = Math.ceil(probe.width) + 24;
+    probe.destroy();
+    return w;
   }
 
   /**
@@ -813,12 +835,6 @@ export class OverworldScene extends Phaser.Scene {
    * without pausing). The dossier reads the live run, so its numbers are current.
    */
   // --- The Captain's Tent (D58): the one deep-info hub ------------------------
-
-  /** The camp/survey button that opens the Tent, badged with anyone needing a look. */
-  private tentButtonLabel(): string {
-    const n = attentionCount(projectDossier(this.run));
-    return n > 0 ? `Captain's Tent  ⚠${n}` : "Captain's Tent";
-  }
 
   /**
    * Open the Captain's Tent — the run's single deep-info hub, an in-scene **overlay**
@@ -1429,7 +1445,10 @@ export class OverworldScene extends Phaser.Scene {
       this.add.text(colX - 10, top + 18, this.forecastSummary(forecast), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 5, wordWrap: { width: panelW - 60 } }).setOrigin(0, 0).setDepth(11),
     );
     const colTop = top + 26 + (forecast.perEdge.length + 1) * 18 + 14;
-    let y = colTop;
+
+    // Areas toolbar across the top of the action area (frees the width below for drawers).
+    const areasBottom = this.renderAreaLinks(colX, colTop, () => this.showSurvey());
+    let y = areasBottom + 20;
 
     // Recovery drawer: the route-planning heal (in-place rest — repeatable, costed; greys
     // at full HP / when broke). The same category vocabulary as the camp beat.
@@ -1453,14 +1472,8 @@ export class OverworldScene extends Phaser.Scene {
     }
     y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());
 
-    const leftBottom = y;
-
-    // Right column: the "different areas" — Tent tabs, the Market and the route map —
-    // kept apart from the left-column actions (the same right-hand cluster Make Camp uses).
-    const areasBottom = this.renderAreaLinks(cx + 60, colTop, () => this.showSurvey());
-
-    // The captain's running to-do spans the full width, so it sits below *both* columns.
-    this.renderCaptainsJournal(colX, Math.max(leftBottom, areasBottom) + 12, panelW - 60);
+    // The captain's running to-do sits below the actions.
+    this.renderCaptainsJournal(colX, y + 12, panelW - 60);
 
     // Break Camp anchors the bottom of the near-full-screen box (matching Make Camp).
     const breakBtn = this.makeTextButton(cx, panelBottom - 30, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());

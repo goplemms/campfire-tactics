@@ -1185,7 +1185,18 @@ export class OverworldScene extends Phaser.Scene {
     g.lineBetween(leftX, b.top + 26, rightX, b.top + 26);
 
     let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx: b.centerX, pad, w: b.width }, b.top + 26 + 18, opts);
-    y += 8;
+    // Forecasted balance — the estimated purse carried into tomorrow (current balance after
+    // tonight's projected Upkeep/Banker). A bottom-line bookend to the top Balance; a rule
+    // sets it apart from the category rows.
+    y += 4;
+    g.lineStyle(1, COLOR.borderSoft, 0.9);
+    g.lineBetween(leftX, y, rightX, y);
+    y += 14;
+    this.overlay.push(
+      this.add.text(leftX, y, "Forecasted balance  · into tomorrow", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(rightX, y, `${ledger.forecastBalance}g`, { color: ledger.forecastBalance < 0 ? INK.danger : INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
+    );
+    y += rowH + 6;
     this.overlay.push(this.add.text(leftX, y, "Forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
     y += 16;
     this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));

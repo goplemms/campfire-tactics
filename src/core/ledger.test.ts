@@ -60,6 +60,24 @@ describe("ledger — purse-scoped categories reconcile (D45)", () => {
     expect(realizedSum).toBe(150); // Influence is nowhere in the gold reconciliation
   });
 
+  it("forecastBalance = balance + the projected categories (into tomorrow)", () => {
+    const run = newRun("ledger-forecast-balance", 200);
+    record(run, "n1-0", 40); // loot in → balance already reflects it
+    const ledger = buildLedger(run);
+    const projected = ledger.categories.filter((c) => c.projected).reduce((s, c) => s + c.total, 0);
+    expect(ledger.forecastBalance).toBe(ledger.balance + projected);
+    // Tonight's Upkeep is an outflow, so the forecast sits below the current balance.
+    expect(ledger.forecastBalance).toBeLessThan(ledger.balance);
+  });
+
+  it("a voluntary Upkeep skip lifts the forecast balance (its cost is freed)", () => {
+    const run = newRun("ledger-forecast-skip", 200);
+    const funded = buildLedger(run).forecastBalance;
+    run.camp.skippedUpkeep = ["food"];
+    const skipped = buildLedger(run).forecastBalance;
+    expect(skipped).toBeGreaterThan(funded); // crossing Food off keeps that gold
+  });
+
   it("embeds the route forecast (the load-bearing forward half, D48)", () => {
     const run = newRun("ledger-forecast");
     const ledger = buildLedger(run);

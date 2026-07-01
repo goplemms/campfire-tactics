@@ -60,6 +60,12 @@ export interface LedgerCategory {
 export interface Ledger {
   /** The bottom line: the current **run purse** (D34). */
   balance: number;
+  /**
+   * The estimated purse carried **into the next day** (D45/D48): the current {@link balance}
+   * plus every `projected` category total (tonight's Upkeep, the Banker position). The
+   * realized categories already reconcile into `balance`, so only the projected ones move it.
+   */
+  forecastBalance: number;
   /** The categories (broad totals + expandable lines). */
   categories: LedgerCategory[];
   /**
@@ -139,8 +145,13 @@ export function buildLedger(run: RunState, opts: BuildLedgerOptions = {}): Ledge
     { id: "banker", label: "Banker", total: bankerLines.reduce((s, l) => s + l.amount, 0), lines: bankerLines, projected: true },
   ];
 
+  // Only the projected categories (Upkeep tonight, Banker) move the purse from here; the
+  // realized ones already sum into `balance`.
+  const forecastBalance = balance + categories.filter((c) => c.projected).reduce((s, c) => s + c.total, 0);
+
   return {
     balance,
+    forecastBalance,
     categories,
     influence: opts.influence ?? 0,
     forecast: projectForecast(run),

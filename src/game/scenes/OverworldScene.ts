@@ -1123,19 +1123,28 @@ export class OverworldScene extends Phaser.Scene {
     g.lineStyle(1, COLOR.borderSoft, 0.9);
     g.lineBetween(leftX, y, rightX, y);
     y += 16;
+    // Stores lists only what we actually carry — a group with nothing in it (and the
+    // "what could we still stock" catalog of zero-count materials) belongs to the Market,
+    // not here. The projection still reports every known material; we filter for display.
+    let anyCarried = false;
     for (const grp of m.groups) {
+      const carried = grp.items.filter((it) => it.count > 0);
+      if (carried.length === 0) continue;
+      anyCarried = true;
       this.overlay.push(this.add.text(leftX, y, grp.title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
       y += rowH;
-      for (const it of grp.items) {
-        const dim = it.count <= 0;
+      for (const it of carried) {
         const slotStr = it.slots > 0 ? `  (${it.slots} sl)` : "";
         this.overlay.push(
-          this.add.text(leftX + 8, y, it.name, { color: dim ? INK.disabled : INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-          this.add.text(leftX + 130, y, `${it.effect} · ${it.recoverable ? "recoverable" : "consumed"}`, { color: dim ? INK.disabled : INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25),
-          this.add.text(rightX, y, `×${it.count}${slotStr}`, { color: dim ? INK.disabled : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+          this.add.text(leftX + 8, y, it.name, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
+          this.add.text(leftX + 130, y, `${it.effect} · ${it.recoverable ? "recoverable" : "consumed"}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25),
+          this.add.text(rightX, y, `×${it.count}${slotStr}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
         );
         y += rowH;
       }
+    }
+    if (!anyCarried) {
+      this.overlay.push(this.add.text(leftX, y, "Stores are empty — nothing carried yet.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
     }
   }
 

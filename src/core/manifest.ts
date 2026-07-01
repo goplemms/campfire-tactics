@@ -135,9 +135,11 @@ export function itemEffect(mat: MaterialDef): string {
 /** The Stores shelves, in display order — the {@link MaterialDef.category} keys mapped to
  *  their titles. A material with no category falls to "combat" (the generic functional shelf). */
 const STORE_SECTIONS: { key: NonNullable<MaterialDef["category"]>; title: string }[] = [
+  // Equipment leads — the "permanent" gear (kept across nights) sits above the consumables
+  // and pure-value stock that turn over during a run.
+  { key: "equipment", title: "Equipment" },
   { key: "combat", title: "Combat consumables" },
   { key: "healing", title: "Healing" },
-  { key: "equipment", title: "Equipment" },
   { key: "valuables", title: "Valuables" },
 ];
 

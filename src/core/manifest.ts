@@ -132,6 +132,17 @@ export function itemEffect(mat: MaterialDef): string {
   return mat.name;
 }
 
+/** The Stores shelves, in display order — the {@link MaterialDef.category} keys mapped to
+ *  their titles. A material with no category falls to "combat" (the generic functional shelf). */
+const STORE_SECTIONS: { key: NonNullable<MaterialDef["category"]>; title: string }[] = [
+  // Equipment leads — the "permanent" gear (kept across nights) sits above the consumables
+  // and pure-value stock that turn over during a run.
+  { key: "equipment", title: "Equipment" },
+  { key: "combat", title: "Combat consumables" },
+  { key: "healing", title: "Healing" },
+  { key: "valuables", title: "Valuables" },
+];
+
 /** Options the render layer threads in (the caravan it can't read from `run` alone). */
 export interface ManifestOptions {
   vesselLabel?: string;
@@ -160,9 +171,9 @@ export function projectManifest(run: RunState, opts: ManifestOptions = {}): Cara
     storageCap: inv.storageCap,
     storageFree: inv.storageCap - used,
     purse: run.camp.gold,
-    groups: [
-      { title: "Traps & build", items: all.filter((m) => !m.medical).map(toItem) },
-      { title: "Medical (herbs)", items: all.filter((m) => m.medical).map(toItem) },
-    ],
+    groups: STORE_SECTIONS.map((s) => ({
+      title: s.title,
+      items: all.filter((m) => (m.category ?? "combat") === s.key).map(toItem),
+    })),
   };
 }

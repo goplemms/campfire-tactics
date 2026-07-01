@@ -479,25 +479,6 @@ export class OverworldScene extends Phaser.Scene {
     this.previewText.setText("");
   }
 
-  /**
-   * A **read-only** peek at the route map from camp/Survey (D58) — those surfaces
-   * hide the map, so this brings it back to look at: hover a node to preview it,
-   * but no committing. `returnTo` rebuilds the surface you came from (camp/Survey).
-   */
-  private reviewMap(returnTo: () => void): void {
-    this.clearCamp();
-    clearLayer(this.overlay);
-    this.drawMap(false); // non-interactive: hover-preview only, no node commit
-    this.titleText.setText(`Route Map — Night ${this.run.night + 1} · reviewing`);
-    this.setHint("Reviewing the route — hover a node to preview it. Click Back to return.");
-    // Below the centred HUD line so it doesn't sit on the readouts.
-    const back = this.makeTextButton(90, 78, 150, 28, "← Back", COLOR.surfaceRaised, COLOR.border, () => {
-      this.clearMap();
-      returnTo();
-    });
-    this.nodeObjects.push(back);
-  }
-
   // --- The unified overworld camp (D35) -------------------------------------
 
   /**
@@ -542,10 +523,10 @@ export class OverworldScene extends Phaser.Scene {
     this.campText.setVisible(false);
 
     // --- Areas toolbar (D58): the "different areas" ---------------------------
-    // A compact top row of deep-links to the *places you go* (Captain's Tent tabs, the
-    // Market, the route map), kept above the left column's *actions you take here* so the
-    // two purposes read distinctly — and so the full width below is free for the drawers.
-    const areasBottom = this.renderAreaLinks(colX, top, () => this.renderCamp());
+    // A compact top row of deep-links to the *places you go* (the Tent / Stores / Ledger /
+    // Map pages, the Market), kept above the left column's *actions you take here* so the two
+    // purposes read distinctly — and the same nav renders atop each of those pages.
+    const areasBottom = this.renderAreaNav(null, () => this.renderCamp(), this.campObjects, colX, top);
     const bodyTop = areasBottom + 20;
 
     // --- The action drawers (left) + the live state readouts (right) ----------
@@ -580,32 +561,53 @@ export class OverworldScene extends Phaser.Scene {
    * don't blur. Shared by both camp beats; `rerender` is the beat to return to on close.
    * Returns the y-centre of the last link (for sizing the content below it).
    */
-  private renderAreaLinks(x: number, y: number, rerender: () => void): number {
-    const links: { label: string; onClick: () => void; tip: string }[] = [
-      { label: this.tentToolbarLabel(), onClick: () => this.openTent(rerender, "party"), tip: "Open the Captain's Tent on the Party dossier — HP, fatigue, conditions, jeopardy, growth. Its tab bar reaches Stores, Ledger and Map. ⚠ marks anyone hurt, dying or captured." },
+  /**
+   * The **areas nav** (D58) — the one consistent navigation for the Tent / Stores / Ledger /
+   * Map pages, a compact tab row pinned to the **upper left**. The very same row renders on
+   * the camp/survey beats (as entry links, `active === null`) and on each page (with the open
+   * tab highlighted + a **Camp →** return), so the nav never shifts between views. Market is a
+   * trailing entry, present only with market access (a shop overlay, not one of the pages).
+   * Buttons draw onto `layer` (camp beats → `campObjects`; pages → `overlay`). Returns the
+   * `y` just past the row.
+   */
+  private renderAreaNav(active: TentTab | null, returnTo: () => void, layer: Phaser.GameObjects.GameObject[], x: number, y: number): number {
+    const entries: { id: TentTab | "market"; label: string; onClick: () => void; tip: string }[] = [
+      { id: "party", label: this.tentToolbarLabel(), onClick: () => this.openTent(returnTo, "party"), tip: "The Captain's Tent — the Party dossier (HP, fatigue, conditions, jeopardy, growth). ⚠ marks anyone hurt, dying or captured." },
+      { id: "stores", label: "Stores", onClick: () => this.openTent(returnTo, "stores"), tip: "Caravan stores — party & storage caps, carried traps and herbs (with slots), and the purse." },
+      { id: "ledger", label: "Ledger", onClick: () => this.openTent(returnTo, "ledger"), tip: "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here." },
+      { id: "map", label: "Map", onClick: () => this.openTent(returnTo, "map"), tip: "The overworld node map (read-only) — route, reachable nodes, and fog." },
     ];
     // Market — a *place you visit*, listed only when you have access (a market node or a
-    // Merchant in the party). Hidden otherwise, so trap-kit/herb restock is a real
-    // logistics gate: no access ⇒ no buying, lean on what you carry and looted.
+    // Merchant in the party). Hidden otherwise, so trap-kit/herb restock is a real logistics
+    // gate. It's a shop overlay, not a page, so it never carries an `active` highlight.
     if (effectiveMarketTier(this.campNode ?? currentNode(this.run), this.run.party) !== "none") {
-      links.push({ label: "Market", onClick: () => this.openMarket(rerender), tip: "Buy supplies (trap kits, herbs) and sell salvage. Only open with market access — a market node, or a Merchant who opens one anywhere. Stock up: you may not pass a market again soon." });
+      entries.push({ id: "market", label: "Market", onClick: () => this.openMarket(returnTo), tip: "Buy supplies (trap kits, herbs) and sell salvage. Only open with market access. Stock up: you may not pass a market again soon." });
     }
-    links.push(
-      { label: "Stores", onClick: () => this.openTent(rerender, "stores"), tip: "Caravan stores — party & storage caps, carried traps and herbs (with slots), and the purse (a Captain's Tent tab)." },
-      { label: "Ledger", onClick: () => this.openTent(rerender, "ledger"), tip: "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here (a Captain's Tent tab)." },
-      { label: "Map", onClick: () => this.reviewMap(rerender), tip: "Look at the overworld node map (read-only) — route, reachable nodes, and fog. Click Back to return." },
-    );
-    // Pack the links left→right on one row, each sized to its own label — a compact
-    // toolbar rather than a stacked column, so the width below is free for the actions.
-    const h = 24;
+    const h = 26;
     const gap = 8;
     let bx = x;
-    for (const l of links) {
-      const bw = this.measureButtonWidth(l.label);
-      this.campButton(bx, y, bw, h, l.label, true, l.onClick, l.tip);
+    for (const e of entries) {
+      const bw = this.measureButtonWidth(e.label);
+      this.navButton(bx, y, bw, h, e.label, e.id === active, e.onClick, e.tip, layer);
       bx += bw + gap;
     }
+    // On a page, a return to the between-nodes beat sits at the end of the same row.
+    if (active !== null) {
+      const bw = this.measureButtonWidth("Camp →");
+      this.navButton(bx + 16, y, bw, h, "Camp →", false, () => this.closeTent(), "Return to camp.", layer);
+    }
     return y + h / 2;
+  }
+
+  /** One areas-nav button — a left-anchored tab with an active (gold) highlight, a hover
+   *  hint, drawn onto the given `layer` so the nav can live on the camp or the page. */
+  private navButton(x: number, y: number, w: number, h: number, text: string, active: boolean, onClick: () => void, description: string, layer: Phaser.GameObjects.GameObject[]): void {
+    const bg = this.add.rectangle(x, y, w, h, active ? COLOR.btnFill : COLOR.surfaceAlt).setStrokeStyle(1, active ? COLOR.gold : COLOR.borderSoft).setOrigin(0, 0.5).setDepth(25).setInteractive({ useHandCursor: true });
+    const label = this.add.text(x + 10, y, text, { color: active ? INK.gold : INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(26);
+    fitText(label, w - 16);
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hintPanel.setText(description));
+    layer.push(bg, label);
   }
 
   /** Compact toolbar variant of the tent label — "Tent" (+ a ⚠ attention badge). */
@@ -998,12 +1000,6 @@ export class OverworldScene extends Phaser.Scene {
     return eligible.reduce((best, u) => (u.intelligence > best.intelligence ? u : best), eligible[0]);
   }
 
-  /** The camp "Party" button label, badged with the count needing a look (⚠N). */
-  private partyButtonLabel(): string {
-    const n = attentionCount(projectDossier(this.run));
-    return n > 0 ? `Party  ⚠${n}` : "Party";
-  }
-
   /**
    * Open the party dossier (D-info-surfacing). **Page mode:** launch the dossier on
    * top and pause this scene, so the camp panel is preserved exactly and restored on
@@ -1013,11 +1009,11 @@ export class OverworldScene extends Phaser.Scene {
   // --- The Captain's Tent (D58): the one deep-info hub ------------------------
 
   /**
-   * Open the Captain's Tent — the run's single deep-info hub, an in-scene **overlay**
-   * (the chosen idiom: it floats over the live camp, no scene swap). One verb opens
-   * it; a tab bar (Party · Stores · Ledger · Map) switches view. It converges what
-   * were three scattered surfaces — the dossier scene, the inventory panel and its
-   * nested ledger — under one frame, each datum single-sourced to its tab.
+   * Open a Captain's Tent **page** — the run's deep-info hub, now a full-view page (not a
+   * dimmed overlay). Party / Stores / Ledger / Map are peer pages sharing one nav tab row
+   * pinned upper-left ({@link renderAreaNav}); `returnTo` is the between-nodes beat the
+   * **Camp →** return restores. Converges what were three scattered surfaces — the dossier
+   * scene, the inventory panel and its nested ledger — plus the route map, under one nav.
    */
   private openTent(returnTo: () => void, tab: TentTab = "party"): void {
     this.tentReturn = returnTo;
@@ -1025,81 +1021,62 @@ export class OverworldScene extends Phaser.Scene {
     this.renderTent();
   }
 
-  /** Tear down the Tent and hand control back to whoever opened it (camp / survey). */
+  /** Tear down the current Tent page and hand control back to the beat that opened it. */
   private closeTent(): void {
     this.tentDossier?.destroy();
     this.tentDossier = undefined;
     clearLayer(this.overlay);
+    this.clearMap(); // the Map page draws the board on its own layer — clear it on the way out
     const back = this.tentReturn;
     this.tentReturn = null;
     back?.();
   }
 
-  private selectTentTab(tab: TentTab): void {
-    if (tab === "map") {
-      // The map wants the whole board, not a panel — hand off to the read-only route
-      // view (its ← Back reopens the Tent on Party, so Map reads as a sibling tab).
-      const back = this.tentReturn ?? (() => this.renderCamp());
-      this.tentDossier?.destroy();
-      this.tentDossier = undefined;
-      clearLayer(this.overlay);
-      // ← Back first restores the camp/survey panel (and its title — reviewMap
-      // retitled the bar "Route Map · reviewing"), then re-floats the Tent over it.
-      this.reviewMap(() => { back(); this.openTent(back, "party"); });
-      return;
-    }
-    this.tentTab = tab;
-    this.renderTent();
-  }
-
-  /** (Re)draw the Tent: the frame + tab bar, then the active tab's body. */
+  /**
+   * (Re)draw the active Tent page: the shared upper-left nav, then the page body. Party /
+   * Stores / Ledger render as a framed panel; Map fills the view with the read-only board.
+   * A full-view page (camp cleared behind it), so the nav is the whole navigation.
+   */
   private renderTent(): void {
     this.tentDossier?.destroy();
     this.tentDossier = undefined;
+    this.clearCamp();
+    this.clearMap();
     clearLayer(this.overlay);
 
     const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
-    const w = 760;
-    const h = Math.min(this.scale.height - 24, 540);
-    const left = cx - w / 2;
-    const top = cy - h / 2;
+    const panelW = this.scale.width - 40;
+    const colX = cx - panelW / 2 + 30;
+    const navY = 84;
+    const returnTo = this.tentReturn ?? (() => this.renderCamp());
 
-    // Full-screen backdrop (dims + swallows clicks to the camp behind) + the frame.
-    const backdrop = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(22).setInteractive();
+    if (this.tentTab === "map") {
+      // Map page: the read-only board fills the view; the shared nav floats over it.
+      this.drawMap(false);
+      this.titleText.setText(`Route Map — Night ${this.run.night + 1} · reviewing`);
+      this.renderAreaNav("map", returnTo, this.overlay, colX, navY);
+      this.setHint("Route Map — hover a node to preview it. Switch pages above, or return to Camp (Esc).");
+      this.input.keyboard?.once("keydown-ESC", () => this.closeTent());
+      return;
+    }
+
+    // Panel pages (Party / Stores / Ledger): a near-full-screen page, nav pinned upper-left.
+    this.campText.setVisible(false);
+    const panelTop = 60;
+    const panelBottom = this.scale.height - 16;
     this.overlay.push(
-      backdrop,
-      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
-      this.add.text(left + 24, top + 22, "Captain's Tent", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
+      this.add.rectangle(cx, (panelTop + panelBottom) / 2, panelW, panelBottom - panelTop, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.border).setDepth(22),
     );
-    this.overlay.push(this.makeTextButton(left + w - 70, top + 22, 96, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => this.closeTent()).setDepth(26));
+    this.titleText.setText(`Captain's Tent — Night ${this.run.night + 1}`);
+    const navBottom = this.renderAreaNav(this.tentTab, returnTo, this.overlay, colX, navY);
 
-    // Tab bar — Map sits among the panel tabs even though it hands off to the board.
-    const tabs: { id: TentTab; label: string }[] = [
-      { id: "party", label: this.partyButtonLabel() },
-      { id: "stores", label: "Stores" },
-      { id: "ledger", label: "Ledger" },
-      { id: "map", label: "Map" },
-    ];
-    const tabY = top + 58;
-    tabs.forEach((t, i) => {
-      const active = t.id === this.tentTab;
-      const btn = this.makeTextButton(left + 24 + 70 + i * 144, tabY, 134, 30, t.label, active ? COLOR.btnFill : COLOR.surfaceRaised, active ? COLOR.gold : COLOR.border, () => this.selectTentTab(t.id));
-      this.overlay.push(btn.setDepth(26));
-    });
-    const rule = this.add.graphics().setDepth(24);
-    rule.lineStyle(1, COLOR.borderSoft, 0.9);
-    rule.lineBetween(left + 16, tabY + 22, left + w - 16, tabY + 22);
-    this.overlay.push(rule);
-
-    // Content bounds below the tab bar; each body lays out inside it.
-    const contentTop = tabY + 34;
-    const bounds = new Phaser.Geom.Rectangle(left + 8, contentTop, w - 16, top + h - 16 - contentTop);
+    const contentTop = navBottom + 14;
+    const bounds = new Phaser.Geom.Rectangle(colX - 8, contentTop, panelW - 44, panelBottom - 16 - contentTop);
     if (this.tentTab === "party") this.drawTentParty(bounds);
     else if (this.tentTab === "stores") this.drawTentStores(bounds);
     else this.drawTentLedger(bounds);
 
-    this.setHint("Captain's Tent — Party, Stores, Ledger, Map. Close (or Esc) returns to camp.");
+    this.setHint("Captain's Tent — switch pages above, or return to Camp (Esc).");
     this.input.keyboard?.once("keydown-ESC", () => this.closeTent());
   }
 
@@ -1163,12 +1140,10 @@ export class OverworldScene extends Phaser.Scene {
     }
   }
 
-  /** Ledger tab — gold flow (realized + projected) + the route forecast (D45/D48). */
+  /** Ledger page — gold flow (realized + projected) + the route forecast (D45/D48). Market
+   *  access lives in the shared nav's Market tab now, so no in-page shortcut is needed. */
   private drawTentLedger(b: Phaser.Geom.Rectangle): void {
-    const ledger = this.drawLedgerSheet(b, { rerender: () => this.renderTent() });
-    if (ledger.marketReady) {
-      this.overlay.push(this.makeTextButton(b.left + 22 + 90, b.bottom - 16, 170, 28, "Open Market", COLOR.btnFill, COLOR.gold, () => { this.tentDossier?.destroy(); this.tentDossier = undefined; const back = this.tentReturn ?? (() => this.renderCamp()); this.tentReturn = null; this.openMarket(back); }).setDepth(26));
-    }
+    this.drawLedgerSheet(b, { rerender: () => this.renderTent() });
   }
 
   /**
@@ -1637,8 +1612,8 @@ export class OverworldScene extends Phaser.Scene {
     const readoutCardW = 200;
     const readoutX = cx + panelW / 2 - 30 - readoutCardW;
 
-    // Areas toolbar across the top of the action area (frees the width below for drawers).
-    const areasBottom = this.renderAreaLinks(colX, colTop, () => this.showSurvey());
+    // Areas nav across the top of the action area (frees the width below for drawers).
+    const areasBottom = this.renderAreaNav(null, () => this.showSurvey(), this.campObjects, colX, colTop);
     let y = areasBottom + 20;
 
     // Live state readouts, stacked on the right of the action drawers.

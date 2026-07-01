@@ -58,8 +58,15 @@ import {
   buildLedger,
   nightEndGate,
   computeUpkeep,
-  rpPerNight,
-  TRIAGE,
+  type PreviewChange,
+  type PreviewStat,
+  skillEffectPreview,
+  triageActionPreview,
+  inPlaceRestPreview,
+  bankerInterestPreview,
+  bankerBorrowPreview,
+  bankerProtectPreview,
+  patronizePreview,
   // D77 — the equip surface verbs (pure core; the scene only calls + redraws)
   equip,
   unequip,
@@ -100,24 +107,9 @@ export interface RunHandoff {
 /** Buyable Market stock (D61) — trap kits first (the headline), then the Medic's herbs. */
 const MARKET_STOCK = ["trap-kit", "salve", "stimulant", "antidote"];
 
-/** A readout tile id — the panel figures an action's preview can point an arrow at. */
-type ReadoutStat = "purse" | "morale" | "storage" | "kits" | "rp" | "upkeep";
-
-/**
- * One projected effect of a camp action, for the hover preview (D58). A `stat` change
- * draws a delta arrow in the gutter beside that readout tile; a change with no `stat` is
- * *off-panel* (HP, Fatigue, Influence, Debt, …) and lists in the preview area below the
- * tiles. `amount` drives the arrow + sign; `text` overrides the display for fuzzy/unit
- * values ("50%", "small heal"); `good` sets the good/bad colour when the sign alone
- * doesn't say (a rising Debt is bad, a rising purse is good) — defaults to `amount ≥ 0`.
- */
-interface PreviewChange {
-  stat?: ReadoutStat;
-  label: string;
-  amount?: number;
-  text?: string;
-  good?: boolean;
-}
+/** The hover-preview projection (a list of {@link PreviewChange}) lives in core; the scene
+ *  only lays it out. `ReadoutStat`/`ActionPreview` alias the core names for local use. */
+type ReadoutStat = PreviewStat;
 type ActionPreview = PreviewChange[];
 
 /** One action row inside a collapsible camp category drawer (Recovery/Intel/Economy). */
@@ -664,7 +656,7 @@ export class OverworldScene extends Phaser.Scene {
         const tip = capped
           ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Break Camp.)`
           : `${skill.name} — ${skill.description}`;
-        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: this.previewForSkill(skill) });
+        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run) });
       }
     }
     const healer = this.triageActor();
@@ -673,53 +665,9 @@ export class OverworldScene extends Phaser.Scene {
       const tip = someoneWounded
         ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
         : "No wounded fighter to triage.";
-      // Triage's heal scales with the wound (a resolver-internal formula), so preview it
-      // qualitatively; the fatigue bite on the healer is the flat, known cost.
-      const preview: ActionPreview = [
-        { label: "HP", text: "heals worst wound", good: true },
-        { label: "Fatigue", amount: TRIAGE.fatigue, good: false },
-      ];
-      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview });
+      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview: triageActionPreview() });
     }
     return out;
-  }
-
-  /**
-   * The projected effect of a no-target camp/overworld skill, for the hover preview —
-   * read straight off the skill's declared cost (gold/fatigue) and {@link SkillDef.effect}
-   * so the forecast can't drift from what the resolver applies. Panel-bound changes carry
-   * a `stat`; the rest are off-panel.
-   */
-  private previewForSkill(skill: SkillDef): ActionPreview {
-    const changes: ActionPreview = [];
-    const cost = overworldCostOf(skill);
-    const gold = resolveKnob(cost.gold, this.run);
-    if (gold > 0) changes.push({ stat: "purse", label: "Purse", amount: -gold });
-    if (cost.fatigue) changes.push({ label: "Fatigue", amount: cost.fatigue, good: false });
-    const eff = skill.effect;
-    switch (eff?.kind) {
-      case "provisionMeal":
-        changes.push({ stat: "rp", label: "Rest Pts", amount: eff.rp });
-        changes.push({ label: "Food", text: "covered tonight", good: true });
-        break;
-      case "morale":
-        changes.push({ stat: "morale", label: "Morale", amount: eff.morale });
-        if (eff.partyHeal > 0) changes.push({ label: "Banked heal", amount: eff.partyHeal, good: true });
-        break;
-      case "openMarket":
-        changes.push({ label: "Market", text: "opens here", good: true });
-        break;
-      case "primeDeal":
-        changes.push({ label: "Next deal", text: "primed", good: true });
-        break;
-      case "survey":
-        changes.push({ label: "Intel", text: `+${eff.tierBump} tier`, good: true });
-        break;
-      case "forage":
-        changes.push({ label: "Forage", text: "gather materials", good: true });
-        break;
-    }
-    return changes;
   }
 
   /**
@@ -741,20 +689,19 @@ export class OverworldScene extends Phaser.Scene {
     // The Banker's purse-finance verbs (D30) — directly under Economy (single nesting),
     // tagged with the Banker who works them; shown only when one is aboard.
     if (banker) {
-      const perStep = this.run.camp.gold > 0 ? Math.max(1, Math.ceil(this.run.camp.gold * ECONOMY.banker.interestRate)) : 0;
-      this.campButton(childX, y, childW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.", [{ label: "Interest", text: `+${perStep}g/step`, good: true }]);
+      this.campButton(childX, y, childW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.", bankerInterestPreview(this.run));
       y += rowH;
-      this.campButton(childX, y, childW, 24, `Borrow 40g · ${banker.name}`, true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.", [{ stat: "purse", label: "Purse", amount: 40 }, { label: "Debt", amount: 40, good: false }]);
+      this.campButton(childX, y, childW, 24, `Borrow 40g · ${banker.name}`, true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.", bankerBorrowPreview(40));
       y += rowH;
       const protCost = ECONOMY.banker.protectionCost;
-      this.campButton(childX, y, childW, 24, `Guard the Purse (${protCost}g) · ${banker.name}`, this.run.camp.gold >= protCost, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.", [{ stat: "purse", label: "Purse", amount: -protCost }, { label: "Protection", text: `${Math.round(ECONOMY.banker.protectionLevel * 100)}%`, good: true }]);
+      this.campButton(childX, y, childW, 24, `Guard the Purse (${protCost}g) · ${banker.name}`, this.run.camp.gold >= protCost, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.", bankerProtectPreview());
       y += rowH;
     }
     // The Noble's Patronize (D62) — gold → Influence, once per node; tagged with the Noble.
     if (noble) {
       const patronCost = ECONOMY.noble.patronizeCost;
       const patronTip = `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`;
-      this.campButton(childX, y, childW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence) · ${noble.name}`, this.run.camp.gold >= patronCost, () => this.patronize(), patronTip, [{ stat: "purse", label: "Purse", amount: -patronCost }, { label: "Influence", amount: ECONOMY.noble.patronizeYield, good: true }]);
+      this.campButton(childX, y, childW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence) · ${noble.name}`, this.run.camp.gold >= patronCost, () => this.patronize(), patronTip, patronizePreview());
       y += rowH;
     }
     // The Banker's purse-state, surfaced in context (D58).
@@ -1701,14 +1648,8 @@ export class OverworldScene extends Phaser.Scene {
     // Recovery drawer: the route-planning heal (in-place rest — repeatable, costed; greys
     // at full HP / when broke). The same category vocabulary as the camp beat.
     const rest = this.inPlaceRestReadout();
-    const restBill = computeUpkeep(this.run.party).total;
-    const restPreview: ActionPreview = [
-      { stat: "purse", label: "Purse", amount: -restBill },
-      { stat: "rp", label: "Rest Pts", amount: rpPerNight(this.run.party) },
-      { label: "HP", text: "small heal", good: true },
-    ];
     const recovery: CampAction[] = [
-      { label: `Rest in place — ${rest.label}`, enabled: rest.enabled, onClick: () => this.doInPlaceRest(), tip: rest.detail, preview: restPreview },
+      { label: `Rest in place — ${rest.label}`, enabled: rest.enabled, onClick: () => this.doInPlaceRest(), tip: rest.detail, preview: inPlaceRestPreview(this.run) },
     ];
     y = this.renderDrawer("recovery", "Recovery", colX, y, rowH, recovery, () => this.showSurvey());
 
@@ -1721,7 +1662,7 @@ export class OverworldScene extends Phaser.Scene {
     if (surveyor && survey) {
       for (const target of this.loop.reachable()) {
         const refusal = this.refusal(survey, surveyor);
-        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: this.previewForSkill(survey) });
+        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run) });
       }
     }
     y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());

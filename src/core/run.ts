@@ -23,7 +23,7 @@
  */
 
 import { Rng, type RngState } from "./rng";
-import { createUnit, type Unit } from "./units";
+import { createUnit, healUnit, type Unit } from "./units";
 import { createInventory, autoTrim, type Inventory } from "./inventory";
 import { createCamp, type Camp } from "./camp";
 import { getDifficulty, type DifficultyPolicy, type RescueQuest } from "./mortality";
@@ -51,6 +51,7 @@ import {
 } from "./overworld-actions";
 import { accrueDeclaredFaucets, deftHandsSkim } from "./economy-actions";
 import { nightlyFatigue } from "./fatigue";
+import { RECOVERY } from "./upkeep";
 
 /** A recorded node outcome, for the run history / run-end screen. */
 export interface EncounterRecord {
@@ -393,11 +394,15 @@ export function isRunComplete(run: RunState): boolean {
 export function recordNight(run: RunState, record: Omit<EncounterRecord, "night">): boolean {
   run.history.push({ ...record, night: run.night });
   run.night += 1;
-  // D73: a night passed — resolve fatigue. A **rest** node is the improved rest (its full wipe is
-  // handled in RunLoop.restNode, *before* healing); every other kind is an ordinary night — wipe
-  // the safe Worn band, carry the excess over the floor into the next day.
+  // D73/D80: a night passed — resolve fatigue and grant the free nightly chip heal. A **rest**
+  // node is the improved rest (its full wipe + larger heal are handled in RunLoop.restNode); every
+  // other kind is an ordinary night — wipe the safe Worn band (carry the excess over the floor)
+  // and chip a little HP back onto each alive unit (D80's free floor, RECOVERY.nightlyChipHp).
   if (record.kind !== "rest") {
-    for (const u of run.party) u.fatigue = nightlyFatigue(u.fatigue, false);
+    for (const u of run.party) {
+      u.fatigue = nightlyFatigue(u.fatigue, false);
+      if (u.alive) healUnit(u, RECOVERY.nightlyChipHp);
+    }
   }
   run.over = run.over || isRunOver(run);
   // Graded final terminal (D51): clearing the final node = **complete** only when

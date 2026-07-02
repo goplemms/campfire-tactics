@@ -209,6 +209,14 @@ export const RECOVERY = {
    * 0" like a gold-draining bug, even when the RP rate rounds down to no chunk.
    */
   inPlaceFloorHp: 1,
+  /**
+   * The **free nightly chip** (D80): every *ordinary* night (any non-Clearing node) heals each
+   * **alive** unit this much HP — automatically, at no cost — the natural rest after a day's
+   * travel. Deliberately **small** so real recovery still means routing to a Clearing (this is
+   * what keeps *dodge-every-fight* dead). Flat for now; a %-of-maxHP model is a candidate future
+   * tuning (the value is the only knob — the mechanic reads one number).
+   */
+  nightlyChipHp: 2,
 } as const;
 
 // --- Rest-Point recovery (D9) -----------------------------------------------

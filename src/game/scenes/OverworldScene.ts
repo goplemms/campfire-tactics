@@ -530,8 +530,12 @@ export class OverworldScene extends Phaser.Scene {
     const bodyTop = areasBottom + 20;
 
     // --- The action drawers (left) + the live state readouts (right) ----------
+    // The readout tiles (34px) are taller than the drawer buttons (24px), and both centre on
+    // the row they're given — so at a shared top the taller tile overhangs. Nudge the readouts
+    // down by half the height difference (5px) so the first tile's top sits level with the
+    // Recovery button's top.
     const actionsBottom = this.renderCampActions(colX, bodyTop, rowH);
-    this.renderReadouts(readoutX, bodyTop, readoutCardW);
+    this.renderReadouts(readoutX, bodyTop + 5, readoutCardW);
 
     // The captain's running to-do sits below the actions, kept clear of the readouts.
     this.renderCaptainsJournal(colX, actionsBottom + 12, readoutX - 16 - colX);

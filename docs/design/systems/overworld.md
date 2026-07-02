@@ -78,7 +78,7 @@ the loop:
 | Kind | What happens |
 |---|---|
 | **combat** | A fight. Reuses `generation.ts` for the encounter and runs the full **Camp → Deployment → Battle → Resolution** flow. Difficulty scales with **map depth** (the node's layer is the encounter index). |
-| **rest** | **No fight** — the **Clearing** encounter (D80 naming). A recovery day: extra [Rest Points](mortality-recovery.md), auto-triage of the most-wounded, and a small [morale](morale.md) uptick. **(D47, revised D80:** the **premium** tier — recovery **scales inversely with a unit's wear**, so clean units heal large while worn units get their status scrubbed for a normal heal; clears fatigue + accumulated debt in one swipe. The free nightly **chip** heal is the lesser tier, at *every* node. See [the two-tier recovery economy](#the-two-tier-recovery-economy-d47-revised-d80).) |
+| **rest** | **No fight** — the **Clearing** encounter (D80 naming). A recovery day: each unit takes **Deep Rest** by default (a full wear wipe + a big heal), unless redirected to **arduous** (effort-costing) work like Prestige/Train; clears accumulated debt; a small [morale](morale.md) uptick. **(D47, revised D80:** the free nightly **chip** heal is the lesser tier, at *every* node. See [Deep Rest & the Clearing](#the-two-tier-recovery-economy-d47-revised-d80).) |
 
 > **Updated by D35.** The Meta phase no longer lives on a separate screen: the overworld
 > is rendered as **one unified camp surface shown at every node** (below). The old
@@ -291,23 +291,51 @@ is shown but **never summed into gold**, D34).
 
 ## The two-tier recovery economy (D47, revised D80)
 
-> **Revised D80.** The two tiers stand, but the *free floor* is now explicit and the clearing
-> is **wear-scaled**: a night's rest heals a little **for free, every node** (the "chip"), and
-> the Clearing's heal scales *inversely with a unit's wear tier*.
+> **Revised D80.** Two tiers, reshaped. A night's rest heals a little **for free, every node**
+> (the "chip", **shipped**). The **Clearing** is now a per-unit **Deep Rest** action — a full
+> wear wipe + a big heal each unit takes *by default*, unless you spend its day on **arduous**
+> (effort-costing) work instead.
 
-Recovery is built almost entirely on existing machinery (`payUpkeep` + `rpPerNight` +
-`triageHeal` + the D73 fatigue bands):
+Recovery leans on the existing machinery (`payUpkeep` + the D73 fatigue bands + `healUnit`):
 
 | Tier | Where | What it does |
 |---|---|---|
-| **Nightly rest — the chip** | **every** node, in Camp — **free & automatic** | A **small** HP heal each night (the natural rest after a day's travel) + **wipes the Worn** fatigue band (D73). A free *floor* — deliberately small, so it never substitutes for a Clearing. This is what keeps routing meaningful and *dodge-every-fight* dead. |
-| **Clearing — the premium** | routed-to on the map (a **Clearing** node, D23) | Recovery **scales inversely with a unit's wear tier** — the wear status *is* the signal, no separate flag. A **clean** unit (no Worn) spends the full restorative budget on HP → a **large heal**; a **worn** unit's budget goes to clearing the status → a normal heal + fatigue wiped; **Weary/Exhausted** units heal least while their deeper fatigue is scrubbed. So **hurt units rest and clean/healthy units are free to do arduous work** (Train, Prestige) — the allocation puzzle emerges from the tiers, not a toggle. Still **clears accumulated debt** (hunger / worn gear) in one swipe. |
+| **Nightly rest — the chip** | **every** node — **free & automatic** (shipped, `RECOVERY.nightlyChipHp`) | A **small** HP heal each night (the natural rest after a day's travel) + steps **wear down a tier** (D73). A free *floor* — deliberately small, so it never substitutes for a Clearing; this keeps routing meaningful and *dodge-every-fight* dead. |
+| **Deep Rest — the Clearing** | a **Clearing** node *provides* the Deep Rest action (D23) | A **full wear wipe + a big (flat) heal**, taken **per unit, by default**. Each unit Deep Rests unless you spend its day on an **arduous** action (below). Still clears accumulated debt (hunger / worn gear). |
 
-**Parked (open, D80):** (1) **Paid in-place rest** — with a free nightly floor now existing,
-what a *paid* rest should buy is under review; the caps note below describes the pre-D80 paid
-tier. (2) **The wear model & numbers** — per-action wear amounts feeding the banded tiers, and
-which actions count as "arduous," need a tuning pass (same shape as today's fatigue bands,
-generalized).
+### Deep Rest & the Clearing — the per-unit day (D80)
+
+A Clearing is a **per-unit allocation beat with a silent default**: every unit takes **Deep Rest**
+automatically; you only ever touch the *exceptions*.
+
+- **Deep Rest is derived, never a button.** A unit gets Deep Rest **iff the effort it spent this
+  rest is below `deepRestEffortThreshold`** (default **1** → *any* effort forfeits it). Raising
+  that single number is the only knob needed to later let a *light* action coexist with a rest —
+  no redesign (a **threshold** model chosen over a graded one for exactly this).
+- **"Arduous" = `effort > 0`.** Effort is a generalized cost property on **skills and item
+  interactions** (extends the existing `OverworldCost.fatigue`); **effort *is* exhaustion** — the
+  same one wear meter. Spending effort adds wear *and* spends the unit's day, so it forfeits that
+  unit's Deep Rest. There is **no "arduous" category and no special drawer** — arduous verbs are
+  just effort-costing `Verb · Name` actions; a light **roster readout** shows each unit's day
+  (defaulting to Deep Rest) so the allocation reads at a glance without a click.
+- **The puzzle emerges from unit state.** A wounded/worn unit *wants* Deep Rest (it needs the
+  wipe + heal); a healthy, unworn unit gains little from it → that's the one you redirect to
+  arduous work. "Rest the hurt, advance the healthy" falls out for free — which is why Deep Rest
+  is a **flat** big heal, not the inverse-scaled version first sketched at Crux 1.
+- **Wear is temporary.** Arduous exhaustion decays a **tier per ordinary night** on its own, and
+  a **Deep Rest wipes it fully**. Advancement borrows against your next rest, but the debt
+  self-heals — a tempo cost, never a spiral. The wipe belongs to the **Deep Rest**, not the
+  Clearing *location* (a unit that trains at a Clearing carries its wear out).
+
+**Parked (open, D80):**
+- **The first arduous activity** — start with **Prestige** (exists, D65 — re-homed as a
+  Deep-Rest-forgoing Clearing action); **Train** is a net-new progression sub-system, designed
+  separately.
+- **The coexist threshold (>1)** — default 1 for now; a concrete "light action" example promotes it.
+- **Paid in-place rest** — with a free floor now existing, what a *paid* rest buys is under review
+  (the caps note below is the pre-D80 tier).
+- **Numbers** — the big-heal size, per-action effort costs, and tidying the ordinary-night decay to
+  *exactly* one tier — a tuning pass.
 
 **Two caps by design:** **gold** (can you afford another rations night?) and the per-night
 **RP rate** (one night banks only so much → healing is rate-limited regardless of wealth →

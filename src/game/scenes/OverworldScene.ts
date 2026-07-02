@@ -1199,7 +1199,7 @@ export class OverworldScene extends Phaser.Scene {
     y += rowH + 6;
     this.overlay.push(this.add.text(leftX, y, "Forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
     y += 16;
-    this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast, { burn: false }), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
+    this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast, { runway: false }), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
     return ledger;
   }
 
@@ -1683,14 +1683,17 @@ export class OverworldScene extends Phaser.Scene {
     );
   }
 
-  /** A compact text readout of the route forecast (D48) — burn, runway, per-edge. The per-step
-   *  burn is the same figure as tonight's Upkeep, so the ledger omits it (`burn: false`) and
-   *  leans on its red Upkeep line; the Survey panel (no Upkeep line) keeps it. */
-  private forecastSummary(f: RouteForecast, opts: { burn?: boolean } = {}): string {
+  /** A compact text readout of the route forecast (D48) — runway (per-step burn + nearest rest)
+   *  and the per-edge cost/loot. The runway line is route-planning, so it lives on the Survey
+   *  panel; the ledger passes `runway: false` to show only the per-edge forecast (the burn is
+   *  already its red Upkeep line). */
+  private forecastSummary(f: RouteForecast, opts: { runway?: boolean } = {}): string {
     const r = f.runway;
     const lines: string[] = [];
-    const rest = r.nearestRestSteps === undefined ? "fogged (raise intel)" : `${r.nearestRestSteps} step(s), purse ~${r.purseAtRest}g there`;
-    lines.push((opts.burn ?? true) ? `Burn ${r.burnPerStep}g/step   ·   nearest rest: ${rest}` : `Nearest rest: ${rest}`);
+    if (opts.runway ?? true) {
+      const rest = r.nearestRestSteps === undefined ? "fogged (raise intel)" : `${r.nearestRestSteps} step(s), purse ~${r.purseAtRest}g there`;
+      lines.push(`Burn ${r.burnPerStep}g/step   ·   nearest rest: ${rest}`);
+    }
     for (const e of f.perEdge) {
       const loot = e.lootBand.label ?? (e.lootBand.floor > 0 ? `≥${e.lootBand.floor}g` : "unknown");
       const ceil = e.purseAfter.ceiling === undefined ? "…" : `${e.purseAfter.ceiling}g`;

@@ -1185,10 +1185,21 @@ export class OverworldScene extends Phaser.Scene {
     g.lineBetween(leftX, b.top + 26, rightX, b.top + 26);
 
     let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx: b.centerX, pad, w: b.width }, b.top + 26 + 18, opts);
-    y += 8;
+    // Forecasted balance — the estimated purse carried into tomorrow (current balance after
+    // tonight's projected Upkeep/Banker). A bottom-line bookend to the top Balance; a rule
+    // sets it apart from the category rows.
+    y += 4;
+    g.lineStyle(1, COLOR.borderSoft, 0.9);
+    g.lineBetween(leftX, y, rightX, y);
+    y += 14;
+    this.overlay.push(
+      this.add.text(leftX, y, "Forecasted balance  · into tomorrow", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
+      this.add.text(rightX, y, `${ledger.forecastBalance}g`, { color: ledger.forecastBalance < 0 ? INK.danger : INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
+    );
+    y += rowH + 6;
     this.overlay.push(this.add.text(leftX, y, "Forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
     y += 16;
-    this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
+    this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast, { runway: false }), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
     return ledger;
   }
 
@@ -1672,12 +1683,17 @@ export class OverworldScene extends Phaser.Scene {
     );
   }
 
-  /** A compact text readout of the route forecast (D48) — burn, runway, per-edge. */
-  private forecastSummary(f: RouteForecast): string {
+  /** A compact text readout of the route forecast (D48) — runway (per-step burn + nearest rest)
+   *  and the per-edge cost/loot. The runway line is route-planning, so it lives on the Survey
+   *  panel; the ledger passes `runway: false` to show only the per-edge forecast (the burn is
+   *  already its red Upkeep line). */
+  private forecastSummary(f: RouteForecast, opts: { runway?: boolean } = {}): string {
     const r = f.runway;
     const lines: string[] = [];
-    const rest = r.nearestRestSteps === undefined ? "fogged (raise intel)" : `${r.nearestRestSteps} step(s), purse ~${r.purseAtRest}g there`;
-    lines.push(`Burn ${r.burnPerStep}g/step   ·   nearest rest: ${rest}`);
+    if (opts.runway ?? true) {
+      const rest = r.nearestRestSteps === undefined ? "fogged (raise intel)" : `${r.nearestRestSteps} step(s), purse ~${r.purseAtRest}g there`;
+      lines.push(`Burn ${r.burnPerStep}g/step   ·   nearest rest: ${rest}`);
+    }
     for (const e of f.perEdge) {
       const loot = e.lootBand.label ?? (e.lootBand.floor > 0 ? `≥${e.lootBand.floor}g` : "unknown");
       const ceil = e.purseAfter.ceiling === undefined ? "…" : `${e.purseAfter.ceiling}g`;
@@ -1833,9 +1849,12 @@ export class OverworldScene extends Phaser.Scene {
     for (const cat of ledger.categories) {
       // Category header row (label + running total, both in gold).
       const tag = cat.projected ? "  (projected)" : "";
+      // The total figure reads red when it's an outflow (Upkeep's drain, a net field spend) —
+      // the same red-for-negative convention the individual line amounts use; the label stays
+      // gold as the section marker. This is where the "burn" now lives (the text is gone).
       this.overlay.push(
         this.add.text(leftX, y, `${cat.label}${tag}`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-        this.add.text(rightX, y, this.signed(cat.total), { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
+        this.add.text(rightX, y, this.signed(cat.total), { color: cat.total < 0 ? INK.danger : INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
       );
       g.lineStyle(1, COLOR.border, 0.5);
       g.lineBetween(leftX, y + rowH / 2, rightX, y + rowH / 2);
@@ -1848,16 +1867,18 @@ export class OverworldScene extends Phaser.Scene {
         this.overlay.push(
           this.add.text(leftX + 18, y, l.label, { color: labelInk, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
         );
-        // The amount on the right — gone when the line is crossed off (D45).
+        // The amount on the right stays even when crossed off (D45) — dimmed and struck (below),
+        // it's not in the total, but it tells the player what restoring the line would cost. A
+        // skipped line's `amount` is 0 (out of the total), so show its `restoreAmount` instead.
+        const shownAmount = skipped ? l.restoreAmount ?? l.amount : l.amount;
         this.overlay.push(
-          skipped
-            ? this.add.text(rightX, y, "— skipped —", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25)
-            : this.add.text(rightX, y, this.signed(l.amount), { color: l.amount < 0 ? INK.danger : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+          this.add.text(rightX, y, this.signed(shownAmount), { color: skipped ? INK.disabled : shownAmount < 0 ? INK.danger : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
         );
-        // Strike the row through when crossed off.
+        // Strike the row through when crossed off — from the label (leftX + 18), so the
+        // checkbox in the indent gutter stays legible rather than being slashed through.
         if (skipped) {
           g.lineStyle(1.5, COLOR.danger, 0.85);
-          g.lineBetween(leftX + 12, y, rightX, y);
+          g.lineBetween(leftX + 18, y, rightX, y);
         }
         // Faint per-entry rule (ledger paper).
         g.lineStyle(1, COLOR.border, 0.28);
@@ -1866,6 +1887,19 @@ export class OverworldScene extends Phaser.Scene {
         // Upkeep rows are clickable: cross off (skip) / restore. The hit rect sits
         // below the text (depth 24) so its hover wash reads behind the ink.
         if (skippable) {
+          // A checkbox in the indent gutter makes the "you can cross this off" affordance
+          // obvious at a glance (D45): checked (gold box + tick) = the expense stands;
+          // unchecked (empty box) + the strike above = crossed off.
+          const boxSize = 12;
+          const boxX = leftX;
+          const boxY = y - boxSize / 2;
+          g.lineStyle(1.2, skipped ? COLOR.borderSoft : COLOR.gold, skipped ? 0.7 : 0.95);
+          g.strokeRect(boxX, boxY, boxSize, boxSize);
+          if (!skipped) {
+            g.lineStyle(1.8, COLOR.success, 1);
+            g.lineBetween(boxX + 2.5, boxY + 6.5, boxX + 5, boxY + 9);
+            g.lineBetween(boxX + 5, boxY + 9, boxX + 9.5, boxY + 3);
+          }
           const lineId = l.id.replace("upkeep:", "") as UpkeepLine["id"];
           const hit = this.add.rectangle(cx, y, w - 2 * pad + 12, rowH, COLOR.surfaceAlt, 0).setDepth(24).setInteractive({ useHandCursor: true });
           hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {

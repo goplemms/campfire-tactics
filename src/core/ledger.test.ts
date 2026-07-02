@@ -21,14 +21,23 @@ function record(run: RunState, nodeId: string, goldEarned: number): void {
 }
 
 describe("ledger — purse-scoped categories reconcile (D45)", () => {
-  it("each category total is the sum of its line items", () => {
+  it("each itemized category total is the sum of its line items", () => {
     const run = newRun("ledger-lines");
     record(run, "n1-0", 60); // loot
     record(run, "n2-0", -15); // a field spend (a toll / skim)
     const ledger = buildLedger(run);
-    for (const cat of ledger.categories) {
+    // The `opening` lump-sum carries its figure on the header with no sub-lines; every other
+    // category itemizes, so its total must equal the sum of its lines.
+    for (const cat of ledger.categories.filter((c) => c.id !== "opening")) {
       expect(cat.total).toBe(cat.lines.reduce((s, l) => s + l.amount, 0));
     }
+  });
+
+  it("the opening lump-sum is a header-only total (no redundant sub-line)", () => {
+    const ledger = buildLedger(newRun("ledger-opening", 180));
+    const opening = ledger.categories.find((c) => c.id === "opening")!;
+    expect(opening.lines).toHaveLength(0);
+    expect(opening.total).toBe(180);
   });
 
   it("the realized categories sum to the balance", () => {
@@ -58,6 +67,24 @@ describe("ledger — purse-scoped categories reconcile (D45)", () => {
     expect(ledger.balance).toBe(150); // gold untouched by Influence
     const realizedSum = ledger.categories.filter((c) => !c.projected).reduce((s, c) => s + c.total, 0);
     expect(realizedSum).toBe(150); // Influence is nowhere in the gold reconciliation
+  });
+
+  it("forecastBalance = balance + the projected categories (into tomorrow)", () => {
+    const run = newRun("ledger-forecast-balance", 200);
+    record(run, "n1-0", 40); // loot in → balance already reflects it
+    const ledger = buildLedger(run);
+    const projected = ledger.categories.filter((c) => c.projected).reduce((s, c) => s + c.total, 0);
+    expect(ledger.forecastBalance).toBe(ledger.balance + projected);
+    // Tonight's Upkeep is an outflow, so the forecast sits below the current balance.
+    expect(ledger.forecastBalance).toBeLessThan(ledger.balance);
+  });
+
+  it("a voluntary Upkeep skip lifts the forecast balance (its cost is freed)", () => {
+    const run = newRun("ledger-forecast-skip", 200);
+    const funded = buildLedger(run).forecastBalance;
+    run.camp.skippedUpkeep = ["food"];
+    const skipped = buildLedger(run).forecastBalance;
+    expect(skipped).toBeGreaterThan(funded); // crossing Food off keeps that gold
   });
 
   it("embeds the route forecast (the load-bearing forward half, D48)", () => {

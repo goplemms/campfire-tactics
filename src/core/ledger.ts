@@ -33,13 +33,21 @@ export interface LedgerLine {
   amount: number;
   /** Voluntary-skip / projected marker for the render (Upkeep lines, D45). */
   note?: string;
+  /**
+   * For a voluntarily-skipped line: the signed amount it *would* carry if restored (its
+   * cost), while {@link amount} is 0 so it stays out of the total. The render shows this —
+   * struck through — so the player sees what un-skipping the line would cost (D45).
+   */
+  restoreAmount?: number;
 }
 
 /** A ledger category — a broad total over its expandable {@link LedgerLine}s (D45). */
 export interface LedgerCategory {
   id: "opening" | "loot" | "field" | "upkeep" | "banker";
   label: string;
-  /** The category total — **always** the sum of its line amounts. */
+  /** The category total — the sum of its line amounts for itemized flows (loot/field/upkeep/
+   *  banker). The `opening` lump-sum is the exception: it carries its figure on the header
+   *  with no sub-lines. */
   total: number;
   lines: LedgerLine[];
   /**
@@ -54,6 +62,12 @@ export interface LedgerCategory {
 export interface Ledger {
   /** The bottom line: the current **run purse** (D34). */
   balance: number;
+  /**
+   * The estimated purse carried **into the next day** (D45/D48): the current {@link balance}
+   * plus every `projected` category total (tonight's Upkeep, the Banker position). The
+   * realized categories already reconcile into `balance`, so only the projected ones move it.
+   */
+  forecastBalance: number;
   /** The categories (broad totals + expandable lines). */
   categories: LedgerCategory[];
   /**
@@ -114,6 +128,7 @@ export function buildLedger(run: RunState, opts: BuildLedgerOptions = {}): Ledge
     label: l.name,
     amount: skip.has(l.id) ? 0 : -l.cost,
     note: skip.has(l.id) ? "voluntarily skipped" : undefined,
+    restoreAmount: -l.cost, // the funded cost — shown (struck) on a skipped line as the un-skip price
   }));
 
   // Banker: the standing position — the interest faucet, outstanding debt, and
@@ -125,15 +140,23 @@ export function buildLedger(run: RunState, opts: BuildLedgerOptions = {}): Ledge
   if (eco.protection > 0) bankerLines.push({ id: "banker:protection", label: "Theft protection", amount: 0, note: `${Math.round(eco.protection * 100)}%` });
 
   const categories: LedgerCategory[] = [
-    { id: "opening", label: "Carried purse", total: openingTotal, lines: [{ id: "opening", label: "Carried into the field", amount: openingTotal }] },
+    // Carried purse — a lump-sum header (no itemized lines): the caravan *is* the field, so
+    // "carried into the field" was a redundant restatement of this figure. Its total still
+    // reconciles the balance (opening + loot + field), it just isn't broken into a sub-line.
+    { id: "opening", label: "Carried purse", total: openingTotal, lines: [] },
     { id: "loot", label: "Loot", total: lootTotal, lines: lootLines },
     { id: "field", label: "Field spend", total: fieldTotal, lines: fieldLines },
     { id: "upkeep", label: "Upkeep (tonight)", total: upkeepLines.reduce((s, l) => s + l.amount, 0), lines: upkeepLines, projected: true },
     { id: "banker", label: "Banker", total: bankerLines.reduce((s, l) => s + l.amount, 0), lines: bankerLines, projected: true },
   ];
 
+  // Only the projected categories (Upkeep tonight, Banker) move the purse from here; the
+  // realized ones already sum into `balance`.
+  const forecastBalance = balance + categories.filter((c) => c.projected).reduce((s, c) => s + c.total, 0);
+
   return {
     balance,
+    forecastBalance,
     categories,
     influence: opts.influence ?? 0,
     forecast: projectForecast(run),

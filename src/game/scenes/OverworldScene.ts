@@ -800,7 +800,9 @@ export class OverworldScene extends Phaser.Scene {
       }
       const rect = this.add.rectangle(x, cy, cardW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0.5).setDepth(10);
       const label = this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11);
-      const value = this.add.text(x + cardW - 12, cy, t.value, { color: ink, fontFamily: FONT.family, fontSize: FONT.heading }).setOrigin(1, 0.5).setDepth(11);
+      // 14px (one above the 13px body label) — the value stays the figure without towering
+      // over its label the way the old 16px heading did. Deliberately between body/heading.
+      const value = this.add.text(x + cardW - 12, cy, t.value, { color: ink, fontFamily: FONT.family, fontSize: "14px" }).setOrigin(1, 0.5).setDepth(11);
       this.campObjects.push(rect, label, value);
       // Pulse a tile the instant its figure changes from the previous paint (an action's
       // effect landing) — but not on the first paint of a camp (`fresh`), which isn't a move.

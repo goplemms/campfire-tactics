@@ -267,7 +267,7 @@ export class OverworldScene extends Phaser.Scene {
     const bullets = [
       "The map is fogged — deeper nodes hide until your intel reaches them.",
       "Pick a node to Make Camp, then End the Night to face it (fight · rest · event).",
-      "After it resolves, Survey: read the forecast, rest in place, survey ahead — then Break Camp.",
+      "After it resolves, Survey: read the forecast, survey ahead — then rest (in place, or Rest → to the map).",
       "Open the Ledger anytime: cross a line off to skip it and free its gold.",
       "Tolls are known, loot is fogged — route to a rest node to fully recover.",
     ];
@@ -1613,9 +1613,9 @@ export class OverworldScene extends Phaser.Scene {
 
   /**
    * The **Survey** beat (D46) — the now-informed, post-event planning surface: read
-   * the route {@link "../../core".projectForecast | forecast} (D48), take a costed
-   * **in-place rest** (D47, repeatable), scout ahead, glance the ledger — then
-   * **Break Camp** (the soft gate) back to the map. Deliberately light & optional.
+   * the route {@link "../../core".projectForecast | forecast} (D48), scout ahead, glance
+   * the ledger — then **rest**: in place (D47, repeatable) or **Rest →** (the soft gate,
+   * the old Break Camp) back to the map. The two rests sit paired at the panel's foot.
    */
   private showSurvey(): void {
     this.clearMap();
@@ -1627,7 +1627,7 @@ export class OverworldScene extends Phaser.Scene {
     this.campText.setVisible(false);
 
     this.titleText.setText(`Survey — Night ${this.run.night} · plan your route`);
-    this.setHint("Survey: read the forecast, rest in place (a night's rations, repeatable), survey ahead — then Break Camp to the map.");
+    this.setHint("Survey: read the forecast, survey ahead — then rest, in place (repeatable) or Rest → to march the night's rations to the map.");
 
     const cx = this.scale.width / 2;
     const panelW = this.scale.width - 40; //  ~760 — nearly full width
@@ -1653,14 +1653,6 @@ export class OverworldScene extends Phaser.Scene {
     // Live state readouts, stacked on the right of the action drawers.
     this.renderReadouts(readoutX, y, readoutCardW);
 
-    // Recovery drawer: the route-planning heal (in-place rest — repeatable, costed; greys
-    // at full HP / when broke). The same category vocabulary as the camp beat.
-    const rest = this.inPlaceRestReadout();
-    const recovery: CampAction[] = [
-      { label: `Rest in place — ${rest.label}`, enabled: rest.enabled, onClick: () => this.doInPlaceRest(), tip: rest.detail, preview: inPlaceRestPreview(this.run) },
-    ];
-    y = this.renderDrawer("recovery", "Recovery", colX, y, rowH, recovery, () => this.showSurvey());
-
     // Intel drawer: survey a reachable node — raises its preview, tightening the forecast
     // (D48). Job-gated to the Scout; the whole drawer is absent when none is aboard. Each
     // row tags the surveying Scout, whose fatigue the cost readout shows (who's wearing down).
@@ -1678,9 +1670,15 @@ export class OverworldScene extends Phaser.Scene {
     // The captain's running to-do sits below the actions.
     this.renderCaptainsJournal(colX, y + 12, panelW - 60);
 
-    // Break Camp anchors the bottom of the near-full-screen box (matching Make Camp).
-    const breakBtn = this.makeTextButton(cx, panelBottom - 30, 240, 34, "Break Camp →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
-    this.campObjects.push(breakBtn);
+    // The two ways a night ends, paired at the panel's foot (both a *rest*; only the
+    // second departs). Left: rest in place — repeatable, stay put, greys at full HP / when
+    // broke (moved here from the Recovery drawer to sit beside its sibling). Right: Rest →,
+    // the night's-end march to the map (the old Break Camp); the arrow carries the departure.
+    const rest = this.inPlaceRestReadout();
+    const footY = panelBottom - 30;
+    this.campButton(cx - 250, footY, 240, 34, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail, inPlaceRestPreview(this.run));
+    const restBtn = this.makeTextButton(cx + 130, footY, 240, 34, "Rest →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
+    this.campObjects.push(restBtn);
 
     this.campObjects.push(
       this.add.rectangle(cx, (panelTop + panelBottom) / 2, panelW, panelBottom - panelTop, COLOR.surface, 0.96).setStrokeStyle(2, COLOR.border).setDepth(8),
@@ -1709,7 +1707,7 @@ export class OverworldScene extends Phaser.Scene {
     const wounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
     const affordable = this.run.camp.gold >= bill.total;
     const enabled = wounded && affordable;
-    const label = !wounded ? "party at full HP" : !affordable ? `need ${bill.total}g (broke)` : `pay ${bill.total}g · heal a little (+RP)`;
+    const label = !wounded ? "party at full HP" : !affordable ? `need ${bill.total}g (broke)` : `pay ${bill.total}g`;
     return {
       label,
       detail: "In-place rest: pay a night's rations to bank RP + a small heal (floors at ≥1). Repeatable; each rest is a node-step (ticks cooldowns). Greys at full HP / when broke.",

@@ -1768,6 +1768,9 @@ export class OverworldScene extends Phaser.Scene {
     const w = 560;
     const h = 140 + carried.length * 38;
 
+    // Full-screen backdrop (dims the camp + swallows clicks behind) — same as the Market and
+    // ledger-transition modals; without it the camp bled through around the box (D75 gate).
+    this.overlay.push(this.add.rectangle(cx, this.scale.height / 2, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(23).setInteractive());
     this.overlay.push(
       this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.danger).setDepth(24),
       this.add.text(cx, cy - h / 2 + 24, "Storage overflowing — let something go", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),

@@ -1199,7 +1199,7 @@ export class OverworldScene extends Phaser.Scene {
     y += rowH + 6;
     this.overlay.push(this.add.text(leftX, y, "Forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
     y += 16;
-    this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
+    this.overlay.push(this.add.text(leftX, y, this.forecastSummary(ledger.forecast, { burn: false }), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 3, wordWrap: { width: rightX - leftX } }).setOrigin(0, 0).setDepth(25));
     return ledger;
   }
 
@@ -1683,12 +1683,14 @@ export class OverworldScene extends Phaser.Scene {
     );
   }
 
-  /** A compact text readout of the route forecast (D48) — burn, runway, per-edge. */
-  private forecastSummary(f: RouteForecast): string {
+  /** A compact text readout of the route forecast (D48) — burn, runway, per-edge. The per-step
+   *  burn is the same figure as tonight's Upkeep, so the ledger omits it (`burn: false`) and
+   *  leans on its red Upkeep line; the Survey panel (no Upkeep line) keeps it. */
+  private forecastSummary(f: RouteForecast, opts: { burn?: boolean } = {}): string {
     const r = f.runway;
     const lines: string[] = [];
     const rest = r.nearestRestSteps === undefined ? "fogged (raise intel)" : `${r.nearestRestSteps} step(s), purse ~${r.purseAtRest}g there`;
-    lines.push(`Burn ${r.burnPerStep}g/step   ·   nearest rest: ${rest}`);
+    lines.push((opts.burn ?? true) ? `Burn ${r.burnPerStep}g/step   ·   nearest rest: ${rest}` : `Nearest rest: ${rest}`);
     for (const e of f.perEdge) {
       const loot = e.lootBand.label ?? (e.lootBand.floor > 0 ? `≥${e.lootBand.floor}g` : "unknown");
       const ceil = e.purseAfter.ceiling === undefined ? "…" : `${e.purseAfter.ceiling}g`;
@@ -1844,9 +1846,12 @@ export class OverworldScene extends Phaser.Scene {
     for (const cat of ledger.categories) {
       // Category header row (label + running total, both in gold).
       const tag = cat.projected ? "  (projected)" : "";
+      // The total figure reads red when it's an outflow (Upkeep's drain, a net field spend) —
+      // the same red-for-negative convention the individual line amounts use; the label stays
+      // gold as the section marker. This is where the "burn" now lives (the text is gone).
       this.overlay.push(
         this.add.text(leftX, y, `${cat.label}${tag}`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-        this.add.text(rightX, y, this.signed(cat.total), { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
+        this.add.text(rightX, y, this.signed(cat.total), { color: cat.total < 0 ? INK.danger : INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
       );
       g.lineStyle(1, COLOR.border, 0.5);
       g.lineBetween(leftX, y + rowH / 2, rightX, y + rowH / 2);

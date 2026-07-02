@@ -8,8 +8,10 @@
 > currency), **D29** (the overworld as a hook surface), **D30** (the gold economy),
 > **D33** (recruitment vectors), **D34** (run purse), **D35** (the overworld action
 > economy: camp at every node + cooldown spine + loose fatigue), **D45** (the economic
-> ledger), **D46** (the node lifecycle / phase contract), **D47** (the two-tier recovery
-> economy), **D48** (the route forecast + overworld fog).
+> ledger), **D46** (the node lifecycle — revised D80 into the night/day loop), **D47** (the
+> two-tier recovery economy, revised D80), **D48** (the route forecast + overworld fog),
+> **D80** (the night/day loop: one **Camp** hub + `Rest & Set Out`, the wear-scaled **Clearing**,
+> and the **early-events** arrival layer).
 
 ## Description
 
@@ -76,7 +78,7 @@ the loop:
 | Kind | What happens |
 |---|---|
 | **combat** | A fight. Reuses `generation.ts` for the encounter and runs the full **Camp → Deployment → Battle → Resolution** flow. Difficulty scales with **map depth** (the node's layer is the encounter index). |
-| **rest** | **No fight.** A night of [Upkeep](logistics.md) plus a recovery bonus: extra [Rest Points](mortality-recovery.md), auto-triage of the most-wounded, and a small [morale](morale.md) uptick. The between-battle camp beat as a *node*. **(D47:** the **premium** recovery tier — a large/full heal that also restores fatigue and clears accumulated Upkeep debt in one swipe; the lesser, repeatable **in-place rest** is available at *any* node. See [the two-tier recovery economy](#the-two-tier-recovery-economy-d47).) |
+| **rest** | **No fight** — the **Clearing** encounter (D80 naming). A recovery day: extra [Rest Points](mortality-recovery.md), auto-triage of the most-wounded, and a small [morale](morale.md) uptick. **(D47, revised D80:** the **premium** tier — recovery **scales inversely with a unit's wear**, so clean units heal large while worn units get their status scrubbed for a normal heal; clears fatigue + accumulated debt in one swipe. The free nightly **chip** heal is the lesser tier, at *every* node. See [the two-tier recovery economy](#the-two-tier-recovery-economy-d47-revised-d80).) |
 
 > **Updated by D35.** The Meta phase no longer lives on a separate screen: the overworld
 > is rendered as **one unified camp surface shown at every node** (below). The old
@@ -191,39 +193,75 @@ combat CT clock** (D5), one tier up.
 - **Per-ability costs.** **Vancian charges** ([magic](magic.md)) and **purse gold** (D34)
   ride on top as costs *specific* abilities name — not the global pace.
 
-## The node lifecycle — the phase contract (D46)
+## The node lifecycle — the night/day loop (D46, revised D80)
 
-Every node, whatever its kind, runs **one contract**, so the camp (D35), the ledger (D45)
-and the forecast (D48) all attach to the same seam. **One node = one node-step** (one tick of
-the overworld clock).
+> **Revised D80** (design session). The lifecycle was *Make Camp → End the Night → [event] →
+> Survey → Break Camp* — which split prep and planning into two beats and made "Break Camp"
+> ambiguous (depart the node, or engage the encounter?). It is now a **night/day loop**: a
+> *night* is inherently the beat *between* two *days*, so there is **one hub (the night) and
+> one journey (the day)** — no two-camp split, and one unambiguous advance verb.
+
+Every node still runs **one contract** — the camp (D35), the ledger (D45) and the forecast
+(D48) all attach to the same seam. **One node = one node-step** (one tick of the overworld
+clock).
 
 ```
-Arrive → MAKE CAMP ─ "End the Night" → [node event by kind] → SURVEY ─ "Break Camp" → next node
-         (provision)                    combat: Deploy→Battle→Resolve  (plan/heal)   (depart;
-         ledger: reconcile              rest:   recover (D47)          ledger:        the tick
-                                        event:  resolve the choice     forecast       fires HERE)
+… → CAMP (the night) ─ "Rest & Set Out" → THE ROAD (the day) → THE ENCOUNTER → CAMP → …
+     recover · act ·                        an early event         Battle · Clearing ·
+     scout · choose next                    may fire (D80)         Town · Event
 ```
 
-1. **Make Camp** — *pre-event* prep: heal, buy gear, buffs, pay Upkeep. The ledger here
-   **reconciles** (what tonight cost; can I still afford the event).
-2. **End the Night** — the gate; the night passes and the node's **event fires by kind**:
-   **combat** = the D3 Deployment→Battle→Resolution pipeline; **rest** = the recovery payload
-   (D47); **event** = the choice resolves. Rest is the *event*, parallel to combat — **never**
-   a pre-gate action.
-3. **Survey** (*post-event*) — now-informed: scout intel, **in-place rest** (D47), read the
-   ledger **forecast**. Deliberately **light & mostly optional** (soft-gated, never a
-   mandatory second panel).
-4. **Break Camp** — choose the next edge and depart. **The node-step tick fires here, at
-   departure** (cooldowns decrement, interest accrues) — so one night's action allowance is
-   *timed across the whole visit*, not split mid-node.
+1. **Camp** — the night hub, and the run's **one action beat** per node-step: recover (the
+   nightly heal, D47), spend overworld actions, read the ledger **forecast**, scout ahead, and
+   **choose the next node**. One shared action allowance per night; the node-step tick fires as
+   you leave.
+2. **Rest & Set Out** — the single **advance verb**. The night's rest resolves (the chip heal
+   lands, D47) and the caravan departs at dawn. Replaces *both* "End the Night" and "Break
+   Camp" — one clean word, no enter-vs-depart ambiguity.
+3. **The Road** (the day) — travel to the chosen node. An **early event** (D80, below) may fire
+   on the way in.
+4. **The Encounter** — the node's main event, **named by kind**: a **Battle** (the
+   Deployment→Battle→Resolution pipeline), a **Clearing** (recovery, D47), a **Town**
+   (market/services), or an **Event** (a choice resolves). Then the loop returns to **Camp**
+   for the next night.
 
-**Terminology** — the lifecycle keywords (*"Make Camp" / "End the Night" / "Survey" /
-"Break Camp"*) and the rule that **"rest" is never a gate** are now canon in the
-[**glossary**](../glossary.md#lifecycle--the-node-spine-d46); author labels against it.
-**Where rest fits (the design rationale):** the *"rest or push on"* choice lives on the
-**map (routing to a rest node)**, not as a camp toggle — moving it into camp would dissolve
-the rest node and revive the *dodge-every-fight* failure mode. The one in-camp recovery
-action is D47's **in-place rest**.
+**Where prep went.** Heavy prep (buy gear, buff) happens at the **night before** — a routing
+decision carried forward, not a last-second shop. **Town** nodes still allow a light
+shop-on-arrival, since the market *is* there.
+
+**Intel is forward-looking.** "What is this node?" is already answered by the map's banded
+preview (D24) when you pick it; the night hub's intel is about **where to go next** — so there
+is no duplicate pre-encounter intel beat.
+
+**Terminology (D80, supersedes the D46 keywords):** **Camp** (the night hub) and **Rest &
+Set Out** (the advance verb). *Retired:* "Make Camp" → **Camp**; "End the Night" + "Break
+Camp" → **Rest & Set Out**; "Survey" → folded into **Camp**. Author labels against the
+[**glossary**](../glossary.md#lifecycle--the-node-spine-d46-revised-d80).
+
+**Where rest fits (rationale, unchanged D46/D47):** the *"rest or push on"* choice still lives
+on the **map (routing to a Clearing)**, never as a free camp toggle. The nightly heal is only a
+**chip** (D47), so real recovery still costs a route — which is what keeps the
+*dodge-every-fight* failure mode dead.
+
+## Early events — the arrival layer (D80)
+
+A node's **day** can carry a light event on the way in, *before* the main encounter —
+decoupling "event" from node-kind (any node may host one). **Occasional, never every node**
+(the D16/D35 anti-agony stance), in two classes:
+
+- **Random events** — a shared, reusable, node-agnostic pool (found a satchel of gold, a
+  pickpocket skims some, a passing merchant offers a trade). Texture; cheap to author. Partly
+  built already — the *thief*, *patron*, and *Merchant access* are exactly these.
+- **Tailored events** — authored onto a *specific* node, high-impact, tied to its encounter.
+  Rare and special. This is where the **scouting payoff** lives: scouting a node ahead can
+  preview (and let you prepare for, or route around) its tailored event.
+
+**The encounter-bypass rule.** A tailored event that lets you *skip* the main encounter (e.g.
+negotiate passage) must be **gated** — pay gold and/or meet an **Influence** floor — **and
+forgo the encounter's loot**. You keep the **EXP** and your **HP**, but not the plunder. Never
+strictly better than fighting; a *situational* call that ties back to the recovery economy
+(bypass a fight you can't afford to take). A bypass **short-circuits** the encounter — the day
+resolves at the early event and the loop returns to **Camp** with no encounter that day.
 
 ## The economic ledger (D45)
 
@@ -235,11 +273,12 @@ is shown but **never summed into gold**, D34).
 - **Broad totals → expand for crunch.** Default = a few category totals (Upkeep / Loot /
   Field spend / Banker / balance); expand a category to its line items (the Upkeep bill's
   Food/Repairs, individual loot/spend events).
-- **Two roles, two touchpoints (D46):** **reconcile** at Make Camp; **forecast** at
-  Survey/selection — the post-event numbers are the real ones.
+- **Two roles, one hub (D46/D80):** the ledger **reconciles** the night's spend and
+  **forecasts** the route ahead — both in **Camp**, the single action beat (was split across
+  the old Make Camp / Survey).
 - **Jump to market** when usable (town/rest node · Merchant present · off cooldown) — size a
   buy against the budget before committing.
-- **A soft, intent-aware gate** on Break Camp: always one glance away, the bottom-line delta
+- **A soft, intent-aware gate** on **Rest & Set Out**: always one glance away, the bottom-line delta
   shown inline, **hard-stopping only when warranted** (a projected shortfall, can't-afford-
   the-rest, outstanding debt, an underfunded line) — never a per-night chore (the D35/D16
   anti-agony stance).
@@ -250,15 +289,25 @@ is shown but **never summed into gold**, D34).
   gear-condition debt (surfaced distinctly). Tuned so the skip keeps real teeth, else the D15
   Upkeep sink slackens.
 
-## The two-tier recovery economy (D47)
+## The two-tier recovery economy (D47, revised D80)
 
-Recovery is a **gold spend**, in **two tiers**, built almost entirely on existing machinery
-(`payUpkeep` + `rpPerNight` + `triageHeal`):
+> **Revised D80.** The two tiers stand, but the *free floor* is now explicit and the clearing
+> is **wear-scaled**: a night's rest heals a little **for free, every node** (the "chip"), and
+> the Clearing's heal scales *inversely with a unit's wear tier*.
+
+Recovery is built almost entirely on existing machinery (`payUpkeep` + `rpPerNight` +
+`triageHeal` + the D73 fatigue bands):
 
 | Tier | Where | What it does |
 |---|---|---|
-| **In-place rest** | any *finished* node (the Survey beat) | Pay **a night's rations** (Upkeep) → bank RP (support classes boost it via `rpPerNight` — the class-boost is already in the model) → a **small** heal. **Repeatable** until the purse can't afford another night. **Each rest is a full node-step** — it **ticks cooldowns + accrues interest** (a deliberate lever: buy HP *and* cooldown progress). **Fatigue (D73):** an ordinary night **wipes Worn** but only **carries** Weary/Exhausted excess (`level − floor`), and the **Weary heal-penalty applies here** — so over-extension still drags you toward a clearing. |
-| **Rest node / clearing** | routed-to on the map (D23) | The **premium / improved rest**: a **large/full** heal in one stop, **+ clears *all* fatigue** including Weary/Exhausted carryover and **lifts the heal-penalty** (D73 — fatigue's exclusive customer; this is what makes a heavy clearing verb like **Train** consequence-free *here* but a gamble on the march), **+ clears accumulated debt in one swipe** (hunger / worn gear from voluntary underfunding). The payoff for *routing* there. |
+| **Nightly rest — the chip** | **every** node, in Camp — **free & automatic** | A **small** HP heal each night (the natural rest after a day's travel) + **wipes the Worn** fatigue band (D73). A free *floor* — deliberately small, so it never substitutes for a Clearing. This is what keeps routing meaningful and *dodge-every-fight* dead. |
+| **Clearing — the premium** | routed-to on the map (a **Clearing** node, D23) | Recovery **scales inversely with a unit's wear tier** — the wear status *is* the signal, no separate flag. A **clean** unit (no Worn) spends the full restorative budget on HP → a **large heal**; a **worn** unit's budget goes to clearing the status → a normal heal + fatigue wiped; **Weary/Exhausted** units heal least while their deeper fatigue is scrubbed. So **hurt units rest and clean/healthy units are free to do arduous work** (Train, Prestige) — the allocation puzzle emerges from the tiers, not a toggle. Still **clears accumulated debt** (hunger / worn gear) in one swipe. |
+
+**Parked (open, D80):** (1) **Paid in-place rest** — with a free nightly floor now existing,
+what a *paid* rest should buy is under review; the caps note below describes the pre-D80 paid
+tier. (2) **The wear model & numbers** — per-action wear amounts feeding the banded tiers, and
+which actions count as "arduous," need a tuning pass (same shape as today's fatigue bands,
+generalized).
 
 **Two caps by design:** **gold** (can you afford another rations night?) and the per-night
 **RP rate** (one night banks only so much → healing is rate-limited regardless of wealth →

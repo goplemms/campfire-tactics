@@ -32,12 +32,13 @@ We keep the evocative voice *and* the legibility by splitting where each lives:
 
 Predictable shape makes copy scannable without reading every word:
 
-- **Action buttons — `Verb the Noun`.** `Make Camp`, `Break Camp`, `Buy Trap Kit`,
-  `Triage Heal`. Imperative verb first, canonical noun second. The cost rides in a
-  trailing ` (…)` or ` · …` clause, never inside the verb phrase.
-- **Commit buttons — `End the Night — <what fires>`.** One pattern for the gate that
-  advances the game, branching on node kind (see Lifecycle). `Break Camp →` is the
-  *only* other advance verb, reserved for departure.
+- **Action buttons — `Verb the Noun`.** `Buy Trap Kit`, `Triage Heal`, `Guard the Purse`.
+  Imperative verb first, canonical noun second. The cost rides in a trailing ` (…)` or
+  ` · …` clause, never inside the verb phrase.
+- **The advance verb — `Rest & Set Out` (D80).** The single button that ends the night and
+  departs at dawn (see Lifecycle). Replaces the old `End the Night — <what fires>` gate and the
+  departure `Break Camp →`; the encounter is named by kind and fires on arrival, not from a
+  camp gate.
 - **Status readouts — `Noun Value` or `Noun Tier (Value)`.** `Purse 120g`,
   `Morale High (3)`, `Fatigue Weary (2)`. Noun first, then the number or band.
 - **Cost clauses — `cd: N · fatigue: N · gold: Ng`.** Same order every time
@@ -51,28 +52,22 @@ Predictable shape makes copy scannable without reading every word:
   can't cover the purse") may keep natural sentence casing — they read as prose, not as
   labels.
 
-## Lifecycle — the node spine (*D46*)
+## Lifecycle — the node spine (*D46, revised D80*)
 
-The one canonical sequence. These four are **fixed keywords**; never substitute.
+The one canonical sequence — a **night/day loop**. These are **fixed keywords**; never substitute.
 
 | Canonical | Means | Banned in labels |
 |---|---|---|
-| **Make Camp** | The *pre-event* prep surface at a node (provision, heal, read the ledger). | "Camp" alone as the commit; "Prep"; "Setup" |
-| **End the Night** | The gate — the night passes and the node's event fires by kind. | "Begin"; "Start"; "Go"; "Confirm"; any "rest" wording |
-| **Survey** | The *post-event* planning beat (forecast, in-place rest, scout). | "Plan"; "Review" (as the screen name) |
-| **Break Camp** | Depart to the next node; the node-step tick fires here. | "Leave"; "Travel"; "Move on"; "Continue" |
+| **Camp** | The night hub — the one action beat at a node: recover, provision, heal, read the ledger, scout ahead, choose the next node. | "Make Camp"; "Survey"; "Prep"; "Setup" |
+| **Rest & Set Out** | The single advance verb — the night's rest lands, then the caravan departs at dawn. The node-step tick fires here. | "End the Night"; "Break Camp"; "March"; "Leave"; "Depart"; "Continue" |
 
-**Commit-button forms** (the only sanctioned variants of the gate):
+The **encounter** is named **by kind** and fires on arrival (after the road), not from a camp
+gate: a **Battle**, a **Clearing**, a **Town**, or an **Event**.
 
-| Node kind | Button |
-|---|---|
-| combat | `End the Night — Begin Mission` |
-| rest | `End the Night — Rest` |
-| event | `End the Night — Approach the Event` |
-
-> Note the one sanctioned exception to the "no rest for a gate" rule: `End the
-> Night — Rest` is allowed **because the node kind is literally Rest** — the gate
-> verb is still "End the Night," with "Rest" naming *which event fires*.
+> **Revised D80.** The old four keywords — *Make Camp / End the Night / Survey / Break Camp* —
+> collapse into two: **Camp** (the night hub, which absorbs Survey) and **Rest & Set Out** (one
+> advance verb replacing both "End the Night" and the ambiguous "Break Camp"). There is no
+> commit *gate* anymore — the day's encounter fires when you arrive.
 
 ## Surfaces & hubs (*D58*)
 

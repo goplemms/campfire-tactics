@@ -19,6 +19,7 @@ import { generateOverworld, getNode } from "./overworld";
 import { isAuthoredEncounter } from "./staging";
 import { RunLoop } from "./runloop";
 import { useOverworldSkill, cooldownRemaining } from "./overworld-actions";
+import { RECOVERY } from "./upkeep";
 import { SURVEY } from "./jobs";
 
 /** A small fightable roster (Soldiers so they have battle skills too). */
@@ -251,5 +252,39 @@ describe("run — the overworld economy round-trips & replays deterministically 
     const a = play("eco-replay");
     const b = play("eco-replay");
     expect(a).toEqual(b);
+  });
+});
+
+describe("run — the free nightly chip heal (D80)", () => {
+  const CHIP = RECOVERY.nightlyChipHp;
+  const night = (run: RunState, kind: "combat" | "event" | "rest") =>
+    recordNight(run, { nodeId: run.mapNodeId, layer: currentNode(run).layer, kind, goldEarned: 0, fallen: [] });
+
+  it("chips alive wounded units back on an ordinary (non-rest) night, capped at max HP", () => {
+    const run = newRun("chip-ordinary");
+    const [rook, vale] = run.party;
+    rook.hp = 10; // wounded (maxHp 30)
+    vale.hp = vale.maxHp - 1; // one below the cap → the chip must not overheal
+    night(run, "combat");
+    expect(rook.hp).toBe(10 + CHIP);
+    expect(vale.hp).toBe(vale.maxHp); // capped, never above max
+  });
+
+  it("does not chip on a rest night — the Clearing owns its own recovery", () => {
+    const run = newRun("chip-rest");
+    const rook = run.party[0];
+    rook.hp = 10;
+    night(run, "rest");
+    expect(rook.hp).toBe(10); // untouched by the chip path
+  });
+
+  it("never revives a downed unit", () => {
+    const run = newRun("chip-downed");
+    const [rook] = run.party;
+    rook.hp = 0;
+    rook.alive = false;
+    night(run, "event");
+    expect(rook.hp).toBe(0);
+    expect(rook.alive).toBe(false);
   });
 });

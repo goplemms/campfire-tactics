@@ -374,7 +374,7 @@ export function checkOverworldCost(run: RunState, id: string, cost: OverworldCos
   }
   // Pacing — the per-node cap.
   if (cost.usesPerNode !== undefined && campSkillUses(eco, id) >= cost.usesPerNode) {
-    return { ok: false, reason: `${label} is spent for tonight — Break Camp to use it again.` };
+    return { ok: false, reason: `${label} is spent for tonight — Rest & Set Out to use it again.` };
   }
   // Price — the loose fatigue guardrail (D73): a clearing verb spends only its **base** fatigue
   // on the acting unit. Over-extension is **never gated here** (no surcharge, no lock) — the bite

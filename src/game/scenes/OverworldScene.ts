@@ -266,7 +266,7 @@ export class OverworldScene extends Phaser.Scene {
     const intro = "An expedition is an economic routing problem: can you afford the route and a rest at its end?";
     const bullets = [
       "The map is fogged — deeper nodes hide until your intel reaches them.",
-      "Pick a node to Make Camp, then End the Night to face it (fight · rest · event).",
+      "Pick a node to camp at, then Rest & Set Out to face it (fight · rest · event).",
       "After it resolves, Survey: read the forecast, survey ahead — then rest (in place, or Rest → to the map).",
       "Open the Ledger anytime: cross a line off to skip it and free its gold.",
       "Tolls are known, loot is fogged — route to a rest node to fully recover.",
@@ -282,7 +282,7 @@ export class OverworldScene extends Phaser.Scene {
     this.overlay.push(
       this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
         clearLayer(this.overlay);
-        this.setHint("Hover a node to preview it; click to Make Camp. Deeper nodes are fogged until intel reaches them.");
+        this.setHint("Hover a node to preview it; click to camp there. Deeper nodes are fogged until intel reaches them.");
       }).setDepth(22),
     );
   }
@@ -364,7 +364,7 @@ export class OverworldScene extends Phaser.Scene {
     // A compact, always-on key in the corner — replaces the glyph dump that used to
     // crowd the hint bar (D58); the hint now carries action guidance only.
     this.drawMapLegend();
-    this.setHint("Click a node to preview it; click again to Make Camp. Deeper nodes are fogged — raise intel to see farther.");
+    this.setHint("Click a node to preview it; click again to camp there. Deeper nodes are fogged — raise intel to see farther.");
     this.previewText.setText("");
   }
 
@@ -505,8 +505,8 @@ export class OverworldScene extends Phaser.Scene {
       : node.kind === "event"
         ? `Event — ${this.loop.eventDef().name}`
         : "Rest";
-    this.titleText.setText(`Make Camp — Night ${this.run.night + 1} · ${kindLabel}`);
-    this.setHint("Make Camp: provision, heal, visit the Market, glance the ledger — then End the Night.");
+    this.titleText.setText(`Camp — Night ${this.run.night + 1} · ${kindLabel}`);
+    this.setHint("Camp: provision, heal, visit the Market, glance the ledger — then Rest & Set Out.");
 
     const cx = this.scale.width / 2;
     const panelW = this.scale.width - 40; //  ~760 — nearly full width
@@ -540,15 +540,10 @@ export class OverworldScene extends Phaser.Scene {
     // The captain's running to-do sits below the actions, kept clear of the readouts.
     this.renderCaptainsJournal(colX, actionsBottom + 12, readoutX - 16 - colX);
 
-    // --- End the Night — the prep→event gate (D46); anchored to the panel's bottom ---
-    // For combat the night doesn't *end* — it erupts — so the wording stays "Begin
-    // Mission" (D45 fork 2); rest/event "End the Night" into their payload.
-    const commitLabel = isCombat
-      ? "End the Night — Begin Mission"
-      : node.kind === "event"
-        ? "End the Night — Approach the Event"
-        : "End the Night — Rest";
-    const commit = this.makeTextButton(cx, panelBottom - 30, 260, 34, commitLabel, COLOR.successDeep, COLOR.success, () => this.commit());
+    // --- Rest & Set Out — the single advance verb (D80); anchored to the panel's bottom ---
+    // The night's rest resolves and the caravan departs into the day; the node's kind (shown in
+    // the title) is what it then faces. One clean verb, no enter-vs-depart ambiguity.
+    const commit = this.makeTextButton(cx, panelBottom - 30, 260, 34, "Rest & Set Out", COLOR.successDeep, COLOR.success, () => this.commit());
     this.campObjects.push(commit);
 
     // A near-full-screen box so the camp doesn't read as cramped: content sits at the top,
@@ -579,7 +574,7 @@ export class OverworldScene extends Phaser.Scene {
     // it's the active tab (a harmless re-render). `returnTo` *is* the beat, so both go through it.
     const toCamp = active === "camp" ? returnTo : () => this.closeTent();
     const entries: { id: TentTab | "camp" | "market"; label: string; onClick: () => void; tip: string }[] = [
-      { id: "camp", label: "Camp", onClick: toCamp, tip: "The between-nodes camp — provision, heal, and end the night." },
+      { id: "camp", label: "Camp", onClick: toCamp, tip: "The between-nodes camp — provision, heal, then Rest & Set Out." },
       { id: "party", label: this.tentToolbarLabel(), onClick: () => this.openTent(returnTo, "party"), tip: "The Captain's Tent — the Party dossier (HP, fatigue, conditions, jeopardy, growth). ⚠ marks anyone hurt, dying or captured." },
       { id: "stores", label: "Stores", onClick: () => this.openTent(returnTo, "stores"), tip: "Caravan stores — carried gear and consumables with the space each takes, storage cap, and the purse." },
       { id: "ledger", label: "Ledger", onClick: () => this.openTent(returnTo, "ledger"), tip: "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here." },
@@ -658,7 +653,7 @@ export class OverworldScene extends Phaser.Scene {
         const capped = Number.isFinite(left);
         const usesTag = capped && skill.usesPerNode! > 1 ? `  (${left} left)` : "";
         const tip = capped
-          ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Break Camp.)`
+          ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Rest & Set Out.)`
           : `${skill.name} — ${skill.description}`;
         out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run) });
       }
@@ -1807,11 +1802,11 @@ export class OverworldScene extends Phaser.Scene {
     const h = 150 + gate.reasons.length * 18;
     this.overlay.push(
       this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.danger).setDepth(24),
-      this.add.text(cx, cy - h / 2 + 24, "Before you break camp…", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
+      this.add.text(cx, cy - h / 2 + 24, "Before you set out…", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
       this.add.text(cx, cy - h / 2 + 56, gate.reasons.map((r) => `• ${r}`).join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "left", lineSpacing: 5, wordWrap: { width: w - 60 } }).setOrigin(0.5, 0).setDepth(25),
     );
     const stay = this.makeTextButton(cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showSurvey()).setDepth(26);
-    const go = this.makeTextButton(cx + 110, cy + h / 2 - 22, 180, 30, "Break Camp anyway", COLOR.danger, COLOR.danger, () => this.toMap()).setDepth(26);
+    const go = this.makeTextButton(cx + 110, cy + h / 2 - 22, 180, 30, "Set out anyway", COLOR.danger, COLOR.danger, () => this.toMap()).setDepth(26);
     this.overlay.push(stay, go);
   }
 

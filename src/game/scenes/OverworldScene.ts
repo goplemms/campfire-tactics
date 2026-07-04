@@ -73,6 +73,7 @@ import {
   // D80 — early events (the arrival layer): a light on-the-road event before the main encounter
   earlyEventForNode,
   resolveEarlyEvent,
+  TRIAGE,
   type EventDef,
   type RunState,
   type MapNode,
@@ -127,6 +128,13 @@ interface CampAction {
   tip: string;
   /** The projected effect shown on hover (arrows on the readout tiles + off-panel area). */
   preview?: ActionPreview;
+  // --- Structured fields (the card-row prototype) — a verb split into readout-tile slots ---
+  /** The verb, on its own (e.g. "Cook Stew"). When set, the row renders as a cost-bearing card. */
+  name?: string;
+  /** Who performs it (e.g. "Pip"), shown as a muted second slot. */
+  actor?: string;
+  /** A compact cost/uses readout, right-aligned like a tile's value (e.g. "5g", "1 fatigue", "free"). */
+  cost?: string;
 }
 
 /**
@@ -790,7 +798,7 @@ export class OverworldScene extends Phaser.Scene {
         const tip = capped
           ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Set Out.)`
           : `${skill.name} — ${skill.description}`;
-        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run) });
+        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run), name: skill.name, actor: u.name, cost: this.compactCost(skill, u, usesTag.trim()) });
       }
     }
     const healer = this.triageActor();
@@ -799,9 +807,22 @@ export class OverworldScene extends Phaser.Scene {
       const tip = someoneWounded
         ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
         : "No wounded fighter to triage.";
-      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview: triageActionPreview() });
+      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview: triageActionPreview(), name: "Triage", actor: healer.name, cost: `${TRIAGE.fatigue} fatigue` });
     }
     return out;
+  }
+
+  /** A compact cost readout for a card row (prototype) — gold / fatigue / cooldown, or "free". */
+  private compactCost(skill: SkillDef, _actor: Unit, usesTag = ""): string {
+    const cost = overworldCostOf(skill);
+    const parts: string[] = [];
+    const gold = resolveKnob(cost.gold, this.run);
+    if (gold > 0) parts.push(`${gold}g`);
+    if ((cost.fatigue ?? 0) > 0) parts.push(`${cost.fatigue} fatigue`);
+    const cd = cooldownRemaining(this.run.overworld, skill.id);
+    if (cd > 0) parts.push(`cd ${cd}`);
+    if (parts.length === 0) parts.push(usesTag ? usesTag.replace(/[()]/g, "").trim() : "free");
+    return parts.join(" · ");
   }
 
   /**
@@ -875,7 +896,10 @@ export class OverworldScene extends Phaser.Scene {
     y = this.drawerHeader(colX, y, 360, id, label, actions.length, rerender);
     if (this.campDrawers[id] ?? true) {
       for (const a of actions) {
-        this.campButton(colX + 14, y, 346, 24, a.label, a.enabled, a.onClick, a.tip, a.preview);
+        // The card-row prototype: a structured action (with a `name`) renders as a cost-bearing
+        // card; the rest stay simple buttons until the new grammar is proven and rolled out.
+        if (a.name) this.renderActionCard(colX + 14, y, 346, 26, a);
+        else this.campButton(colX + 14, y, 346, 24, a.label, a.enabled, a.onClick, a.tip, a.preview);
         y += rowH;
       }
     }
@@ -1535,6 +1559,36 @@ export class OverworldScene extends Phaser.Scene {
       bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showActionPreview(null));
     }
     this.campObjects.push(bg, label);
+  }
+
+  /**
+   * A **cost-bearing action card** (the readout-tile grammar applied to a verb, prototype): the
+   * action **name** (bright) + **actor** (muted) on the left, its compact **cost** right-aligned
+   * and coloured by kind — so a row answers "what does this cost and who does it" at a glance, the
+   * way the state tiles answer "what is this figure". Hover still drives the richer EFFECT PREVIEW.
+   */
+  private renderActionCard(x: number, y: number, w: number, h: number, a: CampAction): void {
+    const enabled = a.enabled;
+    const bg = this.add.rectangle(x, y, w, h, COLOR.surfaceRaised, enabled ? 1 : 0.5).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.border).setOrigin(0, 0.5).setDepth(10);
+    const name = this.add.text(x + 12, y, a.name ?? a.label, { color: enabled ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
+    this.campObjects.push(bg, name);
+    if (a.actor) {
+      this.campObjects.push(this.add.text(x + 12 + Math.ceil(name.width) + 8, y, a.actor, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
+    }
+    if (a.cost) {
+      const c = a.cost;
+      const costInk = !enabled ? INK.disabled : /g$/.test(c) ? INK.gold : /fatigue/.test(c) ? INK.ember : INK.muted;
+      this.campObjects.push(this.add.text(x + w - 12, y, c, { color: costInk, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(11));
+    }
+    if (enabled) {
+      bg.setInteractive({ useHandCursor: true });
+      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, a.onClick);
+    }
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hintPanel.setText(a.tip));
+    if (a.preview) {
+      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showActionPreview(a.preview!));
+      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showActionPreview(null));
+    }
   }
 
   private clearCamp(): void {

@@ -133,9 +133,33 @@ interface CampAction {
   name?: string;
   /** Who performs it (e.g. "Pip"), shown as a muted second slot. */
   actor?: string;
-  /** A compact cost/uses readout, right-aligned like a tile's value (e.g. "5g", "1 fatigue", "free"). */
-  cost?: string;
+  /** Structured cost, rendered as fixed-order icon+number **component chips** (D&D-style). */
+  costs?: ActionCost;
 }
+
+/**
+ * A structured action cost (the standardized **component** model) — each present field renders as a
+ * fixed-slot icon+number chip (gold / fatigue / material / cooldown), so costs read the same way and
+ * line up across every action row. Absent fields show nothing; an all-absent cost reads "free".
+ */
+interface ActionCost {
+  /** Purse gold spent. */
+  gold?: number;
+  /** Overworld effort accrued on the actor. */
+  fatigue?: number;
+  /** A consumed material (id → count), when an action spends stock. */
+  material?: { id: string; n: number };
+  /** Nights until it's ready again (a cooldown already ticking). */
+  cooldown?: number;
+}
+
+/** The cost **components** in fixed render order — the standardized slots every action reads through. */
+const COST_COMPONENTS: readonly { key: keyof ActionCost; glyph: string; ink: string; name: string }[] = [
+  { key: "gold", glyph: "¤", ink: INK.gold, name: "gold" },
+  { key: "fatigue", glyph: "✦", ink: INK.ember, name: "fatigue" },
+  { key: "material", glyph: "◆", ink: INK.cyan, name: "material" },
+  { key: "cooldown", glyph: "◷", ink: INK.muted, name: "cooldown (nights)" },
+];
 
 /**
  * The **overworld** screen — the seeded, branching run map (D22) and, since M8,
@@ -798,7 +822,7 @@ export class OverworldScene extends Phaser.Scene {
         const tip = capped
           ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Set Out.)`
           : `${skill.name} — ${skill.description}`;
-        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run), name: skill.name, actor: u.name, cost: this.compactCost(skill, u, usesTag.trim()) });
+        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run), name: skill.name, actor: u.name, costs: this.actionCost(skill) });
       }
     }
     const healer = this.triageActor();
@@ -807,22 +831,21 @@ export class OverworldScene extends Phaser.Scene {
       const tip = someoneWounded
         ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
         : "No wounded fighter to triage.";
-      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview: triageActionPreview(), name: "Triage", actor: healer.name, cost: `${TRIAGE.fatigue} fatigue` });
+      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview: triageActionPreview(), name: "Triage", actor: healer.name, costs: { fatigue: TRIAGE.fatigue } });
     }
     return out;
   }
 
-  /** A compact cost readout for a card row (prototype) — gold / fatigue / cooldown, or "free". */
-  private compactCost(skill: SkillDef, _actor: Unit, usesTag = ""): string {
+  /** Structured cost of an overworld skill — the component slots (gold / fatigue / cooldown). */
+  private actionCost(skill: SkillDef): ActionCost {
     const cost = overworldCostOf(skill);
-    const parts: string[] = [];
     const gold = resolveKnob(cost.gold, this.run);
-    if (gold > 0) parts.push(`${gold}g`);
-    if ((cost.fatigue ?? 0) > 0) parts.push(`${cost.fatigue} fatigue`);
     const cd = cooldownRemaining(this.run.overworld, skill.id);
-    if (cd > 0) parts.push(`cd ${cd}`);
-    if (parts.length === 0) parts.push(usesTag ? usesTag.replace(/[()]/g, "").trim() : "free");
-    return parts.join(" · ");
+    return {
+      gold: gold > 0 ? gold : undefined,
+      fatigue: (cost.fatigue ?? 0) > 0 ? cost.fatigue : undefined,
+      cooldown: cd > 0 ? cd : undefined,
+    };
   }
 
   /**
@@ -1575,11 +1598,7 @@ export class OverworldScene extends Phaser.Scene {
     if (a.actor) {
       this.campObjects.push(this.add.text(x + 12 + Math.ceil(name.width) + 8, y, a.actor, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
     }
-    if (a.cost) {
-      const c = a.cost;
-      const costInk = !enabled ? INK.disabled : /g$/.test(c) ? INK.gold : /fatigue/.test(c) ? INK.ember : INK.muted;
-      this.campObjects.push(this.add.text(x + w - 12, y, c, { color: costInk, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(11));
-    }
+    this.renderCostChips(x + w - 12, y, a.costs, enabled);
     if (enabled) {
       bg.setInteractive({ useHandCursor: true });
       bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, a.onClick);
@@ -1589,6 +1608,33 @@ export class OverworldScene extends Phaser.Scene {
       bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showActionPreview(a.preview!));
       bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showActionPreview(null));
     }
+  }
+
+  /**
+   * The **cost components** of an action row (prototype): each present cost type renders as an
+   * `icon N` chip in the fixed {@link COST_COMPONENTS} order, coloured by type, and the group is
+   * right-anchored at `rightX` so costs read the same way down the column. No cost reads "free".
+   */
+  private renderCostChips(rightX: number, y: number, costs: ActionCost | undefined, enabled: boolean): void {
+    const present = COST_COMPONENTS.filter((c) => costs?.[c.key] != null);
+    if (present.length === 0) {
+      this.campObjects.push(this.add.text(rightX, y, "free", { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(11));
+      return;
+    }
+    const gap = 12;
+    const chips = present.map((c) => {
+      const v = costs![c.key]!;
+      const n = c.key === "material" ? (v as { n: number }).n : (v as number);
+      return this.add.text(0, y, `${c.glyph} ${n}`, { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11);
+    });
+    const widths = chips.map((t) => Math.ceil(t.width));
+    const total = widths.reduce((s, w) => s + w, 0) + gap * (chips.length - 1);
+    let cx = rightX - total;
+    chips.forEach((t, i) => {
+      t.x = cx;
+      cx += widths[i] + gap;
+      this.campObjects.push(t);
+    });
   }
 
   private clearCamp(): void {

@@ -34,7 +34,7 @@ const wrap = (body) => `(()=>{const s=${S};${body}})()`;
 // a Banker (purse verbs) and a Noble (Patronize) — then wound them so Triage shows too.
 const SETUP = wrap(`
   const p = s.run.party;
-  if (p[0]) { p[0].jobId = "scout"; p[0].heldJobs = ["scout"]; p[0].jobLevels = { scout: { level: 2, xp: 0 } }; }
+  if (p[0]) { p[0].jobId = "survivalist"; p[0].heldJobs = ["survivalist"]; }
   if (p[1]) { p[1].jobId = "cook"; p[1].heldJobs = ["cook"]; }
   if (p[2]) { p[2].jobId = "banker"; p[2].heldJobs = ["banker"]; }
   if (p[3]) { p[3].jobId = "noble"; p[3].heldJobs = ["noble"]; }

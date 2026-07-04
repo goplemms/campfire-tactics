@@ -27,6 +27,11 @@ import {
   EARLY_EVENT,
   earlyEventForNode,
   resolveEarlyEvent,
+  BYPASS,
+  BLOCKADE,
+  bypassFee,
+  bypassXp,
+  tailoredEarlyEventFor,
   type EventKind,
 } from "./node-events";
 
@@ -541,7 +546,8 @@ describe("node-events — early events are an occasional, deterministic arrival 
       const node = combat(`n-${i}`);
       const def = earlyEventForNode(run, node);
       if (!def) continue;
-      expect(EARLY_EVENT.pool).toContain(def.id);
+      // A tailored event (the blockade) takes precedence; otherwise it's from the random pool.
+      if (!tailoredEarlyEventFor(run, node)) expect(EARLY_EVENT.pool).toContain(def.id);
       const out = resolveEarlyEvent(run, node, def);
       expect(out.summary.length).toBeGreaterThan(0);
     }
@@ -554,16 +560,93 @@ describe("node-events — early events are an occasional, deterministic arrival 
     const highKinds = new Set<string>();
     for (let i = 0; i < 200; i++) {
       const node = combat(`n-${i}`);
+      // This test is about the *random* pool's standing gating — skip nodes the tailored
+      // (blockade) layer claims, which take precedence in earlyEventForNode.
       const low = newRun(`early-low-${i}`);
-      const d1 = earlyEventForNode(low, node);
-      if (d1) lowKinds.add(d1.id);
-
+      if (!tailoredEarlyEventFor(low, node)) {
+        const d1 = earlyEventForNode(low, node);
+        if (d1) lowKinds.add(d1.id);
+      }
       const high = newRun(`early-high-${i}`);
       high.overworld.influence = 20; // favored+
-      const d2 = earlyEventForNode(high, node);
-      if (d2) highKinds.add(d2.id);
+      if (!tailoredEarlyEventFor(high, node)) {
+        const d2 = earlyEventForNode(high, node);
+        if (d2) highKinds.add(d2.id);
+      }
     }
     expect([...lowKinds]).toEqual(["thief"]); // nothing but the pickpocket at low standing
     expect(highKinds.has("patron-welcome")).toBe(true); // the boon appears once favored
+  });
+});
+
+// --- Tailored events + the gated encounter-bypass (D80) ---------------------
+
+describe("node-events — tailored events + the gated encounter-bypass (D80)", () => {
+  const combat = (id: string, layer: number): MapNode => ({ id, layer, index: 0, kind: "combat", edges: [] });
+
+  it("bypassFee and bypassXp scale with map depth", () => {
+    expect(bypassFee(combat("a", 0))).toBe(BYPASS.feeBase);
+    expect(bypassFee(combat("a", 3))).toBe(BYPASS.feeBase + 3 * BYPASS.feePerLayer);
+    expect(bypassXp(combat("a", 3))).toBe(BYPASS.xpBase + 3 * BYPASS.xpPerLayer);
+  });
+
+  it("a tailored event is deterministic, and only on non-final combat nodes", () => {
+    const run = newRun("tailored");
+    const a = tailoredEarlyEventFor(run, combat("n2-0", 2));
+    const b = tailoredEarlyEventFor(run, combat("n2-0", 2));
+    expect(a?.id ?? null).toBe(b?.id ?? null); // stable for a seed + node
+    // Never on a rest node…
+    expect(tailoredEarlyEventFor(run, { id: "r", layer: 2, index: 0, kind: "rest", edges: [] })).toBeNull();
+    // …nor on the final node (the objective is never skippable).
+    expect(tailoredEarlyEventFor(run, combat("fin", run.map.layers - 1))).toBeNull();
+  });
+
+  it("when it fires, the tailored event is The Blockade", () => {
+    let fired = null as ReturnType<typeof tailoredEarlyEventFor>;
+    for (let i = 0; i < 300 && !fired; i++) {
+      fired = tailoredEarlyEventFor(newRun("t"), combat(`c-${i}`, 2));
+    }
+    expect(fired?.id).toBe("blockade");
+  });
+
+  it("the bypass is gated on gold AND standing, and forgoes loot", () => {
+    const node = combat("n2-0", 2);
+    const fee = bypassFee(node);
+
+    // Poor + no standing → the pay option is unavailable.
+    const poor = newRun("blk-poor", fee - 1);
+    const payPoor = BLOCKADE.choices!(poor, node).find((c) => c.id === "pay")!;
+    expect(payPoor.available).toBe(false);
+
+    // Rich + favored standing → available.
+    const rich = newRun("blk-rich", fee + 100);
+    rich.overworld.influence = 20; // ≥ the respected floor
+    const payRich = BLOCKADE.choices!(rich, node).find((c) => c.id === "pay")!;
+    expect(payRich.available).toBe(true);
+
+    // Choosing pay spends the fee and flags a bypass.
+    const goldBefore = rich.camp.gold;
+    const out = BLOCKADE.choose!(rich, node, "pay");
+    expect(out.bypass).toBe(true);
+    expect(rich.camp.gold).toBe(goldBefore - fee);
+
+    // Cutting through is always available and never bypasses.
+    const cut = BLOCKADE.choose!(rich, node, "fight");
+    expect(cut.bypass).toBeFalsy();
+  });
+
+  it("earlyEventForNode surfaces a tailored event ahead of the random pool", () => {
+    let run: RunState | null = null;
+    let node: MapNode | null = null;
+    for (let i = 0; i < 300 && !node; i++) {
+      const r = newRun(`t2-${i}`);
+      const c = combat(`c2-${i}`, 2);
+      if (tailoredEarlyEventFor(r, c)) {
+        run = r;
+        node = c;
+      }
+    }
+    expect(node).not.toBeNull();
+    expect(earlyEventForNode(run!, node!)?.id).toBe("blockade");
   });
 });

@@ -10,8 +10,9 @@
 > economy: camp at every node + cooldown spine + loose fatigue), **D45** (the economic
 > ledger), **D46** (the node lifecycle — revised D80 into the night/day loop), **D47** (the
 > two-tier recovery economy, revised D80), **D48** (the route forecast + overworld fog),
-> **D80** (the night/day loop: one **Camp** hub + `Rest & Set Out`, the wear-scaled **Clearing**,
-> and the **early-events** arrival layer).
+> **D80** (the night/day loop, **night-after-arrival**: **Camp** as react + prep beats,
+> `Set Out` / `Begin`; effort → **Weariness** recovery with the **Clearing**'s conditional big heal;
+> the **early-events** arrival layer).
 
 ## Description
 
@@ -195,53 +196,55 @@ combat CT clock** (D5), one tier up.
 
 ## The node lifecycle — the night/day loop (D46, revised D80)
 
-> **Revised D80** (design session). The lifecycle was *Make Camp → End the Night → [event] →
-> Survey → Break Camp* — which split prep and planning into two beats and made "Break Camp"
-> ambiguous (depart the node, or engage the encounter?). It is now a **night/day loop**: a
-> *night* is inherently the beat *between* two *days*, so there is **one hub (the night) and
-> one journey (the day)** — no two-camp split, and one unambiguous advance verb.
+> **Revised D80** (design session, two passes). The first pass unified the old *Make Camp → End
+> the Night → Survey → Break Camp* into a night/day loop. The second set **night-after-arrival**:
+> you travel *wounded* and make camp on **arrival**, so the road stays dangerous and reaching the
+> next rest is the relief the economy is built on. The camp is **two beats** bracketing the
+> journey — a post-encounter *plan* beat and an on-arrival *prep* beat — earned because you scout
+> ahead (Survey) **before** you commit your route.
 
-Every node still runs **one contract** — the camp (D35), the ledger (D45) and the forecast
-(D48) all attach to the same seam. **One node = one node-step** (one tick of the overworld
-clock).
+Every node still runs **one contract** — the camp (D35), the ledger (D45) and the forecast (D48)
+attach to the same seam. **One node = one node-step.**
 
 ```
-… → CAMP (the night) ─ "Rest & Set Out" → THE ROAD (the day) → THE ENCOUNTER → CAMP → …
-     recover · act ·                        an early event         Battle · Clearing ·
-     scout · choose next                    may fire (D80)         Town · Event
+[ENCOUNTER]
+  → REACT-CAMP   · plan: scout ahead (Survey), bank loot, read the forecast   (no rest)
+  → choose your next node   =   "Set Out"
+  → THE ROAD (the day)   · an early event may fire — you travel WOUNDED
+  → PREP-CAMP (on arrival)   · the night's REST (chip / Deep Rest) + gear up
+  → "Begin"   →   [ENCOUNTER]   → …
 ```
 
-1. **Camp** — the night hub, and the run's **one action beat** per node-step: recover (the
-   nightly heal, D47), spend overworld actions, read the ledger **forecast**, scout ahead, and
-   **choose the next node**. One shared action allowance per night; the node-step tick fires as
-   you leave.
-2. **Rest & Set Out** — the single **advance verb**. The night's rest resolves (the chip heal
-   lands, D47) and the caravan departs at dawn. Replaces *both* "End the Night" and "Break
-   Camp" — one clean word, no enter-vs-depart ambiguity.
-3. **The Road** (the day) — travel to the chosen node. An **early event** (D80, below) may fire
-   on the way in.
-4. **The Encounter** — the node's main event, **named by kind**: a **Battle** (the
-   Deployment→Battle→Resolution pipeline), a **Clearing** (recovery, D47), a **Town**
-   (market/services), or an **Event** (a choice resolves). Then the loop returns to **Camp**
-   for the next night.
+1. **React camp** — *post-encounter*, at the node you cleared: read the **forecast**, **scout
+   ahead** (Survey — this is *why* it's a distinct beat: you scout before you route), bank loot.
+   **No rest here.** Exit by **choosing your next node** — that choice *is* "Set Out."
+2. **The Road** (the day) — travel to the chosen node; an **early event** (D80) may fire. You travel
+   **wounded** — recovery waits for arrival.
+3. **Prep camp** — *on arrival*: the **night's rest** lands here (the chip, D47; or a Clearing's
+   Deep Rest), then you **gear up** for this node's encounter (heal, buy at a Town, set traps).
+   Exit: **Begin.**
+4. **The Encounter** — **named by kind**: **Battle** / **Town** / **Event**. (A **Clearing** is the
+   special case — its "encounter" *is* the arrival Deep Rest, so its prep camp and encounter merge:
+   no separate beat.)
 
-**Where prep went.** Heavy prep (buy gear, buff) happens at the **night before** — a routing
-decision carried forward, not a last-second shop. **Town** nodes still allow a light
-shop-on-arrival, since the market *is* there.
+**Why two camps, not the interruption tax.** They do **different jobs**: the react camp is
+*direction* (where do I go — scout, then pick); the prep camp is *readiness* (get set for the node
+I chose). Node-selection between them gives each a distinct purpose, and Survey **must** happen
+before the route is picked — so the split earns its keep rather than duplicating a hub.
 
-**Intel is forward-looking.** "What is this node?" is already answered by the map's banded
-preview (D24) when you pick it; the night hub's intel is about **where to go next** — so there
-is no duplicate pre-encounter intel beat.
+**Where the rest sits (night-after-arrival).** The nightly heal + Weariness step-down (D47) lands at
+the **prep camp**, on arrival — so you journey wounded and recover at the destination. *(This
+retimes the shipped B1 chip from post-encounter to arrival.)*
 
-**Terminology (D80, supersedes the D46 keywords):** **Camp** (the night hub) and **Rest &
-Set Out** (the advance verb). *Retired:* "Make Camp" → **Camp**; "End the Night" + "Break
-Camp" → **Rest & Set Out**; "Survey" → folded into **Camp**. Author labels against the
+**Terminology (D80).** **Camp** (the beat, seen twice — react + prep), **Set Out** (choose route →
+travel), **Begin** (prep → encounter). Retired: *Make Camp / End the Night / Survey* (the beat) */
+Break Camp* — and the interim single **"Rest & Set Out"** (shipped in code, #94) now **splits** into
+*Set Out* + *Begin*. Author labels against the
 [**glossary**](../glossary.md#lifecycle--the-node-spine-d46-revised-d80).
 
-**Where rest fits (rationale, unchanged D46/D47):** the *"rest or push on"* choice still lives
-on the **map (routing to a Clearing)**, never as a free camp toggle. The nightly heal is only a
-**chip** (D47), so real recovery still costs a route — which is what keeps the
-*dodge-every-fight* failure mode dead.
+**Where rest fits (rationale, unchanged).** The *"rest or push on"* choice lives on the **map
+(routing to a Clearing)**, never a free camp toggle; the nightly heal is only a **chip** (D47), so
+real recovery still costs a route — *dodge-every-fight* stays dead, now sharpened by wounded travel.
 
 ## Early events — the arrival layer (D80)
 
@@ -273,12 +276,12 @@ is shown but **never summed into gold**, D34).
 - **Broad totals → expand for crunch.** Default = a few category totals (Upkeep / Loot /
   Field spend / Banker / balance); expand a category to its line items (the Upkeep bill's
   Food/Repairs, individual loot/spend events).
-- **Two roles, one hub (D46/D80):** the ledger **reconciles** the night's spend and
-  **forecasts** the route ahead — both in **Camp**, the single action beat (was split across
-  the old Make Camp / Survey).
+- **Two roles across the camps (D46/D80):** the ledger **forecasts** the route ahead at the
+  **react camp** (where you plan and pick your next node) and **reconciles** the night's spend at
+  the **prep camp** (what this stop costs).
 - **Jump to market** when usable (town/rest node · Merchant present · off cooldown) — size a
   buy against the budget before committing.
-- **A soft, intent-aware gate** on **Rest & Set Out**: always one glance away, the bottom-line delta
+- **A soft, intent-aware gate** on **Set Out**: always one glance away, the bottom-line delta
   shown inline, **hard-stopping only when warranted** (a projected shortfall, can't-afford-
   the-rest, outstanding debt, an underfunded line) — never a per-night chore (the D35/D16
   anti-agony stance).

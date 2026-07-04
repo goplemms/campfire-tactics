@@ -35,10 +35,10 @@ Predictable shape makes copy scannable without reading every word:
 - **Action buttons — `Verb the Noun`.** `Buy Trap Kit`, `Triage Heal`, `Guard the Purse`.
   Imperative verb first, canonical noun second. The cost rides in a trailing ` (…)` or
   ` · …` clause, never inside the verb phrase.
-- **The advance verb — `Rest & Set Out` (D80).** The single button that ends the night and
-  departs at dawn (see Lifecycle). Replaces the old `End the Night — <what fires>` gate and the
-  departure `Break Camp →`; the encounter is named by kind and fires on arrival, not from a
-  camp gate.
+- **The two advance verbs — `Set Out` and `Begin` (D80).** `Set Out` leaves the react camp
+  (choose route → travel); `Begin` leaves the prep camp (→ the encounter, after the arrival rest).
+  See Lifecycle. They replace the old `End the Night — <what fires>` gate, the departure
+  `Break Camp →`, and the interim single `Rest & Set Out`.
 - **Status readouts — `Noun Value` or `Noun Tier (Value)`.** `Purse 120g`,
   `Morale High (3)`, `Fatigue Weary (2)`. Noun first, then the number or band.
 - **Cost clauses — `cd: N · fatigue: N · gold: Ng`.** Same order every time
@@ -54,20 +54,23 @@ Predictable shape makes copy scannable without reading every word:
 
 ## Lifecycle — the node spine (*D46, revised D80*)
 
-The one canonical sequence — a **night/day loop**. These are **fixed keywords**; never substitute.
+The one canonical sequence — a **night/day loop**, night-after-arrival. These are **fixed
+keywords**; never substitute.
 
 | Canonical | Means | Banned in labels |
 |---|---|---|
-| **Camp** | The night hub — the one action beat at a node: recover, provision, heal, read the ledger, scout ahead, choose the next node. | "Make Camp"; "Survey"; "Prep"; "Setup" |
-| **Rest & Set Out** | The single advance verb — the night's rest lands, then the caravan departs at dawn. The node-step tick fires here. | "End the Night"; "Break Camp"; "March"; "Leave"; "Depart"; "Continue" |
+| **Camp** | The camp beat — seen twice per node: a *react* camp post-encounter (scout ahead, bank loot, choose next) and a *prep* camp on arrival (the night's rest + gear up). | "Make Camp"; "Survey"; "Prep"; "Setup" |
+| **Set Out** | Leave the react camp — choosing your next node commits the route and starts the day's travel. The node-step tick fires here. | "Rest & Set Out"; "Break Camp"; "March"; "Leave"; "Depart" |
+| **Begin** | Leave the prep camp — start the node's encounter after resting + gearing up on arrival. | "End the Night"; "Go"; "Start"; "Confirm" |
 
-The **encounter** is named **by kind** and fires on arrival (after the road), not from a camp
-gate: a **Battle**, a **Clearing**, a **Town**, or an **Event**.
+The **encounter** is named **by kind**: a **Battle**, a **Town**, or an **Event** (a **Clearing**'s
+encounter *is* its arrival Deep Rest, D47).
 
-> **Revised D80.** The old four keywords — *Make Camp / End the Night / Survey / Break Camp* —
-> collapse into two: **Camp** (the night hub, which absorbs Survey) and **Rest & Set Out** (one
-> advance verb replacing both "End the Night" and the ambiguous "Break Camp"). There is no
-> commit *gate* anymore — the day's encounter fires when you arrive.
+> **Revised D80** (two passes). First: the old four keywords (*Make Camp / End the Night / Survey /
+> Break Camp*) collapsed into a night/day loop. Second: **night-after-arrival** split the single
+> interim verb *Rest & Set Out* into **Set Out** (choose route → travel) and **Begin** (prep →
+> encounter), since the rest now lands on **arrival**, not at departure. "Survey" as a *beat* is
+> retired (folded into Camp); "Survey" the **Scout skill** is unaffected.
 
 ## Surfaces & hubs (*D58*)
 

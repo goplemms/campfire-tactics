@@ -192,6 +192,10 @@ export class OverworldScene extends Phaser.Scene {
   private previewText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
 
+  // The prep camp's "last night's rest" recap (D80): what the arrival rest healed / fatigue it
+  // shed, captured by diffing the party across `loop.choose` in enterCamp. UI-only, per-arrival.
+  private arrivalRecap: string[] = [];
+
   // The right-side state readouts (D58): the day's opening figures (to colour each value
   // by its net move *this day*, keyed by the node we're camped at), the previous render's
   // figures (to pulse a tile the instant a value changes), and the live pulse tweens (torn
@@ -266,8 +270,8 @@ export class OverworldScene extends Phaser.Scene {
     const intro = "An expedition is an economic routing problem: can you afford the route and a rest at its end?";
     const bullets = [
       "The map is fogged — deeper nodes hide until your intel reaches them.",
-      "Pick a node to camp at, then Rest & Set Out to face it (fight · rest · event).",
-      "After it resolves, Survey: read the forecast, survey ahead — then rest (in place, or Rest → to the map).",
+      "Pick a node to travel to; you make a Prep camp on arrival, then Begin to face it (fight · rest · event).",
+      "After it resolves, the React camp: read the forecast, survey ahead — then Set Out to the map.",
       "Open the Ledger anytime: cross a line off to skip it and free its gold.",
       "Tolls are known, loot is fogged — route to a rest node to fully recover.",
     ];
@@ -488,9 +492,34 @@ export class OverworldScene extends Phaser.Scene {
    */
   private enterCamp(node: MapNode): void {
     this.clearMap();
+    // D80 night-after-arrival: the nightly rest fires *inside* loop.choose (on arrival). Snapshot
+    // the party across it so the prep camp can recap what the night restored.
+    const before = this.run.party.map((u) => ({ id: u.id, name: u.name, hp: u.hp, fatigue: u.fatigue }));
     this.loop.choose(node.id);
+    this.arrivalRecap = this.buildArrivalRecap(before, node);
     this.campNode = node;
     this.renderCamp();
+  }
+
+  /**
+   * The prep camp's "last night's rest" recap (D80) — one line per unit the arrival rest touched
+   * (HP chipped back, a fatigue tier shed). A Clearing skips the arrival rest (its Deep Rest lands
+   * when you Begin), so it reads its own note instead.
+   */
+  private buildArrivalRecap(before: { id: string; name: string; hp: number; fatigue: number }[], node: MapNode): string[] {
+    if (node.kind === "rest") return ["A Clearing — the Deep Rest comes when you Begin."];
+    const lines: string[] = [];
+    for (const b of before) {
+      const now = this.run.party.find((u) => u.id === b.id);
+      if (!now) continue;
+      const parts: string[] = [];
+      if (now.hp > b.hp) parts.push(`+${now.hp - b.hp} HP`);
+      const fromTier = fatigueTier(b.fatigue);
+      const toTier = fatigueTier(now.fatigue);
+      if (fromTier !== toTier) parts.push(`${fromTier} → ${toTier}`);
+      if (parts.length) lines.push(`${b.name}  ${parts.join(" · ")}`);
+    }
+    return lines.length ? lines : ["The party arrived rested — nothing to shed."];
   }
 
   /** (Re)draw the camp panel — called after every action so readouts stay live. */
@@ -505,8 +534,10 @@ export class OverworldScene extends Phaser.Scene {
       : node.kind === "event"
         ? `Event — ${this.loop.eventDef().name}`
         : "Rest";
-    this.titleText.setText(`Camp — Night ${this.run.night + 1} · ${kindLabel}`);
-    this.setHint("Camp: provision, heal, visit the Market, glance the ledger — then Rest & Set Out.");
+    // The PREP camp (D80): arrival's night is done — this beat is rest-recap + gear-up, ending in
+    // **Begin**. Its identity is the warm campfire (ember), paired against the react beat's gold.
+    this.titleText.setText(`Prep — Night ${this.run.night + 1} · ${kindLabel}`);
+    this.setHint("Prep camp: the night's rest is done — gear up, provision, heal, then Begin.");
 
     const cx = this.scale.width / 2;
     const panelW = this.scale.width - 40; //  ~760 — nearly full width
@@ -522,11 +553,14 @@ export class OverworldScene extends Phaser.Scene {
     // (below) — hide the header line so the caravan's state reads in one place.
     this.campText.setVisible(false);
 
+    // The "last night's rest" recap band (ember) — what the arrival rest restored (D80).
+    const recapBottom = this.renderPrepRecap(colX, top, panelW);
+
     // --- Areas toolbar (D58): the "different areas" ---------------------------
     // A compact top row of deep-links to the *places you go* (the Tent / Stores / Ledger /
     // Map pages, the Market), kept above the left column's *actions you take here* so the two
     // purposes read distinctly — and the same nav renders atop each of those pages.
-    const areasBottom = this.renderAreaNav("camp", () => this.renderCamp(), this.campObjects, colX, top);
+    const areasBottom = this.renderAreaNav("camp", () => this.renderCamp(), this.campObjects, colX, recapBottom + 6);
     const bodyTop = areasBottom + 20;
 
     // --- The action drawers (left) + the live state readouts (right) ----------
@@ -540,10 +574,10 @@ export class OverworldScene extends Phaser.Scene {
     // The captain's running to-do sits below the actions, kept clear of the readouts.
     this.renderCaptainsJournal(colX, actionsBottom + 12, readoutX - 16 - colX);
 
-    // --- Rest & Set Out — the single advance verb (D80); anchored to the panel's bottom ---
-    // The night's rest resolves and the caravan departs into the day; the node's kind (shown in
-    // the title) is what it then faces. One clean verb, no enter-vs-depart ambiguity.
-    const commit = this.makeTextButton(cx, panelBottom - 30, 260, 34, "Rest & Set Out", COLOR.successDeep, COLOR.success, () => this.commit());
+    // --- Begin — the prep beat's advance verb (D80); anchored to the panel's bottom ---
+    // Starts the node's main event: a combat/event encounter, or — at a Clearing — its Deep Rest.
+    // The node's kind (shown in the title) is what Begin then faces.
+    const commit = this.makeTextButton(cx, panelBottom - 30, 260, 34, "Begin", COLOR.successDeep, COLOR.success, () => this.commit());
     this.campObjects.push(commit);
 
     // A near-full-screen box so the camp doesn't read as cramped: content sits at the top,
@@ -551,6 +585,26 @@ export class OverworldScene extends Phaser.Scene {
     this.campObjects.push(
       this.add.rectangle(cx, (panelTop + panelBottom) / 2, panelW, panelBottom - panelTop, COLOR.surface, 0.96).setStrokeStyle(2, COLOR.border).setDepth(8),
     );
+  }
+
+  /**
+   * The prep camp's **"last night's rest" recap band** (D80) — an ember accent rule + one line per
+   * unit the arrival rest restored (or a Clearing's Deep-Rest note). The warm campfire counterpart
+   * to the react camp's gold route-forecast band. Returns the y-bottom for laying out below it.
+   */
+  private renderPrepRecap(x: number, y: number, panelW: number): number {
+    this.campObjects.push(
+      // The ember rule — the prep beat's campfire identity.
+      this.add.rectangle(x - 10, y - 8, 64, 3, COLOR.accent, 0.9).setOrigin(0, 0.5).setDepth(11),
+      this.add.text(x - 10, y + 6, "The night's rest", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
+    );
+    const shown = this.arrivalRecap.slice(0, 4);
+    const extra = this.arrivalRecap.length - shown.length;
+    const body = extra > 0 ? [...shown, `…and ${extra} more`] : shown;
+    this.campObjects.push(
+      this.add.text(x - 10, y + 20, body.join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 4, wordWrap: { width: panelW - 60 } }).setOrigin(0, 0).setDepth(11),
+    );
+    return y + 20 + body.length * 16 + 4;
   }
 
   /**
@@ -574,7 +628,7 @@ export class OverworldScene extends Phaser.Scene {
     // it's the active tab (a harmless re-render). `returnTo` *is* the beat, so both go through it.
     const toCamp = active === "camp" ? returnTo : () => this.closeTent();
     const entries: { id: TentTab | "camp" | "market"; label: string; onClick: () => void; tip: string }[] = [
-      { id: "camp", label: "Camp", onClick: toCamp, tip: "The between-nodes camp — provision, heal, then Rest & Set Out." },
+      { id: "camp", label: "Camp", onClick: toCamp, tip: "The between-nodes camp — provision, heal, gear up, then Begin (or Set Out from the react beat)." },
       { id: "party", label: this.tentToolbarLabel(), onClick: () => this.openTent(returnTo, "party"), tip: "The Captain's Tent — the Party dossier (HP, fatigue, conditions, jeopardy, growth). ⚠ marks anyone hurt, dying or captured." },
       { id: "stores", label: "Stores", onClick: () => this.openTent(returnTo, "stores"), tip: "Caravan stores — carried gear and consumables with the space each takes, storage cap, and the purse." },
       { id: "ledger", label: "Ledger", onClick: () => this.openTent(returnTo, "ledger"), tip: "Gold flow (realized + projected) and the route forecast; cross Upkeep lines off here." },
@@ -653,7 +707,7 @@ export class OverworldScene extends Phaser.Scene {
         const capped = Number.isFinite(left);
         const usesTag = capped && skill.usesPerNode! > 1 ? `  (${left} left)` : "";
         const tip = capped
-          ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Rest & Set Out.)`
+          ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Set Out.)`
           : `${skill.name} — ${skill.description}`;
         out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run) });
       }
@@ -1606,13 +1660,13 @@ export class OverworldScene extends Phaser.Scene {
     this.showOverlay("Rest", lines.join("\n"), true, 520, 220, () => this.afterNode());
   }
 
-  // --- The Survey beat (post-event planning, D46) ----------------------------
+  // --- The REACT camp (post-encounter planning, D46/D80) ---------------------
 
   /**
-   * The **Survey** beat (D46) — the now-informed, post-event planning surface: read
-   * the route {@link "../../core".projectForecast | forecast} (D48), scout ahead, glance
-   * the ledger — then **rest**: in place (D47, repeatable) or **Rest →** (the soft gate,
-   * the old Break Camp) back to the map. The two rests sit paired at the panel's foot.
+   * The **REACT camp** (D80) — the now-informed, post-encounter planning beat: read the route
+   * {@link "../../core".projectForecast | forecast} (D48), scout ahead, glance the ledger — then
+   * **Set Out** (the soft gate back to the map) or rest in place first (D47, repeatable). The
+   * gold route-forecast band up top is this beat's identity, against the prep beat's ember recap.
    */
   private showSurvey(): void {
     this.clearMap();
@@ -1623,8 +1677,11 @@ export class OverworldScene extends Phaser.Scene {
     // The live figures move to the right-side state panel on this beat — hide the line.
     this.campText.setVisible(false);
 
-    this.titleText.setText(`Survey — Night ${this.run.night} · plan your route`);
-    this.setHint("Survey: read the forecast, survey ahead — then rest, in place (repeatable) or Rest → to march the night's rations to the map.");
+    // The REACT camp (D80): the post-encounter planning beat — read the road ahead, scout, bank
+    // loot — ending in **Set Out**. Its identity is gold (intel/route), paired against the prep
+    // beat's ember (the campfire).
+    this.titleText.setText(`React — Night ${this.run.night} · the road ahead`);
+    this.setHint("React camp: read the forecast, survey ahead — then Set Out (or rest in place first, repeatable).");
 
     const cx = this.scale.width / 2;
     const panelW = this.scale.width - 40; //  ~760 — nearly full width
@@ -1636,6 +1693,8 @@ export class OverworldScene extends Phaser.Scene {
 
     const forecast = projectForecast(this.run);
     this.campObjects.push(
+      // The gold rule — the react beat's intel/route identity (vs the prep beat's ember).
+      this.add.rectangle(colX - 10, top - 20, 64, 3, COLOR.gold, 0.9).setOrigin(0, 0.5).setDepth(11),
       this.add.text(colX - 10, top - 6, "Route forecast", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11),
       this.add.text(colX - 10, top + 18, this.forecastSummary(forecast), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 5, wordWrap: { width: panelW - 60 } }).setOrigin(0, 0).setDepth(11),
     );
@@ -1667,15 +1726,14 @@ export class OverworldScene extends Phaser.Scene {
     // The captain's running to-do sits below the actions.
     this.renderCaptainsJournal(colX, y + 12, panelW - 60);
 
-    // The two ways a night ends, paired at the panel's foot (both a *rest*; only the
-    // second departs). Left: rest in place — repeatable, stay put, greys at full HP / when
-    // broke (moved here from the Recovery drawer to sit beside its sibling). Right: Rest →,
-    // the night's-end march to the map (the old Break Camp); the arrow carries the departure.
+    // The foot pairs the two ways to leave the react beat. Left: rest in place — repeatable, stay
+    // put, greys at full HP / when broke (moved here from the Recovery drawer to sit beside its
+    // sibling). Right: Set Out → — commit to the route and march to the map (the old Break Camp).
     const rest = this.inPlaceRestReadout();
     const footY = panelBottom - 30;
     this.campButton(cx - 250, footY, 240, 34, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail, inPlaceRestPreview(this.run));
-    const restBtn = this.makeTextButton(cx + 130, footY, 240, 34, "Rest →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
-    this.campObjects.push(restBtn);
+    const setOutBtn = this.makeTextButton(cx + 130, footY, 240, 34, "Set Out →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
+    this.campObjects.push(setOutBtn);
 
     this.campObjects.push(
       this.add.rectangle(cx, (panelTop + panelBottom) / 2, panelW, panelBottom - panelTop, COLOR.surface, 0.96).setStrokeStyle(2, COLOR.border).setDepth(8),

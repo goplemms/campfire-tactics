@@ -160,50 +160,77 @@ describe("fatigue — rest restores (rest's second job, D47/D73)", () => {
 });
 
 describe("fatigue — combat reads it but never writes it (D29/D73)", () => {
-  it("a full battle leaves the actors' fatigue value untouched", () => {
+  it("a battle (and its resolution) never writes the fatigue meter", () => {
     const run = newRun("fatigue-combat");
-    // Pre-load fatigue (below Exhausted, so no Slow), then play a combat node to a decision.
-    for (const u of run.party) u.fatigue = 4;
-    const before = run.party.map((u) => u.fatigue);
-
     const loop = new RunLoop(run);
-    // Walk to the first combat node and run the whole encounter.
+    // Walk to the first combat node (each arrival applies the nightly rest, D80)…
     while (true) {
       const next = reachableNodes(run);
       const combat = next.find((n) => n.kind === "combat") ?? next[0];
       chooseNode(run, combat.id);
       if (currentNode(run).kind === "combat") break;
     }
+    // …then pre-load fatigue *after* arrival (below Exhausted, so no Slow) and snapshot it.
+    for (const u of run.party) u.fatigue = 4;
+    const before = run.party.map((u) => u.fatigue);
+
     loop.camp();
     loop.startEncounter();
     loop.beginBattle();
     loop.autoBattle();
-    // The battle itself never *writes* the fatigue meter (it only *reads* it, to Slow the Exhausted).
+    // The battle only *reads* fatigue (to Slow the Exhausted); it never writes it.
     expect(run.party.map((u) => u.fatigue)).toEqual(before);
 
-    // Resolving the node is a **night** on the overworld clock (D73) — it wipes the safe Worn band.
+    // Resolving the node no longer rests (D80 — the nightly rest moved to arrival), so fatigue
+    // stays untouched here too.
     loop.resolve();
-    for (const u of run.party) expect(u.fatigue).toBe(0);
+    expect(run.party.map((u) => u.fatigue)).toEqual(before);
   });
 });
 
-describe("fatigue — the nightly resolution (ordinary vs deep rest, D73/D80)", () => {
-  it("an ordinary night (recordNight) steps each unit down one tier", () => {
-    const run = newRun("nightly-ordinary");
-    run.party[0].fatigue = FATIGUE.exhausted; // Exhausted (9) → floor of Weary (7)
-    run.party[1].fatigue = FATIGUE_TIER_FLOORS[1]; // Worn (4) → Rested (0)
-    const node = currentNode(run);
-    recordNight(run, { nodeId: node.id, layer: node.layer, kind: "combat", goldEarned: 0, fallen: [] });
+describe("fatigue — the nightly step-down lands on arrival (D80)", () => {
+  /** Set fatigue, then hop onto a reachable node of `kind` (the arrival that resolves the night). */
+  function arriveOnKind(run: RunState, kind: string, setup: () => void): boolean {
+    for (let guard = 0; guard < 30; guard++) {
+      const target = reachableNodes(run).find((n) => n.kind === kind);
+      if (target) {
+        setup(); // set fatigue immediately before the final hop, so only this arrival counts
+        chooseNode(run, target.id);
+        return true;
+      }
+      const next = reachableNodes(run);
+      if (!next.length) return false;
+      chooseNode(run, next[0].id);
+    }
+    return false;
+  }
+
+  it("arriving at an ordinary (non-rest) node steps each unit down one tier", () => {
+    const run = newRun("arrival-ordinary");
+    const ok = arriveOnKind(run, "combat", () => {
+      run.party[0].fatigue = FATIGUE.exhausted; // Exhausted (9) → floor of Weary (7)
+      run.party[1].fatigue = FATIGUE_TIER_FLOORS[1]; // Worn (4) → Rested (0)
+    });
+    expect(ok).toBe(true);
     expect(run.party[0].fatigue).toBe(FATIGUE_TIER_FLOORS[2]); // 7
     expect(run.party[1].fatigue).toBe(0);
   });
 
-  it("a rest-kind night does not resolve here — the Deep Rest wipe lives in RunLoop.restNode", () => {
-    const run = newRun("nightly-rest");
-    run.party[0].fatigue = FATIGUE.exhausted; // 9
+  it("arriving at a rest node does not step fatigue — the Deep Rest (restNode) owns it", () => {
+    const run = newRun("arrival-rest");
+    const ok = arriveOnKind(run, "rest", () => {
+      run.party[0].fatigue = FATIGUE.exhausted; // 9
+    });
+    expect(ok).toBe(true);
+    expect(run.party[0].fatigue).toBe(FATIGUE.exhausted); // untouched on arrival
+  });
+
+  it("recordNight itself no longer touches fatigue (it moved to arrival)", () => {
+    const run = newRun("recordnight-inert");
+    run.party[0].fatigue = FATIGUE.exhausted;
     const node = currentNode(run);
-    recordNight(run, { nodeId: node.id, layer: node.layer, kind: "rest", goldEarned: 0, fallen: [] });
-    expect(run.party[0].fatigue).toBe(FATIGUE.exhausted); // untouched — recordNight skips rest (restNode does the wipe)
+    recordNight(run, { nodeId: node.id, layer: node.layer, kind: "combat", goldEarned: 0, fallen: [] });
+    expect(run.party[0].fatigue).toBe(FATIGUE.exhausted); // inert — the step-down is arrival's job now
   });
 });
 

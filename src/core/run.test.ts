@@ -255,35 +255,52 @@ describe("run — the overworld economy round-trips & replays deterministically 
   });
 });
 
-describe("run — the free nightly chip heal (D80)", () => {
+describe("run — the free nightly chip heal (D80 night-after-arrival)", () => {
   const CHIP = RECOVERY.nightlyChipHp;
-  const night = (run: RunState, kind: "combat" | "event" | "rest") =>
-    recordNight(run, { nodeId: run.mapNodeId, layer: currentNode(run).layer, kind, goldEarned: 0, fallen: [] });
 
-  it("chips alive wounded units back on an ordinary (non-rest) night, capped at max HP", () => {
+  /** A reachable **non-rest** node one hop from the current position (the arrival that chips). */
+  const reachableNonRest = (run: RunState) => reachableNodes(run).find((n) => n.kind !== "rest")!;
+
+  /** Walk forward until a **rest** node is one hop away; returns it (or null if the seed has none). */
+  function adjacentRest(run: RunState) {
+    for (let guard = 0; guard < 30; guard++) {
+      const rest = reachableNodes(run).find((n) => n.kind === "rest");
+      if (rest) return rest;
+      const next = reachableNodes(run);
+      if (!next.length) return null;
+      chooseNode(run, next[0].id);
+    }
+    return null;
+  }
+
+  it("chips alive wounded units on arrival at an ordinary (non-rest) node, capped at max HP", () => {
     const run = newRun("chip-ordinary");
     const [rook, vale] = run.party;
-    rook.hp = 10; // wounded (maxHp 30)
+    const target = reachableNonRest(run);
+    rook.hp = 10; // wounded (maxHp 30) — set just before the hop so only this arrival chips
     vale.hp = vale.maxHp - 1; // one below the cap → the chip must not overheal
-    night(run, "combat");
+    chooseNode(run, target.id); // arrival applies the nightly rest (D80)
     expect(rook.hp).toBe(10 + CHIP);
     expect(vale.hp).toBe(vale.maxHp); // capped, never above max
   });
 
-  it("does not chip on a rest night — the Clearing owns its own recovery", () => {
+  it("does not chip on arrival at a rest node — the Clearing owns its own recovery", () => {
     const run = newRun("chip-rest");
+    const rest = adjacentRest(run);
+    expect(rest).not.toBeNull(); // this seed has a forward Clearing
     const rook = run.party[0];
-    rook.hp = 10;
-    night(run, "rest");
-    expect(rook.hp).toBe(10); // untouched by the chip path
+    rook.hp = 10; // set just before hopping onto the Clearing
+    chooseNode(run, rest!.id);
+    expect(rook.hp).toBe(10); // untouched — restNode's Deep Rest reads how worn you arrived
   });
 
-  it("never revives a downed unit", () => {
+  it("never revives a downed unit on arrival", () => {
     const run = newRun("chip-downed");
     const [rook] = run.party;
+    const target = reachableNonRest(run);
     rook.hp = 0;
     rook.alive = false;
-    night(run, "event");
+    chooseNode(run, target.id);
     expect(rook.hp).toBe(0);
     expect(rook.alive).toBe(false);
   });

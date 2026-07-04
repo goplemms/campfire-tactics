@@ -316,7 +316,19 @@ export function chooseNode(run: RunState, id: string): MapNode {
   breakCamp(run); // depart the current node — the overworld clock ticks here (D46)
   run.mapNodeId = id;
   run.path.push(id);
-  return currentNode(run);
+  // D80 night-after-arrival: the free nightly rest lands on **arrival**, before the destination's
+  // encounter — you travel wounded and recover where you land. Each alive unit steps Fatigue down
+  // one tier and takes the small chip heal. A **rest** node (a Clearing) is the exception: its Deep
+  // Rest (RunLoop.restNode) reads *how worn you arrived* for the Tier-0 big-heal gate, so we must
+  // not pre-step its fatigue here — the Deep Rest is that node's rest.
+  const arrived = currentNode(run);
+  if (arrived.kind !== "rest") {
+    for (const u of run.party) {
+      u.fatigue = nightlyFatigue(u.fatigue, false);
+      if (u.alive) healUnit(u, RECOVERY.nightlyChipHp);
+    }
+  }
+  return arrived;
 }
 
 /**
@@ -394,16 +406,10 @@ export function isRunComplete(run: RunState): boolean {
 export function recordNight(run: RunState, record: Omit<EncounterRecord, "night">): boolean {
   run.history.push({ ...record, night: run.night });
   run.night += 1;
-  // D73/D80: a night passed — resolve fatigue and grant the free nightly chip heal. A **rest**
-  // node is the Deep Rest (its full wipe + big heal are handled in RunLoop.restNode); every
-  // other kind is an ordinary night — step Fatigue **down one tier** (nightlyFatigue) and chip
-  // a little HP back onto each alive unit (D80's free floor, RECOVERY.nightlyChipHp).
-  if (record.kind !== "rest") {
-    for (const u of run.party) {
-      u.fatigue = nightlyFatigue(u.fatigue, false);
-      if (u.alive) healUnit(u, RECOVERY.nightlyChipHp);
-    }
-  }
+  // D80 night-after-arrival: the free nightly rest (Fatigue step-down + chip heal) no longer fires
+  // here at encounter-resolution — it moved to **arrival** ({@link chooseNode}), so you rest at the
+  // destination *before* its encounter rather than after. A **rest** node's Deep Rest still lives in
+  // {@link "./runloop".RunLoop.restNode}; this seam only records the night + re-evaluates terminals.
   run.over = run.over || isRunOver(run);
   // Graded final terminal (D51): clearing the final node = **complete** only when
   // all required objectives were **met** (a `win`); a graded combat record carries

@@ -54,7 +54,7 @@ import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, ty
 import { rpPerNight, payUpkeep, restHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
-import { restoreFatigue, nightlyFatigue } from "./fatigue";
+import { restoreFatigue, nightlyFatigue, isFatigueTier0 } from "./fatigue";
 import { useOverworldSkill, scoutedTier, type ActionOpts, type CampSkillResult } from "./overworld-actions";
 import { gainRunGold } from "./economy";
 import { applyGearCondition } from "./gear-condition";
@@ -103,10 +103,16 @@ export interface CampResult {
 export interface RestResult {
   upkeep: UpkeepResult;
   rpAdded: number;
-  /** Units auto-triaged and the HP each gained. */
+  /** Units that cashed the **big heal** (Tier 0 at rest-time) and the HP each gained (D80). */
   healed: { unitId: string; hp: number }[];
+  /**
+   * Wounded units too worn for the big heal (not Tier 0 at rest-time) that got only the free
+   * nightly **chip** (D80) — they rested off their fatigue, not their wounds. The teaching signal
+   * for the Tier-0 gate.
+   */
+  chipHealed: { unitId: string; hp: number }[];
   moraleGained: number;
-  /** Units whose overworld fatigue was restored to Rested (D35 — rest's second job). */
+  /** Units whose overworld fatigue was wiped to Rested by the Deep Rest (D35/D80). */
   fatigueRestored: string[];
   /** Accumulated worn-gear debt the premium rest cleared in one swipe (D47). */
   debtCleared: number;
@@ -238,12 +244,12 @@ export class RunLoop {
   // --- Rest node (no battle, D23) -------------------------------------------
 
   /**
-   * Play a **rest** node: a night of recovery with **no fight** (D23). Pays
-   * Upkeep (a night still costs), banks the nightly Rest Points **plus a rest
-   * bonus**, **auto-triages** the most-wounded fighters down the RP pool, nudges
-   * morale up (D8), **restores every member's overworld fatigue** (rest's second
-   * job, D29/D35), ticks any dying clocks, and records the night. Returns a
-   * summary for the render's rest screen.
+   * Play a **rest** node — a Clearing's **Deep Rest** (D23/D80): a night of recovery with **no
+   * fight**. Pays Upkeep (a night still costs), banks the nightly Rest Points **plus a rest
+   * bonus**, wipes **every** member's fatigue to Rested (the Deep Rest, no opt-out), heals by the
+   * **Tier-0 gate** (the big heal for units at Tier 0 at rest-time; the too-worn get only the free
+   * nightly chip), nudges morale up (D8), clears worn-gear debt, ticks any dying clocks, and
+   * records the night. Returns a summary for the render's rest screen.
    */
   restNode(): RestResult {
     const policy = runDifficulty(this.run);
@@ -253,7 +259,16 @@ export class RunLoop {
     const rpAdded = rpPerNight(this.run.party) + REST.chunks * policy.rpPerChunk;
     this.run.rp += rpAdded;
 
-    // Rest's second job (D35): wipe overworld fatigue clean — the only restore.
+    // D80: the big heal is gated on **Tier 0 at rest-time** — snapshot eligibility *before* the
+    // Deep Rest wipes fatigue (else the wipe would make everyone trivially eligible). One check
+    // folds in both *how worn a unit arrived* and *what it did here* (heavy effort at the Clearing
+    // tips it out of Tier 0 → wipe only, no heal).
+    const bigHealEligible = new Set(
+      this.run.party.filter((u) => isFatigueTier0(u.fatigue)).map((u) => u.id),
+    );
+
+    // The Deep Rest (D80): wipe **every** member's overworld fatigue to Rested — no assignment,
+    // no opt-out (units already Rested are a no-op, not listed).
     const fatigueRestored: string[] = [];
     for (const u of this.run.party) {
       if (u.fatigue > 0) {
@@ -262,16 +277,25 @@ export class RunLoop {
       }
     }
 
-    // Auto rest-heal: mend the worst-off fighters first, spending the RP pool down.
+    // The heal, tiered by the gate (D80): a **Tier-0** unit cashes the **big heal** (rest-heal down
+    // the RP pool, worst-first); the too-worn (or an eligible unit once the pool's spent) get only
+    // the free nightly **chip** — they rested off their fatigue, not their wounds. So route hurt
+    // units to a Clearing *at Tier 0* to bank the full recovery ("rest the hurt, work the healthy").
     const healed: { unitId: string; hp: number }[] = [];
+    const chipHealed: { unitId: string; hp: number }[] = [];
     const wounded = woundedBySeverity(combatRoster(this.run));
     for (const u of wounded) {
-      if (this.run.rp < policy.rpPerChunk) break;
-      const res = restHeal(u, this.run.rp, policy);
-      if (res.rpSpent > 0) {
-        this.run.rp -= res.rpSpent;
-        healed.push({ unitId: u.id, hp: res.hpHealed });
+      if (bigHealEligible.has(u.id) && this.run.rp >= policy.rpPerChunk) {
+        const res = restHeal(u, this.run.rp, policy);
+        if (res.rpSpent > 0) {
+          this.run.rp -= res.rpSpent;
+          healed.push({ unitId: u.id, hp: res.hpHealed });
+          continue;
+        }
       }
+      // Not Tier 0, or the pool's spent: the free nightly chip — the floor at every node (D80).
+      const hp = healUnit(u, RECOVERY.nightlyChipHp);
+      if (hp > 0) chipHealed.push({ unitId: u.id, hp });
     }
 
     this.run.camp.morale += REST.moraleGain;
@@ -292,7 +316,7 @@ export class RunLoop {
       goldEarned: 0,
       fallen: lost.map((u) => u.id),
     });
-    const result: RestResult = { upkeep, rpAdded, healed, moraleGained: REST.moraleGain, fatigueRestored, debtCleared, dyingLost: lost.map((u) => u.id), over };
+    const result: RestResult = { upkeep, rpAdded, healed, chipHealed, moraleGained: REST.moraleGain, fatigueRestored, debtCleared, dyingLost: lost.map((u) => u.id), over };
     recordRestNode(this.log, this.run, result);
     return result;
   }

@@ -1593,8 +1593,10 @@ export class OverworldScene extends Phaser.Scene {
     const upkeepNote = res.upkeep.underfunded.length > 0 ? `Underfunded ${res.upkeep.underfunded.join(" + ")} — morale took a hit.` : `Upkeep paid (${res.upkeep.paid}g).`;
     lines.push(upkeepNote);
     lines.push(`Banked +${res.rpAdded} Rest Points; morale +${res.moraleGained}.`);
-    if (res.healed.length) lines.push(`Triaged: ${res.healed.map((h) => `${h.unitId} +${h.hp} HP`).join(", ")}.`);
-    else lines.push("No one needed triage — the party rested easy.");
+    if (res.healed.length) lines.push(`Deep rest: ${res.healed.map((h) => `${h.unitId} +${h.hp} HP`).join(", ")}.`);
+    else if (!res.chipHealed.length) lines.push("No one needed mending — the party rested easy.");
+    // The Tier-0 gate made legible (D80): the too-worn rested off their fatigue, not their wounds.
+    if (res.chipHealed.length) lines.push(`Too worn for a full recovery — ${res.chipHealed.map((h) => `${h.unitId} +${h.hp} HP`).join(", ")} (rested off fatigue only).`);
     if (res.fatigueRestored.length) lines.push(`Fatigue restored: ${res.fatigueRestored.join(", ")} back to Rested.`);
     else lines.push("Everyone was already rested.");
     // The premium tier clears accumulated worn-gear debt in one swipe (D47).

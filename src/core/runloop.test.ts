@@ -5,8 +5,8 @@ import { RunLoop, REST } from "./runloop";
 import { getNode } from "./overworld";
 import { cooldownRemaining } from "./overworld-actions";
 import { SURVEY } from "./jobs";
-import { computeUpkeep } from "./upkeep";
-import { FATIGUE } from "./fatigue";
+import { computeUpkeep, RECOVERY } from "./upkeep";
+import { FATIGUE, FATIGUE_TIER_FLOORS } from "./fatigue";
 
 function roster(): Unit[] {
   return [
@@ -133,24 +133,52 @@ describe("runloop — the two-tier recovery economy (D47)", () => {
     expect(run.camp.gold).toBeLessThan(computeUpkeep(run.party).total);
   });
 
-  it("the rest node is the premium tier: large heal + fatigue restore + debt clear (D47)", () => {
+  it("the rest node is the premium tier: big heal (Tier 0) + Deep Rest wipe + debt clear (D47/D80)", () => {
     const run = newRun("rest-premium");
     onRestNode(run);
     const loop = new RunLoop(run);
-    // Accrue worn-gear debt + fatigue, wound a fighter.
+    // Accrue worn-gear debt; wound a Tier-0 fighter (so it cashes the big heal); leave a
+    // teammate Exhausted to prove the Deep Rest wipes *everyone*, not just the healed.
     run.camp.gearWear = 3;
     run.camp.skippedUpkeep = ["repairs"];
     const rook = run.party.find((u) => u.id === "Rook")!;
     rook.hp = 4;
-    for (const u of run.party) u.fatigue = FATIGUE.exhausted;
+    rook.fatigue = 0; // Tier 0 at rest-time → eligible for the big heal
+    run.party.find((u) => u.id === "Vale")!.fatigue = FATIGUE.exhausted;
 
     const res = loop.restNode();
     expect(res.debtCleared).toBe(3);
     expect(run.camp.gearWear).toBe(0); // cleared in one swipe
     expect(run.camp.skippedUpkeep).toEqual([]); // the skip selection resets too
-    expect(res.fatigueRestored.length).toBeGreaterThan(0);
-    for (const u of run.party) expect(u.fatigue).toBe(0);
-    expect(rook.hp).toBeGreaterThan(4);
+    expect(res.fatigueRestored).toContain("Vale"); // the Deep Rest wiped the Exhausted teammate
+    for (const u of run.party) expect(u.fatigue).toBe(0); // no opt-out — everyone Deep Rests
+    // Rook took the *big* heal (RP-pool, not the +2 chip), so it lands in `healed`, not `chipHealed`.
+    expect(res.healed.map((h) => h.unitId)).toContain("Rook");
+    expect(res.chipHealed.map((h) => h.unitId)).not.toContain("Rook");
+    expect(rook.hp).toBeGreaterThan(4 + RECOVERY.nightlyChipHp); // more than a mere chip
+  });
+
+  it("the big heal is gated on Tier 0 at rest-time — the too-worn get only the chip (D80)", () => {
+    const run = newRun("rest-gate");
+    onRestNode(run);
+    const loop = new RunLoop(run);
+    const rook = run.party.find((u) => u.id === "Rook")!; // arrives fresh → big heal
+    const vale = run.party.find((u) => u.id === "Vale")!; // arrives worn → chip only
+    rook.hp = 4;
+    rook.fatigue = 0; // Tier 0
+    vale.hp = 4;
+    vale.fatigue = FATIGUE_TIER_FLOORS[2]; // Weary — out of Tier 0 at rest-time
+
+    const res = loop.restNode();
+
+    // Rook cashes the big heal; Vale is too worn and gets only the free nightly chip.
+    expect(res.healed.map((h) => h.unitId)).toEqual(["Rook"]);
+    expect(res.chipHealed.map((h) => h.unitId)).toEqual(["Vale"]);
+    expect(vale.hp).toBe(4 + RECOVERY.nightlyChipHp); // exactly the chip — rested off fatigue, not the wound
+    expect(rook.hp - 4).toBeGreaterThan(RECOVERY.nightlyChipHp); // strictly more than the chip
+    // Both still Deep Rest — the wipe is unconditional even when the heal isn't.
+    expect(rook.fatigue).toBe(0);
+    expect(vale.fatigue).toBe(0);
   });
 });
 

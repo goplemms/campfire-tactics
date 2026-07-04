@@ -898,6 +898,48 @@ export function eventForNode(seed: string | number, node: MapNode, tier: Influen
   return rng.pickWeighted(pool, (e) => eventWeightAt(e, tier));
 }
 
+// --- Early events: the arrival layer (D80) ----------------------------------
+
+/**
+ * The **early-event** tuning (D80) — a light event on the road *before* a node's main encounter,
+ * decoupled from node-kind. **Occasional, never every node** (the D16/D35 anti-agony stance).
+ * This first cut draws from the **random, node-agnostic pool** (reusing existing texture events);
+ * tailored node-bound events + the gated encounter-bypass are a follow-up.
+ */
+export const EARLY_EVENT = {
+  /** Per-node chance an early event fires on the road (illustrative — the structure is canon). */
+  chance: 0.3,
+  /**
+   * The random pool (D80): auto-resolving texture events reused as arrival-layer beats — the
+   * *pickpocket* (thief) and the standing-gated *patron* welcome. Interactive ones (a roadside
+   * market trade) and tailored node-bound events extend this later.
+   */
+  pool: ["thief", "patron-welcome"] as const,
+} as const;
+
+/**
+ * The **early event** a node hosts on the road (D80), or `null` for the common no-event case — a
+ * deterministic, occasional pick from the random pool off `streamFor(seed, "early:<nodeId>")` (a
+ * distinct stream from the node-event pick, so the two never collide). Skipped on **event** nodes
+ * (they already run an event as their main content) and on **authored/pinned** nodes (their beat
+ * stays hand-built). Standing-weighted like the node pick, so a gated boon (patron) only appears
+ * once the party's Influence has earned it.
+ */
+export function earlyEventForNode(run: RunState, node: MapNode): EventDef | null {
+  if (node.kind === "event" || node.eventId) return null;
+  const rng = streamFor(run.seed, `early:${node.id}`);
+  if (!rng.chance(EARLY_EVENT.chance)) return null; // the common case — a quiet road
+  const tier = influenceTier(run.overworld.influence);
+  const pool = EARLY_EVENT.pool.map(getEvent).filter((e) => eventWeightAt(e, tier) > 0);
+  if (pool.length === 0) return null;
+  return rng.pickWeighted(pool, (e) => eventWeightAt(e, tier));
+}
+
+/** Resolve an early event (D80) — applies its {@link EventDef.autoResolve} to the run and returns the outcome. */
+export function resolveEarlyEvent(run: RunState, node: MapNode, def: EventDef): EventOutcome {
+  return def.autoResolve(run, node);
+}
+
 // --- The interpreter: resolve / choices / choose (D4) -----------------------
 
 /**

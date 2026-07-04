@@ -70,6 +70,10 @@ import {
   // D77 — the equip surface verbs (pure core; the scene only calls + redraws)
   equip,
   unequip,
+  // D80 — early events (the arrival layer): a light on-the-road event before the main encounter
+  earlyEventForNode,
+  resolveEarlyEvent,
+  type EventDef,
   type RunState,
   type MapNode,
   type NodePreview,
@@ -505,7 +509,22 @@ export class OverworldScene extends Phaser.Scene {
     this.loop.choose(node.id);
     this.arrivalRecap = this.buildArrivalRecap(before, node);
     this.campNode = node;
-    this.renderCamp();
+    // D80 the arrival layer: a light early event may fire on the road before the prep camp.
+    const early = earlyEventForNode(this.run, node);
+    if (early) this.playEarlyEvent(node, early);
+    else this.renderCamp();
+  }
+
+  /**
+   * An **early event** on the road (D80) — the arrival layer: resolve the random-pool event, apply
+   * its outcome, and show a light "On the road" overlay before the prep camp. This first cut runs
+   * the auto-resolving pool (pickpocket / patron); interactive + tailored events extend it later.
+   */
+  private playEarlyEvent(node: MapNode, def: EventDef): void {
+    const outcome = resolveEarlyEvent(this.run, node, def);
+    // Colour the overlay by the swing: a windfall/patron reads good, a skim reads as a loss.
+    const good = (outcome.goldDelta ?? 0) >= 0 && def.standingBias !== "bane";
+    this.showOverlay(`On the road — ${def.name}`, outcome.summary, good, 520, 200, () => this.renderCamp());
   }
 
   /**

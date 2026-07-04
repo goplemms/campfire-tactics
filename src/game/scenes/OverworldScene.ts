@@ -1593,10 +1593,16 @@ export class OverworldScene extends Phaser.Scene {
   private renderActionCard(x: number, y: number, w: number, h: number, a: CampAction, packed = false): void {
     const enabled = a.enabled;
     const bg = this.add.rectangle(x, y, w, h, COLOR.surfaceRaised, enabled ? 1 : 0.5).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.border).setOrigin(0, 0.5).setDepth(10);
+    // Three aligned lanes: the verb (fixed name column), the actor (its own fixed column), then
+    // the cost components on the right — so name / unit / costs line up down every row.
+    const nameColW = OverworldScene.NAME_COL_W;
     const name = this.add.text(x + 12, y, a.name ?? a.label, { color: enabled ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
+    fitText(name, nameColW);
     this.campObjects.push(bg, name);
     if (a.actor) {
-      this.campObjects.push(this.add.text(x + 12 + Math.ceil(name.width) + 8, y, a.actor, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
+      const actor = this.add.text(x + 12 + nameColW + 10, y, a.actor, { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11);
+      fitText(actor, OverworldScene.ACTOR_COL_W);
+      this.campObjects.push(actor);
     }
     this.renderCostChips(x + w - 12, y, a.costs, enabled, packed);
     if (enabled) {
@@ -1612,6 +1618,10 @@ export class OverworldScene extends Phaser.Scene {
 
   /** Width of one fixed cost-component column (prototype) — sized to hold an "icon NN" chip. */
   private static readonly COST_SLOT_W = 40;
+  /** The fixed **verb** column width, so the actor lane starts at the same x down every row. */
+  private static readonly NAME_COL_W = 116;
+  /** The fixed **actor** column width (its lane, before the cost components). */
+  private static readonly ACTOR_COL_W = 44;
 
   /**
    * The **cost components** of an action row (prototype) — **strict, left-aligned columns**: each

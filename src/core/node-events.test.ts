@@ -24,6 +24,9 @@ import {
   NODE_EVENTS,
   tollFee,
   nodeFee,
+  EARLY_EVENT,
+  earlyEventForNode,
+  resolveEarlyEvent,
   type EventKind,
 } from "./node-events";
 
@@ -503,5 +506,64 @@ describe("node-events — the Node 2 traveler-gift overflows storage (D79)", () 
     expect(countOf(run.inventory, "iron-weapons")).toBe(1);
     expect(out.materials).toEqual(expect.arrayContaining(["trap-kit", "iron-weapons"]));
     expect(run.rp).toBeGreaterThan(rpBefore); // plus the RP payoff
+  });
+});
+
+// --- Early events: the arrival layer (D80) ----------------------------------
+
+describe("node-events — early events are an occasional, deterministic arrival layer (D80)", () => {
+  const combat = (id: string): MapNode => ({ id, layer: 2, index: 0, kind: "combat", edges: [] });
+
+  it("is a pure deterministic pick — stable for a seed + node", () => {
+    const a = earlyEventForNode(newRun("early-det"), combat("n2-0"));
+    const b = earlyEventForNode(newRun("early-det"), combat("n2-0"));
+    expect(a?.id ?? null).toBe(b?.id ?? null);
+  });
+
+  it("is occasional — some nodes carry one, most don't", () => {
+    let fired = 0;
+    const N = 120;
+    for (let i = 0; i < N; i++) {
+      if (earlyEventForNode(newRun("early-occ"), combat(`n-${i}`))) fired++;
+    }
+    expect(fired).toBeGreaterThan(0); // it does fire…
+    expect(fired).toBeLessThan(N); // …but never on every node (the anti-agony stance)
+  });
+
+  it("never stacks onto an event-kind or authored/pinned node", () => {
+    expect(earlyEventForNode(newRun("x"), { id: "n2-0", layer: 2, index: 0, kind: "event", edges: [] })).toBeNull();
+    expect(earlyEventForNode(newRun("x"), { id: "n2-0", layer: 2, index: 0, kind: "combat", edges: [], eventId: "thief" })).toBeNull();
+  });
+
+  it("draws only from the random pool, and every fired event resolves with a summary", () => {
+    for (let i = 0; i < 120; i++) {
+      const run = newRun(`early-pool-${i}`);
+      const node = combat(`n-${i}`);
+      const def = earlyEventForNode(run, node);
+      if (!def) continue;
+      expect(EARLY_EVENT.pool).toContain(def.id);
+      const out = resolveEarlyEvent(run, node, def);
+      expect(out.summary.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("at low standing the pool is thief-only; a favored caravan unlocks the patron", () => {
+    // Patron is gated to `favored` (Influence ≥ 15) — so at the default standing every early
+    // event is the thief, and the boon only joins the pool once standing has earned it (D62).
+    const lowKinds = new Set<string>();
+    const highKinds = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const node = combat(`n-${i}`);
+      const low = newRun(`early-low-${i}`);
+      const d1 = earlyEventForNode(low, node);
+      if (d1) lowKinds.add(d1.id);
+
+      const high = newRun(`early-high-${i}`);
+      high.overworld.influence = 20; // favored+
+      const d2 = earlyEventForNode(high, node);
+      if (d2) highKinds.add(d2.id);
+    }
+    expect([...lowKinds]).toEqual(["thief"]); // nothing but the pickpocket at low standing
+    expect(highKinds.has("patron-welcome")).toBe(true); // the boon appears once favored
   });
 });

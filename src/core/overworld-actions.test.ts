@@ -42,7 +42,7 @@ import { effectiveMarketTier, marketOpenedFlag, type MapNode } from "./overworld
 import type { SkillDef, OverworldActionEffect } from "./skills";
 import { previewNode } from "./intel";
 import { countOf } from "./inventory";
-import { FATIGUE } from "./fatigue";
+import { FATIGUE, FATIGUE_TIER_FLOORS } from "./fatigue";
 
 function roster(): Unit[] {
   return [
@@ -151,7 +151,7 @@ describe("overworld-actions — the loose fatigue guardrail (D35)", () => {
   it("an over-extended actor pays only the base fatigue — no surcharge (D73)", () => {
     const run = newRun("fatigue-surcharge");
     const actor = run.party[0];
-    actor.fatigue = FATIGUE.floor + 1; // over the floor (Weary)
+    actor.fatigue = FATIGUE_TIER_FLOORS[2]; // Weary (past the safe bands)
     const target = reachableNodes(run)[0];
     const before = actor.fatigue;
     const res = useOverworldSkill(run, actor, SURVEY, { targetNodeId: target.id });

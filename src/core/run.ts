@@ -395,9 +395,9 @@ export function recordNight(run: RunState, record: Omit<EncounterRecord, "night"
   run.history.push({ ...record, night: run.night });
   run.night += 1;
   // D73/D80: a night passed — resolve fatigue and grant the free nightly chip heal. A **rest**
-  // node is the improved rest (its full wipe + larger heal are handled in RunLoop.restNode); every
-  // other kind is an ordinary night — wipe the safe Worn band (carry the excess over the floor)
-  // and chip a little HP back onto each alive unit (D80's free floor, RECOVERY.nightlyChipHp).
+  // node is the Deep Rest (its full wipe + big heal are handled in RunLoop.restNode); every
+  // other kind is an ordinary night — step Fatigue **down one tier** (nightlyFatigue) and chip
+  // a little HP back onto each alive unit (D80's free floor, RECOVERY.nightlyChipHp).
   if (record.kind !== "rest") {
     for (const u of run.party) {
       u.fatigue = nightlyFatigue(u.fatigue, false);

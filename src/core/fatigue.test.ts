@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   FATIGUE,
+  FATIGUE_TIER_FLOORS,
   fatigueTier,
+  fatigueTierIndex,
+  isFatigueTier0,
   spendFatigue,
   restoreFatigue,
   nightlyFatigue,
@@ -28,45 +31,71 @@ function newRun(seed: string): RunState {
   return createRun(seed, { party: roster(), difficultyId: "normal", gold: 200 });
 }
 
-describe("fatigue — defaults & banding (D35/D73)", () => {
+describe("fatigue — defaults & banding (D35/D73/D80)", () => {
   it("a fresh unit starts Rested at 0", () => {
     const u = roster()[0];
     expect(u.fatigue).toBe(0);
     expect(fatigueTier(0)).toBe("Rested");
   });
 
-  it("the floor is a wide, invisible allowance — no consequence within it", () => {
-    // Every level within the allowance bands as Rested/Worn: no heal penalty, wiped by any night.
-    for (let level = 0; level <= FATIGUE.floor; level++) {
+  it("the narrowing bands map values to their named tier (Rested/Worn/Weary/Exhausted)", () => {
+    // Floors are [0,4,7,9,…]: Tier 0 = Rested, 1 = Worn, 2 = Weary, 3+ = Exhausted.
+    expect(fatigueTier(0)).toBe("Rested");
+    expect(fatigueTier(3)).toBe("Rested"); // top of Tier 0
+    expect(fatigueTier(4)).toBe("Worn"); // first step out
+    expect(fatigueTier(6)).toBe("Worn");
+    expect(fatigueTier(7)).toBe("Weary");
+    expect(fatigueTier(8)).toBe("Weary");
+    expect(fatigueTier(9)).toBe("Exhausted");
+    expect(fatigueTier(FATIGUE.ceiling)).toBe("Exhausted");
+  });
+
+  it("Rested & Worn are the wide, consequence-free bands — no heal penalty, cleared in one night", () => {
+    const wearyFloor = FATIGUE_TIER_FLOORS[2]; // 7 — the first tier that bites
+    for (let level = 0; level < wearyFloor; level++) {
       expect(restCostMultiplier(level)).toBe(1);
-      expect(nightlyFatigue(level, false)).toBe(0);
+      expect(nightlyFatigue(level, false)).toBe(0); // Tier 0/1 both step down to Rested
       expect(isExhausted(level)).toBe(false);
       expect(["Rested", "Worn"]).toContain(fatigueTier(level));
     }
   });
+
+  it("tier index & Tier-0 gate track the band floors", () => {
+    expect(fatigueTierIndex(0)).toBe(0);
+    expect(fatigueTierIndex(3)).toBe(0);
+    expect(fatigueTierIndex(4)).toBe(1);
+    expect(fatigueTierIndex(7)).toBe(2);
+    expect(fatigueTierIndex(9)).toBe(3);
+    // The big-heal gate: only within Tier 0 (a light ~0-effort action stays eligible).
+    expect(isFatigueTier0(0)).toBe(true);
+    expect(isFatigueTier0(3)).toBe(true);
+    expect(isFatigueTier0(4)).toBe(false); // one heavy skill (Survey ≈ 4) tips out of Tier 0
+  });
 });
 
-describe("fatigue — the bands bite past the floor (D73)", () => {
-  it("Weary: pricier rest-heal + carries the excess over the floor into the next day", () => {
-    const weary = FATIGUE.floor + 2;
+describe("fatigue — the bands bite past the safe tiers (D73/D80)", () => {
+  it("Weary: pricier rest-heal + an ordinary night only steps it down one tier", () => {
+    const weary = FATIGUE_TIER_FLOORS[2]; // 7 — Tier 2
     expect(fatigueTier(weary)).toBe("Weary");
     // recovers poorly — heal chunks cost more RP
     expect(restCostMultiplier(weary)).toBe(FATIGUE.wearyRestMult);
     expect(restCostMultiplier(weary)).toBeGreaterThan(1);
-    // an ordinary night carries the excess over the floor…
-    expect(nightlyFatigue(weary, false)).toBe(weary - FATIGUE.floor);
-    // …an improved rest (a clearing) wipes it.
+    // an ordinary night steps down to the floor of the tier below (Weary → Worn)…
+    expect(nightlyFatigue(weary, false)).toBe(FATIGUE_TIER_FLOORS[1]);
+    expect(fatigueTier(nightlyFatigue(weary, false))).toBe("Worn");
+    // …a Deep Rest (a clearing) wipes it fully.
     expect(nightlyFatigue(weary, true)).toBe(0);
     expect(isExhausted(weary)).toBe(false);
   });
 
-  it("Exhausted: heaviest heal cost, full carryover, and the band that reaches combat", () => {
-    const spent = FATIGUE.exhausted;
+  it("Exhausted: heaviest heal cost, the band that reaches combat, one tier shed per night", () => {
+    const spent = FATIGUE.exhausted; // 9 — Tier 3
     expect(fatigueTier(spent)).toBe("Exhausted");
     expect(restCostMultiplier(spent)).toBe(FATIGUE.exhaustedRestMult);
     expect(restCostMultiplier(spent)).toBeGreaterThan(FATIGUE.wearyRestMult);
     expect(isExhausted(spent)).toBe(true);
-    expect(nightlyFatigue(spent, false)).toBe(spent - FATIGUE.floor);
+    // steps down one tier (Exhausted → Weary floor), not a full wipe
+    expect(nightlyFatigue(spent, false)).toBe(FATIGUE_TIER_FLOORS[2]);
     expect(nightlyFatigue(spent, true)).toBe(0);
   });
 
@@ -77,7 +106,7 @@ describe("fatigue — the bands bite past the floor (D73)", () => {
     for (let day = 0; day < 3; day++) {
       const peak = spendFatigue(level, HEAVY); // the day's exertion
       peaks.push(peak);
-      level = nightlyFatigue(peak, false); // an ordinary night carries the excess
+      level = nightlyFatigue(peak, false); // an ordinary night steps down only one tier
     }
     // each un-rested day starts deeper, so the in-day peak climbs into Exhausted
     expect(peaks[0]).toBeLessThan(FATIGUE.exhausted);
@@ -158,23 +187,23 @@ describe("fatigue — combat reads it but never writes it (D29/D73)", () => {
   });
 });
 
-describe("fatigue — the nightly resolution (ordinary vs improved, D73)", () => {
-  it("an ordinary night (recordNight) carries a Weary unit's excess but wipes a Worn unit", () => {
+describe("fatigue — the nightly resolution (ordinary vs deep rest, D73/D80)", () => {
+  it("an ordinary night (recordNight) steps each unit down one tier", () => {
     const run = newRun("nightly-ordinary");
-    run.party[0].fatigue = FATIGUE.floor + 3; // Weary (9) → carries 3
-    run.party[1].fatigue = FATIGUE.floor - 1; // Worn (5) → wiped
+    run.party[0].fatigue = FATIGUE.exhausted; // Exhausted (9) → floor of Weary (7)
+    run.party[1].fatigue = FATIGUE_TIER_FLOORS[1]; // Worn (4) → Rested (0)
     const node = currentNode(run);
     recordNight(run, { nodeId: node.id, layer: node.layer, kind: "combat", goldEarned: 0, fallen: [] });
-    expect(run.party[0].fatigue).toBe(3);
+    expect(run.party[0].fatigue).toBe(FATIGUE_TIER_FLOORS[2]); // 7
     expect(run.party[1].fatigue).toBe(0);
   });
 
-  it("a rest-kind night does not resolve here — the improved wipe lives in RunLoop.restNode", () => {
+  it("a rest-kind night does not resolve here — the Deep Rest wipe lives in RunLoop.restNode", () => {
     const run = newRun("nightly-rest");
-    run.party[0].fatigue = FATIGUE.floor + 3; // 9
+    run.party[0].fatigue = FATIGUE.exhausted; // 9
     const node = currentNode(run);
     recordNight(run, { nodeId: node.id, layer: node.layer, kind: "rest", goldEarned: 0, fallen: [] });
-    expect(run.party[0].fatigue).toBe(9); // untouched — recordNight skips rest (restNode does the wipe)
+    expect(run.party[0].fatigue).toBe(FATIGUE.exhausted); // untouched — recordNight skips rest (restNode does the wipe)
   });
 });
 

@@ -11,7 +11,7 @@
 > ledger), **D46** (the node lifecycle — revised D80 into the night/day loop), **D47** (the
 > two-tier recovery economy, revised D80), **D48** (the route forecast + overworld fog),
 > **D80** (the night/day loop, **night-after-arrival**: **Camp** as react + prep beats,
-> `Set Out` / `Begin`; effort → **Weariness** recovery with the **Clearing**'s conditional big heal;
+> `Set Out` / `Begin`; effort → **Fatigue** recovery with the **Clearing**'s conditional big heal;
 > the **early-events** arrival layer).
 
 ## Description
@@ -79,7 +79,7 @@ the loop:
 | Kind | What happens |
 |---|---|
 | **combat** | A fight. Reuses `generation.ts` for the encounter and runs the full **Camp → Deployment → Battle → Resolution** flow. Difficulty scales with **map depth** (the node's layer is the encounter index). |
-| **rest** | **No fight** — the **Clearing** encounter (D80 naming). A recovery day: **every unit Deep Rests** (Weariness wiped, debt cleared), **plus a big heal for any unit at Tier 0** when the rest resolves; a small [morale](morale.md) uptick. **(D47, revised D80:** the free nightly **chip** heal is the lesser tier, at *every* node. See [Deep Rest's conditional big heal](#deep-rests-conditional-big-heal-d80).) |
+| **rest** | **No fight** — the **Clearing** encounter (D80 naming). A recovery day: **every unit Deep Rests** (Fatigue wiped, debt cleared), **plus a big heal for any unit at Tier 0** when the rest resolves; a small [morale](morale.md) uptick. **(D47, revised D80:** the free nightly **chip** heal is the lesser tier, at *every* node. See [Deep Rest's conditional big heal](#deep-rests-conditional-big-heal-d80).) |
 
 > **Updated by D35.** The Meta phase no longer lives on a separate screen: the overworld
 > is rendered as **one unified camp surface shown at every node** (below). The old
@@ -232,7 +232,7 @@ attach to the same seam. **One node = one node-step.**
 I chose). Node-selection between them gives each a distinct purpose, and Survey **must** happen
 before the route is picked — so the split earns its keep rather than duplicating a hub.
 
-**Where the rest sits (night-after-arrival).** The nightly heal + Weariness step-down (D47) lands at
+**Where the rest sits (night-after-arrival).** The nightly heal + Fatigue step-down (D47) lands at
 the **prep camp**, on arrival — so you journey wounded and recover at the destination. *(This
 retimes the shipped B1 chip from post-encounter to arrival.)*
 
@@ -296,13 +296,13 @@ is shown but **never summed into gold**, D34).
 
 > **Revised D80.** Recovery, unified under one meter. A unit's cycle goes to **an effort skill**
 > (*everything* is one — Survey, Train, Cook… — effort from **heavy** down to **negligible ~0**) or
-> to **Rest**. Effort accrues **Weariness** (banded tiers); rest sheds it. A **Clearing** offers a
+> to **Rest**. Effort accrues **Fatigue** (banded tiers); rest sheds it. A **Clearing** offers a
 > special **Deep Rest**. There is **no assignment board and no "arduous" category** — it's one
 > number, *effort*, in and out.
 
-**Effort → Weariness (the one meter).** Every skill and item interaction carries an **effort** cost
+**Effort → Fatigue (the one meter).** Every skill and item interaction carries an **effort** cost
 (a generalized `OverworldCost.fatigue`), from a heavy skill (Survey ≈ 4) to a **negligible** one
-(~0). Effort accrues **Weariness** in **narrowing banded tiers** — each tier's band tightens, so
+(~0). Effort accrues **Fatigue** in **narrowing banded tiers** — each tier's band tightens, so
 stacking heavy skills without a rest tips you further, faster:
 
 | Tier | Band (illustrative) | width |
@@ -312,7 +312,7 @@ stacking heavy skills without a rest tips you further, faster:
 | 2 — … | 7–9 | 2 |
 | … | narrowing | … |
 
-Weariness bites in combat at the deep end (the D73 Weary/Exhausted consequences); its main job is
+Fatigue bites in combat at the deep end (the D73 Weary/Exhausted consequences); its main job is
 gating recovery (below). *(Numbers illustrative — the **structure** is canon, the values tune in
 playtest.)*
 
@@ -320,8 +320,8 @@ playtest.)*
 
 | Rest | Where | What it does |
 |---|---|---|
-| **Nightly rest — the chip** | **every** node — free & automatic (shipped, `RECOVERY.nightlyChipHp`) | A **small** HP heal + steps Weariness **down to the floor of the tier below** (one tier per night). One heavy skill (→ Tier 1) is wiped by a single night; only **stacking** (→ Tier 2+) lingers. The heal is a free *floor* — small enough that real recovery still means routing to a Clearing (*dodge-every-fight* stays dead). |
-| **Deep Rest — the Clearing** | a **Clearing** node *provides* it (D23) | **Every unit Deep Rests** — Weariness wiped to 0, accumulated debt cleared — **plus a big heal, but only for a unit at Tier 0 when the rest resolves.** No assignment, no opt-out. |
+| **Nightly rest — the chip** | **every** node — free & automatic (shipped, `RECOVERY.nightlyChipHp`) | A **small** HP heal + steps Fatigue **down to the floor of the tier below** (one tier per night). One heavy skill (→ Tier 1) is wiped by a single night; only **stacking** (→ Tier 2+) lingers. The heal is a free *floor* — small enough that real recovery still means routing to a Clearing (*dodge-every-fight* stays dead). |
+| **Deep Rest — the Clearing** | a **Clearing** node *provides* it (D23) | **Every unit Deep Rests** — Fatigue wiped to 0, accumulated debt cleared — **plus a big heal, but only for a unit at Tier 0 when the rest resolves.** No assignment, no opt-out. |
 
 ### Deep Rest's conditional big heal (D80)
 
@@ -336,14 +336,14 @@ arrived* and *what you did here*:
 The **allocation puzzle** falls out of unit state, no board: you want your *hurt* units to reach a
 Clearing **at Tier 0** so they cash the big heal — so you spend effort on the *healthy* ones (whose
 heal would be wasted) and time heavy skills away from the rest. "Rest the hurt, work the healthy,"
-expressed entirely through Weariness.
+expressed entirely through Fatigue.
 
-**Surfacing it (D80).** Weariness is a decision driver now, so it reads **per unit**: a tier on the
+**Surfacing it (D80).** Fatigue is a decision driver now, so it reads **per unit**: a tier on the
 **party dossier** and the **camp roster readout**, plus — when you **hover a unit's ability** (Party
-tab) — the **projected Weariness delta** ("→ Weary") *before* you spend it, riding the existing
+tab) — the **projected Fatigue delta** ("→ Weary") *before* you spend it, riding the existing
 action-preview system. **Survey** lives in the **react camp's Intel drawer** (a row per reachable
 node); a surveyed node **tightens on the map** and carries a **scouted** marker so read/unread nodes
-are legible at a glance. *(Projecting a unit's Weariness onto the route forecast — "will it be Tier 0
+are legible at a glance. *(Projecting a unit's Fatigue onto the route forecast — "will it be Tier 0
 when it reaches the Clearing?" — is a later playtest-gated add.)*
 
 **Parked (open, D80):**

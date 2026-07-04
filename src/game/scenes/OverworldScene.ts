@@ -237,8 +237,13 @@ export class OverworldScene extends Phaser.Scene {
 
   private titleText!: Phaser.GameObjects.Text;
   private campText!: Phaser.GameObjects.Text;
-  private previewText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
+
+  // The pinned **intel card** (D80 map pass) — a structured readout of the last node the player
+  // hovered/clicked, held (sticky) until they inspect another. Its objects live on their own layer
+  // so it redraws without touching the board; `inspectedNodeId` is what it's showing.
+  private intelCardObjects: Phaser.GameObjects.GameObject[] = [];
+  private inspectedNodeId?: string;
 
   // The prep camp's "last night's rest" recap (D80): what the arrival rest healed / fatigue it
   // shed, captured by diffing the party across `loop.choose` in enterCamp. UI-only, per-arrival.
@@ -284,7 +289,6 @@ export class OverworldScene extends Phaser.Scene {
 
     this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
     this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
-    this.previewText = this.add.text(this.scale.width / 2, this.scale.height - 96, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body, align: "center", wordWrap: { width: 720 } }).setOrigin(0.5).setDepth(10);
     this.hintPanel = new HintPanel(this);
 
     this.refreshCampText();
@@ -419,7 +423,8 @@ export class OverworldScene extends Phaser.Scene {
     // crowd the hint bar (D58); the hint now carries action guidance only.
     this.drawMapLegend();
     this.setHint("Click a node to preview it; click again to camp there. Deeper nodes are fogged — raise intel to see farther.");
-    this.previewText.setText("");
+    // The pinned intel card, re-shown for the last-inspected node (sticky across map redraws).
+    this.renderIntelCardSticky();
   }
 
   /**
@@ -515,10 +520,95 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- Selection / preview (D24) --------------------------------------------
 
+  /** Inspect a node — pin its intel card (sticky until the player inspects another). */
   private showPreview(node: MapNode): void {
-    // Read at the floor + whatever Scout has bought for this node (D35).
+    this.inspectedNodeId = node.id;
+    this.renderIntelCard(node);
+  }
+
+  /** The pinned intel card, re-shown for the last-inspected node (or a prompt) on each map draw. */
+  private renderIntelCardSticky(): void {
+    const id = this.inspectedNodeId;
+    const node = id ? this.run.map.nodes[id] : undefined;
+    if (node && visibleNodes(this.run).some((n) => n.id === id)) this.renderIntelCard(node);
+    else this.renderIntelCardPrompt();
+  }
+
+  /** Geometry for the pinned card, above the legend. */
+  private intelCardGeom() {
+    const w = 680;
+    return { w, cx: this.scale.width / 2, top: this.scale.height - 150, left: this.scale.width / 2 - w / 2 + 18 };
+  }
+
+  private renderIntelCardPrompt(): void {
+    clearLayer(this.intelCardObjects);
+    const { w, cx, top } = this.intelCardGeom();
+    const h = 72;
+    this.intelCardObjects.push(
+      this.add.rectangle(cx, top + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9),
+      this.add.text(cx, top + h / 2, "Hover a node to inspect it — its kind, intel, and what waits on the road.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10),
+    );
+  }
+
+  /** A player-facing kind word + its ink for the intel card header. */
+  private nodeKindWord(node: MapNode): string {
+    if (node.layer === this.run.map.layers - 1) return "Final";
+    return node.kind === "combat" ? "Combat" : node.kind === "rest" ? "Clearing" : "Event";
+  }
+  private nodeKindInk(node: MapNode): string {
+    if (node.layer === this.run.map.layers - 1) return INK.gold;
+    return node.kind === "rest" ? INK.success : node.kind === "event" ? INK.gold : INK.danger;
+  }
+
+  /** The intel fields (label · value · ink) for a node's preview, gated by what the player knows. */
+  private intelFields(p: NodePreview): { label: string; value: string; ink: string }[] {
+    if (p.kind === "rest") return [{ label: "Recovery", value: p.restHint ?? "—", ink: INK.success }];
+    if (p.kind === "event") return [{ label: "Event", value: p.eventHint ?? "—", ink: INK.gold }];
+    const enemies = p.intel?.types ? p.intel.types.join(", ") + (p.intel.count !== undefined ? ` ×${p.intel.count}` : "") : "unknown";
+    return [
+      { label: "Type", value: p.encounterType ?? "unknown", ink: p.encounterType ? INK.secondary : INK.disabled },
+      { label: "Enemies", value: enemies, ink: p.intel?.types ? INK.secondary : INK.disabled },
+      { label: "Reward", value: p.rewardHint ?? "unknown", ink: p.rewardHint ? INK.gold : INK.disabled },
+    ];
+  }
+
+  /**
+   * The pinned **intel card** for a node (D80 map pass) — a structured readout in the card language:
+   * a kind + depth header (in the kind's colour), a row of label · value intel fields (gated by what
+   * you know — "unknown" reads dim), a "scouted" tag, and an "on the road" line when surveyed.
+   * Replaces the old run-on preview text; held sticky until the player inspects another node.
+   */
+  private renderIntelCard(node: MapNode): void {
+    clearLayer(this.intelCardObjects);
     const p = previewNode(this.run, node.id, scoutedTier(this.run.overworld, node.id));
-    this.previewText.setText(this.describePreview(p));
+    const { w, cx, top, left } = this.intelCardGeom();
+    const hasRoad = !!p.earlyEventHint;
+    const h = hasRoad ? 94 : 72;
+    this.intelCardObjects.push(this.add.rectangle(cx, top + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9));
+
+    // Header: kind + depth, in the kind's colour.
+    this.intelCardObjects.push(this.add.text(left, top + 18, `${this.nodeKindWord(node)}  ·  Layer ${node.layer}`, { color: this.nodeKindInk(node), fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(10));
+    // A "scouted" tag on the right when Survey sharpened this node (D80).
+    if (scoutedTier(this.run.overworld, node.id) > 0) {
+      this.intelCardObjects.push(this.add.text(cx + w / 2 - 18, top + 18, `${ICON.scouted.glyph} scouted`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(10));
+    }
+
+    // Intel fields, laid left→right: a muted label + a coloured value ("unknown" reads dim).
+    let fx = left;
+    const fieldY = top + 44;
+    for (const f of this.intelFields(p)) {
+      const lbl = this.add.text(fx, fieldY, f.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(10);
+      const val = this.add.text(fx + Math.ceil(lbl.width) + 6, fieldY, f.value, { color: f.ink, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(10);
+      this.intelCardObjects.push(lbl, val);
+      fx += Math.ceil(lbl.width) + 6 + Math.ceil(val.width) + 22;
+    }
+
+    // The early event on the road in, revealed by Survey (D80, effect B).
+    if (hasRoad) {
+      const ry = top + 72;
+      const lbl = this.add.text(left, ry, "ON THE ROAD", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(10);
+      this.intelCardObjects.push(lbl, this.add.text(left + Math.ceil(lbl.width) + 6, ry, p.earlyEventHint!, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - Math.ceil(lbl.width) - 44 } }).setOrigin(0, 0.5).setDepth(10));
+    }
   }
 
   /**
@@ -540,25 +630,11 @@ export class OverworldScene extends Phaser.Scene {
     return out;
   }
 
-  private describePreview(p: NodePreview): string {
-    // Survey's effect B (D80): a scouted node also tells you what's on the road in.
-    const road = p.earlyEventHint ? `   ·   on the road: ${p.earlyEventHint}` : "";
-    if (p.kind === "rest") return `Layer ${p.layer} · Rest — ${p.restHint}${road}`;
-    if (p.kind === "event") return `Layer ${p.layer} · Event — ${p.eventHint}`;
-    const parts = [`Layer ${p.layer} · Combat (${p.encounterType})`];
-    if (p.intel?.types) parts.push(`enemies: ${p.intel.types.join(", ")}`);
-    else parts.push("enemies: unknown");
-    if (p.intel?.count !== undefined) parts.push(`count: ${p.intel.count}`);
-    if (p.intel?.grantsVision) parts.push("starting vision");
-    parts.push(`reward: ${p.rewardHint ?? "unknown"}`);
-    return parts.join("   ·   ") + road;
-  }
-
   private clearMap(): void {
     clearLayer(this.nodeObjects);
     this.graph?.destroy();
     this.graph = undefined;
-    this.previewText.setText("");
+    clearLayer(this.intelCardObjects); // the pinned intel card is map-screen UI (its node id persists)
   }
 
   // --- The unified overworld camp (D35) -------------------------------------

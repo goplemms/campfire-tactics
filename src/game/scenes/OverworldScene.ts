@@ -1614,23 +1614,26 @@ export class OverworldScene extends Phaser.Scene {
   private static readonly COST_SLOT_W = 40;
 
   /**
-   * The **cost components** of an action row (prototype) — **strict columns**: each component owns a
-   * fixed slot in {@link COST_COMPONENTS} order (gold … cooldown, rightmost), so every row's gold
-   * chip sits at the same x, its fatigue chip at the same x, and so on — scan a column to see which
-   * actions cost that resource. Absent components leave their slot blank; an all-blank cost reads
-   * "free" at the right edge.
+   * The **cost components** of an action row (prototype) — **strict, left-aligned columns**: each
+   * component owns a fixed slot in {@link COST_COMPONENTS} order (gold first … cooldown last), and
+   * every chip **left-aligns** at its slot's x — so all the ¤ icons line up down the rows, all the ✦
+   * icons line up, and so on (the number, not the icon, varies). Scan a column to see which actions
+   * cost that resource. Absent components leave their slot blank; an all-blank cost reads "free".
    */
   private renderCostChips(rightX: number, y: number, costs: ActionCost | undefined, enabled: boolean, packed = false): void {
     const present = COST_COMPONENTS.filter((c) => costs?.[c.key] != null);
-    if (present.length === 0) {
-      this.campObjects.push(this.add.text(rightX, y, "free", { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(11));
-      return;
-    }
     const chipText = (c: (typeof COST_COMPONENTS)[number]) => {
       const v = costs![c.key]!;
       const n = c.key === "material" ? (v as { n: number }).n : (v as number);
       return `${c.glyph} ${n}`;
     };
+    const slotW = OverworldScene.COST_SLOT_W;
+    const areaLeft = rightX - COST_COMPONENTS.length * slotW;
+    if (present.length === 0) {
+      // "free" sits where the first (gold) column would start, so it reads in line with the icons.
+      this.campObjects.push(this.add.text(areaLeft, y, "free", { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
+      return;
+    }
     if (packed) {
       // Packed: chips hug the right edge (each row's costs clump together, no fixed columns).
       const gap = 12;
@@ -1640,13 +1643,10 @@ export class OverworldScene extends Phaser.Scene {
       texts.forEach((t, i) => { t.x = cx; cx += widths[i] + gap; this.campObjects.push(t); });
       return;
     }
-    const slotW = OverworldScene.COST_SLOT_W;
-    const last = COST_COMPONENTS.length - 1;
     COST_COMPONENTS.forEach((c, i) => {
       if (costs?.[c.key] == null) return;
-      // Each slot right-aligns at a fixed x, so the same component lines up down every row.
-      const slotRight = rightX - (last - i) * slotW;
-      this.campObjects.push(this.add.text(slotRight, y, chipText(c), { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(11));
+      // Left-align each chip at its fixed slot x, so the *icons* line up down every row.
+      this.campObjects.push(this.add.text(areaLeft + i * slotW, y, chipText(c), { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
     });
   }
 

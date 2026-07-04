@@ -63,3 +63,41 @@ describe("fog — visibility is an intel-scaled mask (D48)", () => {
     expect(a).toEqual(b);
   });
 });
+
+describe("fog — Survey's fog-reach lever (D80, effect C)", () => {
+  it("a surveyed node peers past the base fog along its branch, revealing new nodes", () => {
+    const run = newRun("fog-survey-c", 0); // tier 0 → the base horizon, so deep nodes fog
+    // Guard: this map is deep enough that some nodes are fogged at tier 0 (else nothing to reveal).
+    const baseVisible = new Set(visibleNodes(run).map((n) => n.id));
+    expect(baseVisible.size).toBeLessThan(run.map.order.length);
+
+    // Surveying a reachable node (marking it scouted) reveals its branch past the base fog — so at
+    // least one reachable choice, once scouted, widens the visible set.
+    let widened = false;
+    for (const r of reachableFrom(run.map, run.mapNodeId)) {
+      run.overworld.scouted = { [r.id]: 1 };
+      if (visibleNodes(run).length > baseVisible.size) {
+        widened = true;
+        break;
+      }
+    }
+    expect(widened).toBe(true);
+  });
+
+  it("reveals nothing extra when no node is scouted (the lever is off by default)", () => {
+    const run = newRun("fog-survey-off", 0);
+    const before = visibleNodes(run).length;
+    run.overworld.scouted = {}; // nothing surveyed
+    expect(visibleNodes(run).length).toBe(before);
+  });
+
+  it("stays a pure projection — a scouted mask is stable for a seed", () => {
+    const mk = () => {
+      const run = newRun("fog-survey-stable", 0);
+      const r = reachableFrom(run.map, run.mapNodeId)[0];
+      run.overworld.scouted = { [r.id]: 1 };
+      return visibleNodes(run).map((n) => n.id);
+    };
+    expect(mk()).toEqual(mk());
+  });
+});

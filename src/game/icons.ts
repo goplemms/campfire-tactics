@@ -46,6 +46,7 @@ export const ICON = {
   toll: { glyph: "╫", label: "toll", color: INK.gold },
   patron: { glyph: "♛", label: "patron", color: INK.gold },
   fogged: { glyph: "◌", label: "fogged", color: INK.disabled },
+  scouted: { glyph: "◉", label: "scouted", color: INK.gold },
 
   // --- Combat board + status (registry is complete; combat-view migration is a follow-up) ---
   charging: { glyph: "◷", label: "charging" },

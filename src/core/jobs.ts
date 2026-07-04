@@ -494,13 +494,16 @@ export const RECON: SkillDef = {
 export const SURVEY: SkillDef = {
   id: "survey",
   name: "Survey",
-  description: "Scout a node on the road ahead — sharpen its intel (raise its preview tier).",
+  description: "Scout a node on the road ahead — sharpen its intel and see a step past it.",
   phase: "meta",
   target: "camp",
   range: 0,
   spend: "act",
   unlockLevel: 2, // matches the Scout's L2 growth (was Recon's overworld face).
-  overworldCost: { cooldown: 2, fatigue: 1 },
+  // D80: a heavy effort skill (≈4 — one Survey tips a fresh Scout into the first fatigue band,
+  // wiped by the next arrival) on a short cooldown (1 — ready again by the next night). Numbers
+  // illustrative; the structure is canon.
+  overworldCost: { cooldown: 1, fatigue: 4 },
   effect: { kind: "survey", tierBump: 1 },
 };
 

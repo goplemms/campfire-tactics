@@ -178,7 +178,7 @@ describe("D58 — action-effect preview projection (golden)", () => {
         ],
         "survey": [
           {
-            "amount": 1,
+            "amount": 4,
             "good": false,
             "label": "Fatigue",
           },

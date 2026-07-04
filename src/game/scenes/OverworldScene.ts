@@ -447,6 +447,13 @@ export class OverworldScene extends Phaser.Scene {
       this.nodeObjects.push(tick);
     }
 
+    // Scouted marker (D80, Survey): a gold ◉ at top-left for a surveyed node — its intel is
+    // sharpened and you can see a step past it, so read/unread nodes are legible at a glance.
+    if (!state.visited && scoutedTier(this.run.overworld, node.id) > 0) {
+      const mark = this.add.text(pos.x - radius + 2, pos.y - radius + 2, ICON.scouted.glyph, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
+      this.nodeObjects.push(mark);
+    }
+
     if (state.reachable) {
       // Hover always previews; the commit click is gated so the read-only Route-map
       // review can show the same board without letting you re-choose a node (D58).

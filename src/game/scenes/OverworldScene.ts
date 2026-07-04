@@ -476,7 +476,9 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private describePreview(p: NodePreview): string {
-    if (p.kind === "rest") return `Layer ${p.layer} · Rest — ${p.restHint}`;
+    // Survey's effect B (D80): a scouted node also tells you what's on the road in.
+    const road = p.earlyEventHint ? `   ·   on the road: ${p.earlyEventHint}` : "";
+    if (p.kind === "rest") return `Layer ${p.layer} · Rest — ${p.restHint}${road}`;
     if (p.kind === "event") return `Layer ${p.layer} · Event — ${p.eventHint}`;
     const parts = [`Layer ${p.layer} · Combat (${p.encounterType})`];
     if (p.intel?.types) parts.push(`enemies: ${p.intel.types.join(", ")}`);
@@ -484,7 +486,7 @@ export class OverworldScene extends Phaser.Scene {
     if (p.intel?.count !== undefined) parts.push(`count: ${p.intel.count}`);
     if (p.intel?.grantsVision) parts.push("starting vision");
     parts.push(`reward: ${p.rewardHint ?? "unknown"}`);
-    return parts.join("   ·   ");
+    return parts.join("   ·   ") + road;
   }
 
   private clearMap(): void {

@@ -16,6 +16,7 @@ import {
 import type { AuthoredEncounter } from "./authored";
 import { createRun } from "./run";
 import { getNode } from "./overworld";
+import { earlyEventForNode } from "./node-events";
 
 const AMBUSH: AuthoredEncounter = {
   id: "amb",
@@ -148,6 +149,25 @@ describe("intel — node preview for the overworld (D24)", () => {
     const id = firstCombatNodeId(run);
     expect(previewNode(run, id).intel?.types).toBeUndefined();
     expect(previewNode(run, id, 1).intel?.types).toBeDefined(); // bumped to tier 1
+  });
+
+  it("Survey (effect B) reveals a scouted node's early event on the road (D80)", () => {
+    // Find a seed with a combat node that carries an early event (thief at low standing).
+    let run = runWith(0);
+    let node = run.map.order.map((id) => getNode(run.map, id)).find((n) => n.kind === "combat" && earlyEventForNode(run, n) !== null);
+    for (let i = 0; !node && i < 30; i++) {
+      run = createRun(`early-reveal-${i}`, { party: party(0), difficultyId: "normal", gold: 100 });
+      node = run.map.order.map((id) => getNode(run.map, id)).find((n) => n.kind === "combat" && earlyEventForNode(run, n) !== null);
+    }
+    expect(node).toBeDefined();
+
+    // Unscouted, the road is hidden; a scouted (extraTier > 0) preview reveals the early event.
+    expect(previewNode(run, node!.id).earlyEventHint).toBeUndefined();
+    expect(previewNode(run, node!.id, 1).earlyEventHint).toBeTruthy();
+
+    // A quiet combat node stays quiet even once scouted.
+    const quiet = run.map.order.map((id) => getNode(run.map, id)).find((n) => n.kind === "combat" && earlyEventForNode(run, n) === null);
+    if (quiet) expect(previewNode(run, quiet.id, 1).earlyEventHint).toBeUndefined();
   });
 
   it("reachable-node previews are stable for a seed", () => {

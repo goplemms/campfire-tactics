@@ -25,7 +25,7 @@ import type { Rng } from "./rng";
 import { bandFor } from "./num";
 import { getEnemyTemplate, type EncounterType } from "./generation";
 import { getNode, type NodeKind } from "./overworld";
-import { eventForNode } from "./node-events";
+import { eventForNode, earlyEventForNode } from "./node-events";
 import { influenceTier } from "./economy";
 import { runEncounter, type RunState } from "./run";
 import { isAuthoredEncounter, type EncounterSource } from "./staging";
@@ -176,6 +176,12 @@ export interface NodePreview {
   restHint?: string;
   /** Event only (M10): a hazard hint — the thief event skims the purse (D30). */
   eventHint?: string;
+  /**
+   * The node's **early event** on the road, revealed by **Survey** (D80, effect B) — surfaced only
+   * once the node is scouted (`extraTier > 0`). The scouting payoff: know what waits on the way in.
+   * Absent when unscouted or when the road is quiet.
+   */
+  earlyEventHint?: string;
 }
 
 /**
@@ -191,6 +197,12 @@ export interface NodePreview {
 export function previewNode(run: RunState, nodeId: string, extraTier = 0): NodePreview {
   const node = getNode(run.map, nodeId);
   const preview: NodePreview = { nodeId, kind: node.kind, layer: node.layer };
+  // Survey's effect B (D80): a **scouted** node (extraTier > 0) reveals its early event on the road
+  // ahead — the scouting payoff. Absent on a quiet road, or on event/pinned nodes (no early layer).
+  if (extraTier > 0) {
+    const early = earlyEventForNode(run, node);
+    if (early) preview.earlyEventHint = early.teaser;
+  }
   if (node.kind === "rest") {
     preview.restHint = "A safe camp — rest and recover. No fight.";
     return preview;

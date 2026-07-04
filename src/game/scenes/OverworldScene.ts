@@ -507,6 +507,25 @@ export class OverworldScene extends Phaser.Scene {
     this.previewText.setText(this.describePreview(p));
   }
 
+  /**
+   * Player-facing labels for the reachable survey targets (D80 polish) — a node's **kind + depth**
+   * (e.g. "Combat (L2)") instead of its raw internal id ("n2-2"). Two reachable nodes that share a
+   * label get a trailing "#2" so each row still points at a distinct node.
+   */
+  private reachableTargetLabels(nodes: { id: string; kind: MapNode["kind"]; layer: number }[]): Record<string, string> {
+    const word = (k: MapNode["kind"]) => (k === "combat" ? "Combat" : k === "rest" ? "Clearing" : "Event");
+    const base = (n: { kind: MapNode["kind"]; layer: number }) => `${word(n.kind)} (L${n.layer})`;
+    const counts: Record<string, number> = {};
+    for (const n of nodes) counts[base(n)] = (counts[base(n)] ?? 0) + 1;
+    const used: Record<string, number> = {};
+    const out: Record<string, string> = {};
+    for (const n of nodes) {
+      const b = base(n);
+      out[n.id] = counts[b] > 1 ? `${b} #${(used[b] = (used[b] ?? 0) + 1)}` : b;
+    }
+    return out;
+  }
+
   private describePreview(p: NodePreview): string {
     // Survey's effect B (D80): a scouted node also tells you what's on the road in.
     const road = p.earlyEventHint ? `   ·   on the road: ${p.earlyEventHint}` : "";
@@ -1921,9 +1940,12 @@ export class OverworldScene extends Phaser.Scene {
     const intel: CampAction[] = [];
     const survey = surveyor ? this.overworldNodeSkills(surveyor)[0] : undefined;
     if (surveyor && survey) {
-      for (const target of this.loop.reachable()) {
+      const reach = this.loop.reachable();
+      const targetLabels = this.reachableTargetLabels(reach);
+      for (const target of reach) {
         const refusal = this.refusal(survey, surveyor);
-        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${target.id}`, actor: surveyor.name, costs: this.actionCost(survey) });
+        const label = targetLabels[target.id];
+        intel.push({ label: `${survey.name} → ${label} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${label}`, actor: surveyor.name, costs: this.actionCost(survey) });
       }
     }
     y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());
@@ -1953,10 +1975,14 @@ export class OverworldScene extends Phaser.Scene {
     const lines: string[] = [];
     const rest = r.nearestRestSteps === undefined ? "fogged (raise intel)" : `${r.nearestRestSteps} step(s), purse ~${r.purseAtRest}g there`;
     lines.push(`Burn ${r.burnPerStep}g/step   ·   nearest rest: ${rest}`);
+    // Label each edge by its node's kind + depth ("Combat (L2)"), not the raw id ("n2-2"). The
+    // forecast's edges are the reachable set, all one layer ahead — so the layer is uniform (D80 polish).
+    const nextLayer = currentNode(this.run).layer + 1;
+    const labels = this.reachableTargetLabels(f.perEdge.map((e) => ({ id: e.nodeId, kind: e.kind, layer: nextLayer })));
     for (const e of f.perEdge) {
       const loot = e.lootBand.label ?? (e.lootBand.floor > 0 ? `≥${e.lootBand.floor}g` : "unknown");
       const ceil = e.purseAfter.ceiling === undefined ? "…" : `${e.purseAfter.ceiling}g`;
-      lines.push(`${e.warn ? "⚠ " : "  "}${e.nodeId} (${e.kind}): cost ${e.costKnown}g · loot ${loot} → purse ${e.purseAfter.floor}…${ceil}`);
+      lines.push(`${e.warn ? "⚠ " : "  "}${labels[e.nodeId]}: cost ${e.costKnown}g · loot ${loot} → purse ${e.purseAfter.floor}…${ceil}`);
     }
     return lines.join("\n");
   }

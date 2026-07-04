@@ -73,6 +73,7 @@ import {
   // D80 — early events (the arrival layer): a light on-the-road event before the main encounter
   earlyEventForNode,
   resolveEarlyEvent,
+  TRIAGE,
   type EventDef,
   type RunState,
   type MapNode,
@@ -127,7 +128,38 @@ interface CampAction {
   tip: string;
   /** The projected effect shown on hover (arrows on the readout tiles + off-panel area). */
   preview?: ActionPreview;
+  // --- Structured fields (the card-row prototype) — a verb split into readout-tile slots ---
+  /** The verb, on its own (e.g. "Cook Stew"). When set, the row renders as a cost-bearing card. */
+  name?: string;
+  /** Who performs it (e.g. "Pip"), shown as a muted second slot. */
+  actor?: string;
+  /** Structured cost, rendered as fixed-order icon+number **component chips** (D&D-style). */
+  costs?: ActionCost;
 }
+
+/**
+ * A structured action cost (the standardized **component** model) — each present field renders as a
+ * fixed-slot icon+number chip (gold / fatigue / material / cooldown), so costs read the same way and
+ * line up across every action row. Absent fields show nothing; an all-absent cost reads "free".
+ */
+interface ActionCost {
+  /** Purse gold spent. */
+  gold?: number;
+  /** Overworld effort accrued on the actor. */
+  fatigue?: number;
+  /** A consumed material (id → count), when an action spends stock. */
+  material?: { id: string; n: number };
+  /** Nights until it's ready again (a cooldown already ticking). */
+  cooldown?: number;
+}
+
+/** The cost **components** in fixed render order — the standardized slots every action reads through. */
+const COST_COMPONENTS: readonly { key: keyof ActionCost; glyph: string; ink: string; name: string }[] = [
+  { key: "gold", glyph: "¤", ink: INK.gold, name: "gold" },
+  { key: "fatigue", glyph: "✦", ink: INK.ember, name: "fatigue" },
+  { key: "material", glyph: "◆", ink: INK.cyan, name: "material" },
+  { key: "cooldown", glyph: "◷", ink: INK.muted, name: "cooldown (nights)" },
+];
 
 /**
  * The **overworld** screen — the seeded, branching run map (D22) and, since M8,
@@ -790,7 +822,7 @@ export class OverworldScene extends Phaser.Scene {
         const tip = capped
           ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Set Out.)`
           : `${skill.name} — ${skill.description}`;
-        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run) });
+        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run), name: skill.name, actor: u.name, costs: this.actionCost(skill) });
       }
     }
     const healer = this.triageActor();
@@ -799,9 +831,21 @@ export class OverworldScene extends Phaser.Scene {
       const tip = someoneWounded
         ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
         : "No wounded fighter to triage.";
-      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview: triageActionPreview() });
+      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview: triageActionPreview(), name: "Triage", actor: healer.name, costs: { fatigue: TRIAGE.fatigue } });
     }
     return out;
+  }
+
+  /** Structured cost of an overworld skill — the component slots (gold / fatigue / cooldown). */
+  private actionCost(skill: SkillDef): ActionCost {
+    const cost = overworldCostOf(skill);
+    const gold = resolveKnob(cost.gold, this.run);
+    const cd = cooldownRemaining(this.run.overworld, skill.id);
+    return {
+      gold: gold > 0 ? gold : undefined,
+      fatigue: (cost.fatigue ?? 0) > 0 ? cost.fatigue : undefined,
+      cooldown: cd > 0 ? cd : undefined,
+    };
   }
 
   /**
@@ -820,22 +864,23 @@ export class OverworldScene extends Phaser.Scene {
     if (!this.campDrawers.economy) return y;
     const childX = colX + 14;
     const childW = 346;
-    // The Banker's purse-finance verbs (D30) — directly under Economy (single nesting),
-    // tagged with the Banker who works them; shown only when one is aboard.
+    // The Banker's purse-finance verbs (D30) — directly under Economy (single nesting), tagged with
+    // the Banker who works them (the card grammar: verb · unit · cost components). Effects (interest,
+    // the borrow, protection) ride the hover EFFECT PREVIEW; the cost column carries the gold spend.
     if (banker) {
-      this.campButton(childX, y, childW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.", bankerInterestPreview(this.run));
+      this.renderActionCard(childX, y, childW, 26, { label: "Invest the Purse", name: "Invest the Purse", actor: banker.name, enabled: true, onClick: () => this.bankerInterest(), tip: "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.", preview: bankerInterestPreview(this.run), costs: {} });
       y += rowH;
-      this.campButton(childX, y, childW, 24, `Borrow 40g · ${banker.name}`, true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.", bankerBorrowPreview(40));
+      this.renderActionCard(childX, y, childW, 26, { label: "Borrow 40g", name: "Borrow 40g", actor: banker.name, enabled: true, onClick: () => this.bankerBorrow40(), tip: "Banker: overspend now; auto-repaid from incoming run gold.", preview: bankerBorrowPreview(40), costs: {} });
       y += rowH;
       const protCost = ECONOMY.banker.protectionCost;
-      this.campButton(childX, y, childW, 24, `Guard the Purse (${protCost}g) · ${banker.name}`, this.run.camp.gold >= protCost, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.", bankerProtectPreview());
+      this.renderActionCard(childX, y, childW, 26, { label: "Guard the Purse", name: "Guard the Purse", actor: banker.name, enabled: this.run.camp.gold >= protCost, onClick: () => this.bankerProtect(), tip: "Banker: blunt a thief's skim — battle thief and event node alike.", preview: bankerProtectPreview(), costs: { gold: protCost } });
       y += rowH;
     }
     // The Noble's Patronize (D62) — gold → Influence, once per node; tagged with the Noble.
     if (noble) {
       const patronCost = ECONOMY.noble.patronizeCost;
       const patronTip = `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`;
-      this.campButton(childX, y, childW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence) · ${noble.name}`, this.run.camp.gold >= patronCost, () => this.patronize(), patronTip, patronizePreview());
+      this.renderActionCard(childX, y, childW, 26, { label: "Patronize", name: "Patronize", actor: noble.name, enabled: this.run.camp.gold >= patronCost, onClick: () => this.patronize(), tip: patronTip, preview: patronizePreview(), costs: { gold: patronCost } });
       y += rowH;
     }
     // The Banker's purse-state, surfaced in context (D58).
@@ -875,7 +920,10 @@ export class OverworldScene extends Phaser.Scene {
     y = this.drawerHeader(colX, y, 360, id, label, actions.length, rerender);
     if (this.campDrawers[id] ?? true) {
       for (const a of actions) {
-        this.campButton(colX + 14, y, 346, 24, a.label, a.enabled, a.onClick, a.tip, a.preview);
+        // The card-row prototype: a structured action (with a `name`) renders as a cost-bearing
+        // card; the rest stay simple buttons until the new grammar is proven and rolled out.
+        if (a.name) this.renderActionCard(colX + 14, y, 346, 26, a);
+        else this.campButton(colX + 14, y, 346, 24, a.label, a.enabled, a.onClick, a.tip, a.preview);
         y += rowH;
       }
     }
@@ -1537,6 +1585,82 @@ export class OverworldScene extends Phaser.Scene {
     this.campObjects.push(bg, label);
   }
 
+  /**
+   * A **cost-bearing action card** (the readout-tile grammar applied to a verb, prototype): the
+   * action **name** (bright) + **actor** (muted) on the left, its compact **cost** right-aligned
+   * and coloured by kind — so a row answers "what does this cost and who does it" at a glance, the
+   * way the state tiles answer "what is this figure". Hover still drives the richer EFFECT PREVIEW.
+   */
+  private renderActionCard(x: number, y: number, w: number, h: number, a: CampAction, packed = false): void {
+    const enabled = a.enabled;
+    const bg = this.add.rectangle(x, y, w, h, COLOR.surfaceRaised, enabled ? 1 : 0.5).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.border).setOrigin(0, 0.5).setDepth(10);
+    // Three aligned lanes: the verb (fixed name column), the actor (its own fixed column), then
+    // the cost components on the right — so name / unit / costs line up down every row.
+    const nameColW = OverworldScene.NAME_COL_W;
+    const name = this.add.text(x + 12, y, a.name ?? a.label, { color: enabled ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
+    fitText(name, nameColW);
+    this.campObjects.push(bg, name);
+    if (a.actor) {
+      const actor = this.add.text(x + 12 + nameColW + 10, y, a.actor, { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11);
+      fitText(actor, OverworldScene.ACTOR_COL_W);
+      this.campObjects.push(actor);
+    }
+    this.renderCostChips(x + w - 12, y, a.costs, enabled, packed);
+    if (enabled) {
+      bg.setInteractive({ useHandCursor: true });
+      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, a.onClick);
+    }
+    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hintPanel.setText(a.tip));
+    if (a.preview) {
+      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showActionPreview(a.preview!));
+      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showActionPreview(null));
+    }
+  }
+
+  /** Width of one fixed cost-component column (prototype) — sized to hold an "icon NN" chip. */
+  private static readonly COST_SLOT_W = 40;
+  /** The fixed **verb** column width, so the actor lane starts at the same x down every row. */
+  private static readonly NAME_COL_W = 116;
+  /** The fixed **actor** column width (its lane, before the cost components). */
+  private static readonly ACTOR_COL_W = 44;
+
+  /**
+   * The **cost components** of an action row (prototype) — **strict, left-aligned columns**: each
+   * component owns a fixed slot in {@link COST_COMPONENTS} order (gold first … cooldown last), and
+   * every chip **left-aligns** at its slot's x — so all the ¤ icons line up down the rows, all the ✦
+   * icons line up, and so on (the number, not the icon, varies). Scan a column to see which actions
+   * cost that resource. Absent components leave their slot blank; an all-blank cost reads "free".
+   */
+  private renderCostChips(rightX: number, y: number, costs: ActionCost | undefined, enabled: boolean, packed = false): void {
+    const present = COST_COMPONENTS.filter((c) => costs?.[c.key] != null);
+    const chipText = (c: (typeof COST_COMPONENTS)[number]) => {
+      const v = costs![c.key]!;
+      const n = c.key === "material" ? (v as { n: number }).n : (v as number);
+      return `${c.glyph} ${n}`;
+    };
+    const slotW = OverworldScene.COST_SLOT_W;
+    const areaLeft = rightX - COST_COMPONENTS.length * slotW;
+    if (present.length === 0) {
+      // "free" sits where the first (gold) column would start, so it reads in line with the icons.
+      this.campObjects.push(this.add.text(areaLeft, y, "free", { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
+      return;
+    }
+    if (packed) {
+      // Packed: chips hug the right edge (each row's costs clump together, no fixed columns).
+      const gap = 12;
+      const texts = present.map((c) => this.add.text(0, y, chipText(c), { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
+      const widths = texts.map((t) => Math.ceil(t.width));
+      let cx = rightX - (widths.reduce((s, w) => s + w, 0) + gap * (texts.length - 1));
+      texts.forEach((t, i) => { t.x = cx; cx += widths[i] + gap; this.campObjects.push(t); });
+      return;
+    }
+    COST_COMPONENTS.forEach((c, i) => {
+      if (costs?.[c.key] == null) return;
+      // Left-align each chip at its fixed slot x, so the *icons* line up down every row.
+      this.campObjects.push(this.add.text(areaLeft + i * slotW, y, chipText(c), { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
+    });
+  }
+
   private clearCamp(): void {
     // Stop any in-flight readout pulses before their tiles are destroyed below.
     this.readoutTweens.forEach((t) => t.remove());
@@ -1799,7 +1923,7 @@ export class OverworldScene extends Phaser.Scene {
     if (surveyor && survey) {
       for (const target of this.loop.reachable()) {
         const refusal = this.refusal(survey, surveyor);
-        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run) });
+        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${target.id}`, actor: surveyor.name, costs: this.actionCost(survey) });
       }
     }
     y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());

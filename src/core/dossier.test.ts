@@ -129,17 +129,22 @@ describe("projectDossier (party dossier projection — pure read)", () => {
   });
 
   it("projects an effort skill's fatigue delta before you spend it (D80)", () => {
-    // A Scout at L2 has Survey unlocked (effort +1). Its projection reads off the unit's
-    // *current* fatigue: from Tier 0 (3) one point tips into Worn.
-    const worn = mkUnit("vale", { jobId: "scout", jobLevels: { scout: { level: 2, xp: 0 } }, fatigue: 3 });
-    const survey = projectDossier(mkRun([worn])).members[0].actives.find((a) => a.name === "Survey")!;
-    expect(survey.effort).toBe(1);
-    expect(survey.fatigueProjection).toBe("Effort +1 → Worn");
+    // A Scout at L2 has Survey unlocked (a heavy effort +4). Its projection reads off the unit's
+    // *current* fatigue: from fresh (0) the +4 tips Rested → Worn.
+    const fresh = mkUnit("vale", { jobId: "scout", jobLevels: { scout: { level: 2, xp: 0 } }, fatigue: 0 });
+    const survey = projectDossier(mkRun([fresh])).members[0].actives.find((a) => a.name === "Survey")!;
+    expect(survey.effort).toBe(4);
+    expect(survey.fatigueProjection).toBe("Effort +4 → Worn");
 
-    // From fully Rested (0), the same +1 doesn't cross a tier — it says so.
-    const fresh = mkUnit("nyx", { jobId: "scout", jobLevels: { scout: { level: 2, xp: 0 } }, fatigue: 0 });
-    const surveyFresh = projectDossier(mkRun([fresh])).members[0].actives.find((a) => a.name === "Survey")!;
-    expect(surveyFresh.fatigueProjection).toBe("Effort +1 (stays Rested)");
+    // Stacked onto an already-worn unit (3), the same +4 tips further — into Weary.
+    const worn = mkUnit("nyx", { jobId: "scout", jobLevels: { scout: { level: 2, xp: 0 } }, fatigue: 3 });
+    const surveyWorn = projectDossier(mkRun([worn])).members[0].actives.find((a) => a.name === "Survey")!;
+    expect(surveyWorn.fatigueProjection).toBe("Effort +4 → Weary");
+
+    // Deep in the open Exhausted band, +4 doesn't cross a tier — it says so.
+    const spent = mkUnit("dax", { jobId: "scout", jobLevels: { scout: { level: 2, xp: 0 } }, fatigue: 10 });
+    const surveySpent = projectDossier(mkRun([spent])).members[0].actives.find((a) => a.name === "Survey")!;
+    expect(surveySpent.fatigueProjection).toBe("Effort +4 (stays Exhausted)");
 
     // A locked / zero-effort ability carries no projection.
     const locked = projectDossier(mkRun([mkUnit("lox", { jobId: "scout" })])).members[0].actives.find((a) => a.name === "Survey")!;

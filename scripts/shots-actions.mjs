@@ -71,6 +71,37 @@ const STEPS = [
       s.showSurvey();
     `),
   },
+  // A synthetic demo of the cost-component columns with VARIED costs (the real drawers only carry
+  // gold today), so the strict-column alignment across component types is actually visible.
+  {
+    name: "04-cost-columns",
+    minMs: 500,
+    eval: wrap(`
+      s.enterCamp(s.loop.reachable()[0]);
+      if (s.overlay) { s.overlay.forEach((o)=>o.destroy&&o.destroy()); s.overlay.length = 0; }
+      s.campObjects.forEach((o)=>o.destroy&&o.destroy()); s.campObjects.length = 0;
+      const noop = () => {};
+      const A = (name, actor, costs) => ({ name, actor, enabled: true, onClick: noop, tip: "", costs });
+      const rows = [
+        A("Cook Stew", "Pip", { gold: 5 }),
+        A("Forage", "Vale", { fatigue: 2 }),
+        A("Survey", "Rook", { fatigue: 4, cooldown: 1 }),
+        A("Provision", "Pip", { gold: 8, material: { id: "ration", n: 2 } }),
+        A("Guard the Purse", "Coin", { gold: 30, cooldown: 2 }),
+        A("Patronize", "Nyx", { gold: 30, fatigue: 1, material: { id: "gift", n: 1 }, cooldown: 3 }),
+        A("Find Trade", "Coin", {}),
+      ];
+      const H = (x, t) => s.campObjects.push(s.add.text(x, 96, t, { color: "#d6c98a", fontFamily: "monospace", fontSize: "13px" }).setDepth(11));
+      // Left block: strict columns (gold · fatigue · material · cooldown line up down the rows).
+      H(24, "STRICT COLUMNS");
+      let y = 132;
+      for (const r of rows) { s.renderActionCard(24, y, 380, 26, r, false); y += 34; }
+      // Right block: packed (chips hug the right edge of each row).
+      H(416, "PACKED (right-anchored)");
+      y = 132;
+      for (const r of rows) { s.renderActionCard(416, y, 380, 26, r, true); y += 34; }
+    `),
+  },
 ];
 
 async function ensureChrome() {

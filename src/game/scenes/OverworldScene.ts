@@ -1590,7 +1590,7 @@ export class OverworldScene extends Phaser.Scene {
    * and coloured by kind — so a row answers "what does this cost and who does it" at a glance, the
    * way the state tiles answer "what is this figure". Hover still drives the richer EFFECT PREVIEW.
    */
-  private renderActionCard(x: number, y: number, w: number, h: number, a: CampAction): void {
+  private renderActionCard(x: number, y: number, w: number, h: number, a: CampAction, packed = false): void {
     const enabled = a.enabled;
     const bg = this.add.rectangle(x, y, w, h, COLOR.surfaceRaised, enabled ? 1 : 0.5).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.border).setOrigin(0, 0.5).setDepth(10);
     const name = this.add.text(x + 12, y, a.name ?? a.label, { color: enabled ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
@@ -1598,7 +1598,7 @@ export class OverworldScene extends Phaser.Scene {
     if (a.actor) {
       this.campObjects.push(this.add.text(x + 12 + Math.ceil(name.width) + 8, y, a.actor, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
     }
-    this.renderCostChips(x + w - 12, y, a.costs, enabled);
+    this.renderCostChips(x + w - 12, y, a.costs, enabled, packed);
     if (enabled) {
       bg.setInteractive({ useHandCursor: true });
       bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, a.onClick);
@@ -1610,30 +1610,43 @@ export class OverworldScene extends Phaser.Scene {
     }
   }
 
+  /** Width of one fixed cost-component column (prototype) — sized to hold an "icon NN" chip. */
+  private static readonly COST_SLOT_W = 40;
+
   /**
-   * The **cost components** of an action row (prototype): each present cost type renders as an
-   * `icon N` chip in the fixed {@link COST_COMPONENTS} order, coloured by type, and the group is
-   * right-anchored at `rightX` so costs read the same way down the column. No cost reads "free".
+   * The **cost components** of an action row (prototype) — **strict columns**: each component owns a
+   * fixed slot in {@link COST_COMPONENTS} order (gold … cooldown, rightmost), so every row's gold
+   * chip sits at the same x, its fatigue chip at the same x, and so on — scan a column to see which
+   * actions cost that resource. Absent components leave their slot blank; an all-blank cost reads
+   * "free" at the right edge.
    */
-  private renderCostChips(rightX: number, y: number, costs: ActionCost | undefined, enabled: boolean): void {
+  private renderCostChips(rightX: number, y: number, costs: ActionCost | undefined, enabled: boolean, packed = false): void {
     const present = COST_COMPONENTS.filter((c) => costs?.[c.key] != null);
     if (present.length === 0) {
       this.campObjects.push(this.add.text(rightX, y, "free", { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(11));
       return;
     }
-    const gap = 12;
-    const chips = present.map((c) => {
+    const chipText = (c: (typeof COST_COMPONENTS)[number]) => {
       const v = costs![c.key]!;
       const n = c.key === "material" ? (v as { n: number }).n : (v as number);
-      return this.add.text(0, y, `${c.glyph} ${n}`, { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11);
-    });
-    const widths = chips.map((t) => Math.ceil(t.width));
-    const total = widths.reduce((s, w) => s + w, 0) + gap * (chips.length - 1);
-    let cx = rightX - total;
-    chips.forEach((t, i) => {
-      t.x = cx;
-      cx += widths[i] + gap;
-      this.campObjects.push(t);
+      return `${c.glyph} ${n}`;
+    };
+    if (packed) {
+      // Packed: chips hug the right edge (each row's costs clump together, no fixed columns).
+      const gap = 12;
+      const texts = present.map((c) => this.add.text(0, y, chipText(c), { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
+      const widths = texts.map((t) => Math.ceil(t.width));
+      let cx = rightX - (widths.reduce((s, w) => s + w, 0) + gap * (texts.length - 1));
+      texts.forEach((t, i) => { t.x = cx; cx += widths[i] + gap; this.campObjects.push(t); });
+      return;
+    }
+    const slotW = OverworldScene.COST_SLOT_W;
+    const last = COST_COMPONENTS.length - 1;
+    COST_COMPONENTS.forEach((c, i) => {
+      if (costs?.[c.key] == null) return;
+      // Each slot right-aligns at a fixed x, so the same component lines up down every row.
+      const slotRight = rightX - (last - i) * slotW;
+      this.campObjects.push(this.add.text(slotRight, y, chipText(c), { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(11));
     });
   }
 

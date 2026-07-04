@@ -864,22 +864,23 @@ export class OverworldScene extends Phaser.Scene {
     if (!this.campDrawers.economy) return y;
     const childX = colX + 14;
     const childW = 346;
-    // The Banker's purse-finance verbs (D30) — directly under Economy (single nesting),
-    // tagged with the Banker who works them; shown only when one is aboard.
+    // The Banker's purse-finance verbs (D30) — directly under Economy (single nesting), tagged with
+    // the Banker who works them (the card grammar: verb · unit · cost components). Effects (interest,
+    // the borrow, protection) ride the hover EFFECT PREVIEW; the cost column carries the gold spend.
     if (banker) {
-      this.campButton(childX, y, childW, 24, `Invest the Purse · ${banker.name}`, true, () => this.bankerInterest(), "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.", bankerInterestPreview(this.run));
+      this.renderActionCard(childX, y, childW, 26, { label: "Invest the Purse", name: "Invest the Purse", actor: banker.name, enabled: true, onClick: () => this.bankerInterest(), tip: "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.", preview: bankerInterestPreview(this.run), costs: {} });
       y += rowH;
-      this.campButton(childX, y, childW, 24, `Borrow 40g · ${banker.name}`, true, () => this.bankerBorrow40(), "Banker: overspend now; auto-repaid from incoming run gold.", bankerBorrowPreview(40));
+      this.renderActionCard(childX, y, childW, 26, { label: "Borrow 40g", name: "Borrow 40g", actor: banker.name, enabled: true, onClick: () => this.bankerBorrow40(), tip: "Banker: overspend now; auto-repaid from incoming run gold.", preview: bankerBorrowPreview(40), costs: {} });
       y += rowH;
       const protCost = ECONOMY.banker.protectionCost;
-      this.campButton(childX, y, childW, 24, `Guard the Purse (${protCost}g) · ${banker.name}`, this.run.camp.gold >= protCost, () => this.bankerProtect(), "Banker: blunt a thief's skim — battle thief and event node alike.", bankerProtectPreview());
+      this.renderActionCard(childX, y, childW, 26, { label: "Guard the Purse", name: "Guard the Purse", actor: banker.name, enabled: this.run.camp.gold >= protCost, onClick: () => this.bankerProtect(), tip: "Banker: blunt a thief's skim — battle thief and event node alike.", preview: bankerProtectPreview(), costs: { gold: protCost } });
       y += rowH;
     }
     // The Noble's Patronize (D62) — gold → Influence, once per node; tagged with the Noble.
     if (noble) {
       const patronCost = ECONOMY.noble.patronizeCost;
       const patronTip = `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`;
-      this.campButton(childX, y, childW, 24, `Patronize (${patronCost}g → +${ECONOMY.noble.patronizeYield} Influence) · ${noble.name}`, this.run.camp.gold >= patronCost, () => this.patronize(), patronTip, patronizePreview());
+      this.renderActionCard(childX, y, childW, 26, { label: "Patronize", name: "Patronize", actor: noble.name, enabled: this.run.camp.gold >= patronCost, onClick: () => this.patronize(), tip: patronTip, preview: patronizePreview(), costs: { gold: patronCost } });
       y += rowH;
     }
     // The Banker's purse-state, surfaced in context (D58).
@@ -1922,7 +1923,7 @@ export class OverworldScene extends Phaser.Scene {
     if (surveyor && survey) {
       for (const target of this.loop.reachable()) {
         const refusal = this.refusal(survey, surveyor);
-        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run) });
+        intel.push({ label: `${survey.name} → ${target.id} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${target.id}`, actor: surveyor.name, costs: this.actionCost(survey) });
       }
     }
     y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());

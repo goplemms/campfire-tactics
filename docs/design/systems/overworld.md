@@ -346,6 +346,17 @@ node); a surveyed node **tightens on the map** and carries a **scouted** marker 
 are legible at a glance. *(Projecting a unit's Fatigue onto the route forecast — "will it be Tier 0
 when it reaches the Clearing?" — is a later playtest-gated add.)*
 
+**Action readouts — the cost-component grammar (D80 UI pass).** Camp action rows read as
+**cost-bearing cards** in the state-tile language: three aligned lanes — the **verb**, the acting
+**unit**, and the **cost components**. Cost is a standardized, D&D-style component line — **gold ·
+fatigue · material · cooldown** — each type an `icon N` chip in a fixed, **left-aligned column**, so
+the icons line up down the rows and you can scan a column ("which actions cost fatigue?"). Hover
+still drives the richer projected-delta EFFECT PREVIEW. *(Future: an **expandable detail drawer** per
+card — a segmented **fatigue bar** (Rested·Worn·Weary·Exhausted bands) showing the unit's current
+fill + the projected "→ Weary" delta, and a **material breakdown** naming the items an ability
+consumes. The data exists — `FATIGUE_TIER_FLOORS`/`fatigueTierIndex`, `spendFatigue`, the material
+cost — it's a visualization, gated on having a real material-costing ability to design against.)*
+
 **Parked (open, D80):**
 - **The effort-skill roster** — **Survey** is the first real one (≈4 effort, cooldown 1, Scout-only,
   L2). **Prestige** (exists, D65) and a net-new **Train** are the next, designed separately.

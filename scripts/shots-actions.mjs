@@ -34,10 +34,11 @@ const wrap = (body) => `(()=>{const s=${S};${body}})()`;
 // a Banker (purse verbs) and a Noble (Patronize) — then wound them so Triage shows too.
 const SETUP = wrap(`
   const p = s.run.party;
-  if (p[0]) { p[0].jobId = "survivalist"; p[0].heldJobs = ["survivalist"]; }
-  if (p[1]) { p[1].jobId = "cook"; p[1].heldJobs = ["cook"]; }
-  if (p[2]) { p[2].jobId = "banker"; p[2].heldJobs = ["banker"]; }
-  if (p[3]) { p[3].jobId = "noble"; p[3].heldJobs = ["noble"]; }
+  const setJob = (u, job, lvl) => { if (!u) return; u.primaryJob = job; u.jobId = job; u.heldJobs = [job]; if (lvl) u.jobLevels = { [job]: { level: lvl, xp: 0 } }; };
+  setJob(p[0], "scout", 2); // Survey (Intel drawer)
+  setJob(p[1], "cook");     // Cook Stew / Feast
+  setJob(p[2], "banker");   // Economy: Invest / Borrow / Guard
+  setJob(p[3], "noble");    // Economy: Patronize
   p.forEach((u,i)=>{ u.hp = Math.max(1, Math.floor(u.maxHp*0.5)); u.fatigue = 3+i; });
   s.run.overworld.influence = 10;
 `);

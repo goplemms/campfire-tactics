@@ -353,8 +353,8 @@ export class RunLoop {
     }
     if (hpHealed > 0) healed.push({ unitId: target.id, hp: hpHealed });
 
-    // D73: an in-place rest is an ordinary night — wipe Worn, carry the Weary/Exhausted excess.
-    // (The heal above already paid any Weary RP surcharge; the carryover follows it.)
+    // D73/D80: an in-place rest is an ordinary night — step Fatigue down one tier (nightlyFatigue).
+    // (The heal above already paid any Weary RP surcharge; the step-down follows it.)
     for (const u of this.run.party) u.fatigue = nightlyFatigue(u.fatigue, false);
 
     // Each rest is a full node-step (D47): Break Camp ticks the spine + accrues

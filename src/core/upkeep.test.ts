@@ -3,7 +3,7 @@ import { createUnit, type Unit } from "./units";
 import type { JobId } from "./jobs";
 import { createCamp } from "./camp";
 import { DIFFICULTIES } from "./mortality";
-import { FATIGUE } from "./fatigue";
+import { FATIGUE, FATIGUE_TIER_FLOORS } from "./fatigue";
 import {
   computeUpkeep,
   payUpkeep,
@@ -166,7 +166,7 @@ describe("recovery — Rest Points (D9)", () => {
     };
     const budget = policy.rpPerChunk * 6;
     const rested = restHeal(mk(0), budget, policy);
-    const weary = restHeal(mk(FATIGUE.floor + 2), budget, policy); // Weary → ×1.5
+    const weary = restHeal(mk(FATIGUE_TIER_FLOORS[2]), budget, policy); // Weary → ×1.5
     const exhausted = restHeal(mk(FATIGUE.exhausted), budget, policy); // Exhausted → ×2
     // Same wound + same RP budget: the more tired, the dearer each chunk → fewer chunks healed.
     expect(weary.chunks).toBeLessThan(rested.chunks);

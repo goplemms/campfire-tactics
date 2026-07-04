@@ -153,6 +153,18 @@ interface ActionCost {
   cooldown?: number;
 }
 
+/** One caravan-state readout tile — a labelled, semantically-coloured figure with day-move data. */
+interface ReadoutTile {
+  stat: ReadoutStat;
+  label: string;
+  value: string;
+  ink: string;
+  cur: number;
+  base: number;
+  last: number;
+  betterHigher?: boolean;
+}
+
 /** The cost **components** in fixed render order — the standardized slots every action reads through. */
 const COST_COMPONENTS: readonly { key: keyof ActionCost; glyph: string; ink: string; name: string }[] = [
   { key: "gold", glyph: "¤", ink: INK.gold, name: "gold" },
@@ -346,9 +358,11 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.nodeObjects);
     this.graph?.destroy();
     this.nodePos.clear();
-    // The map has no action column to sit beside, so the caravan's figures ride the
-    // top HUD line here (the camp/survey beats move them into a right-side panel).
-    this.campText.setVisible(true);
+    // The map has no action column to sit beside, so the caravan's figures ride a horizontal
+    // **readout-tile row** across the top here — the same tile grammar the camp/survey beats
+    // stack on the right, so the two surfaces speak one visual language (was an inline HUD line).
+    this.campText.setVisible(false);
+    this.renderMapReadouts(40);
 
     const map = this.run.map;
     const reachableIds = new Set(this.loop.reachable().map((n) => n.id));
@@ -957,13 +971,13 @@ export class OverworldScene extends Phaser.Scene {
    * (purse gold, morale by tier, storage ember when full, upkeep as a warm drain). Pure
    * figures come from {@link "../../core".campReadout}. Returns the `y` past the stack.
    */
-  private renderReadouts(x: number, top: number, cardW: number): number {
+  /**
+   * Build the caravan-state readout tiles (shared by the camp stack and the map row). Anchors the
+   * "this day" comparison to the node we're camped at — a value's colour tracks its **net move since
+   * we made camp here** — re-baselining (and suppressing the change-pulse) on a fresh node/scene.
+   */
+  private buildReadoutTiles(): { tiles: ReadoutTile[]; fresh: boolean } {
     const r = campReadout(this.run);
-
-    // Anchor the "this day" comparison to the node we're camped at: the baseline is the
-    // figures on arrival, so a value's colour tracks its **net move since we made camp
-    // here**. A fresh node (or a fresh scene, e.g. back from battle) re-baselines and
-    // suppresses the change-pulse for that first paint.
     const nodeKey = this.run.mapNodeId;
     const fresh = this.readoutBaselineKey !== nodeKey;
     if (fresh) {
@@ -973,13 +987,10 @@ export class OverworldScene extends Phaser.Scene {
     }
     const base = this.readoutBaseline!;
     const last = this.readoutLast!;
-
     const moraleInk = r.moraleTier === "Low" ? INK.ember : r.moraleTier === "Neutral" ? INK.secondary : INK.success;
-    // `betterHigher` gives each value a *sense* — so a rising purse reads good (green) but a
-    // rising Upkeep reads bad (red). Storage carries no valence (loot vs. headroom cut both
-    // ways), so it keeps its semantic ink and never day-colours. `ink` is the unchanged look.
-    type Tile = { stat: ReadoutStat; label: string; value: string; ink: string; cur: number; base: number; last: number; betterHigher?: boolean };
-    const tiles: Tile[] = [
+    // `betterHigher` gives each value a *sense* — a rising purse reads good (green), a rising Upkeep
+    // bad (red). Storage carries no valence (loot vs. headroom), so it keeps its semantic ink.
+    const tiles: ReadoutTile[] = [
       { stat: "purse", label: "Purse", value: `${r.purse}g`, ink: INK.gold, cur: r.purse, base: base.purse, last: last.purse, betterHigher: true },
       { stat: "morale", label: "Morale", value: `${r.moraleTier} (${r.morale >= 0 ? "+" : ""}${r.morale})`, ink: moraleInk, cur: r.morale, base: base.morale, last: last.morale, betterHigher: true },
       { stat: "storage", label: "Storage", value: `${r.storageUsed}/${r.storageCap}`, ink: r.storageUsed >= r.storageCap ? INK.ember : INK.secondary, cur: r.storageUsed, base: base.storageUsed, last: last.storageUsed },
@@ -987,18 +998,27 @@ export class OverworldScene extends Phaser.Scene {
       { stat: "rp", label: "Rest Pts", value: `${r.rp}`, ink: INK.secondary, cur: r.rp, base: base.rp, last: last.rp, betterHigher: true },
       { stat: "upkeep", label: "Upkeep", value: `${r.upkeep}g/night`, ink: INK.ember, cur: r.upkeep, base: base.upkeep, last: last.upkeep, betterHigher: false },
     ];
+    this.readoutLast = r;
+    return { tiles, fresh };
+  }
+
+  /** A tile's **day-move colour**: green if it moved the good way since we made camp, red if bad. */
+  private tileInk(t: ReadoutTile): string {
+    if (t.betterHigher !== undefined && t.cur !== t.base) {
+      return (t.cur > t.base) === t.betterHigher ? INK.success : INK.danger;
+    }
+    return t.ink;
+  }
+
+  private renderReadouts(x: number, top: number, cardW: number): number {
+    const { tiles, fresh } = this.buildReadoutTiles();
     const cardH = 34;
     const pitch = 42;
     const tileCy: Partial<Record<ReadoutStat, number>> = {};
     tiles.forEach((t, i) => {
       const cy = top + i * pitch;
       tileCy[t.stat] = cy;
-      // Day-move colour: green when the value improved since we made camp, red when it
-      // worsened — otherwise the tile's unchanged semantic ink.
-      let ink = t.ink;
-      if (t.betterHigher !== undefined && t.cur !== t.base) {
-        ink = (t.cur > t.base) === t.betterHigher ? INK.success : INK.danger;
-      }
+      const ink = this.tileInk(t);
       const rect = this.add.rectangle(x, cy, cardW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0.5).setDepth(10);
       const label = this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11);
       // 14px (one above the 13px body label) — the value stays the figure without towering
@@ -1009,7 +1029,6 @@ export class OverworldScene extends Phaser.Scene {
       // effect landing) — but not on the first paint of a camp (`fresh`), which isn't a move.
       if (!fresh && t.cur !== t.last && !isScreenshotMode()) this.pulseTile(x, cy, cardW, cardH, value);
     });
-    this.readoutLast = r;
 
     // The off-panel preview area, below the tiles: a header + a rule, then the transient
     // body ({@link showActionPreview}) — arrows land in the gutter beside the tiles above,
@@ -1025,6 +1044,31 @@ export class OverworldScene extends Phaser.Scene {
     this.showActionPreview(null);
 
     return tilesBottom;
+  }
+
+  /**
+   * The caravan-state readouts as a **horizontal tile row** across the map's top (D80 consistency):
+   * the same label+value cards the camp/survey beats stack on the right, laid out in a row since the
+   * map has no side panel. Values day-colour like the camp tiles. Drawn onto `nodeObjects` so it
+   * clears with the map. Replaces the old inline "Purse … · Upkeep …" HUD text line.
+   */
+  private renderMapReadouts(top: number): void {
+    const { tiles } = this.buildReadoutTiles();
+    const marginX = 80;
+    const usableW = this.scale.width - 2 * marginX;
+    const gap = 8;
+    const tileW = (usableW - gap * (tiles.length - 1)) / tiles.length;
+    const cardH = 40;
+    tiles.forEach((t, i) => {
+      const x = marginX + i * (tileW + gap);
+      const cx = x + tileW / 2;
+      const rect = this.add.rectangle(x, top, tileW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0).setDepth(6);
+      const label = this.add.text(cx, top + 12, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(7);
+      const value = this.add.text(cx, top + 28, t.value, { color: this.tileInk(t), fontFamily: FONT.family, fontSize: "14px" }).setOrigin(0.5).setDepth(7);
+      fitText(label, tileW - 10);
+      fitText(value, tileW - 10);
+      this.nodeObjects.push(rect, label, value);
+    });
   }
 
   /**

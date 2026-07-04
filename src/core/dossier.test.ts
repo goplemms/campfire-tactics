@@ -128,6 +128,25 @@ describe("projectDossier (party dossier projection — pure read)", () => {
     expect(recon.lockedUntil).toBeUndefined();
   });
 
+  it("projects an effort skill's fatigue delta before you spend it (D80)", () => {
+    // A Scout at L2 has Survey unlocked (effort +1). Its projection reads off the unit's
+    // *current* fatigue: from Tier 0 (3) one point tips into Worn.
+    const worn = mkUnit("vale", { jobId: "scout", jobLevels: { scout: { level: 2, xp: 0 } }, fatigue: 3 });
+    const survey = projectDossier(mkRun([worn])).members[0].actives.find((a) => a.name === "Survey")!;
+    expect(survey.effort).toBe(1);
+    expect(survey.fatigueProjection).toBe("Effort +1 → Worn");
+
+    // From fully Rested (0), the same +1 doesn't cross a tier — it says so.
+    const fresh = mkUnit("nyx", { jobId: "scout", jobLevels: { scout: { level: 2, xp: 0 } }, fatigue: 0 });
+    const surveyFresh = projectDossier(mkRun([fresh])).members[0].actives.find((a) => a.name === "Survey")!;
+    expect(surveyFresh.fatigueProjection).toBe("Effort +1 (stays Rested)");
+
+    // A locked / zero-effort ability carries no projection.
+    const locked = projectDossier(mkRun([mkUnit("lox", { jobId: "scout" })])).members[0].actives.find((a) => a.name === "Survey")!;
+    expect(locked.fatigueProjection).toBeUndefined();
+    expect(locked.effort).toBeUndefined();
+  });
+
   it("a jobless unit has no abilities", () => {
     const row = projectDossier(mkRun([mkUnit("nobody")])).members[0];
     expect(row.actives).toEqual([]);

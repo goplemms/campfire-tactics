@@ -7,6 +7,7 @@ import { cooldownRemaining } from "./overworld-actions";
 import { SURVEY } from "./jobs";
 import { computeUpkeep, RECOVERY } from "./upkeep";
 import { FATIGUE, FATIGUE_TIER_FLOORS } from "./fatigue";
+import { bypassXp } from "./node-events";
 
 function roster(): Unit[] {
   return [
@@ -55,6 +56,33 @@ describe("runloop — rest node recovery (D23)", () => {
     expect(rook.hp).toBeGreaterThan(4);
     // The night is recorded as a rest node.
     expect(last(run.history)).toMatchObject({ nodeId: restNode.id, kind: "rest", goldEarned: 0 });
+  });
+
+  it("bypassEncounter skips the fight — keeps EXP, forgoes loot, records the night (D80)", () => {
+    const run = newRun("bypass");
+    const node = run.map.order
+      .map((id) => getNode(run.map, id))
+      .find((n) => n.kind === "combat" && n.layer > 0 && n.layer < run.map.layers - 1)!;
+    expect(node).toBeDefined();
+    run.mapNodeId = node.id;
+    run.path.push(node.id);
+    const loop = new RunLoop(run);
+
+    const goldBefore = run.camp.gold;
+    const nightBefore = run.night;
+    const xpBefore = run.party.map((u) => u.xp);
+
+    const res = loop.bypassEncounter();
+
+    // No fight was staged; each combatant kept the flat bypass EXP.
+    expect(loop.battle).toBeUndefined();
+    expect(res.xpEach).toBe(bypassXp(node));
+    run.party.forEach((u, i) => expect(u.xp).toBeGreaterThan(xpBefore[i]));
+    // The loot is forgone — bypassEncounter grants no purse gold…
+    expect(run.camp.gold).toBe(goldBefore);
+    // …and the night advanced + recorded with no gold earned.
+    expect(run.night).toBe(nightBefore + 1);
+    expect(last(run.history)).toMatchObject({ nodeId: node.id, kind: "combat", goldEarned: 0 });
   });
 
   it("a rest node never stages or resolves a fight", () => {

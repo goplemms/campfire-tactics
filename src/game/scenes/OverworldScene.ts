@@ -518,15 +518,68 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * An **early event** on the road (D80) — the arrival layer: resolve the random-pool event, apply
-   * its outcome, and show a light "On the road" overlay before the prep camp. This first cut runs
-   * the auto-resolving pool (pickpocket / patron); interactive + tailored events extend it later.
+   * An **early event** on the road (D80) — the arrival layer, before the prep camp. An **interactive**
+   * (tailored) event offers a choice — e.g. a gated encounter-bypass; the **auto-resolving** random
+   * pool (pickpocket / patron) just applies and reports.
    */
   private playEarlyEvent(node: MapNode, def: EventDef): void {
+    const choices = def.choices?.(this.run, node) ?? [];
+    if (choices.length > 0) {
+      this.renderEarlyChoicePanel(node, def, choices);
+      return;
+    }
     const outcome = resolveEarlyEvent(this.run, node, def);
     // Colour the overlay by the swing: a windfall/patron reads good, a skim reads as a loss.
     const good = (outcome.goldDelta ?? 0) >= 0 && def.standingBias !== "bane";
     this.showOverlay(`On the road — ${def.name}`, outcome.summary, good, 520, 200, () => this.renderCamp());
+  }
+
+  /**
+   * A **tailored** early event's choice panel (D80) — e.g. The Blockade: buy passage (a gated
+   * bypass) or cut through. Taking a **bypass** short-circuits the encounter (RunLoop.bypassEncounter:
+   * keep HP + EXP, forgo loot) and returns to the react camp; any other choice proceeds to the prep
+   * camp and the normal fight.
+   */
+  private renderEarlyChoicePanel(node: MapNode, def: EventDef, choices: EventChoice[]): void {
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2 - 20;
+    const w = 560;
+    const h = 130 + choices.length * 40;
+
+    clearLayer(this.overlay);
+    this.overlay.push(
+      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.info).setDepth(20),
+      this.add.text(cx, cy - h / 2 + 24, `On the road — ${def.name}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
+      this.add.text(cx, cy - h / 2 + 58, `${def.teaser}\nPurse ${this.run.camp.gold}g`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(21),
+    );
+
+    let y = cy - h / 2 + 110;
+    for (const choice of choices) {
+      const enabled = choice.available;
+      const fill = enabled ? COLOR.btnFill : COLOR.surfaceRaised;
+      const stroke = enabled ? COLOR.info : COLOR.border;
+      const btn = this.makeTextButton(cx, y, 380, 30, choice.label, fill, stroke, () => {
+        if (enabled) this.onEarlyChoice(node, def, choice);
+      });
+      if (choice.detail) btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(choice.detail!));
+      this.overlay.push(btn);
+      y += 40;
+    }
+  }
+
+  /** Apply a tailored early-event choice: a bypass short-circuits to the react camp; otherwise fight on. */
+  private onEarlyChoice(node: MapNode, def: EventDef, choice: EventChoice): void {
+    const out: EventOutcome = def.choose!(this.run, node, choice.id);
+    this.refreshCampText();
+    clearLayer(this.overlay);
+    if (out.bypass) {
+      const res = this.loop.bypassEncounter();
+      const lines = [out.summary, "", `Each fighter keeps ${res.xpEach} EXP — the plunder's forgone.`, `Purse now ${this.run.camp.gold}g.`];
+      this.showOverlay(`On the road — ${def.name}`, lines.join("\n"), true, 540, 230, () => this.afterNode());
+    } else {
+      // Declined the bypass — the encounter stands; drop into the prep camp and Begin as normal.
+      this.renderCamp();
+    }
   }
 
   /**

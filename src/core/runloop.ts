@@ -40,6 +40,7 @@ import type { EncounterResult } from "./authored";
 import {
   trackCombatXp,
   commitCombatXp,
+  grantXp,
   type CombatXpTally,
 } from "./leveling";
 import type { MapNode } from "./overworld";
@@ -71,6 +72,7 @@ import {
   resolveEvent,
   eventChoices,
   chooseEventOption,
+  bypassXp,
   type EventDef,
   type EventOutcome,
   type EventChoice,
@@ -117,6 +119,16 @@ export interface RestResult {
   /** Accumulated worn-gear debt the premium rest cleared in one swipe (D47). */
   debtCleared: number;
   dyingLost: string[];
+  over: boolean;
+}
+
+/** What an {@link RunLoop.bypassEncounter} produced (D80) — the EXP kept, levels gained, terminal. */
+export interface BypassResult {
+  /** Flat bypass EXP granted to each combatant (below a won fight). */
+  xpEach: number;
+  /** Per-unit character levels gained from the bypass EXP. */
+  levels: Record<string, number>;
+  /** The run terminal after recording the night. */
   over: boolean;
 }
 
@@ -592,6 +604,34 @@ export class RunLoop {
     const out: ResolveResult = { winner, result, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, levels, over };
     recordEncounter(this.log, this.run, out);
     return out;
+  }
+
+  /**
+   * **Bypass** the current node's encounter (D80) — the paid short-circuit of a tailored bypass
+   * event. No fight: each combatant keeps a flat {@link "./node-events".bypassXp} (below a won
+   * fight, so bypassing is never strictly better), the **loot is forgone** (`goldEarned: 0`), and
+   * the night is recorded as a player resolution so the run advances. The passage fee was already
+   * spent by the event's `choose` handler; this is the run-flow half. Never offered on the final
+   * node (guarded in {@link "./node-events".tailoredEarlyEventFor}), so it can't end the run.
+   */
+  bypassEncounter(): BypassResult {
+    const node = currentNode(this.run);
+    const xpEach = bypassXp(node);
+    const levels: Record<string, number> = {};
+    for (const u of combatRoster(this.run)) {
+      const lv = grantXp(u, xpEach);
+      if (lv > 0) levels[u.id] = lv;
+    }
+    const over = recordNight(this.run, {
+      nodeId: node.id,
+      layer: node.layer,
+      kind: node.kind,
+      winner: "player",
+      result: "win",
+      goldEarned: 0,
+      fallen: [],
+    });
+    return { xpEach, levels, over };
   }
 
   /**

@@ -21,7 +21,8 @@ import { getEquipment, type EquipmentDef } from "./equipment";
 import { getJob } from "./jobs";
 import { PASSIVE_INFO } from "./combat";
 import type { SkillDef } from "./skills";
-import { fatigueTier, type FatigueTier } from "./fatigue";
+import { fatigueTier, spendFatigue, type FatigueTier } from "./fatigue";
+import { overworldCostOf } from "./overworld-actions";
 import { moraleTier, type MoraleTier } from "./camp";
 import { computeUpkeep } from "./upkeep";
 import { DYING_COUNTER, isDying } from "./mortality";
@@ -187,6 +188,14 @@ export interface AbilityRow {
   tag?: string;
   /** Active only: locked until the owning job reaches this level (omitted = ready). */
   lockedUntil?: number;
+  /** Active only: the overworld **effort** this ability spends, when any (D80). */
+  effort?: number;
+  /**
+   * Active only: the **projected Fatigue** if this unit spends it now (D80) — e.g. `"Effort +4 →
+   * Weary"`, or `"Effort +1 (stays Worn)"` when it doesn't cross a tier. Read at a glance before
+   * you commit the effort. Omitted for zero-effort / locked abilities.
+   */
+  fatigueProjection?: string;
 }
 
 /** A compact "when · how" tag for an active ability (D65 ability surfacing). */
@@ -215,13 +224,24 @@ export function unitAbilityRows(u: Unit): { actives: AbilityRow[]; passives: Abi
     const level = u.jobLevels[jid]?.level ?? 1;
     for (const s of job.skills) {
       const unlock = s.unlockLevel ?? 1;
-      actives.push({
+      const lockedUntil = unlock > level ? unlock : undefined;
+      const row: AbilityRow = {
         name: s.name,
         description: s.description,
         jobName: job.name,
         tag: abilityTag(s),
-        lockedUntil: unlock > level ? unlock : undefined,
-      });
+        lockedUntil,
+      };
+      // D80: fatigue is a decision driver, so a usable effort skill shows its **projected** tier
+      // before you spend it. Skip locked (not yet usable) and zero-effort abilities (most combat verbs).
+      const effort = overworldCostOf(s).fatigue ?? 0;
+      if (lockedUntil === undefined && effort > 0) {
+        const from = fatigueTier(u.fatigue);
+        const to = fatigueTier(spendFatigue(u.fatigue, effort));
+        row.effort = effort;
+        row.fatigueProjection = from === to ? `Effort +${effort} (stays ${to})` : `Effort +${effort} → ${to}`;
+      }
+      actives.push(row);
     }
     for (const key of Object.keys(job.passives ?? {})) {
       const info = PASSIVE_INFO[key];

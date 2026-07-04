@@ -264,7 +264,9 @@ export class PartyDossierView {
     this.wideHpBar(px, y, leftW, m);
     y += 14;
     y = this.line(`HP ${m.hp} / ${m.maxHp}`, y);
-    y = this.line(`Fatigue: ${m.fatigueLabel} (${m.fatigue})`, y, m.fatigue > 6 ? INK.ember : INK.secondary);
+    // D80: ember once fatigue bites (Weary/Exhausted carry the rest-heal penalty + Deep-Rest gate).
+    const fatigueBites = m.fatigueLabel === "Weary" || m.fatigueLabel === "Exhausted";
+    y = this.line(`Fatigue: ${m.fatigueLabel} (${m.fatigue})`, y, fatigueBites ? INK.ember : INK.secondary);
     y = this.line(`XP: ${m.xp} / ${m.xpToNext}`, y);
     const pips = statusPips(u);
     if (pips.length) {
@@ -402,6 +404,8 @@ export class PartyDossierView {
     const head = a.tag ? `${a.name}  ·  ${a.tag}` : a.name;
     const lines = [head, a.description];
     if (a.lockedUntil !== undefined) lines.push(`Locked until Lv ${a.lockedUntil}.`);
+    // D80: the projected Fatigue if this unit spends the effort now (e.g. "Effort +4 → Weary").
+    if (a.fatigueProjection) lines.push(a.fatigueProjection);
     lines.push(`— ${a.jobName}`);
     return lines.join("\n");
   }

@@ -338,6 +338,14 @@ Clearing **at Tier 0** so they cash the big heal — so you spend effort on the 
 heal would be wasted) and time heavy skills away from the rest. "Rest the hurt, work the healthy,"
 expressed entirely through Weariness.
 
+**Surfacing it (D80).** Weariness is a decision driver now, so it reads **per unit**: a tier on the
+**party dossier** and the **camp roster readout**, plus — when you **hover a unit's ability** (Party
+tab) — the **projected Weariness delta** ("→ Weary") *before* you spend it, riding the existing
+action-preview system. **Survey** lives in the **react camp's Intel drawer** (a row per reachable
+node); a surveyed node **tightens on the map** and carries a **scouted** marker so read/unread nodes
+are legible at a glance. *(Projecting a unit's Weariness onto the route forecast — "will it be Tier 0
+when it reaches the Clearing?" — is a later playtest-gated add.)*
+
 **Parked (open, D80):**
 - **The effort-skill roster** — **Survey** is the first real one (≈4 effort, cooldown 1, Scout-only,
   L2). **Prestige** (exists, D65) and a net-new **Train** are the next, designed separately.

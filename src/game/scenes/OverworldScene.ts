@@ -153,6 +153,18 @@ interface ActionCost {
   cooldown?: number;
 }
 
+/** One caravan-state readout tile — a labelled, semantically-coloured figure with day-move data. */
+interface ReadoutTile {
+  stat: ReadoutStat;
+  label: string;
+  value: string;
+  ink: string;
+  cur: number;
+  base: number;
+  last: number;
+  betterHigher?: boolean;
+}
+
 /** The cost **components** in fixed render order — the standardized slots every action reads through. */
 const COST_COMPONENTS: readonly { key: keyof ActionCost; glyph: string; ink: string; name: string }[] = [
   { key: "gold", glyph: "¤", ink: INK.gold, name: "gold" },
@@ -225,8 +237,13 @@ export class OverworldScene extends Phaser.Scene {
 
   private titleText!: Phaser.GameObjects.Text;
   private campText!: Phaser.GameObjects.Text;
-  private previewText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
+
+  // The pinned **intel card** (D80 map pass) — a structured readout of the last node the player
+  // hovered/clicked, held (sticky) until they inspect another. Its objects live on their own layer
+  // so it redraws without touching the board; `inspectedNodeId` is what it's showing.
+  private intelCardObjects: Phaser.GameObjects.GameObject[] = [];
+  private inspectedNodeId?: string;
 
   // The prep camp's "last night's rest" recap (D80): what the arrival rest healed / fatigue it
   // shed, captured by diffing the party across `loop.choose` in enterCamp. UI-only, per-arrival.
@@ -272,7 +289,6 @@ export class OverworldScene extends Phaser.Scene {
 
     this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
     this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
-    this.previewText = this.add.text(this.scale.width / 2, this.scale.height - 96, "", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body, align: "center", wordWrap: { width: 720 } }).setOrigin(0.5).setDepth(10);
     this.hintPanel = new HintPanel(this);
 
     this.refreshCampText();
@@ -346,9 +362,11 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.nodeObjects);
     this.graph?.destroy();
     this.nodePos.clear();
-    // The map has no action column to sit beside, so the caravan's figures ride the
-    // top HUD line here (the camp/survey beats move them into a right-side panel).
-    this.campText.setVisible(true);
+    // The map has no action column to sit beside, so the caravan's figures ride a horizontal
+    // **readout-tile row** across the top here — the same tile grammar the camp/survey beats
+    // stack on the right, so the two surfaces speak one visual language (was an inline HUD line).
+    this.campText.setVisible(false);
+    this.renderMapReadouts(40);
 
     const map = this.run.map;
     const reachableIds = new Set(this.loop.reachable().map((n) => n.id));
@@ -405,7 +423,8 @@ export class OverworldScene extends Phaser.Scene {
     // crowd the hint bar (D58); the hint now carries action guidance only.
     this.drawMapLegend();
     this.setHint("Click a node to preview it; click again to camp there. Deeper nodes are fogged — raise intel to see farther.");
-    this.previewText.setText("");
+    // The pinned intel card, re-shown for the last-inspected node (sticky across map redraws).
+    this.renderIntelCardSticky();
   }
 
   /**
@@ -501,10 +520,101 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- Selection / preview (D24) --------------------------------------------
 
+  /** Inspect a node — pin its intel card (sticky until the player inspects another). */
   private showPreview(node: MapNode): void {
-    // Read at the floor + whatever Scout has bought for this node (D35).
+    this.inspectedNodeId = node.id;
+    this.renderIntelCard(node);
+  }
+
+  /** The pinned intel card, re-shown for the last-inspected node (or a prompt) on each map draw. */
+  private renderIntelCardSticky(): void {
+    const id = this.inspectedNodeId;
+    const node = id ? this.run.map.nodes[id] : undefined;
+    if (node && visibleNodes(this.run).some((n) => n.id === id)) this.renderIntelCard(node);
+    else this.renderIntelCardPrompt();
+  }
+
+  /** Geometry for the pinned card, above the legend. */
+  private intelCardGeom() {
+    const w = 680;
+    return { w, cx: this.scale.width / 2, top: this.scale.height - 150, left: this.scale.width / 2 - w / 2 + 18 };
+  }
+
+  private renderIntelCardPrompt(): void {
+    clearLayer(this.intelCardObjects);
+    const { w, cx, top } = this.intelCardGeom();
+    const h = 72;
+    this.intelCardObjects.push(
+      this.add.rectangle(cx, top + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9),
+      this.add.text(cx, top + h / 2, "Hover a node to inspect it — its kind, intel, and what waits on the road.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10),
+    );
+  }
+
+  /** A player-facing kind word + its ink for the intel card header. */
+  private nodeKindWord(node: MapNode): string {
+    if (node.layer === this.run.map.layers - 1) return "Final";
+    return node.kind === "combat" ? "Combat" : node.kind === "rest" ? "Clearing" : "Event";
+  }
+  private nodeKindInk(node: MapNode): string {
+    if (node.layer === this.run.map.layers - 1) return INK.gold;
+    return node.kind === "rest" ? INK.success : node.kind === "event" ? INK.gold : INK.danger;
+  }
+
+  /**
+   * The intel fields (label · value · ink) for a node's preview — gated by what the player knows.
+   * A field intel *would* reveal but hasn't yet reads **`???`** (dim), so the reveal loop is legible:
+   * scout the node (Survey) or raise Intelligence and the `???` fills in.
+   */
+  private intelFields(p: NodePreview): { label: string; value: string; ink: string }[] {
+    const HIDDEN = "???";
+    const hide = (v: string | undefined, ink: string) => (v ? { value: v, ink } : { value: HIDDEN, ink: INK.disabled });
+    if (p.kind === "rest") return [{ label: "Recovery", ...hide(p.restHint, INK.success) }];
+    if (p.kind === "event") return [{ label: "Event", ...hide(p.eventHint, INK.gold) }];
+    const enemies = p.intel?.types ? p.intel.types.join(", ") + (p.intel.count !== undefined ? ` ×${p.intel.count}` : "") : undefined;
+    return [
+      { label: "Type", ...hide(p.encounterType, INK.secondary) },
+      { label: "Enemies", ...hide(enemies, INK.secondary) },
+      { label: "Reward", ...hide(p.rewardHint, INK.gold) },
+    ];
+  }
+
+  /**
+   * The pinned **intel card** for a node (D80 map pass) — a structured readout in the card language:
+   * a kind + depth header (in the kind's colour), a row of label · value intel fields (gated by what
+   * you know — "unknown" reads dim), a "scouted" tag, and an "on the road" line when surveyed.
+   * Replaces the old run-on preview text; held sticky until the player inspects another node.
+   */
+  private renderIntelCard(node: MapNode): void {
+    clearLayer(this.intelCardObjects);
     const p = previewNode(this.run, node.id, scoutedTier(this.run.overworld, node.id));
-    this.previewText.setText(this.describePreview(p));
+    const { w, cx, top, left } = this.intelCardGeom();
+    const hasRoad = !!p.earlyEventHint;
+    const h = hasRoad ? 94 : 72;
+    this.intelCardObjects.push(this.add.rectangle(cx, top + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9));
+
+    // Header: kind + depth, in the kind's colour.
+    this.intelCardObjects.push(this.add.text(left, top + 18, `${this.nodeKindWord(node)}  ·  Layer ${node.layer}`, { color: this.nodeKindInk(node), fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(10));
+    // A "scouted" tag on the right when Survey sharpened this node (D80).
+    if (scoutedTier(this.run.overworld, node.id) > 0) {
+      this.intelCardObjects.push(this.add.text(cx + w / 2 - 18, top + 18, `${ICON.scouted.glyph} scouted`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(10));
+    }
+
+    // Intel fields, laid left→right: a muted label + a coloured value ("unknown" reads dim).
+    let fx = left;
+    const fieldY = top + 44;
+    for (const f of this.intelFields(p)) {
+      const lbl = this.add.text(fx, fieldY, f.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(10);
+      const val = this.add.text(fx + Math.ceil(lbl.width) + 6, fieldY, f.value, { color: f.ink, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(10);
+      this.intelCardObjects.push(lbl, val);
+      fx += Math.ceil(lbl.width) + 6 + Math.ceil(val.width) + 22;
+    }
+
+    // The early event on the road in, revealed by Survey (D80, effect B).
+    if (hasRoad) {
+      const ry = top + 72;
+      const lbl = this.add.text(left, ry, "ON THE ROAD", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(10);
+      this.intelCardObjects.push(lbl, this.add.text(left + Math.ceil(lbl.width) + 6, ry, p.earlyEventHint!, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - Math.ceil(lbl.width) - 44 } }).setOrigin(0, 0.5).setDepth(10));
+    }
   }
 
   /**
@@ -526,25 +636,11 @@ export class OverworldScene extends Phaser.Scene {
     return out;
   }
 
-  private describePreview(p: NodePreview): string {
-    // Survey's effect B (D80): a scouted node also tells you what's on the road in.
-    const road = p.earlyEventHint ? `   ·   on the road: ${p.earlyEventHint}` : "";
-    if (p.kind === "rest") return `Layer ${p.layer} · Rest — ${p.restHint}${road}`;
-    if (p.kind === "event") return `Layer ${p.layer} · Event — ${p.eventHint}`;
-    const parts = [`Layer ${p.layer} · Combat (${p.encounterType})`];
-    if (p.intel?.types) parts.push(`enemies: ${p.intel.types.join(", ")}`);
-    else parts.push("enemies: unknown");
-    if (p.intel?.count !== undefined) parts.push(`count: ${p.intel.count}`);
-    if (p.intel?.grantsVision) parts.push("starting vision");
-    parts.push(`reward: ${p.rewardHint ?? "unknown"}`);
-    return parts.join("   ·   ") + road;
-  }
-
   private clearMap(): void {
     clearLayer(this.nodeObjects);
     this.graph?.destroy();
     this.graph = undefined;
-    this.previewText.setText("");
+    clearLayer(this.intelCardObjects); // the pinned intel card is map-screen UI (its node id persists)
   }
 
   // --- The unified overworld camp (D35) -------------------------------------
@@ -957,13 +1053,13 @@ export class OverworldScene extends Phaser.Scene {
    * (purse gold, morale by tier, storage ember when full, upkeep as a warm drain). Pure
    * figures come from {@link "../../core".campReadout}. Returns the `y` past the stack.
    */
-  private renderReadouts(x: number, top: number, cardW: number): number {
+  /**
+   * Build the caravan-state readout tiles (shared by the camp stack and the map row). Anchors the
+   * "this day" comparison to the node we're camped at — a value's colour tracks its **net move since
+   * we made camp here** — re-baselining (and suppressing the change-pulse) on a fresh node/scene.
+   */
+  private buildReadoutTiles(): { tiles: ReadoutTile[]; fresh: boolean } {
     const r = campReadout(this.run);
-
-    // Anchor the "this day" comparison to the node we're camped at: the baseline is the
-    // figures on arrival, so a value's colour tracks its **net move since we made camp
-    // here**. A fresh node (or a fresh scene, e.g. back from battle) re-baselines and
-    // suppresses the change-pulse for that first paint.
     const nodeKey = this.run.mapNodeId;
     const fresh = this.readoutBaselineKey !== nodeKey;
     if (fresh) {
@@ -973,13 +1069,10 @@ export class OverworldScene extends Phaser.Scene {
     }
     const base = this.readoutBaseline!;
     const last = this.readoutLast!;
-
     const moraleInk = r.moraleTier === "Low" ? INK.ember : r.moraleTier === "Neutral" ? INK.secondary : INK.success;
-    // `betterHigher` gives each value a *sense* — so a rising purse reads good (green) but a
-    // rising Upkeep reads bad (red). Storage carries no valence (loot vs. headroom cut both
-    // ways), so it keeps its semantic ink and never day-colours. `ink` is the unchanged look.
-    type Tile = { stat: ReadoutStat; label: string; value: string; ink: string; cur: number; base: number; last: number; betterHigher?: boolean };
-    const tiles: Tile[] = [
+    // `betterHigher` gives each value a *sense* — a rising purse reads good (green), a rising Upkeep
+    // bad (red). Storage carries no valence (loot vs. headroom), so it keeps its semantic ink.
+    const tiles: ReadoutTile[] = [
       { stat: "purse", label: "Purse", value: `${r.purse}g`, ink: INK.gold, cur: r.purse, base: base.purse, last: last.purse, betterHigher: true },
       { stat: "morale", label: "Morale", value: `${r.moraleTier} (${r.morale >= 0 ? "+" : ""}${r.morale})`, ink: moraleInk, cur: r.morale, base: base.morale, last: last.morale, betterHigher: true },
       { stat: "storage", label: "Storage", value: `${r.storageUsed}/${r.storageCap}`, ink: r.storageUsed >= r.storageCap ? INK.ember : INK.secondary, cur: r.storageUsed, base: base.storageUsed, last: last.storageUsed },
@@ -987,18 +1080,27 @@ export class OverworldScene extends Phaser.Scene {
       { stat: "rp", label: "Rest Pts", value: `${r.rp}`, ink: INK.secondary, cur: r.rp, base: base.rp, last: last.rp, betterHigher: true },
       { stat: "upkeep", label: "Upkeep", value: `${r.upkeep}g/night`, ink: INK.ember, cur: r.upkeep, base: base.upkeep, last: last.upkeep, betterHigher: false },
     ];
+    this.readoutLast = r;
+    return { tiles, fresh };
+  }
+
+  /** A tile's **day-move colour**: green if it moved the good way since we made camp, red if bad. */
+  private tileInk(t: ReadoutTile): string {
+    if (t.betterHigher !== undefined && t.cur !== t.base) {
+      return (t.cur > t.base) === t.betterHigher ? INK.success : INK.danger;
+    }
+    return t.ink;
+  }
+
+  private renderReadouts(x: number, top: number, cardW: number): number {
+    const { tiles, fresh } = this.buildReadoutTiles();
     const cardH = 34;
     const pitch = 42;
     const tileCy: Partial<Record<ReadoutStat, number>> = {};
     tiles.forEach((t, i) => {
       const cy = top + i * pitch;
       tileCy[t.stat] = cy;
-      // Day-move colour: green when the value improved since we made camp, red when it
-      // worsened — otherwise the tile's unchanged semantic ink.
-      let ink = t.ink;
-      if (t.betterHigher !== undefined && t.cur !== t.base) {
-        ink = (t.cur > t.base) === t.betterHigher ? INK.success : INK.danger;
-      }
+      const ink = this.tileInk(t);
       const rect = this.add.rectangle(x, cy, cardW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0.5).setDepth(10);
       const label = this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11);
       // 14px (one above the 13px body label) — the value stays the figure without towering
@@ -1009,7 +1111,6 @@ export class OverworldScene extends Phaser.Scene {
       // effect landing) — but not on the first paint of a camp (`fresh`), which isn't a move.
       if (!fresh && t.cur !== t.last && !isScreenshotMode()) this.pulseTile(x, cy, cardW, cardH, value);
     });
-    this.readoutLast = r;
 
     // The off-panel preview area, below the tiles: a header + a rule, then the transient
     // body ({@link showActionPreview}) — arrows land in the gutter beside the tiles above,
@@ -1025,6 +1126,31 @@ export class OverworldScene extends Phaser.Scene {
     this.showActionPreview(null);
 
     return tilesBottom;
+  }
+
+  /**
+   * The caravan-state readouts as a **horizontal tile row** across the map's top (D80 consistency):
+   * the same label+value cards the camp/survey beats stack on the right, laid out in a row since the
+   * map has no side panel. Values day-colour like the camp tiles. Drawn onto `nodeObjects` so it
+   * clears with the map. Replaces the old inline "Purse … · Upkeep …" HUD text line.
+   */
+  private renderMapReadouts(top: number): void {
+    const { tiles } = this.buildReadoutTiles();
+    const marginX = 80;
+    const usableW = this.scale.width - 2 * marginX;
+    const gap = 8;
+    const tileW = (usableW - gap * (tiles.length - 1)) / tiles.length;
+    const cardH = 40;
+    tiles.forEach((t, i) => {
+      const x = marginX + i * (tileW + gap);
+      const cx = x + tileW / 2;
+      const rect = this.add.rectangle(x, top, tileW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0).setDepth(6);
+      const label = this.add.text(cx, top + 12, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(7);
+      const value = this.add.text(cx, top + 28, t.value, { color: this.tileInk(t), fontFamily: FONT.family, fontSize: "14px" }).setOrigin(0.5).setDepth(7);
+      fitText(label, tileW - 10);
+      fitText(value, tileW - 10);
+      this.nodeObjects.push(rect, label, value);
+    });
   }
 
   /**

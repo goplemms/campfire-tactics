@@ -316,12 +316,18 @@ Fatigue bites in combat at the deep end (the D73 Weary/Exhausted consequences); 
 gating recovery (below). *(Numbers illustrative — the **structure** is canon, the values tune in
 playtest.)*
 
-**Two rests shed it:**
+**The free floor + the accelerator (D80).** Recovery is one shape everywhere: a **free floor**
+you always get, and an **RP accelerator** you can spend on top of it. The floor is the nightly
+**chip** — a small flat heal to *every alive unit*, no cost, no gate — so a paid rest never reads
+"healed 0" and the wounded always inch back even broke. The accelerator is **[Rest Points](#rest-points--the-accelerator-d9-reconciled-d80)**:
+banked, support-class-fuelled currency spent worst-first to heal *beyond* the floor. Three modes
+sit on that shape, differing only in **where** and **how strong** the accelerator runs:
 
-| Rest | Where | What it does |
-|---|---|---|
-| **Nightly rest — the chip** | **every** node — free & automatic (shipped, `RECOVERY.nightlyChipHp`) | A **small** HP heal + steps Fatigue **down to the floor of the tier below** (one tier per night). One heavy skill (→ Tier 1) is wiped by a single night; only **stacking** (→ Tier 2+) lingers. The heal is a free *floor* — small enough that real recovery still means routing to a Clearing (*dodge-every-fight* stays dead). |
-| **Deep Rest — the Clearing** | a **Clearing** node *provides* it (D23) | **Every unit Deep Rests** — Fatigue wiped to 0, accumulated debt cleared — **plus a big heal, but only for a unit at Tier 0 when the rest resolves.** No assignment, no opt-out. |
+| Mode | Where | Floor | Accelerator |
+|---|---|---|---|
+| **Nightly rest — the chip** | **every** node — free & automatic (shipped, `RECOVERY.nightlyChipHp`) | the chip, to every alive unit + steps Fatigue **down to the floor of the tier below** (one tier per night) | none — the chip *is* the floor. Real recovery still means routing to a Clearing (*dodge-every-fight* stays dead). |
+| **Paid in-place rest — anywhere** | any node — repeatable, gold + RP gated (`inPlaceRest`) | the chip, to every alive unit | **RP, worst-first** — spends the banked pool on the wounded. Rate-limited by how much RP one night banks, so it stays slower than a Clearing. |
+| **Deep Rest — the Clearing** | a **Clearing** node *provides* it (D23) | the chip, plus Fatigue **wiped to 0** and debt cleared, for every unit | the **premium** tier — a **big heal, but only for a unit at Tier 0 when the rest resolves** (see below). No assignment, no opt-out. |
 
 ### Deep Rest's conditional big heal (D80)
 
@@ -337,6 +343,32 @@ The **allocation puzzle** falls out of unit state, no board: you want your *hurt
 Clearing **at Tier 0** so they cash the big heal — so you spend effort on the *healthy* ones (whose
 heal would be wasted) and time heavy skills away from the rest. "Rest the hurt, work the healthy,"
 expressed entirely through Fatigue.
+
+### Rest Points — the accelerator (D9, reconciled D80)
+
+**RP is the spend-to-heal-beyond-the-floor economy.** With the chip guaranteeing a free floor and
+Fatigue eroding the old "who do I triage first" allocation puzzle (D9), RP's job is reframed: it is
+the **accelerator above the floor**, not the whole heal. Each night banks `rpPerNight(party)` —
+**support roles (Cook/Medic) bank more** — so *bringing support classes buys faster recovery*, the
+economy that keeps RP a real party-composition lever.
+
+- **Spent worst-first, whole-party.** A paid rest walks the wounded roster by severity and spends
+  the banked pool one **chunk** (`CHUNK_FRACTION` of max HP) at a time via `restHeal`, healing the
+  whole alive party — not one triaged unit. It drains down the pool until RP runs out or the party
+  is full.
+- **Fatigue taxes the accelerator, not the floor.** A Weary/Exhausted unit's chunks cost **more RP**
+  (`restCostMultiplier`) — Fatigue makes the wounded *slower and dearer* to heal, but never blocks
+  the free chip.
+- **The Clearing is the premium accelerator.** Deep Rest's big heal (above) plus a Clearing's bonus
+  RP make it the strongest form; paid in-place rest is the *anywhere, slower* form; the chip alone
+  is the *free, slowest* form. Same shape, three price points.
+
+**Two caps hold the in-place rest in check:** **gold** (each night bills full upkeep — can you
+afford another rations night?) and the per-night **RP rate** (one night banks only so much, so
+healing is rate-limited regardless of wealth → the Clearing stays faster/better). It **refuses when
+already full** (no empty drain) and — via `RECOVERY.maxInPlaceStreak` (uncapped by default) — can
+be given a hard **consecutive-nights cap**; `overworld.restStreak` counts the streak (reset on
+moving on, in `chooseNode`) as a hook for a cap and for **streak-triggered events**.
 
 **Surfacing it (D80).** Fatigue is a decision driver now, so it reads **per unit**: a tier on the
 **party dossier** and the **camp roster readout**, plus — when you **hover a unit's ability** (Party
@@ -360,16 +392,8 @@ cost — it's a visualization, gated on having a real material-costing ability t
 **Parked (open, D80):**
 - **The effort-skill roster** — **Survey** is the first real one (≈4 effort, cooldown 1, Scout-only,
   L2). **Prestige** (exists, D65) and a net-new **Train** are the next, designed separately.
-- **Paid in-place rest** — with a free nightly floor now existing, what a *paid* rest buys is under
-  review (the caps note below is the pre-D80 tier).
 - **Numbers** — tier bands/widths, per-skill effort, the big-heal size — a tuning pass; the
   structure is canon, the values are not.
-
-**Two caps by design:** **gold** (can you afford another rations night?) and the per-night
-**RP rate** (one night banks only so much → healing is rate-limited regardless of wealth →
-the rest node stays faster/better). **Heal floors at ≥1** on a wounded party (a paid rest
-never reads "healed 0" like a bug); it **refuses when already full** (no empty drain). The
-whole tier lives or dies on **gold scarcity** (D30/D34) — an accepted balance burden.
 
 ## The route forecast & overworld fog (D48)
 

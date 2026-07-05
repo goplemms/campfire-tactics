@@ -314,6 +314,7 @@ export function chooseNode(run: RunState, id: string): MapNode {
     throw new Error(`run: "${id}" is not reachable from "${run.mapNodeId}"`);
   }
   breakCamp(run); // depart the current node — the overworld clock ticks here (D46)
+  run.overworld.restStreak = 0; // the caravan moved on — end any in-place-rest stay (D80)
   run.mapNodeId = id;
   run.path.push(id);
   // D80 night-after-arrival: the free nightly rest lands on **arrival**, before the destination's

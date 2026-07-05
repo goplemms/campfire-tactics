@@ -120,6 +120,64 @@ describe("runloop — the two-tier recovery economy (D47)", () => {
     expect(run.camp.gold).toBeLessThan(goldBefore); // a night's rations paid
   });
 
+  it("in-place rest heals the whole wounded party, worst-first (D80)", () => {
+    const run = newRun("inplace-party");
+    run.rp = 1000; // ample banked RP so the spread reaches every wounded unit in one night
+    const loop = new RunLoop(run);
+    const rook = run.party.find((u) => u.id === "Rook")!;
+    const vale = run.party.find((u) => u.id === "Vale")!;
+    rook.hp = 4;
+    vale.hp = 6;
+
+    const res = loop.inPlaceRest();
+    expect(res.applied).toBe(true);
+    expect(rook.hp).toBeGreaterThan(4);
+    expect(vale.hp).toBeGreaterThan(6); // not just the single most-wounded — the whole party
+    expect(res.healed.map((h) => h.unitId).sort()).toEqual(["Rook", "Vale"]);
+  });
+
+  it("consecutive in-place rests build a streak; moving on resets it (D80)", () => {
+    const run = newRun("inplace-streak");
+    run.rp = 100;
+    const loop = new RunLoop(run);
+    const rook = run.party.find((u) => u.id === "Rook")!;
+    expect(run.overworld.restStreak).toBe(0);
+
+    rook.hp = 4;
+    const a = loop.inPlaceRest();
+    rook.hp = 4; // re-wound so the second rest isn't refused at full health
+    const b = loop.inPlaceRest();
+    expect(a.streak).toBe(1);
+    expect(b.streak).toBe(2);
+    expect(run.overworld.restStreak).toBe(2);
+
+    // The caravan moves on — the stay (and its streak) ends.
+    chooseNode(run, reachableNodes(run)[0].id);
+    expect(run.overworld.restStreak).toBe(0);
+  });
+
+  it("a maxInPlaceStreak cap refuses past the limit (D80)", () => {
+    const run = newRun("inplace-cap");
+    run.rp = 100;
+    const loop = new RunLoop(run);
+    const rook = run.party.find((u) => u.id === "Rook")!;
+    const knob = RECOVERY as { maxInPlaceStreak: number | null };
+    const saved = knob.maxInPlaceStreak;
+    knob.maxInPlaceStreak = 2;
+    try {
+      rook.hp = 4;
+      expect(loop.inPlaceRest().applied).toBe(true); // night 1
+      rook.hp = 4;
+      expect(loop.inPlaceRest().applied).toBe(true); // night 2
+      rook.hp = 4;
+      const capped = loop.inPlaceRest(); // past the cap
+      expect(capped.applied).toBe(false);
+      expect(capped.reason).toMatch(/move on/);
+    } finally {
+      knob.maxInPlaceStreak = saved;
+    }
+  });
+
   it("in-place rest refuses at full health — no empty drain (D47)", () => {
     const run = newRun("inplace-full");
     const loop = new RunLoop(run);

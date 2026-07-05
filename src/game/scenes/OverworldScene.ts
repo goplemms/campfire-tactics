@@ -560,15 +560,21 @@ export class OverworldScene extends Phaser.Scene {
     return node.kind === "rest" ? INK.success : node.kind === "event" ? INK.gold : INK.danger;
   }
 
-  /** The intel fields (label · value · ink) for a node's preview, gated by what the player knows. */
+  /**
+   * The intel fields (label · value · ink) for a node's preview — gated by what the player knows.
+   * A field intel *would* reveal but hasn't yet reads **`???`** (dim), so the reveal loop is legible:
+   * scout the node (Survey) or raise Intelligence and the `???` fills in.
+   */
   private intelFields(p: NodePreview): { label: string; value: string; ink: string }[] {
-    if (p.kind === "rest") return [{ label: "Recovery", value: p.restHint ?? "—", ink: INK.success }];
-    if (p.kind === "event") return [{ label: "Event", value: p.eventHint ?? "—", ink: INK.gold }];
-    const enemies = p.intel?.types ? p.intel.types.join(", ") + (p.intel.count !== undefined ? ` ×${p.intel.count}` : "") : "unknown";
+    const HIDDEN = "???";
+    const hide = (v: string | undefined, ink: string) => (v ? { value: v, ink } : { value: HIDDEN, ink: INK.disabled });
+    if (p.kind === "rest") return [{ label: "Recovery", ...hide(p.restHint, INK.success) }];
+    if (p.kind === "event") return [{ label: "Event", ...hide(p.eventHint, INK.gold) }];
+    const enemies = p.intel?.types ? p.intel.types.join(", ") + (p.intel.count !== undefined ? ` ×${p.intel.count}` : "") : undefined;
     return [
-      { label: "Type", value: p.encounterType ?? "unknown", ink: p.encounterType ? INK.secondary : INK.disabled },
-      { label: "Enemies", value: enemies, ink: p.intel?.types ? INK.secondary : INK.disabled },
-      { label: "Reward", value: p.rewardHint ?? "unknown", ink: p.rewardHint ? INK.gold : INK.disabled },
+      { label: "Type", ...hide(p.encounterType, INK.secondary) },
+      { label: "Enemies", ...hide(enemies, INK.secondary) },
+      { label: "Reward", ...hide(p.rewardHint, INK.gold) },
     ];
   }
 

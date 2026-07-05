@@ -44,8 +44,10 @@ const SETUP = wrap(`
 `);
 
 const STEPS = [
-  // The map with a node preview showing (how intel/kind reads on the board + the hover reveal).
-  { name: "00-map-preview", minMs: 700, eval: wrap(`s.showPreview(s.loop.reachable().find((n)=>n.kind==='combat')||s.loop.reachable()[0]);`) },
+  // The map with a node preview showing — LOW intel, so the gated fields read "???" (the reveal loop).
+  { name: "00-map-preview", minMs: 700, eval: wrap(`s.run.party.forEach((u)=>{u.intelligence=0;}); s._probe=s.loop.reachable().find((n)=>n.kind==='combat')||s.loop.reachable()[0]; s.showPreview(s._probe);`) },
+  // The same node with full intel — the "???" fields filled in.
+  { name: "00b-map-preview-known", eval: wrap(`s.run.party.forEach((u)=>{u.intelligence=9;}); s.showPreview(s._probe);`) },
   // Prep camp with the Recovery + Economy drawers open — the action rows + their cost readouts.
   {
     name: "01-camp-actions",

@@ -378,28 +378,29 @@ export class RunLoop {
     const rpAdded = rpPerNight(this.run.party);
     this.run.rp += rpAdded;
 
-    // D80: **all rest heals the whole (alive) party** — mend the wounded worst-first down the
-    // night's RP pool (no Clearing bonus RP, so it stays slower than routing to a Clearing). The
-    // pool regenerates `rpPerNight`, so a hurt party heals gradually over several paid nights.
     const healed: { unitId: string; hp: number }[] = [];
     let hpHealed = 0;
-    for (const u of wounded) {
+    const credit = (unitId: string, hp: number) => {
+      if (hp <= 0) return;
+      hpHealed += hp;
+      const row = healed.find((h) => h.unitId === unitId);
+      if (row) row.hp += hp;
+      else healed.push({ unitId, hp });
+    };
+
+    // The **free floor** (D80): every alive unit heals the flat nightly chip — the baseline you
+    // always get, even with zero RP (this is why a paid rest never reads "healed 0").
+    for (const u of this.run.party) if (u.alive) credit(u.id, healUnit(u, RECOVERY.nightlyChipHp));
+
+    // The **RP accelerator** (D80): spend banked Rest Points to heal the wounded *beyond* the floor,
+    // worst-first. RP banks per night and is boosted by support roles (Cook/Medic) — bringing
+    // support heals the party faster. No Clearing bonus RP here, so it stays slower than a Clearing.
+    for (const u of woundedBySeverity(combatRoster(this.run))) {
       if (this.run.rp < policy.rpPerChunk) break;
       const res = restHeal(u, this.run.rp, policy);
       if (res.rpSpent > 0) {
         this.run.rp -= res.rpSpent;
-        hpHealed += res.hpHealed;
-        healed.push({ unitId: u.id, hp: res.hpHealed });
-      }
-    }
-    // Floor (D47): a paid rest on a wounded party always restores ≥1 HP (the RP may round to none).
-    if (hpHealed < RECOVERY.inPlaceFloorHp) {
-      const extra = healUnit(wounded[0], RECOVERY.inPlaceFloorHp);
-      if (extra > 0) {
-        hpHealed += extra;
-        const row = healed.find((h) => h.unitId === wounded[0].id);
-        if (row) row.hp += extra;
-        else healed.push({ unitId: wounded[0].id, hp: extra });
+        credit(u.id, res.hpHealed);
       }
     }
 

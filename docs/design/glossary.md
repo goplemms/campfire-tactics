@@ -32,7 +32,7 @@ We keep the evocative voice *and* the legibility by splitting where each lives:
 
 Predictable shape makes copy scannable without reading every word:
 
-- **Action buttons — `Verb the Noun`.** `Buy Trap Kit`, `Triage Heal`, `Guard the Purse`.
+- **Action buttons — `Verb the Noun`.** `Buy Trap Kit`, `Cook Stew`, `Guard the Purse`.
   Imperative verb first, canonical noun second. The cost rides in a trailing ` (…)` or
   ` · …` clause, never inside the verb phrase.
 - **The two advance verbs — `Set Out` and `Begin` (D80).** `Set Out` leaves the react camp
@@ -100,7 +100,7 @@ a tab bar switches view. Each datum is single-sourced to exactly one tab.
 | **Standing** | The banded **Influence** tier (D62): `unknown < known < respected < favored < renowned`. The current band gates the Noble's sinks (cheaper/likelier bribes, better events). | bare "Influence" *when you mean the band*; "rank"; "level" |
 | **Upkeep** | The nightly maintenance cost (Food + Repairs lines). | "maintenance"; "costs"; "burn" *as a label* (see below) |
 | **Storage** | Caravan slot capacity for gear/ammo/consumables. | "inventory"; "bag"; "pack" |
-| **Rest Points (RP)** | Banked support-role healing currency; spent via Triage. | spelling out "rest" ambiguously near a rest node |
+| **Rest Points (RP)** | Banked support-role healing currency (Cook/Medic bank more). The **accelerator above the free chip floor** (D80): a paid rest heals the whole alive party worst-first by spending RP; Fatigue makes worn units' chunks cost more. | spelling out "rest" ambiguously near a rest node; "the whole heal" (RP is *above* the free chip, not all of it) |
 | **Debt** | The Banker's outstanding borrow, auto-repaid from run gold. | "loan" (in readouts); "owed" |
 
 > **`g` suffix** marks gold amounts (`120g`, `pay 8g`). **Influence is never
@@ -147,8 +147,8 @@ the drift found in the current build.
 | **Buy** | The Merchant's ACCESS verb: spend purse gold for supply, priced by the node's Market tier. | "Shop"; "Purchase" |
 | **Sell** | The Merchant's faucet (D61): convert carried goods (esp. **Valuables**) into purse gold at the node's Market tier. | "Trade"; "Deal"; "Vendor" |
 | **Valuables** | Sell-only loot (D61): pure gold value, no function; the illiquid half of a reward, hauled to a Market. | "Salvage"/"Scrap" (flavor only); "Loot" (collides with the gold drop) |
-| **Triage Heal** | Spend RP to heal the most-wounded one chunk. | "Heal" alone; "Patch"; "Mend" |
-| **In-place rest** | The repeatable Survey-beat recovery (rations → RP + small heal). | "Rest" alone (collides three ways — see below); "Camp here" |
+| **Triage** | The healer's standalone camp heal (D73): a **healing class spends their own Fatigue** (no RP) to mend the party's most-wounded fighter, scaling with the Medic's Triage passive. Separate from the RP economy. | "Triage Heal" *(retired — it no longer spends RP)*; "Heal" alone; "Patch"; "Mend" |
+| **In-place rest** | The repeatable, gold-gated recovery: bills upkeep, banks RP, then heals the **whole alive party** — the free chip floor to everyone + the **RP accelerator** worst-first. | "Rest" alone (collides three ways — see below); "Camp here" |
 | **Guard the Purse** | The Banker's SECURE verb: blunt a thief's skim. | **"Protect"** as the *verb*. Two-part rule: **`Guard`** is the verb/button; **`Protection N%`** is the resulting status readout (the effect's magnitude). Never `Protect the purse` as an action. |
 | **Invest** | The Banker's interest verb (purse accrues interest per step). | "Save"; "Deposit" |
 | **Borrow** | The Banker's buy-on-debt verb. | "Loan"; "Advance" |
@@ -167,8 +167,8 @@ letting bare "Rest" stand alone as a clickable label*:
 |---|---|---|
 | A node kind themed on recovery | **Rest node** (`End the Night — Rest`) | "Rest" (as a button) |
 | Banked healing currency | **Rest Points (RP)** | "Rest" |
-| The Survey-beat recovery action | **In-place rest** | "Rest" |
-| Spending RP on the wounded | **Triage Heal** | "Rest" / "Heal" |
+| The gold-gated recovery action | **In-place rest** | "Rest" |
+| The healer's Fatigue-fuelled heal | **Triage** | "Rest" / "Heal" |
 
 > The design doc (*D46*) already bans reusing "rest" for the *gate*. This extends that
 > ban: bare "Rest" is **only** ever the node kind's event name; every other meaning
@@ -305,7 +305,7 @@ The first copy pass found the live strings already mostly disciplined. State:
 2. **Guard vs Protect** — ✅ **already compliant.** The button reads `Guard the purse`;
    "protection" appears only in explanatory tooltip prose, as canon allows.
 3. **Bare "Rest"** — ✅ **already compliant.** Every meaning is qualified (`Rest node` /
-   `Rest Points` / `Rest in place` / `Triage Heal`); bare `Rest` survives only as the
+   `Rest Points` / `Rest in place` / `Triage`); bare `Rest` survives only as the
    rest-node event title (the sanctioned node-kind name).
 4. **`Review Route Map` vs `Survey`** — ✅ **already compliant.** "Review" names the
    read-only *map* button; the planning *screen* is always titled `Survey`.

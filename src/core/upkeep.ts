@@ -192,23 +192,12 @@ export function satisfyUpkeepLine(camp: Camp, line: UpkeepLine["id"]): void {
 // --- The two-tier recovery economy (D47) ------------------------------------
 
 /**
- * Tuning for the **in-place rest** — the lesser, repeatable recovery tier (D47):
- * a costed camp lever available at any finished node. All data (a numbers pass
+ * Tuning for the **recovery floor + repeatable rest** (D47, D80): the free nightly
+ * **chip** (the floor every alive unit always gets) and the consecutive-night cap for
+ * the paid **in-place rest** (the anywhere accelerator). All data (a numbers pass
  * later); the rest **node**'s premium magnitudes live on {@link "./runloop".REST}.
  */
 export const RECOVERY = {
-  /**
-   * Healing chunks one in-place rest funds — a **small** heal (vs. the rest node's
-   * larger payload). Rate-capped on top by the night's banked RP (`rpPerNight`):
-   * one night banks only so much, so healing is rate-limited regardless of wealth.
-   */
-  inPlaceChunks: 1,
-  /**
-   * The guaranteed **floor**: a paid in-place rest on a wounded party always
-   * restores at least this much HP (D47) — so it never reads "paid rations, healed
-   * 0" like a gold-draining bug, even when the RP rate rounds down to no chunk.
-   */
-  inPlaceFloorHp: 1,
   /**
    * The **free nightly chip** (D80): every *ordinary* night (any non-Clearing node) heals each
    * **alive** unit this much HP — automatically, at no cost — the natural rest after a day's

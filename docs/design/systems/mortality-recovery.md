@@ -51,7 +51,8 @@ resources before the big save, with real loss only as the back-stop.
 ### Recovery — the Rest-Point (RP) meter
 
 Between-battle healing is **not flat**; it scales with the party's support
-capability and is spent by **triage**.
+capability. It is the **accelerator above a free floor** (D80 — see
+[overworld → Rest Points](overworld.md#rest-points--the-accelerator-d9-reconciled-d80)).
 
 - Each night, **support roles** (Cook, Medic, Bard, Survivalist, …) add **Rest
   Points** to a pool — a **data-driven** value per role, so adding a healer is
@@ -61,9 +62,20 @@ capability and is spent by **triage**.
   is configurable** (not hardcoded).
 - **Difficulty scales `RP_PER_CHUNK` and nothing else** — one dial for the whole
   gradient (e.g. Easy `10`/chunk, Hardest `20`/chunk).
-- RP is spent by **triage**: the player **allocates the pool to chosen units** each
-  night. This is what gives the Hard-mode dying clock teeth — limited RP, multiple
-  wounded, a deadline.
+- **Spent worst-first over the whole party (D80).** A rest heals every alive unit
+  the free nightly **chip**, then spends the RP pool on the wounded **worst-first**
+  down to empty — no manual per-unit allocation. **Fatigue** (D73) taxes it: a
+  Weary/Exhausted unit's chunks cost **more RP**, so *who is worn* — not who you
+  click — is what rations the pool. The Hard-mode dying clock still has teeth:
+  limited RP, multiple wounded, a deadline. **Triage is a separate skill** — the
+  healer's own Fatigue-fuelled heal, no RP.
+
+> **Reconciled D80.** The original D9 model had the player *allocate the pool to
+> chosen units* each night. With a free chip floor and Fatigue now gating recovery,
+> RP was reframed as the above-floor accelerator, spent automatically worst-first;
+> the allocation tension moved into *Fatigue management* (rest the hurt, work the
+> healthy). The pseudo-example below is the **pre-D80** framing, kept for the
+> mortality/dying-clock mechanics it illustrates.
 
 ## Pseudo-example
 

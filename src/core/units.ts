@@ -131,9 +131,12 @@ export interface UnitSpec extends UnitStats {
    */
   thief?: boolean;
   /**
-   * **Standing order** (D41) — a reserved auto-action (e.g. `"defend"`) a unit
-   * carries until the player takes manual control. The first slice ships the
-   * field + the Defend action; the auto-execution turn-loop is a later pass.
+   * **Standing order** (D41/D81) — the unit's standing *behavior when not
+   * player-driven*. For a player unit it's the reserved auto-action (e.g.
+   * `"defend"`, D41 — the auto-execution turn-loop is a later pass); for an
+   * **enemy** the AI planner dispatches on it (D81): `"hold"` = a leashed guard
+   * that defends its **post** instead of charging. Undefined = the default
+   * (manual control / the charging planner).
    */
   standingOrder?: string;
   /**
@@ -198,8 +201,14 @@ export interface Unit extends UnitStats {
   authored: boolean;
   /** Thief archetype (D30): skims the purse mid-battle ({@link "./theft"}). */
   thief: boolean;
-  /** Reserved standing order (D41), e.g. `"defend"`; undefined = manual control. */
+  /** Standing behavior when not player-driven (D41/D81), e.g. `"defend"`, `"hold"`. */
   standingOrder?: string;
+  /**
+   * The tile a standing order anchors to (D81) — where the unit stood when it
+   * took the order (its authored placement). A `"hold"` guard leashes to it and
+   * walks back if displaced. Set at creation only for ordered units.
+   */
+  post?: GridCoord;
   /** Objective role tag (D50), e.g. the closing-gate `"sapper"`; objectives bind to it. */
   role?: string;
   /** Authored ambush body hidden until scouted (D44); a render/fog flag. */
@@ -293,6 +302,7 @@ export function createUnit(spec: UnitSpec): Unit {
     authored: spec.authored ?? false,
     thief: spec.thief ?? false,
     standingOrder: spec.standingOrder,
+    post: spec.standingOrder ? { col: spec.pos.col, row: spec.pos.row } : undefined,
     role: spec.role,
     hidden: false,
     captured: false,

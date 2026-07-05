@@ -2953,6 +2953,43 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D81 — Standing orders widen to enemy behaviors: the leashed "hold" guard
+
+- **Status:** Decided (2026-07-05) · widens **D41** (standing orders) onto the **D42**
+  planner · the Node-3 pass, step 2 (follows the trap-engagement instrumentation)
+- **Context:** Every enemy charges — `planEnemyTurn` always advances toward the nearest
+  foe — so the L3 *Sapper's Snares* could be **waited out**: the lone straggler abandoned
+  his own trap-field (crossing it safely, owner-side immune) and died at the party's
+  deploy line, leaving the node's teaching beat ("you win or lose in the pre-combat
+  read") optional scenery. Step 1's telemetry pinned the miss.
+- **Decision:** `standingOrder` widens from "a player unit's reserved auto-action" (D41)
+  to **"the unit's standing behavior when not player-driven"** — for an enemy that is
+  *always*, so the auto-execution loop D41 deferred **is** the enemy planner, and the two
+  cases (Pip's `"defend"`, an enemy's `"hold"`) share one field. First enemy behavior:
+  **`"hold"` — the leashed guard.**
+  - A unit ordered at creation gains a **`post`** (its authored tile). The planner
+    (`planEnemyTurn`) lets a holder **act only from tiles within `AI.holdLeash` (2) of
+    the post**, never approach-scores toward foes (it closes on the *post* instead —
+    standing home, or walking back when displaced by a shove), and never takes the
+    stall-recovery charge fallback (standing at the post IS the plan).
+  - **`threatenedTiles` honors the leash** — the danger-zone read must not overstate a
+    holder's reach — and the hover preview card gains a muted "Stance: holds its ground"
+    row so the stillness reads as intent, not a bug.
+  - Applied to the **lone straggler only** (node-by-node discipline). The L6A "alert,
+    dug-in" captors are the obvious next takers when that node's pass comes.
+- **Planned before Node 3 closes (per the user):** the fuller behavior set —
+  **flee-after-first-melee** (the straggler breaks away once bloodied in melee) and
+  **trigger-based aggro** (hold until a foe crosses a threshold, then charge). Both are
+  *state-transition* behaviors — an event swaps the unit's standing order — so the
+  target shape is: order id → a plan constraint + transition rules, a data registry the
+  planner dispatches on. Keep new behaviors new records, not new planner branches.
+- **Spec:** `src/core/units.ts` (`standingOrder` docs + `Unit.post`), `src/core/ai.ts`
+  (`holdPost`, `AI.holdLeash`, the plan/threat dispatch), `src/core/hollow-mill.ts` (the
+  straggler's `overrides`), `BattleScene.attackPreviewRows` (the stance row).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

@@ -2873,11 +2873,14 @@ export class BattleScene extends Phaser.Scene {
     const back = retaliationDamage(actor, foe, units);
     const reach = inAttackRange(actor, foe);
     const skull = (n: number, t: Unit) => (n >= t.hp ? ` ${ICON.lethal.glyph}` : "");
-    return [
+    const rows: CardRow[] = [
       { label: "Deal", value: `${deal}${skull(deal, foe)}`, color: deal >= foe.hp ? INK.ember : INK.danger, emphasize: true },
       { label: "Hits back", value: `${back}${skull(back, actor)}`, color: back >= actor.hp ? INK.danger : INK.muted },
       { label: "Range", value: reach ? "in reach" : "move adjacent", color: reach ? INK.success : INK.muted },
     ];
+    // A holder won't come to you (D81) — say so, or its stillness reads as a bug.
+    if (foe.standingOrder === "hold") rows.push({ label: "Stance", value: "holds its ground", color: INK.muted });
+    return rows;
   }
 
   /** Battle hover — a reachable tile: this step's cost, the budget left after it, and whether the Act is still up. */

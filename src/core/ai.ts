@@ -62,7 +62,21 @@ export const AI = {
   movePenalty: 1,
   /** Weight on closing distance when no action is available (advance/search). */
   approachWeight: 4,
+  /** How far a `"hold"` guard will stray from its post to act (D81 leash). */
+  holdLeash: 2,
 } as const;
+
+/**
+ * The tile a `"hold"` standing order (D81) leashes `unit` to, or undefined for
+ * every other unit. A holder acts only from tiles within {@link AI.holdLeash}
+ * of this post, never advances toward foes it can't reach from it, and walks
+ * back when displaced. First of the standing-order behaviors the planner
+ * dispatches on — flee-on-melee and trigger-aggro are the planned next records
+ * (see D81); keep the dispatch here data-shaped, not branch-per-behavior.
+ */
+function holdPost(unit: Unit): GridCoord | undefined {
+  return unit.standingOrder === "hold" ? unit.post ?? unit.pos : undefined;
+}
 
 /** A turn the AI intends to take. */
 export interface AIPlan {
@@ -233,17 +247,22 @@ export function planEnemyTurn(
   const seen = foes.filter((f) => canSeeUnit(units, side, f));
   const ability = debuffAbility(unit);
   const dests = reachableTiles(unit, units, grid);
+  const post = holdPost(unit);
 
   let bestPlan: AIPlan = stay;
   let bestScore = -Infinity;
 
   for (const d of dests) {
+    // A holder acts only from inside its leash (D81) — a tile beyond it can
+    // still be walked to (scored below as the way back to a lost post), but
+    // never fought from.
+    const inLeash = !post || manhattan(d.tile, post) <= AI.holdLeash;
     const movePart = -d.cost * AI.movePenalty - isolationPenalty(unit, d.tile, units);
     let actionScore = -Infinity;
     let actTarget: Unit | null = null;
     let actAbility: SkillDef | undefined;
 
-    for (const foe of seen) {
+    for (const foe of inLeash ? seen : []) {
       const dist = manhattan(d.tile, foe.pos);
       // A basic attack from this destination (ranged honors attackRange).
       if (dist <= unit.attackRange) {
@@ -272,6 +291,11 @@ export function planEnemyTurn(
     let score: number;
     if (actTarget) {
       score = actionScore + movePart;
+    } else if (post) {
+      // A holder never advances on foes — with no one to fight from the leash,
+      // it closes on its POST instead (staying put when already home, walking
+      // back when displaced).
+      score = -manhattan(d.tile, post) * AI.approachWeight + movePart;
     } else {
       // No action: advance toward the nearest foe (seen, else search any).
       const toward = seen.length > 0 ? seen : foes;
@@ -287,7 +311,8 @@ export function planEnemyTurn(
 
   // Safety net: if the planner somehow stalled but a path to a seen foe exists,
   // fall back to a simple approach (keeps the AI from freezing on odd maps).
-  if (bestPlan.target === null && bestPlan.path.length === 0 && !isImmobilized(unit) && seen.length > 0) {
+  // Never for a holder — standing at its post IS its plan, not a stall (D81).
+  if (bestPlan.target === null && bestPlan.path.length === 0 && !isImmobilized(unit) && !post && seen.length > 0) {
     const nearest = [...seen].sort((a, b) => manhattan(unit.pos, a.pos) - manhattan(unit.pos, b.pos))[0];
     const nav = occupiedGrid(grid, units, [unit, nearest]);
     const path = findPath(nav, unit.pos, nearest.pos);
@@ -370,7 +395,11 @@ export function threatenedTiles(units: readonly Unit[], grid: TileGrid, victimSi
   const seen = new Set<string>();
   const out: GridCoord[] = [];
   for (const e of enemies) {
+    // A holder only ever strikes from inside its leash (D81) — the danger read
+    // must not overstate it, or the field looks locked down when it isn't.
+    const post = holdPost(e);
     for (const d of reachableTiles(e, units, grid)) {
+      if (post && manhattan(d.tile, post) > AI.holdLeash) continue;
       for (let dc = -e.attackRange; dc <= e.attackRange; dc++) {
         const rr = e.attackRange - Math.abs(dc);
         for (let dr = -rr; dr <= rr; dr++) {

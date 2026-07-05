@@ -11,6 +11,8 @@ import { bypassXp } from "./node-events";
 import { isConcealedTrap } from "./entities";
 import { traverseRoute } from "./expedition-sim";
 import { THE_HOLLOW_MILL } from "./hollow-mill";
+import { AI, type BattlePolicy } from "./ai";
+import { manhattan } from "./combat";
 
 function roster(): Unit[] {
   return [
@@ -436,5 +438,34 @@ describe("runloop — enemy-trap engagement telemetry (the Node-3 lever readout)
     winField(battle);
     const res = loop.resolve();
     expect(res.traps).toEqual({ staged: 0, spotted: 0, sprung: 0, disarmed: 0 });
+  });
+});
+
+describe("runloop — the lone straggler holds his field (D81, the Node-3 beat)", () => {
+  const POST = { col: 8, row: 2 }; // his authored placement — the far side of the snares
+
+  it("parked players are never charged — the crossing can't be waited out", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    const battle = loop.startEncounter();
+    loop.beginBattle();
+    const passive: BattlePolicy = {
+      name: "passive",
+      plan: (u) => ({ unit: u, path: [], destination: u.pos, target: null }),
+    };
+    const winner = loop.autoBattle({ maxTurns: 60, player: passive });
+    const thug = battle.units.find((u) => u.id === "lone-straggler")!;
+    // He held: still alive, still within his leash of the post after 60 turns…
+    expect(thug.alive).toBe(true);
+    expect(manhattan(thug.pos, POST)).toBeLessThanOrEqual(AI.holdLeash);
+    // …and a party that never crosses the field decides nothing.
+    expect(winner).toBeUndefined();
+  });
+
+  it("the charging bot still wins the node — the hold makes the field mandatory, not the fight unwinnable", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    loop.startEncounter();
+    loop.beginBattle();
+    const winner = loop.autoBattle();
+    expect(winner).toBe("player");
   });
 });

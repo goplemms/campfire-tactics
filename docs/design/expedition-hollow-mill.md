@@ -141,6 +141,13 @@ roof:
   concealed snares** mid-field (concealment 4–6, damage 22–26). High damage so eating
   an unspotted one really stings (no Medic yet). **Spot-and-avoid** — disarm not
   required.
+- **He holds his field (D81).** The straggler carries `standingOrder: "hold"` — a
+  **leashed guard** (leash 2 around his post at col 8) who oversees his snares instead of
+  charging across them. The party **must cross the trap-field to win**; waiting at the
+  deploy line decides nothing. Even Rook's bow only reaches from past the mid-field, so
+  every line of attack crosses the snares. The hover card telegraphs the stance ("holds
+  its ground"). *Planned before Node 3 closes:* the fuller behavior set —
+  flee-after-first-melee and trigger-based aggro (see D81).
 - **Teaches:** you win or lose in the **pre-combat setup** — read the field with Vale's
   Awareness, position so the lone enemy is fought on your terms.
 - **Reward:** 70g, 1 trap-kit, 70 XP. Unsprung kits salvage to the stash.
@@ -186,6 +193,21 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Node-3 pass, step 2: the straggler holds his field — the crossing is now mandatory
+  (D81).** The L3 teaching beat could be waited out: every enemy charges, so the lone
+  straggler abandoned his own snares (owner-immune) and died at the party's deploy line
+  — the field was optional scenery. `standingOrder` now widens to enemy behaviors (the
+  D41 field, dispatched by the D42 planner): the straggler carries **`"hold"`** — a
+  **leashed guard** anchored to a new `Unit.post` (his authored tile), who acts only
+  within `AI.holdLeash` (2) of it, never approach-scores toward foes (he closes on the
+  *post* when displaced — a shove is walked back), and never takes the stall-recovery
+  charge. `threatenedTiles` honors the leash (an honest danger read) and the hover card
+  gains a "Stance: holds its ground" row. Applied to the straggler only (node-by-node);
+  the L6A dug-in captors are the obvious next takers. *Queued before Node 3 closes:*
+  flee-after-first-melee + trigger-aggro as standing-order records (D81). Guards: tsc ·
+  unit tests (planner leash pins; at the real node: parked players are never charged +
+  the charging bot still wins) · build · e2e · sim (digest unchanged — the bot always
+  crossed; the fight now happens on the far side).
 - **Node-3 pass, step 1: trap engagement is now instrumented — and the baseline is loud.**
   The sim was blind to the one node whose threat is terrain: no telemetry knew whether the
   L3 snares were ever spotted, sprung, or disarmed. `RunLoop.resolve` now reports a

@@ -143,8 +143,11 @@ export const TRAP_FIELD: AuthoredEncounter = {
     { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
   // LOCKED: one relatively weak enemy — the strong snares are the real encounter.
+  // He HOLDS his post (D81): the field's sapper oversees his snares rather than
+  // charging across them, so the party must cross the trap-field to win — the
+  // node's teaching beat is mandatory, not optional scenery.
   enemies: [
-    { templateId: "bandit-thug", pos: { col: 8, row: 2 }, id: "lone-straggler" },
+    { templateId: "bandit-thug", pos: { col: 8, row: 2 }, id: "lone-straggler", overrides: { standingOrder: "hold" } },
   ],
   // Very strong, concealed, mid-field traps the party must cross — high damage so
   // eating an unspotted one really stings (no Medic yet). Spot-and-avoid (no disarm req).

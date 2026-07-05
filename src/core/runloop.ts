@@ -49,6 +49,7 @@ import { moraleModifiers } from "./morale";
 import { moraleTier } from "./camp";
 import { applyCampToParty } from "./camp";
 import { freeCaptive } from "./deployment";
+import { isConcealedTrap, type ConcealedTrap } from "./entities";
 import { recoverMaterials } from "./resolution";
 import { grantItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
@@ -78,6 +79,23 @@ import {
   type EventChoice,
 } from "./node-events";
 
+/**
+ * How the party engaged the **concealed enemy traps** an encounter staged (D12/D54)
+ * — the trap-field lever's readout, so a trap node whose field was never touched
+ * shows up in telemetry instead of passing silently. All counts are enemy-owned
+ * concealed traps only (a player's own Set Trap is a different lever).
+ */
+export interface TrapEngagement {
+  /** Concealed enemy traps on the field at staging. */
+  staged: number;
+  /** Traps revealed by an Awareness read (includes any later disarmed). */
+  spotted: number;
+  /** Traps that went off on a party body. */
+  sprung: number;
+  /** Traps removed by a deliberate disarm (the kit harvested). */
+  disarmed: number;
+}
+
 /** What a resolved encounter produced (for the render/run-end screen). */
 export interface ResolveResult {
   winner?: "player" | "enemy";
@@ -91,6 +109,8 @@ export interface ResolveResult {
   rescueQuests: RescueQuest[];
   /** Per-unit level gains from combat XP + the objective reward (D53) — feedback. */
   levels: Record<string, { charLevels: number; jobLevels: number }>;
+  /** Enemy-trap engagement at this node (zeroes when none were staged). */
+  traps: TrapEngagement;
   over: boolean;
 }
 
@@ -174,6 +194,11 @@ export const REST = {
   moraleGain: 2,
 } as const;
 
+/** The concealed **enemy** traps currently on `battle`'s field, in any state. */
+function enemyTraps(battle: Battle): ConcealedTrap[] {
+  return battle.entities.all().filter((e): e is ConcealedTrap => isConcealedTrap(e) && e.owner === "enemy");
+}
+
 /** The run-loop orchestrator. */
 export class RunLoop {
   readonly run: RunState;
@@ -187,6 +212,12 @@ export class RunLoop {
   combatants: Unit[] = [];
   /** Combat XP tallied on the battle bus, committed at {@link resolve} (D53). */
   private xpTally?: CombatXpTally;
+  /**
+   * Enemy traps on the field at staging — the {@link TrapEngagement} baseline.
+   * Disarmed traps leave the entity registry, so the staged total must be read
+   * before play; the delta at {@link resolve} is the disarm count.
+   */
+  private stagedEnemyTraps = 0;
   /**
    * An optional playtest telemetry sink (the logistics-integrity instrument).
    * When set, the loop snapshots the lever state at each camp/encounter/rest
@@ -529,6 +560,7 @@ export class RunLoop {
     this.staged = staged;
     this.combatants = players;
     this.battle = staged.battle;
+    this.stagedEnemyTraps = enemyTraps(staged.battle).length;
     this.xpTally = trackCombatXp(staged.battle.bus); // subscribe before any turns (D53)
     return staged.battle;
   }
@@ -593,6 +625,18 @@ export class RunLoop {
     // Mortality (D9): downed player combatants resolve on a survivable outcome (D51).
     const { downed, permadeaths } = this.resolveMortalities(survivable, policy);
 
+    // Trap engagement (D12/D54) — read before the battle is discarded. A disarmed
+    // trap left the registry (the staged snapshot supplies the delta) and required
+    // a spot first, so it counts as spotted too.
+    const present = enemyTraps(battle);
+    const disarmed = this.stagedEnemyTraps - present.length;
+    const traps: TrapEngagement = {
+      staged: this.stagedEnemyTraps,
+      spotted: present.filter((t) => t.revealed).length + disarmed,
+      sprung: present.filter((t) => t.sprung).length,
+      disarmed,
+    };
+
     // Record the graded node outcome + advance the night/terminal (D51). recordNight
     // sets the run terminal: a win at the final node = complete; any other final-node
     // resolution ends the run (returned-alive without the prize, or a wipe).
@@ -617,8 +661,9 @@ export class RunLoop {
     this.staged = undefined;
     this.combatants = [];
     this.xpTally = undefined;
+    this.stagedEnemyTraps = 0;
 
-    const out: ResolveResult = { winner, result, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, levels, over };
+    const out: ResolveResult = { winner, result, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, levels, traps, over };
     recordEncounter(this.log, this.run, out);
     return out;
   }

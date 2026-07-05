@@ -8,6 +8,9 @@ import { SURVEY } from "./jobs";
 import { computeUpkeep, RECOVERY } from "./upkeep";
 import { FATIGUE, FATIGUE_TIER_FLOORS } from "./fatigue";
 import { bypassXp } from "./node-events";
+import { isConcealedTrap } from "./entities";
+import { traverseRoute } from "./expedition-sim";
+import { THE_HOLLOW_MILL } from "./hollow-mill";
 
 function roster(): Unit[] {
   return [
@@ -379,5 +382,59 @@ describe("runloop — the unified camp at every node (D35)", () => {
     // by a prior step, but every other visited node was arrived at by a choose).
     const steps = run.path.length - 1;
     expect(cooldownRemaining(run.overworld, "survey")).toBe(99 - steps);
+  });
+});
+
+describe("runloop — enemy-trap engagement telemetry (the Node-3 lever readout)", () => {
+  const SNARES_ROUTE = ["start", "e1", "camp2", "snares"];
+
+  /** Arrive at the Snares node with the encounter staged, ready to inspect. */
+  function stagedSnares() {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, SNARES_ROUTE);
+    const battle = loop.startEncounter();
+    const traps = battle.entities.all().filter(isConcealedTrap);
+    return { loop, battle, traps };
+  }
+
+  /** Fell every active enemy so the field is won (the graded outcome = win). */
+  function winField(battle: { units: Unit[] }): void {
+    for (const u of battle.units) {
+      if (u.side === "enemy") {
+        u.hp = 0;
+        u.alive = false;
+      }
+    }
+  }
+
+  it("stages the Sapper's Snares with its five concealed enemy traps", () => {
+    const { traps } = stagedSnares();
+    expect(traps).toHaveLength(5);
+    expect(traps.every((t) => t.owner === "enemy" && !t.revealed && !t.sprung)).toBe(true);
+  });
+
+  it("resolve() reports spotted / sprung / disarmed against the staged total", () => {
+    const { loop, battle, traps } = stagedSnares();
+    traps[0].revealed = true; // an Awareness read found one…
+    traps[1].sprung = true; // …one went off on a body…
+    battle.entities.remove(traps[2].id); // …and one was disarmed (spotted, then removed)
+    winField(battle);
+    const res = loop.resolve();
+    // spotted counts the disarmed trap too — a disarm requires the spot first.
+    expect(res.traps).toEqual({ staged: 5, spotted: 2, sprung: 1, disarmed: 1 });
+  });
+
+  it("a field never touched resolves as staged-but-unfelt — the loud miss", () => {
+    const { loop, battle } = stagedSnares();
+    winField(battle);
+    const res = loop.resolve();
+    expect(res.traps).toEqual({ staged: 5, spotted: 0, sprung: 0, disarmed: 0 });
+  });
+
+  it("a trap-less encounter reports zeroes (and the next node doesn't inherit counts)", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1"]);
+    const battle = loop.startEncounter(); // the L1 skirmish — no traps authored
+    winField(battle);
+    const res = loop.resolve();
+    expect(res.traps).toEqual({ staged: 0, spotted: 0, sprung: 0, disarmed: 0 });
   });
 });

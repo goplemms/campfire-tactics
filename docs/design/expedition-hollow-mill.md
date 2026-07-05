@@ -186,6 +186,22 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Node-3 pass, step 1: trap engagement is now instrumented — and the baseline is loud.**
+  The sim was blind to the one node whose threat is terrain: no telemetry knew whether the
+  L3 snares were ever spotted, sprung, or disarmed. `RunLoop.resolve` now reports a
+  `TrapEngagement` readout (**staged / spotted / sprung / disarmed**, enemy-owned concealed
+  traps only) per encounter, threaded through the playtest log (`PlaytestSummary.traps` +
+  the `engaged.feltTraps` lever bit) into the sim digest (an `enemy traps:` line). The
+  **pinned baseline** (sim guard): the naive bot's route stages **8** traps (L3's five +
+  L6A's three), **springs 5 blindly, spots 0, disarms 0** — the Awareness spot loop and the
+  disarm verb live only in the render layer, so headless play *feels* the field as silent
+  damage but never *reads* it; and an interactive player who lets the lone straggler charge
+  can skip the field entirely (nothing forces the crossing — the step-2 guard/hold AI work).
+  These pins are the before-picture the next steps move. Seams: `RunLoop.stagedEnemyTraps`
+  (snapshotted at staging — a disarm removes the entity, so the delta is the disarm count),
+  `resolve()`'s registry read. Guards: tsc · 997 unit tests (incl. the staged/spotted/sprung/
+  disarmed resolve pins + the loud staged-but-unfelt case) · build · e2e (73) · sim (Hollow
+  Mill completes; digest now prints the trap line).
 - **L2 is now the *storage* lesson — the traveler's gift (D79).** The pick-one became an
   **unconditional traveler-gift that overflows**: the bundle cap dropped **10→5** so the 5
   starting supplies fill it **exactly**, and the L2 event now **gives 2 trap kits + the iron

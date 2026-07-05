@@ -55,7 +55,7 @@ describe("playtest-log — the logistics-integrity instrument", () => {
     expect(s.goldEarned).toBeGreaterThanOrEqual(0);
     // Every lever gets a boolean — the headline readout the reviewer scans.
     expect(Object.keys(s.engaged).sort()).toEqual(
-      ["goldPressure", "leveled", "moraleMoved", "restedInPlace", "skippedFood", "storagePressure", "tookCaptureRisk"].sort(),
+      ["feltTraps", "goldPressure", "leveled", "moraleMoved", "restedInPlace", "skippedFood", "storagePressure", "tookCaptureRisk"].sort(),
     );
   });
 });
@@ -100,6 +100,7 @@ describe("summarizePlaytest — derives lever engagement from a timeline", () =>
           rescued: [],
           permadeaths: [],
           leveled: ["u1"],
+          traps: { staged: 5, spotted: 2, sprung: 1, disarmed: 1 },
         },
       ],
     };
@@ -117,6 +118,8 @@ describe("summarizePlaytest — derives lever engagement from a timeline", () =>
     expect(s.engaged.tookCaptureRisk).toBe(true);
     expect(s.engaged.leveled).toBe(true);
     expect(s.engaged.moraleMoved).toBe(true); // saw a non-Neutral tier
+    expect(s.traps).toEqual({ staged: 5, spotted: 2, sprung: 1, disarmed: 1 });
+    expect(s.engaged.feltTraps).toBe(true);
   });
 
   it("reads a comfortable run as low-engagement (the loud 'lever never bit' signal)", () => {
@@ -138,6 +141,8 @@ describe("summarizePlaytest — derives lever engagement from a timeline", () =>
           rescued: [],
           permadeaths: [],
           leveled: [],
+          // Traps staged but never touched — the loud "field never felt" read.
+          traps: { staged: 5, spotted: 0, sprung: 0, disarmed: 0 },
         },
       ],
     };
@@ -147,6 +152,8 @@ describe("summarizePlaytest — derives lever engagement from a timeline", () =>
     expect(s.engaged.goldPressure).toBe(false); // never dipped near broke
     expect(s.engaged.tookCaptureRisk).toBe(false);
     expect(s.engaged.moraleMoved).toBe(false); // stayed Neutral the whole run
+    expect(s.engaged.feltTraps).toBe(false); // 5 staged, none touched — the miss reads loud
+    expect(s.traps.staged).toBe(5);
     expect(s.purseMin).toBe(200);
   });
 });

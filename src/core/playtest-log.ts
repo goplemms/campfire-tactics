@@ -20,7 +20,7 @@ import { currentNode } from "./run";
 import { moraleTier, type MoraleTier } from "./camp";
 import { slotsUsed, slotsFree } from "./inventory";
 import type { EncounterResult } from "./authored";
-import type { ResolveResult, CampResult, RestResult, InPlaceRestResult, EventResolution } from "./runloop";
+import type { ResolveResult, CampResult, RestResult, InPlaceRestResult, EventResolution, TrapEngagement } from "./runloop";
 
 /** A single fighter's vitals at a snapshot moment. */
 export interface UnitVitals {
@@ -74,6 +74,8 @@ export type PlaytestEvent =
       permadeaths: string[];
       /** Units that gained a character or job level on this win (D53). */
       leveled: string[];
+      /** Enemy-trap engagement at this node (D12/D54) — zeroes when none staged. */
+      traps: TrapEngagement;
     }
   | {
       at: "rest-node";
@@ -161,6 +163,7 @@ export function recordEncounter(log: PlaytestLog | undefined, run: RunState, res
     rescued: [...res.rescued],
     permadeaths: [...res.permadeaths],
     leveled,
+    traps: { ...res.traps },
   });
 }
 
@@ -227,6 +230,8 @@ export interface PlaytestSummary {
   permadeaths: number;
   // Progression
   levelUps: number;
+  // Trap lever (D12/D54) — summed enemy-trap engagement across the run's encounters.
+  traps: TrapEngagement;
   /**
    * The headline: did each lever *come into play at all*? A `false` here is the
    * loud signal — a lever the player never felt this session.
@@ -239,6 +244,12 @@ export interface PlaytestSummary {
     leveled: boolean;
     restedInPlace: boolean;
     storagePressure: boolean;
+    /**
+     * The trap lever bit: an enemy trap was spotted, sprung, or disarmed. The loud
+     * miss is `traps.staged > 0` with this false — a trap-field crossed the run
+     * without the field ever being touched (the Node-3 teaching-beat check).
+     */
+    feltTraps: boolean;
   };
 }
 
@@ -259,6 +270,7 @@ export function summarizePlaytest(log: PlaytestLog): PlaytestSummary {
   let levelUps = 0;
   let restedInPlace = false;
   let storagePressure = false;
+  const traps: TrapEngagement = { staged: 0, spotted: 0, sprung: 0, disarmed: 0 };
 
   const purses: number[] = [];
   const morales: number[] = [];
@@ -284,6 +296,10 @@ export function summarizePlaytest(log: PlaytestLog): PlaytestSummary {
       captures += ev.captured.length;
       permadeaths += ev.permadeaths.length;
       levelUps += ev.leveled.length;
+      traps.staged += ev.traps.staged;
+      traps.spotted += ev.traps.spotted;
+      traps.sprung += ev.traps.sprung;
+      traps.disarmed += ev.traps.disarmed;
     }
     if (ev.at === "in-place-rest" && ev.applied) restedInPlace = true;
   }
@@ -318,6 +334,7 @@ export function summarizePlaytest(log: PlaytestLog): PlaytestSummary {
     captures,
     permadeaths,
     levelUps,
+    traps,
     engaged: {
       goldPressure: purseMin <= GOLD_PRESSURE_FLOOR || underfundedNights > 0,
       skippedFood: foodSkips > 0,
@@ -326,6 +343,7 @@ export function summarizePlaytest(log: PlaytestLog): PlaytestSummary {
       leveled: levelUps > 0,
       restedInPlace,
       storagePressure,
+      feltTraps: traps.spotted + traps.sprung + traps.disarmed > 0,
     },
   };
 }

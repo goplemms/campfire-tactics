@@ -217,6 +217,12 @@ export const RECOVERY = {
    * tuning (the value is the only knob — the mechanic reads one number).
    */
   nightlyChipHp: 2,
+  /**
+   * Soft cap on **consecutive in-place-rest nights** at one node (D80) — `null` = **uncapped**
+   * (the party may linger and heal indefinitely, bleeding upkeep). Set a number to refuse past it
+   * (a hook for pacing / streak-triggered events). Counted on `OverworldEconomy.restStreak`.
+   */
+  maxInPlaceStreak: null as number | null,
 } as const;
 
 // --- Rest-Point recovery (D9) -----------------------------------------------

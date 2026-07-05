@@ -210,11 +210,18 @@ export interface OverworldEconomy {
    * (rebuilt each expedition, like the purse) — it does **not** bank to the guild.
    */
   influence: number;
+  /**
+   * **Consecutive in-place-rest nights** at the current node (D80) — the party lingering to heal.
+   * Increments each {@link "./runloop".RunLoop.inPlaceRest}; resets to 0 the moment the caravan
+   * moves on ({@link "./run".chooseNode}). A hook for a soft cap ({@link "./upkeep".RECOVERY}) and
+   * for streak-triggered events later.
+   */
+  restStreak: number;
 }
 
 /** A fresh, fully-ready economy (every ability off cooldown, nothing scouted, no flags set). */
 export function createOverworldEconomy(): OverworldEconomy {
-  return { cooldowns: {}, scouted: {}, campUses: {}, nodeFlags: {}, primedFlags: {}, interestPerStep: 0, debt: 0, protection: 0, influence: 0 };
+  return { cooldowns: {}, scouted: {}, campUses: {}, nodeFlags: {}, primedFlags: {}, interestPerStep: 0, debt: 0, protection: 0, influence: 0, restStreak: 0 };
 }
 
 /** A deep copy of the economy (for snapshots / round-trips). */
@@ -229,6 +236,7 @@ export function cloneOverworldEconomy(eco: OverworldEconomy): OverworldEconomy {
     debt: eco.debt,
     protection: eco.protection,
     influence: eco.influence,
+    restStreak: eco.restStreak,
   };
 }
 

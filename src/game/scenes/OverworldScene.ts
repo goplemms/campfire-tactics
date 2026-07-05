@@ -2149,9 +2149,10 @@ export class OverworldScene extends Phaser.Scene {
     const affordable = this.run.camp.gold >= bill.total;
     const enabled = wounded && affordable;
     const label = !wounded ? "party at full HP" : !affordable ? `need ${bill.total}g (broke)` : `pay ${bill.total}g`;
+    const streak = this.run.overworld.restStreak;
     return {
       label,
-      detail: "In-place rest: pay a night's rations to bank RP + a small heal (floors at ≥1). Repeatable; each rest is a node-step (ticks cooldowns). Greys at full HP / when broke.",
+      detail: `In-place rest: linger a night on this node — pay a night's rations to heal the **whole wounded party** (worst-first, down the RP pool) and step Fatigue down a tier. Repeatable; each night is a node-step (ticks cooldowns).${streak > 0 ? ` Rested here ${streak} night(s) so far.` : ""} Greys at full HP / when broke.`,
       enabled,
     };
   }
@@ -2161,8 +2162,10 @@ export class OverworldScene extends Phaser.Scene {
     this.showLedgerTransition("Before resting for the night…", () => {
       const res: InPlaceRestResult = this.loop.inPlaceRest();
       this.refreshCampText();
-      if (res.applied) this.setHint(`Rested in place: −${res.goldSpent}g rations, +${res.hpHealed} HP, +${res.rpAdded} RP. Cooldowns ticked (a node-step passed).`);
-      else this.setHint(`Can't rest: ${res.reason}`);
+      if (res.applied) {
+        const who = res.healed.length === 1 ? "1 fighter" : `${res.healed.length} fighters`;
+        this.setHint(`Rested in place (night ${res.streak} here): −${res.goldSpent}g rations, +${res.hpHealed} HP across ${who}, +${res.rpAdded} RP. A node-step passed.`);
+      } else this.setHint(`Can't rest: ${res.reason}`);
       if (this.loop.isOver()) return this.runEnd();
       this.showSurvey();
     });

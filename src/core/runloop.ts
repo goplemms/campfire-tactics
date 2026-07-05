@@ -142,10 +142,12 @@ export interface InPlaceRestResult {
   goldSpent: number;
   /** Rest Points banked this night — the per-night rate cap. */
   rpAdded: number;
-  /** Units healed and the HP each gained. */
+  /** Units healed and the HP each gained (the whole wounded party, worst-first, D80). */
   healed: { unitId: string; hp: number }[];
   /** Total HP restored — ≥1 on an applied rest (the floor, D47); 0 only on a refusal. */
   hpHealed: number;
+  /** Consecutive in-place-rest nights at this node after this rest (0 on a refusal, D80). */
+  streak: number;
 }
 
 /**
@@ -352,12 +354,18 @@ export class RunLoop {
   inPlaceRest(): InPlaceRestResult {
     const policy = runDifficulty(this.run);
     const refuse = (reason: string): InPlaceRestResult => ({
-      applied: false, reason, goldSpent: 0, rpAdded: 0, healed: [], hpHealed: 0,
+      applied: false, reason, goldSpent: 0, rpAdded: 0, healed: [], hpHealed: 0, streak: this.run.overworld.restStreak,
     });
 
     // Refuse at full health (no empty drain, D47) — only wounded fighters count.
     const wounded = woundedBySeverity(combatRoster(this.run));
     if (wounded.length === 0) return refuse("The party is already at full health.");
+
+    // Soft cap (D80): if a max consecutive-nights cap is set, refuse past it (uncapped by default).
+    const cap = RECOVERY.maxInPlaceStreak;
+    if (cap != null && this.run.overworld.restStreak >= cap) {
+      return refuse(`The party has rested here ${this.run.overworld.restStreak} night(s) — time to move on.`);
+    }
 
     // Gold cap (D47): refuse if the purse can't cover a full night's rations — no
     // breach, no morale teeth; the in-place rest only proceeds when fully funded.
@@ -370,34 +378,42 @@ export class RunLoop {
     const rpAdded = rpPerNight(this.run.party);
     this.run.rp += rpAdded;
 
-    // Small heal: rest-heal the single most-wounded down the pool, capped at a small
-    // number of chunks (rate-limited by the night's RP), then floor it at ≥1.
+    // D80: **all rest heals the whole (alive) party** — mend the wounded worst-first down the
+    // night's RP pool (no Clearing bonus RP, so it stays slower than routing to a Clearing). The
+    // pool regenerates `rpPerNight`, so a hurt party heals gradually over several paid nights.
     const healed: { unitId: string; hp: number }[] = [];
     let hpHealed = 0;
-    const target = wounded[0];
-    const budget = Math.min(this.run.rp, RECOVERY.inPlaceChunks * policy.rpPerChunk);
-    if (budget >= policy.rpPerChunk) {
-      const res = restHeal(target, budget, policy);
+    for (const u of wounded) {
+      if (this.run.rp < policy.rpPerChunk) break;
+      const res = restHeal(u, this.run.rp, policy);
       if (res.rpSpent > 0) {
         this.run.rp -= res.rpSpent;
-        hpHealed = res.hpHealed;
+        hpHealed += res.hpHealed;
+        healed.push({ unitId: u.id, hp: res.hpHealed });
       }
     }
-    // Floor (D47): a paid rest on a wounded party always restores ≥1 HP.
+    // Floor (D47): a paid rest on a wounded party always restores ≥1 HP (the RP may round to none).
     if (hpHealed < RECOVERY.inPlaceFloorHp) {
-      hpHealed += healUnit(target, RECOVERY.inPlaceFloorHp);
+      const extra = healUnit(wounded[0], RECOVERY.inPlaceFloorHp);
+      if (extra > 0) {
+        hpHealed += extra;
+        const row = healed.find((h) => h.unitId === wounded[0].id);
+        if (row) row.hp += extra;
+        else healed.push({ unitId: wounded[0].id, hp: extra });
+      }
     }
-    if (hpHealed > 0) healed.push({ unitId: target.id, hp: hpHealed });
 
     // D73/D80: an in-place rest is an ordinary night — step Fatigue down one tier (nightlyFatigue).
     // (The heal above already paid any Weary RP surcharge; the step-down follows it.)
     for (const u of this.run.party) u.fatigue = nightlyFatigue(u.fatigue, false);
 
-    // Each rest is a full node-step (D47): Break Camp ticks the spine + accrues
-    // interest, and a night passes — but the run stays at this node (repeatable).
+    // Each rest is a full node-step (D47): Break Camp ticks the spine + accrues interest, and a
+    // night passes — but the run stays at this node (repeatable). Count the consecutive-night streak
+    // (reset when the caravan moves on, in chooseNode) — a hook for a cap + streak-triggered events.
     breakCamp(this.run);
     this.run.night += 1;
-    const result: InPlaceRestResult = { applied: true, goldSpent: upkeep.paid, rpAdded, healed, hpHealed };
+    this.run.overworld.restStreak += 1;
+    const result: InPlaceRestResult = { applied: true, goldSpent: upkeep.paid, rpAdded, healed, hpHealed, streak: this.run.overworld.restStreak };
     recordInPlaceRest(this.log, this.run, result);
     return result;
   }

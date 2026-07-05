@@ -48,6 +48,18 @@ const STEPS = [
   { name: "00-map-preview", minMs: 700, eval: wrap(`s.run.party.forEach((u)=>{u.intelligence=0;}); s._probe=s.loop.reachable().find((n)=>n.kind==='combat')||s.loop.reachable()[0]; s.showPreview(s._probe);`) },
   // The same node with full intel — the "???" fields filled in.
   { name: "00b-map-preview-known", eval: wrap(`s.run.party.forEach((u)=>{u.intelligence=9;}); s.showPreview(s._probe);`) },
+  // Intel meters at differing depths: base tier 1, two reachable combats scouted to 2/3 and full.
+  {
+    name: "00c-map-intel-meters",
+    minMs: 600,
+    eval: wrap(`
+      s.run.party.forEach((u)=>{u.intelligence=3;}); // base = tier 1 everywhere
+      const reach = s.loop.reachable().filter((n)=>n.kind==='combat');
+      if (reach[0]) s.run.overworld.scouted[reach[0].id] = 2; // → tier 3 (full ring)
+      if (reach[1]) s.run.overworld.scouted[reach[1].id] = 1; // → tier 2
+      s.drawMap();
+    `),
+  },
   // Prep camp with the Recovery + Economy drawers open — the action rows + their cost readouts.
   {
     name: "01-camp-actions",

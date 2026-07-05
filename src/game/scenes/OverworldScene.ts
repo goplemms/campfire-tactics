@@ -21,6 +21,9 @@ import {
   resolveKnob,
   cooldownRemaining,
   scoutedTier,
+  intelFloor,
+  clampTier,
+  MAX_TIER,
   campSkillUsesLeft,
   fatigueTier,
   projectDossier,
@@ -502,11 +505,12 @@ export class OverworldScene extends Phaser.Scene {
       this.nodeObjects.push(tick);
     }
 
-    // Scouted marker (D80, Survey): a gold ◉ at top-left for a surveyed node — its intel is
-    // sharpened and you can see a step past it, so read/unread nodes are legible at a glance.
-    if (!state.visited && scoutedTier(this.run.overworld, node.id) > 0) {
-      const mark = this.add.text(pos.x - radius + 2, pos.y - radius + 2, ICON.scouted.glyph, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
-      this.nodeObjects.push(mark);
+    // Intel meter (D80): a segmented ring around a combat node — one arc per intel tier, filled as
+    // your knowledge of it deepens (party Intelligence floor + Survey scouting). A glance shows which
+    // nodes are still mysteries and which you've learned all they'll tell you (a full ring = "done").
+    if (node.kind === "combat" && !state.visited) {
+      const tier = clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, node.id));
+      this.drawIntelMeter(pos, radius + 6, tier);
     }
 
     if (state.reachable) {
@@ -516,6 +520,31 @@ export class OverworldScene extends Phaser.Scene {
       circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showPreview(node));
       if (interactive) circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.enterCamp(node));
     }
+  }
+
+  /**
+   * The **intel meter** (D80) — a segmented ring of {@link MAX_TIER} arcs around a node, one per
+   * intel tier, filled (bright) up to the player's current tier and dim beyond. A full ring means
+   * you've learned everything intel will reveal about the node; a mostly-dim ring flags a mystery
+   * worth scouting. Cream fill reads as "knowledge marks", distinct from the warm state ring.
+   */
+  private drawIntelMeter(pos: { x: number; y: number }, r: number, tier: number): void {
+    const g = this.add.graphics().setDepth(2);
+    const segs = MAX_TIER;
+    const gap = Phaser.Math.DegToRad(26);
+    const seg = (Math.PI * 2) / segs - gap;
+    let a = -Math.PI / 2 + gap / 2; // start near the top, clockwise
+    for (let i = 0; i < segs; i++) {
+      const filled = tier >= i + 1;
+      // A visible dim **track** under every segment, then the bright cream fill up to the tier — so
+      // an empty ring still reads as "3 to learn" and the fill stands out on it.
+      g.lineStyle(3, filled ? COLOR.net : COLOR.borderSoft, filled ? 1 : 0.7);
+      g.beginPath();
+      g.arc(pos.x, pos.y, r, a, a + seg, false);
+      g.strokePath();
+      a += seg + gap;
+    }
+    this.nodeObjects.push(g);
   }
 
   // --- Selection / preview (D24) --------------------------------------------

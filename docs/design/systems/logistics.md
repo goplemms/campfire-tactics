@@ -46,7 +46,9 @@ than **storage** allows. Resource logistics gates spatial logistics gates Combat
   **charges** (a rope snare fires a few times) and whether its material **survives**
   use (recoverable) or is **consumed** (rune dust, gone). **Recovery (D13)** is
   outcome-gated and whole-field: **win** → reclaim every unsprung, intact, surviving
-  entity — *including the enemy's* (salvage); **flee/lose** → nothing. See
+  entity — *including the enemy's* (salvage); **flee/lose** → nothing. Concealed
+  enemy **snares** add one gate (D82): they sweep on the win **only while a
+  trap-trained survivor stands** — no sweeper, no salvage. See
   [Resolution](../04-resolution.md).
 - **Consumables (special arrows · scrolls · reagents)** — one family (D17/D20):
   **storage-slotted, expended on use**, with a **per-item recovery keyword** — each
@@ -253,8 +255,9 @@ system.
 > - **Combat:** Vale fires net arrows (then falls back to free basic shots); both
 >   traps spring; the rune is detonated.
 > - **Resolution:** party held the ground → the **intact nest** (and a salvaged
->   **enemy snare**) are **recovered**; spent consumables roll their **recovery
->   keyword** (a few net arrows come back); **+180 gold**.
+>   **enemy snare** — the party's trapper was still standing to sweep it, D82; a
+>   still-bound Vale wouldn't have counted) are **recovered**; spent consumables
+>   roll their **recovery keyword** (a few net arrows come back); **+180 gold**.
 >
 > Next Pre-deployment, the player can finally afford repairs *and* the **+2 storage
 > upgrade** — and now there's room for that second rune.

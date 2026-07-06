@@ -50,11 +50,13 @@ describe("concealed enemy traps — the trap-field primitive (D12)", () => {
     expect(hero.hp).toBe(18);
   });
 
-  it("is never auto-salvaged on a win (recoverable=false) — disarm is the only harvest", () => {
+  it("stays out of the generic D13 recovery (recoverable=false) — only the gated D82 sweep reclaims it", () => {
     const trap = makeConcealedTrap("t", { col: 1, row: 1 }, "enemy", 12, 4);
     expect(isConcealedTrap(trap)).toBe(true);
+    // No party passed (⇒ no trap-trained sweeper): the win alone reclaims nothing.
     const res = recoverMaterials([trap], "player", createInventory(10));
     expect(res.recovered).toEqual([]);
+    // The sweep itself (a standing trap-trained survivor) is pinned in resolution.test.ts.
   });
 });
 

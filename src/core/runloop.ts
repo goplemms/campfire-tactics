@@ -94,6 +94,8 @@ export interface TrapEngagement {
   sprung: number;
   /** Traps removed by a deliberate disarm (the kit harvested). */
   disarmed: number;
+  /** Unsprung traps swept to storage by the win (D82 — needs a standing trap-trained survivor). */
+  salvaged: number;
 }
 
 /** What a resolved encounter produced (for the render/run-end screen). */
@@ -604,7 +606,8 @@ export class RunLoop {
     let goldEarned = 0;
     let recovered: string[] = [];
     let levels: ResolveResult["levels"] = {};
-    if (won) ({ goldEarned, recovered, levels } = this.applyRewards(source, battle));
+    let sweptTraps = 0;
+    if (won) ({ goldEarned, recovered, levels, sweptTraps } = this.applyRewards(source, battle));
 
     // Captives: auto-rescued on a win, else turned into rescue follow-ups (D21).
     // Persist the follow-ups on the run so an abandoned companion is never lost
@@ -635,6 +638,7 @@ export class RunLoop {
       spotted: present.filter((t) => t.revealed).length + disarmed,
       sprung: present.filter((t) => t.sprung).length,
       disarmed,
+      salvaged: sweptTraps,
     };
 
     // Record the graded node outcome + advance the night/terminal (D51). recordNight
@@ -705,7 +709,7 @@ export class RunLoop {
   private applyRewards(
     source: EncounterSource,
     battle: Battle,
-  ): Pick<ResolveResult, "goldEarned" | "recovered" | "levels"> {
+  ): Pick<ResolveResult, "goldEarned" | "recovered" | "levels"> & { sweptTraps: number } {
     const mods = moraleModifiers(moraleTier(this.run.camp.morale));
     const goldEarned = Math.round(source.reward.gold * (1 + mods.goldFindBonus));
     // Loot routes to the PURSE (D34), auto-repaying any Banker debt first (D30).
@@ -714,11 +718,14 @@ export class RunLoop {
       // Drops always land (D75) — overflow is resolved by a discard at Break Camp, never silently lost.
       grantItem(this.run.inventory, drop.id, drop.count);
     }
-    const recovered = recoverMaterials(battle.entities.all(), "player", this.run.inventory).recovered;
+    // The survivors of resolution: they sweep the won field's snares (D82) and
+    // bank the XP (D53).
+    const survivors = this.combatants.filter((u) => u.alive && !u.captured);
+    const recovery = recoverMaterials(battle.entities.all(), "player", this.run.inventory, survivors);
+    const recovered = recovery.recovered;
 
     // Combat-event XP (D53): commit the bus tally + the objective reward.xp to the
     // survivors of resolution — no mid-battle level-ups, none on a non-win.
-    const survivors = this.combatants.filter((u) => u.alive && !u.captured);
     const tally: CombatXpTally = { ...(this.xpTally ?? {}) };
     const objXp = source.reward.xp ?? 0;
     if (objXp > 0) for (const u of survivors) tally[u.id] = (tally[u.id] ?? 0) + objXp;
@@ -729,7 +736,7 @@ export class RunLoop {
     // on a win), idempotent (a recruit already aboard is not re-added).
     if (isAuthoredEncounter(source) && source.grants) this.applyGrant(source.grants);
 
-    return { goldEarned, recovered, levels };
+    return { goldEarned, recovered, levels, sweptTraps: recovery.swept };
   }
 
   /**

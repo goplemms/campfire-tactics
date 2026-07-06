@@ -421,15 +421,26 @@ describe("runloop — enemy-trap engagement telemetry (the Node-3 lever readout)
     battle.entities.remove(traps[2].id); // …and one was disarmed (spotted, then removed)
     winField(battle);
     const res = loop.resolve();
-    // spotted counts the disarmed trap too — a disarm requires the spot first.
-    expect(res.traps).toEqual({ staged: 5, spotted: 2, sprung: 1, disarmed: 1 });
+    // spotted counts the disarmed trap too — a disarm requires the spot first. The
+    // 3 unsprung, un-disarmed snares sweep on the win (D82 — Vale stands, trap-trained).
+    expect(res.traps).toEqual({ staged: 5, spotted: 2, sprung: 1, disarmed: 1, salvaged: 3 });
   });
 
-  it("a field never touched resolves as staged-but-unfelt — the loud miss", () => {
+  it("a field never touched resolves as staged-but-unfelt — and fully swept (D82)", () => {
     const { loop, battle } = stagedSnares();
     winField(battle);
     const res = loop.resolve();
-    expect(res.traps).toEqual({ staged: 5, spotted: 0, sprung: 0, disarmed: 0 });
+    expect(res.traps).toEqual({ staged: 5, spotted: 0, sprung: 0, disarmed: 0, salvaged: 5 });
+  });
+
+  it("no standing trap-trained survivor → the win sweeps nothing (the D82 gate)", () => {
+    const { loop, battle } = stagedSnares();
+    // Down the party's only trap-trained member before the field is won.
+    const vale = battle.units.find((u) => u.id === "vale")!;
+    vale.alive = false;
+    winField(battle);
+    const res = loop.resolve();
+    expect(res.traps.salvaged).toBe(0);
   });
 
   it("a trap-less encounter reports zeroes (and the next node doesn't inherit counts)", () => {
@@ -437,7 +448,7 @@ describe("runloop — enemy-trap engagement telemetry (the Node-3 lever readout)
     const battle = loop.startEncounter(); // the L1 skirmish — no traps authored
     winField(battle);
     const res = loop.resolve();
-    expect(res.traps).toEqual({ staged: 0, spotted: 0, sprung: 0, disarmed: 0 });
+    expect(res.traps).toEqual({ staged: 0, spotted: 0, sprung: 0, disarmed: 0, salvaged: 0 });
   });
 });
 

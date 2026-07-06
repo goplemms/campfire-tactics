@@ -215,8 +215,10 @@ export function isConcealedTrap(e: FieldEntity): e is ConcealedTrap {
 /**
  * Build a concealed enemy trap. Springs once on an opposing-side entry (or a D19
  * push) for `damage`, whether or not it was spotted — spotting only lets the
- * player avoid or disarm it. Harvested only via a deliberate disarm, never
- * auto-recovered (`recoverable=false`).
+ * player avoid or disarm it. Harvested mid-fight via a deliberate disarm
+ * (`recoverable=false` keeps it out of the *generic* D13 recovery), or swept to
+ * storage by the **win** when a trap-trained survivor stands — the D82 snare
+ * sweep ({@link "./resolution".recoverMaterials}).
  */
 export function makeConcealedTrap(
   id: string,

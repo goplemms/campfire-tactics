@@ -270,7 +270,7 @@ export function summarizePlaytest(log: PlaytestLog): PlaytestSummary {
   let levelUps = 0;
   let restedInPlace = false;
   let storagePressure = false;
-  const traps: TrapEngagement = { staged: 0, spotted: 0, sprung: 0, disarmed: 0 };
+  const traps: TrapEngagement = { staged: 0, spotted: 0, sprung: 0, disarmed: 0, salvaged: 0 };
 
   const purses: number[] = [];
   const morales: number[] = [];
@@ -300,6 +300,7 @@ export function summarizePlaytest(log: PlaytestLog): PlaytestSummary {
       traps.spotted += ev.traps.spotted;
       traps.sprung += ev.traps.sprung;
       traps.disarmed += ev.traps.disarmed;
+      traps.salvaged += ev.traps.salvaged;
     }
     if (ev.at === "in-place-rest" && ev.applied) restedInPlace = true;
   }

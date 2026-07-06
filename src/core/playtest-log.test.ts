@@ -100,7 +100,7 @@ describe("summarizePlaytest — derives lever engagement from a timeline", () =>
           rescued: [],
           permadeaths: [],
           leveled: ["u1"],
-          traps: { staged: 5, spotted: 2, sprung: 1, disarmed: 1 },
+          traps: { staged: 5, spotted: 2, sprung: 1, disarmed: 1, salvaged: 3 },
         },
       ],
     };
@@ -118,7 +118,7 @@ describe("summarizePlaytest — derives lever engagement from a timeline", () =>
     expect(s.engaged.tookCaptureRisk).toBe(true);
     expect(s.engaged.leveled).toBe(true);
     expect(s.engaged.moraleMoved).toBe(true); // saw a non-Neutral tier
-    expect(s.traps).toEqual({ staged: 5, spotted: 2, sprung: 1, disarmed: 1 });
+    expect(s.traps).toEqual({ staged: 5, spotted: 2, sprung: 1, disarmed: 1, salvaged: 3 });
     expect(s.engaged.feltTraps).toBe(true);
   });
 
@@ -142,7 +142,8 @@ describe("summarizePlaytest — derives lever engagement from a timeline", () =>
           permadeaths: [],
           leveled: [],
           // Traps staged but never touched — the loud "field never felt" read.
-          traps: { staged: 5, spotted: 0, sprung: 0, disarmed: 0 },
+          // (Salvage doesn't count as *felt*: the D82 sweep is automatic, not play.)
+          traps: { staged: 5, spotted: 0, sprung: 0, disarmed: 0, salvaged: 5 },
         },
       ],
     };

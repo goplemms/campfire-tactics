@@ -17,7 +17,11 @@ It resolves four things:
    your storage). **Flee or lose → nothing.** What's actually recoverable is bounded
    by each entity's **durability** (multi-use *charges* and whether its material
    *survives* use — rune dust is "wiped away" and gone even on a win); see
-   [logistics](systems/logistics.md).
+   [logistics](systems/logistics.md). **Concealed enemy snares carry one extra
+   gate (D82):** they sweep to storage — spotted or not, no rooting around a decided
+   map — **only while a trap-trained party member is still standing** at the win
+   ("awake and able to disarm"); with the sweeper down or captured, they stay in
+   the dirt.
 2. **Capture & downed outcomes.** Allies **rescued** during Combat return to the
    roster normally. **On a win, any still-captured ally is auto-rescued (D21)** —
    victory means you control the field, so your bound people come home (the same
@@ -45,7 +49,7 @@ next Meta/Pre-deployment phase, until the run ends in victory or death.
 > 1. **Material recovery.** Both traps **sprung** (gone). The fire rune was
 >    **detonated** (gone). But **1 spare trap kit** was never deployed and a downed
 >    **enemy snare** is intact — both **salvaged** to storage (a clean win controls
->    the whole field).
+>    the whole field, and the trap-trained Scout is standing to sweep the snare, D82).
 > 2. **Captures.** Vale was **rescued** mid-fight → she returns to the roster
 >    unharmed (if she'd been left bound at battle's end, she'd be **dead**).
 > 3. **Rewards.** Loot + **180 gold** (Merchant bonus applied). Spent consumables

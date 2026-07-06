@@ -73,6 +73,10 @@ describe("run simulator (D55) — robustness net + difficulty floor", () => {
     // pinned loosely): the field is *felt* headlessly, just never *read*.
     expect(hollowMill.summary.traps.sprung).toBeGreaterThan(0);
     expect(hollowMill.summary.engaged.feltTraps).toBe(true);
+    // The D82 sweep gate BITES in the canonical bot run: Vale (the only trap-trained
+    // member) is DOWN at each trap-field win — she blunders into her own lesson — so
+    // no snares sweep. Not dead code: protect the sweeper and this number moves.
+    expect(hollowMill.summary.traps.salvaged).toBe(0);
   });
 
   it("the policy seam is load-bearing through the sim — A/B lifts completion (D56)", () => {
@@ -92,7 +96,7 @@ describe("run simulator (D55) — robustness net + difficulty floor", () => {
     const report =
       "\n" + formatDigest("procedural / normal", digest) +
       `\n  Hollow Mill (authored): ${hollowMill.status} — ended ${hollowMill.endNodeId} (L${hollowMill.endLayer})` +
-      `\n  Hollow Mill traps: staged ${t.staged} · spotted ${t.spotted} · sprung ${t.sprung} · disarmed ${t.disarmed}`;
+      `\n  Hollow Mill traps: staged ${t.staged} · spotted ${t.spotted} · sprung ${t.sprung} · disarmed ${t.disarmed} · salvaged ${t.salvaged}`;
     // The naive bot is a conservative floor: it skips deploy, the economy and the
     // full kit. So a HIGH completion rate is the loud "too easy" smell; a 0% rate is
     // expected-ish but worth a glance for a wall. Report only — balance is still moving.

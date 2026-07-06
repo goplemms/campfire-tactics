@@ -131,7 +131,9 @@ export const E1_SKIRMISH: AuthoredEncounter = {
  * Node 3 — The Sapper's Snares (trap-field). A **strong-field / weak-enemy** encounter
  * (D52): one lone bandit, but very strong concealed snares — the threat is the terrain.
  * Win or lose in the **pre-combat setup**: spot the strong traps (Vale's Awareness) and
- * position so the lone enemy is fought on your terms. Unsprung kits salvage to the stash.
+ * position so the lone enemy is fought on your terms. Unsprung snares **sweep to the
+ * stash on the win while a trap-trained survivor stands** (D82) — keep Vale on her feet
+ * and the field pays out; lose her and the kits stay in the dirt.
  */
 export const TRAP_FIELD: AuthoredEncounter = {
   id: "snares-trapfield",
@@ -158,7 +160,8 @@ export const TRAP_FIELD: AuthoredEncounter = {
     { pos: { col: 5, row: 1 }, concealment: 5, damage: 22 },
     { pos: { col: 5, row: 4 }, concealment: 6, damage: 26 },
   ],
-  // Modest purse; unsprung kits salvage on the win (F5, light).
+  // Modest purse; unsprung snares sweep on the win via a standing trap-trained
+  // survivor (D82) — the field itself is the real reward.
   reward: { gold: 70, materials: [{ id: "trap-kit", count: 1 }], xp: 70 },
 };
 

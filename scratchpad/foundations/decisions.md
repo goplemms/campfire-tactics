@@ -1388,7 +1388,8 @@ trail of reasoning stays intact.
     damage: snare the prey → Rook's Deadeye cashes it in.
 - **Spec:** `src/core/traps.ts`, `entities.makeConcealedTrap`/`makeTrap` (status), `jobs` (Scout
   `set-snare`), `hollow-mill` (*The Sapper's Snares*).
-- **Superseded by:** —
+- **Superseded by:** **D82** (the "never auto-salvaged" clause only — a win now sweeps
+  unsprung snares while a trap-trained survivor stands; disarm remains the mid-fight harvest).
 
 ## D55 — Playtest QoL: move-through-allies, no-action auto-pass, keyboard + legend
 
@@ -2986,6 +2987,48 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 - **Spec:** `src/core/units.ts` (`standingOrder` docs + `Unit.post`), `src/core/ai.ts`
   (`holdPost`, `AI.holdLeash`, the plan/threat dispatch), `src/core/hollow-mill.ts` (the
   straggler's `overrides`), `BattleScene.attackPreviewRows` (the stance row).
+- **Superseded by:** —
+
+---
+
+## D82 — The snare sweep: a win salvages enemy snares, gated on a standing trap-trained survivor
+
+- **Status:** Decided (2026-07-06) · resolves the **D13 ↔ D54** salvage contradiction · the
+  Node-3 pass, step 3 (follows the D81 hold guard)
+- **Context:** Two canonical sources disagreed. **D13**: a win controls the whole field →
+  every unsprung recoverable entity salvages, *including the enemy's* (the resolution docs'
+  worked examples say so). **D54**: concealed enemy traps are `recoverable: false` —
+  "harvested only via a deliberate disarm, never auto-recovered" — to motivate the disarm
+  verb. The code shipped D54; the docs still told D13's story. The D81 hold guard made the
+  tension acute: with the straggler holding still, disarm-only salvage makes "leave the last
+  enemy alive and sweep the field at leisure" the optimal line (tedium rewarded), and a
+  reveal-gated middle option would invite rooting around a decided map for hidden traps.
+- **Decision (the user's ruling):** **win-salvage of all unsprung enemy snares — hidden or
+  spotted alike — gated on the party having a member "awake and able to disarm traps."**
+  On a win, if any **active** (alive, uncaptured) party member passes
+  `canDisarm` at the moment of victory, every unsprung concealed enemy trap sweeps to
+  storage (the trap-trained survivor walks the won field off-screen). No sweeper standing →
+  the snares stay in the dirt. Sprung is always spent. Kill-him-last dies (you get the kits
+  anyway); root-around-the-map never exists (hidden sweeps too); the **disarm verb keeps its
+  mid-fight identity** (pocket the kit *now* for Set Trap + permanently clear the crossing).
+  - "Awake" is literal: the gate reads state **before** D9 mortality resolution, so a
+    downed-then-recovered sweeper does NOT sweep (she was unconscious when the field was
+    won), and a still-bound captive doesn't either (auto-rescue lands after rewards).
+    Protecting the sweeper is the incentive. The canonical sim run proves the teeth: bot
+    Vale dies in the snares fight → salvaged 0 (pinned in `sim.test.ts`).
+  - Deterministic full recovery — no durability roll; the roll arrives with the future
+    Survivalist salvage perk if ever.
+  - Telemetry: `TrapEngagement.salvaged` (per-encounter → playtest summary → sim digest).
+    Salvage does **not** set `engaged.feltTraps` — the sweep is automatic, not play.
+- **Reuses / consistent with:** **D13** (win-controls-the-field fiction; the sweep rides
+  `recoverMaterials`), **D54** (`recoverable: false` still keeps snares out of the *generic*
+  recovery; supersedes only its never-auto-salvaged clause), **D75** (swept kits land over
+  cap; the discard resolves), **D9/D21** (the active-at-victory reading).
+- **Spec:** `src/core/resolution.ts` (`recoverMaterials` gains `party` + `swept`),
+  `src/core/runloop.ts` (`applyRewards` passes survivors; `TrapEngagement.salvaged`),
+  `entities.makeConcealedTrap` doc, `resolution.test.ts` (the sweep pins),
+  `docs/design/04-resolution.md` + `systems/logistics.md` +
+  [`expedition-hollow-mill.md`](../../docs/design/expedition-hollow-mill.md) (reconciled).
 - **Superseded by:** —
 
 ---

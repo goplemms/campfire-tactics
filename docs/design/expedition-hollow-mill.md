@@ -150,7 +150,9 @@ roof:
   flee-after-first-melee and trigger-based aggro (see D81).
 - **Teaches:** you win or lose in the **pre-combat setup** — read the field with Vale's
   Awareness, position so the lone enemy is fought on your terms.
-- **Reward:** 70g, 1 trap-kit, 70 XP. Unsprung kits salvage to the stash.
+- **Reward:** 70g, 1 trap-kit, 70 XP. Unsprung snares **sweep to the stash on the win
+  while a trap-trained survivor stands** (D82) — keep Vale on her feet and the field
+  pays out (up to 5 kits); with her down at the victory, the kits stay in the dirt.
 - **Branches:** this node is the **L4 fork** — edges to both 4A and 4B.
 
 ### L4 — The fork
@@ -193,6 +195,21 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Node-3 pass, step 3: the snare sweep — a win salvages the field, gated on a standing
+  trap-trained survivor (D82).** Resolved the D13 ↔ D54 salvage contradiction (the docs
+  said "a win salvages enemy snares"; the code shipped "disarm is the only harvest"). The
+  ruling: a win sweeps **every unsprung enemy snare — hidden or spotted alike** — provided
+  a party member is **"awake and able to disarm"** (active + `canDisarm`) at the moment of
+  victory. Kill-him-last dies (the kits come anyway); rooting around a decided map never
+  exists (hidden sweeps too); disarm keeps its mid-fight identity (kit *now* + clear the
+  crossing). "Awake" is literal — the gate reads state *before* mortality resolution, so a
+  downed-then-recovered Vale does **not** sweep; protecting the sweeper is the incentive,
+  and the canonical sim run proves the teeth (bot Vale dies in the snares fight →
+  `salvaged 0`, pinned). Telemetry gains `TrapEngagement.salvaged` (sweep ≠ `feltTraps` —
+  automatic, not play). Seams: `recoverMaterials(…, party)` + `RecoveryResult.swept`;
+  `applyRewards` passes resolution's survivors. Docs reconciled: 04-resolution, logistics,
+  this file. Guards: tsc · unit tests (sweep gate pins at the pure seam + the real node) ·
+  build · e2e · sim (digest gains the salvaged column).
 - **Node-3 pass, step 2: the straggler holds his field — the crossing is now mandatory
   (D81).** The L3 teaching beat could be waited out: every enemy charges, so the lone
   straggler abandoned his own snares (owner-immune) and died at the party's deploy line

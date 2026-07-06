@@ -34,6 +34,18 @@ export interface BattleEvents {
    * resolution tally (`res.rescued`), not this live event.
    */
   unitRescued: { unit: Unit; by?: Unit };
+  /**
+   * A fleeing unit reached a map edge and **left the field** (D84) — gone, not
+   * dead (no defeat event, no kill credit). The render removes its token + logs
+   * the exit; the win check reads the vacancy through {@link "./units".isActive}.
+   */
+  unitEscaped: { unit: Unit };
+  /**
+   * A unit's **standing order changed** (D84) — a transition rule fired (the
+   * skittish guard breaking into flight, the wary guard provoked into the
+   * charge). The render updates the stance telegraph + logs the turn of mood.
+   */
+  orderChanged: { unit: Unit; order: string };
   /** A scheduled/charged effect resolved on the timeline (D5/D16). */
   chargeResolved: { id: string };
   /** A scheduled/charged effect was cancelled before it resolved (D37 fizzle). */

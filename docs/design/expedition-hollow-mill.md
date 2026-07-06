@@ -141,13 +141,18 @@ roof:
   concealed snares** mid-field (concealment 4–6, damage 22–26). High damage so eating
   an unspotted one really stings (no Medic yet). **Spot-and-avoid** — disarm not
   required.
-- **He holds his field (D81).** The straggler carries `standingOrder: "hold"` — a
-  **leashed guard** (leash 2 around his post at col 8) who oversees his snares instead of
-  charging across them. The party **must cross the trap-field to win**; waiting at the
-  deploy line decides nothing. Even Rook's bow only reaches from past the mid-field, so
-  every line of attack crosses the snares. The hover card telegraphs the stance ("holds
-  its ground"). *Planned before Node 3 closes:* the fuller behavior set —
-  flee-after-first-melee and trigger-based aggro (see D81).
+- **He holds his field — and breaks (D81/D84).** The straggler carries
+  `standingOrder: "hold-skittish"` — a **leashed guard** (leash 2 around his post at
+  col 8) who oversees his snares instead of charging across them, so the party **must
+  cross the trap-field to win**; waiting at the deploy line decides nothing. The **first
+  melee blow breaks him**: he flips to `flee`, and his post being the east edge, the
+  deserter **bolts off-map** — the exit ends the fight as a **player win** (gone, not
+  dead: no kill credit, and the abandoned field still sweeps, D82). A ranged hit does
+  *not* spook him — melee means adjacent. The hover card telegraphs the stance ("holds
+  its ground" → "bolting for the map edge!" — the intent, never the trigger). The
+  behaviors are `STANDING_ORDERS` registry records (D84); `hold-wary` (trigger aggro:
+  hold until pressed, then charge, sticky) is encoded + tested but unauthored — the L6A
+  captors are its natural takers.
 - **Intel reads the field (D83).** The trap lane bands presence → count → the **careless
   mark**: at tier 3 (Vale's tier-2 floor + one Recon/Survey bump — the L2 lesson's payoff)
   exactly **one** sloppy snare (concealment 4) stages pre-revealed; the careful work keeps
@@ -201,6 +206,24 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Node-3 pass, step 5: standing-order behaviors — the skittish straggler bolts off-map
+  (D84).** Delivers D81's queued set as a **data registry** (`STANDING_ORDERS`): an order
+  = a posture (`hold`/`flee`/`charge`) + one-way transition rules (`onMeleeStruck` fires
+  in the attack resolution — replay/undo-safe, the checkpoint learned
+  `standingOrder`/`escaped`; `onFoeWithin` fires at turn-open vs the post, sticky). New
+  this pass: **real board escape** — a fleeing unit heads for the nearest edge (zero
+  threat in the danger read) and, ending its move on one, commits a **logged `escape`
+  action**: gone-not-dead (`escaped` folds into `isActive` — off the clock, untargetable,
+  undrawn, no defeat event/kill credit), so a lone survivor's exit **ends the encounter
+  as a player win** (the user's ruling). The straggler is now **`hold-skittish`**: guard
+  the snares until the first *melee* blow, then bolt off his east-edge post — the win
+  without the kill, the field still sweeping (D82). `hold-wary` (trigger aggro) is
+  encoded + tested, unauthored (L6A's captors are the takers). Thieves still "escape" by
+  surviving-to-resolution — migrating them onto the real posture is a named later pass.
+  Guards: tsc · 1029 unit tests (registry/flee/escape/replay/undo/sticky pins + the
+  real-node beat: one blow → flight → exit → win → sweep) · build · e2e (73) · sim
+  (pins hold — Vale still falls in the canonical bot run, so `salvaged 0` stands; the
+  fight got shorter).
 - **Node-3 pass, step 4: intel's hazard + info lanes — the L2 Recon lesson finally pays
   off at L3 (D83).** Intel read enemies only, so scouting the snares node said "1 Bandit
   Thug" — worse than nothing. Two new tier-banded lanes (user-ruled: **no tier ever

@@ -2984,6 +2984,8 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   *state-transition* behaviors — an event swaps the unit's standing order — so the
   target shape is: order id → a plan constraint + transition rules, a data registry the
   planner dispatches on. Keep new behaviors new records, not new planner branches.
+  **→ Delivered: D84** (the `STANDING_ORDERS` registry, the flee/escape posture, and both
+  transitions).
 - **Spec:** `src/core/units.ts` (`standingOrder` docs + `Unit.post`), `src/core/ai.ts`
   (`holdPost`, `AI.holdLeash`, the plan/threat dispatch), `src/core/hollow-mill.ts` (the
   straggler's `overrides`), `BattleScene.attackPreviewRows` (the stance row).
@@ -3077,6 +3079,53 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   `OverworldScene.renderIntelCard`/`hazardField`, `BattleScene.renderIntelCard`,
   `intel.test.ts` + `runloop.test.ts` pins, `scripts/shots-hollow-mill.mjs`
   (`08b-snares-intel`).
+- **Superseded by:** —
+
+---
+
+## D84 — Standing-order behaviors: the registry, flee-to-escape, and the transitions
+
+- **Status:** Decided (2026-07-06) · delivers **D81**'s queued behavior set · the Node-3
+  pass, step 5
+- **Context:** D81 shipped one behavior (`"hold"`) as planner logic keyed on a string
+  compare and queued the fuller set the user wanted encoded before Node 3 closes:
+  flee-after-first-melee and trigger-based aggro. Separately, "escape" existed only as
+  fiction — a thief "escapes" by *surviving to resolution* (`tallyEscapedThieves` reads
+  `alive`); no unit ever actually left the board.
+- **Decision:** Two layers.
+  - **The registry (`standing-orders.ts`):** an order is a record — a **posture**
+    (`hold` | `flee` | `charge`) the planner dispatches on, plus **transition rules**
+    that rewrite `unit.standingOrder` one-way: `onMeleeStruck` (fires inside the attack
+    resolution when the striker was adjacent — in the apply path, so replay + undo
+    reproduce it; the undo checkpoint gained `standingOrder`/`escaped`) and
+    `onFoeWithin` (fires at the unit's turn-open against its **post**, **sticky** — no
+    bait-and-retreat reset; shapes only future plans, which log as concrete actions, so
+    replay needs no record). Records: `hold` · `hold-skittish` (→ flee on the first
+    melee blow) · `hold-wary` (→ charge when pressed; encoded + tested, **unauthored** —
+    the L6A captors are the natural takers) · `flee` · `charge`. Stance strings feed the
+    hover telegraph ("holds its ground" / "bolting for the map edge!") — the intent,
+    never the trigger.
+  - **Real board escape (the user's ruling):** the flee posture heads for the nearest
+    map edge (never fights; `threatenedTiles` reads it as zero threat), and a fleeing
+    unit that ends its move on an edge tile commits a **logged `escape` action** —
+    `unit.escaped = true`, folded into `isActive`, so the unit is *gone, not dead*: off
+    the clock, untargetable, undrawn, **no defeat event / no kill credit** — and a lone
+    survivor's exit **ends the encounter as a player win** through the existing
+    outcome check, exactly as the user intended. The escape slots before `endTurn` so
+    replay's per-turn window holds.
+  - **The straggler is `hold-skittish`:** his post is the east edge, so the first
+    melee blow sends the deserter off-map next turn — the win without the kill; the
+    abandoned field still sweeps (D82, Vale standing).
+- **Notes / adjacent:** thieves still "escape" by surviving to resolution — giving them
+  the real flee/escape posture (and reconciling `tallyEscapedThieves`, which would
+  misread an escaped-but-alive thief) is a natural later pass, out of scope here.
+  Melee-struck reads the **basic attack** only for now (adjacency at resolution); melee
+  *skills* joining the trigger is a tuning call for when one exists on the demo path.
+- **Spec:** `src/core/standing-orders.ts` (+ barrel), `units.ts` (`escaped`,
+  `isActive`), `combat-actions.ts` + `turn.ts` (the `escape` action, both transitions,
+  checkpoint fields), `ai.ts` (`planFlee`, `edgeDistance`, registry dispatch, threat
+  read), `hollow-mill.ts` (the straggler), `combat-view.ts` + `BattleScene`
+  (vanish/rail/stance/log), `standing-orders.test.ts` + the runloop real-node pin.
 - **Superseded by:** —
 
 ---

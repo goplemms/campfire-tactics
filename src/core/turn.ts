@@ -11,7 +11,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { isActive, type Unit, type Side } from "./units";
+import { isActive, activeUnits, opposite, type Unit, type Side } from "./units";
 import type { GridCoord } from "./iso";
 import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
@@ -23,11 +23,13 @@ import {
   battleOutcome,
   refreshAuras,
   isAdjacent,
+  manhattan,
   type BattleOutcome,
 } from "./combat";
 import { tickStatuses, applyStatus, slowed, guarded, GUARDED } from "./status";
 import { computeVisibleTiles } from "./vision";
-import { PILOT_POLICY, type AIPlan, type BattlePolicy } from "./ai";
+import { PILOT_POLICY, edgeDistance, type AIPlan, type BattlePolicy } from "./ai";
+import { orderOf } from "./standing-orders";
 import { stampPassives } from "./jobs";
 import { isExhausted, exhaustionSlowSpeed, FATIGUE } from "./fatigue";
 import {
@@ -60,6 +62,9 @@ interface UnitSnapshot {
   ct: number;
   alive: boolean;
   captured: boolean;
+  escaped?: boolean;
+  /** The unit's standing order (D84) — a logged strike can transition it (the skittish guard). */
+  standingOrder?: string;
   dugIn?: boolean;
   hidden?: boolean;
   concealed?: boolean;
@@ -93,6 +98,8 @@ function snapshotUnit(u: Unit): UnitSnapshot {
     ct: u.ct,
     alive: u.alive,
     captured: u.captured,
+    escaped: u.escaped,
+    standingOrder: u.standingOrder,
     dugIn: u.dugIn,
     hidden: u.hidden,
     concealed: u.concealed,
@@ -109,6 +116,8 @@ function restoreUnit(u: Unit, s: UnitSnapshot): void {
   u.ct = s.ct;
   u.alive = s.alive;
   u.captured = s.captured;
+  u.escaped = s.escaped;
+  u.standingOrder = s.standingOrder;
   u.dugIn = s.dugIn;
   u.hidden = s.hidden;
   u.concealed = s.concealed;
@@ -391,6 +400,16 @@ export class Battle {
         const attacker = this.unit(action.unit);
         const target = this.unit(action.target);
         const damage = resolveAttack(attacker, target, this.bus, attacker.attack, this.units, this.damageScale(attacker, target));
+        // A standing-order transition on a MELEE blow landing (D84): the skittish
+        // guard breaks into flight. Adjacency read at resolution; inside the apply
+        // path, so replay re-derives the order swap identically.
+        if (target.alive && manhattan(attacker.pos, target.pos) <= 1) {
+          const next = orderOf(target)?.onMeleeStruck;
+          if (next) {
+            target.standingOrder = next;
+            this.bus.emit("orderChanged", { unit: target, order: next });
+          }
+        }
         this._log.push(action);
         return { ok: true, damage };
       }
@@ -470,6 +489,16 @@ export class Battle {
       }
       case "capture": {
         captureUnit(this.unit(action.unit));
+        this._log.push(action);
+        return { ok: true };
+      }
+      case "escape": {
+        // A fleeing unit on a map edge leaves the field (D84): gone, not dead — no
+        // defeat event, no kill credit. isActive now excludes it, so the win check,
+        // the clock, and every foe list read the vacancy at once.
+        const runner = this.unit(action.unit);
+        runner.escaped = true;
+        this.bus.emit("unitEscaped", { unit: runner });
         this._log.push(action);
         return { ok: true };
       }
@@ -756,12 +785,32 @@ export class Battle {
    * the same path drives either side headlessly (the sim passes a policy per side).
    */
   runEnemyTurn(unit: Unit, policy: BattlePolicy = PILOT_POLICY): AIPlan {
+    // Turn-open standing-order transition (D84): the wary guard, provoked by a foe
+    // pressing its POST, commits to its next order — sticky (no bait-and-retreat
+    // reset). Shapes only future plans (logged as concrete actions), so replay
+    // needs no record of it.
+    const wary = orderOf(unit)?.onFoeWithin;
+    if (wary) {
+      const post = unit.post ?? unit.pos;
+      if (activeUnits(this.units, opposite(unit.side)).some((f) => manhattan(f.pos, post) <= wary.range)) {
+        unit.standingOrder = wary.next;
+        this.bus.emit("orderChanged", { unit, order: wary.next });
+      }
+    }
     const plan = policy.plan(unit, this.units, this.grid, {
       isCharging: (u) => this.clock.isCharging(u),
     });
     // Lower the plan to a CombatAction[] and run each through the one interpreter —
     // the AI path now shares the exact execution route with player input (D42/D56).
-    for (const action of planActions(plan)) this.apply(action);
+    const actions = planActions(plan);
+    // A fleeing unit that ends its move on a map edge LEAVES (D84) — the logged
+    // escape slots before the turn-committing endTurn so replay's per-turn window
+    // holds. The next active check reads the vacancy (a lone survivor's exit wins
+    // the fight for the player).
+    if (orderOf(unit)?.posture === "flee" && edgeDistance(this.grid, plan.destination) === 0) {
+      actions.splice(actions.length - 1, 0, { kind: "escape", unit: unit.id });
+    }
+    for (const action of actions) this.apply(action);
     return plan;
   }
 

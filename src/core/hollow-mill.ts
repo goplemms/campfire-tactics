@@ -145,11 +145,13 @@ export const TRAP_FIELD: AuthoredEncounter = {
     { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
   // LOCKED: one relatively weak enemy — the strong snares are the real encounter.
-  // He HOLDS his post (D81): the field's sapper oversees his snares rather than
-  // charging across them, so the party must cross the trap-field to win — the
-  // node's teaching beat is mandatory, not optional scenery.
+  // He HOLDS his post (D81) — the field's sapper oversees his snares rather than
+  // charging across them, so the party must cross the trap-field to win — and he's
+  // SKITTISH (D84): the first melee blow breaks him into flight, and his post is
+  // the east edge, so the deserter bolts off-map — the exit ends the fight as a
+  // player win (no kill, no kill credit; the field still sweeps, D82).
   enemies: [
-    { templateId: "bandit-thug", pos: { col: 8, row: 2 }, id: "lone-straggler", overrides: { standingOrder: "hold" } },
+    { templateId: "bandit-thug", pos: { col: 8, row: 2 }, id: "lone-straggler", overrides: { standingOrder: "hold-skittish" } },
   ],
   // The info lane (D83) — one rumor line per intel tier ("folk say…" → sharper hearsay).
   rumors: [

@@ -505,3 +505,37 @@ describe("runloop — the tier-3 trap read at the real node (D83)", () => {
     expect(battle.entities.all().filter(isConcealedTrap).every((t) => !t.revealed)).toBe(true);
   });
 });
+
+describe("runloop — the skittish straggler bolts off-map (D84, the Node-3 beat completed)", () => {
+  it("one melee blow breaks him; his exit ends the fight as a player win and the field still sweeps", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    const battle = loop.startEncounter();
+    loop.beginBattle();
+    const thug = battle.units.find((u) => u.id === "lone-straggler")!;
+    const edrin = battle.units.find((u) => u.id === "edrin")!;
+    expect(thug.standingOrder).toBe("hold-skittish");
+
+    // Edrin crosses the field and lands the blow that breaks him.
+    edrin.pos = { col: 7, row: 2 };
+    battle.attack(edrin, thug);
+    expect(thug.standingOrder).toBe("flee");
+    expect(thug.alive).toBe(true);
+
+    // Park the party — his own turn takes the deserter off his edge-post and out
+    // of the world; the exit alone decides the field.
+    const passive: BattlePolicy = {
+      name: "passive",
+      plan: (u) => ({ unit: u, path: [], destination: u.pos, target: null }),
+    };
+    const winner = loop.autoBattle({ maxTurns: 20, player: passive });
+    expect(thug.escaped).toBe(true);
+    expect(thug.alive).toBe(true); // gone, not dead — no kill credit
+    expect(winner).toBe("player");
+
+    const res = loop.resolve();
+    expect(res.result).toBe("win");
+    // Vale is standing, so the abandoned field sweeps in full (D82) — no snare
+    // sprang in this run.
+    expect(res.traps.salvaged).toBe(5);
+  });
+});

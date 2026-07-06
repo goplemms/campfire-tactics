@@ -31,6 +31,7 @@ import {
 import { isImmobilized, isDebuffed, hasStatus, EXPOSED } from "./status";
 import { canSeeUnit } from "./vision";
 import { unitSkills } from "./jobs";
+import { orderOf } from "./standing-orders";
 
 /** Scoring weights — all tunable data, a numbers pass later (D42). */
 export const AI = {
@@ -67,15 +68,46 @@ export const AI = {
 } as const;
 
 /**
- * The tile a `"hold"` standing order (D81) leashes `unit` to, or undefined for
- * every other unit. A holder acts only from tiles within {@link AI.holdLeash}
- * of this post, never advances toward foes it can't reach from it, and walks
- * back when displaced. First of the standing-order behaviors the planner
- * dispatches on — flee-on-melee and trigger-aggro are the planned next records
- * (see D81); keep the dispatch here data-shaped, not branch-per-behavior.
+ * The tile a **hold-posture** standing order (D81/D84) leashes `unit` to, or
+ * undefined for every other unit. A holder acts only from tiles within its
+ * order's leash (default {@link AI.holdLeash}) of this post, never advances
+ * toward foes it can't reach from it, and walks back when displaced. The
+ * dispatch is the {@link "./standing-orders".STANDING_ORDERS} registry — new
+ * behavior is a new record, never a new planner branch.
  */
 function holdPost(unit: Unit): GridCoord | undefined {
-  return unit.standingOrder === "hold" ? unit.post ?? unit.pos : undefined;
+  return orderOf(unit)?.posture === "hold" ? unit.post ?? unit.pos : undefined;
+}
+
+/** The order's leash for a hold-posture unit (the registry's, else the default). */
+function leashOf(unit: Unit): number {
+  return orderOf(unit)?.leash ?? AI.holdLeash;
+}
+
+/** Steps from `t` to the nearest map edge (0 = standing on one) — the flee target. */
+export function edgeDistance(grid: TileGrid, t: GridCoord): number {
+  return Math.min(t.col, grid.cols - 1 - t.col, t.row, grid.rows - 1 - t.row);
+}
+
+/**
+ * Plan a **flee-posture** turn (D84): never fight — head for the nearest map
+ * edge, preferring (in order) tiles closer to an edge, then farther from the
+ * nearest foe, then the cheaper walk. The turn loop commits the actual **escape**
+ * when the runner ends its move on an edge tile ({@link "./turn".Battle.runEnemyTurn}).
+ */
+function planFlee(unit: Unit, units: readonly Unit[], grid: TileGrid): AIPlan {
+  const foes = activeUnits(units, opposite(unit.side));
+  let best: Reach = { tile: unit.pos, cost: 0, path: [] };
+  let bestScore = -Infinity;
+  for (const d of reachableTiles(unit, units, grid)) {
+    const fromFoes = foes.length > 0 ? Math.min(...foes.map((f) => manhattan(d.tile, f.pos))) : 0;
+    const score = -edgeDistance(grid, d.tile) * 100 + fromFoes * AI.approachWeight - d.cost * AI.movePenalty;
+    if (score > bestScore) {
+      bestScore = score;
+      best = d;
+    }
+  }
+  return { unit, path: best.path, destination: best.tile, target: null };
 }
 
 /** A turn the AI intends to take. */
@@ -242,12 +274,15 @@ export function planEnemyTurn(
   const side = unit.side;
   const foes = activeUnits(units, opposite(side));
   const stay: AIPlan = { unit, path: [], destination: unit.pos, target: null };
+  // A fleeing unit never fights — it heads for the map edge (D84).
+  if (orderOf(unit)?.posture === "flee") return planFlee(unit, units, grid);
   if (foes.length === 0) return stay;
 
   const seen = foes.filter((f) => canSeeUnit(units, side, f));
   const ability = debuffAbility(unit);
   const dests = reachableTiles(unit, units, grid);
   const post = holdPost(unit);
+  const leash = leashOf(unit);
 
   let bestPlan: AIPlan = stay;
   let bestScore = -Infinity;
@@ -256,7 +291,7 @@ export function planEnemyTurn(
     // A holder acts only from inside its leash (D81) — a tile beyond it can
     // still be walked to (scored below as the way back to a lost post), but
     // never fought from.
-    const inLeash = !post || manhattan(d.tile, post) <= AI.holdLeash;
+    const inLeash = !post || manhattan(d.tile, post) <= leash;
     const movePart = -d.cost * AI.movePenalty - isolationPenalty(unit, d.tile, units);
     let actionScore = -Infinity;
     let actTarget: Unit | null = null;
@@ -395,11 +430,13 @@ export function threatenedTiles(units: readonly Unit[], grid: TileGrid, victimSi
   const seen = new Set<string>();
   const out: GridCoord[] = [];
   for (const e of enemies) {
-    // A holder only ever strikes from inside its leash (D81) — the danger read
-    // must not overstate it, or the field looks locked down when it isn't.
+    // A fleeing unit never strikes (D84); a holder only ever strikes from inside
+    // its leash (D81) — the danger read must not overstate either, or the field
+    // looks locked down when it isn't.
+    if (orderOf(e)?.posture === "flee") continue;
     const post = holdPost(e);
     for (const d of reachableTiles(e, units, grid)) {
-      if (post && manhattan(d.tile, post) > AI.holdLeash) continue;
+      if (post && manhattan(d.tile, post) > leashOf(e)) continue;
       for (let dc = -e.attackRange; dc <= e.attackRange; dc++) {
         const rr = e.attackRange - Math.abs(dc);
         for (let dr = -rr; dr <= rr; dr++) {

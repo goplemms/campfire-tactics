@@ -233,6 +233,13 @@ export interface Unit extends UnitStats {
    */
   captured: boolean;
   /**
+   * **Escaped off-map** (D84): a fleeing unit that reached a map edge and left.
+   * Gone from the field — excluded from every active check ({@link isActive}),
+   * off the clock, untargetable, not drawn — but not *dead* (no defeat event, no
+   * kill credit). Set only by the logged `escape` action, so replay reproduces it.
+   */
+  escaped?: boolean;
+  /**
    * Dug in (D63): hunkered during Deployment for a reduced capture chance when the
    * net's turn comes. A deployment-phase transient — set by the `digIn` action,
    * cleared by moving or capture, and reset between encounters. Combat never sets it.
@@ -306,6 +313,7 @@ export function createUnit(spec: UnitSpec): Unit {
     role: spec.role,
     hidden: false,
     captured: false,
+    escaped: false,
     dugIn: false,
     concealed: false,
     speed: spec.speed,
@@ -324,13 +332,15 @@ export function createUnit(spec: UnitSpec): Unit {
 }
 
 /**
- * True if a unit is **active** (D7): alive and not captured. A captured unit is
- * still "alive" but bound — it doesn't take turns, isn't an active threat, and
- * doesn't hold a side in the battle. The single predicate behind body-counting,
- * the initiative seed, threat ranges, the win check, and the AI's foe lists.
+ * True if a unit is **active** (D7): alive, not captured, and still on the map. A
+ * captured unit is still "alive" but bound; an **escaped** unit (D84) is alive but
+ * *gone* — off the field entirely. Neither takes turns, threatens, nor holds a
+ * side in the battle. The single predicate behind body-counting, the initiative
+ * seed, threat ranges, the win check, and the AI's foe lists — which is exactly
+ * why a lone fleeing survivor's exit ends the encounter as a player win.
  */
-export function isActive(unit: Pick<Unit, "alive" | "captured">): boolean {
-  return unit.alive && !unit.captured;
+export function isActive(unit: Pick<Unit, "alive" | "captured" | "escaped">): boolean {
+  return unit.alive && !unit.captured && !unit.escaped;
 }
 
 /**

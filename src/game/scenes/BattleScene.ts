@@ -67,6 +67,9 @@ import {
   intelFloor,
   clampTier,
   intelDeployBonus,
+  // D84 — standing-order behaviors: the stance telegraph + transition narration
+  STANDING_ORDERS,
+  orderOf,
   // D12 — the enemy trap-field: spot, search, and Survivalist disarm
   isConcealedTrap,
   hiddenTraps,
@@ -535,6 +538,17 @@ export class BattleScene extends Phaser.Scene {
       this.view.logHeal(unit, amount, source);
     });
     this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit));
+    // Standing-order moments (D84): the panic turn and the exit both announce
+    // themselves — the token vanish rides the normal unit refresh (escaped units
+    // aren't drawn), so the bus only narrates.
+    this.battle.bus.on("orderChanged", ({ unit, order }) => {
+      const stance = STANDING_ORDERS[order]?.stance;
+      if (stance) this.view.logLine(`${unit.name} ${order === "flee" ? "panics — " : ""}${stance}`, INK.ember);
+    });
+    this.battle.bus.on("unitEscaped", ({ unit }) => {
+      this.view.logLine(`${unit.name} escapes off the map!`, INK.ember);
+      this.view.refreshUnits();
+    });
     // The in-combat rescue Act (D52): freeing a bound unit — a captured ally, or a new
     // captive recruit (the L1 Cook) — announces itself here, so the event owns the reaction
     // (un-grey the token, flash, log the moment) rather than the call site. The post-win
@@ -2884,8 +2898,9 @@ export class BattleScene extends Phaser.Scene {
       { label: "Hits back", value: `${back}${skull(back, actor)}`, color: back >= actor.hp ? INK.danger : INK.muted },
       { label: "Range", value: reach ? "in reach" : "move adjacent", color: reach ? INK.success : INK.muted },
     ];
-    // A holder won't come to you (D81) — say so, or its stillness reads as a bug.
-    if (foe.standingOrder === "hold") rows.push({ label: "Stance", value: "holds its ground", color: INK.muted });
+    // An ordered foe telegraphs its stance (D81/D84) — the intent, never the trigger.
+    const stance = orderOf(foe)?.stance;
+    if (stance) rows.push({ label: "Stance", value: stance, color: INK.muted });
     return rows;
   }
 

@@ -3036,6 +3036,51 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D83 — Intel's hazard + info lanes: the trap banding, the careless mark, and tiered rumors
+
+- **Status:** Decided (2026-07-06) · extends **D10** (banded intel) / **D24** (node preview)
+  onto the **D12/D54** trap-field · the Node-3 pass, step 4
+- **Context:** The intel read covered **enemies only** (types → count → positions), so a
+  trap-field read "1 Bandit Thug" — worse than nothing, it made the node *look* easy — and
+  the designed L2→L3 pair ("Recon sharpens the snares fight's read") didn't deliver. Two
+  user rulings shaped the fix: **(1) no tier ever reveals the whole field** — full reveal
+  would make Vale's Awareness redundant (intel *informs*, Awareness *resolves*); **(2) the
+  lanes are honestly gated** — a party fielding no intel-oriented unit reads tier 0 and
+  walks in blind (no free hazard warnings; D10's "provision blind-ish" holds).
+- **Decision:** Two new lanes on the same tier ladder, banded as data (`TRAP_INTEL` —
+  provisional banding, the no-full-reveal ceiling fixed).
+  - **The trap lane:** tier 1 **presence** ("the ground is worked" — reported for EVERY
+    encounter once earned, an honest "none sensed" on trapless fields so the lane's mere
+    appearance never leaks what tier 0 hides) → tier 2 **count** → tier 3 the **careless
+    mark**: traps with `concealment ≤ TRAP_INTEL.markConcealmentMax` (4) stage
+    **pre-revealed** (`stageEncounter({ markTrapsUpTo })`, threaded from `startEncounter`
+    beside `revealHidden`). The per-trap `concealment` stat is thereby the authored knob
+    for what intel can see: L3 (4,5,5,5,6) marks exactly **one** careless snare; L6A (5–6)
+    marks **zero** — "the dug-in captors resist the scout's read" falls out of existing
+    numbers for free.
+  - **The info lane (the user's ask):** `AuthoredEncounter.rumors?: string[]` — free-form
+    flavor mirroring the structured lanes; `rumors[i]` unlocks at tier `i+1`, locked lines
+    render as `???` (`IntelReport.notes` + `notesTotal`). The Hollow Mill authors three
+    per trap-field ("Folk around here say a deserter…" → sharper hearsay).
+  - **Surfaces:** the pinned overworld intel card gains a **Hazards** field + the
+    **RUMORS** box (variable-height, lifts to stay on-canvas); the deploy-phase Intel tab
+    gains the Hazards row where it informs placement.
+- **Reuses / consistent with:** **D10/D44** (`revealHidden` — the mark is its trap
+  twin), **D82** (a marked snare the player avoids is still swept on the win — scouting
+  pays out in kits, the named faucet, priced by Survey/Recon's cooldown + fatigue),
+  **D80** (the `???` reveal idiom + intel meter).
+- **Open / tuning:** the banding tiers + `markConcealmentMax` are a numbers pass;
+  procedural trap-fields (none exist yet) will need generator-authored rumors or none.
+- **Spec:** `src/core/intel.ts` (`TRAP_INTEL`, `TrapIntel`, `IntelReport.notes`),
+  `src/core/staging.ts` (`markTrapsUpTo`), `src/core/runloop.ts` (the tier-3 thread),
+  `src/core/authored.ts` (`rumors`), `src/core/hollow-mill.ts` (authored rumors),
+  `OverworldScene.renderIntelCard`/`hazardField`, `BattleScene.renderIntelCard`,
+  `intel.test.ts` + `runloop.test.ts` pins, `scripts/shots-hollow-mill.mjs`
+  (`08b-snares-intel`).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

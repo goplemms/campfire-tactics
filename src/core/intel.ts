@@ -36,6 +36,32 @@ export type IntelTier = 0 | 1 | 2 | 3;
 /** The highest, position-revealing tier — grants starting vision (D18). */
 export const MAX_TIER: IntelTier = 3;
 
+/**
+ * The **trap lane** banding (D83) — which tier exposes what about a field's concealed
+ * hazards, as tunable data (the banding is provisional; the fixed ceiling is that **no
+ * tier ever reveals the whole field** — intel *informs*, Awareness *resolves*).
+ */
+export const TRAP_INTEL = {
+  /** Tier that senses hazard **presence** ("the ground is worked" / "none sensed"). */
+  presenceTier: 1 as IntelTier,
+  /** Tier that reads the hazard **count**. */
+  countTier: 2 as IntelTier,
+  /** Tier that **marks the careless work** — traps at/below the concealment cap stage revealed. */
+  markTier: 3 as IntelTier,
+  /** The mark's concealment cap: only this sloppily-hidden work is scoutable from afar. */
+  markConcealmentMax: 4,
+} as const;
+
+/** What the trap lane read at this tier (D83). Absent below {@link TRAP_INTEL.presenceTier}. */
+export interface TrapIntel {
+  /** Hazards exist on this field (an honest "none sensed" when false). */
+  present: boolean;
+  /** {@link TRAP_INTEL.countTier}+: how many. */
+  count?: number;
+  /** {@link TRAP_INTEL.markTier}+: how many stage pre-revealed (the careless work). */
+  marked?: number;
+}
+
 /** What an intel read reveals about an encounter, gated by tier. */
 export interface IntelReport {
   tier: IntelTier;
@@ -47,6 +73,15 @@ export interface IntelReport {
   positions?: { name: string; col: number; row: number }[];
   /** Tier 3 ⇒ true: the party starts the battle seeing enemy deployment (D18). */
   grantsVision: boolean;
+  /** The **trap lane** (D83) — hazard presence → count → careless marks. Absent at tier 0. */
+  traps?: TrapIntel;
+  /**
+   * The **info lane** (D83): the authored rumor lines revealed so far — `rumors[i]`
+   * unlocks at tier `i+1`. Render locked ones (up to {@link notesTotal}) as `???`.
+   */
+  notes?: string[];
+  /** How many rumor lines the node holds in total (revealed + still locked). */
+  notesTotal?: number;
 }
 
 /** Intelligence breakpoints → the free passive floor tier (D10 banding). */
@@ -120,6 +155,26 @@ export function readEncounter(def: EncounterSource, tier: IntelTier): IntelRepor
   if (tier >= 1) report.types = [...new Set(enemies.map((e) => e.name))];
   if (tier >= 2) report.count = enemies.length;
   if (tier >= 3) report.positions = enemies;
+
+  // The trap lane (D83): presence → count → careless marks. Reported for EVERY
+  // encounter once the presence tier is reached — an honest "none sensed" on a
+  // trapless field, so the lane's mere appearance never leaks what tier 0 hides.
+  const traps = isAuthoredEncounter(def) ? def.traps ?? [] : [];
+  if (tier >= TRAP_INTEL.presenceTier) {
+    report.traps = { present: traps.length > 0 };
+    if (tier >= TRAP_INTEL.countTier) report.traps.count = traps.length;
+    if (tier >= TRAP_INTEL.markTier) {
+      report.traps.marked = traps.filter((t) => (t.concealment ?? 4) <= TRAP_INTEL.markConcealmentMax).length;
+    }
+  }
+
+  // The info lane (D83): rumors[i] unlocks at tier i+1; the total lets the card
+  // render the still-locked lines as ???.
+  const rumors = isAuthoredEncounter(def) ? def.rumors ?? [] : [];
+  if (rumors.length > 0) {
+    report.notes = rumors.slice(0, tier);
+    report.notesTotal = rumors.length;
+  }
   return report;
 }
 

@@ -69,6 +69,12 @@ export interface StageOptions {
    */
   revealHidden?: boolean;
   /**
+   * Mark the **careless trap-work** (D83): concealed traps with concealment at/below
+   * this cap stage **already-revealed** — the tier-3 trap-lane read. The well-hidden
+   * work keeps its secret (intel *informs*; Awareness *resolves*). Undefined = none.
+   */
+  markTrapsUpTo?: number;
+  /**
    * The run seed for this encounter's RNG (D67): wired onto the {@link Battle} so it
    * owns the one seed the whole encounter draws from — combat's variance rolls
    * ({@link Battle.roll}) and deployment's label-keyed streams ({@link Battle.stream}:
@@ -167,11 +173,12 @@ export function stageEncounter(
   // ride the same entity registry the player's Set Trap uses, so movement springs
   // them and the Survivalist can disarm them — no special case in the loop (D4).
   if (isAuthoredEncounter(source) && source.traps) {
-    source.traps.forEach((t) =>
-      battle.entities.register(
-        makeConcealedTrap(t.id ?? `enemy-trap@${t.pos.col},${t.pos.row}`, t.pos, "enemy", t.damage ?? 12, t.concealment ?? 4),
-      ),
-    );
+    source.traps.forEach((t) => {
+      const trap = makeConcealedTrap(t.id ?? `enemy-trap@${t.pos.col},${t.pos.row}`, t.pos, "enemy", t.damage ?? 12, t.concealment ?? 4);
+      // The tier-3 careless mark (D83): sloppy work stages pre-revealed.
+      if (opts.markTrapsUpTo !== undefined && trap.concealment <= opts.markTrapsUpTo) trap.revealed = true;
+      battle.entities.register(trap);
+    });
   }
 
   const objectives = armObjectives(battle.clock, battle.units, objectiveSpecs);

@@ -603,8 +603,23 @@ export class OverworldScene extends Phaser.Scene {
     return [
       { label: "Type", ...hide(p.encounterType, INK.secondary) },
       { label: "Enemies", ...hide(enemies, INK.secondary) },
+      { label: "Hazards", ...this.hazardField(p) },
       { label: "Reward", ...hide(p.rewardHint, INK.gold) },
     ];
+  }
+
+  /**
+   * The trap-lane read (D83) as a card value: `???` below the presence tier (shown on
+   * EVERY combat node, so the row's presence never leaks what tier 0 hides), then
+   * presence → count → the careless marks.
+   */
+  private hazardField(p: NodePreview): { value: string; ink: string } {
+    const t = p.intel?.traps;
+    if (!t) return { value: "???", ink: INK.disabled };
+    if (!t.present) return { value: "none sensed", ink: INK.muted };
+    if (t.count === undefined) return { value: "the ground is worked", ink: INK.danger };
+    const marks = t.marked === undefined ? "" : t.marked > 0 ? ` · ${t.marked} marked` : " · none marked";
+    return { value: `${t.count} snare${t.count === 1 ? "" : "s"}${marks}`, ink: INK.danger };
   }
 
   /**
@@ -617,9 +632,6 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.intelCardObjects);
     const p = previewNode(this.run, node.id, scoutedTier(this.run.overworld, node.id));
     const { w, cx, top, left } = this.intelCardGeom();
-    const hasRoad = !!p.earlyEventHint;
-    const h = hasRoad ? 94 : 72;
-    this.intelCardObjects.push(this.add.rectangle(cx, top + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9));
 
     // Header: kind + depth, in the kind's colour.
     this.intelCardObjects.push(this.add.text(left, top + 18, `${this.nodeKindWord(node)}  ·  Layer ${node.layer}`, { color: this.nodeKindInk(node), fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(10));
@@ -638,12 +650,39 @@ export class OverworldScene extends Phaser.Scene {
       fx += Math.ceil(lbl.width) + 6 + Math.ceil(val.width) + 22;
     }
 
+    // Variable-height rows stack below the fields; the surface is sized after.
+    let y = top + 58;
+
     // The early event on the road in, revealed by Survey (D80, effect B).
-    if (hasRoad) {
-      const ry = top + 72;
-      const lbl = this.add.text(left, ry, "ON THE ROAD", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(10);
-      this.intelCardObjects.push(lbl, this.add.text(left + Math.ceil(lbl.width) + 6, ry, p.earlyEventHint!, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - Math.ceil(lbl.width) - 44 } }).setOrigin(0, 0.5).setDepth(10));
+    if (p.earlyEventHint) {
+      const lbl = this.add.text(left, y + 3, "ON THE ROAD", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(10);
+      const txt = this.add.text(left + Math.ceil(lbl.width) + 6, y, p.earlyEventHint, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - Math.ceil(lbl.width) - 44 } }).setOrigin(0, 0).setDepth(10);
+      this.intelCardObjects.push(lbl, txt);
+      y += Math.max(txt.height, lbl.height) + 6;
     }
+
+    // The info box (D83): the node's rumor lines — free-form intel mirroring the
+    // structured lanes. `rumors[i]` unlocks at tier i+1; locked lines read ???.
+    if (p.intel?.notesTotal) {
+      const lbl = this.add.text(left, y + 3, "RUMORS", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(10);
+      this.intelCardObjects.push(lbl);
+      let rx = left + Math.ceil(lbl.width) + 6;
+      for (let i = 0; i < p.intel.notesTotal; i++) {
+        const line = p.intel.notes?.[i];
+        const txt = this.add.text(rx, y, line ?? "???", { color: line ? INK.secondary : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - (rx - left) - 24 } }).setOrigin(0, 0).setDepth(10);
+        this.intelCardObjects.push(txt);
+        y += txt.height + 4;
+      }
+      y += 2;
+    }
+
+    // The surface, sized to the stacked content (min height keeps short cards tidy).
+    const h = Math.max(72, y - top + 10);
+    // A tall card (road line + rumors) must never run off the canvas: lift the whole
+    // stack so the bottom edge stays on-screen — the card grows UPWARD past its dock.
+    const lift = Math.max(0, top + h - (this.scale.height - 12));
+    if (lift > 0) for (const o of this.intelCardObjects) (o as unknown as { y: number }).y -= lift;
+    this.intelCardObjects.push(this.add.rectangle(cx, top - lift + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9));
   }
 
   /**

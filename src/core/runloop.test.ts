@@ -480,3 +480,28 @@ describe("runloop — the lone straggler holds his field (D81, the Node-3 beat)"
     expect(winner).toBe("player");
   });
 });
+
+describe("runloop — the tier-3 trap read at the real node (D83)", () => {
+  it("a scouted arrival stages the careless snare pre-revealed; spotted + the sweep both move", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    // Vale's Intelligence-7 floor reads tier 2; one Survey bump reaches the mark tier.
+    loop.run.overworld.scouted["snares"] = 1;
+    const battle = loop.startEncounter();
+    const revealed = battle.entities.all().filter(isConcealedTrap).filter((t) => t.revealed);
+    expect(revealed).toHaveLength(1); // the concealment-4 dig — never the field (the ceiling)
+    for (const u of battle.units) {
+      if (u.side === "enemy") {
+        u.hp = 0;
+        u.alive = false;
+      }
+    }
+    const res = loop.resolve();
+    expect(res.traps).toEqual({ staged: 5, spotted: 1, sprung: 0, disarmed: 0, salvaged: 5 });
+  });
+
+  it("an unscouted arrival still stages the field fully concealed", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    const battle = loop.startEncounter();
+    expect(battle.entities.all().filter(isConcealedTrap).every((t) => !t.revealed)).toBe(true);
+  });
+});

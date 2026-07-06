@@ -55,6 +55,12 @@ const STEPS = [
   { name: "07-e1-victory", minMs: 900, eval: forceWin }, // resolution overlay — reward + level-up feedback
   { name: "08-after-e1", minMs: 900, eval: bs(`s.returnToOverworld();`) }, // back on the overworld map
 
+  // The pinned intel card on the snares node (D83): the Hazards lane at Vale's tier-2
+  // floor ("5 snares") + the rumors info box (two lines revealed, the third a ???).
+  // Through the real inspect entry (showPreview) so the sticky-card state stays coherent
+  // across the map redraws the next nav triggers.
+  { name: "08b-snares-intel", minMs: 800, eval: ov(`s.showPreview(s.run.map.nodes["snares"]);`) },
+
   { name: "09-snares-deploy", minMs: 1100, eval: navTo("snares") }, // The Sapper's Snares — the trap-field board
   // Reveal every concealed trap on the deploy board so the ⚠ markers draw for the shot
   // (the strong-snare/weak-enemy set-piece reads in the pre-combat setup, not mid-fight).

@@ -54,7 +54,7 @@ import { recoverMaterials } from "./resolution";
 import { grantItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
 import { rpPerNight, payUpkeep, restHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
-import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
+import { intelFloor, readEncounter, clampTier, MAX_TIER, TRAP_INTEL, type IntelReport, type IntelTier } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import { restoreFatigue, nightlyFatigue, isFatigueTier0 } from "./fatigue";
 import { useOverworldSkill, scoutedTier, type ActionOpts, type CampSkillResult } from "./overworld-actions";
@@ -557,7 +557,13 @@ export class RunLoop {
     // Blanket gear-condition stamp (D52): the iron-weapons +attack edge (decayed by
     // worn gear) and the worn-gear −defense, applied party-wide before the fight.
     applyGearCondition(this.run, players);
-    const staged = stageEncounter(source, players, { deploymentPenalty, revealHidden: tier >= MAX_TIER, seed: this.run.seed });
+    const staged = stageEncounter(source, players, {
+      deploymentPenalty,
+      revealHidden: tier >= MAX_TIER,
+      // The tier-3 trap-lane read (D83): the survey marks the careless snares.
+      markTrapsUpTo: tier >= TRAP_INTEL.markTier ? TRAP_INTEL.markConcealmentMax : undefined,
+      seed: this.run.seed,
+    });
     this.source = source;
     this.staged = staged;
     this.combatants = players;

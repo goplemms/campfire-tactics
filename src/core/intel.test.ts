@@ -10,10 +10,14 @@ import {
   intelDeployBonus,
   clampTier,
   MAX_TIER,
+  TRAP_INTEL,
   previewNode,
   rewardBand,
 } from "./intel";
 import type { AuthoredEncounter } from "./authored";
+import { TRAP_FIELD, E1_SKIRMISH, SECURED_WAGON } from "./hollow-mill";
+import { stageEncounter } from "./staging";
+import { isConcealedTrap } from "./entities";
 import { createRun } from "./run";
 import { getNode } from "./overworld";
 import { earlyEventForNode } from "./node-events";
@@ -202,5 +206,56 @@ describe("intel teeth — scouting reveals the ambush and buys a deploy edge (D1
     expect(intelDeployBonus(2).safeDepthBonus).toBeGreaterThan(intelDeployBonus(0).safeDepthBonus);
     expect(intelDeployBonus(3).safeDepthBonus).toBeGreaterThan(intelDeployBonus(2).safeDepthBonus);
     expect(intelDeployBonus(3).exposureMultiplier).toBeLessThan(intelDeployBonus(1).exposureMultiplier);
+  });
+});
+
+describe("intel — the trap lane + info lane (D83)", () => {
+  it("the trap lane bands presence → count → careless marks, honestly gated", () => {
+    // Tier 0: nothing — a no-intel party walks in blind.
+    expect(readEncounter(TRAP_FIELD, 0).traps).toBeUndefined();
+    // Tier 1: presence only.
+    const t1 = readEncounter(TRAP_FIELD, 1);
+    expect(t1.traps).toEqual({ present: true });
+    // Tier 2: the count.
+    expect(readEncounter(TRAP_FIELD, 2).traps).toEqual({ present: true, count: 5 });
+    // Tier 3: the careless mark — ONLY concealment ≤ cap (one snare at 4), never the field.
+    const t3 = readEncounter(TRAP_FIELD, 3);
+    expect(t3.traps).toEqual({ present: true, count: 5, marked: 1 });
+  });
+
+  it("a trapless field reads an honest 'none sensed' — the lane never leaks by absence", () => {
+    expect(readEncounter(E1_SKIRMISH, 1).traps).toEqual({ present: false });
+    expect(readEncounter(E1_SKIRMISH, 0).traps).toBeUndefined();
+  });
+
+  it("the dug-in captors resist the read — L6A's careful work marks NOTHING at tier 3", () => {
+    const t3 = readEncounter(SECURED_WAGON, 3);
+    expect(t3.traps).toEqual({ present: true, count: 3, marked: 0 });
+  });
+
+  it("the info lane unlocks one rumor line per tier; the total exposes the locked ???s", () => {
+    const t0 = readEncounter(TRAP_FIELD, 0);
+    expect(t0.notes).toEqual([]);
+    expect(t0.notesTotal).toBe(3);
+    expect(readEncounter(TRAP_FIELD, 1).notes).toHaveLength(1);
+    expect(readEncounter(TRAP_FIELD, 1).notes?.[0]).toMatch(/Folk around here/);
+    expect(readEncounter(TRAP_FIELD, 3).notes).toHaveLength(3);
+    // No rumors authored → no info box at all.
+    expect(readEncounter(AMBUSH, 3).notes).toBeUndefined();
+  });
+
+  it("tier 3 stages the careless snare pre-revealed — and ONLY it (the ceiling holds)", () => {
+    const party = [member("edrin"), member("vale", 9)]; // int 9 → tier-3 floor for the read
+    const staged = stageEncounter(TRAP_FIELD, party, { markTrapsUpTo: TRAP_INTEL.markConcealmentMax });
+    const traps = staged.battle.entities.all().filter(isConcealedTrap);
+    const revealed = traps.filter((t) => t.revealed);
+    expect(traps).toHaveLength(5);
+    expect(revealed).toHaveLength(1);
+    expect(revealed[0]?.concealment).toBe(4); // the sloppy dig; the careful work keeps its secret
+  });
+
+  it("unscouted staging marks nothing", () => {
+    const staged = stageEncounter(TRAP_FIELD, [member("edrin")], {});
+    expect(staged.battle.entities.all().filter(isConcealedTrap).every((t) => !t.revealed)).toBe(true);
   });
 });

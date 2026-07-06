@@ -148,6 +148,12 @@ roof:
   every line of attack crosses the snares. The hover card telegraphs the stance ("holds
   its ground"). *Planned before Node 3 closes:* the fuller behavior set —
   flee-after-first-melee and trigger-based aggro (see D81).
+- **Intel reads the field (D83).** The trap lane bands presence → count → the **careless
+  mark**: at tier 3 (Vale's tier-2 floor + one Recon/Survey bump — the L2 lesson's payoff)
+  exactly **one** sloppy snare (concealment 4) stages pre-revealed; the careful work keeps
+  its secret — **no tier ever blows the whole field** (intel *informs*, Awareness
+  *resolves*). Three authored **rumors** ("folk around here say a deserter…") unlock one
+  per tier on the intel card's info box.
 - **Teaches:** you win or lose in the **pre-combat setup** — read the field with Vale's
   Awareness, position so the lone enemy is fought on your terms.
 - **Reward:** 70g, 1 trap-kit, 70 XP. Unsprung snares **sweep to the stash on the win
@@ -195,6 +201,25 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Node-3 pass, step 4: intel's hazard + info lanes — the L2 Recon lesson finally pays
+  off at L3 (D83).** Intel read enemies only, so scouting the snares node said "1 Bandit
+  Thug" — worse than nothing. Two new tier-banded lanes (user-ruled: **no tier ever
+  reveals the whole field**, and the lanes are **honestly gated** — no intel unit, no
+  read): the **trap lane** (T1 presence — an honest "none sensed" on trapless fields, so
+  the row never leaks by absence · T2 count · T3 the **careless mark**: concealment ≤ 4
+  stages pre-revealed via `stageEncounter({ markTrapsUpTo })`). Per-trap `concealment` is
+  thus the authored intel knob: L3 marks exactly one sloppy snare; **L6A marks zero** —
+  the dug-in captors resist the read purely from existing numbers. Plus the **info lane**:
+  `AuthoredEncounter.rumors` — free-form tiered flavor ("folk around here say…"), one line
+  per tier, locked lines as `???` on the intel card's new RUMORS box (the card now sizes
+  to content and lifts to stay on-canvas); the deploy Intel tab gains the Hazards row.
+  Banding is data (`TRAP_INTEL`), provisional by design. With D82 this closes the loop:
+  scout → cross clean → keep Vale standing → sweep the kits. Guards: tsc · unit tests
+  (lane pins incl. L6A-zero + the tier-3 staged mark at the real node — `spotted` moves at
+  last) · build · e2e · shots (a new `08b-snares-intel` frame pins the card; note
+  `shots:mill`'s later frames were already broken on `main` — a pre-existing headless
+  Phaser texture rough-edge, not this pass) · sim (digest unchanged — the bot never
+  scouts).
 - **Node-3 pass, step 3: the snare sweep — a win salvages the field, gated on a standing
   trap-trained survivor (D82).** Resolved the D13 ↔ D54 salvage contradiction (the docs
   said "a win salvages enemy snares"; the code shipped "disarm is the only harvest"). The

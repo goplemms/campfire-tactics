@@ -111,6 +111,13 @@ export interface AuthoredEncounter {
   captives?: CaptivePlacement[];
   /** Concealed enemy traps pre-placed on the field (spot to avoid, Survivalist to harvest). */
   traps?: AuthoredTrap[];
+  /**
+   * **Rumors** (D83) — the free-form info lane of the intel read, tier-banded like the
+   * structured lanes: `rumors[i]` is revealed at intel tier `i+1` ("folk around here
+   * say…" at tier 1 → sharper hearsay as the read deepens). Locked lines render as
+   * `???` on the intel card. Authored flavor; absent = no info box for the node.
+   */
+  rumors?: string[];
   reward: EncounterReward;
   /**
    * Post-win grants (D52) — a recruit / relic / flag awarded on a `win`, beyond the

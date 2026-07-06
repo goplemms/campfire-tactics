@@ -151,6 +151,12 @@ export const TRAP_FIELD: AuthoredEncounter = {
   enemies: [
     { templateId: "bandit-thug", pos: { col: 8, row: 2 }, id: "lone-straggler", overrides: { standingOrder: "hold" } },
   ],
+  // The info lane (D83) — one rumor line per intel tier ("folk say…" → sharper hearsay).
+  rumors: [
+    "Folk around here say a deserter from the mill garrison has gone to ground past the cut — and that carts stopped coming back.",
+    "A carter swears he watched the sapper dig along the narrows five separate times before slipping away.",
+    "He worked hurriedly near the old wagon rut — a careful survey should spot the sloppiest of it.",
+  ],
   // Very strong, concealed, mid-field traps the party must cross — high damage so
   // eating an unspotted one really stings (no Medic yet). Spot-and-avoid (no disarm req).
   traps: [
@@ -217,7 +223,15 @@ export const SECURED_WAGON: AuthoredEncounter = {
     { templateId: "bandit-cutthroat", pos: { col: 7, row: 1 }, overrides: { awareness: 5 } },
     { templateId: "bandit-thug", pos: { col: 7, row: 4 }, overrides: { awareness: 4 } },
   ],
+  // The info lane (D83): the inversion telegraphed — these captors expect a second try.
+  rumors: [
+    "The wagon never moved on — it dug in. Watchfires burn in pairs there now.",
+    "Three captors hold it in alert shifts, and the ground on the approach has been worked over.",
+    "No careless digging here — whoever laid these snares took their time. Nothing to mark from afar.",
+  ],
   // The captors laid their own snares — spot/avoid ENEMY traps (the node-3 lesson inverted).
+  // Concealment 5–6 sits ABOVE the D83 careless-mark cap: a tier-3 read marks NOTHING
+  // here — the dug-in captors resist the scout's read, purely from the existing numbers.
   traps: [
     { pos: { col: 2, row: 2 }, concealment: 5, damage: 16 },
     { pos: { col: 3, row: 3 }, concealment: 6, damage: 18 },

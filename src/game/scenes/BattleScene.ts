@@ -2673,6 +2673,12 @@ export class BattleScene extends Phaser.Scene {
     if (r.count !== undefined) rows.push({ label: "Foes", value: `${r.count}` });
     rows.push({ label: "Intel", value: `T${r.tier}` });
     if (shape) rows.push({ label: "Field", value: shape });
+    // The trap lane (D83): presence → count → the careless marks, where it informs placement.
+    if (r.traps) {
+      const t = r.traps;
+      const marks = t.marked === undefined ? "" : t.marked > 0 ? ` · ${t.marked} marked` : " · none marked";
+      rows.push({ label: "Hazards", value: !t.present ? "none sensed" : t.count === undefined ? "worked ground" : `${t.count} snares${marks}` });
+    }
     if (!battle && r.grantsVision) rows.push({ label: "Vision", value: "yes" });
     const note = r.types && r.types.length ? compactFoeTypes(r.types) : undefined;
     this.campCard.set("", rows, undefined, note);

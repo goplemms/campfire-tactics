@@ -47,6 +47,11 @@ const forceWin = bs(`if(s.over||!s.battle)return;for(const u of s.battle.units)i
 const STEPS = [
   { name: "01-intro", minMs: 800 }, // the expedition orientation card over the fogged map
   { name: "02-map-fog", eval: ov(`for(const o of s.overlay)o.destroy();s.overlay=[];`) }, // the hand-built Hollow Mill map
+  // The pinned intel card on the snares node (D83), in its real MAP context: the
+  // Hazards lane ("5 snares" at the party's tier-2 floor) + the rumors info box
+  // (two lines revealed, the third a locked ???). Inspect on the map (not camp), so
+  // the card docks over empty ground rather than colliding with camp action buttons.
+  { name: "02b-snares-intel", minMs: 500, eval: ov(`s.showPreview(s.run.map.nodes["snares"]);`) },
   { name: "03-make-camp", eval: ov(`s.enterCamp(s.loop.reachable()[0]);`) }, // camp, heading to E1
   { name: "04-ledger", eval: ov(`s.openTent(()=>s.renderCamp(),"ledger");`) }, // the Captain's Tent ledger + forecast over the authored reward
 
@@ -54,12 +59,6 @@ const STEPS = [
   { name: "06-e1-battle", minMs: 900, eval: advance(12) }, // a few turns in
   { name: "07-e1-victory", minMs: 900, eval: forceWin }, // resolution overlay — reward + level-up feedback
   { name: "08-after-e1", minMs: 900, eval: bs(`s.returnToOverworld();`) }, // back on the overworld map
-
-  // The pinned intel card on the snares node (D83): the Hazards lane at Vale's tier-2
-  // floor ("5 snares") + the rumors info box (two lines revealed, the third a ???).
-  // Through the real inspect entry (showPreview) so the sticky-card state stays coherent
-  // across the map redraws the next nav triggers.
-  { name: "08b-snares-intel", minMs: 800, eval: ov(`s.showPreview(s.run.map.nodes["snares"]);`) },
 
   { name: "09-snares-deploy", minMs: 1100, eval: navTo("snares") }, // The Sapper's Snares — the trap-field board
   // Reveal every concealed trap on the deploy board so the ⚠ markers draw for the shot

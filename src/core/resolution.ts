@@ -50,6 +50,10 @@ export function recoverMaterials(
   const recovered: string[] = [];
   let swept = 0;
   if (winner !== "player") return { recovered, swept };
+  // "Awake and able" (D82) is judged at the moment of victory, BEFORE mortality
+  // resolution — a downed-then-recovered sweeper does not sweep. Today the only
+  // incapacitation forms are downed (alive=false) and captured; a future 0-HP-style
+  // status (petrify/KO) must join this predicate when it lands.
   const sweeper = party.some((u) => isActive(u) && canDisarm(u));
   for (const e of entities) {
     if (!isRecoverable(e)) continue;

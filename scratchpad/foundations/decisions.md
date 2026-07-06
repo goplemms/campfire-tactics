@@ -3011,9 +3011,12 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   the snares stay in the dirt. Sprung is always spent. Kill-him-last dies (you get the kits
   anyway); root-around-the-map never exists (hidden sweeps too); the **disarm verb keeps its
   mid-fight identity** (pocket the kit *now* for Set Trap + permanently clear the crossing).
-  - "Awake" is literal: the gate reads state **before** D9 mortality resolution, so a
-    downed-then-recovered sweeper does NOT sweep (she was unconscious when the field was
-    won), and a still-bound captive doesn't either (auto-rescue lands after rewards).
+  - "Awake" is literal (ratified by the user): **0 HP — or any status indicating 0-HP-style
+    incapacitation — at the end of the encounter disqualifies the sweeper.** The gate reads
+    state **before** D9 mortality resolution, so a downed-then-recovered sweeper does NOT
+    sweep (she was unconscious when the field was won), and a still-bound captive doesn't
+    either (auto-rescue lands after rewards). Today downed + captured are the only
+    incapacitation forms; a future petrify/KO-class status must join the gate's predicate.
     Protecting the sweeper is the incentive. The canonical sim run proves the teeth: bot
     Vale dies in the snares fight → salvaged 0 (pinned in `sim.test.ts`).
   - Deterministic full recovery — no durability roll; the roll arrives with the future

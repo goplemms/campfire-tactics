@@ -333,7 +333,7 @@ export function accruePurseInterest(eco: OverworldEconomy, camp: Camp): number {
  * The base shape **every** camp / overworld / economy action returns (D61): it
  * either `applied` (with an optional `detail` summary) or was refused (with a
  * `reason`). The single canonical result type the action surfaces share — the
- * economy verbs' `VerbResult` ({@link "./economy-actions"}) is an alias of this.
+ * economy verbs ({@link "./economy-actions"}) extend it directly.
  */
 export interface ActionOutcome {
   /** True if the action took effect (costs spent, pacing armed). */
@@ -345,7 +345,7 @@ export interface ActionOutcome {
 }
 
 /** An overworld-action outcome — the shared base plus the spend readouts. */
-export interface ActionResult extends ActionOutcome {
+export interface OverworldActionResult extends ActionOutcome {
   /** Fatigue actually spent on the acting unit (base + any over-extension surcharge). */
   fatigueSpent?: number;
   /** Gold spent, if the ability was priced. */
@@ -443,7 +443,7 @@ export function overworldCostOf(skill: SkillDef): OverworldCost {
 }
 
 /** The outcome of a gated camp-skill use — the {@link CampOutcome} plus the gate verdict. */
-export interface CampSkillResult extends ActionResult {
+export interface CampSkillResult extends OverworldActionResult {
   /** When applied: what the camp skill changed + the levels its owner gained. */
   outcome?: CampOutcome & { levels: number };
 }

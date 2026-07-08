@@ -1,6 +1,11 @@
 // Barrel for the pure-logic core. The render layer (`game/`) imports from here;
 // it must never reach into Phaser or the DOM. Everything below is plain data +
 // functions, headlessly testable.
+//
+// Every core module is re-exported except `tuning.ts` — the deliberate exclusion
+// (its own header says why): it is a curated re-export *index* of knobs already
+// exported below, so routing it through the barrel too would collide. Import it
+// by path.
 export * from "./num";
 export * from "./rng";
 export * from "./rng-labels";
@@ -14,6 +19,7 @@ export * from "./status";
 export * from "./events";
 export * from "./clock";
 export * from "./combat";
+export * from "./combat-actions";
 export * from "./entities";
 export * from "./camp";
 export * from "./morale";
@@ -39,6 +45,7 @@ export * from "./fog";
 export * from "./forecast";
 export * from "./ability-forecast";
 export * from "./ledger";
+export * from "./purse-journal";
 export * from "./leveling";
 export * from "./dossier";
 export * from "./journal";
@@ -49,6 +56,7 @@ export * from "./playtest-log";
 export * from "./caravan";
 export * from "./guild";
 export * from "./economy";
+export * from "./grants";
 export * from "./economy-actions";
 export * from "./theft";
 export * from "./recruitment";

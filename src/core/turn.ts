@@ -42,7 +42,7 @@ import {
 import {
   commitsTurn,
   type CombatAction,
-  type ActionResult,
+  type BattleActionResult,
   type UnitId,
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
@@ -411,7 +411,7 @@ export class Battle {
    * **The single execution path** for a battle action (Phase 1 of the
    * combat-actions design): validate → mutate → emit → **append to the log**. Player
    * input and {@link AIPlan} both lower to {@link CombatAction}s and flow through
-   * here, so the two paths can't drift. Returns an {@link ActionResult} carrying the
+   * here, so the two paths can't drift. Returns a {@link BattleActionResult} carrying the
    * verb's natural outcome (so the public wrappers keep their original return
    * shapes); a **refused** action (e.g. a skill on cooldown) is *not* logged.
    *
@@ -422,7 +422,7 @@ export class Battle {
    *
    * Adding a battle action = a new {@link CombatAction} variant + a case here.
    */
-  apply(action: CombatAction): ActionResult {
+  apply(action: CombatAction): BattleActionResult {
     const checkpoint = this.undoStack ? this.captureCheckpoint() : null;
     const result = this.dispatch(action);
     if (checkpoint && result.ok) this.undoStack!.push(checkpoint);
@@ -430,7 +430,7 @@ export class Battle {
   }
 
   /** Validate → mutate → emit → log a single action (the interpreter core). */
-  private dispatch(action: CombatAction): ActionResult {
+  private dispatch(action: CombatAction): BattleActionResult {
     switch (action.kind) {
       case "move": {
         this.execMove(this.unit(action.unit), action.path, false);

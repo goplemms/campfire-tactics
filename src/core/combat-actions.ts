@@ -110,7 +110,7 @@ export type CombatActionKind = CombatAction["kind"];
  * with a reason (a skill on cooldown, no trap kit). A refused action is **not**
  * appended to the log.
  */
-export type ActionResult =
+export type BattleActionResult =
   | { ok: true; damage?: number; hits?: number; outcome?: SkillOutcome; trap?: RecoverableEntity; levels?: number }
   | { ok: false; reason: string };
 

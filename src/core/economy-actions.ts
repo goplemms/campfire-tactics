@@ -87,13 +87,6 @@ export const ECONOMY = {
   },
 } as const;
 
-/**
- * A generic economy-verb result the render reads (applied, or why refused) — the
- * shared {@link "./overworld-actions".ActionOutcome} base, so the economy verbs and
- * the overworld actions speak one result shape. Per-verb extras extend it below.
- */
-export type VerbResult = ActionOutcome;
-
 // --- Merchant — ACCESS (purse-funded, market-tier-gated) --------------------
 
 /** The Merchant's price to buy one supply at a market of the given tier (D61). */
@@ -103,7 +96,7 @@ export function merchantPrice(tier: MarketTier): number {
 }
 
 /** What a Merchant buy produced. */
-export interface MerchantBuyResult extends VerbResult {
+export interface MerchantBuyResult extends ActionOutcome {
   /** Purse gold spent. */
   spent?: number;
   /** The market-tier price paid. */
@@ -149,7 +142,7 @@ export function sellPrice(material: MaterialDef, tier: MarketTier): number {
 }
 
 /** What a Merchant sell produced. */
-export interface MerchantSellResult extends VerbResult {
+export interface MerchantSellResult extends ActionOutcome {
   /** Gold credited to the purse (after any Banker-debt auto-repay). */
   earned?: number;
   /** The unit price paid at this market. */
@@ -219,7 +212,7 @@ export function bankerEngageInterest(run: RunState): number {
 }
 
 /** What a buy-on-debt drew. */
-export interface BankerBorrowResult extends VerbResult {
+export interface BankerBorrowResult extends ActionOutcome {
   /** Gold advanced to the purse. */
   borrowed?: number;
   /** The new outstanding debt balance. */
@@ -242,7 +235,7 @@ export function bankerBorrow(run: RunState, amount: number): BankerBorrowResult 
 }
 
 /** What buying theft protection produced. */
-export interface BankerProtectResult extends VerbResult {
+export interface BankerProtectResult extends ActionOutcome {
   /** Purse gold spent. */
   spent?: number;
   /** The protection level now in effect (a [0,1) skim reduction). */
@@ -339,7 +332,7 @@ export function accrueDeclaredFaucets(run: RunState, lookup: JobLookup = getJob)
 }
 
 /** What a Patronize produced. */
-export interface PatronizeResult extends VerbResult {
+export interface PatronizeResult extends ActionOutcome {
   /** Purse gold spent. */
   spent?: number;
   /** Influence gained. */
@@ -374,7 +367,7 @@ export function patronize(run: RunState): PatronizeResult {
 }
 
 /** What a bribe attempt produced. */
-export interface BribeResult extends VerbResult {
+export interface BribeResult extends ActionOutcome {
   /** Influence spent (on a success **or** a failed roll — the gamble). */
   cost?: number;
   /**

@@ -122,6 +122,14 @@ function playGolden(): { battle: Battle; inv: Inventory } {
 
 const unitIn = (battle: Battle, id: string): Unit => battle.units.find((u) => u.id === id)!;
 
+/** Replay the golden log from a fresh roster + a fresh copy of the initial stash. */
+function replayGolden(battle: Battle): { rebuilt: Battle; inv: Inventory } {
+  const grid = new TileGrid(8, 3);
+  const inv = createInventory(8, { salve: 2 }); // the same initial counts playGolden started from
+  const rebuilt = replay(grid, roster(), battle.log, { ...GOLDEN_OPTS, stash: inv });
+  return { rebuilt, inv };
+}
+
 describe("R1 #111 — golden rescue+heal battle (log-totality characterization)", () => {
   it("pins the golden end-state (rescue freed the captive, the heal landed, the herb burned)", () => {
     const { battle, inv } = playGolden();
@@ -137,20 +145,19 @@ describe("R1 #111 — golden rescue+heal battle (log-totality characterization)"
 
   it("replay reproduces the logged rescue (increment-1 flip): the replayed captive is freed", () => {
     const { battle } = playGolden();
-    const grid = new TileGrid(8, 3);
-    const rebuilt = replay(grid, roster(), battle.log, GOLDEN_OPTS);
+    const { rebuilt } = replayGolden(battle);
     // The rescue is a logged action now, so the replayed captive comes back freed —
     // the state graph (isActive, clock membership, win check) reconstructs.
     expect(unitIn(rebuilt, "cap").captured).toBe(false);
   });
 
-  it("WITNESS (flips when useHeal is logged): replay misses the unlogged heal", () => {
+  it("replay reproduces the logged heal (increment-2 flip): the ally's HP and the herb spend come back", () => {
     const { battle } = playGolden();
-    const grid = new TileGrid(8, 3);
-    const rebuilt = replay(grid, roster(), battle.log, GOLDEN_OPTS);
-    // The heal (and its raw turn-commit) never reached the log: the replayed ally
-    // still sits at its wounded HP, and the roster as a whole diverges.
-    expect(unitIn(rebuilt, "ally").hp).not.toBe(unitIn(battle, "ally").hp);
-    expect(rebuilt.units).not.toEqual(battle.units);
+    const { rebuilt, inv } = replayGolden(battle);
+    // The heal (herb spend + turn commit) is a logged action now: the replayed ally
+    // lands on the same HP, and the replayed stash burned the same herb.
+    expect(unitIn(rebuilt, "ally").hp).toBe(unitIn(battle, "ally").hp);
+    expect(countOf(inv, "salve")).toBe(1);
+    expect(rebuilt.units).toEqual(battle.units);
   });
 });

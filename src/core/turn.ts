@@ -513,6 +513,25 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "useHeal": {
+        // The Medic's herb heal (D40) — logged (R1 #111): the herb spend comes from
+        // the battle's wired stash (the same shared inventory production wires via
+        // setStash), so replay reproduces the consumption and undo refunds it (the
+        // checkpoint's stash snapshot). A refusal (cooling down / no stash / herb
+        // not carried) mutates nothing and is not logged — exactly the old no-op.
+        const caster = this.unit(action.unit);
+        const target = this.unit(action.target);
+        const skill = action.skill;
+        if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
+        if (!this.stash) return { ok: false, reason: "No herb stash wired for the heal." };
+        const outcome = resolveMedHeal(caster, target, action.herbId, this.stash, this.bus);
+        if (outcome.healed === undefined) return { ok: false, reason: `${action.herbId} isn't carried` };
+        // Same turn economy as before the move into apply: arm the cooldown, and end
+        // the turn per `commitTurn` (default true; `false` is the D60 free-move flow).
+        this.commitSkill(caster, skill, action.commitTurn ?? true);
+        this._log.push(action);
+        return { ok: true, outcome };
+      }
       case "beginBattle": {
         // The pre-combat → combat boundary (D67): flip the phase, shed the deploy clock
         // configuration (detach the front, re-widen participation, clear the staging
@@ -715,13 +734,17 @@ export class Battle {
    * antidote). Arms the Heal cooldown and ends the turn. A no-op (no turn spent)
    * if cooling down or the herb isn't carried. `commitTurn: false` leaves the turn
    * open for the D60 free-move flow (the render layer ends it).
+   *
+   * Lowers to the logged `useHeal` action (R1 #111) through {@link apply}, so the
+   * herb spend + heal replay and undo refunds the herb. `inv` **is** the battle's
+   * herb stash — production passes the same run inventory it already wired via
+   * {@link setStash}; a bare test battle gets wired here so the logged action has
+   * battle-owned state to draw from.
    */
   useHeal(caster: Unit, skill: SkillDef, target: Unit, herbId: string, inv: Inventory, opts: { commitTurn?: boolean } = {}): SkillOutcome {
-    if (!this.canUseSkill(caster, skill)) return {};
-    const out = resolveMedHeal(caster, target, herbId, inv, this.bus);
-    if (out.healed === undefined) return out; // herb not carried — no commit
-    this.commitSkill(caster, skill, opts.commitTurn ?? true);
-    return out;
+    this.setStash(inv);
+    const r = this.apply({ kind: "useHeal", unit: caster.id, skill, target: target.id, herbId, commitTurn: opts.commitTurn ?? true });
+    return r.ok ? r.outcome ?? {} : {};
   }
 
   /** End a unit's turn: fire `turnEnd` and spend its CT (act costs more). */
@@ -870,14 +893,17 @@ function planActions(plan: AIPlan): CombatAction[] {
  * pass throwaway clones of the pre-seed roster. `opts` must carry the **same**
  * {@link BattleOptions} (seed + variance) the original battle used, so any seeded
  * rolls re-derive identically; `moraleBonus` re-applies the initiative warming.
+ * `stash` re-wires the shared supply inventory a log with stash-consuming actions
+ * (`placeTrap`, `useHeal`) draws from — pass a clone of its **initial** counts.
  */
 export function replay(
   grid: TileGrid,
   initialUnits: Unit[],
   log: readonly CombatAction[],
-  opts: BattleOptions & { moraleBonus?: number } = {},
+  opts: BattleOptions & { moraleBonus?: number; stash?: Inventory } = {},
 ): Battle {
   const battle = new Battle(grid, initialUnits, opts);
+  if (opts.stash) battle.setStash(opts.stash);
   // Drain the pre-combat prelude (D67): everything up to (and including) the logged
   // `beginBattle` boundary — the deploy actions resolve in the pre-combat phase (no
   // combat commit), then the marker flips to combat — before seeding + driving the loop.

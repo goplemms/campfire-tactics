@@ -70,6 +70,14 @@ export type CombatAction =
    * replay reconstructs the state graph and undo can cross a rescue.
    */
   | { kind: "rescue"; target: UnitId; unit?: UnitId }
+  /**
+   * The Medic's herb-fuelled **Heal** (D40): consume `herbId` from the battle's wired
+   * stash and heal `target` with the herb's rider (salve/stimulant/antidote). Logged
+   * (R1 #111) so the herb spend + heal replay and undo refunds the herb (the
+   * checkpoint's stash snapshot). `commitTurn` as on `skill` — default `true` ends
+   * the caster's turn; `false` is the D60 free-move flow.
+   */
+  | { kind: "useHeal"; unit: UnitId; skill: SkillDef; target: UnitId; herbId: string; commitTurn?: boolean }
   // --- Deployment-only verbs (D63/D67) --------------------------------------
   // `move`/`skill` are reused in the pre-combat phase (the interpreter detects the
   // Battle's phase and skips the combat turn-commit) — only these genuinely deploy-only
@@ -108,9 +116,9 @@ export type ActionResult =
  * True if `action` **commits** the acting unit's turn (spends its CT). The replay
  * driver uses this to delimit one **combat** turn's recorded actions (the pre-combat
  * prelude is drained wholesale up to the `beginBattle` boundary, so it never reaches
- * here): an `endTurn`, a `cleave` (always commits), or a `skill` with `commitTurn` left
- * default/true. A `move`, `attack`, or free-move `skill` (`commitTurn: false`) leaves the
- * turn open.
+ * here): an `endTurn`, a `cleave` (always commits), or a `skill`/`useHeal` with
+ * `commitTurn` left default/true. A `move`, `attack`, or free-move `skill`/`useHeal`
+ * (`commitTurn: false`) leaves the turn open.
  */
 export function commitsTurn(action: CombatAction): boolean {
   switch (action.kind) {
@@ -118,6 +126,7 @@ export function commitsTurn(action: CombatAction): boolean {
     case "cleave":
       return true;
     case "skill":
+    case "useHeal":
       return action.commitTurn ?? true;
     default:
       return false;

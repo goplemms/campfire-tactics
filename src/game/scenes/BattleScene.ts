@@ -649,6 +649,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Open one player unit's deployment turn: it may move, dig in, or set a trap. */
   private beginDeployTurn(unit: Unit): void {
+    this.view.setActiveUnit(unit);
     this.deployMoved = false;
     this.deployActed = false;
     this.deployReveal = false;
@@ -751,6 +752,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** End the active unit's deployment turn and spend its CT (no auto-advance). */
   private endDeployTurn(unit: Unit): void {
+    this.view.setActiveUnit(null);
     this.battle.endUndo(); // the deploy turn commits — no take-back across the boundary
     this.battle.clock.spend(unit, { moved: this.deployMoved, acted: this.deployActed });
     this.enterDeployIdle(`${unit.name}'s turn ends — Advance Clock (Space) to step the net, or Start Battle.`);
@@ -1418,6 +1420,7 @@ export class BattleScene extends Phaser.Scene {
    * can do auto-passes (the D55 backstop) so the clock can't stall.
    */
   private beginPlayerTurn(actor: Unit): void {
+    this.view.setActiveUnit(actor);
     this.waitingFor = actor;
     this.moveBudget = moveBudget(actor);
     this.acted = false;
@@ -1856,6 +1859,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private runEnemyTurn(actor: Unit): void {
+    this.view.setActiveUnit(actor);
     this.busy = true;
     this.setHint(`${actor.name} (enemy) acts…`);
     // The thief archetype (D30): on its first turn it skims the run PURSE, then
@@ -2268,6 +2272,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private afterTurn(): void {
+    this.view.setActiveUnit(null);
     this.busy = false;
     this.movedThisTurn = false;
     this.acted = false;

@@ -2954,6 +2954,71 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D80 — The overworld node pass: the night/day loop, one effort meter, and the on-node intel surface
+
+> **Backfilled 2026-07-08.** This decision was designed, built, and shipped (PRs #91–#104,
+> with the on-node intel surface #105–#108 and in-place rest #109 riding the same label),
+> and it is cited throughout the codebase and by D83/D85/D86 — but its log entry was never
+> written; the headings jumped D79 → D81. Reconstructed from the kickoff brief
+> ([`docs/design/implementation/d80-node.md`](../../docs/design/implementation/d80-node.md)),
+> the canon it updated (`docs/design/systems/overworld.md` — the "(D46, revised D80)" /
+> "(D47, revised D80)" / "Early events (D80)" sections; `docs/design/glossary.md` Lifecycle),
+> and the shipped PR history. **Ratified as backfilled — edit freely; the docs above remain
+> the source of truth for the details.**
+
+- **Status:** Decided + built (design PRs #91/#93/#95/#96, 2026-06-30 → build #97–#104 + #109,
+  2026-07-04) · revises **D46** (node lifecycle) and **D47** (recovery) · supersedes **D73**'s
+  fatigue-carryover rule · entry backfilled 2026-07-08
+- **Context:** Three seams had accumulated on the overworld node: the lifecycle had **one**
+  camp and a single fused "Rest & Set Out" verb (#94), so planning-the-road and resting-on-
+  arrival were the same beat; recovery split across D73's `level − floor` fatigue carryover
+  and the rest chip in `recordNight` (post-encounter — the wrong end of the road); and a
+  node's intel lived only in a hover preview, with no persistent read, no sense of scouting
+  *progress*, and no arrival texture between nodes.
+- **Decision (three strands, one pass):**
+  1. **The night/day loop (revises D46).** A node runs `[encounter] → REACT camp (scout
+     ahead / bank loot / pick the next node = Set Out) → the road (early events; travel
+     wounded) → PREP camp on arrival (the night's rest + gear up = Begin) → [encounter]`.
+     The fused verb split into **Set Out** + **Begin**; the free nightly chip heal **retimed
+     to arrival** (the prep camp), leaving `recordNight` bookkeeping-only; a Clearing's
+     "encounter" *is* its arrival Deep Rest (no separate Begin beat).
+  2. **One effort meter (revises D47, supersedes D73's carryover).** `OverworldCost.fatigue`
+     generalized to **effort** — every overworld verb spends the same meter. **Narrowing
+     fatigue tier floors** (Rested/Worn/Weary/Exhausted); an ordinary night **steps down one
+     tier** to the floor of the tier below (replacing D73's `level − floor` carryover); a
+     Clearing's **Deep Rest** wipes fatigue fully, with the **big heal gated on
+     Tier-0-at-rest-time**; **in-place rest** = the free chip floor + an RP accelerator
+     (#109). Fatigue surfaced at the point of decision: the dossier tier + a projected delta
+     on ability hover.
+  3. **The on-node intel surface + the arrival layer.** Readout tiles + the pinned,
+     structured intel card with the **`???` reveal idiom** (#107); the segmented
+     **intel-meter ring** that fills as you scout (#108); survey/forecast targets labeled by
+     kind + depth, not raw node id (#106); cost-component action cards (#105). **Survey**
+     reworked (effort 4 · cooldown 1 · the react camp's Intel drawer; effects: sharpen the
+     target's bands / the fog-reach lever / reveal the node's early event). **Early events —
+     the arrival layer:** a random pool (thief/patron/merchant reuse) + tailored node-bound
+     events + the gated, loot-forgoing **bypass**.
+- **Parked at the time (still open):** the Train progression sub-system; paid in-place rest
+  beyond the free floor; the route-forecast fatigue projection ("Tier 0 when it reaches the
+  Clearing?").
+- **Reuses / consistent with:** **D35** (fatigue as the loose guardrail — now the one effort
+  meter), **D29** (the two-economies separation holds; effort never touches the CT clock),
+  **D24** (the preview the card structures), **D74** (the Recon/Survey split the rework
+  consumes), **D46/D47** (revised in place).
+- **Consumed by:** **D83** (the hazard + info lanes land on this card), **D85** (the
+  "no new intel to find" terminal + the meter), **D86** (per-node depth = the meter's arc
+  count), **D82–D84** (the Node-3 pass plays inside this loop).
+- **Spec:** `src/core/fatigue.ts` (narrowing bands + nightly step-down), `src/core/runloop.ts`
+  (`restNode` Deep Rest + Tier-0 gate, `inPlaceRest`), `src/core/run.ts` (`recordNight`/
+  `breakCamp` retiming), `src/core/node-events.ts` (the early-event/bypass layer),
+  `src/core/intel.ts` (the card projections), `src/core/jobs.ts` (`SURVEY`),
+  `OverworldScene` (React/Prep camps, `renderIntelCard`, `drawIntelMeter`),
+  [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md) +
+  [`docs/design/glossary.md`](../../docs/design/glossary.md) (the canon, updated with the build).
+- **Superseded by:** —
+
+---
+
 ## D81 — Standing orders widen to enemy behaviors: the leashed "hold" guard
 
 - **Status:** Decided (2026-07-05) · widens **D41** (standing orders) onto the **D42**

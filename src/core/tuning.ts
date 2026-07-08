@@ -35,15 +35,6 @@ export { SPOT } from "./traps";
 export { AI } from "./ai";
 
 // --- Deployment & vision -----------------------------------------------------
-export {
-  CAPTURE_THRESHOLD,
-  EXPOSURE_PER_DEPTH,
-  NOISE_PER_DEPTH,
-  ALERT_CAP,
-  CAPTURE_PER_DEPTH,
-  CAPTURE_CHANCE_MAX,
-  ALERT_SETTLE,
-} from "./deployment";
 export { REACH } from "./fog";
 
 // --- Progression: leveling, fatigue, mortality -------------------------------

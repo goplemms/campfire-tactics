@@ -36,6 +36,7 @@ import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
 import { addItem, canAdd, countOf, removeItem, getMaterial, saleValueOf, type MaterialDef } from "./inventory";
 import { streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import { addInfluence, spendInfluence, gainRunGold, influenceTier, type InfluenceTier } from "./economy";
 import { grantAbilityUseXp } from "./leveling";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
@@ -293,7 +294,7 @@ export function deftHandsSkim(run: RunState): number {
   if (!hasThief(run.party)) return 0;
   const kind = getNode(run.map, run.mapNodeId).kind;
   if (kind !== "combat" && kind !== "event") return 0;
-  const rng = streamFor(run.seed, `deft:${run.mapNodeId}:${run.night}`);
+  const rng = streamFor(run.seed, Labels.deft(run.mapNodeId, run.night));
   if (!rng.chance(DEFT_HANDS.chance)) return 0;
   earn(run.camp, DEFT_HANDS.gold, "deft-hands", "Deft Hands skim", { nodeId: run.mapNodeId, night: run.night });
   return DEFT_HANDS.gold;
@@ -423,7 +424,7 @@ export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | 
     return { applied: false, reason: `Not enough Influence to bribe ${enemy.name} (${cost}).`, cost };
   }
   // The sway roll — likelier at higher standing, fixed per target+node (no save-scum).
-  const roll = streamFor(run.seed, `bribe:${run.mapNodeId}:${enemy.id}`);
+  const roll = streamFor(run.seed, Labels.bribe(run.mapNodeId, enemy.id));
   if (!roll.chance(bribeChance(tier))) {
     return { applied: false, failed: true, cost, detail: `${enemy.name} spurns the offer — ${cost} Influence spent for nothing.` };
   }

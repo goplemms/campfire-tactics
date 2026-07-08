@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import { Rng, streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import { generateEncounter } from "./generation";
 import {
   intelFloor,
@@ -55,7 +56,7 @@ function member(id: string, intelligence = 0): Unit {
   });
 }
 
-const def = generateEncounter(streamFor("intel", "enc:0"), 0);
+const def = generateEncounter(streamFor("intel", Labels.enc(0)), 0);
 
 describe("intel — lanes up the ladder (D10)", () => {
   it("Lane 1: the Intelligence stat sets a banded passive floor", () => {

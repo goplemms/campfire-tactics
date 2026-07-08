@@ -50,6 +50,7 @@ import { cleaveArc, shoveLanding } from "./ability-forecast";
 import { captureUnit, freeCaptive } from "./deployment";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
+import { Labels } from "./rng-labels";
 import type { ClockSnapshot } from "./clock";
 import type { EntitySnapshot } from "./entities";
 import type { StatusInstance } from "./status";
@@ -260,7 +261,7 @@ export class Battle {
    * ({@link apply}-driven)** — drawing during planning/forecast would desync replay.
    */
   roll(label: string): Rng {
-    return streamFor(this.rngSeed, `${label}#${this.drawCount++}`);
+    return streamFor(this.rngSeed, Labels.battleDraw(label, this.drawCount++));
   }
 
   /**
@@ -284,7 +285,7 @@ export class Battle {
    */
   private damageScale(attacker: Unit, defender: Unit): number {
     if (this.variance <= 0) return 1;
-    return this.roll(`dmg:${attacker.id}->${defender.id}`).float(1 - this.variance, 1 + this.variance);
+    return this.roll(Labels.dmg(attacker.id, defender.id)).float(1 - this.variance, 1 + this.variance);
   }
 
   /**

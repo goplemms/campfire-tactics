@@ -59,6 +59,7 @@ import {
   jobLevelOf,
   // M10 — theft (D30) + mid-combat bribe → recruitment (D33)
   thiefSteal,
+  Labels,
   recoverStolen,
   thiefEscapes,
   previewNode,
@@ -591,8 +592,8 @@ export class BattleScene extends Phaser.Scene {
     // Deployment's RNG draws from the one encounter seed the Battle now owns (D67), via its
     // label-keyed stream seam — the scene no longer reaches into run.seed for its rolls.
     // (battle seed == run.seed, so the streams are byte-identical to the prior wiring.)
-    this.deployRng = this.battle.stream("deploy");
-    this.spotRng = this.battle.stream("trap-spot");
+    this.deployRng = this.battle.stream(Labels.deploy());
+    this.spotRng = this.battle.stream(Labels.trapSpot());
     this.trapMarkers.clear();
     this.playerTrapMarkers.clear();
     this.trapSeq = 0;
@@ -1860,7 +1861,7 @@ export class BattleScene extends Phaser.Scene {
     // The thief archetype (D30): on its first turn it skims the run PURSE, then
     // bolts for the edge. Kill it before it escapes to recover the gold.
     if (actor.thief && actor.alive && !this.theftAttempts.has(actor.id)) {
-      const attempt = thiefSteal(this.run, `thief:${actor.id}`);
+      const attempt = thiefSteal(this.run, Labels.thief(actor.id));
       if (attempt.stolen > 0) {
         this.theftAttempts.set(actor.id, attempt);
         this.goldStolen += attempt.stolen;

@@ -37,6 +37,7 @@ import type { RunState } from "./run";
 import { marketOpenedFlag, type MapNode } from "./overworld";
 import { createUnit, primaryJobOf, remember, type Unit, type UnitSpec } from "./units";
 import { streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
 import { getJob, SCOUT_PRESTIGE_FLOOR } from "./jobs";
 import { MATERIALS, grantItem, canAdd } from "./inventory";
@@ -84,7 +85,7 @@ const PATRON = {
  * loot is fogged) and the player can **route around** it. Stable for a seed (D22).
  */
 export function tollFee(seed: string | number, node: MapNode): number {
-  const rng = streamFor(seed, `event:${node.id}:toll`);
+  const rng = streamFor(seed, Labels.eventToll(node.id));
   return rng.range(NODE_EVENTS.tollMin, NODE_EVENTS.tollMax);
 }
 
@@ -206,7 +207,7 @@ const SHOP_MARKET_TIER = "basic" as const;
  * ({@link "./economy-actions".merchantPrice}). Stable for a seed (D22).
  */
 export function shopStock(seed: string | number, node: MapNode): ShopOffer[] {
-  const rng = streamFor(seed, `event:${node.id}:shop`);
+  const rng = streamFor(seed, Labels.eventShop(node.id));
   const price = merchantPrice(SHOP_MARKET_TIER);
   // Medical herbs (D40) are authored-quest provisioning, not overworld shop
   // stock; sell-only loot (D61) is never bought; equippable gear (D77) and party-gear
@@ -479,7 +480,7 @@ export function getStory(id: string): StorySpec | undefined {
 
 /** The **deterministic** story drawn for an event node (M11) — stable for a seed (D22). */
 export function storyForNode(seed: string | number, node: MapNode): StorySpec {
-  const rng = streamFor(seed, `event:${node.id}:story`);
+  const rng = streamFor(seed, Labels.eventStory(node.id));
   return rng.pick(STORIES);
 }
 
@@ -500,7 +501,7 @@ export function applyStoryChoice(run: RunState, node: MapNode, story: StorySpec,
 
   let gold = spec.goldDelta ?? 0;
   if (spec.goldRoll) {
-    const rng = streamFor(run.seed, `event:${node.id}:story:${choice.id}`);
+    const rng = streamFor(run.seed, Labels.eventStoryChoice(node.id, choice.id));
     gold += rng.range(spec.goldRoll[0], spec.goldRoll[1]);
   }
   if (gold !== 0) {
@@ -658,7 +659,7 @@ export const EVENTS: readonly EventDef[] = [
     autoResolve(run, node) {
       // Headless default: take a seed-picked option (deterministic, D22).
       const story = storyForNode(run.seed, node);
-      const rng = streamFor(run.seed, `event:${node.id}:story:auto`);
+      const rng = streamFor(run.seed, Labels.eventStoryAuto(node.id));
       const choice = rng.pick(story.choices);
       return applyStoryChoice(run, node, story, choice.id);
     },
@@ -899,7 +900,7 @@ export function eventForNode(seed: string | number, node: MapNode, tier: Influen
     const pinned = EVENTS.find((e) => e.id === node.eventId);
     if (pinned) return pinned;
   }
-  const rng = streamFor(seed, `event:${node.id}`);
+  const rng = streamFor(seed, Labels.event(node.id));
   const pool = EVENTS.filter((e) => eventWeightAt(e, tier) > 0);
   return rng.pickWeighted(pool, (e) => eventWeightAt(e, tier));
 }
@@ -936,7 +937,7 @@ export function earlyEventForNode(run: RunState, node: MapNode): EventDef | null
   // A tailored, node-bound event (rare, high-impact) takes precedence over the random pool (D80).
   const tailored = tailoredEarlyEventFor(run, node);
   if (tailored) return tailored;
-  const rng = streamFor(run.seed, `early:${node.id}`);
+  const rng = streamFor(run.seed, Labels.early(node.id));
   if (!rng.chance(EARLY_EVENT.chance)) return null; // the common case — a quiet road
   const tier = influenceTier(run.overworld.influence);
   const pool = EARLY_EVENT.pool.map(getEvent).filter((e) => eventWeightAt(e, tier) > 0);
@@ -1038,7 +1039,7 @@ const TAILORED_EVENTS: readonly EventDef[] = [BLOCKADE];
 export function tailoredEarlyEventFor(run: RunState, node: MapNode): EventDef | null {
   if (node.kind !== "combat") return null;
   if (node.layer >= run.map.layers - 1) return null; // the final node is never bypassable
-  const rng = streamFor(run.seed, `tailored:${node.id}`);
+  const rng = streamFor(run.seed, Labels.tailored(node.id));
   if (!rng.chance(BYPASS.chance)) return null;
   return rng.pick(TAILORED_EVENTS);
 }

@@ -33,6 +33,7 @@
  */
 
 import { Rng, streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import { createUnit, type Unit } from "./units";
 import type { JobId } from "./jobs";
 import {
@@ -159,7 +160,7 @@ export function createGuild(seed: string | number, opts: CreateGuildOptions = {}
 /** Roll the next generated sidequest deterministically from the guild seed. */
 function generateSidequest(guild: Guild): Quest {
   const n = guild.questCounter++;
-  const rng = streamFor(guild.seed, `quest:${n}`);
+  const rng = streamFor(guild.seed, Labels.quest(n));
   const flavours = ["Bandit Camp", "Lost Caravan", "Wolf Den", "Ruined Watchtower", "Salt Road Patrol"];
   const label = rng.pick(flavours);
   return {
@@ -393,7 +394,7 @@ export function hireMercenary(guild: Guild): Unit | null {
 
 /** Roll a randomized mercenary from a seed + index (deterministic, D33). */
 export function rollMercenary(seed: string | number, index: number): Unit {
-  const rng: Rng = streamFor(seed, `merc:${index}`);
+  const rng: Rng = streamFor(seed, Labels.merc(index));
   const recruitable: JobId[] = ["soldier", "survivalist"];
   const jobId = rng.pick(recruitable);
   const names = ["Ash", "Bran", "Cael", "Dax", "Esk", "Fen", "Garr", "Hale"];

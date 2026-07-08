@@ -45,6 +45,7 @@ import { satisfyUpkeepLine } from "./upkeep";
 import { applyCampSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp, jobLevelOf } from "./leveling";
 import { streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import { grantItem } from "./inventory";
 
 /**
@@ -663,7 +664,7 @@ const OVERWORLD_EFFECT_HANDLERS: {
     const lvl = jobLevelOf(unit, primaryJobOf(unit));
     const rolls = effect.baseRolls + Math.floor(lvl * effect.rollsPerLevel);
     const idx = campSkillUses(run.overworld, "forage");
-    const rng = streamFor(run.seed, `forage:${run.mapNodeId}:${run.night}:${idx}`);
+    const rng = streamFor(run.seed, Labels.forage(run.mapNodeId, run.night, idx));
     for (let i = 0; i < rolls; i++) {
       const pick = rng.pickWeighted(effect.table, (e) => e.weight);
       grantItem(run.inventory, pick.id);

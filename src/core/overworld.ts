@@ -22,6 +22,7 @@
  */
 
 import { streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import { generateEncounter, type EncounterDef } from "./generation";
 import { primaryJobOf, type Unit } from "./units";
 import { getJob, type JobLookup } from "./jobs";
@@ -227,7 +228,7 @@ function nodeKind(rng: ReturnType<typeof streamFor>, layer: number, layers: numb
  * connectivity invariants so the graph is never stuck and every node is reachable.
  */
 export function generateOverworld(seed: string | number): OverworldMap {
-  const rng = streamFor(seed, "map");
+  const rng = streamFor(seed, Labels.map());
   const layers = MAP_GEN.layers;
 
   // 1. Build the columns of nodes.
@@ -240,7 +241,7 @@ export function generateOverworld(seed: string | number): OverworldMap {
       const kind = nodeKind(rng, l, layers);
       // Market draws from a per-node stream (D61) so it never perturbs the main
       // map stream — every seed's layout/kinds/edges stay byte-identical.
-      const market = nodeMarket(streamFor(seed, `market:${id}`), kind);
+      const market = nodeMarket(streamFor(seed, Labels.market(id)), kind);
       layerNodes.push({ id, layer: l, index: i, kind, market, edges: [] });
     }
     byLayer.push(layerNodes);
@@ -321,5 +322,5 @@ export function isFinalNode(map: OverworldMap, node: MapNode): boolean {
  * on replay regardless of what else the run draws.
  */
 export function nodeEncounter(seed: string | number, node: MapNode): EncounterDef {
-  return generateEncounter(streamFor(seed, `node:${node.id}`), node.layer);
+  return generateEncounter(streamFor(seed, Labels.node(node.id)), node.layer);
 }

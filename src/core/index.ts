@@ -3,6 +3,7 @@
 // functions, headlessly testable.
 export * from "./num";
 export * from "./rng";
+export * from "./rng-labels";
 export * from "./generation";
 export * from "./iso";
 export * from "./grid";

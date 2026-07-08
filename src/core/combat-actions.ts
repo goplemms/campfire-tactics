@@ -9,21 +9,22 @@
  * there is exactly one execution route. Adding a verb is a new variant + a case in
  * `apply` (the same registry ergonomics the skill-effect dispatch already has).
  *
- * **References are ids, not object refs** for the part that gets *rebuilt* on a
- * replay: a {@link UnitId} survives a replay that reconstructs fresh `Unit`
- * objects from an initial snapshot (the load-bearing requirement for the
- * `replay(log) === state` invariant). A {@link "./skills".SkillDef} is **immutable
- * authored data** shared across battles and *not* rebuilt on replay, so a skill
- * action carries the def directly — a stable reference that replays correctly and
- * keeps ad-hoc test skills (not in any job registry) working. A pure-id skill form
- * (for wire-format / netcode) is a Phase-2 serialization refinement, gated on a
- * global skill registry that doesn't exist yet.
+ * **References are ids, not object refs** (R1 #111): a {@link UnitId} survives a
+ * replay that reconstructs fresh `Unit` objects from an initial snapshot (the
+ * load-bearing requirement for the `replay(log) === state` invariant), and a skill
+ * action carries the **skill id**, resolved at execution against the global
+ * {@link "./jobs".SKILLS} registry — so the log is a **JSON-serializable wire
+ * format** (the D27 save seam; `JSON.parse(JSON.stringify(log))` replays
+ * identically). Ad-hoc fixture skills (never registered) keep working through the
+ * injectable lookup ({@link "./turn".BattleOptions}, the D65 pattern), and a live
+ * battle remembers any def handed to a public wrapper, so it can always resolve
+ * what it executed.
  *
  * Pure data: no Phaser, no DOM, no behaviour.
  */
 
 import type { GridCoord } from "./iso";
-import type { SkillDef, SkillOutcome, PlaceTrapEffect } from "./skills";
+import type { SkillOutcome, PlaceTrapEffect } from "./skills";
 import type { TurnSpend } from "./clock";
 import type { RecoverableEntity } from "./entities";
 
@@ -47,13 +48,14 @@ export type CombatAction =
   /** A basic attack against a foe (flank-aware via the full roster). */
   | { kind: "attack"; unit: UnitId; target: UnitId }
   /**
-   * Resolve a job skill against a target. `commitTurn` (default `true`) ends the
+   * Resolve a job skill against a target. `skill` is the **skill id** (resolved via
+   * the registry / injectable lookup, R1 #111). `commitTurn` (default `true`) ends the
    * caster's turn, spending CT per the skill's `spend`; `false` is the D60 free-move
    * flow where the render layer keeps the turn open and ends it itself.
    */
-  | { kind: "skill"; unit: UnitId; skill: SkillDef; target: UnitId; commitTurn?: boolean }
+  | { kind: "skill"; unit: UnitId; skill: string; target: UnitId; commitTurn?: boolean }
   /** The Heavy Knight's directional AoE: hit every foe in the 90° arc facing `dir`. */
-  | { kind: "cleave"; unit: UnitId; skill: SkillDef; dir: GridCoord }
+  | { kind: "cleave"; unit: UnitId; skill: string; dir: GridCoord }
   /** End a unit's turn, spending its CT (acting costs more than only moving). */
   | { kind: "endTurn"; unit: UnitId; spend: TurnSpend }
   /**
@@ -77,7 +79,7 @@ export type CombatAction =
    * checkpoint's stash snapshot). `commitTurn` as on `skill` — default `true` ends
    * the caster's turn; `false` is the D60 free-move flow.
    */
-  | { kind: "useHeal"; unit: UnitId; skill: SkillDef; target: UnitId; herbId: string; commitTurn?: boolean }
+  | { kind: "useHeal"; unit: UnitId; skill: string; target: UnitId; herbId: string; commitTurn?: boolean }
   // --- Deployment-only verbs (D63/D67) --------------------------------------
   // `move`/`skill` are reused in the pre-combat phase (the interpreter detects the
   // Battle's phase and skips the combat turn-commit) — only these genuinely deploy-only

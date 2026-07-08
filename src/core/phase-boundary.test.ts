@@ -99,7 +99,11 @@ describe("D67 phase boundary", () => {
     const actor = battle.nextActor();
     if (actor) battle.endTurn(actor, { moved: false, acted: false });
 
-    const rebuilt = replay(grid, initial.map((u) => structuredClone(u)), battle.log);
+    // The log carries the skill id (R1 #111); the fixture DASH resolves through the
+    // injectable lookup (the D65 pattern) since it was never registered in SKILLS.
+    const rebuilt = replay(grid, initial.map((u) => structuredClone(u)), battle.log, {
+      skills: (id) => (id === DASH.id ? DASH : undefined),
+    });
     expect(rebuilt.units).toEqual(battle.units);
     expect(rebuilt.phase).toBe("combat");
     expect(rebuilt.outcome()).toEqual(battle.outcome());

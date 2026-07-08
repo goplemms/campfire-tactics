@@ -29,7 +29,8 @@ import { Battle, replay, type BattleOptions } from "./turn";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import { createInventory, countOf, type Inventory } from "./inventory";
-import { JOBS } from "./jobs";
+import { JOBS, DEFEND } from "./jobs";
+import type { CombatAction } from "./combat-actions";
 
 const HEAL = JOBS.medic.skills[0]; // the Medic's herb-fuelled Heal (med-heal)
 
@@ -159,5 +160,54 @@ describe("R1 #111 — golden rescue+heal battle (log-totality characterization)"
     expect(unitIn(rebuilt, "ally").hp).toBe(unitIn(battle, "ally").hp);
     expect(countOf(inv, "salve")).toBe(1);
     expect(rebuilt.units).toEqual(battle.units);
+  });
+});
+
+describe("R1 #111 — the log is a serializable wire format (skill-by-id)", () => {
+  it("JSON.parse(JSON.stringify(log)) replays identically for a registry-skill battle", () => {
+    // A small battle exercising every skill-carrying verb with REGISTRY skills only:
+    // a `skill` cast (the universal Defend), a `useHeal` (the Medic's Heal), a rescue,
+    // attacks, and endTurns — then the round-trip: serialize the log to JSON, parse it
+    // back, and replay the parsed form. Identical reconstruction proves the log is a
+    // pure-data wire format (the D27 save seam).
+    const grid = new TileGrid(6, 1);
+    const mk = () => [
+      at("medic", "player", 0, 0, { jobId: "medic", primaryJob: "medic", speed: 14, attack: 4 }),
+      at("ally", "player", 1, 0, { speed: 10, hp: 6, maxHp: 30 }),
+      at("cap", "player", 2, 0, { captured: true }),
+      at("foe", "enemy", 5, 0, { speed: 6, maxHp: 26, hp: 26 }),
+    ];
+    const opts: BattleOptions = { seed: "r1-wire", variance: 0.2 };
+    const battle = new Battle(grid, mk(), opts);
+    const inv = createInventory(8, { salve: 1 });
+    battle.seed();
+
+    const turnsTaken: Record<string, number> = {};
+    for (let t = 0; t < 6; t++) {
+      const actor = battle.nextActor();
+      if (!actor) break;
+      const n = (turnsTaken[actor.id] = (turnsTaken[actor.id] ?? 0) + 1);
+      if (actor.side === "enemy") battle.runEnemyTurn(actor);
+      else if (actor.id === "medic" && n === 1) {
+        battle.useHeal(actor, HEAL, unitIn(battle, "ally"), "salve", inv);
+      } else if (actor.id === "ally" && n === 1) {
+        battle.rescue(unitIn(battle, "cap"), actor);
+        battle.useSkill(actor, DEFEND, actor); // registry skill — commits the turn
+      } else {
+        battle.endTurn(actor, { moved: false });
+      }
+    }
+
+    // The logged skill references are ids, not object refs.
+    const skillRefs = battle.log.flatMap((a) => ("skill" in a ? [a.skill] : []));
+    expect(skillRefs).toContain("defend");
+    expect(skillRefs).toContain("heal");
+    for (const ref of skillRefs) expect(typeof ref).toBe("string");
+
+    const wire = JSON.parse(JSON.stringify(battle.log)) as CombatAction[];
+    const rebuilt = replay(grid, mk(), wire, { ...opts, stash: createInventory(8, { salve: 1 }) });
+    expect(rebuilt.units).toEqual(battle.units);
+    expect(rebuilt.log).toEqual(battle.log); // the round-trip is lossless
+    expect(rebuilt.outcome()).toEqual(battle.outcome());
   });
 });

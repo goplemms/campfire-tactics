@@ -30,7 +30,7 @@ import { tickStatuses, applyStatus, slowed, guarded, GUARDED } from "./status";
 import { computeVisibleTiles } from "./vision";
 import { PILOT_POLICY, edgeDistance, type AIPlan, type BattlePolicy } from "./ai";
 import { orderOf } from "./standing-orders";
-import { stampPassives } from "./jobs";
+import { stampPassives, getSkill, type SkillLookup } from "./jobs";
 import { isExhausted, exhaustionSlowSpeed, FATIGUE } from "./fatigue";
 import {
   resolveSkill,
@@ -144,6 +144,13 @@ export interface BattleOptions {
    * Resolved only in {@link Battle.apply} (planning sees the mean).
    */
   variance?: number;
+  /**
+   * Skill-id resolver for the logged skill-by-id actions (R1 #111) —
+   * {@link "./jobs".getSkill} (the global `SKILLS` registry) by default. Injectable
+   * (the D65 pattern) so a test/replay can resolve **fixture skills** that were
+   * never registered; production always uses the default.
+   */
+  skills?: SkillLookup;
 }
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
@@ -176,6 +183,21 @@ export class Battle {
    * reconstructs by **replay**, not by summing (`replay(log) === state`).
    */
   private readonly _log: CombatAction[] = [];
+
+  /**
+   * Resolves a logged skill id to its def (R1 #111) — the injectable half of the
+   * skill-by-id log ({@link "./jobs".getSkill} by default, the D65 pattern).
+   */
+  private readonly skillLookup: SkillLookup;
+
+  /**
+   * Skill defs handed to the public wrappers ({@link useSkill}/{@link cleave}/
+   * {@link useHeal}) or an {@link AIPlan}, keyed by id — so a **live** battle always
+   * resolves what it executed, including ad-hoc fixture skills that were never
+   * registered. A replay reconstructs a fresh Battle and never sees these; it
+   * resolves via the (injectable) {@link skillLookup}.
+   */
+  private readonly knownSkills = new Map<string, SkillDef>();
 
   /** This battle's RNG seed (label-derived rolls draw from `streamFor(seed, …)`). */
   private readonly rngSeed: string | number;
@@ -212,6 +234,7 @@ export class Battle {
     this.entities = new EntityRegistry(this.bus);
     this.rngSeed = opts.seed ?? 0;
     this.variance = opts.variance ?? 0;
+    this.skillLookup = opts.skills ?? getSkill;
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
     for (const u of units) {
       stampPassives(u);
@@ -282,6 +305,18 @@ export class Battle {
     const u = this.units.find((x) => x.id === id);
     if (!u) throw new Error(`Battle.apply: no unit with id "${id}"`);
     return u;
+  }
+
+  /**
+   * Resolve a logged **skill id** to its def (R1 #111): wrapper-remembered defs
+   * first (the exact object a live call handed in), then the injectable lookup
+   * (the global registry by default). A miss **throws** — a log that names a skill
+   * nobody can resolve must fail loudly, not silently skip.
+   */
+  private skillDef(id: string): SkillDef {
+    const def = this.knownSkills.get(id) ?? this.skillLookup(id);
+    if (!def) throw new Error(`Battle.apply: unknown skill "${id}" — not in SKILLS and no lookup provided`);
+    return def;
   }
 
   // --- Undo (combat-actions Phase 2) ----------------------------------------
@@ -416,7 +451,7 @@ export class Battle {
       case "skill": {
         const caster = this.unit(action.unit);
         const target = this.unit(action.target);
-        const skill = action.skill;
+        const skill = this.skillDef(action.skill);
         if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
         // Engagement is **board state, not a per-phase skill ban** (D67 W7): a skill aimed at a
         // concealed unit has no engageable target, so it's refused. That *is* the stealth/alarm
@@ -462,7 +497,7 @@ export class Battle {
       }
       case "cleave": {
         const caster = this.unit(action.unit);
-        const skill = action.skill;
+        const skill = this.skillDef(action.skill);
         if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
         const { hits, damage } = this.execCleave(caster, skill, action.dir);
         this.commitSkill(caster, skill, true);
@@ -521,7 +556,7 @@ export class Battle {
         // not carried) mutates nothing and is not logged — exactly the old no-op.
         const caster = this.unit(action.unit);
         const target = this.unit(action.target);
-        const skill = action.skill;
+        const skill = this.skillDef(action.skill);
         if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
         if (!this.stash) return { ok: false, reason: "No herb stash wired for the heal." };
         const outcome = resolveMedHeal(caster, target, action.herbId, this.stash, this.bus);
@@ -644,7 +679,8 @@ export class Battle {
    * itself. The AI and the headless sim keep the default (the skill ends the turn).
    */
   useSkill(caster: Unit, skill: SkillDef, target: Unit, opts: { commitTurn?: boolean } = {}): SkillOutcome {
-    const r = this.apply({ kind: "skill", unit: caster.id, skill, target: target.id, commitTurn: opts.commitTurn ?? true });
+    this.knownSkills.set(skill.id, skill); // the action logs the id (R1 #111); remember the def
+    const r = this.apply({ kind: "skill", unit: caster.id, skill: skill.id, target: target.id, commitTurn: opts.commitTurn ?? true });
     return r.ok ? r.outcome ?? {} : {};
   }
 
@@ -705,7 +741,8 @@ export class Battle {
    * caster's turn. Returns the foes hit + total damage.
    */
   cleave(caster: Unit, skill: SkillDef, dir: GridCoord): { hits: number; damage: number } {
-    const r = this.apply({ kind: "cleave", unit: caster.id, skill, dir });
+    this.knownSkills.set(skill.id, skill); // the action logs the id (R1 #111); remember the def
+    const r = this.apply({ kind: "cleave", unit: caster.id, skill: skill.id, dir });
     return r.ok ? { hits: r.hits ?? 0, damage: r.damage ?? 0 } : { hits: 0, damage: 0 };
   }
 
@@ -743,7 +780,8 @@ export class Battle {
    */
   useHeal(caster: Unit, skill: SkillDef, target: Unit, herbId: string, inv: Inventory, opts: { commitTurn?: boolean } = {}): SkillOutcome {
     this.setStash(inv);
-    const r = this.apply({ kind: "useHeal", unit: caster.id, skill, target: target.id, herbId, commitTurn: opts.commitTurn ?? true });
+    this.knownSkills.set(skill.id, skill); // the action logs the id (R1 #111); remember the def
+    const r = this.apply({ kind: "useHeal", unit: caster.id, skill: skill.id, target: target.id, herbId, commitTurn: opts.commitTurn ?? true });
     return r.ok ? r.outcome ?? {} : {};
   }
 
@@ -835,6 +873,7 @@ export class Battle {
     });
     // Lower the plan to a CombatAction[] and run each through the one interpreter —
     // the AI path now shares the exact execution route with player input (D42/D56).
+    if (plan.ability) this.knownSkills.set(plan.ability.id, plan.ability); // the lowered action logs the id (R1 #111)
     const actions = planActions(plan);
     // A fleeing unit that ends its move on a map edge LEAVES (D84) — the logged
     // escape slots before the turn-committing endTurn so replay's per-turn window
@@ -870,7 +909,7 @@ function planActions(plan: AIPlan): CombatAction[] {
   const actions: CombatAction[] = [];
   if (plan.path.length > 0) actions.push({ kind: "move", unit, path: plan.path.map((t) => ({ ...t })) });
   if (plan.ability && plan.target?.alive) {
-    actions.push({ kind: "skill", unit, skill: plan.ability, target: plan.target.id, commitTurn: true });
+    actions.push({ kind: "skill", unit, skill: plan.ability.id, target: plan.target.id, commitTurn: true });
     return actions; // the skill ends the turn (commitSkill spends the CT)
   }
   if (plan.target?.alive) actions.push({ kind: "attack", unit, target: plan.target.id });

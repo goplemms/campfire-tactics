@@ -206,6 +206,17 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Intel card polish: a "no new intel" terminal + no phantom Type lane (D85).** A
+  visual-pass follow-on. The card now shows **"✓ No new intel to find"** once a node is
+  scouted to the deepest tier (tier 3 — positions, exact reward, hazard marks, the last
+  rumor), so a careful player knows to stop spending Survey cooldowns/fatigue (it
+  complements the D80 intel-meter ring with words). And the phantom **`Type ???`** on
+  authored nodes — a lane that could never resolve — is dropped (`NodePreview.authored`),
+  so no dangling `???` contradicts the terminal. On the snares node the terminal lands
+  alongside "HAZARDS 5 snares · 1 marked" and all three rumors revealed. Guards: tsc ·
+  unit tests (the intelComplete + authored-omit pins) · shots (`02b` unscouted / `02c`
+  fully-scouted card frames). Per-node intel *depth* (nodes that cap below tier 3) is a
+  named deferral. See **D85**.
 - **Node-3 pass, step 5: standing-order behaviors — the skittish straggler bolts off-map
   (D84).** Delivers D81's queued set as a **data registry** (`STANDING_ORDERS`): an order
   = a posture (`hold`/`flee`/`charge`) + one-way transition rules (`onMeleeStruck` fires

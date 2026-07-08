@@ -18,7 +18,8 @@ import type { AuthoredEncounter } from "./authored";
 import { TRAP_FIELD, E1_SKIRMISH, SECURED_WAGON } from "./hollow-mill";
 import { stageEncounter } from "./staging";
 import { isConcealedTrap } from "./entities";
-import { createRun } from "./run";
+import { createRun, createRunFromExpedition } from "./run";
+import { THE_HOLLOW_MILL } from "./hollow-mill";
 import { getNode } from "./overworld";
 import { earlyEventForNode } from "./node-events";
 
@@ -257,5 +258,29 @@ describe("intel — the trap lane + info lane (D83)", () => {
   it("unscouted staging marks nothing", () => {
     const staged = stageEncounter(TRAP_FIELD, [member("edrin")], {});
     expect(staged.battle.entities.all().filter(isConcealedTrap).every((t) => !t.revealed)).toBe(true);
+  });
+});
+
+describe("intel — the fully-read terminal + authored-shape omission (D85)", () => {
+  const run = createRunFromExpedition(THE_HOLLOW_MILL); // Vale int 7 → tier-2 floor
+
+  it("an authored node is flagged authored with no procedural type to reveal", () => {
+    const p = previewNode(run, "snares");
+    expect(p.authored).toBe(true);
+    expect(p.encounterType).toBeUndefined(); // never a phantom `???` Type lane
+  });
+
+  it("intelComplete is false below MAX_TIER and true once read to the deepest tier", () => {
+    expect(previewNode(run, "snares", 0).intelComplete).toBe(false); // tier 2 floor
+    expect(previewNode(run, "snares", 1).intelComplete).toBe(true); // +1 Survey → tier 3
+  });
+
+  it("at the terminal the info lane is fully revealed — no locked ??? remain", () => {
+    const done = previewNode(run, "snares", 1);
+    expect(done.intel?.notes?.length).toBe(done.intel?.notesTotal); // every rumor read
+  });
+
+  it("a rest node carries no intel-complete signal (nothing to scout)", () => {
+    expect(previewNode(run, "start").intelComplete).toBeUndefined();
   });
 });

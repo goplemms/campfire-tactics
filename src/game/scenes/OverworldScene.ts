@@ -600,12 +600,15 @@ export class OverworldScene extends Phaser.Scene {
     if (p.kind === "rest") return [{ label: "Recovery", ...hide(p.restHint, INK.success) }];
     if (p.kind === "event") return [{ label: "Event", ...hide(p.eventHint, INK.gold) }];
     const enemies = p.intel?.types ? p.intel.types.join(", ") + (p.intel.count !== undefined ? ` ×${p.intel.count}` : "") : undefined;
-    return [
-      { label: "Type", ...hide(p.encounterType, INK.secondary) },
+    const fields = [
       { label: "Enemies", ...hide(enemies, INK.secondary) },
       { label: "Hazards", ...this.hazardField(p) },
       { label: "Reward", ...hide(p.rewardHint, INK.gold) },
     ];
+    // An authored node has no procedural *shape* to ever reveal (D85), so the Type
+    // lane would read a permanent `???` — omit it rather than dangle phantom intel.
+    if (!p.authored) fields.unshift({ label: "Type", ...hide(p.encounterType, INK.secondary) });
+    return fields;
   }
 
   /**
@@ -666,7 +669,7 @@ export class OverworldScene extends Phaser.Scene {
     if (p.intel?.notesTotal) {
       const lbl = this.add.text(left, y + 3, "RUMORS", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(10);
       this.intelCardObjects.push(lbl);
-      let rx = left + Math.ceil(lbl.width) + 6;
+      const rx = left + Math.ceil(lbl.width) + 6;
       for (let i = 0; i < p.intel.notesTotal; i++) {
         const line = p.intel.notes?.[i];
         const txt = this.add.text(rx, y, line ?? "???", { color: line ? INK.secondary : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - (rx - left) - 24 } }).setOrigin(0, 0).setDepth(10);
@@ -674,6 +677,15 @@ export class OverworldScene extends Phaser.Scene {
         y += txt.height + 4;
       }
       y += 2;
+    }
+
+    // The terminal (D85): once the node is read to the deepest tier, a "nothing more to
+    // find" line tells the player to stop spending scout resources — the ??? placeholders
+    // are all resolved, and the intel meter ring reads full.
+    if (p.intelComplete) {
+      const done = this.add.text(left, y, "✓ No new intel to find", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0).setDepth(10);
+      this.intelCardObjects.push(done);
+      y += done.height + 4;
     }
 
     // The surface, sized to the stacked content (min height keeps short cards tidy).

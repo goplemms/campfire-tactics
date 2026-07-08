@@ -237,6 +237,17 @@ export interface NodePreview {
    * Absent when unscouted or when the road is quiet.
    */
   earlyEventHint?: string;
+  /**
+   * Combat only: the encounter is **authored** (D49) — it has no procedural *shape* to
+   * ever reveal, so the render omits the Type lane rather than showing a permanent `???`.
+   */
+  authored?: boolean;
+  /**
+   * Combat only (D85): the node has been read to the **deepest tier the system models**
+   * — nothing more is discoverable, so scouting further is wasted. Drives the terminal
+   * "No new intel to find" line, the signal to stop spending scout resources.
+   */
+  intelComplete?: boolean;
 }
 
 /**
@@ -270,9 +281,15 @@ export function previewNode(run: RunState, nodeId: string, extraTier = 0): NodeP
   }
   const def = runEncounter(run, node);
   // An authored encounter has no procedural shape (D49); leave the type unshown.
-  preview.encounterType = isAuthoredEncounter(def) ? undefined : def.type;
+  const authored = isAuthoredEncounter(def);
+  preview.authored = authored;
+  preview.encounterType = authored ? undefined : def.type;
   const tier = clampTier(intelFloor(run.party) + extraTier);
   preview.intel = readEncounter(def, tier);
   preview.rewardHint = rewardHint(def.reward.gold, tier);
+  // Fully-read signal (D85): tier 3 is the deepest the read models — positions, exact
+  // reward, hazard marks, and the last rumor all land there — so a MAX_TIER read leaves
+  // nothing to scout for. (The single seam a future per-node intel *depth* would refine.)
+  preview.intelComplete = tier >= MAX_TIER;
   return preview;
 }

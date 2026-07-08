@@ -3130,6 +3130,41 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D85 — Intel's "no new intel to find" terminal + dropping the phantom Type lane
+
+- **Status:** Decided (2026-07-06) · refines **D83** (the intel lanes) / **D24/D80** (the
+  node preview card) · a Node-3 visual-pass follow-on
+- **Context:** The intel card gave the player no **terminal** signal — no way to know a
+  node was scouted as deep as it goes, so a careful player could waste Survey cooldowns /
+  fatigue scouting a node with nothing left to reveal. Separately, **authored** combat
+  nodes have no procedural *shape*, so the card's **Type** lane read a permanent `???` —
+  phantom intel that never resolves, and directly contradicting a "nothing more to find"
+  terminal sitting beside it.
+- **Decision (the user's ask):** a terminal **"✓ No new intel to find"** line on the
+  intel card, shown once the node is read to the deepest tier the system models
+  (`NodePreview.intelComplete = tier >= MAX_TIER` — tier 3, where positions, exact
+  reward, hazard marks, and the last rumor all land). It's the stop-spending signal that
+  complements the D80 intel-meter ring (full ring = done) with words. Combat-only (rest/
+  event nodes have no scouting progression). To keep the terminal **honest**, the phantom
+  `Type ???` is removed: `NodePreview.authored` flags an authored node and the card omits
+  its Type lane — no `???` dangles when the terminal says "nothing more."
+- **Note — per-node intel *depth* (deferred):** every combat node currently bottoms out
+  at tier 3 (enemy *positions* + exact reward guarantee tier-3 content), so the terminal
+  always lands at tier 3. A future model could let a node author a shallower **depth**
+  (some nodes have no tier-3 secret worth scouting — the terminal, and the meter's arc
+  count, would cap lower). `intelComplete`'s single computation site is the seam for it.
+  Deferred until a node wants it; the demo's nodes are all full-depth.
+- **Reuses / consistent with:** **D83** (the info/rumors lane — the terminal reads as its
+  natural tail; authors align the deepest rumor with the tier-3 secret, as the snares node
+  does), **D80** (the intel-meter ring), **D24** (the preview card).
+- **Spec:** `src/core/intel.ts` (`NodePreview.authored`/`intelComplete`, set in
+  `previewNode`), `OverworldScene.intelFields` (drop the authored Type lane) /
+  `renderIntelCard` (the terminal line), `intel.test.ts` (the flag pins),
+  `scripts/shots-hollow-mill.mjs` (`02c-snares-scouted`).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

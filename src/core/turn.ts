@@ -55,8 +55,13 @@ import type { EntitySnapshot } from "./entities";
 import type { StatusInstance } from "./status";
 import type { GridCoord as Coord } from "./iso";
 
-/** A unit's undoable mutable state (everything a logged action can change). */
-interface UnitSnapshot {
+/**
+ * A unit's undoable mutable state (everything a logged action can change).
+ * The field list is **tripwired** by `snapshot-drift.test.ts` (#115): a new
+ * `Unit` field must be classified there (snapshotted or deliberately not) and,
+ * if snapshotted, added to {@link snapshotUnit}/{@link restoreUnit} in step.
+ */
+export interface UnitSnapshot {
   pos: Coord;
   hp: number;
   ct: number;
@@ -90,8 +95,8 @@ interface BattleCheckpoint {
   stash?: Record<string, number>;
 }
 
-/** Capture a unit's undoable mutable state by value. */
-function snapshotUnit(u: Unit): UnitSnapshot {
+/** Capture a unit's undoable mutable state by value (tripwired, #115). */
+export function snapshotUnit(u: Unit): UnitSnapshot {
   return {
     pos: { col: u.pos.col, row: u.pos.row },
     hp: u.hp,
@@ -109,8 +114,8 @@ function snapshotUnit(u: Unit): UnitSnapshot {
   };
 }
 
-/** Write a unit snapshot back onto the (identity-stable) live unit. */
-function restoreUnit(u: Unit, s: UnitSnapshot): void {
+/** Write a unit snapshot back onto the (identity-stable) live unit (tripwired, #115). */
+export function restoreUnit(u: Unit, s: UnitSnapshot): void {
   u.pos = { col: s.pos.col, row: s.pos.row };
   u.hp = s.hp;
   u.ct = s.ct;

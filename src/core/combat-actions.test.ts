@@ -67,16 +67,18 @@ describe("Battle.apply — the single command interpreter", () => {
     expect(battle.log.map((a) => a.kind)).toEqual(["move", "attack", "endTurn"]);
   });
 
-  it("refuses a cooling-down skill without logging it", () => {
+  it("refuses a cooling-down skill without logging it (fixture skill via the injectable lookup)", () => {
     const grid = new TileGrid(8, 1);
     const medic = at("medic", "player", 0, 0);
     const ally = at("ally", "player", 1, 0, { hp: 4, maxHp: 20 });
-    const battle = new Battle(grid, [medic, ally]);
-    const mend: SkillDef = { id: "mend", name: "Mend", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } };
+    const mend: SkillDef = { id: "mend-fixture", name: "Mend", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } };
+    // A raw apply carries only the skill id (R1 #111); the fixture def resolves
+    // through the injectable lookup (the D65 pattern) — never the global registry.
+    const battle = new Battle(grid, [medic, ally], { skills: (id) => (id === mend.id ? mend : undefined) });
 
-    const first = battle.apply({ kind: "skill", unit: "medic", skill: mend, target: "ally", commitTurn: false });
+    const first = battle.apply({ kind: "skill", unit: "medic", skill: mend.id, target: "ally", commitTurn: false });
     expect(first.ok).toBe(true);
-    const second = battle.apply({ kind: "skill", unit: "medic", skill: mend, target: "ally", commitTurn: false });
+    const second = battle.apply({ kind: "skill", unit: "medic", skill: mend.id, target: "ally", commitTurn: false });
     expect(second).toEqual({ ok: false, reason: "cooling down" });
     // Only the first (successful) skill is recorded — the refusal is not logged.
     expect(battle.log.filter((a) => a.kind === "skill")).toHaveLength(1);
@@ -116,12 +118,14 @@ describe("Battle.apply — the single command interpreter", () => {
 
 describe("commitsTurn", () => {
   it("classifies which actions spend the turn's CT", () => {
-    const skill: SkillDef = { id: "s", name: "", description: "", phase: "battle", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 0 } };
     expect(commitsTurn({ kind: "move", unit: "u", path: [] })).toBe(false);
     expect(commitsTurn({ kind: "attack", unit: "u", target: "t" })).toBe(false);
-    expect(commitsTurn({ kind: "skill", unit: "u", skill, target: "t", commitTurn: false })).toBe(false);
-    expect(commitsTurn({ kind: "skill", unit: "u", skill, target: "t" })).toBe(true);
-    expect(commitsTurn({ kind: "cleave", unit: "u", skill, dir: { col: 1, row: 0 } })).toBe(true);
+    expect(commitsTurn({ kind: "skill", unit: "u", skill: "s", target: "t", commitTurn: false })).toBe(false);
+    expect(commitsTurn({ kind: "skill", unit: "u", skill: "s", target: "t" })).toBe(true);
+    expect(commitsTurn({ kind: "cleave", unit: "u", skill: "s", dir: { col: 1, row: 0 } })).toBe(true);
+    expect(commitsTurn({ kind: "useHeal", unit: "u", skill: "s", target: "t", herbId: "salve", commitTurn: false })).toBe(false);
+    expect(commitsTurn({ kind: "useHeal", unit: "u", skill: "s", target: "t", herbId: "salve" })).toBe(true);
+    expect(commitsTurn({ kind: "rescue", target: "t", unit: "u" })).toBe(false);
     expect(commitsTurn({ kind: "endTurn", unit: "u", spend: {} })).toBe(true);
   });
 });

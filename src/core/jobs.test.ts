@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { JOBS, getJob, unitSkills, SOLDIER, type JobId } from "./jobs";
+import { JOBS, getJob, unitSkills, SOLDIER, SKILLS, getSkill, UNIVERSAL_SKILLS, DEFEND, type JobId } from "./jobs";
 import { createUnit, type Side, type Unit } from "./units";
+import type { SkillDef } from "./skills";
 
 function soldier(id: string): Unit {
   return createUnit({
@@ -82,5 +83,34 @@ describe("jobs (data-driven loading)", () => {
     expect(unitSkills(withJob("Pip", "cook"), "meta").map((s) => s.id)).toEqual(["cook-stew", "feast"]);
     expect(unitSkills(withJob("Vale", "survivalist"), "deployment").map((s) => s.id)).toEqual(["set-trap"]);
     expect(unitSkills(withJob("Rook", "soldier"), "battle").length).toBe(2);
+  });
+});
+
+// The global skill registry (R1 #111) — the skill-by-id log's resolution source.
+describe("SKILLS — the global skill registry (R1 #111)", () => {
+  it("derives every authored skill from JOBS + UNIVERSAL_SKILLS, resolvable by id", () => {
+    const expected = new Set<string>();
+    for (const job of Object.values(JOBS)) for (const s of job.skills) expected.add(s.id);
+    for (const s of UNIVERSAL_SKILLS) expected.add(s.id);
+    expect(Object.keys(SKILLS).sort()).toEqual([...expected].sort());
+    // Resolution returns the exact authored def objects (by reference).
+    expect(getSkill("defend")).toBe(DEFEND);
+    expect(getSkill("heal")).toBe(JOBS.medic.skills[0]);
+    expect(getSkill("nope")).toBeUndefined();
+  });
+
+  it("skill ids are collision-free — one id never names two distinct authored defs", () => {
+    // The derivation throws at load on a collision; this pins the namespace invariant
+    // (and names the offender if a future kit reuses an id for a *different* skill).
+    const defsById = new Map<string, Set<SkillDef>>();
+    const note = (s: SkillDef) => {
+      if (!defsById.has(s.id)) defsById.set(s.id, new Set());
+      defsById.get(s.id)!.add(s);
+    };
+    for (const job of Object.values(JOBS)) for (const s of job.skills) note(s);
+    for (const s of UNIVERSAL_SKILLS) note(s);
+    for (const [id, defs] of defsById) {
+      expect(defs.size, `skill id "${id}" is claimed by ${defs.size} distinct defs`).toBe(1);
+    }
   });
 });

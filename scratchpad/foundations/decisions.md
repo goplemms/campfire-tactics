@@ -2954,6 +2954,71 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D80 — The overworld node pass: the night/day loop, one effort meter, and the on-node intel surface
+
+> **Backfilled 2026-07-08.** This decision was designed, built, and shipped (PRs #91–#104,
+> with the on-node intel surface #105–#108 and in-place rest #109 riding the same label),
+> and it is cited throughout the codebase and by D83/D85/D86 — but its log entry was never
+> written; the headings jumped D79 → D81. Reconstructed from the kickoff brief
+> ([`docs/design/implementation/d80-node.md`](../../docs/design/implementation/d80-node.md)),
+> the canon it updated (`docs/design/systems/overworld.md` — the "(D46, revised D80)" /
+> "(D47, revised D80)" / "Early events (D80)" sections; `docs/design/glossary.md` Lifecycle),
+> and the shipped PR history. **Ratified as backfilled — edit freely; the docs above remain
+> the source of truth for the details.**
+
+- **Status:** Decided + built (design PRs #91/#93/#95/#96, 2026-06-30 → build #97–#104 + #109,
+  2026-07-04) · revises **D46** (node lifecycle) and **D47** (recovery) · supersedes **D73**'s
+  fatigue-carryover rule · entry backfilled 2026-07-08
+- **Context:** Three seams had accumulated on the overworld node: the lifecycle had **one**
+  camp and a single fused "Rest & Set Out" verb (#94), so planning-the-road and resting-on-
+  arrival were the same beat; recovery split across D73's `level − floor` fatigue carryover
+  and the rest chip in `recordNight` (post-encounter — the wrong end of the road); and a
+  node's intel lived only in a hover preview, with no persistent read, no sense of scouting
+  *progress*, and no arrival texture between nodes.
+- **Decision (three strands, one pass):**
+  1. **The night/day loop (revises D46).** A node runs `[encounter] → REACT camp (scout
+     ahead / bank loot / pick the next node = Set Out) → the road (early events; travel
+     wounded) → PREP camp on arrival (the night's rest + gear up = Begin) → [encounter]`.
+     The fused verb split into **Set Out** + **Begin**; the free nightly chip heal **retimed
+     to arrival** (the prep camp), leaving `recordNight` bookkeeping-only; a Clearing's
+     "encounter" *is* its arrival Deep Rest (no separate Begin beat).
+  2. **One effort meter (revises D47, supersedes D73's carryover).** `OverworldCost.fatigue`
+     generalized to **effort** — every overworld verb spends the same meter. **Narrowing
+     fatigue tier floors** (Rested/Worn/Weary/Exhausted); an ordinary night **steps down one
+     tier** to the floor of the tier below (replacing D73's `level − floor` carryover); a
+     Clearing's **Deep Rest** wipes fatigue fully, with the **big heal gated on
+     Tier-0-at-rest-time**; **in-place rest** = the free chip floor + an RP accelerator
+     (#109). Fatigue surfaced at the point of decision: the dossier tier + a projected delta
+     on ability hover.
+  3. **The on-node intel surface + the arrival layer.** Readout tiles + the pinned,
+     structured intel card with the **`???` reveal idiom** (#107); the segmented
+     **intel-meter ring** that fills as you scout (#108); survey/forecast targets labeled by
+     kind + depth, not raw node id (#106); cost-component action cards (#105). **Survey**
+     reworked (effort 4 · cooldown 1 · the react camp's Intel drawer; effects: sharpen the
+     target's bands / the fog-reach lever / reveal the node's early event). **Early events —
+     the arrival layer:** a random pool (thief/patron/merchant reuse) + tailored node-bound
+     events + the gated, loot-forgoing **bypass**.
+- **Parked at the time (still open):** the Train progression sub-system; paid in-place rest
+  beyond the free floor; the route-forecast fatigue projection ("Tier 0 when it reaches the
+  Clearing?").
+- **Reuses / consistent with:** **D35** (fatigue as the loose guardrail — now the one effort
+  meter), **D29** (the two-economies separation holds; effort never touches the CT clock),
+  **D24** (the preview the card structures), **D74** (the Recon/Survey split the rework
+  consumes), **D46/D47** (revised in place).
+- **Consumed by:** **D83** (the hazard + info lanes land on this card), **D85** (the
+  "no new intel to find" terminal + the meter), **D86** (per-node depth = the meter's arc
+  count), **D82–D84** (the Node-3 pass plays inside this loop).
+- **Spec:** `src/core/fatigue.ts` (narrowing bands + nightly step-down), `src/core/runloop.ts`
+  (`restNode` Deep Rest + Tier-0 gate, `inPlaceRest`), `src/core/run.ts` (`recordNight`/
+  `breakCamp` retiming), `src/core/node-events.ts` (the early-event/bypass layer),
+  `src/core/intel.ts` (the card projections), `src/core/jobs.ts` (`SURVEY`),
+  `OverworldScene` (React/Prep camps, `renderIntelCard`, `drawIntelMeter`),
+  [`docs/design/systems/overworld.md`](../../docs/design/systems/overworld.md) +
+  [`docs/design/glossary.md`](../../docs/design/glossary.md) (the canon, updated with the build).
+- **Superseded by:** —
+
+---
+
 ## D81 — Standing orders widen to enemy behaviors: the leashed "hold" guard
 
 - **Status:** Decided (2026-07-05) · widens **D41** (standing orders) onto the **D42**
@@ -3195,6 +3260,58 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   (`intel()` + `startEncounter` capped), `BattleScene.intelTier` (deploy edge capped),
   `OverworldScene.drawIntelMeter` (depth arcs), `hollow-mill.ts` (the Den),
   `intel.test.ts`, `scripts/shots-hollow-mill.mjs` (`02d-den-shallow`).
+- **Superseded by:** —
+
+---
+
+## D87 — The combat log is total and serializable; the determinism surface is registered (refactor R1)
+
+- **Status:** Decided + built (2026-07-08) · milestone **R1** of the refactor campaign
+  ([`refactor-campaign-plan.md`](refactor-campaign-plan.md), from the 2026-07-08 audit — issues
+  #111/#115/#116/#122/#124/#136, index #152) · completes the **D63/D67** action-log substrate
+- **Context:** `replay(initial, log) === state` was the combat tier's declared reconciliation
+  invariant — and it was **false**: `Battle.rescue` and the Medic's `useHeal` mutated outside the
+  log (D67's own record had flagged the heal as "a pre-existing gap"), so a battle using either
+  could not be rebuilt from its log and undo could not cross it. The log also carried live
+  `SkillDef` object references (unserializable — no wire format for D27's save), snapshot/clone
+  field lists were hand-maintained (a new `Unit` field silently half-restores undo), and the
+  `streamFor` label namespace was ad-hoc strings across nine modules (collision/typo/rename
+  hazards; D73's forage near-miss lived only in a doc comment).
+- **Decision (five commitments):**
+  1. **The log is total.** Every in-battle mutation flows through `Battle.apply` — `rescue` and
+     `useHeal` are logged `CombatAction`s (semantics untouched: D9/D21 rules, Act costs, bus
+     events; only the dispatch path moved). A golden rescue+heal battle replays
+     **byte-identically**, pinned in `r1-log-totality.test.ts` alongside the sim digest.
+  2. **Skills log by id.** A global `SKILLS` registry (derived at load from `JOBS` +
+     `UNIVERSAL_SKILLS`, collision-checked) resolves ids at apply time, with an **injectable
+     lookup** for fixture skills (the D65 pattern). The log **JSON round-trips** — it is the
+     future save/desync **wire format** (the D27 seam; the save-model session builds on this).
+  3. **The RNG label namespace is registered.** `rng-labels.ts` is the one home for every
+     stream label (23 constructors, exact-value pins, a grep guard in the no-`Math.random`
+     idiom). Label renames are **save/replay-breaking changes by contract**; the file is the
+     enumeration of every random decision in the game.
+  4. **Snapshot field lists are tripwired.** `snapshot-drift.test.ts` classifies every `Unit`
+     key as snapshotted-or-deliberately-not (with per-key reasons) and round-trips
+     `snapshotUnit`/`cloneOverworldEconomy`/`EntityRegistry.snapshot` — a new mutable field
+     added unlisted now **fails by name** instead of silently corrupting undo.
+  5. **The retired deployment models are deleted.** The M5b exposure meter and the D11
+     stealth-alert layer (zero production callers; a header falsely claiming to be live) are
+     gone — `deployment.ts` describes only the D63/D67 closing net. This retires D11's last
+     code remnant. Rider: the `ActionResult` name collision resolved
+     (`BattleActionResult`/`OverworldActionResult`) and the barrel completed
+     (`combat-actions`/`purse-journal`/`grants`; `tuning` stays the one documented exclusion).
+- **Blast radius (named, intended):** none in gameplay — the sim digest is byte-identical
+  end-to-end; the one visible change is render-only: `CombatView.setActiveUnit` is wired again
+  (active-unit nameplate, rail highlight, handoff pop — dead since the demo-driver removal).
+- **Reuses / consistent with:** **D63/D67** (completes the log substrate), **D65** (injectable
+  lookup), **D27** (the save seam this feeds), **D73** (the label lesson generalized),
+  **D9/D21** (rescue semantics preserved), **D2** (pure core; the one render change flagged).
+- **Spec:** `src/core/combat-actions.ts` (`rescue`/`useHeal` kinds, skill-by-id,
+  `BattleActionResult`), `src/core/turn.ts` (dispatch, exported snapshot machinery),
+  `src/core/jobs.ts` (`SKILLS`/`getSkill`), `src/core/rng-labels.ts` (+ the migrated call
+  sites), `src/core/deployment.ts` (net-only), `src/core/index.ts` (completed barrel),
+  `src/core/r1-log-totality.test.ts` / `snapshot-drift.test.ts` / `rng-labels.test.ts`,
+  `BattleScene` (the `setActiveUnit` wire-up).
 - **Superseded by:** —
 
 ---

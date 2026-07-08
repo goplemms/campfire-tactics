@@ -59,6 +59,7 @@ import {
   jobLevelOf,
   // M10 — theft (D30) + mid-combat bribe → recruitment (D33)
   thiefSteal,
+  Labels,
   recoverStolen,
   thiefEscapes,
   previewNode,
@@ -591,8 +592,8 @@ export class BattleScene extends Phaser.Scene {
     // Deployment's RNG draws from the one encounter seed the Battle now owns (D67), via its
     // label-keyed stream seam — the scene no longer reaches into run.seed for its rolls.
     // (battle seed == run.seed, so the streams are byte-identical to the prior wiring.)
-    this.deployRng = this.battle.stream("deploy");
-    this.spotRng = this.battle.stream("trap-spot");
+    this.deployRng = this.battle.stream(Labels.deploy());
+    this.spotRng = this.battle.stream(Labels.trapSpot());
     this.trapMarkers.clear();
     this.playerTrapMarkers.clear();
     this.trapSeq = 0;
@@ -648,6 +649,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Open one player unit's deployment turn: it may move, dig in, or set a trap. */
   private beginDeployTurn(unit: Unit): void {
+    this.view.setActiveUnit(unit);
     this.deployMoved = false;
     this.deployActed = false;
     this.deployReveal = false;
@@ -750,6 +752,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** End the active unit's deployment turn and spend its CT (no auto-advance). */
   private endDeployTurn(unit: Unit): void {
+    this.view.setActiveUnit(null);
     this.battle.endUndo(); // the deploy turn commits — no take-back across the boundary
     this.battle.clock.spend(unit, { moved: this.deployMoved, acted: this.deployActed });
     this.enterDeployIdle(`${unit.name}'s turn ends — Advance Clock (Space) to step the net, or Start Battle.`);
@@ -1417,6 +1420,7 @@ export class BattleScene extends Phaser.Scene {
    * can do auto-passes (the D55 backstop) so the clock can't stall.
    */
   private beginPlayerTurn(actor: Unit): void {
+    this.view.setActiveUnit(actor);
     this.waitingFor = actor;
     this.moveBudget = moveBudget(actor);
     this.acted = false;
@@ -1855,12 +1859,13 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private runEnemyTurn(actor: Unit): void {
+    this.view.setActiveUnit(actor);
     this.busy = true;
     this.setHint(`${actor.name} (enemy) acts…`);
     // The thief archetype (D30): on its first turn it skims the run PURSE, then
     // bolts for the edge. Kill it before it escapes to recover the gold.
     if (actor.thief && actor.alive && !this.theftAttempts.has(actor.id)) {
-      const attempt = thiefSteal(this.run, `thief:${actor.id}`);
+      const attempt = thiefSteal(this.run, Labels.thief(actor.id));
       if (attempt.stolen > 0) {
         this.theftAttempts.set(actor.id, attempt);
         this.goldStolen += attempt.stolen;
@@ -2267,6 +2272,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private afterTurn(): void {
+    this.view.setActiveUnit(null);
     this.busy = false;
     this.movedThisTurn = false;
     this.acted = false;

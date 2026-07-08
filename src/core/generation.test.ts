@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Rng, streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import {
   generateEncounter,
   buildGrid,
@@ -10,7 +11,7 @@ import {
 } from "./generation";
 
 function gen(seed: string, index: number): EncounterDef {
-  return generateEncounter(streamFor(seed, `enc:${index}`), index);
+  return generateEncounter(streamFor(seed, Labels.enc(index)), index);
 }
 
 describe("generation — determinism", () => {

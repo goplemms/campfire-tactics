@@ -22,6 +22,7 @@ import {
   ECONOMY,
 } from "./economy-actions";
 import { streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import { gainRunGold, payTreasuryUpkeep } from "./economy";
 import { countOf, addItem, getMaterial } from "./inventory";
 import { currentNode } from "./run";
@@ -365,7 +366,7 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
     // Find a target whose fixed roll resists at this band (no save-scum: same seed each call).
     let resistId = "";
     for (let i = 0; i < 60 && !resistId; i++) {
-      if (!streamFor(run.seed, `bribe:${run.mapNodeId}:foe-${i}`).chance(bribeChance("known"))) resistId = `foe-${i}`;
+      if (!streamFor(run.seed, Labels.bribe(run.mapNodeId, `foe-${i}`)).chance(bribeChance("known"))) resistId = `foe-${i}`;
     }
     expect(resistId).not.toBe("");
     const foe = createUnit({ id: resistId, side: "enemy", pos: { col: 7, row: 0 }, name: "Holdout", speed: 10, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5 });

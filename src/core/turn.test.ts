@@ -82,6 +82,27 @@ describe("Battle orchestrator", () => {
     battle.rescue(captive, hero);
     expect(captive.captured).toBe(false); // freed → back on the clock, controllable
     expect(events).toEqual([{ unit: "cap", by: "hero" }]); // announced once, naming the rescuer
+    // The rescue is a logged action now (R1 #111) — replay reconstructs the freeing.
+    expect(battle.log[battle.log.length - 1]).toEqual({ kind: "rescue", target: "cap", unit: "hero" });
+  });
+
+  it("undo crosses a rescue — the captive's bound state and clock membership come back (#111)", () => {
+    const grid = new TileGrid(8, 1);
+    const captive = at("cap", "player", 2, 0, { captured: true });
+    const hero = at("hero", "player", 1, 0);
+    const battle = new Battle(grid, [hero, captive]);
+    battle.seed();
+    battle.beginUndo();
+
+    battle.rescue(captive, hero);
+    expect(captive.captured).toBe(false);
+    expect(battle.undoDepth()).toBe(1);
+
+    const undone = battle.undo();
+    expect(undone).toEqual({ kind: "rescue", target: "cap", unit: "hero" });
+    expect(captive.captured).toBe(true); // bound again — off the clock and the win check
+    expect(captive.ct).toBe(0);
+    expect(battle.log.length).toBe(0);
   });
 
   it("plays a tiny skirmish to a decisive outcome on the CT clock", () => {

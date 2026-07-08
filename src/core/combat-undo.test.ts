@@ -3,6 +3,7 @@ import { Battle, replay } from "./turn";
 import { planEnemyTurn } from "./ai";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
+import { createInventory, countOf } from "./inventory";
 import type { SkillDef } from "./skills";
 
 function at(id: string, side: Side, col: number, row: number, overrides: Partial<Unit> = {}): Unit {
@@ -112,6 +113,32 @@ describe("Battle undo — turn-scoped take-back on the action log (Phase 2)", ()
     expect(battle.undoDepth()).toBe(1);
     battle.useSkill(medic, mend, ally, { commitTurn: false }); // refused (cooling down)
     expect(battle.undoDepth()).toBe(1); // no checkpoint for the refusal
+  });
+
+  it("undoing a useHeal refunds the herb and rolls back the heal, cooldown, and CT (#111)", () => {
+    const grid = new TileGrid(8, 1);
+    const medic = at("medic", "player", 0, 0, { jobId: "medic", primaryJob: "medic" } as Partial<Unit>);
+    const ally = at("ally", "player", 1, 0, { hp: 4, maxHp: 20 });
+    const battle = new Battle(grid, [medic, ally]);
+    medic.ct = 100;
+    const inv = createInventory(8, { salve: 1 });
+    const heal: SkillDef = { id: "heal", name: "Heal", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "med-heal" } };
+    battle.beginUndo();
+
+    const before = snap(battle);
+    const out = battle.useHeal(medic, heal, ally, "salve", inv);
+    expect(out.healed).toBeGreaterThan(0);
+    expect(countOf(inv, "salve")).toBe(0); // consumed
+    expect(medic.ct).toBe(0); // the heal committed the turn (Act spend)
+    expect(battle.log[battle.log.length - 1]).toMatchObject({ kind: "useHeal", unit: "medic", target: "ally", herbId: "salve" });
+
+    const undone = battle.undo();
+    expect(undone?.kind).toBe("useHeal");
+    expect(countOf(inv, "salve")).toBe(1); // herb refunded (the checkpoint's stash snapshot)
+    expect(medic.ct).toBe(100); // turn commit rolled back
+    expect(battle.canUseSkill(medic, heal)).toBe(true); // cooldown disarmed
+    expect(snap(battle)).toEqual(before);
+    expect(battle.log).toEqual([]);
   });
 
   it("endUndo drops the history (no take-back across the turn boundary)", () => {

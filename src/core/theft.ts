@@ -28,6 +28,7 @@
 import type { RunState } from "./run";
 import type { MapNode } from "./overworld";
 import { streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import { clamp, clamp01 } from "./num";
 import { earn, spend } from "./purse-journal";
 
@@ -101,7 +102,7 @@ export function thiefEventSkim(
   node: MapNode,
   protection = run.overworld.protection,
 ): TheftAttempt {
-  return thiefSteal(run, `theft:${node.id}`, protection);
+  return thiefSteal(run, Labels.theft(node.id), protection);
 }
 
 /**

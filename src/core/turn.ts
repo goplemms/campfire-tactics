@@ -30,7 +30,7 @@ import { tickStatuses, applyStatus, slowed, guarded, GUARDED } from "./status";
 import { computeVisibleTiles } from "./vision";
 import { PILOT_POLICY, edgeDistance, type AIPlan, type BattlePolicy } from "./ai";
 import { orderOf } from "./standing-orders";
-import { stampPassives } from "./jobs";
+import { stampPassives, getSkill, type SkillLookup } from "./jobs";
 import { isExhausted, exhaustionSlowSpeed, FATIGUE } from "./fatigue";
 import {
   resolveSkill,
@@ -42,7 +42,7 @@ import {
 import {
   commitsTurn,
   type CombatAction,
-  type ActionResult,
+  type BattleActionResult,
   type UnitId,
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
@@ -50,13 +50,19 @@ import { cleaveArc, shoveLanding } from "./ability-forecast";
 import { captureUnit, freeCaptive } from "./deployment";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
+import { Labels } from "./rng-labels";
 import type { ClockSnapshot } from "./clock";
 import type { EntitySnapshot } from "./entities";
 import type { StatusInstance } from "./status";
 import type { GridCoord as Coord } from "./iso";
 
-/** A unit's undoable mutable state (everything a logged action can change). */
-interface UnitSnapshot {
+/**
+ * A unit's undoable mutable state (everything a logged action can change).
+ * The field list is **tripwired** by `snapshot-drift.test.ts` (#115): a new
+ * `Unit` field must be classified there (snapshotted or deliberately not) and,
+ * if snapshotted, added to {@link snapshotUnit}/{@link restoreUnit} in step.
+ */
+export interface UnitSnapshot {
   pos: Coord;
   hp: number;
   ct: number;
@@ -90,8 +96,8 @@ interface BattleCheckpoint {
   stash?: Record<string, number>;
 }
 
-/** Capture a unit's undoable mutable state by value. */
-function snapshotUnit(u: Unit): UnitSnapshot {
+/** Capture a unit's undoable mutable state by value (tripwired, #115). */
+export function snapshotUnit(u: Unit): UnitSnapshot {
   return {
     pos: { col: u.pos.col, row: u.pos.row },
     hp: u.hp,
@@ -109,8 +115,8 @@ function snapshotUnit(u: Unit): UnitSnapshot {
   };
 }
 
-/** Write a unit snapshot back onto the (identity-stable) live unit. */
-function restoreUnit(u: Unit, s: UnitSnapshot): void {
+/** Write a unit snapshot back onto the (identity-stable) live unit (tripwired, #115). */
+export function restoreUnit(u: Unit, s: UnitSnapshot): void {
   u.pos = { col: s.pos.col, row: s.pos.row };
   u.hp = s.hp;
   u.ct = s.ct;
@@ -144,6 +150,13 @@ export interface BattleOptions {
    * Resolved only in {@link Battle.apply} (planning sees the mean).
    */
   variance?: number;
+  /**
+   * Skill-id resolver for the logged skill-by-id actions (R1 #111) —
+   * {@link "./jobs".getSkill} (the global `SKILLS` registry) by default. Injectable
+   * (the D65 pattern) so a test/replay can resolve **fixture skills** that were
+   * never registered; production always uses the default.
+   */
+  skills?: SkillLookup;
 }
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
@@ -176,6 +189,21 @@ export class Battle {
    * reconstructs by **replay**, not by summing (`replay(log) === state`).
    */
   private readonly _log: CombatAction[] = [];
+
+  /**
+   * Resolves a logged skill id to its def (R1 #111) — the injectable half of the
+   * skill-by-id log ({@link "./jobs".getSkill} by default, the D65 pattern).
+   */
+  private readonly skillLookup: SkillLookup;
+
+  /**
+   * Skill defs handed to the public wrappers ({@link useSkill}/{@link cleave}/
+   * {@link useHeal}) or an {@link AIPlan}, keyed by id — so a **live** battle always
+   * resolves what it executed, including ad-hoc fixture skills that were never
+   * registered. A replay reconstructs a fresh Battle and never sees these; it
+   * resolves via the (injectable) {@link skillLookup}.
+   */
+  private readonly knownSkills = new Map<string, SkillDef>();
 
   /** This battle's RNG seed (label-derived rolls draw from `streamFor(seed, …)`). */
   private readonly rngSeed: string | number;
@@ -212,6 +240,7 @@ export class Battle {
     this.entities = new EntityRegistry(this.bus);
     this.rngSeed = opts.seed ?? 0;
     this.variance = opts.variance ?? 0;
+    this.skillLookup = opts.skills ?? getSkill;
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
     for (const u of units) {
       stampPassives(u);
@@ -232,7 +261,7 @@ export class Battle {
    * ({@link apply}-driven)** — drawing during planning/forecast would desync replay.
    */
   roll(label: string): Rng {
-    return streamFor(this.rngSeed, `${label}#${this.drawCount++}`);
+    return streamFor(this.rngSeed, Labels.battleDraw(label, this.drawCount++));
   }
 
   /**
@@ -256,7 +285,7 @@ export class Battle {
    */
   private damageScale(attacker: Unit, defender: Unit): number {
     if (this.variance <= 0) return 1;
-    return this.roll(`dmg:${attacker.id}->${defender.id}`).float(1 - this.variance, 1 + this.variance);
+    return this.roll(Labels.dmg(attacker.id, defender.id)).float(1 - this.variance, 1 + this.variance);
   }
 
   /**
@@ -282,6 +311,18 @@ export class Battle {
     const u = this.units.find((x) => x.id === id);
     if (!u) throw new Error(`Battle.apply: no unit with id "${id}"`);
     return u;
+  }
+
+  /**
+   * Resolve a logged **skill id** to its def (R1 #111): wrapper-remembered defs
+   * first (the exact object a live call handed in), then the injectable lookup
+   * (the global registry by default). A miss **throws** — a log that names a skill
+   * nobody can resolve must fail loudly, not silently skip.
+   */
+  private skillDef(id: string): SkillDef {
+    const def = this.knownSkills.get(id) ?? this.skillLookup(id);
+    if (!def) throw new Error(`Battle.apply: unknown skill "${id}" — not in SKILLS and no lookup provided`);
+    return def;
   }
 
   // --- Undo (combat-actions Phase 2) ----------------------------------------
@@ -370,7 +411,7 @@ export class Battle {
    * **The single execution path** for a battle action (Phase 1 of the
    * combat-actions design): validate → mutate → emit → **append to the log**. Player
    * input and {@link AIPlan} both lower to {@link CombatAction}s and flow through
-   * here, so the two paths can't drift. Returns an {@link ActionResult} carrying the
+   * here, so the two paths can't drift. Returns a {@link BattleActionResult} carrying the
    * verb's natural outcome (so the public wrappers keep their original return
    * shapes); a **refused** action (e.g. a skill on cooldown) is *not* logged.
    *
@@ -381,7 +422,7 @@ export class Battle {
    *
    * Adding a battle action = a new {@link CombatAction} variant + a case here.
    */
-  apply(action: CombatAction): ActionResult {
+  apply(action: CombatAction): BattleActionResult {
     const checkpoint = this.undoStack ? this.captureCheckpoint() : null;
     const result = this.dispatch(action);
     if (checkpoint && result.ok) this.undoStack!.push(checkpoint);
@@ -389,7 +430,7 @@ export class Battle {
   }
 
   /** Validate → mutate → emit → log a single action (the interpreter core). */
-  private dispatch(action: CombatAction): ActionResult {
+  private dispatch(action: CombatAction): BattleActionResult {
     switch (action.kind) {
       case "move": {
         this.execMove(this.unit(action.unit), action.path, false);
@@ -416,7 +457,7 @@ export class Battle {
       case "skill": {
         const caster = this.unit(action.unit);
         const target = this.unit(action.target);
-        const skill = action.skill;
+        const skill = this.skillDef(action.skill);
         if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
         // Engagement is **board state, not a per-phase skill ban** (D67 W7): a skill aimed at a
         // concealed unit has no engageable target, so it's refused. That *is* the stealth/alarm
@@ -462,7 +503,7 @@ export class Battle {
       }
       case "cleave": {
         const caster = this.unit(action.unit);
-        const skill = action.skill;
+        const skill = this.skillDef(action.skill);
         if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
         const { hits, damage } = this.execCleave(caster, skill, action.dir);
         this.commitSkill(caster, skill, true);
@@ -501,6 +542,36 @@ export class Battle {
         this.bus.emit("unitEscaped", { unit: runner });
         this._log.push(action);
         return { ok: true };
+      }
+      case "rescue": {
+        // The in-combat rescue Act (D52) — semantics unchanged (D9/D21): free the
+        // captive and announce it. Logged (R1 #111) because freeing changes the
+        // state graph (isActive, clock membership, the win check) — replay must
+        // reconstruct it, and undo must be able to cross it.
+        const captive = this.unit(action.target);
+        freeCaptive(captive);
+        this.bus.emit("unitRescued", { unit: captive, by: action.unit ? this.unit(action.unit) : undefined });
+        this._log.push(action);
+        return { ok: true };
+      }
+      case "useHeal": {
+        // The Medic's herb heal (D40) — logged (R1 #111): the herb spend comes from
+        // the battle's wired stash (the same shared inventory production wires via
+        // setStash), so replay reproduces the consumption and undo refunds it (the
+        // checkpoint's stash snapshot). A refusal (cooling down / no stash / herb
+        // not carried) mutates nothing and is not logged — exactly the old no-op.
+        const caster = this.unit(action.unit);
+        const target = this.unit(action.target);
+        const skill = this.skillDef(action.skill);
+        if (!this.canUseSkill(caster, skill)) return { ok: false, reason: "cooling down" };
+        if (!this.stash) return { ok: false, reason: "No herb stash wired for the heal." };
+        const outcome = resolveMedHeal(caster, target, action.herbId, this.stash, this.bus);
+        if (outcome.healed === undefined) return { ok: false, reason: `${action.herbId} isn't carried` };
+        // Same turn economy as before the move into apply: arm the cooldown, and end
+        // the turn per `commitTurn` (default true; `false` is the D60 free-move flow).
+        this.commitSkill(caster, skill, action.commitTurn ?? true);
+        this._log.push(action);
+        return { ok: true, outcome };
       }
       case "beginBattle": {
         // The pre-combat → combat boundary (D67): flip the phase, shed the deploy clock
@@ -570,15 +641,14 @@ export class Battle {
 
   /**
    * Free a bound unit via the in-combat **rescue Act** (D52) — a captured ally, or a new
-   * on-board **captive recruit** (the L1 Cook) joining the fight. Clears the captured state
-   * ({@link freeCaptive}) and announces it on the bus (`unitRescued`) so the render logs the
-   * moment + flashes FX, and future effects (intel reveal, ghost tokens) can hook it. `by`
-   * is the rescuer. Render-facing only — no RNG, no logged action — so it never perturbs
-   * determinism or replay; the post-win auto-free is a separate resolution tally, not this.
+   * on-board **captive recruit** (the L1 Cook) joining the fight. Lowers to the logged
+   * `rescue` action (R1 #111) through {@link apply}: freeing a captive changes the state
+   * graph (`isActive`, clock membership, the win check), so replay must reconstruct it
+   * and undo must be able to cross it. The bus announcement (`unitRescued`) and the D9/D21
+   * semantics are unchanged; the post-win auto-free is a separate resolution tally, not this.
    */
   rescue(captive: Unit, by?: Unit): void {
-    freeCaptive(captive);
-    this.bus.emit("unitRescued", { unit: captive, by });
+    this.apply({ kind: "rescue", target: captive.id, unit: by?.id });
   }
 
   /** True if `caster` may use `skill` right now (not cooling down, D37). */
@@ -615,7 +685,8 @@ export class Battle {
    * itself. The AI and the headless sim keep the default (the skill ends the turn).
    */
   useSkill(caster: Unit, skill: SkillDef, target: Unit, opts: { commitTurn?: boolean } = {}): SkillOutcome {
-    const r = this.apply({ kind: "skill", unit: caster.id, skill, target: target.id, commitTurn: opts.commitTurn ?? true });
+    this.knownSkills.set(skill.id, skill); // the action logs the id (R1 #111); remember the def
+    const r = this.apply({ kind: "skill", unit: caster.id, skill: skill.id, target: target.id, commitTurn: opts.commitTurn ?? true });
     return r.ok ? r.outcome ?? {} : {};
   }
 
@@ -676,7 +747,8 @@ export class Battle {
    * caster's turn. Returns the foes hit + total damage.
    */
   cleave(caster: Unit, skill: SkillDef, dir: GridCoord): { hits: number; damage: number } {
-    const r = this.apply({ kind: "cleave", unit: caster.id, skill, dir });
+    this.knownSkills.set(skill.id, skill); // the action logs the id (R1 #111); remember the def
+    const r = this.apply({ kind: "cleave", unit: caster.id, skill: skill.id, dir });
     return r.ok ? { hits: r.hits ?? 0, damage: r.damage ?? 0 } : { hits: 0, damage: 0 };
   }
 
@@ -705,13 +777,18 @@ export class Battle {
    * antidote). Arms the Heal cooldown and ends the turn. A no-op (no turn spent)
    * if cooling down or the herb isn't carried. `commitTurn: false` leaves the turn
    * open for the D60 free-move flow (the render layer ends it).
+   *
+   * Lowers to the logged `useHeal` action (R1 #111) through {@link apply}, so the
+   * herb spend + heal replay and undo refunds the herb. `inv` **is** the battle's
+   * herb stash — production passes the same run inventory it already wired via
+   * {@link setStash}; a bare test battle gets wired here so the logged action has
+   * battle-owned state to draw from.
    */
   useHeal(caster: Unit, skill: SkillDef, target: Unit, herbId: string, inv: Inventory, opts: { commitTurn?: boolean } = {}): SkillOutcome {
-    if (!this.canUseSkill(caster, skill)) return {};
-    const out = resolveMedHeal(caster, target, herbId, inv, this.bus);
-    if (out.healed === undefined) return out; // herb not carried — no commit
-    this.commitSkill(caster, skill, opts.commitTurn ?? true);
-    return out;
+    this.setStash(inv);
+    this.knownSkills.set(skill.id, skill); // the action logs the id (R1 #111); remember the def
+    const r = this.apply({ kind: "useHeal", unit: caster.id, skill: skill.id, target: target.id, herbId, commitTurn: opts.commitTurn ?? true });
+    return r.ok ? r.outcome ?? {} : {};
   }
 
   /** End a unit's turn: fire `turnEnd` and spend its CT (act costs more). */
@@ -802,6 +879,7 @@ export class Battle {
     });
     // Lower the plan to a CombatAction[] and run each through the one interpreter —
     // the AI path now shares the exact execution route with player input (D42/D56).
+    if (plan.ability) this.knownSkills.set(plan.ability.id, plan.ability); // the lowered action logs the id (R1 #111)
     const actions = planActions(plan);
     // A fleeing unit that ends its move on a map edge LEAVES (D84) — the logged
     // escape slots before the turn-committing endTurn so replay's per-turn window
@@ -837,7 +915,7 @@ function planActions(plan: AIPlan): CombatAction[] {
   const actions: CombatAction[] = [];
   if (plan.path.length > 0) actions.push({ kind: "move", unit, path: plan.path.map((t) => ({ ...t })) });
   if (plan.ability && plan.target?.alive) {
-    actions.push({ kind: "skill", unit, skill: plan.ability, target: plan.target.id, commitTurn: true });
+    actions.push({ kind: "skill", unit, skill: plan.ability.id, target: plan.target.id, commitTurn: true });
     return actions; // the skill ends the turn (commitSkill spends the CT)
   }
   if (plan.target?.alive) actions.push({ kind: "attack", unit, target: plan.target.id });
@@ -860,14 +938,17 @@ function planActions(plan: AIPlan): CombatAction[] {
  * pass throwaway clones of the pre-seed roster. `opts` must carry the **same**
  * {@link BattleOptions} (seed + variance) the original battle used, so any seeded
  * rolls re-derive identically; `moraleBonus` re-applies the initiative warming.
+ * `stash` re-wires the shared supply inventory a log with stash-consuming actions
+ * (`placeTrap`, `useHeal`) draws from — pass a clone of its **initial** counts.
  */
 export function replay(
   grid: TileGrid,
   initialUnits: Unit[],
   log: readonly CombatAction[],
-  opts: BattleOptions & { moraleBonus?: number } = {},
+  opts: BattleOptions & { moraleBonus?: number; stash?: Inventory } = {},
 ): Battle {
   const battle = new Battle(grid, initialUnits, opts);
+  if (opts.stash) battle.setStash(opts.stash);
   // Drain the pre-combat prelude (D67): everything up to (and including) the logged
   // `beginBattle` boundary — the deploy actions resolve in the pre-combat phase (no
   // combat commit), then the marker flips to combat — before seeding + driving the loop.

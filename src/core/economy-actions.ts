@@ -36,6 +36,7 @@ import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
 import { addItem, canAdd, countOf, removeItem, getMaterial, saleValueOf, type MaterialDef } from "./inventory";
 import { streamFor } from "./rng";
+import { Labels } from "./rng-labels";
 import { addInfluence, spendInfluence, gainRunGold, influenceTier, type InfluenceTier } from "./economy";
 import { grantAbilityUseXp } from "./leveling";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
@@ -86,13 +87,6 @@ export const ECONOMY = {
   },
 } as const;
 
-/**
- * A generic economy-verb result the render reads (applied, or why refused) — the
- * shared {@link "./overworld-actions".ActionOutcome} base, so the economy verbs and
- * the overworld actions speak one result shape. Per-verb extras extend it below.
- */
-export type VerbResult = ActionOutcome;
-
 // --- Merchant — ACCESS (purse-funded, market-tier-gated) --------------------
 
 /** The Merchant's price to buy one supply at a market of the given tier (D61). */
@@ -102,7 +96,7 @@ export function merchantPrice(tier: MarketTier): number {
 }
 
 /** What a Merchant buy produced. */
-export interface MerchantBuyResult extends VerbResult {
+export interface MerchantBuyResult extends ActionOutcome {
   /** Purse gold spent. */
   spent?: number;
   /** The market-tier price paid. */
@@ -148,7 +142,7 @@ export function sellPrice(material: MaterialDef, tier: MarketTier): number {
 }
 
 /** What a Merchant sell produced. */
-export interface MerchantSellResult extends VerbResult {
+export interface MerchantSellResult extends ActionOutcome {
   /** Gold credited to the purse (after any Banker-debt auto-repay). */
   earned?: number;
   /** The unit price paid at this market. */
@@ -218,7 +212,7 @@ export function bankerEngageInterest(run: RunState): number {
 }
 
 /** What a buy-on-debt drew. */
-export interface BankerBorrowResult extends VerbResult {
+export interface BankerBorrowResult extends ActionOutcome {
   /** Gold advanced to the purse. */
   borrowed?: number;
   /** The new outstanding debt balance. */
@@ -241,7 +235,7 @@ export function bankerBorrow(run: RunState, amount: number): BankerBorrowResult 
 }
 
 /** What buying theft protection produced. */
-export interface BankerProtectResult extends VerbResult {
+export interface BankerProtectResult extends ActionOutcome {
   /** Purse gold spent. */
   spent?: number;
   /** The protection level now in effect (a [0,1) skim reduction). */
@@ -293,7 +287,7 @@ export function deftHandsSkim(run: RunState): number {
   if (!hasThief(run.party)) return 0;
   const kind = getNode(run.map, run.mapNodeId).kind;
   if (kind !== "combat" && kind !== "event") return 0;
-  const rng = streamFor(run.seed, `deft:${run.mapNodeId}:${run.night}`);
+  const rng = streamFor(run.seed, Labels.deft(run.mapNodeId, run.night));
   if (!rng.chance(DEFT_HANDS.chance)) return 0;
   earn(run.camp, DEFT_HANDS.gold, "deft-hands", "Deft Hands skim", { nodeId: run.mapNodeId, night: run.night });
   return DEFT_HANDS.gold;
@@ -338,7 +332,7 @@ export function accrueDeclaredFaucets(run: RunState, lookup: JobLookup = getJob)
 }
 
 /** What a Patronize produced. */
-export interface PatronizeResult extends VerbResult {
+export interface PatronizeResult extends ActionOutcome {
   /** Purse gold spent. */
   spent?: number;
   /** Influence gained. */
@@ -373,7 +367,7 @@ export function patronize(run: RunState): PatronizeResult {
 }
 
 /** What a bribe attempt produced. */
-export interface BribeResult extends VerbResult {
+export interface BribeResult extends ActionOutcome {
   /** Influence spent (on a success **or** a failed roll — the gamble). */
   cost?: number;
   /**
@@ -423,7 +417,7 @@ export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | 
     return { applied: false, reason: `Not enough Influence to bribe ${enemy.name} (${cost}).`, cost };
   }
   // The sway roll — likelier at higher standing, fixed per target+node (no save-scum).
-  const roll = streamFor(run.seed, `bribe:${run.mapNodeId}:${enemy.id}`);
+  const roll = streamFor(run.seed, Labels.bribe(run.mapNodeId, enemy.id));
   if (!roll.chance(bribeChance(tier))) {
     return { applied: false, failed: true, cost, detail: `${enemy.name} spurns the offer — ${cost} Influence spent for nothing.` };
   }

@@ -769,6 +769,44 @@ export function getJob(id: string | undefined): JobDef | undefined {
  */
 export type JobLookup = (id: string | undefined) => JobDef | undefined;
 
+// --- The global skill registry (R1 #111) ------------------------------------
+
+/**
+ * The **global skill registry**: every authored {@link SkillDef}, derived at load
+ * from {@link JOBS} + {@link UNIVERSAL_SKILLS}, keyed by skill id. This is what makes
+ * the combat action log **serializable** (R1 #111): a logged action stores the skill
+ * **id**, and {@link "./turn".Battle.apply} resolves the def here — the D27 save /
+ * desync wire-format requirement. Skill ids are therefore a registered **namespace**:
+ * the derivation throws at load if two *distinct* defs collide on one id (the same
+ * def object shared across jobs — Hidden Passage — is fine).
+ */
+export const SKILLS: Record<string, SkillDef> = (() => {
+  const out: Record<string, SkillDef> = {};
+  const add = (skill: SkillDef, home: string) => {
+    const seen = out[skill.id];
+    if (seen && seen !== skill) {
+      throw new Error(`SKILLS: skill id "${skill.id}" (on ${home}) collides with another authored skill`);
+    }
+    out[skill.id] = skill;
+  };
+  for (const job of Object.values(JOBS)) for (const s of job.skills) add(s, `job "${job.id}"`);
+  for (const s of UNIVERSAL_SKILLS) add(s, "the universal skills");
+  return out;
+})();
+
+/** Look up an authored skill by id. Accepts any string (callers handle the `undefined` miss). */
+export function getSkill(id: string): SkillDef | undefined {
+  return SKILLS[id];
+}
+
+/**
+ * A skill-data resolver (the D65 injectable-lookup pattern) — {@link getSkill} by
+ * default. Injectable ({@link "./turn".BattleOptions}) so tests can resolve
+ * **throwaway fixture skills** (never in {@link SKILLS}) without polluting the
+ * registry; production always uses the default {@link getSkill}.
+ */
+export type SkillLookup = (id: string) => SkillDef | undefined;
+
 // --- Capabilities (D72) — the Capability gate of the action taxonomy --------
 
 /**

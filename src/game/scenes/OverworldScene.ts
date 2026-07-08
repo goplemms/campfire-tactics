@@ -21,8 +21,6 @@ import {
   resolveKnob,
   cooldownRemaining,
   scoutedTier,
-  intelFloor,
-  clampTier,
   MAX_TIER,
   campSkillUsesLeft,
   fatigueTier,
@@ -509,8 +507,10 @@ export class OverworldScene extends Phaser.Scene {
     // your knowledge of it deepens (party Intelligence floor + Survey scouting). A glance shows which
     // nodes are still mysteries and which you've learned all they'll tell you (a full ring = "done").
     if (node.kind === "combat" && !state.visited) {
-      const tier = clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, node.id));
-      this.drawIntelMeter(pos, radius + 6, tier);
+      // Depth-capped (D86): the ring shows the node's *own* depth in arcs, filled to the
+      // read — a shallow node reads as "less to learn" and fills sooner.
+      const p = previewNode(this.run, node.id, scoutedTier(this.run.overworld, node.id));
+      this.drawIntelMeter(pos, radius + 6, p.intel?.tier ?? 0, p.intelDepth ?? MAX_TIER);
     }
 
     if (state.reachable) {
@@ -523,14 +523,15 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The **intel meter** (D80) — a segmented ring of {@link MAX_TIER} arcs around a node, one per
-   * intel tier, filled (bright) up to the player's current tier and dim beyond. A full ring means
-   * you've learned everything intel will reveal about the node; a mostly-dim ring flags a mystery
-   * worth scouting. Cream fill reads as "knowledge marks", distinct from the warm state ring.
+   * The **intel meter** (D80/D86) — a segmented ring around a node, **one arc per tier of
+   * the node's own intel depth**, filled (bright) up to the current read and dim beyond. A
+   * full ring means you've learned everything this node will tell; a shallow node draws
+   * fewer arcs, so it reads as "less to learn" and completes sooner. Cream fill reads as
+   * "knowledge marks", distinct from the warm state ring.
    */
-  private drawIntelMeter(pos: { x: number; y: number }, r: number, tier: number): void {
+  private drawIntelMeter(pos: { x: number; y: number }, r: number, tier: number, depth = MAX_TIER): void {
     const g = this.add.graphics().setDepth(2);
-    const segs = MAX_TIER;
+    const segs = Math.max(1, depth);
     const gap = Phaser.Math.DegToRad(26);
     const seg = (Math.PI * 2) / segs - gap;
     let a = -Math.PI / 2 + gap / 2; // start near the top, clockwise
@@ -600,11 +601,29 @@ export class OverworldScene extends Phaser.Scene {
     if (p.kind === "rest") return [{ label: "Recovery", ...hide(p.restHint, INK.success) }];
     if (p.kind === "event") return [{ label: "Event", ...hide(p.eventHint, INK.gold) }];
     const enemies = p.intel?.types ? p.intel.types.join(", ") + (p.intel.count !== undefined ? ` ×${p.intel.count}` : "") : undefined;
-    return [
-      { label: "Type", ...hide(p.encounterType, INK.secondary) },
+    const fields = [
       { label: "Enemies", ...hide(enemies, INK.secondary) },
+      { label: "Hazards", ...this.hazardField(p) },
       { label: "Reward", ...hide(p.rewardHint, INK.gold) },
     ];
+    // An authored node has no procedural *shape* to ever reveal (D85), so the Type
+    // lane would read a permanent `???` — omit it rather than dangle phantom intel.
+    if (!p.authored) fields.unshift({ label: "Type", ...hide(p.encounterType, INK.secondary) });
+    return fields;
+  }
+
+  /**
+   * The trap-lane read (D83) as a card value: `???` below the presence tier (shown on
+   * EVERY combat node, so the row's presence never leaks what tier 0 hides), then
+   * presence → count → the careless marks.
+   */
+  private hazardField(p: NodePreview): { value: string; ink: string } {
+    const t = p.intel?.traps;
+    if (!t) return { value: "???", ink: INK.disabled };
+    if (!t.present) return { value: "none sensed", ink: INK.muted };
+    if (t.count === undefined) return { value: "the ground is worked", ink: INK.danger };
+    const marks = t.marked === undefined ? "" : t.marked > 0 ? ` · ${t.marked} marked` : " · none marked";
+    return { value: `${t.count} snare${t.count === 1 ? "" : "s"}${marks}`, ink: INK.danger };
   }
 
   /**
@@ -617,9 +636,6 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.intelCardObjects);
     const p = previewNode(this.run, node.id, scoutedTier(this.run.overworld, node.id));
     const { w, cx, top, left } = this.intelCardGeom();
-    const hasRoad = !!p.earlyEventHint;
-    const h = hasRoad ? 94 : 72;
-    this.intelCardObjects.push(this.add.rectangle(cx, top + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9));
 
     // Header: kind + depth, in the kind's colour.
     this.intelCardObjects.push(this.add.text(left, top + 18, `${this.nodeKindWord(node)}  ·  Layer ${node.layer}`, { color: this.nodeKindInk(node), fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(10));
@@ -638,12 +654,48 @@ export class OverworldScene extends Phaser.Scene {
       fx += Math.ceil(lbl.width) + 6 + Math.ceil(val.width) + 22;
     }
 
+    // Variable-height rows stack below the fields; the surface is sized after.
+    let y = top + 58;
+
     // The early event on the road in, revealed by Survey (D80, effect B).
-    if (hasRoad) {
-      const ry = top + 72;
-      const lbl = this.add.text(left, ry, "ON THE ROAD", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(10);
-      this.intelCardObjects.push(lbl, this.add.text(left + Math.ceil(lbl.width) + 6, ry, p.earlyEventHint!, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - Math.ceil(lbl.width) - 44 } }).setOrigin(0, 0.5).setDepth(10));
+    if (p.earlyEventHint) {
+      const lbl = this.add.text(left, y + 3, "ON THE ROAD", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(10);
+      const txt = this.add.text(left + Math.ceil(lbl.width) + 6, y, p.earlyEventHint, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - Math.ceil(lbl.width) - 44 } }).setOrigin(0, 0).setDepth(10);
+      this.intelCardObjects.push(lbl, txt);
+      y += Math.max(txt.height, lbl.height) + 6;
     }
+
+    // The info box (D83): the node's rumor lines — free-form intel mirroring the
+    // structured lanes. `rumors[i]` unlocks at tier i+1; locked lines read ???.
+    if (p.intel?.notesTotal) {
+      const lbl = this.add.text(left, y + 3, "RUMORS", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(10);
+      this.intelCardObjects.push(lbl);
+      const rx = left + Math.ceil(lbl.width) + 6;
+      for (let i = 0; i < p.intel.notesTotal; i++) {
+        const line = p.intel.notes?.[i];
+        const txt = this.add.text(rx, y, line ?? "???", { color: line ? INK.secondary : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - (rx - left) - 24 } }).setOrigin(0, 0).setDepth(10);
+        this.intelCardObjects.push(txt);
+        y += txt.height + 4;
+      }
+      y += 2;
+    }
+
+    // The terminal (D85): once the node is read to the deepest tier, a "nothing more to
+    // find" line tells the player to stop spending scout resources — the ??? placeholders
+    // are all resolved, and the intel meter ring reads full.
+    if (p.intelComplete) {
+      const done = this.add.text(left, y, "✓ No new intel to find", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0).setDepth(10);
+      this.intelCardObjects.push(done);
+      y += done.height + 4;
+    }
+
+    // The surface, sized to the stacked content (min height keeps short cards tidy).
+    const h = Math.max(72, y - top + 10);
+    // A tall card (road line + rumors) must never run off the canvas: lift the whole
+    // stack so the bottom edge stays on-screen — the card grows UPWARD past its dock.
+    const lift = Math.max(0, top + h - (this.scale.height - 12));
+    if (lift > 0) for (const o of this.intelCardObjects) (o as unknown as { y: number }).y -= lift;
+    this.intelCardObjects.push(this.add.rectangle(cx, top - lift + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9));
   }
 
   /**

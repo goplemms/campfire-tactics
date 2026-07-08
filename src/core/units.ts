@@ -131,9 +131,12 @@ export interface UnitSpec extends UnitStats {
    */
   thief?: boolean;
   /**
-   * **Standing order** (D41) — a reserved auto-action (e.g. `"defend"`) a unit
-   * carries until the player takes manual control. The first slice ships the
-   * field + the Defend action; the auto-execution turn-loop is a later pass.
+   * **Standing order** (D41/D81) — the unit's standing *behavior when not
+   * player-driven*. For a player unit it's the reserved auto-action (e.g.
+   * `"defend"`, D41 — the auto-execution turn-loop is a later pass); for an
+   * **enemy** the AI planner dispatches on it (D81): `"hold"` = a leashed guard
+   * that defends its **post** instead of charging. Undefined = the default
+   * (manual control / the charging planner).
    */
   standingOrder?: string;
   /**
@@ -198,8 +201,14 @@ export interface Unit extends UnitStats {
   authored: boolean;
   /** Thief archetype (D30): skims the purse mid-battle ({@link "./theft"}). */
   thief: boolean;
-  /** Reserved standing order (D41), e.g. `"defend"`; undefined = manual control. */
+  /** Standing behavior when not player-driven (D41/D81), e.g. `"defend"`, `"hold"`. */
   standingOrder?: string;
+  /**
+   * The tile a standing order anchors to (D81) — where the unit stood when it
+   * took the order (its authored placement). A `"hold"` guard leashes to it and
+   * walks back if displaced. Set at creation only for ordered units.
+   */
+  post?: GridCoord;
   /** Objective role tag (D50), e.g. the closing-gate `"sapper"`; objectives bind to it. */
   role?: string;
   /** Authored ambush body hidden until scouted (D44); a render/fog flag. */
@@ -223,6 +232,13 @@ export interface Unit extends UnitStats {
    * initiative seed, but still "alive" — a rescuable sub-objective.
    */
   captured: boolean;
+  /**
+   * **Escaped off-map** (D84): a fleeing unit that reached a map edge and left.
+   * Gone from the field — excluded from every active check ({@link isActive}),
+   * off the clock, untargetable, not drawn — but not *dead* (no defeat event, no
+   * kill credit). Set only by the logged `escape` action, so replay reproduces it.
+   */
+  escaped?: boolean;
   /**
    * Dug in (D63): hunkered during Deployment for a reduced capture chance when the
    * net's turn comes. A deployment-phase transient — set by the `digIn` action,
@@ -293,9 +309,11 @@ export function createUnit(spec: UnitSpec): Unit {
     authored: spec.authored ?? false,
     thief: spec.thief ?? false,
     standingOrder: spec.standingOrder,
+    post: spec.standingOrder ? { col: spec.pos.col, row: spec.pos.row } : undefined,
     role: spec.role,
     hidden: false,
     captured: false,
+    escaped: false,
     dugIn: false,
     concealed: false,
     speed: spec.speed,
@@ -314,13 +332,15 @@ export function createUnit(spec: UnitSpec): Unit {
 }
 
 /**
- * True if a unit is **active** (D7): alive and not captured. A captured unit is
- * still "alive" but bound — it doesn't take turns, isn't an active threat, and
- * doesn't hold a side in the battle. The single predicate behind body-counting,
- * the initiative seed, threat ranges, the win check, and the AI's foe lists.
+ * True if a unit is **active** (D7): alive, not captured, and still on the map. A
+ * captured unit is still "alive" but bound; an **escaped** unit (D84) is alive but
+ * *gone* — off the field entirely. Neither takes turns, threatens, nor holds a
+ * side in the battle. The single predicate behind body-counting, the initiative
+ * seed, threat ranges, the win check, and the AI's foe lists — which is exactly
+ * why a lone fleeing survivor's exit ends the encounter as a player win.
  */
-export function isActive(unit: Pick<Unit, "alive" | "captured">): boolean {
-  return unit.alive && !unit.captured;
+export function isActive(unit: Pick<Unit, "alive" | "captured" | "escaped">): boolean {
+  return unit.alive && !unit.captured && !unit.escaped;
 }
 
 /**

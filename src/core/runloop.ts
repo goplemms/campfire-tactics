@@ -49,11 +49,12 @@ import { moraleModifiers } from "./morale";
 import { moraleTier } from "./camp";
 import { applyCampToParty } from "./camp";
 import { freeCaptive } from "./deployment";
+import { isConcealedTrap, type ConcealedTrap } from "./entities";
 import { recoverMaterials } from "./resolution";
 import { grantItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
 import { rpPerNight, payUpkeep, restHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
-import { intelFloor, readEncounter, clampTier, MAX_TIER, type IntelReport, type IntelTier } from "./intel";
+import { intelFloor, readEncounter, effectiveIntelTier, MAX_TIER, TRAP_INTEL, type IntelReport } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import { restoreFatigue, nightlyFatigue, isFatigueTier0 } from "./fatigue";
 import { useOverworldSkill, scoutedTier, type ActionOpts, type CampSkillResult } from "./overworld-actions";
@@ -78,6 +79,25 @@ import {
   type EventChoice,
 } from "./node-events";
 
+/**
+ * How the party engaged the **concealed enemy traps** an encounter staged (D12/D54)
+ * — the trap-field lever's readout, so a trap node whose field was never touched
+ * shows up in telemetry instead of passing silently. All counts are enemy-owned
+ * concealed traps only (a player's own Set Trap is a different lever).
+ */
+export interface TrapEngagement {
+  /** Concealed enemy traps on the field at staging. */
+  staged: number;
+  /** Traps revealed by an Awareness read (includes any later disarmed). */
+  spotted: number;
+  /** Traps that went off on a party body. */
+  sprung: number;
+  /** Traps removed by a deliberate disarm (the kit harvested). */
+  disarmed: number;
+  /** Unsprung traps swept to storage by the win (D82 — needs a standing trap-trained survivor). */
+  salvaged: number;
+}
+
 /** What a resolved encounter produced (for the render/run-end screen). */
 export interface ResolveResult {
   winner?: "player" | "enemy";
@@ -91,6 +111,8 @@ export interface ResolveResult {
   rescueQuests: RescueQuest[];
   /** Per-unit level gains from combat XP + the objective reward (D53) — feedback. */
   levels: Record<string, { charLevels: number; jobLevels: number }>;
+  /** Enemy-trap engagement at this node (zeroes when none were staged). */
+  traps: TrapEngagement;
   over: boolean;
 }
 
@@ -174,6 +196,11 @@ export const REST = {
   moraleGain: 2,
 } as const;
 
+/** The concealed **enemy** traps currently on `battle`'s field, in any state. */
+function enemyTraps(battle: Battle): ConcealedTrap[] {
+  return battle.entities.all().filter((e): e is ConcealedTrap => isConcealedTrap(e) && e.owner === "enemy");
+}
+
 /** The run-loop orchestrator. */
 export class RunLoop {
   readonly run: RunState;
@@ -187,6 +214,12 @@ export class RunLoop {
   combatants: Unit[] = [];
   /** Combat XP tallied on the battle bus, committed at {@link resolve} (D53). */
   private xpTally?: CombatXpTally;
+  /**
+   * Enemy traps on the field at staging — the {@link TrapEngagement} baseline.
+   * Disarmed traps leave the entity registry, so the staged total must be read
+   * before play; the delta at {@link resolve} is the disarm count.
+   */
+  private stagedEnemyTraps = 0;
   /**
    * An optional playtest telemetry sink (the logistics-integrity instrument).
    * When set, the loop snapshots the lever state at each camp/encounter/rest
@@ -497,11 +530,10 @@ export class RunLoop {
 
   // --- Intel (D10) ----------------------------------------------------------
 
-  /** The current encounter's intel report at the party's floor tier (D10). */
+  /** The current encounter's intel report at the party's floor tier (D10), depth-capped (D86). */
   intel(extraTier = 0): IntelReport {
     const def = this.source ?? currentEncounter(this.run);
-    const tier = Math.min(3, intelFloor(this.run.party) + extraTier) as IntelTier;
-    return readEncounter(def, tier);
+    return readEncounter(def, effectiveIntelTier(intelFloor(this.run.party) + extraTier, def));
   }
 
   // --- Battle setup ---------------------------------------------------------
@@ -520,15 +552,24 @@ export class RunLoop {
     // Scouting the node to full positional intel (tier 3) blows any hidden ambush
     // — the bodies stage visible instead of springing a surprise (D10 reveal).
     const node = currentNode(this.run);
-    const tier = clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, node.id));
+    // Depth-capped (D86): a shallow node can't be scouted to positions, so it never
+    // stages the tier-3 reveal/marks even for a genius party.
+    const tier = effectiveIntelTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, node.id), source);
     // Blanket gear-condition stamp (D52): the iron-weapons +attack edge (decayed by
     // worn gear) and the worn-gear −defense, applied party-wide before the fight.
     applyGearCondition(this.run, players);
-    const staged = stageEncounter(source, players, { deploymentPenalty, revealHidden: tier >= MAX_TIER, seed: this.run.seed });
+    const staged = stageEncounter(source, players, {
+      deploymentPenalty,
+      revealHidden: tier >= MAX_TIER,
+      // The tier-3 trap-lane read (D83): the survey marks the careless snares.
+      markTrapsUpTo: tier >= TRAP_INTEL.markTier ? TRAP_INTEL.markConcealmentMax : undefined,
+      seed: this.run.seed,
+    });
     this.source = source;
     this.staged = staged;
     this.combatants = players;
     this.battle = staged.battle;
+    this.stagedEnemyTraps = enemyTraps(staged.battle).length;
     this.xpTally = trackCombatXp(staged.battle.bus); // subscribe before any turns (D53)
     return staged.battle;
   }
@@ -572,7 +613,8 @@ export class RunLoop {
     let goldEarned = 0;
     let recovered: string[] = [];
     let levels: ResolveResult["levels"] = {};
-    if (won) ({ goldEarned, recovered, levels } = this.applyRewards(source, battle));
+    let sweptTraps = 0;
+    if (won) ({ goldEarned, recovered, levels, sweptTraps } = this.applyRewards(source, battle));
 
     // Captives: auto-rescued on a win, else turned into rescue follow-ups (D21).
     // Persist the follow-ups on the run so an abandoned companion is never lost
@@ -592,6 +634,19 @@ export class RunLoop {
 
     // Mortality (D9): downed player combatants resolve on a survivable outcome (D51).
     const { downed, permadeaths } = this.resolveMortalities(survivable, policy);
+
+    // Trap engagement (D12/D54) — read before the battle is discarded. A disarmed
+    // trap left the registry (the staged snapshot supplies the delta) and required
+    // a spot first, so it counts as spotted too.
+    const present = enemyTraps(battle);
+    const disarmed = this.stagedEnemyTraps - present.length;
+    const traps: TrapEngagement = {
+      staged: this.stagedEnemyTraps,
+      spotted: present.filter((t) => t.revealed).length + disarmed,
+      sprung: present.filter((t) => t.sprung).length,
+      disarmed,
+      salvaged: sweptTraps,
+    };
 
     // Record the graded node outcome + advance the night/terminal (D51). recordNight
     // sets the run terminal: a win at the final node = complete; any other final-node
@@ -617,8 +672,9 @@ export class RunLoop {
     this.staged = undefined;
     this.combatants = [];
     this.xpTally = undefined;
+    this.stagedEnemyTraps = 0;
 
-    const out: ResolveResult = { winner, result, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, levels, over };
+    const out: ResolveResult = { winner, result, goldEarned, recovered, rescued, downed, permadeaths, rescueQuests, levels, traps, over };
     recordEncounter(this.log, this.run, out);
     return out;
   }
@@ -660,7 +716,7 @@ export class RunLoop {
   private applyRewards(
     source: EncounterSource,
     battle: Battle,
-  ): Pick<ResolveResult, "goldEarned" | "recovered" | "levels"> {
+  ): Pick<ResolveResult, "goldEarned" | "recovered" | "levels"> & { sweptTraps: number } {
     const mods = moraleModifiers(moraleTier(this.run.camp.morale));
     const goldEarned = Math.round(source.reward.gold * (1 + mods.goldFindBonus));
     // Loot routes to the PURSE (D34), auto-repaying any Banker debt first (D30).
@@ -669,11 +725,14 @@ export class RunLoop {
       // Drops always land (D75) — overflow is resolved by a discard at Break Camp, never silently lost.
       grantItem(this.run.inventory, drop.id, drop.count);
     }
-    const recovered = recoverMaterials(battle.entities.all(), "player", this.run.inventory).recovered;
+    // The survivors of resolution: they sweep the won field's snares (D82) and
+    // bank the XP (D53).
+    const survivors = this.combatants.filter((u) => u.alive && !u.captured);
+    const recovery = recoverMaterials(battle.entities.all(), "player", this.run.inventory, survivors);
+    const recovered = recovery.recovered;
 
     // Combat-event XP (D53): commit the bus tally + the objective reward.xp to the
     // survivors of resolution — no mid-battle level-ups, none on a non-win.
-    const survivors = this.combatants.filter((u) => u.alive && !u.captured);
     const tally: CombatXpTally = { ...(this.xpTally ?? {}) };
     const objXp = source.reward.xp ?? 0;
     if (objXp > 0) for (const u of survivors) tally[u.id] = (tally[u.id] ?? 0) + objXp;
@@ -684,7 +743,7 @@ export class RunLoop {
     // on a win), idempotent (a recruit already aboard is not re-added).
     if (isAuthoredEncounter(source) && source.grants) this.applyGrant(source.grants);
 
-    return { goldEarned, recovered, levels };
+    return { goldEarned, recovered, levels, sweptTraps: recovery.swept };
   }
 
   /**

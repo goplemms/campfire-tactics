@@ -8,6 +8,11 @@ import { SURVEY } from "./jobs";
 import { computeUpkeep, RECOVERY } from "./upkeep";
 import { FATIGUE, FATIGUE_TIER_FLOORS } from "./fatigue";
 import { bypassXp } from "./node-events";
+import { isConcealedTrap } from "./entities";
+import { traverseRoute } from "./expedition-sim";
+import { THE_HOLLOW_MILL } from "./hollow-mill";
+import { AI, type BattlePolicy } from "./ai";
+import { manhattan } from "./combat";
 
 function roster(): Unit[] {
   return [
@@ -379,5 +384,158 @@ describe("runloop — the unified camp at every node (D35)", () => {
     // by a prior step, but every other visited node was arrived at by a choose).
     const steps = run.path.length - 1;
     expect(cooldownRemaining(run.overworld, "survey")).toBe(99 - steps);
+  });
+});
+
+describe("runloop — enemy-trap engagement telemetry (the Node-3 lever readout)", () => {
+  const SNARES_ROUTE = ["start", "e1", "camp2", "snares"];
+
+  /** Arrive at the Snares node with the encounter staged, ready to inspect. */
+  function stagedSnares() {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, SNARES_ROUTE);
+    const battle = loop.startEncounter();
+    const traps = battle.entities.all().filter(isConcealedTrap);
+    return { loop, battle, traps };
+  }
+
+  /** Fell every active enemy so the field is won (the graded outcome = win). */
+  function winField(battle: { units: Unit[] }): void {
+    for (const u of battle.units) {
+      if (u.side === "enemy") {
+        u.hp = 0;
+        u.alive = false;
+      }
+    }
+  }
+
+  it("stages the Sapper's Snares with its five concealed enemy traps", () => {
+    const { traps } = stagedSnares();
+    expect(traps).toHaveLength(5);
+    expect(traps.every((t) => t.owner === "enemy" && !t.revealed && !t.sprung)).toBe(true);
+  });
+
+  it("resolve() reports spotted / sprung / disarmed against the staged total", () => {
+    const { loop, battle, traps } = stagedSnares();
+    traps[0].revealed = true; // an Awareness read found one…
+    traps[1].sprung = true; // …one went off on a body…
+    battle.entities.remove(traps[2].id); // …and one was disarmed (spotted, then removed)
+    winField(battle);
+    const res = loop.resolve();
+    // spotted counts the disarmed trap too — a disarm requires the spot first. The
+    // 3 unsprung, un-disarmed snares sweep on the win (D82 — Vale stands, trap-trained).
+    expect(res.traps).toEqual({ staged: 5, spotted: 2, sprung: 1, disarmed: 1, salvaged: 3 });
+  });
+
+  it("a field never touched resolves as staged-but-unfelt — and fully swept (D82)", () => {
+    const { loop, battle } = stagedSnares();
+    winField(battle);
+    const res = loop.resolve();
+    expect(res.traps).toEqual({ staged: 5, spotted: 0, sprung: 0, disarmed: 0, salvaged: 5 });
+  });
+
+  it("no standing trap-trained survivor → the win sweeps nothing (the D82 gate)", () => {
+    const { loop, battle } = stagedSnares();
+    // Down the party's only trap-trained member before the field is won.
+    const vale = battle.units.find((u) => u.id === "vale")!;
+    vale.alive = false;
+    winField(battle);
+    const res = loop.resolve();
+    expect(res.traps.salvaged).toBe(0);
+  });
+
+  it("a trap-less encounter reports zeroes (and the next node doesn't inherit counts)", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1"]);
+    const battle = loop.startEncounter(); // the L1 skirmish — no traps authored
+    winField(battle);
+    const res = loop.resolve();
+    expect(res.traps).toEqual({ staged: 0, spotted: 0, sprung: 0, disarmed: 0, salvaged: 0 });
+  });
+});
+
+describe("runloop — the lone straggler holds his field (D81, the Node-3 beat)", () => {
+  const POST = { col: 8, row: 2 }; // his authored placement — the far side of the snares
+
+  it("parked players are never charged — the crossing can't be waited out", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    const battle = loop.startEncounter();
+    loop.beginBattle();
+    const passive: BattlePolicy = {
+      name: "passive",
+      plan: (u) => ({ unit: u, path: [], destination: u.pos, target: null }),
+    };
+    const winner = loop.autoBattle({ maxTurns: 60, player: passive });
+    const thug = battle.units.find((u) => u.id === "lone-straggler")!;
+    // He held: still alive, still within his leash of the post after 60 turns…
+    expect(thug.alive).toBe(true);
+    expect(manhattan(thug.pos, POST)).toBeLessThanOrEqual(AI.holdLeash);
+    // …and a party that never crosses the field decides nothing.
+    expect(winner).toBeUndefined();
+  });
+
+  it("the charging bot still wins the node — the hold makes the field mandatory, not the fight unwinnable", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    loop.startEncounter();
+    loop.beginBattle();
+    const winner = loop.autoBattle();
+    expect(winner).toBe("player");
+  });
+});
+
+describe("runloop — the tier-3 trap read at the real node (D83)", () => {
+  it("a scouted arrival stages the careless snare pre-revealed; spotted + the sweep both move", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    // Vale's Intelligence-7 floor reads tier 2; one Survey bump reaches the mark tier.
+    loop.run.overworld.scouted["snares"] = 1;
+    const battle = loop.startEncounter();
+    const revealed = battle.entities.all().filter(isConcealedTrap).filter((t) => t.revealed);
+    expect(revealed).toHaveLength(1); // the concealment-4 dig — never the field (the ceiling)
+    for (const u of battle.units) {
+      if (u.side === "enemy") {
+        u.hp = 0;
+        u.alive = false;
+      }
+    }
+    const res = loop.resolve();
+    expect(res.traps).toEqual({ staged: 5, spotted: 1, sprung: 0, disarmed: 0, salvaged: 5 });
+  });
+
+  it("an unscouted arrival still stages the field fully concealed", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    const battle = loop.startEncounter();
+    expect(battle.entities.all().filter(isConcealedTrap).every((t) => !t.revealed)).toBe(true);
+  });
+});
+
+describe("runloop — the skittish straggler bolts off-map (D84, the Node-3 beat completed)", () => {
+  it("one melee blow breaks him; his exit ends the fight as a player win and the field still sweeps", () => {
+    const { loop } = traverseRoute(THE_HOLLOW_MILL, ["start", "e1", "camp2", "snares"]);
+    const battle = loop.startEncounter();
+    loop.beginBattle();
+    const thug = battle.units.find((u) => u.id === "lone-straggler")!;
+    const edrin = battle.units.find((u) => u.id === "edrin")!;
+    expect(thug.standingOrder).toBe("hold-skittish");
+
+    // Edrin crosses the field and lands the blow that breaks him.
+    edrin.pos = { col: 7, row: 2 };
+    battle.attack(edrin, thug);
+    expect(thug.standingOrder).toBe("flee");
+    expect(thug.alive).toBe(true);
+
+    // Park the party — his own turn takes the deserter off his edge-post and out
+    // of the world; the exit alone decides the field.
+    const passive: BattlePolicy = {
+      name: "passive",
+      plan: (u) => ({ unit: u, path: [], destination: u.pos, target: null }),
+    };
+    const winner = loop.autoBattle({ maxTurns: 20, player: passive });
+    expect(thug.escaped).toBe(true);
+    expect(thug.alive).toBe(true); // gone, not dead — no kill credit
+    expect(winner).toBe("player");
+
+    const res = loop.resolve();
+    expect(res.result).toBe("win");
+    // Vale is standing, so the abandoned field sweeps in full (D82) — no snare
+    // sprang in this run.
+    expect(res.traps.salvaged).toBe(5);
   });
 });

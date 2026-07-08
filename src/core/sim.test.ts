@@ -58,6 +58,27 @@ describe("run simulator (D55) — robustness net + difficulty floor", () => {
     }
   });
 
+  it("reports the Hollow Mill trap-engagement baseline (the Node-3 lever readout)", () => {
+    // The naive bot's route always crosses the Sapper's Snares (L3, 5 traps) and —
+    // picking first-reachable — the Secured Wagon (L6A, 3 more): 8 staged.
+    expect(hollowMill.summary.traps.staged).toBe(8);
+    // The BASELINE TRUTH this pin makes loud: headless play can only *blunder into*
+    // traps. The Awareness spot loop and the disarm verb live in the render layer
+    // (BattleScene), so the sim's floor is spotted 0 / disarmed 0 — the trap lever
+    // registers as silent damage only. When the spot/avoid/disarm layer reaches the
+    // core (or the Node-3 pass changes the field's shape), these move — repin then.
+    expect(hollowMill.summary.traps.spotted).toBe(0);
+    expect(hollowMill.summary.traps.disarmed).toBe(0);
+    // The charging bot eats mid-field snares on the way across (path-dependent, so
+    // pinned loosely): the field is *felt* headlessly, just never *read*.
+    expect(hollowMill.summary.traps.sprung).toBeGreaterThan(0);
+    expect(hollowMill.summary.engaged.feltTraps).toBe(true);
+    // The D82 sweep gate BITES in the canonical bot run: Vale (the only trap-trained
+    // member) is DOWN at each trap-field win — she blunders into her own lesson — so
+    // no snares sweep. Not dead code: protect the sweeper and this number moves.
+    expect(hollowMill.summary.traps.salvaged).toBe(0);
+  });
+
   it("the policy seam is load-bearing through the sim — A/B lifts completion (D56)", () => {
     // A do-nothing enemy policy: if the seam is wired, the pilot player should win
     // far more runs than against the pilot enemy. Proves A/B works end to end.
@@ -71,9 +92,11 @@ describe("run simulator (D55) — robustness net + difficulty floor", () => {
   it("prints the digest + reports the difficulty floor (report-only, never fails CI)", () => {
     // Write straight to stdout (vitest doesn't intercept this) so `npm run sim`
     // always surfaces the digest without making the rest of the suite noisy.
+    const t = hollowMill.summary.traps;
     const report =
       "\n" + formatDigest("procedural / normal", digest) +
-      `\n  Hollow Mill (authored): ${hollowMill.status} — ended ${hollowMill.endNodeId} (L${hollowMill.endLayer})`;
+      `\n  Hollow Mill (authored): ${hollowMill.status} — ended ${hollowMill.endNodeId} (L${hollowMill.endLayer})` +
+      `\n  Hollow Mill traps: staged ${t.staged} · spotted ${t.spotted} · sprung ${t.sprung} · disarmed ${t.disarmed} · salvaged ${t.salvaged}`;
     // The naive bot is a conservative floor: it skips deploy, the economy and the
     // full kit. So a HIGH completion rate is the loud "too easy" smell; a 0% rate is
     // expected-ish but worth a glance for a wall. Report only — balance is still moving.

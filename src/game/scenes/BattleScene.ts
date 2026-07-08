@@ -65,8 +65,11 @@ import {
   scoutedTier,
   // D10 — the intel deploy edge: scouted ground deploys safer
   intelFloor,
-  clampTier,
+  effectiveIntelTier,
   intelDeployBonus,
+  // D84 — standing-order behaviors: the stance telegraph + transition narration
+  STANDING_ORDERS,
+  orderOf,
   // D12 — the enemy trap-field: spot, search, and Survivalist disarm
   isConcealedTrap,
   hiddenTraps,
@@ -535,6 +538,17 @@ export class BattleScene extends Phaser.Scene {
       this.view.logHeal(unit, amount, source);
     });
     this.battle.bus.on("unitDefeated", ({ unit }) => this.view.logDefeat(unit));
+    // Standing-order moments (D84): the panic turn and the exit both announce
+    // themselves — the token vanish rides the normal unit refresh (escaped units
+    // aren't drawn), so the bus only narrates.
+    this.battle.bus.on("orderChanged", ({ unit, order }) => {
+      const stance = STANDING_ORDERS[order]?.stance;
+      if (stance) this.view.logLine(`${unit.name} ${order === "flee" ? "panics — " : ""}${stance}`, INK.ember);
+    });
+    this.battle.bus.on("unitEscaped", ({ unit }) => {
+      this.view.logLine(`${unit.name} escapes off the map!`, INK.ember);
+      this.view.refreshUnits();
+    });
     // The in-combat rescue Act (D52): freeing a bound unit — a captured ally, or a new
     // captive recruit (the L1 Cook) — announces itself here, so the event owns the reaction
     // (un-grey the token, flash, log the moment) rather than the call site. The post-win
@@ -780,9 +794,9 @@ export class BattleScene extends Phaser.Scene {
     return moraleModifiers(moraleTier(this.run.camp.morale));
   }
 
-  /** The node's effective intel tier (passive floor + scouting), for the deploy edge (D10). */
+  /** The node's effective intel tier (passive floor + scouting), depth-capped (D86), for the deploy edge (D10). */
   private intelTier(): IntelTier {
-    return clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, this.run.mapNodeId));
+    return effectiveIntelTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, this.run.mapNodeId), currentEncounter(this.run));
   }
 
   /**
@@ -2673,6 +2687,12 @@ export class BattleScene extends Phaser.Scene {
     if (r.count !== undefined) rows.push({ label: "Foes", value: `${r.count}` });
     rows.push({ label: "Intel", value: `T${r.tier}` });
     if (shape) rows.push({ label: "Field", value: shape });
+    // The trap lane (D83): presence → count → the careless marks, where it informs placement.
+    if (r.traps) {
+      const t = r.traps;
+      const marks = t.marked === undefined ? "" : t.marked > 0 ? ` · ${t.marked} marked` : " · none marked";
+      rows.push({ label: "Hazards", value: !t.present ? "none sensed" : t.count === undefined ? "worked ground" : `${t.count} snares${marks}` });
+    }
     if (!battle && r.grantsVision) rows.push({ label: "Vision", value: "yes" });
     const note = r.types && r.types.length ? compactFoeTypes(r.types) : undefined;
     this.campCard.set("", rows, undefined, note);
@@ -2873,11 +2893,15 @@ export class BattleScene extends Phaser.Scene {
     const back = retaliationDamage(actor, foe, units);
     const reach = inAttackRange(actor, foe);
     const skull = (n: number, t: Unit) => (n >= t.hp ? ` ${ICON.lethal.glyph}` : "");
-    return [
+    const rows: CardRow[] = [
       { label: "Deal", value: `${deal}${skull(deal, foe)}`, color: deal >= foe.hp ? INK.ember : INK.danger, emphasize: true },
       { label: "Hits back", value: `${back}${skull(back, actor)}`, color: back >= actor.hp ? INK.danger : INK.muted },
       { label: "Range", value: reach ? "in reach" : "move adjacent", color: reach ? INK.success : INK.muted },
     ];
+    // An ordered foe telegraphs its stance (D81/D84) — the intent, never the trigger.
+    const stance = orderOf(foe)?.stance;
+    if (stance) rows.push({ label: "Stance", value: stance, color: INK.muted });
+    return rows;
   }
 
   /** Battle hover — a reachable tile: this step's cost, the budget left after it, and whether the Act is still up. */

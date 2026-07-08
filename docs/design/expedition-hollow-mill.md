@@ -141,9 +141,29 @@ roof:
   concealed snares** mid-field (concealment 4–6, damage 22–26). High damage so eating
   an unspotted one really stings (no Medic yet). **Spot-and-avoid** — disarm not
   required.
+- **He holds his field — and breaks (D81/D84).** The straggler carries
+  `standingOrder: "hold-skittish"` — a **leashed guard** (leash 2 around his post at
+  col 8) who oversees his snares instead of charging across them, so the party **must
+  cross the trap-field to win**; waiting at the deploy line decides nothing. The **first
+  melee blow breaks him**: he flips to `flee`, and his post being the east edge, the
+  deserter **bolts off-map** — the exit ends the fight as a **player win** (gone, not
+  dead: no kill credit, and the abandoned field still sweeps, D82). A ranged hit does
+  *not* spook him — melee means adjacent. The hover card telegraphs the stance ("holds
+  its ground" → "bolting for the map edge!" — the intent, never the trigger). The
+  behaviors are `STANDING_ORDERS` registry records (D84); `hold-wary` (trigger aggro:
+  hold until pressed, then charge, sticky) is encoded + tested but unauthored — the L6A
+  captors are its natural takers.
+- **Intel reads the field (D83).** The trap lane bands presence → count → the **careless
+  mark**: at tier 3 (Vale's tier-2 floor + one Recon/Survey bump — the L2 lesson's payoff)
+  exactly **one** sloppy snare (concealment 4) stages pre-revealed; the careful work keeps
+  its secret — **no tier ever blows the whole field** (intel *informs*, Awareness
+  *resolves*). Three authored **rumors** ("folk around here say a deserter…") unlock one
+  per tier on the intel card's info box.
 - **Teaches:** you win or lose in the **pre-combat setup** — read the field with Vale's
   Awareness, position so the lone enemy is fought on your terms.
-- **Reward:** 70g, 1 trap-kit, 70 XP. Unsprung kits salvage to the stash.
+- **Reward:** 70g, 1 trap-kit, 70 XP. Unsprung snares **sweep to the stash on the win
+  while a trap-trained survivor stands** (D82) — keep Vale on her feet and the field
+  pays out (up to 5 kits); with her down at the victory, the kits stay in the dirt.
 - **Branches:** this node is the **L4 fork** — edges to both 4A and 4B.
 
 ### L4 — The fork
@@ -186,6 +206,110 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Per-node intel depth — the Thieves' Den reads shallow (D86).** Delivers D85's deferred
+  per-node depth: `AuthoredEncounter.intelDepth` caps how deep a node can be scouted, via
+  one seam (`effectiveIntelTier`) every read site routes through (preview card, meter,
+  staging reveal, deploy edge). A shallow node knows less — no positions, approximate
+  reward, fewer meter arcs, and the "✓ No new intel to find" terminal lands sooner. First
+  use: **the Den is `intelDepth: 2`** — a hidden hideout you learn the *what/how-many* of
+  but never the *where*, so you deploy half-blind into the chase-the-thief tension; at the
+  demo party's tier-2 floor it's fully known from the start (never worth a Survey). Every
+  other node stays full-depth (unchanged). Guards: tsc · 1037 unit tests (depth caps the
+  read / positions / vision; the Den pins) · build · e2e (73) · shots (`02d-den-shallow`).
+- **Intel card polish: a "no new intel" terminal + no phantom Type lane (D85).** A
+  visual-pass follow-on. The card now shows **"✓ No new intel to find"** once a node is
+  scouted to the deepest tier (tier 3 — positions, exact reward, hazard marks, the last
+  rumor), so a careful player knows to stop spending Survey cooldowns/fatigue (it
+  complements the D80 intel-meter ring with words). And the phantom **`Type ???`** on
+  authored nodes — a lane that could never resolve — is dropped (`NodePreview.authored`),
+  so no dangling `???` contradicts the terminal. On the snares node the terminal lands
+  alongside "HAZARDS 5 snares · 1 marked" and all three rumors revealed. Guards: tsc ·
+  unit tests (the intelComplete + authored-omit pins) · shots (`02b` unscouted / `02c`
+  fully-scouted card frames). Per-node intel *depth* (nodes that cap below tier 3) is a
+  named deferral. See **D85**.
+- **Node-3 pass, step 5: standing-order behaviors — the skittish straggler bolts off-map
+  (D84).** Delivers D81's queued set as a **data registry** (`STANDING_ORDERS`): an order
+  = a posture (`hold`/`flee`/`charge`) + one-way transition rules (`onMeleeStruck` fires
+  in the attack resolution — replay/undo-safe, the checkpoint learned
+  `standingOrder`/`escaped`; `onFoeWithin` fires at turn-open vs the post, sticky). New
+  this pass: **real board escape** — a fleeing unit heads for the nearest edge (zero
+  threat in the danger read) and, ending its move on one, commits a **logged `escape`
+  action**: gone-not-dead (`escaped` folds into `isActive` — off the clock, untargetable,
+  undrawn, no defeat event/kill credit), so a lone survivor's exit **ends the encounter
+  as a player win** (the user's ruling). The straggler is now **`hold-skittish`**: guard
+  the snares until the first *melee* blow, then bolt off his east-edge post — the win
+  without the kill, the field still sweeping (D82). `hold-wary` (trigger aggro) is
+  encoded + tested, unauthored (L6A's captors are the takers). Thieves still "escape" by
+  surviving-to-resolution — migrating them onto the real posture is a named later pass.
+  Guards: tsc · 1029 unit tests (registry/flee/escape/replay/undo/sticky pins + the
+  real-node beat: one blow → flight → exit → win → sweep) · build · e2e (73) · sim
+  (pins hold — Vale still falls in the canonical bot run, so `salvaged 0` stands; the
+  fight got shorter).
+- **Node-3 pass, step 4: intel's hazard + info lanes — the L2 Recon lesson finally pays
+  off at L3 (D83).** Intel read enemies only, so scouting the snares node said "1 Bandit
+  Thug" — worse than nothing. Two new tier-banded lanes (user-ruled: **no tier ever
+  reveals the whole field**, and the lanes are **honestly gated** — no intel unit, no
+  read): the **trap lane** (T1 presence — an honest "none sensed" on trapless fields, so
+  the row never leaks by absence · T2 count · T3 the **careless mark**: concealment ≤ 4
+  stages pre-revealed via `stageEncounter({ markTrapsUpTo })`). Per-trap `concealment` is
+  thus the authored intel knob: L3 marks exactly one sloppy snare; **L6A marks zero** —
+  the dug-in captors resist the read purely from existing numbers. Plus the **info lane**:
+  `AuthoredEncounter.rumors` — free-form tiered flavor ("folk around here say…"), one line
+  per tier, locked lines as `???` on the intel card's new RUMORS box (the card now sizes
+  to content and lifts to stay on-canvas); the deploy Intel tab gains the Hazards row.
+  Banding is data (`TRAP_INTEL`), provisional by design. With D82 this closes the loop:
+  scout → cross clean → keep Vale standing → sweep the kits. Guards: tsc · unit tests
+  (lane pins incl. L6A-zero + the tier-3 staged mark at the real node — `spotted` moves at
+  last) · build · e2e · shots (a new `08b-snares-intel` frame pins the card; note
+  `shots:mill`'s later frames were already broken on `main` — a pre-existing headless
+  Phaser texture rough-edge, not this pass) · sim (digest unchanged — the bot never
+  scouts).
+- **Node-3 pass, step 3: the snare sweep — a win salvages the field, gated on a standing
+  trap-trained survivor (D82).** Resolved the D13 ↔ D54 salvage contradiction (the docs
+  said "a win salvages enemy snares"; the code shipped "disarm is the only harvest"). The
+  ruling: a win sweeps **every unsprung enemy snare — hidden or spotted alike** — provided
+  a party member is **"awake and able to disarm"** (active + `canDisarm`) at the moment of
+  victory. Kill-him-last dies (the kits come anyway); rooting around a decided map never
+  exists (hidden sweeps too); disarm keeps its mid-fight identity (kit *now* + clear the
+  crossing). "Awake" is literal — the gate reads state *before* mortality resolution, so a
+  downed-then-recovered Vale does **not** sweep; protecting the sweeper is the incentive,
+  and the canonical sim run proves the teeth (bot Vale dies in the snares fight →
+  `salvaged 0`, pinned). Telemetry gains `TrapEngagement.salvaged` (sweep ≠ `feltTraps` —
+  automatic, not play). Seams: `recoverMaterials(…, party)` + `RecoveryResult.swept`;
+  `applyRewards` passes resolution's survivors. Docs reconciled: 04-resolution, logistics,
+  this file. Guards: tsc · unit tests (sweep gate pins at the pure seam + the real node) ·
+  build · e2e · sim (digest gains the salvaged column).
+- **Node-3 pass, step 2: the straggler holds his field — the crossing is now mandatory
+  (D81).** The L3 teaching beat could be waited out: every enemy charges, so the lone
+  straggler abandoned his own snares (owner-immune) and died at the party's deploy line
+  — the field was optional scenery. `standingOrder` now widens to enemy behaviors (the
+  D41 field, dispatched by the D42 planner): the straggler carries **`"hold"`** — a
+  **leashed guard** anchored to a new `Unit.post` (his authored tile), who acts only
+  within `AI.holdLeash` (2) of it, never approach-scores toward foes (he closes on the
+  *post* when displaced — a shove is walked back), and never takes the stall-recovery
+  charge. `threatenedTiles` honors the leash (an honest danger read) and the hover card
+  gains a "Stance: holds its ground" row. Applied to the straggler only (node-by-node);
+  the L6A dug-in captors are the obvious next takers. *Queued before Node 3 closes:*
+  flee-after-first-melee + trigger-aggro as standing-order records (D81). Guards: tsc ·
+  unit tests (planner leash pins; at the real node: parked players are never charged +
+  the charging bot still wins) · build · e2e · sim (digest unchanged — the bot always
+  crossed; the fight now happens on the far side).
+- **Node-3 pass, step 1: trap engagement is now instrumented — and the baseline is loud.**
+  The sim was blind to the one node whose threat is terrain: no telemetry knew whether the
+  L3 snares were ever spotted, sprung, or disarmed. `RunLoop.resolve` now reports a
+  `TrapEngagement` readout (**staged / spotted / sprung / disarmed**, enemy-owned concealed
+  traps only) per encounter, threaded through the playtest log (`PlaytestSummary.traps` +
+  the `engaged.feltTraps` lever bit) into the sim digest (an `enemy traps:` line). The
+  **pinned baseline** (sim guard): the naive bot's route stages **8** traps (L3's five +
+  L6A's three), **springs 5 blindly, spots 0, disarms 0** — the Awareness spot loop and the
+  disarm verb live only in the render layer, so headless play *feels* the field as silent
+  damage but never *reads* it; and an interactive player who lets the lone straggler charge
+  can skip the field entirely (nothing forces the crossing — the step-2 guard/hold AI work).
+  These pins are the before-picture the next steps move. Seams: `RunLoop.stagedEnemyTraps`
+  (snapshotted at staging — a disarm removes the entity, so the delta is the disarm count),
+  `resolve()`'s registry read. Guards: tsc · 997 unit tests (incl. the staged/spotted/sprung/
+  disarmed resolve pins + the loud staged-but-unfelt case) · build · e2e (73) · sim (Hollow
+  Mill completes; digest now prints the trap line).
 - **L2 is now the *storage* lesson — the traveler's gift (D79).** The pick-one became an
   **unconditional traveler-gift that overflows**: the bundle cap dropped **10→5** so the 5
   starting supplies fill it **exactly**, and the L2 event now **gives 2 trap kits + the iron

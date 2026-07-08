@@ -47,6 +47,19 @@ const forceWin = bs(`if(s.over||!s.battle)return;for(const u of s.battle.units)i
 const STEPS = [
   { name: "01-intro", minMs: 800 }, // the expedition orientation card over the fogged map
   { name: "02-map-fog", eval: ov(`for(const o of s.overlay)o.destroy();s.overlay=[];`) }, // the hand-built Hollow Mill map
+  // The pinned intel card on the snares node (D83), in its real MAP context: the
+  // Hazards lane ("5 snares" at the party's tier-2 floor) + the rumors info box
+  // (two lines revealed, the third a locked ???). Inspect on the map (not camp), so
+  // the card docks over empty ground rather than colliding with camp action buttons.
+  { name: "02b-snares-intel", minMs: 500, eval: ov(`s.showPreview(s.run.map.nodes["snares"]);`) },
+  // The fully-scouted card (D85): a Survey bump to tier 3 fills every lane — HAZARDS
+  // "5 snares · 1 marked", exact reward, all rumors — and the "✓ No new intel to find"
+  // terminal appears (stop spending scout resources). No phantom Type lane (authored).
+  { name: "02c-snares-scouted", minMs: 500, eval: ov(`s.run.overworld.scouted["snares"]=1;s.showPreview(s.run.map.nodes["snares"]);`) },
+  // The shallow-intel den (D86, intelDepth 2): the read caps at tier 2 — types + count +
+  // approximate reward, but never positions — and at the party's tier-2 floor it's already
+  // fully known ("✓ No new intel to find" from the start; the meter ring shows 2 arcs).
+  { name: "02d-den-shallow", minMs: 500, eval: ov(`s.showPreview(s.run.map.nodes["den"]);`) },
   { name: "03-make-camp", eval: ov(`s.enterCamp(s.loop.reachable()[0]);`) }, // camp, heading to E1
   { name: "04-ledger", eval: ov(`s.openTent(()=>s.renderCamp(),"ledger");`) }, // the Captain's Tent ledger + forecast over the authored reward
 

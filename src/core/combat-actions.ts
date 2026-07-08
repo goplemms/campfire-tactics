@@ -56,6 +56,12 @@ export type CombatAction =
   | { kind: "cleave"; unit: UnitId; skill: SkillDef; dir: GridCoord }
   /** End a unit's turn, spending its CT (acting costs more than only moving). */
   | { kind: "endTurn"; unit: UnitId; spend: TurnSpend }
+  /**
+   * A fleeing unit that reached a map edge **leaves the field** (D84): sets
+   * `escaped` — off every active check (a lone survivor's exit ends the fight as a
+   * player win), no defeat event, no kill credit. Logged so replay reproduces it.
+   */
+  | { kind: "escape"; unit: UnitId }
   // --- Deployment-only verbs (D63/D67) --------------------------------------
   // `move`/`skill` are reused in the pre-combat phase (the interpreter detects the
   // Battle's phase and skips the combat turn-commit) — only these genuinely deploy-only

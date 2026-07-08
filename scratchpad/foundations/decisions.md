@@ -1388,7 +1388,8 @@ trail of reasoning stays intact.
     damage: snare the prey → Rook's Deadeye cashes it in.
 - **Spec:** `src/core/traps.ts`, `entities.makeConcealedTrap`/`makeTrap` (status), `jobs` (Scout
   `set-snare`), `hollow-mill` (*The Sapper's Snares*).
-- **Superseded by:** —
+- **Superseded by:** **D82** (the "never auto-salvaged" clause only — a win now sweeps
+  unsprung snares while a trap-trained survivor stands; disarm remains the mid-fight harvest).
 
 ## D55 — Playtest QoL: move-through-allies, no-action auto-pass, keyboard + legend
 
@@ -2949,6 +2950,251 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   `src/core/node-events.test.ts` (the overflow tests),
   [`docs/design/expedition-hollow-mill.md`](../../docs/design/expedition-hollow-mill.md) (L2
   section, bundle, topology, route-change log).
+- **Superseded by:** —
+
+---
+
+## D81 — Standing orders widen to enemy behaviors: the leashed "hold" guard
+
+- **Status:** Decided (2026-07-05) · widens **D41** (standing orders) onto the **D42**
+  planner · the Node-3 pass, step 2 (follows the trap-engagement instrumentation)
+- **Context:** Every enemy charges — `planEnemyTurn` always advances toward the nearest
+  foe — so the L3 *Sapper's Snares* could be **waited out**: the lone straggler abandoned
+  his own trap-field (crossing it safely, owner-side immune) and died at the party's
+  deploy line, leaving the node's teaching beat ("you win or lose in the pre-combat
+  read") optional scenery. Step 1's telemetry pinned the miss.
+- **Decision:** `standingOrder` widens from "a player unit's reserved auto-action" (D41)
+  to **"the unit's standing behavior when not player-driven"** — for an enemy that is
+  *always*, so the auto-execution loop D41 deferred **is** the enemy planner, and the two
+  cases (Pip's `"defend"`, an enemy's `"hold"`) share one field. First enemy behavior:
+  **`"hold"` — the leashed guard.**
+  - A unit ordered at creation gains a **`post`** (its authored tile). The planner
+    (`planEnemyTurn`) lets a holder **act only from tiles within `AI.holdLeash` (2) of
+    the post**, never approach-scores toward foes (it closes on the *post* instead —
+    standing home, or walking back when displaced by a shove), and never takes the
+    stall-recovery charge fallback (standing at the post IS the plan).
+  - **`threatenedTiles` honors the leash** — the danger-zone read must not overstate a
+    holder's reach — and the hover preview card gains a muted "Stance: holds its ground"
+    row so the stillness reads as intent, not a bug.
+  - Applied to the **lone straggler only** (node-by-node discipline). The L6A "alert,
+    dug-in" captors are the obvious next takers when that node's pass comes.
+- **Planned before Node 3 closes (per the user):** the fuller behavior set —
+  **flee-after-first-melee** (the straggler breaks away once bloodied in melee) and
+  **trigger-based aggro** (hold until a foe crosses a threshold, then charge). Both are
+  *state-transition* behaviors — an event swaps the unit's standing order — so the
+  target shape is: order id → a plan constraint + transition rules, a data registry the
+  planner dispatches on. Keep new behaviors new records, not new planner branches.
+  **→ Delivered: D84** (the `STANDING_ORDERS` registry, the flee/escape posture, and both
+  transitions).
+- **Spec:** `src/core/units.ts` (`standingOrder` docs + `Unit.post`), `src/core/ai.ts`
+  (`holdPost`, `AI.holdLeash`, the plan/threat dispatch), `src/core/hollow-mill.ts` (the
+  straggler's `overrides`), `BattleScene.attackPreviewRows` (the stance row).
+- **Superseded by:** —
+
+---
+
+## D82 — The snare sweep: a win salvages enemy snares, gated on a standing trap-trained survivor
+
+- **Status:** Decided (2026-07-06) · resolves the **D13 ↔ D54** salvage contradiction · the
+  Node-3 pass, step 3 (follows the D81 hold guard)
+- **Context:** Two canonical sources disagreed. **D13**: a win controls the whole field →
+  every unsprung recoverable entity salvages, *including the enemy's* (the resolution docs'
+  worked examples say so). **D54**: concealed enemy traps are `recoverable: false` —
+  "harvested only via a deliberate disarm, never auto-recovered" — to motivate the disarm
+  verb. The code shipped D54; the docs still told D13's story. The D81 hold guard made the
+  tension acute: with the straggler holding still, disarm-only salvage makes "leave the last
+  enemy alive and sweep the field at leisure" the optimal line (tedium rewarded), and a
+  reveal-gated middle option would invite rooting around a decided map for hidden traps.
+- **Decision (the user's ruling):** **win-salvage of all unsprung enemy snares — hidden or
+  spotted alike — gated on the party having a member "awake and able to disarm traps."**
+  On a win, if any **active** (alive, uncaptured) party member passes
+  `canDisarm` at the moment of victory, every unsprung concealed enemy trap sweeps to
+  storage (the trap-trained survivor walks the won field off-screen). No sweeper standing →
+  the snares stay in the dirt. Sprung is always spent. Kill-him-last dies (you get the kits
+  anyway); root-around-the-map never exists (hidden sweeps too); the **disarm verb keeps its
+  mid-fight identity** (pocket the kit *now* for Set Trap + permanently clear the crossing).
+  - "Awake" is literal (ratified by the user): **0 HP — or any status indicating 0-HP-style
+    incapacitation — at the end of the encounter disqualifies the sweeper.** The gate reads
+    state **before** D9 mortality resolution, so a downed-then-recovered sweeper does NOT
+    sweep (she was unconscious when the field was won), and a still-bound captive doesn't
+    either (auto-rescue lands after rewards). Today downed + captured are the only
+    incapacitation forms; a future petrify/KO-class status must join the gate's predicate.
+    Protecting the sweeper is the incentive. The canonical sim run proves the teeth: bot
+    Vale dies in the snares fight → salvaged 0 (pinned in `sim.test.ts`).
+  - Deterministic full recovery — no durability roll; the roll arrives with the future
+    Survivalist salvage perk if ever.
+  - Telemetry: `TrapEngagement.salvaged` (per-encounter → playtest summary → sim digest).
+    Salvage does **not** set `engaged.feltTraps` — the sweep is automatic, not play.
+- **Reuses / consistent with:** **D13** (win-controls-the-field fiction; the sweep rides
+  `recoverMaterials`), **D54** (`recoverable: false` still keeps snares out of the *generic*
+  recovery; supersedes only its never-auto-salvaged clause), **D75** (swept kits land over
+  cap; the discard resolves), **D9/D21** (the active-at-victory reading).
+- **Spec:** `src/core/resolution.ts` (`recoverMaterials` gains `party` + `swept`),
+  `src/core/runloop.ts` (`applyRewards` passes survivors; `TrapEngagement.salvaged`),
+  `entities.makeConcealedTrap` doc, `resolution.test.ts` (the sweep pins),
+  `docs/design/04-resolution.md` + `systems/logistics.md` +
+  [`expedition-hollow-mill.md`](../../docs/design/expedition-hollow-mill.md) (reconciled).
+- **Superseded by:** —
+
+---
+
+## D83 — Intel's hazard + info lanes: the trap banding, the careless mark, and tiered rumors
+
+- **Status:** Decided (2026-07-06) · extends **D10** (banded intel) / **D24** (node preview)
+  onto the **D12/D54** trap-field · the Node-3 pass, step 4
+- **Context:** The intel read covered **enemies only** (types → count → positions), so a
+  trap-field read "1 Bandit Thug" — worse than nothing, it made the node *look* easy — and
+  the designed L2→L3 pair ("Recon sharpens the snares fight's read") didn't deliver. Two
+  user rulings shaped the fix: **(1) no tier ever reveals the whole field** — full reveal
+  would make Vale's Awareness redundant (intel *informs*, Awareness *resolves*); **(2) the
+  lanes are honestly gated** — a party fielding no intel-oriented unit reads tier 0 and
+  walks in blind (no free hazard warnings; D10's "provision blind-ish" holds).
+- **Decision:** Two new lanes on the same tier ladder, banded as data (`TRAP_INTEL` —
+  provisional banding, the no-full-reveal ceiling fixed).
+  - **The trap lane:** tier 1 **presence** ("the ground is worked" — reported for EVERY
+    encounter once earned, an honest "none sensed" on trapless fields so the lane's mere
+    appearance never leaks what tier 0 hides) → tier 2 **count** → tier 3 the **careless
+    mark**: traps with `concealment ≤ TRAP_INTEL.markConcealmentMax` (4) stage
+    **pre-revealed** (`stageEncounter({ markTrapsUpTo })`, threaded from `startEncounter`
+    beside `revealHidden`). The per-trap `concealment` stat is thereby the authored knob
+    for what intel can see: L3 (4,5,5,5,6) marks exactly **one** careless snare; L6A (5–6)
+    marks **zero** — "the dug-in captors resist the scout's read" falls out of existing
+    numbers for free.
+  - **The info lane (the user's ask):** `AuthoredEncounter.rumors?: string[]` — free-form
+    flavor mirroring the structured lanes; `rumors[i]` unlocks at tier `i+1`, locked lines
+    render as `???` (`IntelReport.notes` + `notesTotal`). The Hollow Mill authors three
+    per trap-field ("Folk around here say a deserter…" → sharper hearsay).
+  - **Surfaces:** the pinned overworld intel card gains a **Hazards** field + the
+    **RUMORS** box (variable-height, lifts to stay on-canvas); the deploy-phase Intel tab
+    gains the Hazards row where it informs placement.
+- **Reuses / consistent with:** **D10/D44** (`revealHidden` — the mark is its trap
+  twin), **D82** (a marked snare the player avoids is still swept on the win — scouting
+  pays out in kits, the named faucet, priced by Survey/Recon's cooldown + fatigue),
+  **D80** (the `???` reveal idiom + intel meter).
+- **Open / tuning:** the banding tiers + `markConcealmentMax` are a numbers pass;
+  procedural trap-fields (none exist yet) will need generator-authored rumors or none.
+- **Spec:** `src/core/intel.ts` (`TRAP_INTEL`, `TrapIntel`, `IntelReport.notes`),
+  `src/core/staging.ts` (`markTrapsUpTo`), `src/core/runloop.ts` (the tier-3 thread),
+  `src/core/authored.ts` (`rumors`), `src/core/hollow-mill.ts` (authored rumors),
+  `OverworldScene.renderIntelCard`/`hazardField`, `BattleScene.renderIntelCard`,
+  `intel.test.ts` + `runloop.test.ts` pins, `scripts/shots-hollow-mill.mjs`
+  (`08b-snares-intel`).
+- **Superseded by:** —
+
+---
+
+## D84 — Standing-order behaviors: the registry, flee-to-escape, and the transitions
+
+- **Status:** Decided (2026-07-06) · delivers **D81**'s queued behavior set · the Node-3
+  pass, step 5
+- **Context:** D81 shipped one behavior (`"hold"`) as planner logic keyed on a string
+  compare and queued the fuller set the user wanted encoded before Node 3 closes:
+  flee-after-first-melee and trigger-based aggro. Separately, "escape" existed only as
+  fiction — a thief "escapes" by *surviving to resolution* (`tallyEscapedThieves` reads
+  `alive`); no unit ever actually left the board.
+- **Decision:** Two layers.
+  - **The registry (`standing-orders.ts`):** an order is a record — a **posture**
+    (`hold` | `flee` | `charge`) the planner dispatches on, plus **transition rules**
+    that rewrite `unit.standingOrder` one-way: `onMeleeStruck` (fires inside the attack
+    resolution when the striker was adjacent — in the apply path, so replay + undo
+    reproduce it; the undo checkpoint gained `standingOrder`/`escaped`) and
+    `onFoeWithin` (fires at the unit's turn-open against its **post**, **sticky** — no
+    bait-and-retreat reset; shapes only future plans, which log as concrete actions, so
+    replay needs no record). Records: `hold` · `hold-skittish` (→ flee on the first
+    melee blow) · `hold-wary` (→ charge when pressed; encoded + tested, **unauthored** —
+    the L6A captors are the natural takers) · `flee` · `charge`. Stance strings feed the
+    hover telegraph ("holds its ground" / "bolting for the map edge!") — the intent,
+    never the trigger.
+  - **Real board escape (the user's ruling):** the flee posture heads for the nearest
+    map edge (never fights; `threatenedTiles` reads it as zero threat), and a fleeing
+    unit that ends its move on an edge tile commits a **logged `escape` action** —
+    `unit.escaped = true`, folded into `isActive`, so the unit is *gone, not dead*: off
+    the clock, untargetable, undrawn, **no defeat event / no kill credit** — and a lone
+    survivor's exit **ends the encounter as a player win** through the existing
+    outcome check, exactly as the user intended. The escape slots before `endTurn` so
+    replay's per-turn window holds.
+  - **The straggler is `hold-skittish`:** his post is the east edge, so the first
+    melee blow sends the deserter off-map next turn — the win without the kill; the
+    abandoned field still sweeps (D82, Vale standing).
+- **Notes / adjacent:** thieves still "escape" by surviving to resolution — giving them
+  the real flee/escape posture (and reconciling `tallyEscapedThieves`, which would
+  misread an escaped-but-alive thief) is a natural later pass, out of scope here.
+  Melee-struck reads the **basic attack** only for now (adjacency at resolution); melee
+  *skills* joining the trigger is a tuning call for when one exists on the demo path.
+- **Spec:** `src/core/standing-orders.ts` (+ barrel), `units.ts` (`escaped`,
+  `isActive`), `combat-actions.ts` + `turn.ts` (the `escape` action, both transitions,
+  checkpoint fields), `ai.ts` (`planFlee`, `edgeDistance`, registry dispatch, threat
+  read), `hollow-mill.ts` (the straggler), `combat-view.ts` + `BattleScene`
+  (vanish/rail/stance/log), `standing-orders.test.ts` + the runloop real-node pin.
+- **Superseded by:** —
+
+---
+
+## D85 — Intel's "no new intel to find" terminal + dropping the phantom Type lane
+
+- **Status:** Decided (2026-07-06) · refines **D83** (the intel lanes) / **D24/D80** (the
+  node preview card) · a Node-3 visual-pass follow-on
+- **Context:** The intel card gave the player no **terminal** signal — no way to know a
+  node was scouted as deep as it goes, so a careful player could waste Survey cooldowns /
+  fatigue scouting a node with nothing left to reveal. Separately, **authored** combat
+  nodes have no procedural *shape*, so the card's **Type** lane read a permanent `???` —
+  phantom intel that never resolves, and directly contradicting a "nothing more to find"
+  terminal sitting beside it.
+- **Decision (the user's ask):** a terminal **"✓ No new intel to find"** line on the
+  intel card, shown once the node is read to the deepest tier the system models
+  (`NodePreview.intelComplete = tier >= MAX_TIER` — tier 3, where positions, exact
+  reward, hazard marks, and the last rumor all land). It's the stop-spending signal that
+  complements the D80 intel-meter ring (full ring = done) with words. Combat-only (rest/
+  event nodes have no scouting progression). To keep the terminal **honest**, the phantom
+  `Type ???` is removed: `NodePreview.authored` flags an authored node and the card omits
+  its Type lane — no `???` dangles when the terminal says "nothing more."
+- **Note — per-node intel *depth*:** every combat node bottomed out at tier 3 (enemy
+  *positions* + exact reward guarantee tier-3 content), so the terminal always landed at
+  tier 3. **→ Delivered: D86** (`AuthoredEncounter.intelDepth` caps the read; the terminal
+  and the meter's arc count follow it; the Thieves' Den is the first shallow node).
+- **Reuses / consistent with:** **D83** (the info/rumors lane — the terminal reads as its
+  natural tail; authors align the deepest rumor with the tier-3 secret, as the snares node
+  does), **D80** (the intel-meter ring), **D24** (the preview card).
+- **Spec:** `src/core/intel.ts` (`NodePreview.authored`/`intelComplete`, set in
+  `previewNode`), `OverworldScene.intelFields` (drop the authored Type lane) /
+  `renderIntelCard` (the terminal line), `intel.test.ts` (the flag pins),
+  `scripts/shots-hollow-mill.mjs` (`02c-snares-scouted`).
+- **Superseded by:** —
+
+---
+
+## D86 — Per-node intel depth: nodes vary in how much they can tell
+
+- **Status:** Decided (2026-07-06) · delivers **D85**'s deferred per-node depth · extends
+  **D10/D24** (banded intel) and **D80/D83/D85** (the meter / lanes / terminal)
+- **Context:** Every combat node bottomed out at tier 3 — enemy *positions* and exact
+  reward always gave tier-3 content — so the read depth was uniform and the D85 terminal
+  always landed at tier 3. The user wants to **vary the info a node offers**: some places
+  are simply less scoutable from afar.
+- **Decision:** `AuthoredEncounter.intelDepth?: IntelTier` (default {@link MAX_TIER}) — the
+  deepest tier a node can be read to. The read is **capped**: one seam,
+  `effectiveIntelTier(floor + scouting, def) = clampTier(min(raw, intelDepthOf(def)))`,
+  which **every** read site now routes through (the preview card, the intel-meter ring,
+  the staging reveal/mark tier, and the deploy-edge bonus) so they agree on how much the
+  node tells. A shallow node genuinely knows less: a depth-2 node never reveals
+  **positions** (no tier-3 starting vision / careless mark / blown ambush), its reward
+  stays **approximate**, its intel-meter ring draws **2 arcs**, and its "✓ No new intel to
+  find" terminal (D85) lands at tier 2 — reached the moment the party's floor hits it.
+  - **First authored use — the Thieves' Den (`intelDepth: 2`).** A hidden hideout resists a
+    distant read: you learn *what* lurks and *how many*, never *where* they spring from —
+    you deploy half-blind, sharpening the chase-the-thief tension. At the demo party's
+    tier-2 floor (Vale, Int 7) the den is fully known from the start (terminal shows, ring
+    full), so it's never worth a Survey — exactly the "don't spend resources" signal.
+  - **Authoring rule:** content must fit the depth — keep `rumors.length ≤ intelDepth`
+    (deeper lines would be unreachable). All other nodes stay full-depth (unchanged).
+- **Reuses / consistent with:** **D85** (the terminal + authored-Type omission now key off
+  depth, not a hardcoded MAX_TIER), **D80** (the meter draws `depth` arcs), **D10** (the
+  deploy edge is capped too — no tier-3 bonus on a shallow node).
+- **Spec:** `src/core/authored.ts` (`intelDepth`), `src/core/intel.ts` (`intelDepthOf` /
+  `effectiveIntelTier`; `previewNode` sets `intelDepth`/`intelComplete`), `runloop.ts`
+  (`intel()` + `startEncounter` capped), `BattleScene.intelTier` (deploy edge capped),
+  `OverworldScene.drawIntelMeter` (depth arcs), `hollow-mill.ts` (the Den),
+  `intel.test.ts`, `scripts/shots-hollow-mill.mjs` (`02d-den-shallow`).
 - **Superseded by:** —
 
 ---

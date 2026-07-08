@@ -23,6 +23,7 @@ import { createUnit } from "./units";
 import { TileGrid } from "./grid";
 import { getEnemyTemplate, type EncounterReward } from "./generation";
 import type { ObjectiveSpec } from "./objectives";
+import type { IntelTier } from "./intel"; // type-only (erased) — no runtime cycle
 
 /** A hand-placed enemy in an authored encounter. */
 export interface EnemyPlacement {
@@ -111,6 +112,22 @@ export interface AuthoredEncounter {
   captives?: CaptivePlacement[];
   /** Concealed enemy traps pre-placed on the field (spot to avoid, Survivalist to harvest). */
   traps?: AuthoredTrap[];
+  /**
+   * **Rumors** (D83) — the free-form info lane of the intel read, tier-banded like the
+   * structured lanes: `rumors[i]` is revealed at intel tier `i+1` ("folk around here
+   * say…" at tier 1 → sharper hearsay as the read deepens). Locked lines render as
+   * `???` on the intel card. Authored flavor; absent = no info box for the node.
+   */
+  rumors?: string[];
+  /**
+   * **Intel depth** (D86) — the deepest tier this node can be scouted to; the read is
+   * **capped** here (`min(floor + scouting, intelDepth)`), so a shallow node genuinely
+   * has less to know: a `2` never reveals positions (no tier-3 deploy vision / careless
+   * mark), and its "✓ No new intel to find" terminal + intel-meter ring land at tier 2.
+   * Defaults to {@link "./intel".MAX_TIER} (full depth — every current node). Author
+   * content to fit: keep `rumors.length ≤ intelDepth` (deeper lines are unreachable).
+   */
+  intelDepth?: IntelTier;
   reward: EncounterReward;
   /**
    * Post-win grants (D52) — a recruit / relic / flag awarded on a `win`, beyond the

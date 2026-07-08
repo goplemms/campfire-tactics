@@ -10,11 +10,18 @@ import {
   intelDeployBonus,
   clampTier,
   MAX_TIER,
+  TRAP_INTEL,
+  intelDepthOf,
+  effectiveIntelTier,
   previewNode,
   rewardBand,
 } from "./intel";
 import type { AuthoredEncounter } from "./authored";
-import { createRun } from "./run";
+import { TRAP_FIELD, E1_SKIRMISH, SECURED_WAGON } from "./hollow-mill";
+import { stageEncounter } from "./staging";
+import { isConcealedTrap } from "./entities";
+import { createRun, createRunFromExpedition } from "./run";
+import { THE_HOLLOW_MILL } from "./hollow-mill";
 import { getNode } from "./overworld";
 import { earlyEventForNode } from "./node-events";
 
@@ -202,5 +209,121 @@ describe("intel teeth — scouting reveals the ambush and buys a deploy edge (D1
     expect(intelDeployBonus(2).safeDepthBonus).toBeGreaterThan(intelDeployBonus(0).safeDepthBonus);
     expect(intelDeployBonus(3).safeDepthBonus).toBeGreaterThan(intelDeployBonus(2).safeDepthBonus);
     expect(intelDeployBonus(3).exposureMultiplier).toBeLessThan(intelDeployBonus(1).exposureMultiplier);
+  });
+});
+
+describe("intel — the trap lane + info lane (D83)", () => {
+  it("the trap lane bands presence → count → careless marks, honestly gated", () => {
+    // Tier 0: nothing — a no-intel party walks in blind.
+    expect(readEncounter(TRAP_FIELD, 0).traps).toBeUndefined();
+    // Tier 1: presence only.
+    const t1 = readEncounter(TRAP_FIELD, 1);
+    expect(t1.traps).toEqual({ present: true });
+    // Tier 2: the count.
+    expect(readEncounter(TRAP_FIELD, 2).traps).toEqual({ present: true, count: 5 });
+    // Tier 3: the careless mark — ONLY concealment ≤ cap (one snare at 4), never the field.
+    const t3 = readEncounter(TRAP_FIELD, 3);
+    expect(t3.traps).toEqual({ present: true, count: 5, marked: 1 });
+  });
+
+  it("a trapless field reads an honest 'none sensed' — the lane never leaks by absence", () => {
+    expect(readEncounter(E1_SKIRMISH, 1).traps).toEqual({ present: false });
+    expect(readEncounter(E1_SKIRMISH, 0).traps).toBeUndefined();
+  });
+
+  it("the dug-in captors resist the read — L6A's careful work marks NOTHING at tier 3", () => {
+    const t3 = readEncounter(SECURED_WAGON, 3);
+    expect(t3.traps).toEqual({ present: true, count: 3, marked: 0 });
+  });
+
+  it("the info lane unlocks one rumor line per tier; the total exposes the locked ???s", () => {
+    const t0 = readEncounter(TRAP_FIELD, 0);
+    expect(t0.notes).toEqual([]);
+    expect(t0.notesTotal).toBe(3);
+    expect(readEncounter(TRAP_FIELD, 1).notes).toHaveLength(1);
+    expect(readEncounter(TRAP_FIELD, 1).notes?.[0]).toMatch(/Folk around here/);
+    expect(readEncounter(TRAP_FIELD, 3).notes).toHaveLength(3);
+    // No rumors authored → no info box at all.
+    expect(readEncounter(AMBUSH, 3).notes).toBeUndefined();
+  });
+
+  it("tier 3 stages the careless snare pre-revealed — and ONLY it (the ceiling holds)", () => {
+    const party = [member("edrin"), member("vale", 9)]; // int 9 → tier-3 floor for the read
+    const staged = stageEncounter(TRAP_FIELD, party, { markTrapsUpTo: TRAP_INTEL.markConcealmentMax });
+    const traps = staged.battle.entities.all().filter(isConcealedTrap);
+    const revealed = traps.filter((t) => t.revealed);
+    expect(traps).toHaveLength(5);
+    expect(revealed).toHaveLength(1);
+    expect(revealed[0]?.concealment).toBe(4); // the sloppy dig; the careful work keeps its secret
+  });
+
+  it("unscouted staging marks nothing", () => {
+    const staged = stageEncounter(TRAP_FIELD, [member("edrin")], {});
+    expect(staged.battle.entities.all().filter(isConcealedTrap).every((t) => !t.revealed)).toBe(true);
+  });
+});
+
+describe("intel — the fully-read terminal + authored-shape omission (D85)", () => {
+  const run = createRunFromExpedition(THE_HOLLOW_MILL); // Vale int 7 → tier-2 floor
+
+  it("an authored node is flagged authored with no procedural type to reveal", () => {
+    const p = previewNode(run, "snares");
+    expect(p.authored).toBe(true);
+    expect(p.encounterType).toBeUndefined(); // never a phantom `???` Type lane
+  });
+
+  it("intelComplete is false below MAX_TIER and true once read to the deepest tier", () => {
+    expect(previewNode(run, "snares", 0).intelComplete).toBe(false); // tier 2 floor
+    expect(previewNode(run, "snares", 1).intelComplete).toBe(true); // +1 Survey → tier 3
+  });
+
+  it("at the terminal the info lane is fully revealed — no locked ??? remain", () => {
+    const done = previewNode(run, "snares", 1);
+    expect(done.intel?.notes?.length).toBe(done.intel?.notesTotal); // every rumor read
+  });
+
+  it("a rest node carries no intel-complete signal (nothing to scout)", () => {
+    expect(previewNode(run, "start").intelComplete).toBeUndefined();
+  });
+});
+
+describe("intel — per-node depth caps the read (D86)", () => {
+  const shallow: AuthoredEncounter = { ...AMBUSH, intelDepth: 2 };
+  const deep: AuthoredEncounter = { ...AMBUSH }; // no intelDepth → full
+
+  it("intelDepthOf reads the authored cap, defaulting to MAX_TIER", () => {
+    expect(intelDepthOf(deep)).toBe(MAX_TIER);
+    expect(intelDepthOf(shallow)).toBe(2);
+  });
+
+  it("effectiveIntelTier never exceeds the node's depth, however sharp the party", () => {
+    expect(effectiveIntelTier(3, shallow)).toBe(2); // a tier-3 read capped to 2
+    expect(effectiveIntelTier(1, shallow)).toBe(1); // below the cap: unchanged
+    expect(effectiveIntelTier(3, deep)).toBe(3); // full-depth node: uncapped
+  });
+
+  it("a depth-2 read never reveals positions or blows the ambush", () => {
+    // Capped to tier 2: positions (tier 3) stay hidden, and the ambush body never
+    // reveals — count reads 1 (the visible thug), never the concealed cutthroat.
+    const capped = readEncounter(shallow, effectiveIntelTier(3, shallow));
+    expect(capped.count).toBe(1);
+    expect(capped.positions).toBeUndefined();
+    expect(capped.grantsVision).toBe(false);
+    // …whereas the full-depth twin, read at tier 3, reveals both bodies + positions.
+    const full = readEncounter(deep, effectiveIntelTier(3, deep));
+    expect(full.count).toBe(2);
+    expect(full.positions).toHaveLength(2);
+    expect(full.grantsVision).toBe(true);
+  });
+
+  it("the Thieves' Den is authored shallow (depth 2) — fully known to a smart party, no positions", () => {
+    const run = createRunFromExpedition(THE_HOLLOW_MILL); // Vale int 7 → tier-2 floor
+    const den = previewNode(run, "den");
+    expect(den.intelDepth).toBe(2);
+    // At the tier-2 floor the den is already read to its depth — nothing to scout.
+    expect(den.intelComplete).toBe(true);
+    expect(den.intel?.positions).toBeUndefined(); // never learns where the thieves lurk
+    // A Survey bump can't push past the cap.
+    expect(previewNode(run, "den", 1).intel?.tier).toBe(2);
   });
 });

@@ -568,7 +568,7 @@ export class CombatView {
     // don't leak); `tempo` injects a non-unit row (the Deployment net) sorted in by its CT, so
     // the player can read when the next capture step lands relative to their own turns.
     type Row = { kind: "unit"; u: Unit; dead: boolean; ct: number } | { kind: "tempo"; name: string; ct: number };
-    const base = (u: Unit) => !u.captured && !u.hidden && (opts.filter ? opts.filter(u) : true);
+    const base = (u: Unit) => !u.captured && !u.hidden && !u.escaped && (opts.filter ? opts.filter(u) : true);
     const liveRows: Row[] = units.filter((u) => base(u) && u.alive).map((u) => ({ kind: "unit", u, dead: false, ct: u.ct }));
     if (opts.tempo) liveRows.push({ kind: "tempo", name: opts.tempo.name, ct: opts.tempo.ct });
     liveRows.sort((a, b) => b.ct - a.ct);
@@ -693,6 +693,11 @@ export class CombatView {
   /** Log "Rescuer frees Target" (or "Target is freed" when sourceless) — the rescue Act (D52). */
   logRescue(unit: Unit, by?: Unit): void {
     this.logEvent(by ? `${shortName(by.name)} frees ${shortName(unit.name)}` : `${shortName(unit.name)} is freed`, INK.success);
+  }
+
+  /** Log a free-form combat moment (D84 standing-order turns: the panic, the exit). */
+  logLine(text: string, color: string): void {
+    this.logEvent(text, color);
   }
 
   /**
@@ -850,7 +855,8 @@ export class CombatView {
       // Deployment veil (D12): a living, uncaptured foe is fully hidden — token,
       // nameplate, and (since Phaser skips input on invisible objects) its hover.
       const concealed = this.concealEnemies && unit.side === "enemy" && unit.alive && !unit.captured;
-      view.container.setVisible(!concealed);
+      // An ESCAPED unit left the field (D84): gone entirely — not a faded corpse.
+      view.container.setVisible(!concealed && !unit.escaped);
       view.container.setAlpha(!unit.alive ? 0.2 : unit.captured ? 0.4 : unit.hidden ? 0.35 : 1);
       // Death pop: the first time a unit reads as dead, collapse its token so the
       // kill registers (it then rests as the faded "downed" marker).

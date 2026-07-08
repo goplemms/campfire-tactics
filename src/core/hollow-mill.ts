@@ -131,7 +131,9 @@ export const E1_SKIRMISH: AuthoredEncounter = {
  * Node 3 — The Sapper's Snares (trap-field). A **strong-field / weak-enemy** encounter
  * (D52): one lone bandit, but very strong concealed snares — the threat is the terrain.
  * Win or lose in the **pre-combat setup**: spot the strong traps (Vale's Awareness) and
- * position so the lone enemy is fought on your terms. Unsprung kits salvage to the stash.
+ * position so the lone enemy is fought on your terms. Unsprung snares **sweep to the
+ * stash on the win while a trap-trained survivor stands** (D82) — keep Vale on her feet
+ * and the field pays out; lose her and the kits stay in the dirt.
  */
 export const TRAP_FIELD: AuthoredEncounter = {
   id: "snares-trapfield",
@@ -143,8 +145,19 @@ export const TRAP_FIELD: AuthoredEncounter = {
     { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
   // LOCKED: one relatively weak enemy — the strong snares are the real encounter.
+  // He HOLDS his post (D81) — the field's sapper oversees his snares rather than
+  // charging across them, so the party must cross the trap-field to win — and he's
+  // SKITTISH (D84): the first melee blow breaks him into flight, and his post is
+  // the east edge, so the deserter bolts off-map — the exit ends the fight as a
+  // player win (no kill, no kill credit; the field still sweeps, D82).
   enemies: [
-    { templateId: "bandit-thug", pos: { col: 8, row: 2 }, id: "lone-straggler" },
+    { templateId: "bandit-thug", pos: { col: 8, row: 2 }, id: "lone-straggler", overrides: { standingOrder: "hold-skittish" } },
+  ],
+  // The info lane (D83) — one rumor line per intel tier ("folk say…" → sharper hearsay).
+  rumors: [
+    "Folk around here say a deserter from the mill garrison has gone to ground past the cut — and that carts stopped coming back.",
+    "A carter swears he watched the sapper dig along the narrows five separate times before slipping away.",
+    "He worked hurriedly near the old wagon rut — a careful survey should spot the sloppiest of it.",
   ],
   // Very strong, concealed, mid-field traps the party must cross — high damage so
   // eating an unspotted one really stings (no Medic yet). Spot-and-avoid (no disarm req).
@@ -155,7 +168,8 @@ export const TRAP_FIELD: AuthoredEncounter = {
     { pos: { col: 5, row: 1 }, concealment: 5, damage: 22 },
     { pos: { col: 5, row: 4 }, concealment: 6, damage: 26 },
   ],
-  // Modest purse; unsprung kits salvage on the win (F5, light).
+  // Modest purse; unsprung snares sweep on the win via a standing trap-trained
+  // survivor (D82) — the field itself is the real reward.
   reward: { gold: 70, materials: [{ id: "trap-kit", count: 1 }], xp: 70 },
 };
 
@@ -211,7 +225,15 @@ export const SECURED_WAGON: AuthoredEncounter = {
     { templateId: "bandit-cutthroat", pos: { col: 7, row: 1 }, overrides: { awareness: 5 } },
     { templateId: "bandit-thug", pos: { col: 7, row: 4 }, overrides: { awareness: 4 } },
   ],
+  // The info lane (D83): the inversion telegraphed — these captors expect a second try.
+  rumors: [
+    "The wagon never moved on — it dug in. Watchfires burn in pairs there now.",
+    "Three captors hold it in alert shifts, and the ground on the approach has been worked over.",
+    "No careless digging here — whoever laid these snares took their time. Nothing to mark from afar.",
+  ],
   // The captors laid their own snares — spot/avoid ENEMY traps (the node-3 lesson inverted).
+  // Concealment 5–6 sits ABOVE the D83 careless-mark cap: a tier-3 read marks NOTHING
+  // here — the dug-in captors resist the scout's read, purely from the existing numbers.
   traps: [
     { pos: { col: 2, row: 2 }, concealment: 5, damage: 16 },
     { pos: { col: 3, row: 3 }, concealment: 6, damage: 18 },
@@ -226,10 +248,16 @@ export const SECURED_WAGON: AuthoredEncounter = {
  * and bolt for the edge (per theft.ts + ENEMY_TEMPLATES.thief) — kill them to drop the
  * gold; let them escape and it's gone. On the win, the **relic** drops (placeholder
  * unique; effect TBD). Stealth in play.
+ *
+ * **Shallow intel (D86): `intelDepth: 2`.** A hidden hideout resists a distant read —
+ * you can learn *what* lurks and *how many*, but never *where* they'll spring from
+ * (no tier-3 positions / starting vision). The first authored use of per-node depth:
+ * you deploy into the den half-blind, sharpening the chase-the-thief tension.
  */
 export const THIEVES_DEN: AuthoredEncounter = {
   id: "thieves-den",
   name: "The Thieves' Den",
+  intelDepth: 2,
   cols: 9,
   rows: 6,
   blocked: [{ col: 3, row: 0 }, { col: 5, row: 5 }, { col: 6, row: 2 }],

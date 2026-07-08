@@ -171,3 +171,62 @@ describe("threatenedTiles", () => {
     expect(threatenedTiles([ally], grid, "player")).toEqual([]);
   });
 });
+
+describe("standing order: hold — the leashed guard (D81)", () => {
+  /** A holder anchored to its creation tile (createUnit sets `post` from the spec pos). */
+  function guard(col: number, row: number): Unit {
+    return createUnit({
+      id: "g", side: "enemy", pos: { col, row }, speed: 10, maxHp: 10, attack: 5,
+      defense: 0, moveRange: 3, sightRadius: 6, standingOrder: "hold",
+    });
+  }
+
+  it("stands its post instead of charging a distant foe", () => {
+    const grid = new TileGrid(10, 1);
+    const g = guard(8, 0);
+    const player = at("p", "player", 0, 0);
+    const plan = planEnemyTurn(g, [g, player], grid);
+    expect(plan.destination).toEqual({ col: 8, row: 0 });
+    expect(plan.path).toEqual([]);
+    expect(plan.target).toBeNull();
+  });
+
+  it("never fights from beyond the leash, even when the foe is within raw move reach", () => {
+    const grid = new TileGrid(10, 1);
+    const g = guard(8, 0);
+    const player = at("p", "player", 4, 0); // adjacency at col 5 = 3 from post — out of leash
+    const plan = planEnemyTurn(g, [g, player], grid);
+    expect(plan.target).toBeNull();
+    expect(plan.destination).toEqual({ col: 8, row: 0 });
+  });
+
+  it("still fights what enters the leash", () => {
+    const grid = new TileGrid(10, 1);
+    const g = guard(8, 0);
+    const player = at("p", "player", 6, 0);
+    const plan = planEnemyTurn(g, [g, player], grid);
+    expect(plan.destination).toEqual({ col: 7, row: 0 }); // inside the leash, adjacent
+    expect(plan.target).toBe(player);
+  });
+
+  it("walks back toward a lost post rather than engaging where it stands", () => {
+    const grid = new TileGrid(10, 1);
+    const g = guard(8, 0);
+    g.pos = { col: 2, row: 0 }; // displaced (a shove); the post stays (8,0)
+    const player = at("p", "player", 1, 0); // adjacent — but out-of-leash tiles never fight
+    const plan = planEnemyTurn(g, [g, player], grid);
+    expect(plan.target).toBeNull();
+    expect(plan.destination).toEqual({ col: 5, row: 0 }); // full move budget toward home
+  });
+
+  it("threatenedTiles honors the leash — the danger read never overstates a holder", () => {
+    const grid = new TileGrid(10, 1);
+    const g = guard(8, 0);
+    const player = at("p", "player", 0, 0);
+    const threat = threatenedTiles([g, player], grid, "player");
+    const cols = threat.map((t) => t.col);
+    // Strike-from tiles are leash-bound (cols 6–9), so threat reaches col 5, no farther.
+    expect(cols).toContain(5);
+    expect(cols).not.toContain(4);
+  });
+});

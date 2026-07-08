@@ -95,6 +95,7 @@ const ENGAGED_KEYS = [
   "leveled",
   "restedInPlace",
   "storagePressure",
+  "feltTraps",
 ] as const;
 
 /** The aggregate readout over a batch — the digest the CLI/guard test reads. */
@@ -113,6 +114,8 @@ export interface SimDigest {
   endLayerHistogram: Record<number, number>;
   /** Fraction of runs that engaged each logistics lever. */
   leverEngagement: Record<(typeof ENGAGED_KEYS)[number], number>;
+  /** Summed enemy-trap engagement (D12/D54/D82) — staged-but-untouched is the loud read. */
+  traps: { staged: number; spotted: number; sprung: number; disarmed: number; salvaged: number };
   permadeathsPerRun: number;
   medianGoldEarned: number;
 }
@@ -130,10 +133,16 @@ export function aggregate(results: ReadonlyArray<RunResult>): SimDigest {
   const encounterOutcomes: Record<EncounterResult, number> = { win: 0, "objective-failure": 0, wipe: 0 };
   const endLayerHistogram: Record<number, number> = {};
   const leverEngagement = Object.fromEntries(ENGAGED_KEYS.map((k) => [k, 0])) as SimDigest["leverEngagement"];
+  const traps: SimDigest["traps"] = { staged: 0, spotted: 0, sprung: 0, disarmed: 0, salvaged: 0 };
   let permadeaths = 0;
   for (const r of results) {
     endLayerHistogram[r.endLayer] = (endLayerHistogram[r.endLayer] ?? 0) + 1;
     for (const k of ENGAGED_KEYS) if (r.summary.engaged[k]) leverEngagement[k] += 1;
+    traps.staged += r.summary.traps.staged;
+    traps.spotted += r.summary.traps.spotted;
+    traps.sprung += r.summary.traps.sprung;
+    traps.disarmed += r.summary.traps.disarmed;
+    traps.salvaged += r.summary.traps.salvaged;
     permadeaths += r.summary.permadeaths;
     for (const o of ["win", "objective-failure", "wipe"] as EncounterResult[]) {
       encounterOutcomes[o] += r.summary.outcomes[o];
@@ -153,6 +162,7 @@ export function aggregate(results: ReadonlyArray<RunResult>): SimDigest {
     leverEngagement: Object.fromEntries(
       ENGAGED_KEYS.map((k) => [k, runs ? leverEngagement[k] / runs : 0]),
     ) as SimDigest["leverEngagement"],
+    traps,
     permadeathsPerRun: runs ? permadeaths / runs : 0,
     medianGoldEarned: median(results.map((r) => r.summary.goldEarned)),
   };
@@ -171,5 +181,6 @@ export function formatDigest(label: string, d: SimDigest): string {
       .map(([l, n]) => `L${l}:${n}`)
       .join(" ")}`,
     `  levers engaged: ${ENGAGED_KEYS.map((k) => `${k} ${pct(d.leverEngagement[k])}`).join(" · ")}`,
+    `  enemy traps: staged ${d.traps.staged} · spotted ${d.traps.spotted} · sprung ${d.traps.sprung} · disarmed ${d.traps.disarmed} · salvaged ${d.traps.salvaged}`,
   ].join("\n");
 }

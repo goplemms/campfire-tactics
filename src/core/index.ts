@@ -23,6 +23,7 @@ export * from "./battle-flow";
 export * from "./resolution";
 export * from "./vision";
 export * from "./ai";
+export * from "./standing-orders";
 export * from "./skills";
 export * from "./jobs";
 export * from "./turn";

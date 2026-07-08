@@ -2,13 +2,14 @@
  * R1 (#111) — characterization safety net for combat-log **totality**.
  *
  * A golden scripted battle (fixed seed, variance ON, fully deterministic) that uses
- * BOTH out-of-log verbs the audit flagged — `Battle.rescue` and `Battle.useHeal` —
- * and pins its exact end-state. Then the **discrepancy witnesses**: today
- * `replay(initial, log)` does NOT reproduce that end-state, because neither verb
- * appends a {@link CombatAction} (the rescue's captive-free and the heal's
- * herb-consumption + turn-commit are invisible to the log). Each witness flips when
- * its verb becomes a logged action (increments 1–2), and increment 4 replaces them
- * with the full byte-identity pin that closes #111.
+ * BOTH verbs the audit flagged as out-of-log — `Battle.rescue` and `Battle.useHeal` —
+ * and pins its exact end-state. At increment 0 these tests were **discrepancy
+ * witnesses**: `replay(initial, log)` did NOT reproduce that end-state, because
+ * neither verb appended a {@link CombatAction}. Increment 1 (logged rescue) and
+ * increment 2 (logged useHeal) each flipped their witness; increment 4 holds them as
+ * the standing **replay pin** that closes #111: the golden battle replays
+ * byte-identically (through a JSON round-trip of its log), and undo/undoAll cross
+ * both verbs.
  *
  * Sim baseline at increment 0 (`npm run sim` — must stay byte-identical through R1):
  *   ── procedural / normal (80 runs) ──
@@ -144,7 +145,7 @@ describe("R1 #111 — golden rescue+heal battle (log-totality characterization)"
     expect(battle.log.length).toBeGreaterThan(0);
   });
 
-  it("replay reproduces the logged rescue (increment-1 flip): the replayed captive is freed", () => {
+  it("replay reproduces the logged rescue (the increment-0 witness, flipped): the replayed captive is freed", () => {
     const { battle } = playGolden();
     const { rebuilt } = replayGolden(battle);
     // The rescue is a logged action now, so the replayed captive comes back freed —
@@ -152,7 +153,7 @@ describe("R1 #111 — golden rescue+heal battle (log-totality characterization)"
     expect(unitIn(rebuilt, "cap").captured).toBe(false);
   });
 
-  it("replay reproduces the logged heal (increment-2 flip): the ally's HP and the herb spend come back", () => {
+  it("replay reproduces the logged heal (the increment-0 witness, flipped): the ally's HP and the herb spend come back", () => {
     const { battle } = playGolden();
     const { rebuilt, inv } = replayGolden(battle);
     // The heal (herb spend + turn commit) is a logged action now: the replayed ally
@@ -160,6 +161,57 @@ describe("R1 #111 — golden rescue+heal battle (log-totality characterization)"
     expect(unitIn(rebuilt, "ally").hp).toBe(unitIn(battle, "ally").hp);
     expect(countOf(inv, "salve")).toBe(1);
     expect(rebuilt.units).toEqual(battle.units);
+  });
+
+  it("THE REPLAY PIN (closes #111): the golden battle replays byte-identically, through a JSON round-trip", () => {
+    const { battle } = playGolden();
+    const grid = new TileGrid(8, 3);
+    const inv = createInventory(8, { salve: 2 });
+    // The full invariant, on the wire form: serialize the log, parse it back, replay
+    // from the initial roster + initial stash — identical battle, identical log.
+    const wire = JSON.parse(JSON.stringify(battle.log)) as CombatAction[];
+    const rebuilt = replay(grid, roster(), wire, { ...GOLDEN_OPTS, stash: inv });
+    expect(rebuilt.units).toEqual(battle.units);
+    expect(rebuilt.log).toEqual(battle.log);
+    expect(rebuilt.outcome()).toEqual(battle.outcome());
+    expect(countOf(inv, "salve")).toBe(1);
+  });
+
+  it("undo/undoAll cross both verbs — the armed span rolls back byte-identically (#111)", () => {
+    const grid = new TileGrid(8, 3);
+    const battle = new Battle(grid, roster(), GOLDEN_OPTS);
+    const inv = createInventory(8, { salve: 2 });
+    battle.setStash(inv);
+    battle.seed();
+    const medic = unitIn(battle, "medic");
+    const ally = unitIn(battle, "ally");
+    const hero = unitIn(battle, "hero");
+    const cap = unitIn(battle, "cap");
+
+    battle.beginUndo();
+    const before = battle.units.map((u) => structuredClone(u));
+
+    battle.rescue(cap, hero);
+    battle.useHeal(medic, HEAL, ally, "salve", inv, { commitTurn: false });
+    expect(cap.captured).toBe(false);
+    expect(ally.hp).toBe(38);
+    expect(countOf(inv, "salve")).toBe(1);
+    expect(battle.undoDepth()).toBe(2);
+
+    // Peel the heal back alone — the rescue stands.
+    expect(battle.undo()?.kind).toBe("useHeal");
+    expect(ally.hp).toBe(5);
+    expect(countOf(inv, "salve")).toBe(2); // herb refunded
+    expect(cap.captured).toBe(false); // the earlier rescue is untouched
+
+    // Re-do, then roll the whole span back — byte-identical to the armed start.
+    battle.useHeal(medic, HEAL, ally, "salve", inv, { commitTurn: false });
+    const undone = battle.undoAll();
+    expect(undone.map((a) => a.kind)).toEqual(["useHeal", "rescue"]);
+    expect(battle.units.map((u) => structuredClone(u))).toEqual(before);
+    expect(cap.captured).toBe(true);
+    expect(countOf(inv, "salve")).toBe(2);
+    expect(battle.log).toEqual([]);
   });
 });
 

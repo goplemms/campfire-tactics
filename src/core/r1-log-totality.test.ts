@@ -135,13 +135,13 @@ describe("R1 #111 — golden rescue+heal battle (log-totality characterization)"
     expect(battle.log.length).toBeGreaterThan(0);
   });
 
-  it("WITNESS (flips when rescue is logged): replay misses the unlogged rescue", () => {
+  it("replay reproduces the logged rescue (increment-1 flip): the replayed captive is freed", () => {
     const { battle } = playGolden();
     const grid = new TileGrid(8, 3);
     const rebuilt = replay(grid, roster(), battle.log, GOLDEN_OPTS);
-    // The rescue never reached the log, so the replayed captive is STILL captured —
-    // the state graph (isActive, clock membership, win check) cannot be reconstructed.
-    expect(unitIn(rebuilt, "cap").captured).toBe(true);
+    // The rescue is a logged action now, so the replayed captive comes back freed —
+    // the state graph (isActive, clock membership, win check) reconstructs.
+    expect(unitIn(rebuilt, "cap").captured).toBe(false);
   });
 
   it("WITNESS (flips when useHeal is logged): replay misses the unlogged heal", () => {

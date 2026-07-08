@@ -62,6 +62,14 @@ export type CombatAction =
    * player win), no defeat event, no kill credit. Logged so replay reproduces it.
    */
   | { kind: "escape"; unit: UnitId }
+  /**
+   * Free a bound unit via the in-combat **rescue Act** (D52; D9/D21 semantics
+   * unchanged): clears `target`'s captured state — returning it to the clock, the
+   * win check, and every `isActive` read — and announces `unitRescued`. `unit` is
+   * the rescuer when one is credited (the bus event names it). Logged (R1 #111) so
+   * replay reconstructs the state graph and undo can cross a rescue.
+   */
+  | { kind: "rescue"; target: UnitId; unit?: UnitId }
   // --- Deployment-only verbs (D63/D67) --------------------------------------
   // `move`/`skill` are reused in the pre-combat phase (the interpreter detects the
   // Battle's phase and skips the combat turn-commit) — only these genuinely deploy-only

@@ -502,6 +502,17 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "rescue": {
+        // The in-combat rescue Act (D52) — semantics unchanged (D9/D21): free the
+        // captive and announce it. Logged (R1 #111) because freeing changes the
+        // state graph (isActive, clock membership, the win check) — replay must
+        // reconstruct it, and undo must be able to cross it.
+        const captive = this.unit(action.target);
+        freeCaptive(captive);
+        this.bus.emit("unitRescued", { unit: captive, by: action.unit ? this.unit(action.unit) : undefined });
+        this._log.push(action);
+        return { ok: true };
+      }
       case "beginBattle": {
         // The pre-combat → combat boundary (D67): flip the phase, shed the deploy clock
         // configuration (detach the front, re-widen participation, clear the staging
@@ -570,15 +581,14 @@ export class Battle {
 
   /**
    * Free a bound unit via the in-combat **rescue Act** (D52) — a captured ally, or a new
-   * on-board **captive recruit** (the L1 Cook) joining the fight. Clears the captured state
-   * ({@link freeCaptive}) and announces it on the bus (`unitRescued`) so the render logs the
-   * moment + flashes FX, and future effects (intel reveal, ghost tokens) can hook it. `by`
-   * is the rescuer. Render-facing only — no RNG, no logged action — so it never perturbs
-   * determinism or replay; the post-win auto-free is a separate resolution tally, not this.
+   * on-board **captive recruit** (the L1 Cook) joining the fight. Lowers to the logged
+   * `rescue` action (R1 #111) through {@link apply}: freeing a captive changes the state
+   * graph (`isActive`, clock membership, the win check), so replay must reconstruct it
+   * and undo must be able to cross it. The bus announcement (`unitRescued`) and the D9/D21
+   * semantics are unchanged; the post-win auto-free is a separate resolution tally, not this.
    */
   rescue(captive: Unit, by?: Unit): void {
-    freeCaptive(captive);
-    this.bus.emit("unitRescued", { unit: captive, by });
+    this.apply({ kind: "rescue", target: captive.id, unit: by?.id });
   }
 
   /** True if `caster` may use `skill` right now (not cooling down, D37). */

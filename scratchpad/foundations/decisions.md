@@ -3264,6 +3264,58 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D87 — The combat log is total and serializable; the determinism surface is registered (refactor R1)
+
+- **Status:** Decided + built (2026-07-08) · milestone **R1** of the refactor campaign
+  ([`refactor-campaign-plan.md`](refactor-campaign-plan.md), from the 2026-07-08 audit — issues
+  #111/#115/#116/#122/#124/#136, index #152) · completes the **D63/D67** action-log substrate
+- **Context:** `replay(initial, log) === state` was the combat tier's declared reconciliation
+  invariant — and it was **false**: `Battle.rescue` and the Medic's `useHeal` mutated outside the
+  log (D67's own record had flagged the heal as "a pre-existing gap"), so a battle using either
+  could not be rebuilt from its log and undo could not cross it. The log also carried live
+  `SkillDef` object references (unserializable — no wire format for D27's save), snapshot/clone
+  field lists were hand-maintained (a new `Unit` field silently half-restores undo), and the
+  `streamFor` label namespace was ad-hoc strings across nine modules (collision/typo/rename
+  hazards; D73's forage near-miss lived only in a doc comment).
+- **Decision (five commitments):**
+  1. **The log is total.** Every in-battle mutation flows through `Battle.apply` — `rescue` and
+     `useHeal` are logged `CombatAction`s (semantics untouched: D9/D21 rules, Act costs, bus
+     events; only the dispatch path moved). A golden rescue+heal battle replays
+     **byte-identically**, pinned in `r1-log-totality.test.ts` alongside the sim digest.
+  2. **Skills log by id.** A global `SKILLS` registry (derived at load from `JOBS` +
+     `UNIVERSAL_SKILLS`, collision-checked) resolves ids at apply time, with an **injectable
+     lookup** for fixture skills (the D65 pattern). The log **JSON round-trips** — it is the
+     future save/desync **wire format** (the D27 seam; the save-model session builds on this).
+  3. **The RNG label namespace is registered.** `rng-labels.ts` is the one home for every
+     stream label (23 constructors, exact-value pins, a grep guard in the no-`Math.random`
+     idiom). Label renames are **save/replay-breaking changes by contract**; the file is the
+     enumeration of every random decision in the game.
+  4. **Snapshot field lists are tripwired.** `snapshot-drift.test.ts` classifies every `Unit`
+     key as snapshotted-or-deliberately-not (with per-key reasons) and round-trips
+     `snapshotUnit`/`cloneOverworldEconomy`/`EntityRegistry.snapshot` — a new mutable field
+     added unlisted now **fails by name** instead of silently corrupting undo.
+  5. **The retired deployment models are deleted.** The M5b exposure meter and the D11
+     stealth-alert layer (zero production callers; a header falsely claiming to be live) are
+     gone — `deployment.ts` describes only the D63/D67 closing net. This retires D11's last
+     code remnant. Rider: the `ActionResult` name collision resolved
+     (`BattleActionResult`/`OverworldActionResult`) and the barrel completed
+     (`combat-actions`/`purse-journal`/`grants`; `tuning` stays the one documented exclusion).
+- **Blast radius (named, intended):** none in gameplay — the sim digest is byte-identical
+  end-to-end; the one visible change is render-only: `CombatView.setActiveUnit` is wired again
+  (active-unit nameplate, rail highlight, handoff pop — dead since the demo-driver removal).
+- **Reuses / consistent with:** **D63/D67** (completes the log substrate), **D65** (injectable
+  lookup), **D27** (the save seam this feeds), **D73** (the label lesson generalized),
+  **D9/D21** (rescue semantics preserved), **D2** (pure core; the one render change flagged).
+- **Spec:** `src/core/combat-actions.ts` (`rescue`/`useHeal` kinds, skill-by-id,
+  `BattleActionResult`), `src/core/turn.ts` (dispatch, exported snapshot machinery),
+  `src/core/jobs.ts` (`SKILLS`/`getSkill`), `src/core/rng-labels.ts` (+ the migrated call
+  sites), `src/core/deployment.ts` (net-only), `src/core/index.ts` (completed barrel),
+  `src/core/r1-log-totality.test.ts` / `snapshot-drift.test.ts` / `rng-labels.test.ts`,
+  `BattleScene` (the `setActiveUnit` wire-up).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

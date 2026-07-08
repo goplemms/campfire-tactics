@@ -21,8 +21,6 @@ import {
   resolveKnob,
   cooldownRemaining,
   scoutedTier,
-  intelFloor,
-  clampTier,
   MAX_TIER,
   campSkillUsesLeft,
   fatigueTier,
@@ -509,8 +507,10 @@ export class OverworldScene extends Phaser.Scene {
     // your knowledge of it deepens (party Intelligence floor + Survey scouting). A glance shows which
     // nodes are still mysteries and which you've learned all they'll tell you (a full ring = "done").
     if (node.kind === "combat" && !state.visited) {
-      const tier = clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, node.id));
-      this.drawIntelMeter(pos, radius + 6, tier);
+      // Depth-capped (D86): the ring shows the node's *own* depth in arcs, filled to the
+      // read — a shallow node reads as "less to learn" and fills sooner.
+      const p = previewNode(this.run, node.id, scoutedTier(this.run.overworld, node.id));
+      this.drawIntelMeter(pos, radius + 6, p.intel?.tier ?? 0, p.intelDepth ?? MAX_TIER);
     }
 
     if (state.reachable) {
@@ -523,14 +523,15 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The **intel meter** (D80) — a segmented ring of {@link MAX_TIER} arcs around a node, one per
-   * intel tier, filled (bright) up to the player's current tier and dim beyond. A full ring means
-   * you've learned everything intel will reveal about the node; a mostly-dim ring flags a mystery
-   * worth scouting. Cream fill reads as "knowledge marks", distinct from the warm state ring.
+   * The **intel meter** (D80/D86) — a segmented ring around a node, **one arc per tier of
+   * the node's own intel depth**, filled (bright) up to the current read and dim beyond. A
+   * full ring means you've learned everything this node will tell; a shallow node draws
+   * fewer arcs, so it reads as "less to learn" and completes sooner. Cream fill reads as
+   * "knowledge marks", distinct from the warm state ring.
    */
-  private drawIntelMeter(pos: { x: number; y: number }, r: number, tier: number): void {
+  private drawIntelMeter(pos: { x: number; y: number }, r: number, tier: number, depth = MAX_TIER): void {
     const g = this.add.graphics().setDepth(2);
-    const segs = MAX_TIER;
+    const segs = Math.max(1, depth);
     const gap = Phaser.Math.DegToRad(26);
     const seg = (Math.PI * 2) / segs - gap;
     let a = -Math.PI / 2 + gap / 2; // start near the top, clockwise

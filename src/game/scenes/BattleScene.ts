@@ -65,7 +65,7 @@ import {
   scoutedTier,
   // D10 — the intel deploy edge: scouted ground deploys safer
   intelFloor,
-  clampTier,
+  effectiveIntelTier,
   intelDeployBonus,
   // D84 — standing-order behaviors: the stance telegraph + transition narration
   STANDING_ORDERS,
@@ -794,9 +794,9 @@ export class BattleScene extends Phaser.Scene {
     return moraleModifiers(moraleTier(this.run.camp.morale));
   }
 
-  /** The node's effective intel tier (passive floor + scouting), for the deploy edge (D10). */
+  /** The node's effective intel tier (passive floor + scouting), depth-capped (D86), for the deploy edge (D10). */
   private intelTier(): IntelTier {
-    return clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, this.run.mapNodeId));
+    return effectiveIntelTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, this.run.mapNodeId), currentEncounter(this.run));
   }
 
   /**

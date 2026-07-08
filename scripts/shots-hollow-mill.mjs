@@ -56,6 +56,10 @@ const STEPS = [
   // "5 snares · 1 marked", exact reward, all rumors — and the "✓ No new intel to find"
   // terminal appears (stop spending scout resources). No phantom Type lane (authored).
   { name: "02c-snares-scouted", minMs: 500, eval: ov(`s.run.overworld.scouted["snares"]=1;s.showPreview(s.run.map.nodes["snares"]);`) },
+  // The shallow-intel den (D86, intelDepth 2): the read caps at tier 2 — types + count +
+  // approximate reward, but never positions — and at the party's tier-2 floor it's already
+  // fully known ("✓ No new intel to find" from the start; the meter ring shows 2 arcs).
+  { name: "02d-den-shallow", minMs: 500, eval: ov(`s.showPreview(s.run.map.nodes["den"]);`) },
   { name: "03-make-camp", eval: ov(`s.enterCamp(s.loop.reachable()[0]);`) }, // camp, heading to E1
   { name: "04-ledger", eval: ov(`s.openTent(()=>s.renderCamp(),"ledger");`) }, // the Captain's Tent ledger + forecast over the authored reward
 

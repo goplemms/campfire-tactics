@@ -54,7 +54,7 @@ import { recoverMaterials } from "./resolution";
 import { grantItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
 import { rpPerNight, payUpkeep, restHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
-import { intelFloor, readEncounter, clampTier, MAX_TIER, TRAP_INTEL, type IntelReport, type IntelTier } from "./intel";
+import { intelFloor, readEncounter, effectiveIntelTier, MAX_TIER, TRAP_INTEL, type IntelReport } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import { restoreFatigue, nightlyFatigue, isFatigueTier0 } from "./fatigue";
 import { useOverworldSkill, scoutedTier, type ActionOpts, type CampSkillResult } from "./overworld-actions";
@@ -530,11 +530,10 @@ export class RunLoop {
 
   // --- Intel (D10) ----------------------------------------------------------
 
-  /** The current encounter's intel report at the party's floor tier (D10). */
+  /** The current encounter's intel report at the party's floor tier (D10), depth-capped (D86). */
   intel(extraTier = 0): IntelReport {
     const def = this.source ?? currentEncounter(this.run);
-    const tier = Math.min(3, intelFloor(this.run.party) + extraTier) as IntelTier;
-    return readEncounter(def, tier);
+    return readEncounter(def, effectiveIntelTier(intelFloor(this.run.party) + extraTier, def));
   }
 
   // --- Battle setup ---------------------------------------------------------
@@ -553,7 +552,9 @@ export class RunLoop {
     // Scouting the node to full positional intel (tier 3) blows any hidden ambush
     // — the bodies stage visible instead of springing a surprise (D10 reveal).
     const node = currentNode(this.run);
-    const tier = clampTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, node.id));
+    // Depth-capped (D86): a shallow node can't be scouted to positions, so it never
+    // stages the tier-3 reveal/marks even for a genius party.
+    const tier = effectiveIntelTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, node.id), source);
     // Blanket gear-condition stamp (D52): the iron-weapons +attack edge (decayed by
     // worn gear) and the worn-gear −defense, applied party-wide before the fight.
     applyGearCondition(this.run, players);

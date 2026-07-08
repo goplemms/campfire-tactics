@@ -110,6 +110,25 @@ export function clampTier(t: number): IntelTier {
 }
 
 /**
+ * A node's **intel depth** (D86) — the deepest tier it can be scouted to. Authored
+ * nodes may cap it below {@link MAX_TIER} (a shallow node has genuinely less to know);
+ * procedural encounters are always full-depth.
+ */
+export function intelDepthOf(def: EncounterSource): IntelTier {
+  return isAuthoredEncounter(def) && def.intelDepth !== undefined ? def.intelDepth : MAX_TIER;
+}
+
+/**
+ * The **depth-capped effective read tier** (D86): the raw read (passive floor +
+ * scouting) never exceeds the node's {@link intelDepthOf depth}. The single place the
+ * cap is applied — every read site (preview card, meter, staging reveal, deploy edge)
+ * routes its raw tier through here so they agree on how much this node can tell.
+ */
+export function effectiveIntelTier(rawTier: number, def: EncounterSource): IntelTier {
+  return clampTier(Math.min(rawTier, intelDepthOf(def)));
+}
+
+/**
  * Lane 2 — **scouting**: spend a resource to raise the read one tier (D10). The
  * caller owns the gold/ration cost; this just bumps the tier.
  */
@@ -243,11 +262,17 @@ export interface NodePreview {
    */
   authored?: boolean;
   /**
-   * Combat only (D85): the node has been read to the **deepest tier the system models**
-   * — nothing more is discoverable, so scouting further is wasted. Drives the terminal
-   * "No new intel to find" line, the signal to stop spending scout resources.
+   * Combat only (D85/D86): the node has been read to its **intel depth** — nothing more
+   * is discoverable, so scouting further is wasted. Drives the terminal "No new intel to
+   * find" line, the signal to stop spending scout resources.
    */
   intelComplete?: boolean;
+  /**
+   * Combat only (D86): the node's **intel depth** — how many tiers it can be scouted to
+   * (≤ {@link MAX_TIER}). The intel-meter ring draws this many arcs, so a shallow node
+   * reads as "less to learn" at a glance.
+   */
+  intelDepth?: IntelTier;
 }
 
 /**
@@ -284,12 +309,14 @@ export function previewNode(run: RunState, nodeId: string, extraTier = 0): NodeP
   const authored = isAuthoredEncounter(def);
   preview.authored = authored;
   preview.encounterType = authored ? undefined : def.type;
-  const tier = clampTier(intelFloor(run.party) + extraTier);
+  // Depth-capped read (D86): a shallow node reveals less, whatever the party's floor.
+  const depth = intelDepthOf(def);
+  const tier = effectiveIntelTier(intelFloor(run.party) + extraTier, def);
+  preview.intelDepth = depth;
   preview.intel = readEncounter(def, tier);
   preview.rewardHint = rewardHint(def.reward.gold, tier);
-  // Fully-read signal (D85): tier 3 is the deepest the read models — positions, exact
-  // reward, hazard marks, and the last rumor all land there — so a MAX_TIER read leaves
-  // nothing to scout for. (The single seam a future per-node intel *depth* would refine.)
-  preview.intelComplete = tier >= MAX_TIER;
+  // Fully-read signal (D85/D86): the read reached the node's depth — nothing more to
+  // scout for. Every combat node is full-depth (tier 3) unless authored shallower.
+  preview.intelComplete = tier >= depth;
   return preview;
 }

@@ -3148,12 +3148,10 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   event nodes have no scouting progression). To keep the terminal **honest**, the phantom
   `Type ???` is removed: `NodePreview.authored` flags an authored node and the card omits
   its Type lane — no `???` dangles when the terminal says "nothing more."
-- **Note — per-node intel *depth* (deferred):** every combat node currently bottoms out
-  at tier 3 (enemy *positions* + exact reward guarantee tier-3 content), so the terminal
-  always lands at tier 3. A future model could let a node author a shallower **depth**
-  (some nodes have no tier-3 secret worth scouting — the terminal, and the meter's arc
-  count, would cap lower). `intelComplete`'s single computation site is the seam for it.
-  Deferred until a node wants it; the demo's nodes are all full-depth.
+- **Note — per-node intel *depth*:** every combat node bottomed out at tier 3 (enemy
+  *positions* + exact reward guarantee tier-3 content), so the terminal always landed at
+  tier 3. **→ Delivered: D86** (`AuthoredEncounter.intelDepth` caps the read; the terminal
+  and the meter's arc count follow it; the Thieves' Den is the first shallow node).
 - **Reuses / consistent with:** **D83** (the info/rumors lane — the terminal reads as its
   natural tail; authors align the deepest rumor with the tier-3 secret, as the snares node
   does), **D80** (the intel-meter ring), **D24** (the preview card).
@@ -3161,6 +3159,42 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   `previewNode`), `OverworldScene.intelFields` (drop the authored Type lane) /
   `renderIntelCard` (the terminal line), `intel.test.ts` (the flag pins),
   `scripts/shots-hollow-mill.mjs` (`02c-snares-scouted`).
+- **Superseded by:** —
+
+---
+
+## D86 — Per-node intel depth: nodes vary in how much they can tell
+
+- **Status:** Decided (2026-07-06) · delivers **D85**'s deferred per-node depth · extends
+  **D10/D24** (banded intel) and **D80/D83/D85** (the meter / lanes / terminal)
+- **Context:** Every combat node bottomed out at tier 3 — enemy *positions* and exact
+  reward always gave tier-3 content — so the read depth was uniform and the D85 terminal
+  always landed at tier 3. The user wants to **vary the info a node offers**: some places
+  are simply less scoutable from afar.
+- **Decision:** `AuthoredEncounter.intelDepth?: IntelTier` (default {@link MAX_TIER}) — the
+  deepest tier a node can be read to. The read is **capped**: one seam,
+  `effectiveIntelTier(floor + scouting, def) = clampTier(min(raw, intelDepthOf(def)))`,
+  which **every** read site now routes through (the preview card, the intel-meter ring,
+  the staging reveal/mark tier, and the deploy-edge bonus) so they agree on how much the
+  node tells. A shallow node genuinely knows less: a depth-2 node never reveals
+  **positions** (no tier-3 starting vision / careless mark / blown ambush), its reward
+  stays **approximate**, its intel-meter ring draws **2 arcs**, and its "✓ No new intel to
+  find" terminal (D85) lands at tier 2 — reached the moment the party's floor hits it.
+  - **First authored use — the Thieves' Den (`intelDepth: 2`).** A hidden hideout resists a
+    distant read: you learn *what* lurks and *how many*, never *where* they spring from —
+    you deploy half-blind, sharpening the chase-the-thief tension. At the demo party's
+    tier-2 floor (Vale, Int 7) the den is fully known from the start (terminal shows, ring
+    full), so it's never worth a Survey — exactly the "don't spend resources" signal.
+  - **Authoring rule:** content must fit the depth — keep `rumors.length ≤ intelDepth`
+    (deeper lines would be unreachable). All other nodes stay full-depth (unchanged).
+- **Reuses / consistent with:** **D85** (the terminal + authored-Type omission now key off
+  depth, not a hardcoded MAX_TIER), **D80** (the meter draws `depth` arcs), **D10** (the
+  deploy edge is capped too — no tier-3 bonus on a shallow node).
+- **Spec:** `src/core/authored.ts` (`intelDepth`), `src/core/intel.ts` (`intelDepthOf` /
+  `effectiveIntelTier`; `previewNode` sets `intelDepth`/`intelComplete`), `runloop.ts`
+  (`intel()` + `startEncounter` capped), `BattleScene.intelTier` (deploy edge capped),
+  `OverworldScene.drawIntelMeter` (depth arcs), `hollow-mill.ts` (the Den),
+  `intel.test.ts`, `scripts/shots-hollow-mill.mjs` (`02d-den-shallow`).
 - **Superseded by:** —
 
 ---

@@ -248,10 +248,16 @@ export const SECURED_WAGON: AuthoredEncounter = {
  * and bolt for the edge (per theft.ts + ENEMY_TEMPLATES.thief) — kill them to drop the
  * gold; let them escape and it's gone. On the win, the **relic** drops (placeholder
  * unique; effect TBD). Stealth in play.
+ *
+ * **Shallow intel (D86): `intelDepth: 2`.** A hidden hideout resists a distant read —
+ * you can learn *what* lurks and *how many*, but never *where* they'll spring from
+ * (no tier-3 positions / starting vision). The first authored use of per-node depth:
+ * you deploy into the den half-blind, sharpening the chase-the-thief tension.
  */
 export const THIEVES_DEN: AuthoredEncounter = {
   id: "thieves-den",
   name: "The Thieves' Den",
+  intelDepth: 2,
   cols: 9,
   rows: 6,
   blocked: [{ col: 3, row: 0 }, { col: 5, row: 5 }, { col: 6, row: 2 }],

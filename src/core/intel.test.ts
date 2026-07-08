@@ -11,6 +11,8 @@ import {
   clampTier,
   MAX_TIER,
   TRAP_INTEL,
+  intelDepthOf,
+  effectiveIntelTier,
   previewNode,
   rewardBand,
 } from "./intel";
@@ -282,5 +284,46 @@ describe("intel — the fully-read terminal + authored-shape omission (D85)", ()
 
   it("a rest node carries no intel-complete signal (nothing to scout)", () => {
     expect(previewNode(run, "start").intelComplete).toBeUndefined();
+  });
+});
+
+describe("intel — per-node depth caps the read (D86)", () => {
+  const shallow: AuthoredEncounter = { ...AMBUSH, intelDepth: 2 };
+  const deep: AuthoredEncounter = { ...AMBUSH }; // no intelDepth → full
+
+  it("intelDepthOf reads the authored cap, defaulting to MAX_TIER", () => {
+    expect(intelDepthOf(deep)).toBe(MAX_TIER);
+    expect(intelDepthOf(shallow)).toBe(2);
+  });
+
+  it("effectiveIntelTier never exceeds the node's depth, however sharp the party", () => {
+    expect(effectiveIntelTier(3, shallow)).toBe(2); // a tier-3 read capped to 2
+    expect(effectiveIntelTier(1, shallow)).toBe(1); // below the cap: unchanged
+    expect(effectiveIntelTier(3, deep)).toBe(3); // full-depth node: uncapped
+  });
+
+  it("a depth-2 read never reveals positions or blows the ambush", () => {
+    // Capped to tier 2: positions (tier 3) stay hidden, and the ambush body never
+    // reveals — count reads 1 (the visible thug), never the concealed cutthroat.
+    const capped = readEncounter(shallow, effectiveIntelTier(3, shallow));
+    expect(capped.count).toBe(1);
+    expect(capped.positions).toBeUndefined();
+    expect(capped.grantsVision).toBe(false);
+    // …whereas the full-depth twin, read at tier 3, reveals both bodies + positions.
+    const full = readEncounter(deep, effectiveIntelTier(3, deep));
+    expect(full.count).toBe(2);
+    expect(full.positions).toHaveLength(2);
+    expect(full.grantsVision).toBe(true);
+  });
+
+  it("the Thieves' Den is authored shallow (depth 2) — fully known to a smart party, no positions", () => {
+    const run = createRunFromExpedition(THE_HOLLOW_MILL); // Vale int 7 → tier-2 floor
+    const den = previewNode(run, "den");
+    expect(den.intelDepth).toBe(2);
+    // At the tier-2 floor the den is already read to its depth — nothing to scout.
+    expect(den.intelComplete).toBe(true);
+    expect(den.intel?.positions).toBeUndefined(); // never learns where the thieves lurk
+    // A Survey bump can't push past the cap.
+    expect(previewNode(run, "den", 1).intel?.tier).toBe(2);
   });
 });

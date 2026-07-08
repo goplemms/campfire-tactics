@@ -206,6 +206,16 @@ finale** — replace when L6–10 are designed.
 
 Recent work that altered routing or the within-node experience. Newest first.
 
+- **Per-node intel depth — the Thieves' Den reads shallow (D86).** Delivers D85's deferred
+  per-node depth: `AuthoredEncounter.intelDepth` caps how deep a node can be scouted, via
+  one seam (`effectiveIntelTier`) every read site routes through (preview card, meter,
+  staging reveal, deploy edge). A shallow node knows less — no positions, approximate
+  reward, fewer meter arcs, and the "✓ No new intel to find" terminal lands sooner. First
+  use: **the Den is `intelDepth: 2`** — a hidden hideout you learn the *what/how-many* of
+  but never the *where*, so you deploy half-blind into the chase-the-thief tension; at the
+  demo party's tier-2 floor it's fully known from the start (never worth a Survey). Every
+  other node stays full-depth (unchanged). Guards: tsc · 1037 unit tests (depth caps the
+  read / positions / vision; the Den pins) · build · e2e (73) · shots (`02d-den-shallow`).
 - **Intel card polish: a "no new intel" terminal + no phantom Type lane (D85).** A
   visual-pass follow-on. The card now shows **"✓ No new intel to find"** once a node is
   scouted to the deepest tier (tier 3 — positions, exact reward, hazard marks, the last

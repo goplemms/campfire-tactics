@@ -90,7 +90,7 @@ import {
   type EquipSlot,
 } from "../../core";
 import { fitText, clearLayer, isScreenshotMode } from "../ui";
-import { Button } from "../button";
+import { Button, probeWidth } from "../button";
 import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
 import { HintPanel } from "../hint-panel";
 import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
@@ -232,6 +232,9 @@ export class OverworldScene extends Phaser.Scene {
   private nodePos = new Map<string, { x: number; y: number }>();
   private nodeObjects: Phaser.GameObjects.GameObject[] = [];
   private overlay: Phaser.GameObjects.GameObject[] = [];
+  /** The current resting hint — a button's hover-hint restores to this on pointer-out
+   *  (the `idle` sink, mirroring BattleScene.lastHint). */
+  private restingHint = "";
 
   // The unified overworld camp (D35): objects + the node currently camped at.
   private campObjects: Phaser.GameObjects.GameObject[] = [];
@@ -997,6 +1000,11 @@ export class OverworldScene extends Phaser.Scene {
   /** One areas-nav button — a left-anchored tab with an active (gold) highlight, a hover
    *  hint, drawn onto the given `layer` so the nav can live on the camp or the page. */
   private navButton(x: number, y: number, w: number, h: number, text: string, active: boolean, onClick: () => void, description: string, layer: Phaser.GameObjects.GameObject[]): void {
+    // Deliberately NOT a Button (#134): a nav tab draws its rect at depth 25 and its label
+    // at depth 26 — straddling overlapping ledger-transition content (depth 25) that bleeds
+    // through under the tab but behind the label. A Button is a single-depth Container, so it
+    // can't put the rect below and the label above the same sibling; kept hand-rolled to hold
+    // that exact layering (the survey nav persists under the night-end ledger sheet).
     const bg = this.add.rectangle(x, y, w, h, active ? COLOR.btnFill : COLOR.surfaceAlt).setStrokeStyle(1, active ? COLOR.gold : COLOR.borderSoft).setOrigin(0, 0.5).setDepth(25).setInteractive({ useHandCursor: true });
     const label = this.add.text(x + 10, y, text, { color: active ? INK.gold : INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(26);
     fitText(label, w - 16);
@@ -1013,10 +1021,7 @@ export class OverworldScene extends Phaser.Scene {
 
   /** Width for a compact toolbar button sized to fit its label (measured + side padding). */
   private measureButtonWidth(label: string): number {
-    const probe = this.add.text(0, 0, label, { fontFamily: FONT.family, fontSize: FONT.label }).setVisible(false);
-    const w = Math.ceil(probe.width) + 24;
-    probe.destroy();
-    return w;
+    return Math.ceil(probeWidth(this, label, FONT.label)) + 24;
   }
 
   /**
@@ -1874,24 +1879,33 @@ export class OverworldScene extends Phaser.Scene {
     this.overlay.push(this.add.text(leftX, top + h - 22, `Purse ${m.purse}g     ·     Storage ${m.storageUsed}/${m.storageCap}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
   }
 
-  /** A camp button that greys out (non-interactive) when disabled, with a reason on hover. */
+  /** A camp button that greys out (non-interactive) when disabled, with a reason on hover.
+   *  A thin {@link Button} (left-anchored row): left edge at x, label inset 8 (pad/2). */
   private campButton(x: number, y: number, w: number, h: number, text: string, enabled: boolean, onClick: () => void, description: string, preview?: ActionPreview): void {
-    const fill = enabled ? COLOR.surfaceAlt : COLOR.surfaceRaised;
-    const bg = this.add.rectangle(x, y, w, h, fill).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.surfaceAlt).setOrigin(0, 0.5).setDepth(10);
-    const label = this.add.text(x + 8, y, text, { color: enabled ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
-    fitText(label, w - 16);
-    if (enabled) {
-      bg.setInteractive({ useHandCursor: true });
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
-    }
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hintPanel.setText(description));
-    // Preview the action's effect on the readout panel while hovered (even when greyed —
-    // seeing *what it would do* explains the grey), snapping back to the resting prompt out.
-    if (preview) {
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showActionPreview(preview));
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showActionPreview(null));
-    }
-    this.campObjects.push(bg, label);
+    const btn = new Button(this, x + w / 2, y, {
+      text,
+      w,
+      h,
+      fill: enabled ? COLOR.surfaceAlt : COLOR.surfaceRaised,
+      stroke: enabled ? COLOR.borderSoft : COLOR.surfaceAlt,
+      strokeWidth: 1,
+      color: enabled ? INK.bright : INK.disabled,
+      fontSize: FONT.label,
+      pad: 16,
+      align: "left",
+      hover: false, // camp rows carry their state fill; they never brighten-highlighted on hover
+      enabled,
+      onClick,
+      // The hint + (even when greyed) effect preview drive off the shared hover hooks;
+      // seeing *what it would do* explains the grey, snapping back to the resting prompt out.
+      onHover: () => {
+        this.hintPanel.setText(description);
+        if (preview) this.showActionPreview(preview);
+      },
+      onOut: preview ? () => this.showActionPreview(null) : undefined,
+    });
+    this.add.existing(btn).setDepth(11);
+    this.campObjects.push(btn);
   }
 
   /**
@@ -2581,6 +2595,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private setHint(text: string): void {
+    this.restingHint = text;
     this.hintPanel.setResting(text);
   }
 
@@ -2650,8 +2665,18 @@ export class OverworldScene extends Phaser.Scene {
     }
   }
 
-  private makeTextButton(x: number, y: number, w: number, h: number, text: string, fill: number, stroke: number, onClick: () => void): Button {
-    const btn = new Button(this, x, y, { text, w, h, fill, stroke, onClick });
+  private makeTextButton(x: number, y: number, w: number, h: number, text: string, fill: number, stroke: number, onClick: () => void, description?: string): Button {
+    const btn = new Button(this, x, y, {
+      text,
+      w,
+      h,
+      fill,
+      stroke,
+      onClick,
+      // The same hover-hint wiring BattleScene's wrapper has (#134): show `description`
+      // on hover, restore the resting hint on out. Omitted (no sink) when no description.
+      hint: description !== undefined ? { bar: this.hintPanel, description, idle: () => this.restingHint } : undefined,
+    });
     this.add.existing(btn).setDepth(22);
     return btn;
   }

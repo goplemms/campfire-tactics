@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { COLOR, FONT, INK } from "./theme";
+import { FONT, INK } from "./theme";
 import { fitText, isScreenshotMode } from "./ui";
 
 const Events = Phaser.Input.Events;
@@ -44,6 +44,14 @@ export interface ButtonOptions {
   /** When false the button is inert — no hand cursor, hover, or click (a disabled action). Default true. */
   enabled?: boolean;
   hint?: ButtonHint;
+  /**
+   * Extra pointer-over / pointer-out hooks — fired **regardless of `enabled`** (like
+   * {@link hint}), so a greyed row can still drive a hint/preview that explains the grey.
+   * The scene-side wiring the camp/nav rows used to hand-roll (a hint bar write, an
+   * action-effect preview) becomes these two callbacks.
+   */
+  onHover?: () => void;
+  onOut?: () => void;
 }
 
 /**
@@ -85,9 +93,11 @@ export class Button extends Phaser.GameObjects.Container {
     fitText(this.label, o.w - this.pad);
 
     // A disabled button renders inert: no hit area, hand cursor, hover, or click —
-    // the caller supplies the greyed fill/stroke/colour.
+    // the caller supplies the greyed fill/stroke/colour. The hint + hover hooks still
+    // wire (a greyed row explains its grey on hover), matching the hand-rolled camp rows.
     if (o.enabled === false) {
       if (o.hint) this.wireHint(o.hint);
+      this.wireHover(o);
       return;
     }
 
@@ -114,6 +124,13 @@ export class Button extends Phaser.GameObjects.Container {
       if (this.animate) this.scaleTo(1);
     });
     if (o.hint) this.wireHint(o.hint);
+    this.wireHover(o);
+  }
+
+  /** Bind the caller's extra pointer-over / pointer-out hooks (hint bar write, effect preview). */
+  private wireHover(o: ButtonOptions): void {
+    if (o.onHover) this.bg.on(Events.GAMEOBJECT_POINTER_OVER, o.onHover);
+    if (o.onOut) this.bg.on(Events.GAMEOBJECT_POINTER_OUT, o.onOut);
   }
 
   /** Bind the hover-hint sink: show `description` while hovered, restore `idle()` on out. */
@@ -157,86 +174,6 @@ export class Button extends Phaser.GameObjects.Container {
   }
 }
 
-export interface ColumnSpec {
-  text: string;
-  description?: string;
-  onClick: () => void;
-}
-
-export interface ButtonColumnOptions {
-  specs: ColumnSpec[];
-  /** The x of the column's right edge; it grows leftward from here. */
-  rightEdge: number;
-  centerY: number;
-  /** Width clamps: the column sizes to its widest label between these. */
-  minW: number;
-  maxW: number;
-  fontSize?: string;
-  /** Prefix each label with its `n. ` number-key hotkey (1–9). Default true. */
-  hotkeys?: boolean;
-  buttonFill?: number;
-  buttonStroke?: number;
-  panelFill?: number;
-  panelStroke?: number;
-  panelAlpha?: number;
-  depth?: number;
-  hintBar?: HintSink;
-  idleHint?: () => string;
-}
-
-/**
- * A vertical command panel (FFT-style) that **sizes itself to its content**: it
- * measures its labels and widens—leftward from {@link ButtonColumnOptions.rightEdge}—
- * to fit the longest at full size, clamped to `[minW, maxW]`, rather than shrinking
- * the text. A faint backing groups the stack; new entries extend it downward.
- *
- * Owns its buttons and backing as a Container, so swapping panels is just
- * `this.panel?.destroy(); this.panel = new ButtonColumn(...)`. {@link actions}
- * exposes the per-button click handlers in order for number-key hotkeys.
- */
-export class ButtonColumn extends Phaser.GameObjects.Container {
-  readonly actions: (() => void)[] = [];
-
-  constructor(scene: Phaser.Scene, o: ButtonColumnOptions) {
-    super(scene, 0, 0);
-    const fontSize = o.fontSize ?? FONT.label;
-    const hotkeys = o.hotkeys ?? true;
-    const h = 26;
-    const step = 32;
-    const padX = 8;
-    const padY = 8;
-
-    const labels = o.specs.map((s, i) => (hotkeys && i < 9 ? `${i + 1}. ${s.text}` : s.text));
-    const widest = Math.max(0, ...labels.map((t) => probeWidth(scene, t, fontSize)));
-    const w = Math.min(o.maxW, Math.max(o.minW, Math.ceil(widest) + 18));
-    const cx = o.rightEdge - w / 2;
-    const startY = o.centerY - ((o.specs.length - 1) * step) / 2;
-
-    const bgH = (o.specs.length - 1) * step + h + padY * 2;
-    this.add(
-      scene.add
-        .rectangle(cx, o.centerY, w + padX * 2, bgH, o.panelFill ?? COLOR.surface, o.panelAlpha ?? 0.6)
-        .setStrokeStyle(1, o.panelStroke ?? COLOR.border),
-    );
-    o.specs.forEach((spec, i) => {
-      this.add(
-        new Button(scene, cx, startY + i * step, {
-          text: labels[i],
-          w,
-          h,
-          fill: o.buttonFill ?? COLOR.btnFill,
-          stroke: o.buttonStroke ?? COLOR.btnStroke,
-          fontSize,
-          onClick: spec.onClick,
-          hint: o.hintBar ? { bar: o.hintBar, description: spec.description, idle: o.idleHint ?? (() => "") } : undefined,
-        }),
-      );
-      this.actions.push(spec.onClick);
-    });
-    this.setDepth(o.depth ?? 11);
-    scene.add.existing(this);
-  }
-}
 
 /**
  * Natural (unscaled) pixel width of a label at a given font size — used to size a

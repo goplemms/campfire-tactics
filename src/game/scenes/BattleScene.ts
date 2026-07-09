@@ -104,7 +104,7 @@ import {
   type AbilityForecast,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
-import { Button } from "../button";
+import { Button, probeWidth } from "../button";
 import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
@@ -2620,9 +2620,7 @@ export class BattleScene extends Phaser.Scene {
     // a left-column "mission" stack above the focus card.
     const padX = 10, padY = 7, rowPitch = 18, markerGap = 8, top = 28, left = 12;
     // Measure the widest label (off-screen) to size the box to its content, like the action box.
-    const probes = rows.map((r) => this.add.text(0, 0, r.label, { fontFamily: FONT.family, fontSize: FONT.label }).setVisible(false));
-    const labelW = Math.max(40, ...probes.map((t) => t.width));
-    probes.forEach((t) => t.destroy());
+    const labelW = Math.max(40, ...rows.map((r) => probeWidth(this, r.label, FONT.label)));
     const markerW = 10;
     const boxW = padX * 2 + markerW + markerGap + labelW;
     const boxH = padY * 2 + 16 + (rows.length - 1) * rowPitch;

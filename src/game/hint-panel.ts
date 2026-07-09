@@ -36,7 +36,7 @@ export interface HintPanelOptions {
  * layout has room.
  *
  * It satisfies the buttons' `{ setText }` hint sink, so it drops into the existing
- * Button / ButtonColumn wiring: on-hover passes a tip (peeks open), on-out restores
+ * {@link "./button".Button} wiring: on-hover passes a tip (peeks open), on-out restores
  * the resting hint (collapses if unpinned).
  */
 export class HintPanel extends Phaser.GameObjects.Container {

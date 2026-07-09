@@ -27,11 +27,11 @@ mortality; it only chooses *which encounter to play next*. The
 [phase pipeline](../README.md) (Camp → Deployment → Battle → Resolution) runs
 **inside** a combat node, exactly as before.
 
-> **Scope note (D25–D27).** A later design pass wraps this overworld in a persistent
-> **guild** tier: the overworld is now **one caravan's** adventure, and the guild owns
-> several. The shape, determinism, and node loop below are unchanged — what changes is
-> the *ownership* (`run.ts` → a `Guild` of N run states) and the *meaning* of a
-> terminal (a wipe loses a **caravan**, not the guild). See
+> **Scope note (D25–D27).** A persistent **guild** tier wraps this overworld (**built** —
+> `guild.ts`, M9): the overworld is **one caravan's** adventure, and the guild owns several.
+> The shape, determinism, and node loop below are unchanged — what changed is the *ownership*
+> (`run.ts` → a `Guild` of N run states) and the *meaning* of a terminal (a wipe loses a
+> **caravan**, not the guild). See
 > [the guild & caravans](guild.md). The rest of this doc describes a single caravan's
 > run.
 
@@ -104,13 +104,18 @@ A branch is only a *choice* if it is **informed**. Before committing, each
 reachable node shows a **preview** (`previewNode`), wired to the
 [intel](intel.md) system:
 
-- The node's **kind** is always shown, and for a combat node its **encounter
-  type** (open-field / fortified) — you always know the *shape* of what you're
-  walking into.
+- The node's **kind** is always shown, and for a **procedural** combat node its
+  **encounter type** (open-field / fortified). **Authored** nodes **omit the Type
+  lane** (D85, `intel.ts`) — an authored encounter has no procedural *shape* to
+  reveal, so the render drops the lane rather than showing a permanent `???`.
 - The party's **intel floor** (D10) reveals more about a combat node, banded
   identically: **Tier 1** enemy **types** → **Tier 2** the **count** → **Tier 3**
   positions (and starting vision). A **reward hint** is banded the same way
   (hidden → coarse gold band → approximate → exact).
+- Beyond enemy composition, the preview also carries the **D83 trap/hazard lane**,
+  the **D83 info/rumor lane**, the **D85 "✓ No new intel to find" terminal**
+  (`intelComplete`), and **D86 per-node intel depth** (a shallow authored node
+  reveals less, whatever the party's floor) — see [intel](intel.md) for all four.
 - **Rest** nodes preview a recovery hint instead.
 
 Previews are a **pure projection** of the seed-built map and the deterministic
@@ -178,15 +183,18 @@ combat CT clock** (D5), one tier up.
     **no action may be both unpaced *and* unpriced** (that loophole is what let the costless
     job meta-skills — Cook's stew, Merchant's trade — fire unlimited times for free). A
     resource-paid action (a Vancian cast) leaves *pacing* off and is bounded by its price —
-    so it can **fire as many times per node as the party can afford**. (Interim: a
-    `usesPerNode` cap on the costless jobs ships ahead of the full model.)
+    so it can **fire as many times per node as the party can afford**. (The full **two-axis**
+    model shipped, D72 — `usesPerNode` is the per-node cap axis of `OverworldCost`, no longer an
+    interim stopgap.)
 - **Guardrail — fatigue, the clearing currency (redesigned D73).**
   [Fatigue](stats.md#fatigue-overworld-meter-d29) is **not** a tight rationed pool and **not**
   the spine — it is the one **per-character** cost, reserved for slow gold-free **clearing
   verbs** (Forage, Train, Triage). It keeps the D35 shallow-floor shape (invisible in normal
   play) but each band now bites: **Worn** is the safe allowance (wiped by any night); **Weary**
-  makes that unit's rest-heal **cost more RP** and **carries `level − floor` fatigue to the next
-  day** (only a clearing/rest node clears the carryover); **Exhausted** adds a **combat tempo
+  makes that unit's rest-heal **cost more RP** and, under **D80's unified nightly step-down**,
+  steps **one tier down** each night rather than the old D73 `level − floor` carryover
+  (`fatigue.ts` step-down, applied in `chooseNode` — see the D47/D80 recovery table below, with
+  which this section must agree); **Exhausted** adds a **combat tempo
   debuff** (the unit fields **Slowed**). The bite is **consequence-based, not a lock** —
   recoverable and outplayable, cleared in full only by routing to a clearing (rest's second job).
   Revises D29: fatigue now **does** reach combat, but **only at Exhausted and only as tempo**
@@ -512,9 +520,10 @@ sink so gold stays scarce and **Upkeep keeps mattering** (D15).
   mercenary pool, D33) are decided in shape. The **recruitment model** itself is resolved
   (D33, three-tier roster); only the **authored-cast data shape** is deferred. General
   **event** nodes with choices remain to be designed (see [guild.md](guild.md)).
-- **The parallel-adventures time model (D26).** Today `run.ts` holds exactly one map +
-  position; "multiple at once" needs a **`Guild` of N run states** (model C: serial
-  play, parallel commitment), with a path to an interleaved global clock later.
+- **The parallel-adventures time model (D26).** The **`Guild` of N run states** shipped
+  (`guild.ts`, M9 — model C: serial play, parallel commitment; each dispatched caravan owns
+  its own `RunState`). The remaining open piece is the **interleaved global clock** (model A)
+  — waiting caravans still sit untouched rather than ticking a shared timeline.
 - **Map shape tuning:** layer count / width / fan-out / rest frequency as a
   difficulty or biome dial; elite/boss nodes and their tuning.
 - **Pathing texture:** one-way shortcuts, locked nodes, intel that reveals deeper

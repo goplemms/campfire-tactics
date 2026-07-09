@@ -10,9 +10,12 @@
 
 The job system is the game's headline **build-decision point** — the place a unit stops
 being a stat block and becomes *a character the player made*. The **substrate** is already
-deep (D38–D40): every unit carries a **primary job** plus **held jobs** it borrows abilities
-from into **loadout slots**, each job tracks its **own level** with permanent stat gains and
-`unlockLevel`-gated abilities, and every combat job's **passive is its identity anchor**.
+partly deep (D38–D40): every unit carries a **primary job** plus **held jobs** and
+**loadout slots** (`units.ts`), each job tracks its **own level** with permanent stat gains
+and `unlockLevel`-gated abilities, secondary-XP routing works, and every combat job's
+**passive is its identity anchor**. The one piece **not yet built** is the ability-borrowing
+**projection** — actually surfacing a held job's abilities into loadout slots is explicitly
+"a later pass" (`leveling.ts` header; the FFT secondary-class slotting/use-leveling/slot UI).
 
 What that substrate never settled is the **growth *shape*** sitting on top of it: how a unit
 comes to **hold more jobs**, how a job **grows into a stronger successor** (the Fire-Emblem
@@ -162,10 +165,11 @@ the map at all?*) — which is why it was set on the pure-meta economy classes b
 now resolved and the flag has been **removed** (a future need can return as a **keyword tag**, not
 a one-size bucket):
 
-- **Descriptor → derived.** A job with **no `battle`-phase skills** *is* non-combat (every skill
-  already carries a `phase`). It's a **center-of-gravity** read — *which phase does this job's
-  value concentrate in?* — so the Survivalist (deployment), the Cook (meta), and the Banker
-  (overworld) place on a spectrum instead of being forced into a bucket.
+- **Descriptor → derived.** A job with **no `combat` skills** *is* non-combat — read off each
+  skill's **`usableContext`** surface via `skillContexts` (the D67/#123 axis that **replaced** the
+  retired `phase` tag). It's a **center-of-gravity** read — *which surface does this job's value
+  concentrate in?* — so the Survivalist (deployment/`pre-combat`), the Cook (overworld), and the
+  Banker (overworld) place on a spectrum instead of being forced into a bucket.
 - **Permission → fully emergent (D38).** Any class can take the field; `combatRoster` is simply
   `activeRoster` (a Banker *can* deploy — it just has nothing to do but Defend / move / attack,
   the universal verbs every unit has, `jobs.ts:DEFEND`). The consumer audit the change required is
@@ -255,13 +259,17 @@ not a retrofit.
 - **Set Trap** *(Act, L1, Deployment)* — plant a trap: **8 damage** + **Exposes** the first enemy
   onto it (reuses Exposed; sets up the Hunter's Deadeye). **Moved to L1 (D74)** — the fun starter,
   so the Scout fields its full combat kit from the start (gated only on carrying a trap-kit).
-- **Recon** *(Act, L2)* — the Scout's **dual-surface** verb (D74), one ability across all three
-  surfaces. In **battle / deployment** it *darts* **+3 tiles** (the old **Dash** — reach a flank, or
-  infiltrate deep where Quiet Footsteps' evasion compounds, **dual-context by shape**, D67); on the
-  **overworld** it *scouts a node ahead*, raising its banded intel preview a tier (the retired
-  **Survey**, D24/D48, folded in via `SkillDef.overworldEffect`). The Scout's **L2 growth is the
-  overworld**, not a 2nd battle active — on-theme for the recon specialist (and it keeps the *2 active
-  + 1 passive* count: Set Trap + Recon).
+- **Recon** *(Act, L2, combat / deployment)* — the Scout's **dart**: **+3 tiles** (the old
+  **Dash** — reach a flank, or infiltrate deep where Quiet Footsteps' evasion compounds,
+  dual-context by shape, D67). **Combat/deployment only** now (`RECON`, `jobs-data/scout-line.ts`).
+- **Survey** *(L2, overworld)* — the Scout's overworld field-craft, **split back out** as a
+  **standalone** skill (`SURVEY`) — *not* a second face of Recon. It scouts a reachable node on
+  the road ahead, raising its banded intel preview a tier (the D24/D48 recon), priced on the
+  overworld cost menu (`overworldCost: { cooldown: 1, fatigue: 4 }`). There is **no**
+  `SkillDef.overworldEffect` field; "one ability per surface reads cleaner than a two-faced verb"
+  (**D74 revisited**). *(overworld.md's D80 sections describe this same split — the two docs now
+  agree.)* The Scout's **L2 growth is Recon + Survey** — on-theme for the recon specialist, keeping
+  the *2 active + 1 passive* combat count (Set Trap + Recon) while Survey rides the overworld surface.
 
 **The fork — rogue → {Assassin · Thief}.** At a job-level floor **and** a met trigger, the Scout
 prestiges **in place** down one of two branches (replace-the-kit, keep the grind). Both share one

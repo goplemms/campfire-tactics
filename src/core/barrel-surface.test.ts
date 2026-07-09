@@ -89,6 +89,9 @@
  *     (`MERCHANT_SELL`, `BANKER_INTEREST`, `BANKER_BORROW`, `BANKER_GUARD` on their jobs),
  *     −4 dissolved cost consts (`MERCHANT_SELL_COST`, `BANKER_INTEREST_COST`,
  *     `BANKER_BORROW_COST`, `BANKER_PROTECT_COST` — their rows folded into the SkillDefs).
+ *   - increment 7 (Noble patronize → SkillDef + bribe onto the Influence knob): net 0 —
+ *     +1 `NOBLE_PATRONIZE` (on the Noble), −1 `PATRONIZE_COST` (row folded in). `bribeEnemy`
+ *     keeps its name (its Influence spend now rides the shared gate's `influence` knob).
  *     (type-only, not runtime surface) (→ 616).
  */
 import { describe, it, expect } from "vitest";
@@ -193,11 +196,11 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MOVE_COST",
   "NEUTRAL_DANGER",
   "NOBLE_JOB",
+  "NOBLE_PATRONIZE",
   "NODE_EVENTS",
   "ORTHO_OFFSETS",
   "PASSIVE",
   "PASSIVE_INFO",
-  "PATRONIZE_COST",
   "PILOT_POLICY",
   "PIP_COOK",
   "PRESTIGE_OFFERS",

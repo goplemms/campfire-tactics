@@ -236,6 +236,26 @@ export const MERCHANT_JOB: JobDef = {
  * gate that replaced the interim Intelligence-≥-3 proxy ("a Noble is present" is at
  * last a job, not a stat threshold). Hence **no combat/meta skill** here.
  */
+/** Patronize's gold price — a literal mirroring `ECONOMY.noble.patronizeCost` (=12). */
+const PATRONIZE_GOLD = 12;
+
+/**
+ * **Patronize** (D62/#112, R4/A) — the Noble's active Influence faucet: spend purse gold to court
+ * patrons (gold → standing), layered on the passive Renown accrual. Two-axis cost: **once per node**
+ * × the gold price. Effect body: {@link "./economy-actions".applyPatronizeEffect}; the verb
+ * {@link "./economy-actions".patronize} (party-gated on a fielded Noble) reads its cost here.
+ */
+export const NOBLE_PATRONIZE: SkillDef = {
+  id: "patronize",
+  name: "Patronize",
+  description: "Court patrons — spend purse gold for Influence (gold → standing), once per node.",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: 1, gold: PATRONIZE_GOLD },
+  effect: { kind: "patronize" },
+};
+
 export const NOBLE_JOB: JobDef = {
   id: "noble",
   name: "Noble",
@@ -243,7 +263,7 @@ export const NOBLE_JOB: JobDef = {
   // Renown (D71/D72): the Noble's presence accrues Influence each node-step — the standing
   // anchor as data, read by accrueDeclaredFaucets in breakCamp (mirrors ECONOMY.noble.incomePerStep = 1).
   faucet: { influencePerStep: 1 },
-  skills: [],
+  skills: [NOBLE_PATRONIZE],
 };
 
 /**

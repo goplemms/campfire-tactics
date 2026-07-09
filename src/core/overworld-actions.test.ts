@@ -30,10 +30,10 @@ import {
   isPrimed,
   cloneOverworldEconomy,
 } from "./overworld-state";
-import { triage, isHealer, TRIAGE, TRIAGE_COST, PATRONIZE_COST, MERCHANT_BUY_COST, VERB_COSTS } from "./economy-actions";
+import { triage, isHealer, TRIAGE, TRIAGE_COST, MERCHANT_BUY_COST, VERB_COSTS } from "./economy-actions";
 import { getJob, JOBS, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
 import { SURVEY } from "./jobs-data/scout-line";
-import { FORAGE, MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD } from "./jobs-data/support";
+import { FORAGE, MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD, NOBLE_PATRONIZE } from "./jobs-data/support";
 import { PASSIVE } from "./combat";
 import { skillContexts } from "./skills";
 import { availableSkills } from "./leveling";
@@ -363,23 +363,22 @@ describe("the standalone-verb cost registry — the D61 invariant is total (#112
   });
 
   it("the hoisted per-verb consts ARE the (shrinking) registry entries (one source of truth)", () => {
-    // R4/A: the Merchant + Banker rows dissolved onto their JobDef.skills this increment; only
-    // the still-standalone verbs (buy migrating inc 8, patronize inc 7, triage inc 8) remain.
+    // R4/A: the Merchant/Banker/Noble rows dissolved onto their JobDef.skills; only the two
+    // still-standalone verbs (buy + triage, both migrating in increment 8) remain.
     expect(VERB_COSTS["triage"]).toBe(TRIAGE_COST);
-    expect(VERB_COSTS["patronize"]).toBe(PATRONIZE_COST);
     expect(VERB_COSTS["merchant-buy"]).toBe(MERCHANT_BUY_COST);
     // The migrated verbs no longer have a standalone row — their cost lives on the SkillDef.
     expect(VERB_COSTS["merchant-sell"]).toBeUndefined();
     expect(VERB_COSTS["banker-interest"]).toBeUndefined();
     expect(VERB_COSTS["banker-borrow"]).toBeUndefined();
     expect(VERB_COSTS["banker-protect"]).toBeUndefined();
+    expect(VERB_COSTS["patronize"]).toBeUndefined();
   });
 
   // Verb resolvers: exported function → its VERB_COSTS row. A new verb registers here
   // AND in VERB_COSTS (the registry walk at module load validates its cost).
   const VERB_RESOLVERS: Record<string, string> = {
     merchantBuy: "merchant-buy",
-    patronize: "patronize",
     triage: "triage",
   };
 
@@ -391,12 +390,13 @@ describe("the standalone-verb cost registry — the D61 invariant is total (#112
     bankerEngageInterest: BANKER_INTEREST,
     bankerBorrow: BANKER_BORROW,
     bankerProtect: BANKER_GUARD,
+    patronize: NOBLE_PATRONIZE,
   };
 
   // Verbs whose cost gate lives elsewhere — each with the WHERE, never silently exempt.
   const GATED_ELSEWHERE: Record<string, string> = {
     useOverworldSkill: "its SkillDef's overworldCost — the JOBS[*].skills load-time walk",
-    bribeEnemy: "spends Influence off-gate via spendInfluence — the noted D112-step-2 (R4) migration target onto the gate's influence knob",
+    bribeEnemy: "rides the shared gate's reserved `influence` knob with a per-target computed price (bribeCost) — no static VERB_COSTS row (R4/A, #112)",
   };
 
   it("each JobDef-migrated verb's SkillDef is on its job and satisfies the two-axis invariant", () => {

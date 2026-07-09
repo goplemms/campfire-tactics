@@ -33,7 +33,7 @@ import { PASSIVE } from "./combat";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
 import { isPrimed, consumeFlag } from "./overworld-state";
 import { checkOverworldCost, validateOverworldCost, overworldCostOf, type OverworldCost } from "./overworld-cost";
-import { MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD } from "./jobs-data/support";
+import { MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD, NOBLE_PATRONIZE } from "./jobs-data/support";
 import { DEAL_PRIMED_FLAG, type ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
 import type { NodePreview } from "./intel";
@@ -41,7 +41,7 @@ import { nonNegInt } from "./num";
 import { addItem, canAdd, countOf, removeItem, getMaterial, saleValueOf, type MaterialDef } from "./inventory";
 import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
-import { addInfluence, spendInfluence, gainRunGold, influenceTier, type InfluenceTier } from "./economy";
+import { addInfluence, gainRunGold, influenceTier, type InfluenceTier } from "./economy";
 import { grantAbilityUseXp } from "./leveling";
 import { chunkHp } from "./upkeep";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
@@ -455,9 +455,6 @@ export interface PatronizeResult extends ActionOutcome {
   gained?: number;
 }
 
-/** Patronize's two-axis cost (D61/D62): once per node (pacing) × purse gold (price). */
-export const PATRONIZE_COST: OverworldCost = { usesPerNode: 1, gold: ECONOMY.noble.patronizeCost };
-
 /**
  * **Noble PATRONIZE** (D62): spend purse gold to court patrons — an *active* Influence
  * faucet (gold → standing) layered on the passive presence accrual. Routed through the
@@ -469,7 +466,7 @@ export function patronize(run: RunState): PatronizeResult {
   if (!hasNoble(run.party)) {
     return { applied: false, reason: "No Noble in the party to court patrons." };
   }
-  const check = checkOverworldCost(run, "patronize", VERB_COSTS["patronize"], "Patronize");
+  const check = checkOverworldCost(run, "patronize", overworldCostOf(NOBLE_PATRONIZE), "Patronize");
   if (!check.ok) return { applied: false, reason: check.reason };
   const core = applyPatronizeEffect(run);
   check.commit();
@@ -532,11 +529,12 @@ export function bribeChance(tier: InfluenceTier): number {
  * is temporary, an **authored** one a permanent recruit. Refuses (spending nothing) only
  * when the run can't afford the cost. Spends the run's per-expedition standing, not the guild.
  *
- * **Deliberately off-gate (#112):** the bribe spends Influence directly via
- * {@link "./economy".spendInfluence} (its price is computed per target from intel +
- * standing), so it has no {@link VERB_COSTS} row — the noted **D112-step-2 (R4)
- * migration target** onto the gate's reserved `influence` knob, not a silent exemption.
- * The guard test in `overworld-actions.test.ts` carries the same note.
+ * **On-gate (#112, R4/A):** the Influence spend now rides the shared **influence knob** of
+ * {@link "./overworld-cost".checkOverworldCost} — the price is still computed per target from
+ * intel + standing ({@link bribeCost}), passed as the gate's inline `influence` cost, so the
+ * refusal is **standard-shaped** and the spend rides the same check→commit closure as every
+ * verb (the failed-roll gamble commits too). No {@link VERB_COSTS} row (its price is per-target,
+ * not static); the D88 guard classifies it in GATED_ELSEWHERE with this where.
  */
 export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | "name">, preview?: NodePreview): BribeResult {
   // Job-gated like Patronize (D62): the bribe is the Noble's verb — without a Noble in
@@ -546,14 +544,18 @@ export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | 
   }
   const tier = influenceTier(run.overworld.influence);
   const cost = bribeCost(preview, tier);
-  if (!spendInfluence(run.overworld, cost)) {
-    return { applied: false, reason: `Not enough Influence to bribe ${enemy.name} (${cost}).`, cost };
-  }
+  // The Influence price rides the shared gate's reserved `influence` knob (R4/A): a pure check
+  // (spends nothing) whose commit closure spends exactly `cost` — called on both branches below,
+  // since a failed sway still spends the Influence (the gamble). Actorless (no fatigue).
+  const check = checkOverworldCost(run, "bribe", { influence: cost }, `bribe ${enemy.name}`);
+  if (!check.ok) return { applied: false, reason: check.reason, cost };
   // The sway roll — likelier at higher standing, fixed per target+node (no save-scum).
   const roll = streamFor(run.seed, Labels.bribe(run.mapNodeId, enemy.id));
   if (!roll.chance(bribeChance(tier))) {
+    check.commit(); // the gamble: a failed roll still spends the Influence
     return { applied: false, failed: true, cost, detail: `${enemy.name} spurns the offer — ${cost} Influence spent for nothing.` };
   }
+  check.commit();
   const outcome = recruitClassify(enemy);
   const detail = outcome.permanent
     ? `${enemy.name} is swayed — joins permanently after the battle.`
@@ -684,19 +686,17 @@ export function applyTriageFallbackEffect(wounded: Unit): number {
  * unpriced standalone verb **fails at module load**, exactly like a bad skill record.
  *
  * **Shrinking (R4/A, #112):** the Merchant + Banker verbs migrated their rows onto their
- * `JobDef.skills` this increment (Merchant Sell → {@link "./jobs-data/support".MERCHANT_SELL};
- * Invest/Borrow/Guard → the Banker skills), so their costs are now validated by the JOBS walk.
- * Only `merchant-buy` (universal, migrating in increment 8), `patronize` (increment 7) and
- * `triage` (increment 8) remain here; the registry retires entirely in increment 9.
+ * `JobDef.skills` (Merchant Sell → {@link "./jobs-data/support".MERCHANT_SELL}; Invest/Borrow/
+ * Guard → the Banker skills), and Patronize onto {@link "./jobs-data/support".NOBLE_PATRONIZE};
+ * their costs are now validated by the JOBS walk. Only `merchant-buy` and `triage` remain here,
+ * both migrating onto {@link "./jobs-data/support".UNIVERSAL_OVERWORLD_SKILLS} / the Medic in
+ * increment 8, after which the registry retires entirely (increment 9).
  *
- * **Deliberately off-gate:** {@link bribeEnemy} spends Influence via
- * {@link "./economy".spendInfluence} (a per-target computed price) — the noted
- * D112-step-2 (R4) migration target onto the gate's reserved `influence` knob,
- * not a silent exemption (increment 7).
+ * **On-gate (R4/A):** {@link bribeEnemy} now rides the shared gate's reserved `influence` knob
+ * with a per-target computed price (no static row) — standard-shaped refusals, one check→commit.
  */
 export const VERB_COSTS: Readonly<Record<string, OverworldCost>> = {
   "merchant-buy": MERCHANT_BUY_COST,
-  patronize: PATRONIZE_COST,
   triage: TRIAGE_COST,
 };
 

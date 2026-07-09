@@ -30,7 +30,7 @@
 
 import type { Guild } from "./guild";
 import type { RunState } from "./run";
-import type { OverworldEconomy } from "./overworld-actions";
+import type { OverworldEconomy } from "./overworld-state";
 import type { Unit } from "./units";
 import { nonNegInt, bandFor } from "./num";
 import { earn, type PurseSource } from "./purse-journal";

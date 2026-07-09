@@ -43,7 +43,7 @@ import {
   checkOverworldCost,
   resolveKnob,
   type OverworldCost,
-} from "./overworld-actions";
+} from "./overworld-cost";
 
 let nextId = 0;
 function member(name: string, jobId: JobId): Unit {

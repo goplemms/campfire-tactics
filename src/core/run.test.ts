@@ -18,7 +18,8 @@ import {
 import { generateOverworld, getNode } from "./overworld";
 import { isAuthoredEncounter } from "./staging";
 import { RunLoop } from "./runloop";
-import { useOverworldSkill, cooldownRemaining } from "./overworld-actions";
+import { useOverworldSkill } from "./overworld-actions";
+import { cooldownRemaining } from "./overworld-state";
 import { RECOVERY } from "./upkeep";
 import { SURVEY } from "./jobs";
 

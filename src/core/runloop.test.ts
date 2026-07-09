@@ -4,7 +4,7 @@ import { createRun, currentNode, reachableNodes, chooseNode, type RunState } fro
 import { RunLoop } from "./runloop";
 import { REST } from "./recovery";
 import { getNode } from "./overworld";
-import { cooldownRemaining } from "./overworld-actions";
+import { cooldownRemaining } from "./overworld-state";
 import { SURVEY } from "./jobs";
 import { computeUpkeep, RECOVERY } from "./upkeep";
 import { FATIGUE, FATIGUE_TIER_FLOORS } from "./fatigue";

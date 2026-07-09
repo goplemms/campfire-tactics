@@ -22,7 +22,7 @@ import { getJob } from "./jobs";
 import { PASSIVE_INFO } from "./combat";
 import type { SkillDef } from "./skills";
 import { fatigueTier, spendFatigue, type FatigueTier } from "./fatigue";
-import { overworldCostOf } from "./overworld-actions";
+import { overworldCostOf } from "./overworld-cost";
 import { moraleTier, type MoraleTier } from "./camp";
 import { computeUpkeep } from "./upkeep";
 import { DYING_COUNTER, isDying } from "./mortality";

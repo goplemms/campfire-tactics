@@ -19,7 +19,7 @@ import { countOf, removeItem, type Inventory } from "./inventory";
 import { abilityScaleBonus } from "./leveling";
 import { assertNever } from "./num";
 import type { CapabilityId } from "./jobs";
-import type { OverworldCost } from "./overworld-actions";
+import type { OverworldCost } from "./overworld-cost";
 
 /** The ordered phases of the game pipeline (D3). */
 export type Phase = "meta" | "deployment" | "battle" | "resolution";

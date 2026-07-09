@@ -54,7 +54,8 @@ import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, ty
 import { rpPerNight, payUpkeep, accrueRp, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, effectiveIntelTier, MAX_TIER, TRAP_INTEL, type IntelReport } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
-import { useOverworldSkill, scoutedTier, type ActionOpts, type CampSkillResult } from "./overworld-actions";
+import { useOverworldSkill, type ActionOpts, type CampSkillResult } from "./overworld-actions";
+import { scoutedTier } from "./overworld-state";
 import { gainRunGold } from "./economy";
 import { applyGearCondition } from "./gear-condition";
 import {

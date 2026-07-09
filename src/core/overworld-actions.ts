@@ -1,334 +1,43 @@
 /**
- * The overworld action economy (D29/D35) — the machinery of the second hook
- * surface.
+ * The overworld action **interpreter** + effect registry (D29/D35/D72).
  *
  * The overworld is the **twin of the combat CT clock** ({@link "./clock"}, D5),
  * one tier up: a data-driven hook surface where classes *act between nodes*. An
- * **overworld ability** is **data** — an id, a display, an {@link OverworldEffect},
- * and a {@link OverworldCost} drawn from the short limiter menu (D29) — resolved by
- * one interpreter ({@link useOverworldSkill}), exactly as combat/camp skills are
- * data resolved by {@link "./skills"} (D3/D4 ethos). New abilities are new records,
- * not new branches. Since D72 the home is unified onto `JobDef.skills` (A2): an
- * overworld action is a {@link "./skills".SkillDef} with an `overworldCost` + an
- * {@link "./skills".OverworldActionEffect}, surfaced through {@link "./leveling".availableSkills}.
+ * **overworld ability** is **data** — a {@link "./skills".SkillDef} with an
+ * `overworldCost` + an {@link "./skills".OverworldActionEffect} — resolved by one
+ * interpreter ({@link useOverworldSkill}), exactly as combat/camp skills are data
+ * resolved by {@link "./skills"} (D3/D4 ethos). New abilities are new records, not new
+ * branches.
  *
- * - **Spine — per-ability cooldowns (D35).** Each ability carries a **node-step
- *   cooldown**: firing it arms the cooldown; advancing a node ({@link tickCooldowns},
- *   driven from {@link "./run".recordNight}) decrements it; at 0 it re-arms. The
- *   cooldown is **per-run, per-ability** — a Merchant can't market every node.
- *   *Cooldowns encourage engagement* (use-it-or-waste-it) where a tight hoardable
- *   pool would punish use.
- * - **Guardrail — loose fatigue (D35).** Each ability *may* also cost
- *   {@link "./fatigue".spendFatigue | fatigue} on the **acting character** — the
- *   loose over-extension stake, not the pace. An over-extended actor pays a gentle
- *   surcharge and, when exhausted, can't push the most-demanding actions.
- * - **Per-ability costs (D34/D30).** `gold` (the single existing run pool — the
- *   two-pool purse split is M10) rides on top of the cooldown spine.
+ * This module is the **interpreter half** of the economy (R3, #129): the cost grammar
+ * + gate live in {@link "./overworld-cost"}, the per-run state in
+ * {@link "./overworld-state"}, and the economy verbs (Merchant / Banker / Noble /
+ * Triage) in {@link "./economy-actions"}. Here: the shared result types, the single
+ * {@link useOverworldSkill} interpreter, and the exhaustive
+ * {@link OVERWORLD_EFFECT_HANDLERS} effect registry.
  *
- * Determinism (D22): cooldowns/fatigue are plain run state — **no live RNG**.
+ * Determinism (D22): cooldowns/fatigue are plain run state — **no live RNG** (Forage's
+ * roll rides a seeded stream).
  *
  * Pure logic: no Phaser, no DOM.
  */
 
-import { fieldedUnits, healUnit, primaryJobOf, type Unit } from "./units";
+import { primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
-import { skillContexts } from "./skills";
-import { getJob, unitHasCapability, JOBS } from "./jobs";
-import { PASSIVE } from "./combat";
-import { spendFatigue } from "./fatigue";
-import { decayCounters, bumpCounter, nonNegInt } from "./num";
-import { earn, spend } from "./purse-journal";
-import { spendInfluence } from "./economy";
+import { unitHasCapability } from "./jobs";
+import { bumpCounter } from "./num";
 import { reachableFrom, marketOpenedFlag } from "./overworld";
-import { satisfyUpkeepLine, accrueRp, spendRp } from "./upkeep";
-import { applyCampSkill, type Camp, type CampOutcome } from "./camp";
+import { satisfyUpkeepLine, accrueRp } from "./upkeep";
+import { applyCampSkill, type CampOutcome } from "./camp";
 import { grantAbilityUseXp, jobLevelOf } from "./leveling";
 import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { grantItem } from "./inventory";
+import { overworldCostOf, checkOverworldCost } from "./overworld-cost";
+import { setNodeFlag, primeFlag, campSkillUses } from "./overworld-state";
 
-/**
- * A **price knob** (D72): either a fixed number, or a **provider** computed from the
- * run at gate time. The provider is how Cook Stew prices itself at *the night's Food
- * value* (`(run) => computeUpkeep(run.party).total`) rather than a static figure —
- * a single, generic seam that keeps the two-axis menu (no new typed cost-kind per
- * dynamic price). Must be a **pure** function of run state. It is resolved **once, at
- * check time** (#126): the passing check captures the resolved prices in its commit
- * closure, so an effect that moves party composition mid-verb can no longer drift the
- * committed spend away from the price the check gated on (the old re-resolution trap).
- */
-export type CostKnob = number | ((run: RunState) => number);
-
-/** Resolve a {@link CostKnob} against the run — a provider is sanitized to a non-negative int. */
-export function resolveKnob(knob: CostKnob | undefined, run: RunState): number {
-  return typeof knob === "function" ? nonNegInt(knob(run)) : knob ?? 0;
-}
-
-/** True if a price {@link CostKnob} is **declared** — a provider always counts (its value isn't known at load). */
-export function knobDeclared(knob: CostKnob | undefined): boolean {
-  return typeof knob === "function" || (knob ?? 0) > 0;
-}
-
-/**
- * The **two-axis cost menu** every camp/overworld action declares (D61 — the D29
- * limiter menu made explicit). Two independent axes, each optional:
- *
- * - **Pacing (axis A) — *how often*:** `cooldown` (node-steps, the D35 spine) and/or
- *   `usesPerNode` (a per-node cap; the costless-signature limiter, e.g. Cook Stew).
- * - **Price (axis B) — *per cast*:** `fatigue` (the loose over-extension guardrail),
- *   `gold` (the run purse), `influence` (the Noble's walled-off currency, D62), `rp`.
- *
- * The **bug-killing invariant** (enforced once, in {@link validateOverworldCost}):
- * **no action may be both unpaced *and* unpriced** — "free and unlimited" becomes
- * unrepresentable. An action bounded by a finite **consumable** instead of a knob
- * (the Merchant's *sell* — you can only sell what you carry) declares `selfLimited`
- * to satisfy the invariant honestly.
- */
-export interface OverworldCost {
-  // --- Pacing (axis A): how often the action may fire ---
-  /** Node-steps before this action can fire again — the D35 spine. */
-  cooldown?: number;
-  /** Per-node use cap (reset each node-step) — the limiter for costless signature actions. */
-  usesPerNode?: number;
-  // --- Price (axis B): what each individual cast costs ---
-  /** Fatigue spent on the acting character — the loose guardrail (D35). */
-  fatigue?: number;
-  /** Run gold spent from the purse (`camp.gold`, D34/D30) — static, or a {@link CostKnob} provider. */
-  gold?: CostKnob;
-  /**
-   * Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider.
-   * **Reserved (no verb prices in it yet):** the gate fully checks + spends it ({@link
-   * checkOverworldCost}'s commit closure), kept for the planned **Influence revamp** —
-   * the intended home for routing Bribe's spend through the shared gate (it currently spends
-   * Influence directly via `spendInfluence`, off-gate). Declared-but-unused **on purpose**, not dead.
-   */
-  influence?: CostKnob;
-  /**
-   * Rest Points spent. Static or a provider. **Reserved (no verb prices in it yet):** the gate
-   * honors it for a future RP-priced overworld/clearing verb (RP is live — banked nightly, spent on
-   * healing; D73's Weary heal-cost is recovery-side, not this knob). Declared-but-unused on purpose.
-   */
-  rp?: CostKnob;
-  // --- Escape hatch: an intrinsic limiter outside the two-knob menu ---
-  /**
-   * True when the action is bounded by a finite **consumable** rather than a
-   * pacing/price knob — e.g. the Merchant's *sell* (you can only sell goods you
-   * carry). Lets such an action satisfy the no-free-and-unlimited invariant
-   * without a synthetic cooldown. Use only when the limiter is genuinely real.
-   */
-  selfLimited?: boolean;
-}
-
-/** True if `cost` declares any **pacing** knob (cooldown or per-node cap). */
-export function hasPacing(cost: OverworldCost): boolean {
-  return (cost.cooldown ?? 0) > 0 || cost.usesPerNode !== undefined;
-}
-
-/** True if `cost` declares any **price** knob (fatigue / gold / influence / rp) — a provider counts (D72). */
-export function hasPrice(cost: OverworldCost): boolean {
-  return (cost.fatigue ?? 0) > 0 || knobDeclared(cost.gold) || knobDeclared(cost.influence) || knobDeclared(cost.rp);
-}
-
-/**
- * The **two-axis invariant** (D61): a camp/overworld action may not be both unpaced
- * *and* unpriced (unless it's `selfLimited` by a finite consumable). Throws if it is —
- * so "free and unlimited", the bug class behind the unlimited camp actions, is
- * unrepresentable. Run over every registered ability at module load.
- */
-export function validateOverworldCost(label: string, cost: OverworldCost): void {
-  if (!hasPacing(cost) && !hasPrice(cost) && !cost.selfLimited) {
-    throw new Error(
-      `Overworld action "${label}" is free and unlimited — give it pacing ` +
-        `(cooldown/usesPerNode) or a price (fatigue/gold/influence/rp), or mark it selfLimited. ` +
-        `(D61 two-axis invariant)`,
-    );
-  }
-}
-
-// Enforce the two-axis invariant (D61/D72) at load: every overworld/camp **skill's** cost
-// must be paced or priced (no free-and-unlimited). The home is now `JobDef.skills` (A2,
-// D72) — Survey, Cook Stew, the triad's verbs — so a bad record fails fast at import,
-// exactly as the retired `OVERWORLD_ABILITIES` registry did for its `OverworldAbility`s.
-for (const job of Object.values(JOBS)) {
-  for (const skill of job.skills) {
-    if (skillContexts(skill).includes("overworld")) {
-      validateOverworldCost(skill.name, overworldCostOf(skill));
-    }
-  }
-}
-
-// --- The per-run economy sub-state ------------------------------------------
-
-/**
- * The overworld economy's per-run state (D35): per-ability cooldowns (node-steps
- * remaining; absent/0 ⇒ ready) and the per-node intel tier bumps Scout buys
- * (read back by {@link "./intel".previewNode}'s `extraTier`).
- */
-export interface OverworldEconomy {
-  /** Node-steps remaining on each ability's cooldown, keyed by ability id. */
-  cooldowns: Record<string, number>;
-  /** Extra intel tiers bought per node id (Scout), fed to `previewNode`. */
-  scouted: Record<string, number>;
-  /**
-   * Times each **camp job skill** has been used **at the current node**, keyed by
-   * skill id — the limiter for costless signature actions (D35; Cook stew, Merchant
-   * trade). Compared against {@link "./skills".SkillDef.usesPerNode} and **reset to
-   * empty each node-step** ({@link tickCooldowns}), so the allowance is per-node, not
-   * per-run.
-   */
-  campUses: Record<string, number>;
-  /**
-   * **Per-node ability flags** (D72) — a general boolean bag for signature actions that
-   * mark a transient fact about *this* node (the Find-Trade "impromptu market opened
-   * here" flag, folded into {@link "./overworld".effectiveMarketTier}). **Reset to empty
-   * each node-step** ({@link tickCooldowns}), exactly like {@link campUses}, so the mark
-   * never leaks to the next node. Set/read via {@link setNodeFlag}/{@link hasNodeFlag}.
-   */
-  nodeFlags: Record<string, boolean>;
-  /**
-   * **One-shot primed flags** (D72) — a general boolean bag for "the *next* X goes a
-   * certain way" treats (the Savvy-Barter "next deal primed" flag, consumed by the next
-   * trade). **Consumed on read** ({@link consumeFlag}) and **persists across node-steps**
-   * until then (unlike {@link nodeFlags}) — a primed treat you haven't cashed waits. Set
-   * via {@link primeFlag}; peek without consuming via {@link isPrimed}.
-   */
-  primedFlags: Record<string, boolean>;
-  /**
-   * The **Banker's** purse-scoped sub-state (M10, D30/D34) — **never** touches the
-   * guild treasury. All three are off (0) until a Banker verb engages them
-   * ({@link "./economy-actions"}).
-   */
-  /** Flat purse interest credited per node-step once the Banker engages it (0 = off). */
-  interestPerStep: number;
-  /** Outstanding buy-on-debt principal — auto-repaid from incoming run gold. */
-  debt: number;
-  /** Theft-protection level (0 = none) — blunts a thief's skim ({@link "./theft"}). */
-  protection: number;
-  /**
-   * The Noble's **per-expedition Influence** standing (D62) — a walled-off currency
-   * (never pays Upkeep/gear, {@link "./economy".addInfluence}) that accrues passively
-   * from a Noble's presence + the Patronize verb, and is spent on bribes. Run-scoped
-   * (rebuilt each expedition, like the purse) — it does **not** bank to the guild.
-   */
-  influence: number;
-  /**
-   * **Consecutive in-place-rest nights** at the current node (D80) — the party lingering to heal.
-   * Increments each {@link "./runloop".RunLoop.inPlaceRest}; resets to 0 the moment the caravan
-   * moves on ({@link "./run".chooseNode}). A hook for a soft cap ({@link "./upkeep".RECOVERY}) and
-   * for streak-triggered events later.
-   */
-  restStreak: number;
-}
-
-/** A fresh, fully-ready economy (every ability off cooldown, nothing scouted, no flags set). */
-export function createOverworldEconomy(): OverworldEconomy {
-  return { cooldowns: {}, scouted: {}, campUses: {}, nodeFlags: {}, primedFlags: {}, interestPerStep: 0, debt: 0, protection: 0, influence: 0, restStreak: 0 };
-}
-
-/** A deep copy of the economy (for snapshots / round-trips). */
-export function cloneOverworldEconomy(eco: OverworldEconomy): OverworldEconomy {
-  return {
-    cooldowns: { ...eco.cooldowns },
-    scouted: { ...eco.scouted },
-    campUses: { ...eco.campUses },
-    nodeFlags: { ...eco.nodeFlags },
-    primedFlags: { ...eco.primedFlags },
-    interestPerStep: eco.interestPerStep,
-    debt: eco.debt,
-    protection: eco.protection,
-    influence: eco.influence,
-    restStreak: eco.restStreak,
-  };
-}
-
-// --- General ability-flag bag (D72) -----------------------------------------
-
-/** Set a **per-node** ability flag (cleared each node-step) — the Find-Trade "market opened here" shape. */
-export function setNodeFlag(eco: OverworldEconomy, flag: string): void {
-  eco.nodeFlags[flag] = true;
-}
-
-/** True if a **per-node** ability flag is currently set (a non-consuming read). */
-export function hasNodeFlag(eco: OverworldEconomy, flag: string): boolean {
-  return eco.nodeFlags[flag] === true;
-}
-
-/** **Prime** a one-shot ability flag (persists across node-steps until consumed) — the Savvy-Barter shape. */
-export function primeFlag(eco: OverworldEconomy, flag: string): void {
-  eco.primedFlags[flag] = true;
-}
-
-/**
- * Read **and consume** a one-shot primed flag (D72): returns true at most once per
- * prime, clearing it — the consume-on-next-use helper a follow-up action reads (the
- * Savvy-Barter "next deal" reading its primed discount). Returns false if never primed.
- */
-export function consumeFlag(eco: OverworldEconomy, flag: string): boolean {
-  if (eco.primedFlags[flag]) {
-    delete eco.primedFlags[flag];
-    return true;
-  }
-  return false;
-}
-
-/** Peek at a one-shot primed flag **without consuming** it (for render surfacing). */
-export function isPrimed(eco: OverworldEconomy, flag: string): boolean {
-  return eco.primedFlags[flag] === true;
-}
-
-/** Node-steps remaining on an ability's cooldown (0 = ready). */
-export function cooldownRemaining(eco: OverworldEconomy, abilityId: string): number {
-  return eco.cooldowns[abilityId] ?? 0;
-}
-
-/** Times a camp job skill has already been used at the current node (0 = unused). */
-export function campSkillUses(eco: OverworldEconomy, skillId: string): number {
-  return eco.campUses[skillId] ?? 0;
-}
-
-/**
- * Uses **left** for a camp job skill at the current node. `usesPerNode` undefined ⇒
- * uncapped (the skill is gated by its own per-cast cost), reported as `Infinity`.
- */
-export function campSkillUsesLeft(eco: OverworldEconomy, skill: SkillDef): number {
-  if (skill.usesPerNode === undefined) return Infinity;
-  return Math.max(0, skill.usesPerNode - campSkillUses(eco, skill.id));
-}
-
-/** The extra intel tier bought for a node so far (the Scout bump). */
-export function scoutedTier(eco: OverworldEconomy, nodeId: string): number {
-  return eco.scouted[nodeId] ?? 0;
-}
-
-/**
- * Advance the overworld clock **one node-step**: decrement every cooldown by 1
- * (floored at 0) and **clear the per-node camp-use counts** so the next node opens
- * with a fresh action allowance (D35). Called once per node played from
- * {@link "./run".breakCamp}, so both combat and rest nodes tick the spine.
- */
-export function tickCooldowns(eco: OverworldEconomy): void {
-  decayCounters(eco.cooldowns, 1);
-  // Per-node allowance + per-node flags reset at the node boundary (D35/D72) — a new
-  // camp, fresh uses, and any "opened here" mark cleared. (Primed one-shots persist.)
-  eco.campUses = {};
-  eco.nodeFlags = {};
-}
-
-/**
- * Accrue the **Banker's** flat purse interest one node-step (M10, D30/D34): credit
- * `interestPerStep` to the carried purse (`camp.gold`). Called once per node played
- * from {@link "./run".recordNight}, right alongside {@link tickCooldowns}. A pure
- * **purse** faucet — it **never** touches the guild treasury (D34). Returns the
- * gold credited (0 when no Banker interest is engaged).
- */
-export function accruePurseInterest(eco: OverworldEconomy, camp: Camp): number {
-  if (eco.interestPerStep <= 0) return 0;
-  earn(camp, eco.interestPerStep, "interest", "Banker interest");
-  return eco.interestPerStep;
-}
-
-// --- The resolver -----------------------------------------------------------
+// --- The shared action-result types -----------------------------------------
 
 /**
  * The base shape **every** camp / overworld / economy action returns (D61): it
@@ -359,104 +68,7 @@ export interface ActionOpts {
   targetNodeId?: string;
 }
 
-/** The per-cast prices a passing check resolved — **captured at check time** (#126). */
-export interface OverworldPrices {
-  /** Fatigue to spend on the acting unit (base only — no surcharge, D73; 0 with no actor). */
-  fatigue: number;
-  /** Gold to spend from the purse (a provider knob, already resolved). */
-  gold: number;
-  /** Influence to spend (already resolved). */
-  influence: number;
-  /** Rest Points to spend (already resolved). */
-  rp: number;
-}
-
-/**
- * A two-axis cost check verdict — affordable (with the captured {@link OverworldPrices}
- * and the `commit` closure that spends exactly them), or why not.
- */
-export type OverworldCostCheck =
-  | { ok: true; prices: OverworldPrices; commit(): void }
-  | { ok: false; reason: string };
-
-/**
- * The **single limiter gate** (D61): check an action's two-axis {@link OverworldCost}
- * against the run — pacing (cooldown / per-node cap) and price (fatigue headroom /
- * gold / influence / rp). A pure check that spends nothing; a passing check carries
- * its **commit closure** (#126) — call `check.commit()` once the effect applied to
- * spend the costs and arm the pacing. The prices are **resolved once, at check time**,
- * and the closure spends exactly those figures: an effect that moves party composition
- * between check and commit can no longer drift a provider-priced spend away from what
- * the check gated on (the old re-resolution trap is dead by construction).
- *
- * `id` keys the pacing ledgers (cooldown + per-node uses); `label` names the action in
- * refusals. `unit` is the acting character — **required only when the cost has
- * `fatigue`** (an economy verb with no actor, e.g. Patronize, may omit it).
- *
- * Camp jobs, overworld abilities, and economy verbs all route through this one gate —
- * the D61 fold.
- */
-export function checkOverworldCost(run: RunState, id: string, cost: OverworldCost, label: string, unit?: Unit): OverworldCostCheck {
-  const eco = run.overworld;
-  // Pacing — the cooldown spine.
-  if ((cost.cooldown ?? 0) > 0) {
-    const cd = cooldownRemaining(eco, id);
-    if (cd > 0) return { ok: false, reason: `${label} is on cooldown (${cd} node${cd === 1 ? "" : "s"}).` };
-  }
-  // Pacing — the per-node cap.
-  if (cost.usesPerNode !== undefined && campSkillUses(eco, id) >= cost.usesPerNode) {
-    return { ok: false, reason: `${label} is spent for tonight — Rest & Set Out to use it again.` };
-  }
-  // Price — the loose fatigue guardrail (D73): a clearing verb spends only its **base** fatigue
-  // on the acting unit. Over-extension is **never gated here** (no surcharge, no lock) — the bite
-  // is deferred to the recovery/combat consequences (pricier rest-heal, next-day carryover, the
-  // Exhausted Slow). A fatigue price still needs an actor to spend it on (an actorless economy
-  // verb declares no fatigue).
-  const fatigueSpend = unit ? (cost.fatigue ?? 0) : 0;
-  // Price — gold (the run purse). The knob may be a provider (D72) — resolve it now, once.
-  const goldCost = resolveKnob(cost.gold, run);
-  if (goldCost > 0 && run.camp.gold < goldCost) {
-    return { ok: false, reason: `Not enough gold for ${label} (${goldCost}g).` };
-  }
-  // Price — Influence (the Noble's per-expedition standing, D62).
-  const influenceCost = resolveKnob(cost.influence, run);
-  if (influenceCost > 0 && eco.influence < influenceCost) {
-    return { ok: false, reason: `Not enough Influence for ${label} (${influenceCost}).` };
-  }
-  // Price — Rest Points.
-  const rpCost = resolveKnob(cost.rp, run);
-  if (rpCost > 0 && run.rp < rpCost) {
-    return { ok: false, reason: `Not enough Rest Points for ${label} (${rpCost}).` };
-  }
-  const prices: OverworldPrices = { fatigue: fatigueSpend, gold: goldCost, influence: influenceCost, rp: rpCost };
-  return {
-    ok: true,
-    prices,
-    // The commit half of the gate (D61/#126), called only after the effect applied:
-    // spend the **captured** prices (never re-resolved — the effect may have moved the
-    // run since the check), arm the cooldown, and bump the per-node use count.
-    commit(): void {
-      if (prices.fatigue > 0 && unit) unit.fatigue = spendFatigue(unit.fatigue, prices.fatigue);
-      if (prices.gold > 0) spend(run.camp, prices.gold, "action", id, { nodeId: run.mapNodeId, night: run.night });
-      if (prices.influence > 0) spendInfluence(eco, prices.influence);
-      if (prices.rp > 0) spendRp(run, prices.rp);
-      if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;
-      if (cost.usesPerNode !== undefined) bumpCounter(eco.campUses, id);
-    },
-  };
-}
-
-/**
- * The {@link OverworldCost} an overworld/camp {@link SkillDef} resolves through the gate
- * (D61/D72): the skill's own `overworldCost` (the full two-axis menu — Survey's cooldown +
- * fatigue, a computed price, …), or — for a costless signature action that declares only
- * `usesPerNode` (Cook Stew) — the per-node cap alone. Supersedes the former `campSkillCost`,
- * widening it from the pacing knob to the whole menu. (`usesPerNode` undefined ⇒ no cap,
- * the legacy "pays its own way" escape.)
- */
-export function overworldCostOf(skill: SkillDef): OverworldCost {
-  return skill.overworldCost ?? { usesPerNode: skill.usesPerNode };
-}
+// --- The interpreter --------------------------------------------------------
 
 /** The outcome of a gated camp-skill use — the {@link CampOutcome} plus the gate verdict. */
 export interface CampSkillResult extends OverworldActionResult {
@@ -472,7 +84,7 @@ export interface CampSkillResult extends OverworldActionResult {
  *
  * 1. **Class gate** is implicit — the skill came off the actor's job via {@link
  *    "./leveling".availableSkills}; **Capability gate** (D72) is the explicit `requires`.
- * 2. The shared two-axis **cost gate** ({@link checkOverworldCost} — computed costs and all).
+ * 2. The shared two-axis **cost gate** ({@link "./overworld-cost".checkOverworldCost} — computed costs and all).
  * 3. The **effect**, by partition: the exhaustive {@link OVERWORLD_EFFECT_HANDLERS} registry
  *    (openMarket / primeDeal / provisionMeal / survey), or the camp resolver for a `morale`
  *    {@link "./skills".CampEffect} (Cook Stew).
@@ -513,92 +125,6 @@ export function useOverworldSkill(run: RunState, unit: Unit, skill: SkillDef, op
   }
   // A non-overworld effect routed here by mistake (a battle/deploy kind) — refuse cleanly.
   return { applied: false, reason: `${skill.name} is not an overworld action.` };
-}
-
-// --- Triage — the healer's fatigue-fuelled camp heal (the audit pass) --------
-
-/** Triage tuning — the healer's between-nodes heal, all data. */
-export const TRIAGE = {
-  /**
-   * Fatigue the healer spends per Triage — a **demanding** cost (D73): over-triaging pushes the
-   * healer through Weary into Exhausted, where their own rest-heal costs more RP and they field
-   * **Slowed** next fight. That mounting consequence — not a hard lock — is the limiter (pure
-   * fatigue — no RP, the Rest's currency).
-   */
-  fatigue: 2,
-  /** Flat HP floor a Triage restores before the Triage-scaling on missing HP. */
-  base: 6,
-} as const;
-
-/**
- * Triage's two-axis cost (D61) — the **demanding** fatigue price the shared gate validates +
- * spends. Triage is a **standalone** verb, outside the `JobDef.skills` load-time validator,
- * so this object is its row in the {@link "./economy-actions".VERB_COSTS} registry (#112) —
- * validated at that module's load. Defined here (its home) rather than in the registry
- * literal because importing the registry back would cycle economy-actions ↔ overworld-actions;
- * the registry entry is this same object, so there is still exactly one source of truth.
- */
-export const TRIAGE_COST: OverworldCost = { fatigue: TRIAGE.fatigue };
-
-/**
- * True if `unit` is a **healing class** — a job stamped with the Medic's Triage
- * passive ({@link "./combat".PASSIVE.triage}). The capability gate for {@link triage},
- * now the `healer` entry of the shared {@link "./jobs".unitHasCapability} taxonomy
- * (D72) — own the capability, not a hard-coded job id, so it **auto-extends to any
- * future healer**. Reads the **job def** (not `unit.passives`, which is only stamped at
- * battle setup), so it's valid in camp. Kept as a named alias for the many call sites.
- */
-export function isHealer(unit: Unit): boolean {
-  return unitHasCapability(unit, "healer");
-}
-
-/** What a camp {@link triage} produced. */
-export interface TriageResult extends ActionOutcome {
-  /** HP restored to the treated fighter. */
-  healed?: number;
-  /** The treated unit's id. */
-  targetId?: string;
-  /** Fatigue spent on the healer (base + any over-extension surcharge). */
-  fatigueSpent?: number;
-}
-
-/**
- * **Triage** (the audit pass) — the **healer's** camp heal, distinct from the universal
- * Rest ({@link "./upkeep".restHeal}, RP/rations): a healing class spends **their own
- * fatigue** (worn out) to mend the party's **most-wounded** fighter for *more* than a
- * Rest — scaling with the Medic's Triage (heal harder the worse the wound). Job-gated to
- * a {@link isHealer} (only a healer can triage); the fatigue rides the shared
- * {@link checkOverworldCost} gate. Over-triaging is **not** locked (D73) — it accrues fatigue
- * toward the Exhausted consequences (pricier rest-heal, the combat Slow), the consequence-based
- * limiter. Pure fatigue — no RP. Refuses (spending nothing) without a healer or with no one wounded.
- */
-export function triage(run: RunState, healer: Unit): TriageResult {
-  if (!isHealer(healer)) {
-    return { applied: false, reason: `${healer.name} can't triage — only a healer can.` };
-  }
-  // Triage treats the worst first: the most-wounded fielded ally.
-  const wounded = fieldedUnits(run.party)
-    .filter((u) => u.hp < u.maxHp)
-    .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
-  if (!wounded) return { applied: false, reason: "No wounded fighter to triage." };
-
-  const cost = TRIAGE_COST;
-  const check = checkOverworldCost(run, "triage", cost, "Triage", healer);
-  if (!check.ok) return { applied: false, reason: check.reason };
-
-  // Heal scales with the healer's Triage (read from the job def — camp units aren't
-  // stamped) and the wound's depth: more missing HP → more healing.
-  const triageVal = getJob(primaryJobOf(healer))?.passives?.[PASSIVE.triage] ?? 0;
-  const amount = TRIAGE.base + Math.floor(triageVal * (wounded.maxHp - wounded.hp));
-  const healed = healUnit(wounded, amount);
-  check.commit();
-  return {
-    applied: true,
-    healed,
-    targetId: wounded.id,
-    fatigueSpent: check.prices.fatigue,
-    detail: `Triaged ${wounded.name}: +${healed} HP (${healer.name} worn out).`,
-  };
 }
 
 // --- The overworld-effect registry (D72) ------------------------------------

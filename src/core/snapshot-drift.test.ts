@@ -27,7 +27,7 @@ import {
   createOverworldEconomy,
   cloneOverworldEconomy,
   type OverworldEconomy,
-} from "./overworld-actions";
+} from "./overworld-state";
 import { EntityRegistry, makeTrap, makeConcealedTrap } from "./entities";
 import { EventBus } from "./events";
 

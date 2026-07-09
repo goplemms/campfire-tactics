@@ -48,7 +48,7 @@ import {
   tickCooldowns,
   accruePurseInterest,
   type OverworldEconomy,
-} from "./overworld-actions";
+} from "./overworld-state";
 import { accrueDeclaredFaucets, deftHandsSkim } from "./economy-actions";
 import { nightlyFatigue } from "./fatigue";
 import { RECOVERY } from "./upkeep";

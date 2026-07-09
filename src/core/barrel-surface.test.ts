@@ -32,6 +32,10 @@
  *   - increment 3 (#120, recovery extraction): +2 — `deepRest` and `inPlaceRest`
  *     free functions in the new `recovery.ts` (the recovery economy lifted out of
  *     `RunLoop`); `REST` moved from runloop.ts to recovery.ts, same barrel name (→ 615).
+ *   - increment 4 (#129, overworld-actions split): net 0 — the state API moved to
+ *     `overworld-state.ts`, the cost grammar + gate + validator to `overworld-cost.ts`,
+ *     and `triage`/`TRIAGE`/`TRIAGE_COST`/`isHealer` to `economy-actions.ts` beside the
+ *     other economy verbs; every symbol keeps its barrel name at its new home (615).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";

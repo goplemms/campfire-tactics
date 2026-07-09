@@ -31,9 +31,7 @@ import {
   configureDeployClock,
   resolveFrontTurn,
   inDangerZone,
-  inSafeZone,
   isProtected,
-  stepDistance,
   deployForecast,
   // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
   // tested), so the scene renders the choices instead of making them.
@@ -93,13 +91,15 @@ import { CommandMenu, type ActionSpec, MENU_BW, MENU_PAD, MENU_LEFT } from "../c
 import { PreviewCardController, attackPreviewRows as computeAttackPreviewRows } from "../forecast-cards";
 import { SituationCard, type SituationCtx, type CardView } from "../situation-card";
 import { buildResolutionSummary, showResolutionReport } from "../resolution-report";
+import { paintZones, drawSourceMarkers } from "../deploy-zones";
+import { TrapMarkerLayer } from "../trap-markers";
 import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
 import { MiniCard, type CardRow } from "../info-cards";
 import { dropNet as dropNetCage } from "../deploy-fx";
-import { ICON, placeIcon } from "../icons";
+import { ICON } from "../icons";
 
 /**
  * Board zoom for the real combat field (D-UX): enlarge tiles + tokens so details
@@ -239,13 +239,10 @@ export class BattleScene extends Phaser.Scene {
    * until it actually moves or commits an act (the status-effect trigger). Reset per turn.
    */
   private deployReveal = false;
-  /** The party's Set Trap spec (damage + snare status), resolved at deploy; undefined = no trapper. */
-  /** Board markers for the player's own placed traps, keyed by the registered entity id. */
-  private playerTrapMarkers = new Map<string, Phaser.GameObjects.Text>();
-  private trapSeq = 0;
-  // D12 — concealed enemy traps: a seeded spot-roll stream + per-trap board markers.
+  // D12 — concealed enemy traps: a seeded spot-roll stream.
   private spotRng!: Rng;
-  private trapMarkers = new Map<string, Phaser.GameObjects.Text>();
+  /** The board trap-marker layer (#131): owns the enemy + player marker maps + the id counter. */
+  private trapLayer!: TrapMarkerLayer;
   private intel?: IntelReport;
 
   // Battle interaction.
@@ -334,6 +331,8 @@ export class BattleScene extends Phaser.Scene {
     // The procedural board is 8×6 and centred full-width, so it has room to grow.
     this.view.boardScale = BOARD_SCALE;
     this.view.reduceMotion = isScreenshotMode();
+    // The trap-marker layer rides the scene's boardObjects teardown list (#131).
+    this.trapLayer = new TrapMarkerLayer(this, this.view, this.boardObjects);
     // The campfire glow — a warm vignette over the board, beneath the tokens/HUD.
     addVignette(this);
     // Persistent UI.
@@ -419,8 +418,7 @@ export class BattleScene extends Phaser.Scene {
     this.waitingFor = null;
     this.armedSkill = null;
     this.deployActor = null;
-    this.playerTrapMarkers.clear();
-    this.trapSeq = 0;
+    this.trapLayer.resetPlayer();
     this.pendingHerb = null;
     clearLayer(this.objectiveObjects);
     this.rebuildBoard();
@@ -477,7 +475,7 @@ export class BattleScene extends Phaser.Scene {
     // scene just animates the marker. Concealed *enemy* traps that spring in deployment
     // carry no player marker, so this no-ops for them (checkTrapSprings reveals those).
     this.battle.bus.on("trapSprung", ({ id }) => {
-      const m = this.playerTrapMarkers.get(id);
+      const m = this.trapLayer.playerMarker(id);
       if (!m) return;
       m.setText(ICON.trapSprung.glyph).setColor(INK.disabled);
       this.tweens.add({ targets: m, scale: 1.8, duration: 140, yoyo: true });
@@ -555,9 +553,7 @@ export class BattleScene extends Phaser.Scene {
     // (battle seed == run.seed, so the streams are byte-identical to the prior wiring.)
     this.deployRng = this.battle.stream(Labels.deploy());
     this.spotRng = this.battle.stream(Labels.trapSpot());
-    this.trapMarkers.clear();
-    this.playerTrapMarkers.clear();
-    this.trapSeq = 0;
+    this.trapLayer.reset();
     // Deploy verbs flow through the one interpreter now (D63): wire the run stash so
     // Battle's placeTrap action can spend kits, undoably, on the shared log.
     this.battle.setStash(this.run.inventory);
@@ -580,7 +576,7 @@ export class BattleScene extends Phaser.Scene {
     configureDeployClock(this.battle.clock, this.front);
     this.battle.clock.seedFlat();
     this.drawZones();
-    this.drawSourceMarkers();
+    drawSourceMarkers(this, this.view, this.deployMarkers, this.campfire, this.front);
     // Trap-field (D12): enemy hazards are live across *both* phases, so the party's
     // opening Awareness scan happens here — at the deploy line, not at combat start.
     // Spotted traps draw now, so positioning is informed; the rest are sensed as units
@@ -628,7 +624,7 @@ export class BattleScene extends Phaser.Scene {
     this.selectDeployActor(unit);
     this.recomputeReach(unit); // light the reachable tiles for this turn's budget (shared with battle)
     this.drawDeployReach();
-    const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0;
+    const trapsAfield = hiddenTraps(this.battle.entities).length > 0 || this.trapLayer.enemyCount > 0;
     if (unit.dugIn) {
       // The unit chose to sit this out: a minimal menu. Moving (a map click) still re-engages
       // it directly — Take Action is the no-move way back in.
@@ -721,12 +717,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Destroy board markers for player traps no longer registered (after an undo). */
   private syncPlayerTrapMarkers(): void {
-    for (const [id, m] of this.playerTrapMarkers) {
-      if (!this.battle.entities.all().some((e) => e.id === id)) {
-        m.destroy();
-        this.playerTrapMarkers.delete(id);
-      }
-    }
+    this.trapLayer.syncPlayer(this.battle.entities);
   }
 
   /**
@@ -1016,126 +1007,10 @@ export class BattleScene extends Phaser.Scene {
       this.dangerZoneGfx = this.add.graphics().setDepth(0.45);
       this.boardObjects.push(this.dangerZoneGfx);
     }
-    this.safeZoneGfx.clear();
-    this.dangerZoneGfx.clear();
-    if (!this.front || !this.campfire) return;
-    for (let row = 0; row < this.grid.rows; row++) {
-      for (let col = 0; col < this.grid.cols; col++) {
-        const t = { col, row };
-        if (!this.grid.isWalkable(t)) continue;
-        switch (this.zoneOf(t)) {
-          case "danger":
-            this.fillTileDiamond(this.dangerZoneGfx, t, COLOR.danger, 0.34);
-            break;
-          case "warning":
-            // The ring about to fall next turn — a warning telegraph in amber.
-            this.fillTileDiamond(this.dangerZoneGfx, t, COLOR.accent, 0.22);
-            break;
-          case "neutral":
-            // Open ground — unprotected, so a real (if lower) capture risk: a faint
-            // danger wash so it never reads as free, safe space (D-feel).
-            this.fillTileDiamond(this.dangerZoneGfx, t, COLOR.danger, 0.1);
-            break;
-          case "safe":
-            this.fillTileDiamond(this.safeZoneGfx, t, COLOR.successDeep, 0.28);
-            break;
-        }
-      }
-    }
-    // Trace a dotted outline around each zone's perimeter for at-a-glance clarity.
-    this.strokeZoneOutline(this.safeZoneGfx, "safe", COLOR.success);
-    this.strokeZoneOutline(this.dangerZoneGfx, "warning", COLOR.accent);
-    this.strokeZoneOutline(this.dangerZoneGfx, "danger", COLOR.danger);
+    // The zone painter (#131) fills + outlines the bands into the two graphics off the sources.
+    paintZones(this.view, this.safeZoneGfx, this.dangerZoneGfx, this.grid, this.campfire, this.front);
     // The tarpit ring renders in Deployment too (D64) — position around the tax.
     this.refreshAuras();
-  }
-
-  /**
-   * Which deployment band a walkable tile falls in (drives both fill and outline). The
-   * green **safe** core is capture-immune; **neutral** open ground is a real (lower)
-   * capture risk — there is no free ground — and the **danger** net is near-guaranteed.
-   */
-  private zoneOf(t: GridCoord): "danger" | "warning" | "safe" | "neutral" {
-    if (inDangerZone(t, this.front)) return "danger";
-    if (inSafeZone(t, this.campfire, this.front)) return "safe";
-    if (stepDistance(t, this.front.origin) === this.front.radius + 1) return "warning";
-    return "neutral";
-  }
-
-  /**
-   * Stroke a dashed line along every tile edge where a `zone` tile meets a tile
-   * of another band — the visible boundary of that zone. Iso diamond edges map to
-   * the four orthogonal grid neighbours.
-   */
-  private strokeZoneOutline(g: Phaser.GameObjects.Graphics, zone: "danger" | "warning" | "safe", color: number): void {
-    const halfW = this.view.halfW();
-    const halfH = this.view.halfH();
-    // Neighbour delta → the two diamond vertices (relative to centre) of the shared edge.
-    const edges: Array<{ dc: number; dr: number; a: [number, number]; b: [number, number] }> = [
-      { dc: 1, dr: 0, a: [halfW, 0], b: [0, halfH] }, // col+1 → bottom-right edge
-      { dc: -1, dr: 0, a: [0, -halfH], b: [-halfW, 0] }, // col-1 → top-left edge
-      { dc: 0, dr: 1, a: [0, halfH], b: [-halfW, 0] }, // row+1 → bottom-left edge
-      { dc: 0, dr: -1, a: [0, -halfH], b: [halfW, 0] }, // row-1 → top-right edge
-    ];
-    g.lineStyle(1.5, color, 0.9);
-    for (let row = 0; row < this.grid.rows; row++) {
-      for (let col = 0; col < this.grid.cols; col++) {
-        const t = { col, row };
-        if (!this.grid.isWalkable(t) || this.zoneOf(t) !== zone) continue;
-        const { x, y } = this.tileToWorld(t);
-        for (const e of edges) {
-          const n = { col: col + e.dc, row: row + e.dr };
-          const outside = !this.grid.isWalkable(n) || this.zoneOf(n) !== zone;
-          if (outside) this.dashedLine(g, x + e.a[0], y + e.a[1], x + e.b[0], y + e.b[1]);
-        }
-      }
-    }
-  }
-
-  /** Draw a dashed segment from (x1,y1) to (x2,y2) on `g` using the active line style. */
-  private dashedLine(g: Phaser.GameObjects.Graphics, x1: number, y1: number, x2: number, y2: number, dash = 5, gap = 4): void {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const len = Math.hypot(dx, dy);
-    if (len === 0) return;
-    const ux = dx / len;
-    const uy = dy / len;
-    for (let d = 0; d < len; d += dash + gap) {
-      const end = Math.min(d + dash, len);
-      g.lineBetween(x1 + ux * d, y1 + uy * d, x1 + ux * end, y1 + uy * end);
-    }
-  }
-
-  /** Mark the two sources on the board: a campfire glyph at the camp, the net's source at the foe. */
-  private drawSourceMarkers(): void {
-    clearLayer(this.deployMarkers);
-    if (!this.campfire || !this.front) return;
-    const camp = this.tileToWorld(this.campfire.origin);
-    const foe = this.tileToWorld(this.front.origin);
-    // Sit the source markers in the lower half of their tile: trap glyphs anchor at the tile's
-    // top vertex (y − halfH), so a marker at tile-centre collides with a trap placed on the same
-    // tile (the campfire core is exactly where the party — and its traps — cluster). The drop
-    // tucks the marker under the trap, clear of it.
-    const drop = this.view.halfH() * 0.5;
-    this.deployMarkers.push(
-      placeIcon(this, camp.x, camp.y + drop, "campfire", { size: FONT.display }).setDepth(0.9),
-      placeIcon(this, foe.x, foe.y + drop, "netSource", { size: FONT.display }).setDepth(0.9),
-    );
-  }
-
-  /** Fill one iso tile diamond with a colour + alpha — shared by the deploy overlays. */
-  private fillTileDiamond(g: Phaser.GameObjects.Graphics, coord: GridCoord, color: number, alpha: number): void {
-    const { x, y } = this.tileToWorld(coord);
-    const halfW = this.view.halfW();
-    const halfH = this.view.halfH();
-    g.fillStyle(color, alpha);
-    g.beginPath();
-    g.moveTo(x, y - halfH);
-    g.lineTo(x + halfW, y);
-    g.lineTo(x, y + halfH);
-    g.lineTo(x - halfW, y);
-    g.closePath();
-    g.fillPath();
   }
 
   /**
@@ -1253,16 +1128,13 @@ export class BattleScene extends Phaser.Scene {
     // one interpreter now (D63: Battle.placeTrap → the logged, undoable placeTrap
     // action); the scene keeps only the board marker, keyed by entity id. The kit price
     // (#113) is declared on the SkillDef and consumed commit-side by apply.
-    const id = `ptrap-${this.trapSeq++}`;
+    const id = this.trapLayer.nextTrapId();
     const res = this.battle.placeTrap(actor, actor.pos, effect, id, material);
     if (!res.ok) {
       this.setHint(res.reason ?? "Can't place a trap here.");
       return;
     }
-    const { x, y } = this.tileToWorld(actor.pos);
-    const marker = this.add.text(x, y - this.view.halfH(), ICON.trapMine.glyph, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
-    this.boardObjects.push(marker);
-    this.playerTrapMarkers.set(id, marker);
+    this.trapLayer.addPlayerTrap(id, actor.pos);
     this.refreshSituationCard();
     this.deployActed = true;
     actor.dugIn = false; // placing a trap is an act — breaks the hunker (the "on action" trigger)
@@ -1320,7 +1192,7 @@ export class BattleScene extends Phaser.Scene {
     this.refreshHud();
     this.setPrimary("Advance Clock");
     const bound = this.battle.units.find((u) => u.captured && u.side === "player");
-    const trapHint = hiddenTraps(this.battle.entities).length > 0 || this.trapMarkers.size > 0
+    const trapHint = hiddenTraps(this.battle.entities).length > 0 || this.trapLayer.enemyCount > 0
       ? `Traps are seeded ahead — watch for ${ICON.trapArmed.glyph}, and let a trapper disarm them. `
       : "";
     this.setHint((healed > 0 ? `Chef's stew restored ${healed} HP. ` : "Battle begins. ") + trapHint + (bound ? `${bound.name} is bound — reach and free them, or win the field. ` : "") + "Press Advance Clock.");
@@ -1671,26 +1543,7 @@ export class BattleScene extends Phaser.Scene {
    * disarmed (removed) ones.
    */
   private redrawTrapMarkers(): void {
-    const traps = this.battle.entities.all().filter(isConcealedTrap);
-    for (const t of traps) {
-      if (!t.revealed) continue;
-      let m = this.trapMarkers.get(t.id);
-      if (!m) {
-        const { x, y } = this.tileToWorld(t.pos);
-        // Glyphs come from the icon registry (D59) — all verified to render in the UI font.
-        m = this.add.text(x, y - this.view.halfH(), ICON.trapArmed.glyph, { color: ICON.trapArmed.color, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.85);
-        this.boardObjects.push(m);
-        this.trapMarkers.set(t.id, m);
-      }
-      m.setText(t.sprung ? ICON.trapSprung.glyph : ICON.trapArmed.glyph).setColor(t.sprung ? INK.disabled : ICON.trapArmed.color);
-    }
-    // Drop markers for disarmed traps (no longer registered).
-    for (const [id, m] of this.trapMarkers) {
-      if (!traps.some((t) => t.id === id)) {
-        m.destroy();
-        this.trapMarkers.delete(id);
-      }
-    }
+    this.trapLayer.redraw(this.battle.entities);
   }
 
   /** After a move, reveal any trap that just sprang under someone and refresh markers. */
@@ -1702,7 +1555,7 @@ export class BattleScene extends Phaser.Scene {
         sprang = true;
       }
     }
-    if (this.trapMarkers.size > 0 || sprang) this.redrawTrapMarkers();
+    if (this.trapLayer.enemyCount > 0 || sprang) this.redrawTrapMarkers();
     if (sprang) this.setHint(`${ICON.trapSprung.glyph} A hidden trap sprang!`);
   }
 

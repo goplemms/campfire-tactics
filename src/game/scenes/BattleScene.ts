@@ -345,16 +345,6 @@ export class BattleScene extends Phaser.Scene {
     // its label move here, off the left so the left can host the focus card. The label
     // sits below the camp card (above the rail) so it isn't occluded by it.
     this.orderText = this.add.text(this.scale.width - 158, 122, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
-    // The rail's expand chevron is created lazily (only when the rail overflows the
-    // collapsed cap) — so, unlike orderText/logChevron, it isn't reassigned here.
-    // Phaser reuses the Scene instance across battles (scene.start re-runs create() on
-    // the same object), destroying the previous chevron GameObject but leaving this
-    // field dangling at the dead object. Clear the stale reference so layoutRailChevron
-    // re-creates a live Text instead of calling setText on a destroyed one (a
-    // null-canvas drawImage crash that hit the 4th fight of a run). Reset the expand
-    // state too, so each battle's rail starts collapsed.
-    this.railChevron = undefined;
-    this.railExpanded = false;
     // Left column = "you" (the decision zone): the active-unit focus card. Camp-state —
     // passive reference — is tucked top-right, clear below the Tips chip.
     this.focusCard = new MiniCard(this, 8, 82, { w: 150, hp: true }).hide();
@@ -404,6 +394,67 @@ export class BattleScene extends Phaser.Scene {
   // --- Combat node lifecycle (one chosen mission) ---------------------------
 
   /**
+   * Reset every **transient per-encounter field** to its declared default. Phaser keys
+   * scenes by name and **reuses the one Scene instance** across a run — each fight
+   * re-runs {@link init}/{@link create} on the same object — so a field initialised only
+   * at its declaration keeps whatever the *previous* fight left in it. Board GameObjects
+   * are torn down in {@link rebuildBoard} and most per-turn flags are re-set when a turn
+   * opens, but the HUD toggles, cursor/aim state, and battle-scoped tallies below have no
+   * other reset — leaving them to leak (a stale rail-chevron ref even crashed the 4th
+   * fight of a run). Called first thing in {@link startCombatNode}, so every entry — live
+   * play, the debug boot, or the screenshot harness — starts from a clean slate.
+   *
+   * Collections are emptied **in place** (never reassigned) to preserve the array/map
+   * identity other code holds. Board-layer graphics are intentionally left to
+   * {@link rebuildBoard} (which destroys them before nulling); this only drops the stale
+   * lazy HUD-chevron ref.
+   */
+  private resetEncounterState(): void {
+    // Phase + HUD toggles → defaults: each fight opens in deployment, rail collapsed,
+    // log open, threat overlay off, 1× speed.
+    this.phase = "deployment";
+    this.showThreat = false;
+    this.railExpanded = false;
+    this.railChevron = undefined; // lazily (re)created by layoutRailChevron — drop the dead ref
+    this.logCollapsed = false;
+    this.turnSpeed = 1;
+    this.lastHint = "";
+
+    // Turn / interaction state.
+    this.busy = false;
+    this.over = false;
+    this.waitingFor = null;
+    this.armedSkill = null;
+    this.armedAim = null;
+    this.moveBudget = 0;
+    this.acted = false;
+    this.actCharged = false;
+    this.movedThisTurn = false;
+    this.turnLocked = false;
+    this.reach = [];
+    this.reachByKey.clear();
+    this.hoverTile = null;
+    this.hoverFoe = null;
+    this.queuedTile = null;
+    this.pendingHerb = null;
+
+    // Deployment state.
+    this.deployActor = null;
+    this.deployMoved = false;
+    this.deployActed = false;
+    this.deployReveal = false;
+    this.deployHoverTile = null;
+
+    // Battle-scoped tallies (theft / bribe / level-up diff) — must not carry into the next fight.
+    this.preBattleJobLevels.clear();
+    this.theftAttempts.clear();
+    this.goldStolen = 0;
+    this.goldRecovered = 0;
+    this.bribeArmed = false;
+    this.pendingRecruits.length = 0;
+  }
+
+  /**
    * Stage the chosen combat node: run the silent **Upkeep/RP/dying-clock**
    * bookkeeping (D3/D9/D15 — the pre-fight *camp actions* now live on the unified
    * overworld camp, D35), build the board for the node's seeded encounter, read
@@ -412,6 +463,10 @@ export class BattleScene extends Phaser.Scene {
    */
   private startCombatNode(): void {
     clearLayer(this.overlay);
+    // Every fight of a run re-enters this one reused Scene instance, so start from a
+    // known-clean slate — nothing below can be trusted to still hold its constructor
+    // default (see resetEncounterState).
+    this.resetEncounterState();
 
     // Between-battle bookkeeping: pay Upkeep, bank RP, tick dying clocks (D9/D15).
     const camp = this.loop.camp();
@@ -423,13 +478,7 @@ export class BattleScene extends Phaser.Scene {
     // Wire the new bus's combat FX once, up front — so deployment trap springs float +
     // log like combat (the bus persists through both phases; battle won't double-fire).
     this.wireBattleFx();
-    this.over = false;
-    this.busy = false;
-    this.waitingFor = null;
-    this.armedSkill = null;
-    this.deployActor = null;
     this.trapLayer.resetPlayer();
-    this.pendingHerb = null;
     clearLayer(this.objectiveObjects);
     this.rebuildBoard();
 
@@ -2281,7 +2330,10 @@ export class BattleScene extends Phaser.Scene {
     const hidden = rail.total - rail.shown;
     const collapsible = rail.total > BattleScene.RAIL_COLLAPSED;
     if (!collapsible) return void this.railChevron?.setVisible(false);
-    if (!this.railChevron) {
+    // `?.scene` is the live-object test: a destroyed Phaser GameObject has its scene
+    // cleared, so this re-creates a fresh chevron even if a dead ref ever slips through
+    // (belt-and-suspenders alongside the resetEncounterState drop).
+    if (!this.railChevron?.scene) {
       this.railChevron = this.add
         .text(0, 0, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption })
         .setDepth(10)

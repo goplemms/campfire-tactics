@@ -53,6 +53,7 @@ import {
   buildLedger,
   nightEndGate,
   computeUpkeep,
+  toggleUpkeepSkip,
   type PreviewChange,
   type PreviewStat,
   skillEffectPreview,
@@ -2520,12 +2521,10 @@ export class OverworldScene extends Phaser.Scene {
   /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. The
    *  owning surface (Tent or night-end transition) supplies its own `rerender`. */
   private toggleSkip(id: UpkeepLine["id"], rerender: () => void = () => this.renderTent()): void {
-    const set = new Set(this.run.camp.skippedUpkeep);
-    if (set.has(id)) set.delete(id);
-    else set.add(id);
-    this.run.camp.skippedUpkeep = [...set] as ("food" | "repairs")[];
+    toggleUpkeepSkip(this.run, id); // core owns the rule (no more render-side type-assertion write)
+    const nowSkipped = this.run.camp.skippedUpkeep.includes(id);
     this.refreshCampText();
-    this.setHint(set.has(id) ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
+    this.setHint(nowSkipped ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
     rerender();
   }
 

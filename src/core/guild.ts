@@ -109,6 +109,8 @@ export const GUILD = {
   sidequestPoolSize: 2,
   /** Treasury cost to hire one mercenary (the rebuild valve, D27). */
   mercCost: 30,
+  /** Treasury cost to mint one gear into the armory (D34). */
+  armoryCost: 60,
   /** Main-quest gold payout → treasury on completion (M10, D34). */
   mainPayout: 300,
   /** Generated-sidequest payout band → treasury on completion (M10, D34). */
@@ -125,6 +127,57 @@ export interface CreateGuildOptions {
   difficultyId?: string;
   /** Label for the main quest (data; the campaign spine, D26). */
   mainQuestLabel?: string;
+}
+
+/**
+ * The **authored starting roster** (D25) — the eight-strong cast a fresh guild seeds
+ * with: two soldiers (one the Lord), a scout, and the non-combat specialists (cook,
+ * merchant, noble, banker, medic). One owner of these stat tables — the GuildScene's
+ * fresh guild and the debug/demo boots all inflate the same eight from here rather than
+ * re-typing them (they had drifted as two verbatim copies). Fresh units each call
+ * (createUnit builds new objects), so callers can mutate without aliasing.
+ */
+export function STARTING_ROSTER(): Unit[] {
+  return [
+    createUnit({ id: "Edrin", side: "player", pos: { col: -1, row: -1 }, name: "Edrin", jobId: "soldier", isLord: true, awareness: 5, intelligence: 4, speed: 12, maxHp: 34, attack: 11, defense: 4, moveRange: 4, sightRadius: 5 }),
+    createUnit({ id: "Rook", side: "player", pos: { col: -1, row: -1 }, name: "Rook", jobId: "soldier", awareness: 4, intelligence: 4, speed: 12, maxHp: 30, attack: 9, defense: 3, moveRange: 4, sightRadius: 5 }),
+    createUnit({ id: "Vale", side: "player", pos: { col: -1, row: -1 }, name: "Vale", jobId: "scout", awareness: 2, intelligence: 2, speed: 10, maxHp: 24, attack: 11, defense: 2, moveRange: 4, sightRadius: 5 }),
+    createUnit({ id: "Pip", side: "player", pos: { col: -1, row: -1 }, name: "Pip", jobId: "cook", speed: 8, maxHp: 18, attack: 3, defense: 1, moveRange: 3, sightRadius: 4 }),
+    createUnit({ id: "Coin", side: "player", pos: { col: -1, row: -1 }, name: "Coin", jobId: "merchant", speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }),
+    createUnit({ id: "Liora", side: "player", pos: { col: -1, row: -1 }, name: "Liora", jobId: "noble", awareness: 2, intelligence: 5, speed: 8, maxHp: 18, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }),
+    createUnit({ id: "Sterling", side: "player", pos: { col: -1, row: -1 }, name: "Sterling", jobId: "banker", awareness: 2, intelligence: 3, speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }),
+    createUnit({ id: "Sela", side: "player", pos: { col: -1, row: -1 }, name: "Sela", jobId: "medic", awareness: 3, intelligence: 3, speed: 9, maxHp: 20, attack: 4, defense: 2, moveRange: 3, sightRadius: 4 }),
+  ];
+}
+
+/** The gear a fresh guild's armory ships with (D25) — one owner of the pair. */
+export const STARTER_ARMORY: readonly string[] = ["enchanted-blade", "iron-shield"];
+/** A fresh guild's opening treasury (D34). */
+export const STARTER_TREASURY = 300;
+
+/** Options for {@link createStarterGuild} — the per-boot bits that legitimately vary. */
+export interface StarterGuildOptions {
+  mainQuestLabel?: string;
+  caravans?: Caravan[];
+  difficultyId?: string;
+}
+
+/**
+ * A fresh **starter guild** (D25): the {@link STARTING_ROSTER}, {@link STARTER_ARMORY}
+ * and {@link STARTER_TREASURY} on a never-empty board — the identical opening state the
+ * GuildScene's new game and the debug/demo boots all shared as duplicated literals. The
+ * caller supplies only what legitimately differs per boot: the main-quest label and the
+ * caravans it opens with.
+ */
+export function createStarterGuild(seed: string | number, opts: StarterGuildOptions = {}): Guild {
+  return createGuild(seed, {
+    roster: STARTING_ROSTER(),
+    armory: [...STARTER_ARMORY],
+    treasury: STARTER_TREASURY,
+    caravans: opts.caravans,
+    mainQuestLabel: opts.mainQuestLabel,
+    difficultyId: opts.difficultyId,
+  });
 }
 
 /** Create a persistent guild with a never-empty board (a main quest + the stream). */
@@ -390,6 +443,21 @@ export function hireMercenary(guild: Guild): Unit | null {
   const merc = rollMercenary(guild.seed, guild.mercCounter++);
   guild.roster.push(merc);
   return merc;
+}
+
+/**
+ * **Buy one gear into the armory** (D34): the vault funds the armory. Mints a fresh
+ * `blade-<n>` id (n = current armory size, so ids don't collide), spends
+ * {@link GUILD.armoryCost} from the treasury, and appends it to the armory. Returns the
+ * new gear id, or `null` if the treasury can't afford it. The economy rule the GuildScene
+ * used to inline (price constant, id minting, treasury mutation all render-side).
+ */
+export function buyArmoryGear(guild: Guild): string | null {
+  if (guild.treasury < GUILD.armoryCost) return null;
+  const gearId = `blade-${guild.armory.length}`;
+  guild.treasury -= GUILD.armoryCost;
+  guild.armory.push(gearId);
+  return gearId;
 }
 
 /** Roll a randomized mercenary from a seed + index (deterministic, D33). */

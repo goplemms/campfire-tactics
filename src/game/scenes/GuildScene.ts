@@ -1,7 +1,8 @@
 import Phaser from "phaser";
 import { COLOR, FONT, INK } from "../theme";
 import {
-  createGuild,
+  createStarterGuild,
+  buyArmoryGear,
   dispatch,
   dispatchRefusal,
   resolveReturn,
@@ -21,13 +22,11 @@ import {
   gearRefusal,
   loadPurse,
   caravanCapacity,
-  createUnit,
   RunLoop,
   mercPool,
   hireFromPool,
   type Guild,
   type Caravan,
-  type Unit,
   type CaravanResolution,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
@@ -117,24 +116,12 @@ export class GuildScene extends Phaser.Scene {
     this.render();
   }
 
-  /** A starting guild: a small authored roster, an armory, treasury, two vessels. */
+  /** A starting guild: the authored {@link "../../core".STARTING_ROSTER}, armory and
+   *  treasury (all owned by core now), on two vessels. */
   private freshGuild(seed: string): Guild {
-    const roster: Unit[] = [
-      createUnit({ id: "Edrin", side: "player", pos: { col: -1, row: -1 }, name: "Edrin", jobId: "soldier", isLord: true, awareness: 5, intelligence: 4, speed: 12, maxHp: 34, attack: 11, defense: 4, moveRange: 4, sightRadius: 5 }),
-      createUnit({ id: "Rook", side: "player", pos: { col: -1, row: -1 }, name: "Rook", jobId: "soldier", awareness: 4, intelligence: 4, speed: 12, maxHp: 30, attack: 9, defense: 3, moveRange: 4, sightRadius: 5 }),
-      createUnit({ id: "Vale", side: "player", pos: { col: -1, row: -1 }, name: "Vale", jobId: "scout", awareness: 2, intelligence: 2, speed: 10, maxHp: 24, attack: 11, defense: 2, moveRange: 4, sightRadius: 5 }),
-      createUnit({ id: "Pip", side: "player", pos: { col: -1, row: -1 }, name: "Pip", jobId: "cook", speed: 8, maxHp: 18, attack: 3, defense: 1, moveRange: 3, sightRadius: 4 }),
-      createUnit({ id: "Coin", side: "player", pos: { col: -1, row: -1 }, name: "Coin", jobId: "merchant", speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }),
-      createUnit({ id: "Liora", side: "player", pos: { col: -1, row: -1 }, name: "Liora", jobId: "noble", awareness: 2, intelligence: 5, speed: 8, maxHp: 18, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }),
-      createUnit({ id: "Sterling", side: "player", pos: { col: -1, row: -1 }, name: "Sterling", jobId: "banker", awareness: 2, intelligence: 3, speed: 8, maxHp: 16, attack: 2, defense: 1, moveRange: 3, sightRadius: 4 }),
-      createUnit({ id: "Sela", side: "player", pos: { col: -1, row: -1 }, name: "Sela", jobId: "medic", awareness: 3, intelligence: 3, speed: 9, maxHp: 20, attack: 4, defense: 2, moveRange: 3, sightRadius: 4 }),
-    ];
-    return createGuild(seed, {
-      roster,
-      armory: ["enchanted-blade", "iron-shield"],
-      treasury: 300,
-      caravans: [createCaravan("alpha", "supply-train"), createCaravan("beta", "scout-cart")],
+    return createStarterGuild(seed, {
       mainQuestLabel: "The Sunken Keep",
+      caravans: [createCaravan("alpha", "supply-train"), createCaravan("beta", "scout-cart")],
     });
   }
 
@@ -277,15 +264,12 @@ export class GuildScene extends Phaser.Scene {
       yy += 26;
     }
 
-    // Treasury-funded armory buy (D34): the vault funds the armory.
+    // Treasury-funded armory buy (D34): the vault funds the armory (rule owned by core).
     yy += 8;
-    const blade = `blade-${this.guild.armory.length}`;
-    const ARMORY_COST = 60;
-    const canBuyGear = this.guild.treasury >= ARMORY_COST;
-    this.wideButton(x, yy, 220, canBuyGear ? `Buy Gear (${ARMORY_COST}g → armory)` : `Buy Gear (need ${ARMORY_COST}g)`, canBuyGear, () => {
-      this.guild.treasury -= ARMORY_COST;
-      this.guild.armory.push(blade);
-      this.setHint(`Bought ${blade} into the armory (treasury −${ARMORY_COST}g).`);
+    const canBuyGear = this.guild.treasury >= GUILD.armoryCost;
+    this.wideButton(x, yy, 220, canBuyGear ? `Buy Gear (${GUILD.armoryCost}g → armory)` : `Buy Gear (need ${GUILD.armoryCost}g)`, canBuyGear, () => {
+      const gearId = buyArmoryGear(this.guild);
+      if (gearId) this.setHint(`Bought ${gearId} into the armory (treasury −${GUILD.armoryCost}g).`);
       this.render();
     });
 

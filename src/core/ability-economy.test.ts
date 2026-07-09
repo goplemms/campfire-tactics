@@ -129,6 +129,68 @@ describe("ability economy (D37)", () => {
     expect(fizzled).toContain("mend");
   });
 
+  // #149, owner-ruled: a **tile-mode** hostile charge captures the target's tile at commit and
+  // WHIFFS if the target moves off it — a fixture (no shipped skill sets targetMode "tile"; the sole
+  // shipped charge, Mend, is friendly/homing, pinned below). Structure-only: nothing felt changes.
+  const GROUND_CHARGE: SkillDef = {
+    id: "ground-charge",
+    name: "Ground Charge",
+    description: "",
+    target: "enemy",
+    range: 3,
+    spend: "act",
+    cost: { charge: 50 }, // lands on the 2nd tick
+    targetMode: "tile",
+    effect: { kind: "damage", bonusAttack: 6 },
+  };
+
+  it("a tile-mode hostile charge WHIFFS when the target leaves the captured tile (#149)", () => {
+    const grid = new TileGrid(6, 1);
+    const rogue = at("r", "player", 0, 0);
+    const foe = at("f", "enemy", 3, 0, { hp: 40, maxHp: 40 });
+    const battle = new Battle(grid, [rogue, foe]);
+    rogue.ct = 100;
+
+    let fizzled = "";
+    battle.bus.on("chargeFizzled", ({ id }) => (fizzled = id));
+
+    const out = battle.useSkill(rogue, GROUND_CHARGE, foe);
+    expect(out.charging).toBe(true);
+    foe.pos = { col: 4, row: 0 }; // the foe sidesteps before the shot lands
+    battle.clock.tick(); // gauge 50
+    battle.clock.tick(); // gauge 100 → target-moved fizzle, not a resolve
+    expect(foe.hp).toBe(40); // whiffed — took no damage
+    expect(fizzled).toContain("ground-charge");
+  });
+
+  it("a tile-mode hostile charge LANDS when the target holds the tile (#149)", () => {
+    const grid = new TileGrid(6, 1);
+    const rogue = at("r", "player", 0, 0);
+    const foe = at("f", "enemy", 3, 0, { hp: 40, maxHp: 40 });
+    const battle = new Battle(grid, [rogue, foe]);
+    rogue.ct = 100;
+
+    battle.useSkill(rogue, GROUND_CHARGE, foe); // foe stays put
+    battle.clock.tick();
+    battle.clock.tick(); // resolves
+    expect(foe.hp).toBeLessThan(40); // the ground shot connected
+  });
+
+  it("the friendly Mend (default unit mode) HOMES — heals the ally even after it repositions (#149)", () => {
+    const grid = new TileGrid(6, 1);
+    const medic = at("m", "player", 0, 0);
+    const ally = at("a", "player", 1, 0, { hp: 1, maxHp: 40 });
+    const foe = at("f", "enemy", 5, 0);
+    const battle = new Battle(grid, [medic, ally, foe]);
+    medic.ct = 100;
+
+    battle.useSkill(medic, MEND_CHARGED, ally); // no targetMode → homing
+    ally.pos = { col: 3, row: 0 }; // the ally moves out from under the cast
+    battle.clock.tick();
+    battle.clock.tick(); // resolves on the ally wherever it stands
+    expect(ally.hp).toBe(17); // homed — the heal still landed
+  });
+
   it("a maintained-stance channel ramps on the prey and resets on target-switch", () => {
     const grid = new TileGrid(5, 1);
     const hunter = at("h", "player", 0, 0, { attack: 10, attackRange: 3 });

@@ -410,11 +410,17 @@ export class Battle {
         } else if (skill.effect.kind === "guard-allies") {
           outcome = this.resolveGuardAllies(caster, skill.effect.amount, skill.effect.duration ?? 1);
         } else if (!deploy && skill.cost?.charge) {
-          // Commit to the timeline; the effect lands when its gauge fills (D5/D37).
+          // Commit to the timeline; the effect lands when its gauge fills (D5/D37). A **tile-mode**
+          // charge (#149) captures the target's tile now and whiffs if the target leaves it (the
+          // clock arms the target-moved fizzle from `target`+`targetTile`); the default **unit** mode
+          // homes on the target wherever it moved (the friendly Mend). No shipped skill sets tile
+          // mode today, so the captured-tile branch is dormant until content authors a hostile charge.
+          const tileMode = skill.targetMode === "tile";
           this.clock.schedule({
             id: `charge:${caster.id}:${skill.id}:${this.clock.time}`,
             speed: skill.cost.charge,
             caster,
+            ...(tileMode ? { target, targetTile: { col: target.pos.col, row: target.pos.row } } : {}),
             run: () => {
               if (target.alive) resolveSkill(skill, caster, target, this.bus, this.units);
             },

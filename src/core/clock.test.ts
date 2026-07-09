@@ -101,6 +101,46 @@ describe("CTClock", () => {
     expect(resolvedIds).toEqual(["frost"]);
     expect(clock.pendingEffects()).toBe(0);
   });
+
+  // #149: a tile-mode charge (target + targetTile) arms a default target-moved fizzle; a homing
+  // charge (no targetTile) resolves on the target wherever it moved. The clock owns the seam.
+  it("a tile-mode charge whiffs (chargeFizzled) when the target leaves the captured tile", () => {
+    const prey = unit("prey", 10, "enemy");
+    prey.pos = { col: 3, row: 3 };
+    const bus = new EventBus();
+    const clock = new CTClock([prey], bus);
+    let resolved = false;
+    const fizzled: string[] = [];
+    bus.on("chargeFizzled", ({ id }) => fizzled.push(id));
+
+    clock.schedule({ id: "ground-shot", speed: 25, target: prey, targetTile: { col: 3, row: 3 }, run: () => { resolved = true; } });
+    prey.pos = { col: 4, row: 3 }; // sidesteps before the charge fills
+    for (let i = 0; i < 4; i++) clock.tick(); // 25·4 = 100
+
+    expect(resolved).toBe(false); // whiffed — run never called
+    expect(fizzled).toEqual(["ground-shot"]);
+  });
+
+  it("a tile-mode charge lands when the target holds the captured tile", () => {
+    const prey = unit("prey", 10, "enemy");
+    prey.pos = { col: 3, row: 3 };
+    const clock = new CTClock([prey]);
+    let resolved = false;
+    clock.schedule({ id: "ground-shot", speed: 25, target: prey, targetTile: { col: 3, row: 3 }, run: () => { resolved = true; } });
+    for (let i = 0; i < 4; i++) clock.tick();
+    expect(resolved).toBe(true);
+  });
+
+  it("a unit-mode (homing) charge — no targetTile — resolves even after the target moves (Mend's shape)", () => {
+    const ally = unit("ally", 10);
+    ally.pos = { col: 3, row: 3 };
+    const clock = new CTClock([ally]);
+    let resolved = false;
+    clock.schedule({ id: "mend", speed: 25, target: ally, run: () => { resolved = true; } }); // no targetTile → homing
+    ally.pos = { col: 9, row: 9 }; // the ally repositions
+    for (let i = 0; i < 4; i++) clock.tick();
+    expect(resolved).toBe(true); // homed — follows the unit
+  });
 });
 
 // The shared CT stepping engine (D63 unification, Phase 2) — the single comparator

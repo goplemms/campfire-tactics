@@ -6,7 +6,7 @@ import { canDisarm } from "./traps";
 import { PASSIVE } from "./combat";
 import { prestige, prestigeOptions, eligiblePrestiges } from "./grants";
 import { createRun, type RunState } from "./run";
-import { deftHandsSkim, hasThief, DEFT_HANDS } from "./economy-actions";
+import { deftHandsSkim, hasThief, DEFT_HANDS, accrueDeclaredFaucets } from "./economy-actions";
 
 function mk(id: string, jobId?: "scout" | "assassin" | "thief", over: Partial<Parameters<typeof createUnit>[0]> = {}): Unit {
   const u = createUnit({
@@ -71,6 +71,29 @@ describe("Thief — Deft Hands node skim (D68)", () => {
   it("hasThief reflects a Thief in the party", () => {
     expect(hasThief([thiefUnit()])).toBe(true);
     expect(hasThief([fighter()])).toBe(false);
+  });
+
+  it("the Thief declares Deft Hands as a goldSkim faucet mirroring DEFT_HANDS (#114 — no drift)", () => {
+    const skim = THIEF_JOB.faucet?.goldSkim;
+    expect(skim).toBeDefined();
+    expect(skim!.chance).toBe(DEFT_HANDS.chance);
+    expect(skim!.amount).toBe(DEFT_HANDS.gold);
+    expect(skim!.nodeKinds).toEqual(["combat", "event"]);
+  });
+
+  it("accrueDeclaredFaucets resolves the goldSkim in the one walk — the same take as deftHandsSkim (#114)", () => {
+    // The one faucet walk fires the skim (breakCamp no longer calls deftHandsSkim directly). Two
+    // fresh runs: one skimmed via the walk, one via the direct resolver — identical seeded outcome.
+    const viaWalk = createRun("deft-walk", { party: [fighter(), thiefUnit()], difficultyId: "normal", gold: 0, storageCap: 8 });
+    const viaDirect = createRun("deft-walk", { party: [fighter(), thiefUnit()], difficultyId: "normal", gold: 0, storageCap: 8 });
+    const busy = Object.values(viaWalk.map.nodes).find((n) => n.kind === "combat" || n.kind === "event")!;
+    viaWalk.mapNodeId = busy.id;
+    viaDirect.mapNodeId = busy.id;
+    const before = viaWalk.camp.gold;
+    accrueDeclaredFaucets(viaWalk);
+    const skimmed = deftHandsSkim(viaDirect);
+    expect(viaWalk.camp.gold - before).toBe(skimmed); // the walk skimmed exactly what the resolver reports
+    expect([0, DEFT_HANDS.gold]).toContain(skimmed);
   });
 
   it("no Thief ⇒ no skim", () => {

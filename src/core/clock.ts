@@ -15,6 +15,7 @@
  */
 
 import { isActive, activeUnits, type Unit, type Side } from "./units";
+import type { GridCoord } from "./iso";
 import type { EventBus } from "./event-bus";
 import { hasStatus, statusAmount, SLOWED, HASTENED } from "./status";
 import { decayCounters } from "./num";
@@ -117,10 +118,24 @@ export interface ScheduledEffect {
    */
   caster?: Unit;
   /**
-   * Data-driven **fizzle** predicate (D37): checked when the gauge fills; if it
-   * returns true the effect is cancelled instead of run (`chargeFizzled` fires).
-   * Caster-death is wired by default ({@link CTClock.schedule}); the rest
-   * (target-moved, counter-spell) reserve this shape.
+   * The charge's **target unit** (#149) — paired with {@link targetTile} to arm the tile-mode
+   * **target-moved fizzle**. A `"unit"`-mode (homing) charge omits both; the target it homes on is
+   * closed over by `run` instead.
+   */
+  target?: Unit;
+  /**
+   * The **tile the charge was aimed at** (#149 tile mode) — captured at commit. When set alongside
+   * {@link target}, {@link CTClock.schedule} arms a **target-moved fizzle**: the charge whiffs if the
+   * target has left this tile by the time the gauge fills (a ground shot the foe dodged). Omitted for
+   * homing (`"unit"`-mode) charges.
+   */
+  targetTile?: GridCoord;
+  /**
+   * Data-driven **fizzle** predicate (D37/#149): checked when the gauge fills; if it
+   * returns true the effect is cancelled instead of run (`chargeFizzled` fires). Two are
+   * wired by default ({@link CTClock.schedule}): **caster-death** (a charge whose caster
+   * fell) and, for a {@link targetTile}-armed charge, **target-moved**. An explicit
+   * `fizzleWhen` overrides both (the counter-spell shape reserves it).
    */
   fizzleWhen?: () => boolean;
 }
@@ -247,13 +262,20 @@ export class CTClock {
   }
 
   /**
-   * Commit an effect to the timeline. A `caster` arms the default **caster-death
-   * fizzle** (D37) unless the effect already carries its own `fizzleWhen`.
+   * Commit an effect to the timeline. Unless the effect carries its own `fizzleWhen`, the clock
+   * arms the default fizzles (D37/#149): **caster-death** (a `caster` that falls before the charge
+   * lands) and, for a tile-mode charge (both `target` + `targetTile` set), **target-moved** (the
+   * target left the captured tile — a ground shot dodged). The charge fizzles if *either* fires.
    */
   schedule(effect: ScheduledEffect): void {
-    const fizzleWhen =
-      effect.fizzleWhen ??
-      (effect.caster ? () => !effect.caster!.alive : undefined);
+    const defaults: (() => boolean)[] = [];
+    if (effect.caster) defaults.push(() => !effect.caster!.alive);
+    if (effect.target && effect.targetTile) {
+      const tile = effect.targetTile;
+      const target = effect.target;
+      defaults.push(() => target.pos.col !== tile.col || target.pos.row !== tile.row);
+    }
+    const fizzleWhen = effect.fizzleWhen ?? (defaults.length ? () => defaults.some((f) => f()) : undefined);
     this.scheduled.push({ gauge: 0, ...effect, fizzleWhen });
   }
 

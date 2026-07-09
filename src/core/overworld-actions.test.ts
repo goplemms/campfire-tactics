@@ -425,6 +425,9 @@ describe("the D61 invariant is total over the ONE home — no standalone gated v
     "setNodeFlag", "hasNodeFlag", "primeFlag", "consumeFlag", "isPrimed",
     // overworld-actions — effect interpreter + predicates
     "applyOverworldEffect", "isOverworldActionEffect", "isHealer",
+    // overworld-actions — the availableActions projection (R4/B #112): a pure read over the
+    // gate (no commit), not a verb resolver, + its per-axis cost-readout helper.
+    "availableActions", "readActionCost",
   ]);
 
   it("every exported verb resolver is SkillDef-gated (or a classified helper) — a new ungated verb fails by name", async () => {

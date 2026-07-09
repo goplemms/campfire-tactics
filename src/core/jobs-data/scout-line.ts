@@ -174,6 +174,11 @@ export const THIEF_JOB: JobDef = {
   description: "Unseen hand: vanish, skim coin off the road, and pick the locks others can't.",
   passives: {},
   lockpick: true, // Expert Lockpick: disarm spotted traps + pick locks (read by canDisarm)
+  // Deft Hands (D68/#114) — the node-gold skim, now a **declared per-step faucet** resolved by the
+  // one accrueDeclaredFaucets walk (no longer a hardcoded breakCamp step). Literals mirror
+  // `economy-actions.DEFT_HANDS` (a parity test pins them, like PATRONIZE_GOLD ↔ ECONOMY) — kept as
+  // literals to avoid an economy-actions → scout-line → jobs init cycle.
+  faucet: { goldSkim: { chance: 0.5, amount: 25, nodeKinds: ["combat", "event"] } },
   baseline: { speed: 14, maxHp: 22, attack: 7, defense: 2, moveRange: 5, sightRadius: 6, attackRange: 1 },
   growth: { speed: 1, moveRange: 1 },
   skills: [HIDDEN_PASSAGE],

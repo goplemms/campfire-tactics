@@ -349,6 +349,21 @@ export interface SkillDef {
   /** Optional charge/cooldown cost beyond the Act (D37). */
   cost?: SkillCost;
   /**
+   * How a **charged** skill (D37/#149) re-acquires its target when its gauge fills, owner-ruled:
+   * - `"unit"` (the default when omitted) — **homing**: the charge follows the target unit wherever
+   *   it moved to, resolving on it if still alive. The Medic's friendly {@link "./jobs-data/combat"}
+   *   Mend keeps this — a heal shouldn't miss because the ally repositioned.
+   * - `"tile"` — **ground-aimed**: the target's tile is captured at commit, and the charge **whiffs**
+   *   (fizzles, emitting `chargeFizzled`) if the target left that tile — a hostile ground shot the
+   *   foe can dodge by moving. The clock arms the target-moved fizzle from the captured tile.
+   *
+   * Ignored by non-charged skills. **No shipped skill sets `"tile"` today** (the sole shipped charge,
+   * Mend, is friendly/homing), so the mechanism is structure-only — pinned by a fixture hostile charge
+   * in the tests — and nothing felt changes (sim byte-identical). Content authoring a hostile charge
+   * opts into the whiff with this field.
+   */
+  targetMode?: "tile" | "unit";
+  /**
    * Job level at which this skill unlocks (D39). Defaults to 1 (available from
    * the start). The four kits start with their passive + one active and earn the
    * **2nd active at level 2** (gated by {@link "./leveling".availableSkills}).

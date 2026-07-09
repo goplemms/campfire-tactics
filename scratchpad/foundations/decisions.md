@@ -3367,6 +3367,101 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D89 — The Verb Cell named: one grammar, one projection (refactor R4)
+
+- **Status:** Decided + built (2026-07-09) · milestone **R4** of the refactor campaign
+  ([`refactor-campaign-plan.md`](refactor-campaign-plan.md); issues #112 steps 2–4, #113, #114, #123,
+  #149) · realizes **D72**'s A3 north star, extends **D61/D88** (the paced-or-priced invariant) to
+  one home, and rides **D87**'s determinism + log guards. Shipped as **three batch PRs**
+  (grammar → migration → projection + riders).
+- **Context:** After D72 unified the *home* onto `JobDef.skills` and D88 closed the paced-or-priced
+  invariant, the economy verbs were still **standalone functions** with a parallel `VERB_COSTS`
+  registry, the camp UI **hand-wired** a button per verb, costs came in **three grammars** (combat
+  `charge`/`cooldown`, overworld `OverworldCost`, a separate `usesPerNode` bridge, materials
+  special-cased in undo), and `SkillDef.phase` was a vestigial second placement axis beside
+  `usableContext`. Queued content (Banker, the triad kits, prestige forks) would have landed as
+  plumbing, not records.
+- **Decision — the cell is one shape, applied at two tiers.** A **verb** is a `SkillDef` (a record on
+  a `JobDef` or a universal home) resolved by one **interpreter** through an exhaustive **effect
+  registry**, gated by a **cost grammar** read as a **projection**, its RNG **labeled**, its spends
+  **provenance-logged**. Concretely, across the three batches:
+  1. **One `Cost` grammar (#113, batch 1).** A single cost type carries a clock-domain tag — combat
+     pacing in CT (`charge`/`cooldown`), overworld pacing in node-steps (`cooldown`/`usesPerNode`) —
+     and a price map that **includes materials** (`{ id?, count }`). `usesPerNode` folded into
+     `overworldCost` (the bridge deleted); the Medic herb + trap-kit prices declare on their skills
+     and consume in the **commit half**, so the undo `stash` special case died (D87's checkpoint
+     already covers the refund). Vancian charges are a future price resource, not a fourth grammar.
+  2. **`SkillDef.phase` retired (#123, batch 1).** `usableContext` (derived from effect shape, or
+     explicit) is the one placement axis. Test-first: the `battle-flow.noActionsAvailable` ⇄
+     `availableSkills(actor,"combat")` agreement test pinned the latent disagreement before `phase`
+     was deleted.
+  3. **Economy verbs are `SkillDef`s (#112/A, batch 2).** New `OverworldActionEffect` kinds
+     (`sell`/`borrow`/`engageInterest`/`guardPurse`/`patronize`/`buy`/`triage`) each wire onto their
+     owning job (Merchant/Banker/Noble/Medic) or the **universal home**; the compile-time
+     `OVERWORLD_EFFECT_HANDLERS` mapped type forces a handler per kind. `merchantBuy` is a
+     **universal** overworld skill (M8's ruling — anyone shops where there's a market), the precedent
+     for universal verbs. `VERB_COSTS` dissolved onto `overworldCost`; the D88 guard **inverted** to
+     prove the *absence* of any standalone gated verb. Each verb's post-gate mutation is an
+     **effect core** (`applyXEffect`) shared by the interpreter and the legacy thin-wrapper, pinned
+     equal by parity tests (the migration's proof — the wrappers are kept as those anchors).
+  4. **`availableActions(run) → ActionView[]` (#112/B, batch 3).** The run-tier twin of
+     `availableSkills`: every overworld verb usable at the current node per fielded unit's skill set +
+     the universal home, each with a gate **verdict** (the `checkOverworldCost` closure, *uncommitted*)
+     and a resolved **cost readout**. `OverworldScene`'s camp verb surfaces (Recovery + Economy drawers,
+     the Triage row) are now a **render of this projection** — the hand-wired per-verb blocks and the
+     `isMigratingEconomyVerb` seam are gone, every click dispatches through the one interpreter
+     (`useOverworldSkill`). This is also the sim meta-policy's legal-move enumeration (the D56/D57
+     unlock).
+  5. **`JobFaucet` generalizes (#114, batch 3).** From the Noble-only Influence trickle to the
+     per-step accrual record (`influencePerStep?`, `goldSkim?`). The Thief's Deft Hands skim migrated
+     off a hardcoded `breakCamp` step onto a declared `goldSkim` faucet resolved by the one
+     `accrueDeclaredFaucets` walk — the seeded label (`Labels.deft`) moved across **unchanged**, the
+     byte-identity proof. Banker interest stays eco-state.
+  6. **Charged-ability `targetMode` (#149, owner-ruled, batch 3).** `targetMode: "tile" | "unit"` on
+     charged skills; the reserved `clock.ts` seam (`ScheduledEffect`) gained tile capture + a
+     **target-moved fizzle** (default when `target`+`targetTile` are set, beside caster-death). Hostile
+     ground charges whiff when the target leaves the tile; friendly homing charges (Mend) follow the
+     unit. **Structure-only:** zero shipped hostile charges exist (Mend, the sole shipped charge, is
+     friendly/homing), so shipped skills default to today's homing and nothing felt changes — the
+     mechanism is pinned by a fixture hostile charge.
+- **Named behavior changes (each pinned):**
+  - **Triage fallback (ratified ruling #1) — SHIPPED.** A Medic-less party can now triage at camp via
+    the universal `TRIAGE_FALLBACK` (RP-funded at **2× `rpPerChunk`** — half efficiency, a tunable
+    dial beside D9's `rpPerChunk`). It surfaces as a real (often greyed) camp row now that the camp UI
+    renders the projection — the increment-11 screenshot diff. Medic-less parties heal slower.
+  - **Interpreter regularization.** Routing the economy/triage verbs through `useOverworldSkill` means
+    they now grant use-XP like every other overworld verb (they didn't as standalone functions). The
+    bot reads camp levers at 0% (D56/D57), so the sim digest is byte-identical.
+  - **Batch-1/2 deltas** (from D88's line): captured-Cook, the Banker `usesPerNode` re-use refusal,
+    the empty-purse engage refusal — carried forward, all sim-byte-identical.
+  - **Thief flee rider (#153) — NOT shipped (skipped).** The `steal-then-flee` standing order was
+    droppable and **skipped**: the thief steal/skim/recover/escape/tally lifecycle lives entirely in
+    `BattleScene` (game layer), and the pure combat layer (`turn.ts`) is deliberately purse-agnostic,
+    so the headless sim never fires the skim that triggers the flee transition. Making the sim reflect
+    bolting thieves would require breaching the combat/run purity boundary — far beyond "a
+    `STANDING_ORDERS` record" — so per the build brief's "if the transition machinery fights you, skip
+    entirely, do not force," nothing was committed for it. A scene-only flee (interactive-only,
+    sim-byte-identical) remains a clean future option; `tallyEscapedThieves` already reads
+    alive-at-resolution as escaped (survived ⇒ kept the gold), the reading to keep.
+- **Sim:** byte-identical end-to-end across all shipped increments (median nights 6 · gold 215 · win
+  195 · wipe 77) — the meta-policy doesn't engage camp levers, so the projection rewiring, the faucet
+  migration, and the structure-only targetMode change nothing the bot observes.
+- **Reuses / consistent with:** **D72** (the one home, realized), **D61/D88** (the invariant, now
+  total over one grammar), **D87** (determinism + checkpoint the material-consumption move leaned on),
+  **D56/D57** (the projection is the legal-move enumeration), **D9** (the fallback's RP dial),
+  **D5/D37** (the charge clock the targetMode fizzle extends).
+- **Spec:** `src/core/cost.ts` (the one grammar), `src/core/overworld-actions.ts`
+  (`availableActions`/`readActionCost`/the interpreter/the effect registry), `src/core/economy-actions.ts`
+  (the effect cores + the generalized faucet + `deftHandsSkim`), `src/core/jobs.ts` (`JobFaucet`),
+  `src/core/jobs-data/{support,combat,scout-line}.ts` (the verb + faucet declarations),
+  `src/core/skills.ts` (`targetMode`, `phase` gone), `src/core/clock.ts` (the target-moved fizzle),
+  `src/core/turn.ts` (the tile-capturing charge commit), `src/game/scenes/OverworldScene.ts` (the
+  projection render), [`docs/design/systems/verb-substrate.md`](../../docs/design/systems/verb-substrate.md)
+  (the cell named), and the batch guards (`overworld-actions.test.ts`, `barrel-surface.test.ts`).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

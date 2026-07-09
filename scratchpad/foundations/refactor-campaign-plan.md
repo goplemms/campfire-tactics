@@ -1,11 +1,20 @@
 # Refactor campaign — the plan (from the 2026-07-08 audit)
 
-> **Status:** plan authored 2026-07-08 from the full-codebase audit (GitHub issues
-> **#111–#153**; index + sequencing in **#152**). This page maps the audit onto the
-> memento milestone shape: ordered milestones, each with a **user-testable gate**,
-> built one at a time on dedicated branches with green tests at every increment.
-> Build briefs are authored per milestone as each is dispatched (R1's exists:
-> [`refactor-r1-hardening-build.md`](refactor-r1-hardening-build.md)).
+> **Status: COMPLETE (2026-07-09).** All five milestones landed — R1–R5, decisions
+> **D87–D89** (R3/R5 mechanical, no D-entry), PRs **#154–#161** + the batch-C render
+> PR pending. Baseline grew 1044 → **1102 tests**, sim byte-identical throughout, the
+> render harnesses' diffs empty for every pure-motion step. The one honest miss: R5's
+> ≲1,200-line scene target (BattleScene landed at 2538, OverworldScene 1754 — the
+> subsystems all extracted, but the scenes still own their interactive state machines;
+> see the R5 gate row). The Verb Cell is named and closed; the queued content passes
+> can land as records. Original plan status below.
+>
+> **Status (as authored):** plan authored 2026-07-08 from the full-codebase audit
+> (GitHub issues **#111–#153**; index + sequencing in **#152**). This page maps the
+> audit onto the memento milestone shape: ordered milestones, each with a
+> **user-testable gate**, built one at a time on dedicated branches with green tests
+> at every increment. Build briefs are authored per milestone as each is dispatched
+> (R1's exists: [`refactor-r1-hardening-build.md`](refactor-r1-hardening-build.md)).
 
 ## North star
 
@@ -37,7 +46,7 @@ as *records, not plumbing*, and the eventual save system (D27) has a wire format
 | R2 | **Verb-gate closure — no unpaced, unpriced verb** — **DONE** (merged PR #155, 2026-07-09; decision **D88**; 1050 tests, sim byte-identical) | #112 (step 1), #125, #126 | ✅ Gate met: the three stragglers are gated; the `VERB_COSTS` registry + export-classification guard make a new ungated verb **fail by name**; the commit closure captures prices at check time (the re-resolution trap is dead); `fieldsJob` is the one predicate spelling; three named behavior changes recorded in D88 (captured-Cook, Banker `usesPerNode`, empty-purse engage refusal). |
 | R3 | **Module splits — pure code motion** — **DONE** (merged PR #156, 2026-07-09; no D-entry per the mechanical rule; 1052 tests, sim byte-identical at all ten increments) | #119, #120, #121, #127, #128, #129, #130 | ✅ Gate met: zero behavior change (barrel-surface pin documents every export delta); `jobs.ts` 246 · `overworld-actions.ts` 226 · `node-events.ts` 567 · `turn.ts` 786 lines, one responsibility each (the two above the ~450 soft target keep exactly their designated remainder); `run.ts` carries no expedition ids (predicate-on-node shipped); aliases dead, renames landed. |
 | R4 | **The verb substrate proper — one grammar, one projection** — **DONE** (batch-3 PR pending, 2026-07-09; decision **D89**; 1091 tests, sim byte-identical) | #112 (steps 2–4), #113, #114, #123, #149 | ✅ Gate met: economy verbs are `SkillDef`s on `JobDef.skills` (`VERB_COSTS` retired, the D88 guard **inverted** to prove no standalone gated verb); **`availableActions(run)`** drives the OverworldScene camp verb surfaces — the `isMigratingEconomyVerb` seam + hand-wired blocks are gone (screenshot parity: only the ratified universal Triage-fallback row is new); one `Cost` type with a clock-domain tag (materials declared + commit-side, the undo `stash` special case dead); `JobFaucet` generalized to the per-step accrual record (Thief's Deft Hands migrated onto a declared `goldSkim`, `Labels.deft` unchanged ⇒ sim byte-identical); `SkillDef.phase` retired for `usableContext` (battle-flow/UI agreement test flipped); charged skills carry `targetMode` + the target-moved fizzle (owner-ruled #149, **structure-only** — no shipped hostile charge, pinned by a fixture). **#153 thief flee: skipped** (droppable; the steal/skim lifecycle is scene-only + combat is purse-agnostic, so the headless sim can't fire the transition — D89 records the reasoning). |
-| R5 | **Render decomposition** | #131, #132, #133, #134, #135, #137, #138 | BattleScene and OverworldScene each ≲1,200 lines of pure orchestration; the overlay/button kit is the only way panels/buttons are built; the seven core-leaks are core functions with tests; screenshot harness diffs are **empty** for every pure-motion step. |
+| R5 | **Render decomposition** — **DONE** (batch-A PR #160, batch-B PR #161, batch-C PR pending; 2026-07-09; no D-entry per the mechanical rule; 1102 tests, sim byte-identical at all 15 increments) | #131, #132, #133, #134, #135, #137, #138 | ✅ Gate **partially** met — the mechanical goals landed, the line target did **not**. Kit: `overlay-card.ts` (`showModal`, backdrop always on) + the `Button` kit are the only way panels/buttons build (the three `makeTextButton` wrappers + two scene probes unified). Core-leaks: the seven render-side rule leaks are tested core functions (`createStarterGuild`/`buyArmoryGear`/`toggleUpkeepSkip`, the bribe-sway verb + `unitSwayed` bus event, `medicalHerbs`/`marketStock`/`deployModifiers`/`marketReadyAt`). Views extracted: OverworldScene → `ledger-sheet`/`map-view`/`camp-panel`/`market-view`/`event-panels` (batch B); BattleScene → `command-menu`/`forecast-cards`/`situation-card`/`resolution-report`/`deploy-zones`/`trap-markers` (batch C, #131's whole map). Screenshots: **empty diffs** for every pure-motion step across all 11 shots-* harnesses + e2e (73 assertions). **❌ Line target NOT met — honest count:** BattleScene **3126 → 2538**, OverworldScene **≈2500 → 1754**; both remain above the ≲1,200 "pure orchestration" aspiration. The six #131 extractions each landed clean, but the designated remainder — the phase state machine, input routing (pointer/key/click-ahead), the deploy↔battle turn-economy flow, skill routing, the theft/bribe/recruit trackers, and the ~20 HUD `refresh*`/`draw*` seams — is genuinely BattleScene's job and #131 maps no further; over-extracting to chase 1,200 was explicitly declined. Net: the scenes are markedly thinner and every subsystem is a testable, independently-owned view module, but "≲1,200-line orchestrator" was an over-optimistic target for a scene that still owns the interactive board state machine. |
 
 Standing riders (any milestone may absorb them opportunistically): #118 (forecast
 dry-run convention test), #128's stragglers, #153 (thief flee — content-adjacent,

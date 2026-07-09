@@ -7,7 +7,6 @@ type TentTab = "party" | "stores" | "ledger" | "map";
 import {
   RunLoop,
   countOf,
-  canAdd,
   removeItem,
   slotsFor,
   slotsUsed,
@@ -31,11 +30,8 @@ import {
   merchantBuy,
   // D61 — market access + the Merchant buy/sell faucet
   merchantSell,
-  merchantPrice,
-  sellPrice,
   effectiveMarketTier,
   marketReadyAt,
-  marketStock,
   getMaterial,
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
   primaryJobOf,
@@ -87,6 +83,8 @@ import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
 import { drawLedgerSheet } from "../ledger-sheet";
 import { MapView, NODE_KIND_VISUALS } from "../map-view";
 import { CampPanel, type CampAction, type ActionCost, type ActionPreview } from "../camp-panel";
+import { drawMarket } from "../market-view";
+import { renderChoicePanel } from "../event-panels";
 import { HintPanel } from "../hint-panel";
 
 /** Data handed between the overworld and a combat node's BattleScene. */
@@ -389,7 +387,16 @@ export class OverworldScene extends Phaser.Scene {
   private playEarlyEvent(node: MapNode, def: EventDef): void {
     const choices = def.choices?.(this.run, node) ?? [];
     if (choices.length > 0) {
-      this.renderChoicePanel(`On the road — ${def.name}`, def.teaser, choices, (c) => this.onEarlyChoice(node, def, c), 380);
+      renderChoicePanel(this, this.overlay, {
+        title: `On the road — ${def.name}`,
+        body: def.teaser,
+        gold: this.run.camp.gold,
+        choices,
+        onPick: (c) => this.onEarlyChoice(node, def, c),
+        btnW: 380,
+        make: this.makeTextButton.bind(this),
+        onHint: (t) => this.setHint(t),
+      });
       return;
     }
     const outcome = resolveEarlyEvent(this.run, node, def);
@@ -404,46 +411,6 @@ export class OverworldScene extends Phaser.Scene {
    * keep HP + EXP, forgo loot) and returns to the react camp; any other choice proceeds to the prep
    * camp and the normal fight.
    */
-  /**
-   * The shared event-choice modal (#133) — folds the early-event and event-node panels
-   * (once ~90% line-identical) into one. A titled info card with a `${body}\nPurse Ng`
-   * subhead and one button per choice; `onPick` fires for the taken (available) option.
-   * `extraRow` appends a trailing button (a shop's explicit Leave). Always backdropped.
-   */
-  private renderChoicePanel(
-    title: string,
-    body: string,
-    choices: EventChoice[],
-    onPick: (choice: EventChoice) => void,
-    btnW: number,
-    extraRow?: { label: string; onPick: () => void },
-  ): void {
-    const w = 560;
-    const rows = choices.length + (extraRow ? 1 : 0);
-    const h = 130 + rows * 40;
-    clearLayer(this.overlay);
-    const handle = showModal(this, this.overlay, {
-      title,
-      tone: "info",
-      w,
-      h,
-      cy: this.scale.height / 2 - 20,
-      body: { text: `${body}\nPurse ${this.run.camp.gold}g`, offset: 58, color: INK.muted },
-    });
-    const endOffset = renderChoiceStack(this.overlay, handle, {
-      choices: choices.map((c) => ({ label: c.label, enabled: c.available, detail: c.detail, onPick: () => onPick(c) })),
-      startOffset: 110,
-      step: 40,
-      btnW,
-      btnH: 30,
-      make: this.makeTextButton.bind(this),
-      onHint: (t) => this.setHint(t),
-    });
-    if (extraRow) {
-      this.overlay.push(this.makeTextButton(handle.cx, handle.top + endOffset, btnW, 30, extraRow.label, COLOR.successDeep, COLOR.success, extraRow.onPick));
-    }
-  }
-
   /** Apply a tailored early-event choice: a bypass short-circuits to the react camp; otherwise fight on. */
   private onEarlyChoice(node: MapNode, def: EventDef, choice: EventChoice): void {
     const out: EventOutcome = def.choose!(this.run, node, choice.id);
@@ -1170,78 +1137,17 @@ export class OverworldScene extends Phaser.Scene {
    * Tent overlay's frame/teardown so the two read as siblings.
    */
   private renderMarket(): void {
-    clearLayer(this.overlay);
-    const tier = effectiveMarketTier(this.campNode ?? currentNode(this.run), this.run.party);
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
-    const w = 560;
-    const h = 400;
-    const left = cx - w / 2;
-    const top = cy - h / 2;
-
-    installBackdrop(this, this.overlay, 22);
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
-      this.add.text(left + 24, top + 24, "Market", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(left + 122, top + 26, `· ${tier === "none" ? "no market" : `${tier} market`}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-    );
-    this.overlay.push(this.makeTextButton(left + w - 60, top + 26, 96, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => this.closeMarket()).setDepth(26));
-    // Storage on the header so the space you're spending is visible while you shop — buys eat
-    // slots (see each row's Space) and a full stash blocks them, so surface the cap up front.
-    const invUsed = slotsUsed(this.run.inventory);
-    this.overlay.push(this.add.text(left + w - 24, top + 52, `Storage ${invUsed}/${this.run.inventory.storageCap} (free ${this.run.inventory.storageCap - invUsed})`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25));
-
-    const leftX = left + 24;
-    if (tier === "none") {
-      this.overlay.push(this.add.text(leftX, top + 80, "No market here — route to a market node, or bring a Merchant to open one anywhere.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 4, wordWrap: { width: w - 48 } }).setOrigin(0, 0).setDepth(25));
-      return;
-    }
-
-    const price = merchantPrice(tier);
-    let y = top + 64;
-    this.overlay.push(this.add.text(leftX, y, `Buy  ·  ${price}g each`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-    y += 28;
-    for (const id of marketStock()) {
-      const mat = getMaterial(id);
-      if (!mat) continue;
-      const owned = countOf(this.run.inventory, id);
-      const room = canAdd(this.run.inventory, id);
-      const affordable = Math.floor(this.run.camp.gold / price);
-      const buyable = room && affordable >= 1;
-      this.overlay.push(
-        this.add.text(leftX, y, mat.name, { color: buyable ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-        this.add.text(leftX + 150, y, `own ${owned}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-      );
-      if (!buyable) {
-        this.overlay.push(this.add.text(leftX + 244, y, room ? `need ${price}g` : "storage full", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25));
-      } else {
-        const qty = Math.min(affordable, Math.max(1, this.marketQty[id] ?? 1));
-        // Space this purchase will add (stacks pack, so buying into a partial stack can add 0) —
-        // the "how much room am I about to spend" readout, live with the stepper.
-        const addSlots = slotsFor(mat, owned + qty) - slotsFor(mat, owned);
-        this.overlay.push(this.add.text(leftX + 200, y, `Space: +${addSlots}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25));
-        this.overlay.push(this.makeTextButton(leftX + 268, y, 22, 22, "−", COLOR.surfaceRaised, COLOR.border, () => { this.marketQty[id] = Math.max(1, qty - 1); this.renderMarket(); }).setDepth(26));
-        this.overlay.push(this.add.text(leftX + 292, y, `${qty}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5, 0.5).setDepth(25));
-        this.overlay.push(this.makeTextButton(leftX + 316, y, 22, 22, "+", COLOR.surfaceRaised, COLOR.border, () => { this.marketQty[id] = Math.min(affordable, qty + 1); this.renderMarket(); }).setDepth(26));
-        this.overlay.push(this.makeTextButton(leftX + 392, y, 84, 22, `Buy ×${qty}`, COLOR.btnFill, COLOR.gold, () => this.marketBuy(id, qty)).setDepth(26));
-      }
-      y += 30;
-    }
-
-    y += 8;
-    this.overlay.push(this.add.text(leftX, y, "Sell", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-    y += 28;
-    const valCount = countOf(this.run.inventory, "valuables");
-    const unitSell = sellPrice(getMaterial("valuables")!, tier);
-    if (valCount > 0 && unitSell > 0) {
-      this.overlay.push(this.add.text(leftX, y, `Valuables  ·  ×${valCount} at ${unitSell}g each`, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-      this.overlay.push(this.makeTextButton(leftX + 392, y, 84, 22, "Sell all", COLOR.btnFill, COLOR.gold, () => this.sellValuables()).setDepth(26));
-    } else {
-      this.overlay.push(this.add.text(leftX, y, valCount === 0 ? "No salvage to sell." : "Salvage can't be sold here.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-    }
-
-    const m = projectManifest(this.run, this.caravanInfo());
-    this.overlay.push(this.add.text(leftX, top + h - 22, `Purse ${m.purse}g     ·     Storage ${m.storageUsed}/${m.storageCap}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
+    drawMarket(this, this.overlay, {
+      run: this.run,
+      node: this.campNode ?? currentNode(this.run),
+      marketQty: this.marketQty,
+      caravan: this.caravanInfo(),
+      make: this.makeTextButton.bind(this),
+      onBuy: (id, qty) => this.marketBuy(id, qty),
+      onSellAll: () => this.sellValuables(),
+      onClose: () => this.closeMarket(),
+      rerender: () => this.renderMarket(),
+    });
   }
 
   /** Delegate to the camp panel — kept on the scene as the screenshot harness's entry
@@ -1380,7 +1286,17 @@ export class OverworldScene extends Phaser.Scene {
             },
           }
         : undefined;
-    this.renderChoicePanel(title, body, this.loop.eventChoices(), (c) => this.onEventChoice(c), 360, extraRow);
+    renderChoicePanel(this, this.overlay, {
+      title,
+      body,
+      gold: this.run.camp.gold,
+      choices: this.loop.eventChoices(),
+      onPick: (c) => this.onEventChoice(c),
+      btnW: 360,
+      extraRow,
+      make: this.makeTextButton.bind(this),
+      onHint: (t) => this.setHint(t),
+    });
   }
 
   /** Apply a chosen event option, then re-render (shop) or continue (terminal). */

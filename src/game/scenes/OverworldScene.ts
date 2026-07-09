@@ -1014,7 +1014,7 @@ export class OverworldScene extends Phaser.Scene {
         // badge the label with the uses left so the limiter is legible.
         const left = campSkillUsesLeft(this.run.overworld, skill);
         const capped = Number.isFinite(left);
-        const usesTag = capped && skill.usesPerNode! > 1 ? `  (${left} left)` : "";
+        const usesTag = capped && (skill.overworldCost?.usesPerNode ?? 0) > 1 ? `  (${left} left)` : "";
         const tip = capped
           ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Set Out.)`
           : `${skill.name} — ${skill.description}`;

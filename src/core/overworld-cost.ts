@@ -98,14 +98,13 @@ export function validateOverworldCost(label: string, cost: OverworldCost): void 
 
 /**
  * The {@link OverworldCost} an overworld/camp {@link SkillDef} resolves through the gate
- * (D61/D72): the skill's own `overworldCost` (the full two-axis menu — Survey's cooldown +
- * fatigue, a computed price, …), or — for a costless signature action that declares only
- * `usesPerNode` (Cook Stew) — the per-node cap alone. Supersedes the former `campSkillCost`,
- * widening it from the pacing knob to the whole menu. (`usesPerNode` undefined ⇒ no cap,
- * the legacy "pays its own way" escape.)
+ * (D61/D72/#113): the skill's own `overworldCost` — the full two-axis menu (Survey's cooldown
+ * + fatigue, Cook Stew's per-node cap + computed price, …). The former dual-source bridge
+ * (`?? { usesPerNode: skill.usesPerNode }`) is **gone** (the #113 fold): the per-node cap lives
+ * inside `overworldCost` alone now, so a skill that declares no cost simply has none (`{}`).
  */
 export function overworldCostOf(skill: SkillDef): OverworldCost {
-  return skill.overworldCost ?? { usesPerNode: skill.usesPerNode };
+  return skill.overworldCost ?? {};
 }
 
 // Enforce the two-axis invariant (D61/D72) at load: every overworld/camp **skill's** cost

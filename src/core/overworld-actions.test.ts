@@ -67,7 +67,7 @@ function actor(run: RunState): Unit {
  * computed-cost `provisionMeal`, D71). The cap/reset machinery is what these tests exercise.
  */
 function cookSkill(): SkillDef {
-  return { id: "fx-stew", name: "Fixture Stew", description: "", phase: "meta", target: "party", range: 0, spend: "act", usesPerNode: 1, effect: { kind: "morale", morale: 1, partyHeal: 8 } };
+  return { id: "fx-stew", name: "Fixture Stew", description: "", phase: "meta", target: "party", range: 0, spend: "act", overworldCost: { usesPerNode: 1 }, effect: { kind: "morale", morale: 1, partyHeal: 8 } };
 }
 
 describe("overworld-actions — Survey is the Scout's overworld skill (D74)", () => {
@@ -260,7 +260,7 @@ describe("overworld-actions — Triage is the healer's fatigue-fuelled camp heal
 
 describe("overworld-actions — the per-node camp-skill cap (D35)", () => {
   it("declares the cap on the skill (Cook Stew is once per node)", () => {
-    expect(cookSkill().usesPerNode).toBe(1);
+    expect(cookSkill().overworldCost?.usesPerNode).toBe(1);
   });
 
   it("a costless camp skill applies up to its cap, then refuses (no more unlimited use)", () => {
@@ -299,7 +299,7 @@ describe("overworld-actions — the per-node camp-skill cap (D35)", () => {
     const run = newRun("camp-uncapped");
     const a = actor(run);
     // A hypothetical resource-paid action: no per-node cap → fires repeatedly.
-    const uncapped: SkillDef = { ...cookSkill(), id: "cook-uncapped", usesPerNode: undefined };
+    const uncapped: SkillDef = { ...cookSkill(), id: "cook-uncapped", overworldCost: {} };
     expect(campSkillUsesLeft(run.overworld, uncapped)).toBe(Infinity);
     expect(useOverworldSkill(run, a, uncapped).applied).toBe(true);
     expect(useOverworldSkill(run, a, uncapped).applied).toBe(true);

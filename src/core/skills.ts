@@ -281,18 +281,6 @@ export interface SkillDef {
    */
   unlockLevel?: number;
   /**
-   * For a **meta/camp** skill: the maximum times it may be fired **at a single
-   * overworld node** (D35 spine). The overworld action economy gates every verb so
-   * it can't be spammed; `usesPerNode` is the gate for a *costless* signature job
-   * action (Cook's stew, Merchant's trade), reset each node-step ({@link
-   * "./overworld-actions".tickCooldowns}). **Undefined ⇒ uncapped** — a skill that
-   * pays its own way each cast (a Vancian charge, a gold/resource buy) is gated by
-   * that cost and may fire as many times as it can afford. Enforced by {@link
-   * "./overworld-actions".useOverworldSkill}; combat-phase skills ignore it (the CT
-   * clock is their limiter).
-   */
-  usesPerNode?: number;
-  /**
    * An optional **capability gate** (D72): the action is available only to a unit that
    * *holds* this {@link "./jobs".CapabilityId} (the Triage / lockpick shape — the
    * **Capability** gate of the action taxonomy), layered on the implicit **Class** gate
@@ -301,13 +289,13 @@ export interface SkillDef {
    */
   requires?: CapabilityId;
   /**
-   * The **two-axis overworld cost** (D72) a between-nodes action declares — the full
-   * {@link "./overworld-actions".OverworldCost} menu (cooldown / per-node cap / fatigue /
+   * The **two-axis overworld cost** (D72/#113) a between-nodes action declares — the full
+   * {@link "./overworld-cost".OverworldCost} menu (cooldown / per-node cap / fatigue /
    * gold / influence / rp, computed prices and all), gating the action through the shared
-   * {@link "./overworld-actions".checkOverworldCost} limiter. Omitted ⇒ derived from
-   * `usesPerNode` alone (a costless signature action like Cook Stew), via
-   * {@link "./overworld-actions".overworldCostOf}. Combat skills ignore it (the CT clock /
-   * `cost` is their limiter); it's the overworld twin of {@link SkillCost}.
+   * {@link "./overworld-cost".checkOverworldCost} limiter. It is the **one home** for a
+   * between-nodes verb's pacing + price — the per-node cap lives here as `usesPerNode`, not
+   * as a separate `SkillDef` field (the #113 fold). Combat skills ignore it (the CT clock /
+   * `cost` is their limiter); it's the node-steps view of the one {@link "./cost".Cost} grammar.
    */
   overworldCost?: OverworldCost;
   /**

@@ -68,6 +68,57 @@ function ellipsize(label: Phaser.GameObjects.Text, maxWidth: number): void {
 }
 
 /**
+ * Keep a **label→value row** from overprinting itself. The pattern — a left-anchored
+ * label and a right-anchored value sharing one baseline — recurs in the docked info
+ * cards (the battle focus card) and the party dossier's ability list; when *both* sides
+ * are long (e.g. "Capture risk" + "safe in camp", or "Debilitating Strike" + its tag)
+ * they collide in the middle and render as a smear. Both call sites route their rows
+ * through here so neither can, and the two stay consistent.
+ *
+ * `label` is already placed left-anchored (origin x 0) at its left edge; `value` is
+ * already placed right-anchored (origin x 1) at `rightX`; both start on the same line.
+ * If their inner edges would cross (minus {@link minGap}), the value drops to its own
+ * line just below — word-wrapped to the row width so an over-long value wraps inside the
+ * card instead of running off an edge. On the wrapped line the value either stays
+ * right-aligned at `rightX` (`wrapAlign: "right"`, the default — reads as a value column)
+ * or re-anchors left under the label (`wrapAlign: "left"` + {@link wrapIndent}), so a
+ * category-style tag clearly belongs to the label above it rather than floating.
+ *
+ * Returns the **total height** the row occupies (the caller advances its cursor by
+ * this instead of a fixed line height): `line` when it fits, more when the value wrapped.
+ *
+ * @param leftX      the row's left edge (the label's anchor x)
+ * @param rightX     the row's right edge (the value's right-anchor x)
+ * @param line       the one-line row height the caller would otherwise use
+ * @param minGap     the least gap to keep between label and value (default 6px)
+ * @param wrapAlign  where a wrapped value sits — "right" (default) or "left" under the label
+ * @param wrapIndent left-wrap indent from `leftX` (default 0), to clear a leading glyph
+ */
+export function fitRow(
+  label: Phaser.GameObjects.Text,
+  value: Phaser.GameObjects.Text,
+  {
+    leftX,
+    rightX,
+    line,
+    minGap = 6,
+    wrapAlign = "right",
+    wrapIndent = 0,
+  }: { leftX: number; rightX: number; line: number; minGap?: number; wrapAlign?: "left" | "right"; wrapIndent?: number },
+): number {
+  if (value.text === "") return line; // label-only row — nothing to collide with
+  const labelRight = label.x + label.width;
+  const valueLeft = rightX - value.width;
+  if (labelRight + minGap <= valueLeft) return line; // fits on one line
+  // Collide → drop the value onto its own line under the label. Cap its width to the
+  // row so a very long value wraps within the card rather than overflowing an edge.
+  value.setWordWrapWidth(rightX - leftX, true);
+  if (wrapAlign === "left") value.setOrigin(0, value.originY).setX(leftX + wrapIndent);
+  value.y += line;
+  return line + value.height;
+}
+
+/**
  * Destroy every object in a scene layer array and empty it **in place** — the
  * teardown every scene repeats before re-drawing an overlay/panel/board. Emptied in
  * place (not reassigned) so the field keeps its identity and later `.push`es land on

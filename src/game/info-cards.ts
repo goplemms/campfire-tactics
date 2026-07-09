@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { COLOR, FONT, INK, WEIGHT } from "./theme";
 import { hpColor, hex } from "./unit-readout";
+import { fitRow } from "./ui";
 
 /**
  * One label→value line in a {@link MiniCard}. `emphasize` promotes the value to a
@@ -92,7 +93,9 @@ export class MiniCard extends Phaser.GameObjects.Container {
         .setOrigin(1, big ? 0.2 : 0);
       this.add([label, value]);
       this.rowObjs.push(label, value);
-      y += big ? 19 : 15;
+      // Budget the two columns: a long label + long value (e.g. "Capture risk" +
+      // "safe in camp") would otherwise overprint in the middle of the narrow card.
+      y += fitRow(label, value, { leftX: 8, rightX: this.cardW - 8, line: big ? 19 : 15 });
     }
     // An optional full-width wrapped note under the rows (e.g. a foe-type list too long for
     // a right-aligned value column).

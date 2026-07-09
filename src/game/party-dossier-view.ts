@@ -26,6 +26,7 @@ import {
 import { COLOR, FONT, INK, WEIGHT } from "./theme";
 import { roleColor } from "./roles";
 import { hpColor, statusPips } from "./unit-readout";
+import { fitRow } from "./ui";
 
 export interface DossierViewOptions {
   /** The rectangle the dossier lays out inside — the host's frame below its chrome. */
@@ -328,33 +329,38 @@ export class PartyDossierView {
     const rowH = 18;
     const locked = a.lockedUntil !== undefined;
 
-    this.detail.push(
-      s.add
-        .text(this.px, y, `${glyph} ${a.name}`, {
-          color: locked ? INK.disabled : INK.secondary,
-          fontFamily: FONT.family,
-          fontSize: FONT.label,
-        })
-        .setOrigin(0, 0.5)
-        .setDepth(43),
-    );
+    const name = s.add
+      .text(this.px, y, `${glyph} ${a.name}`, {
+        color: locked ? INK.disabled : INK.secondary,
+        fontFamily: FONT.family,
+        fontSize: FONT.label,
+      })
+      .setOrigin(0, 0.5)
+      .setDepth(43);
+    this.detail.push(name);
 
+    // Budget the name→tag columns: a long ability name (e.g. "Debilitating Strike")
+    // plus its tag would otherwise overprint in this narrow column — fitRow drops the
+    // tag to its own line when they'd collide.
+    let rowTotal = rowH;
     const meta = locked ? `Lv ${a.lockedUntil}` : a.tag ?? "";
     if (meta) {
-      this.detail.push(
-        s.add
-          .text(this.px + this.pw, y, meta, {
-            color: locked ? INK.ember : INK.muted,
-            fontFamily: FONT.family,
-            fontSize: FONT.caption,
-          })
-          .setOrigin(1, 0.5)
-          .setDepth(43),
-      );
+      const tag = s.add
+        .text(this.px + this.pw, y, meta, {
+          color: locked ? INK.ember : INK.muted,
+          fontFamily: FONT.family,
+          fontSize: FONT.caption,
+        })
+        .setOrigin(1, 0.5)
+        .setDepth(43);
+      this.detail.push(tag);
+      // In this narrow column a long name + tag can't share a line; wrap the tag left,
+      // under the name (past the "· " glyph), so it clearly belongs to this ability.
+      rowTotal = fitRow(name, tag, { leftX: this.px, rightX: this.px + this.pw, line: rowH, wrapAlign: "left", wrapIndent: 12 });
     }
 
-    this.hoverZone(this.px, y - rowH / 2, this.pw, rowH, this.abilityTipText(a));
-    return y + rowH;
+    this.hoverZone(this.px, y - rowH / 2, this.pw, rowTotal, this.abilityTipText(a));
+    return y + rowTotal;
   }
 
   /** The multi-line text the tooltip shows for an ability. */

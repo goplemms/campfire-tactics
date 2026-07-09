@@ -345,6 +345,16 @@ export class BattleScene extends Phaser.Scene {
     // its label move here, off the left so the left can host the focus card. The label
     // sits below the camp card (above the rail) so it isn't occluded by it.
     this.orderText = this.add.text(this.scale.width - 158, 122, "", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setDepth(10);
+    // The rail's expand chevron is created lazily (only when the rail overflows the
+    // collapsed cap) — so, unlike orderText/logChevron, it isn't reassigned here.
+    // Phaser reuses the Scene instance across battles (scene.start re-runs create() on
+    // the same object), destroying the previous chevron GameObject but leaving this
+    // field dangling at the dead object. Clear the stale reference so layoutRailChevron
+    // re-creates a live Text instead of calling setText on a destroyed one (a
+    // null-canvas drawImage crash that hit the 4th fight of a run). Reset the expand
+    // state too, so each battle's rail starts collapsed.
+    this.railChevron = undefined;
+    this.railExpanded = false;
     // Left column = "you" (the decision zone): the active-unit focus card. Camp-state —
     // passive reference — is tucked top-right, clear below the Tips chip.
     this.focusCard = new MiniCard(this, 8, 82, { w: 150, hp: true }).hide();

@@ -40,7 +40,20 @@ const wrap = (body) => `(()=>{const s=${S};${body}})()`;
 
 const STEPS = [
   // The hall as booted: caravan "alpha" + the main quest selected, empty party.
-  { name: "01-hall", minMs: 600 },
+  // Pin a **fixed guild seed** before the first capture so these frames are
+  // byte-stable across runs (GuildScene otherwise seeds from `guild-${Date.now()}`,
+  // making every capture unique). Harness-only: set the seed input, drop the guild,
+  // and restart the scene so create() rebuilds it deterministically.
+  {
+    name: "01-hall",
+    minMs: 600,
+    eval: wrap(`
+      const input = document.getElementById("seed");
+      if (input) input.value = "guild-shots";
+      s.guild = undefined;
+      s.scene.restart();
+    `),
+  },
   // Fill the assembling caravan's party + raise the purse, exercising the party
   // listButtons and the ±20 smallButtons against a populated panel.
   {

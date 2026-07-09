@@ -96,6 +96,7 @@ import {
 import { fitText, clearLayer, isScreenshotMode } from "../ui";
 import { Button, probeWidth } from "../button";
 import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
+import { drawLedgerSheet } from "../ledger-sheet";
 import { HintPanel } from "../hint-panel";
 import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
 
@@ -1701,50 +1702,19 @@ export class OverworldScene extends Phaser.Scene {
   /** Ledger page — gold flow (realized + projected) + the route forecast (D45/D48). Market
    *  access lives in the shared nav's Market tab now, so no in-page shortcut is needed. */
   private drawTentLedger(b: Phaser.Geom.Rectangle): void {
-    this.drawLedgerSheet(b, { rerender: () => this.renderTent() });
+    drawLedgerSheet(this, this.overlay, {
+      bounds: b,
+      ledger: this.buildRunLedger(),
+      onToggleSkip: (id) => this.toggleSkip(id, () => this.renderTent()),
+      onHint: (t) => this.setHint(t),
+    });
   }
 
-  /**
-   * The ledger sheet itself (D45/D48) — Balance/Influence header, the category rows,
-   * and the route forecast — drawn into `b`. Shared by the Captain's Tent ledger tab
-   * and the night-end {@link showLedgerTransition}; returns the built {@link Ledger}
-   * so the caller can add its own chrome (the Tent's Market shortcut). `rerender`
-   * fires after an Upkeep line is crossed off so the owning surface redraws itself;
-   * `interactive: false` makes the sheet read-only (the rest tiers force-pay Upkeep).
-   */
-  private drawLedgerSheet(b: Phaser.Geom.Rectangle, opts: { rerender: () => void; interactive?: boolean }): Ledger {
+  /** Build the run's {@link Ledger} for the sheet (D45/D48) — realized + projected gold flow at
+   *  the node we're camped at (or the current node). The two ledger hosts pass the result in. */
+  private buildRunLedger(): Ledger {
     const node = this.campNode ?? currentNode(this.run);
-    const ledger: Ledger = buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: marketReadyAt(this.run, node) });
-    const pad = 22;
-    const leftX = b.left + pad;
-    const rightX = b.right - pad;
-    const colX = rightX - 86;
-    const rowH = 22;
-    const g = this.add.graphics().setDepth(24);
-    this.overlay.push(
-      g,
-      this.add.text(leftX, b.top + 10, `Balance  ${ledger.balance}g`, { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(rightX, b.top + 10, `Influence ${ledger.influence} · never pays Upkeep`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
-    );
-    g.lineStyle(1, COLOR.borderSoft, 0.9);
-    g.lineBetween(leftX, b.top + 24, rightX, b.top + 24);
-    g.lineBetween(leftX, b.top + 26, rightX, b.top + 26);
-
-    let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx: b.centerX, pad, w: b.width }, b.top + 26 + 18, opts);
-    // Forecasted balance — the estimated purse carried into tomorrow (current balance after
-    // tonight's projected Upkeep/Banker). A bottom-line bookend to the top Balance; a rule
-    // sets it apart from the category rows.
-    y += 4;
-    g.lineStyle(1, COLOR.borderSoft, 0.9);
-    g.lineBetween(leftX, y, rightX, y);
-    y += 14;
-    this.overlay.push(
-      this.add.text(leftX, y, "Forecasted balance  · into tomorrow", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(rightX, y, `${ledger.forecastBalance}g`, { color: ledger.forecastBalance < 0 ? INK.danger : INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
-    );
-    // The route forecast (runway + per-edge) is planning, not accounting — it lives on the
-    // Survey panel, so the ledger stops at its own bottom line.
-    return ledger;
+    return buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: marketReadyAt(this.run, node) });
   }
 
   /**
@@ -2437,101 +2407,6 @@ export class OverworldScene extends Phaser.Scene {
     return { vesselLabel: vessel.label, partyCapacity: vessel.capacity };
   }
 
-  /**
-   * The category/line rows — the bulk of the ledger sheet: each category header
-   * (label + running total), its lines (amount, skip-strike, faint per-row rule),
-   * the clickable hit-rects on Upkeep lines, and the vertical amount-column rule.
-   * Draws onto the shared graphics `g`; returns the `y` just past the last row.
-   */
-  private drawLedgerRows(
-    ledger: Ledger,
-    g: Phaser.GameObjects.Graphics,
-    geom: { leftX: number; rightX: number; colX: number; rowH: number; cx: number; pad: number; w: number },
-    startY: number,
-    opts: { rerender: () => void; interactive?: boolean } = { rerender: () => this.renderTent() },
-  ): number {
-    const { leftX, rightX, colX, rowH, cx, pad, w } = geom;
-    let y = startY;
-    const rowsTop = y - rowH / 2;
-    for (const cat of ledger.categories) {
-      // Category header row (label + running total, both in gold).
-      const tag = cat.projected ? "  (projected)" : "";
-      // The total figure reads red when it's an outflow (Upkeep's drain, a net field spend) —
-      // the same red-for-negative convention the individual line amounts use; the label stays
-      // gold as the section marker. This is where the "burn" now lives (the text is gone).
-      this.overlay.push(
-        this.add.text(leftX, y, `${cat.label}${tag}`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-        this.add.text(rightX, y, this.signed(cat.total), { color: cat.total < 0 ? INK.danger : INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
-      );
-      g.lineStyle(1, COLOR.border, 0.5);
-      g.lineBetween(leftX, y + rowH / 2, rightX, y + rowH / 2);
-      y += rowH;
-
-      for (const l of cat.lines) {
-        const skipped = l.note === "voluntarily skipped";
-        const skippable = (opts.interactive ?? true) && cat.id === "upkeep"; // only Upkeep lines are skippable, and only when the surface allows it
-        const labelInk = skipped ? INK.disabled : skippable ? INK.bright : INK.secondary;
-        this.overlay.push(
-          this.add.text(leftX + 18, y, l.label, { color: labelInk, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-        );
-        // The amount on the right stays even when crossed off (D45) — dimmed and struck (below),
-        // it's not in the total, but it tells the player what restoring the line would cost. A
-        // skipped line's `amount` is 0 (out of the total), so show its `restoreAmount` instead.
-        const shownAmount = skipped ? l.restoreAmount ?? l.amount : l.amount;
-        this.overlay.push(
-          this.add.text(rightX, y, this.signed(shownAmount), { color: skipped ? INK.disabled : shownAmount < 0 ? INK.danger : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
-        );
-        // Strike the row through when crossed off — from the label (leftX + 18), so the
-        // checkbox in the indent gutter stays legible rather than being slashed through.
-        if (skipped) {
-          g.lineStyle(1.5, COLOR.danger, 0.85);
-          g.lineBetween(leftX + 18, y, rightX, y);
-        }
-        // Faint per-entry rule (ledger paper).
-        g.lineStyle(1, COLOR.border, 0.28);
-        g.lineBetween(leftX + 12, y + rowH / 2, rightX, y + rowH / 2);
-
-        // Upkeep rows are clickable: cross off (skip) / restore. The hit rect sits
-        // below the text (depth 24) so its hover wash reads behind the ink.
-        if (skippable) {
-          // A checkbox in the indent gutter makes the "you can cross this off" affordance
-          // obvious at a glance (D45): checked (gold box + tick) = the expense stands;
-          // unchecked (empty box) + the strike above = crossed off.
-          const boxSize = 12;
-          const boxX = leftX;
-          const boxY = y - boxSize / 2;
-          g.lineStyle(1.2, skipped ? COLOR.borderSoft : COLOR.gold, skipped ? 0.7 : 0.95);
-          g.strokeRect(boxX, boxY, boxSize, boxSize);
-          if (!skipped) {
-            g.lineStyle(1.8, COLOR.success, 1);
-            g.lineBetween(boxX + 2.5, boxY + 6.5, boxX + 5, boxY + 9);
-            g.lineBetween(boxX + 5, boxY + 9, boxX + 9.5, boxY + 3);
-          }
-          const lineId = l.id.replace("upkeep:", "") as UpkeepLine["id"];
-          const hit = this.add.rectangle(cx, y, w - 2 * pad + 12, rowH, COLOR.surfaceAlt, 0).setDepth(24).setInteractive({ useHandCursor: true });
-          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {
-            hit.setFillStyle(COLOR.surfaceAlt, 0.35);
-            this.setHint(skipped ? `Click to restore ${l.label} to the ledger (fund it again).` : `Click to cross ${l.label} off the ledger — frees its gold; you'll take the consequence and the gate won't nag.`);
-          });
-          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => hit.setFillStyle(COLOR.surfaceAlt, 0));
-          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.toggleSkip(lineId, opts.rerender));
-          this.overlay.push(hit);
-        }
-        y += rowH;
-      }
-    }
-
-    // The vertical amount-column rule down the rows region.
-    g.lineStyle(1, COLOR.borderSoft, 0.45);
-    g.lineBetween(colX, rowsTop, colX, y - rowH / 2);
-    return y;
-  }
-
-  /** A signed gold figure for the ledger (`+5g` / `-5g`). */
-  private signed(n: number): string {
-    return `${n >= 0 ? "+" : ""}${n}g`;
-  }
-
   /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. The
    *  owning surface (Tent or night-end transition) supplies its own `rerender`. */
   private toggleSkip(id: UpkeepLine["id"], rerender: () => void = () => this.renderTent()): void {
@@ -2644,7 +2519,13 @@ export class OverworldScene extends Phaser.Scene {
 
     const contentTop = top + 56;
     const bounds = new Phaser.Geom.Rectangle(left + 8, contentTop, w - 16, h - (contentTop - top) - 52);
-    this.drawLedgerSheet(bounds, { rerender: () => this.showLedgerTransition(title, onContinue, interactive), interactive });
+    drawLedgerSheet(this, this.overlay, {
+      bounds,
+      ledger: this.buildRunLedger(),
+      interactive,
+      onToggleSkip: (id) => this.toggleSkip(id, () => this.showLedgerTransition(title, onContinue, interactive)),
+      onHint: (t) => this.setHint(t),
+    });
 
     const btn = this.makeTextButton(cx, top + h - 24, 240, 32, "Continue →", COLOR.successDeep, COLOR.success, () => {
       clearLayer(this.overlay);

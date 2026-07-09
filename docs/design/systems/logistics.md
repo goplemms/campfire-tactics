@@ -36,8 +36,10 @@ than **storage** allows. Resource logistics gates spatial logistics gates Combat
 ### Core nouns
 
 - **Storage** — the master cap on everything carried: **one party-wide shared
-  stash** of discrete **slots**, sized by the **Merchant** in clean bands (`+2
-  slots`). Items pack by **slotted stacks (D14)**: each material defines a
+  stash** of discrete **slots**, sized by the **caravan/vessel** (`Caravan.storageCap`,
+  a `VesselType` property — scout-cart 4 → supply-train 10, `caravan.ts`); `camp.storageCap`
+  is explicitly **vestigial** (D61 retired the old Merchant storage-stat — the Merchant
+  now lifts *market access*, not the cap). Items pack by **slotted stacks (D14)**: each material defines a
   `stackSize` (arrows stack, e.g. 6/slot) and a `slotCost` (most items 1 slot; bulky
   ones like nest lumber may cost 2). Scarce by design; the central tension is *what
   competes for slots*.
@@ -50,19 +52,24 @@ than **storage** allows. Resource logistics gates spatial logistics gates Combat
   enemy **snares** add one gate (D82): they sweep on the win **only while a
   trap-trained survivor stands** — no sweeper, no salvage. See
   [Resolution](../04-resolution.md).
-- **Consumables (special arrows · scrolls · reagents)** — one family (D17/D20):
+- **Consumables (special arrows · scrolls · reagents)** *(**Designed, not built** — the
+  D17/D20 consumables family is deferred, #148)* — designed as one family:
   **storage-slotted, expended on use**, with a **per-item recovery keyword** — each
-  defines its own **N% chance of recovery** on a win (a net arrow ~50%, a fire arrow
-  0% "burned up"). The **Survivalist salvage perk** boosts the roll.
-  - **Scrolls / reagents** power [Vancian magic](magic.md) (extra castings; rune
-    builds).
-  - **Special arrows** are the scarce, tactical ammo layer (fire, net/grounding, …).
-- **Basic arrows are *infinite* (D20)** — the at-will floor and the archer-side twin
-  of the mage's **default spell**, so a ranged unit is **never useless**. Only
-  *special* arrows are a managed resource. (Archers and mages thus share one kit
-  shape: a free basic + a limited pool of specials.)
-- **Gold** — earned in Resolution (Merchant bonus), spent in Pre-deployment on
-  provisioning **and Upkeep** (below).
+  defining its own **N% chance of recovery** on a win (a net arrow ~50%, a fire arrow
+  0% "burned up"), the **Survivalist salvage perk** boosting the roll. **What ships today:**
+  materials carry a plain boolean `recoverable` (`manifest.ts`); recovery is
+  **outcome-gated whole-field** (win reclaims every unsprung recoverable entity) plus the
+  **D82 snare sweep** (`resolution.ts`) — *not* per-item N% keywords, special-vs-basic
+  arrow tiers, or the salvage perk.
+  - **Scrolls / reagents** would power [Vancian magic](magic.md) (also unbuilt — see that doc).
+  - **Special arrows** are the designed scarce, tactical ammo layer (fire, net/grounding, …).
+- **Basic arrows infinite (D20)** *(part of the deferred consumables family — the special/
+  basic ammo split is not built)* — designed as the at-will floor and archer-side twin of
+  the mage's **default spell**, so a ranged unit is **never useless**. Only *special* arrows
+  would be a managed resource. (Archers and mages would thus share one kit shape: a free
+  basic + a limited pool of specials.)
+- **Gold** — earned in Resolution (the win payout lifted by **morale gold-find**, not
+  the Merchant — D61/D70), spent in Pre-deployment on provisioning **and Upkeep** (below).
 - **Upkeep** — the party's per-night maintenance, expressed as **one gold figure**
   (see below). Food is part of Upkeep, *not* a carried item — so it never competes
   for storage slots.
@@ -95,17 +102,23 @@ Upkeep is the **sum of per-job budget lines**; adding a maintenance job adds a l
 not a meter. You pay the total (the common case = one number), or **underfund a
 line** when broke (the *choice* — what do I let slide?):
 
-| Category | Owner | Grace | Breach → morale | Breach → mechanical |
+> **Grace nights — designed, not built (D15/#148).** The **Grace** column below is a
+> deferred design. Today there is **no grace**: `payUpkeep` (`upkeep.ts`) applies the
+> morale hit and gear wear **immediately** every underfunded night. The banner keeps the
+> intent.
+
+| Category | Owner | Grace *(designed, not built)* | Breach → morale | Breach → mechanical |
 |---|---|---|---|---|
 | **Food** | Cook | 1 night | **High** | — (hunger is morale only) |
-| **Repairs** | Blacksmith | ~3 nights | **Moderate** | **gear condition** drops: −defense, −crit |
+| **Repairs** | Blacksmith | ~3 nights | **Moderate** | **gear condition** drops: **−defense** (there is no crit stat, `gear-condition.ts`) |
 
 - The **Cook** lowers the per-unit food cost (e.g. 2g → 1g); special **morale meals**
   are optional gold purchases that boost/guarantee morale.
-- **Repairs replace per-item equipment durability:** one funded/unfunded state +
-  grace, then blanket combat penalties — gear wear with no per-weapon meter. (Distinct
-  from entity `durability`, D13.)
-- Sustained **Low** [morale](morale.md), night over night, risks **desertion**.
+- **Repairs replace per-item equipment durability:** one funded/unfunded state (grace
+  itself being deferred, above), then blanket combat penalties — gear wear with no
+  per-weapon meter. (Distinct from entity `durability`, D13.)
+- Sustained **Low** [morale](morale.md), night over night, is designed to risk
+  **desertion** *(designed, not built — deferred, #148)*.
 
 ### Equipment — blanket Condition × per-unit Arms × party-gear (D76/D78)
 
@@ -235,8 +248,8 @@ Pre-deployment: pay Upkeep (one gold figure); spend gold + storage to provision
 ```
 
 Every arrow fired and every unsprung trap recovered is a number the optimizer can
-chase. The Merchant's storage stat is the master dial that loosens the whole
-system.
+chase. The **caravan/vessel's storage cap** is the master dial that loosens the whole
+system (chosen at dispatch, `caravan.ts`) — not a Merchant stat (D61).
 
 ## Pseudo-example
 
@@ -245,11 +258,15 @@ system.
 > night — a moderate morale hit and gear condition starts to slide, but food stays
 > covered (skipping *that* would gut morale immediately).
 >
+> *(Illustrative — the special/basic arrow split, rune reagents, and the recovery
+> keyword below depict the **designed-not-built** consumables family (#148); the
+> storage cap, trap kits, Upkeep, and outcome-gated recovery are live.)*
+>
 > **8 storage slots** (food isn't here — it's Upkeep; *basic* arrows aren't either —
 > they're infinite). The player loads `2 × trap kit`, `18 × net arrow` (3 slots @6,
 > special ammo), `1 × rune reagent`, `1 × nest lumber` (2, bulky) → **8/8 full**.
-> They *wanted* a second rune but had no room — a direct cost of skipping the
-> Merchant's storage upgrade.
+> They *wanted* a second rune but had no room — a direct cost of the caravan's tight
+> storage cap (a roomier vessel would carry more).
 >
 > - **Deployment:** both trap kits placed; rune placed (Vale captured doing it).
 > - **Combat:** Vale fires net arrows (then falls back to free basic shots); both
@@ -259,17 +276,18 @@ system.
 >   still-bound Vale wouldn't have counted) are **recovered**; spent consumables
 >   roll their **recovery keyword** (a few net arrows come back); **+180 gold**.
 >
-> Next Pre-deployment, the player can finally afford repairs *and* the **+2 storage
-> upgrade** — and now there's room for that second rune.
+> Next dispatch, the player can finally afford repairs *and* a **roomier vessel** —
+> and now there's room for that second rune.
 
 ## Open questions / future scope
 
-- Slot model is **resolved** (D14): party-wide shared stash of slotted stacks
-  (`slotCost` + `stackSize`), Merchant sizes it in bands.
+- Slot model is **built** (D14): party-wide shared stash of slotted stacks
+  (`slotCost` + `stackSize`); the **caravan/vessel** sizes it (not the Merchant, D61).
 - **Ammo** (per-unit vs. shared pool + the "empty ranged feels bad" balance) is
   parked for a **dedicated follow-up** (the wide-logistics principle leans it toward
-  a shared pool, but the balance question stays open).
-- Whether materials degrade/spoil over a run (a logistics-pressure lever) is an
-  attractive option — **Q8, up next.**
-- First real implementation: the inventory/materials model is its own milestone
-  (see the build plan), targeted around M5.
+  a shared pool, but the balance question stays open) — and rides the **deferred
+  consumables family** (#148) above.
+- Whether materials degrade/spoil over a run (a logistics-pressure lever) was **dropped**
+  in favor of Upkeep (gold-as-solvent, D15) — see the note in `PROGRESS.md`.
+- The inventory/materials model **shipped** (M5b onward); this doc's earlier "~M5
+  milestone" footnote is stale.

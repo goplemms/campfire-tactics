@@ -4,6 +4,21 @@
 > (concealed/infiltration deploys), [Intel](intel.md) (pre-battle twin),
 > [Stats](stats.md). Decision: **D18**.
 
+> ## ⚠️ Mostly designed, not built (D18 / #148)
+>
+> The full **Hidden → Pinged → Seen** ladder, **ghost markers**, the **Awareness ping**,
+> and the **ambush-from-Hidden** bonus described below are **deferred** (owner ruling:
+> defer with this banner, #148 — not descope). **What ships today** (`vision.ts`, a ~68-line
+> seam):
+> - a **sight-radius** visible-tile set (`computeVisibleTiles`) + `canSee(side, tile)`;
+> - **fog-respecting AI** (the AI only acts on what its side can see, `ai.ts`);
+> - the **D68 Stealth status** — a "hidden" buff read by `canSeeUnit` (`status.ts` `isStealthed`),
+>   from the Assassin's **Hidden Passage** (unseen unless a foe stands adjacent);
+> - **D44 hidden ambush bodies** — authored enemies concealed until scouted (`authored.ts`).
+>
+> A full build would reconcile the ladder with those already-landed pieces. Everything
+> below is the design intent.
+
 ## Description
 
 Combat has **symmetric fog of war** — each side sees only what its units perceive.
@@ -62,7 +77,9 @@ Worth building into M3's foundations, not retrofitting.
 ## Open questions / future scope
 
 - Exact **sight** and **ping** radii (banded), and elevation's vision rules: tuning.
-- **Stealth as a stat/trait** (some units harder to spot / better sight): **deferred**
-  — the player wants to think it over.
+- **Stealth as a stat/trait** (some units harder to spot / better sight): still deferred
+  as a *stat/trait*. Note a Stealth **status** did ship (D68 Hidden Passage — the Assassin
+  vanishes unless a foe stands adjacent, read by `canSeeUnit`), so the "hidden unit" primitive
+  now exists even though the passive stat/trait axis does not.
 - Whether a **Pinged** contact upgrades to **Seen** by closing distance / gaining LoS
   (assumed yes): confirm at implementation.

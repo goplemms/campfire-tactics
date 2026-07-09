@@ -75,7 +75,8 @@ Because you set `kind: "debuff"`, **with zero further edits**:
 - `cleanseOne(unit)` (the Medic's antidote) can already remove your status,
 - `isDebuffed(unit)` (the Hunter's Deadeye, read in `computeDamage`) already
   punishes a target carrying it,
-- the render's status→visual registry already tints/badges it as a debuff.
+- the core status→visual registry (`STATUS_VISUALS` in `status.ts`) already
+  tints/badges it as a debuff.
 
 This is the maintenance win the classifier buys (D41).
 
@@ -97,9 +98,12 @@ changes a decision → `cleanseOne` removes it (if a debuff).
 ## Render — the visual tracker (required, D41)
 
 Every status needs an at-a-glance indicator on the unit token (icon/badge + tint
-+ hover tooltip) so the board reads without clicking. This is **data**: add one
-entry to the status→visual registry in `BattleScene` (id → glyph + tint). A new
-status gets a tracker by adding a registry row, not bespoke draw code.
++ hover tooltip) so the board reads without clicking. This is **data**, and it now
+lives in **core**: add one entry to the `STATUS_VISUALS` registry (`id → { glyph,
+tint, label }`) in [`status.ts`](../../src/core/status.ts) (read via `statusVisual`),
+consumed by the render's [`unit-readout.ts`](../../src/game/unit-readout.ts) and
+`combat-view.ts`. A new status gets a tracker by adding a registry row, not bespoke
+draw code. (Glyph + tint are plain data — no Phaser — so the registry stays core-pure.)
 
 ## Gotchas & conventions
 
@@ -122,5 +126,5 @@ status gets a tracker by adding a registry row, not bespoke draw code.
 | CT teeth (Slowed/Hastened) | `src/core/clock.ts` (`effectiveSpeed`) |
 | Damage/move teeth (Exposed/Guarded/Swift) + the tarpit aura | `src/core/combat.ts` |
 | Targeting teeth (Immobilized) | `src/core/ai.ts`, `src/core/turn.ts` |
-| Visual trackers | `src/game/scenes/BattleScene.ts` |
+| Visual trackers (`STATUS_VISUALS`, `statusVisual`) | `src/core/status.ts` (consumed by `src/game/unit-readout.ts`, `combat-view.ts`) |
 | Tests | `src/core/status*.test.ts` |

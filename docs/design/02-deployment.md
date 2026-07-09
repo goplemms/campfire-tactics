@@ -102,8 +102,9 @@ you, only dig-in and an infiltrator's evasion help.
 ### Capture — the cost of overreach
 
 When a capture roll lands on the net's turn (only for an **unprotected** unit — neutral
-or netted), the unit is **captured** (and is **repositioned into the enemy's safe zone**
-to start the battle). A captured unit:
+or netted), the unit is **captured** — left **bound on the map where it stands** (D63; the
+capture only sets flags in place, `deployment.ts`, and the net drops where the unit is — no
+repositioning into an enemy safe zone; that was a D11 leftover). A captured unit:
 
 - still **appears on the battlefield**, but **bound/guarded** under enemy control;
 - does **not** count toward your **active fielded count** (effective **−1**);
@@ -146,8 +147,10 @@ rather than a universal tax, and it gives your **Intel/Awareness** a defensive j
   (Tier-3 or high Awareness reveals them; otherwise hidden until sprung).
 - **Disarm** costs an **Act** (the Survivalist's defensive side) — or just route
   around what you've spotted.
-- The exemplar enemy entity is the **Snare**, which can drag a unit into **capture
-  mid-battle** — see [field-entities](systems/field-entities.md).
+- The exemplar enemy entity is the **Snare**. *(**Designed, not built** — the snare's
+  drag-into-**capture-mid-battle** countdown is deferred, D12/#148; today a snare deals
+  damage + **Immobilized** only, `status.ts`.)* See
+  [field-entities](systems/field-entities.md).
 
 ### Initiative seeding (link to the CT clock)
 
@@ -218,7 +221,8 @@ seed** for both sides.
   on the same flag. See the
   [unification plan](../../scratchpad/foundations/deployment-combat-unification-plan.md).
 - Enemy-prep symmetry is **resolved** (D12): A3 fortified-encounter type;
-  Intel/Awareness-gated detection; Act-cost disarm or route-around; the Snare drags
-  units into in-combat capture. See [field-entities](systems/field-entities.md).
+  Intel/Awareness-gated detection; Act-cost disarm or route-around. *(The Snare's
+  drag-into-in-combat-capture is **designed, not built** — deferred, D12/#148; snares
+  Immobilize + damage today.)* See [field-entities](systems/field-entities.md).
 - Guard composition for captured units (how hard a rescue is) is encounter-driven;
   generation rules come with the run loop (M6).

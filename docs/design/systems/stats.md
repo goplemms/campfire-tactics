@@ -28,9 +28,12 @@ so they don't overlap.
 
 - **Deployment:** **safety** — a longer **safe period** and **gentler retreat odds**
   (D11). The high-Awareness unit preps deep without getting captured.
-- **Combat:** **ping** — a sense radius (ignores line-of-sight) that reveals enemy
-  **presence/location without identity** (the **Pinged** state, see
-  [vision](vision.md), D18). High Awareness = harder to ambush.
+- **Combat (built):** **trap-spotting** — Awareness scales the passive spot radius and
+  spot-roll that reveals concealed enemy traps (`traps.ts` `spotRadius`/`spotChance`),
+  and a deliberate **Search** widens it. This is Awareness's actual in-battle role today.
+- **Combat (designed, not built):** the **ping** — a sense radius (ignores line-of-sight)
+  revealing enemy **presence/location without identity** (the **Pinged** state) — is part
+  of the deferred D18 vision ladder (see [vision](vision.md), #143/#148), not yet in code.
 
 #### Intelligence *(working name)*
 
@@ -40,43 +43,42 @@ so they don't overlap.
 - **Naming note:** "Intelligence" may collide with a future magic-power stat; treat
   it as provisional (candidates: Insight, Lore, Cunning). The role is settled.
 
-#### Fatigue *(overworld meter, D29 · shaped by D35 · redesigned D73)*
+#### Fatigue *(overworld meter, D29 · shaped by D35 · redesigned D73 · unified D80)*
 
-- **Overworld:** a **per-character** stamina meter — one per roster unit, on the Unit
-  (like awareness), **not** a shared party pool and **not** per-ability. Slow,
-  personal, gold-free overworld verbs **spend** it; **nights restore** it (below).
-- **The clearing currency, not a general tax (D73).** Fatigue is **not** the spine of
-  the overworld economy — **per-ability cooldowns / per-node caps are** (see
-  [the overworld action economy](overworld.md#the-overworld-action-economy-d35)). It is the
-  one cost that is **per-character**, so it is reserved for the **clearing-verb family**:
-  slow, repeatable, gold-free actions done *at* a node (Forage, Train, Triage). Cheap
-  recon (Survey) is paced by its cooldown and should **not** lean on fatigue. The rule the
-  bands make legible: *if a verb costs fatigue, it's a clearing verb.*
-- **Banded consequences (D73).** Fatigue keeps the D35 bands but each now does real work,
-  shaped as the codebase's **shallow asymmetric floor** (D7/D11, D8) — invisible in normal
-  play, biting only on deliberate over-extension:
+- **Overworld:** a **per-character** effort meter — one per roster unit, on the Unit
+  (like awareness), **not** a shared party pool and **not** per-ability. It is the one
+  **effort meter** of the overworld: **everything a unit does out of combat is an effort
+  skill** (D80) — from a heavy one (Survey ≈ 4) down to a negligible ~0 — plus **Rest**.
+  Effort accrues Fatigue; nights shed it (below). There is no assignment board and no
+  "arduous" category — one number, in and out.
+- **Its main job — gate recovery (D80).** A **Clearing**'s Deep Rest grants a **big heal**,
+  but **only to a unit at Tier 0 when the rest resolves** (`isFatigueTier0`). So
+  over-extending (or spending heavy effort *at* the Clearing) **forfeits the heal** without
+  ever locking a verb — the allocation puzzle falls out of unit state, no board. (This
+  **supersedes** the D73 "clearing currency, not a general tax" framing: fatigue is no
+  longer reserved for a clearing-verb family — Survey and the rest all cost effort now.)
+- **Narrowing bands + one-tier nightly step-down (D80).** Tiers are banded with
+  **tightening widths** (`FATIGUE_TIER_FLOORS`) — each costs less effort to reach than the
+  last, so stacking heavy skills without a rest tips a unit deeper, faster. Every **nightly
+  rest** (free, at any node) steps Fatigue **down one tier** (to the floor of the tier
+  below, `nightlyFatigue`) with a small HP chip — replacing D73's `level − floor` carryover:
 
   | Band | Range | Consequence |
   |---|---|---|
-  | **Rested / Worn** | 0 … `floor` | none — the safe allowance; **wiped by any night** |
-  | **Weary** | `floor` … `exhausted` | this unit's nightly **rest-heal costs more RP** (the shared pool, floored ≥1) **and** it **carries `level − floor` fatigue into the next day** — only an *improved rest* (a clearing/rest node) clears the carryover; an ordinary night just carries it |
-  | **Exhausted** | ≥ `exhausted` | heaviest RP heal cost **and** full carryover **and** a **combat consequence**: the unit enters its next battle **Slowed** (a tempo/CT debuff, the `slowed` status) |
+  | **Rested / Worn** | 0 … `floor` | none — the safe allowance; **Tier 0 keeps the Deep-Rest big heal** |
+  | **Weary** | `floor` … `exhausted` | above Tier 0, so a Clearing's **big heal is forfeited** until stepped/rested back down; steps down one tier each night |
+  | **Exhausted** | ≥ `exhausted` | still no heal **and** a **combat consequence**: the unit enters its next battle **Slowed** (a tempo/CT debuff) |
 
-  No hard action-lock — the model is **consequence-based, not prohibition-based** ("recoverable
-  and outplayable"); the `ceiling` clamp prevents runaway. Carryover compounds if you over-extend
-  the same unit day after day, and resets the moment you back off (one easy day in Worn wipes it).
-- **Reaches combat only at Exhausted (revises D29).** The old hard rule "fatigue never
-  touches combat" is **dropped** (a consequence that never reaches the main loop is a weak
-  consequence). Worn/Weary stay overworld-only; **only Exhausted** bleeds into battle, and only
-  as a **tempo status (Slowed)** — *never* a flat power debuff (−attack/−defense), preserving
-  "punish choices, not execution." The effect is **universal across playstyles**: a Slowed
-  combatant loses turns/output; a Slowed engine unit (which fields too — D38) is harder to
-  protect (slower to retreat/brace). It also concentrates **eggs-in-one-basket** risk — a unit
-  *exercising* two clearing roles hard tires faster, so spreading verbs across bodies is rewarded.
-- **Open / tuning (D73):** the RP heal-cost multipliers, the Slowed magnitude + duration
-  (start gentle, whole-encounter, CT-only), whether Weary also bleeds a milder combat effect
-  (start Exhausted-only), and clearing/rest-node **frequency** (sparse clearings make Exhausted
-  punishing — a map-density balance lever).
+  No hard action-lock — **consequence-based, not prohibition-based** ("recoverable and
+  outplayable"); a `ceiling` clamp prevents runaway.
+- **Reaches combat only at Exhausted (revises D29).** Worn/Weary stay overworld-only;
+  **only Exhausted** bleeds into battle, and only as a **tempo status (Slowed)** — *never* a
+  flat power debuff, preserving "punish choices, not execution." Combat **reads** fatigue (to
+  Slow) but never **writes** it. It concentrates **eggs-in-one-basket** risk — a unit doing
+  all the heavy effort tires faster, so spreading verbs across bodies is rewarded.
+- **Open / tuning (D80):** the band floors, the Slowed magnitude + duration, the Deep-Rest
+  heal size, and clearing/rest-node **frequency** (sparse clearings make Tier-0 harder to
+  hold — a map-density balance lever). Numbers are illustrative.
 
 ### The deliberate split
 
@@ -86,7 +88,7 @@ Two prep stats that deliberately don't overlap, plus the clock stat:
 |---|---|---|---|
 | Deployment | *how safely* you prep | — | *how much* you prep |
 | Pre-battle | — | *how much you see* (intel floor) | — |
-| Combat | **ping** (sense enemies; ambush defense) | — | turn frequency + charge speed |
+| Combat | **trap-spotting** (built); ping/ambush defense (designed, #148) | — | turn frequency + charge speed |
 
 This gives real archetype spread: a **Survivalist** is high-Awareness (preps
 safely) but modest-Intelligence; a **Diplomat / Noble** is high-Intelligence (great

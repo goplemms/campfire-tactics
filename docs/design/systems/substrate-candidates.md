@@ -46,9 +46,9 @@ test (`rng.test.ts`) are respected by every recommendation below.
 | 2 | **Rest Points (RP)** | scalar→sum | 6 / 2 | none | low (additive) | **Build next** (with #1) |
 | 3 | **Morale** | scalar→sum | 5 / 4 | none | low (additive) | Build soon (most scattered) |
 | 4 | **XP / leveling** | scalar→sum (per-unit) | many / 6 | `grantXp`/`grantJobXp` exist | low | Later — log only, chokepoint done |
-| 5 | **Influence** | scalar→sum | 3 / 2 | `addInfluence`/`spend` (1 bypass) | low | Fold into the #1 batch |
+| 5 | **Influence** | scalar→sum | 2 / 1 | `addInfluence`/`spend` (bypass closed) | low | Fold into the #1 batch (log only) |
 | 6 | **Inventory / storage** | per-key scalar→sum | 9 / 6 | `addItem`/`removeItem` exist | low | Later — log only, chokepoint done |
-| 7 | **Deferred combat verbs** | graph→replay | 3 verbs | partial (`Battle.apply`) | **high** (re-routes) | Later — finish the combat substrate |
+| 7 | **Deferred combat verbs** | graph→replay | — | **done (D87 — log is total)** | — | **Closed** — `capture`/`placeTrap`/`useHeal` all logged |
 | 8 | **Run-state nightly step** | graph | sparse | already ~centralized | — | **Not worth it** |
 
 The top three (treasury, RP, morale) are the highest-leverage work: all three are
@@ -209,23 +209,28 @@ already-funnelled path — less urgent than the un-chokepointed scalars. Scalar�
 
 ## 5. Influence — `eco.influence` (scalar→sum) — **fold into the #1 batch**
 
-Named alongside treasury in the purse doc. The chokepoint *mostly* exists
-(`addInfluence`/`spendInfluence`, `economy.ts:150–171`) — **but one site already
-drifts**, exactly the failure mode the invariant catches.
+Named alongside treasury in the purse doc. The chokepoint exists
+(`addInfluence`/`spendInfluence`, `economy.ts:150–171`).
 
-1. **Scattered sites — 3, across 2 modules; 1 is a bypass.**
+> **Update: the bypass is fixed.** The overworld cost commit now routes the influence
+> price through `spendInfluence` (`overworld-cost.ts:193`, `commitOverworldCost`), so the
+> old `overworld-actions.ts:368` direct `eco.influence -= …` decrement is **gone** — every
+> influence sink goes through the pair. The remaining work here is only the **log** (the
+> journal seam), not a bug.
+
+1. **Scattered sites — 2, in one module (the former 3rd bypass is closed).**
    - `economy.ts:152` — `eco.influence += n` (`addInfluence`, the faucet)
-   - `economy.ts:169` — `eco.influence -= n` (`spendInfluence`, the sink)
-   - `overworld-actions.ts:368` — `eco.influence -= cost.influence!` **(bypasses
-     `spendInfluence`)** — the drift the substrate would have caught.
-2. **Proposed chokepoint.** Route `overworld-actions.ts:368` through `spendInfluence`
-   (close the bypass), then add the log inside the existing pair.
+   - `economy.ts:169` — `eco.influence -= n` (`spendInfluence`, the sink) — now the
+     **sole** sink, called by `commitOverworldCost`.
+2. **Proposed chokepoint.** Add the log inside the existing `addInfluence`/`spendInfluence`
+   pair (the bypass is already closed).
 3. **Log entry shape.** `{ delta, source, label, night? }` on `eco.influenceLog`.
    `InfluenceSource = presence · patronize · nobleVerb`.
-4. **Invariant.** `sum(eco.influenceLog) === eco.influence`. No RNG. This invariant
-   would have *already* failed the build on the `:368` bypass — the audit's clearest
-   live example of the missing-reconciliation cost.
-5. **Migration cost & risk — low.** One bypass to re-route + a log append. Additive.
+4. **Invariant.** `sum(eco.influenceLog) === eco.influence`. No RNG. (This invariant
+   *would* have failed the build on the old `:368` bypass — the audit's clearest live
+   example of the missing-reconciliation cost; that bypass has since been closed.)
+5. **Migration cost & risk — low.** Just a log append now (the bypass is already
+   re-routed). Additive.
 6. **Gated product feature.** Folds into the Noble's standing readout (the
    `influenceTier` bands, D62) — "what built / spent your standing."
 7. **Leverage — low-medium.** Small scatter (3 sites) caps the leverage, but it is
@@ -269,18 +274,22 @@ an existing chokepoint" work). Per-key scalar→sum.
 
 ## 7. Deferred combat verbs — capture · useHeal · deployment placement (graph→replay) — **later, risky**
 
-The **only graph-shaped survivor**, and the combat-actions doc explicitly defers it:
-*"`useHeal` (consumes the shared stash) and the deployment-phase verbs are deferred from
-the union."* These verbs mutate combat/run state outside `Battle.apply`'s logged path.
+> **✅ Closed by D87 (R1).** This candidate is **done**: the combat log is now **total**.
+> `capture`, `placeTrap`, and — the last holdout — `useHeal` are all logged `CombatAction`
+> variants flowing through `Battle.apply`; the deploy→battle handoff is a single logged
+> `beginBattle` boundary, and a golden rescue+heal battle replays byte-identically
+> (`r1-log-totality.test.ts`). **Nothing** mutates combat/run state outside the logged
+> path anymore. The analysis below is retained as the pre-D87 record.
 
-1. **Scattered sites — 3 verb families outside the action log.**
-   - **Capture** — `deployment.ts:94–104` (`captureUnit` sets `unit.captured`), fired
-     from `resolveDeployAction` and the field edge.
-   - **useHeal** — `turn.ts:527` (consumes the **shared stash**, an external resource),
-     wired from `BattleScene.ts:1010`. Its *turn-end* flows through `apply`; the heal
-     mutation itself does not.
-   - **Deployment placement** — `placeTrap` effects (`traps.ts`, `skills.ts:113`),
-     partly command-shaped already.
+The (former) **only graph-shaped survivor**; the combat-actions doc used to defer it:
+*"`useHeal` (consumes the shared stash) and the deployment-phase verbs are deferred from
+the union."* At the time these verbs mutated combat/run state outside `Battle.apply`.
+
+1. **Scattered sites — 3 verb families (all now logged, D87).**
+   - **Capture** — was `deployment.ts` (`captureUnit`); **now** the logged `capture` action.
+   - **useHeal** — consumed the **shared stash**; **now** the logged `useHeal` action
+     (undo/replay ride the checkpoint's stash snapshot, D87).
+   - **Deployment placement** — `placeTrap`; **now** the logged `placeTrap` action.
 2. **Proposed chokepoint.** Extend the `CombatAction` union + `Battle.apply` with
    `capture` / `useHeal` / `placeTrap` variants (or a sibling `DeployAction` set — the
    doc's open question), so these lower through the one interpreter like the rest.
@@ -301,9 +310,8 @@ the union."* These verbs mutate combat/run state outside `Battle.apply`'s logged
 7. **Leverage — capped by risk.** Load-bearing and a natural "finish the substrate," but
    the high re-route risk and the RNG/external-resource wrinkles divide the score down.
 
-**Recommendation: later** — the right way to *finish* the combat substrate, but not
-behaviour-preserving plumbing; schedule it as its own risk-managed pass, not in the
-scalar batch. Graph→replay.
+**Recommendation: done (D87).** This was scheduled as its own risk-managed pass and has
+since **landed** — the combat substrate is finished (the log is total). Graph→replay.
 
 ---
 
@@ -369,8 +377,11 @@ licence to build all eight.
 Both shipped refactors were justified by **removing existing bad code with a waiting
 consumer**, not by matching a shape:
 
-- The purse journal **deleted `buildLedger`'s after-the-fact mis-derivation** — there
-  was wrong code, and a screen (the ledger) waiting to read the right record.
+- The purse journal added the tagged in/out record the ledger screen wanted — there was
+  a consumer waiting to read the right record. *(Correction: it did **not** delete
+  `buildLedger`'s derivation — `buildLedger` still re-derives realized flows from
+  `run.history` (`ledger.ts:101–116`), which is consistent with purse-journal.md's
+  **deliberate deferral** of the ledger fold, not a mis-derivation that was removed.)*
 - Combat actions **collapsed genuinely divergent player/AI paths** (they reached the
   primitives by different routes — a real drift bug) **and shipped undo** — a concrete
   player feature.
@@ -402,10 +413,11 @@ substrate**. Measure the candidates against *that*, not against "is it scattered
 
 ### What actually carries present-tense value
 
-- **The Influence bypass (`overworld-actions.ts:368`) is a real bug, today.** It is also
-  the *only* concrete present-tense win in the list — and it does **not** need a journal.
-  Route that one site through `spendInfluence` and the bug is gone. **Do this regardless;
-  it is a one-line fix, not a substrate.**
+- **The Influence bypass — fixed.** It was the *only* concrete present-tense win in the
+  list, and it has since **landed**: the overworld cost commit routes the influence price
+  through `spendInfluence` (`overworld-cost.ts:193`), so the `overworld-actions.ts:368`
+  bypass is gone. (Recorded here because the audit's headline recommendation was this
+  one-line fix; nothing further is needed.)
 - **The generalized per-pool journal is worth it only if you commit to ≥2 real
   consumers up front.** As pure abstraction ("we might want reports someday") it is
   premature — abstraction without a second instantiation is just a more expensive way to
@@ -418,7 +430,8 @@ substrate**. Measure the candidates against *that*, not against "is it scattered
 
 ### Revised guidance
 
-1. **Fix the Influence bypass now** — direct, no substrate.
+1. **Fix the Influence bypass** — ✅ **done** (routed through `spendInfluence`,
+   `overworld-cost.ts:193`); no substrate needed.
 2. **Do not build the scalar journals speculatively.** Treat each as a *prerequisite* to
    be pulled **when its report/feature is actually scheduled** — the substrate is real
    work only once a consumer exists. Treasury is still first *when* that day comes
@@ -430,10 +443,9 @@ substrate**. Measure the candidates against *that*, not against "is it scattered
 4. **Treat the combat verbs as a feature decision**, scheduled on the merit of the undo
    coverage they unlock, not batched with the additive plumbing.
 
-**Bottom line: the only thing here worth doing unprompted is the one-line Influence
-bugfix.** Everything else is a *well-shaped option to exercise when its consumer
-materialises* — correctly identified by the audit, but not, on its own, a reason to
-build. The leverage formula flattered the scalars by rewarding scatter; the value lens
-says hold them as ready-to-pull designs and let a real report or feature trigger each.
-</content>
-</invoke>
+**Bottom line: the one concrete win here (the Influence bugfix) has since landed, and the
+combat substrate (#7) is finished (D87).** Everything else is a *well-shaped option to
+exercise when its consumer materialises* — correctly identified by the audit, but not, on
+its own, a reason to build. The leverage formula flattered the scalars by rewarding
+scatter; the value lens says hold them as ready-to-pull designs and let a real report or
+feature trigger each.

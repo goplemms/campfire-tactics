@@ -1,5 +1,11 @@
 # Implement the D80 overworld node redesign
 
+> **✅ COMPLETED — this build shipped.** The D80 node redesign (night-after-arrival
+> two-camp lifecycle, the revised two-tier recovery economy, the arrival layer, the
+> Set Out / Begin lifecycle verbs) is built and tested; the canon it points at lives
+> in `overworld.md` / `glossary.md`. This file is retained as a **historical kickoff
+> brief** — it is written in future tense and does not describe outstanding work.
+
 > Kickoff brief for the D80 build. The design is **settled and lives in the docs**
 > (the source of truth). This brief points at that canon and sequences the work; it
 > is not itself the design. Paste it (or its spirit) into a fresh session to begin.

@@ -265,8 +265,11 @@ read it everywhere.
 | **Charging** | A unit mid **Charged** ability (the `◷` glyph). | "casting"; "winding up" |
 | **Instant** / **Charged** | Resolves now / schedules and **resolves later**. | "quick"/"slow"; "channeled" |
 | **Defend** | The universal brace action (applies the **Guarded** status). | "Brace"/"Block" as the *button*; "Guard" (that's the Banker verb) |
-| **Wait** | Pass the turn without acting. | "Skip"; "Pass"; "Hold" |
 | **Bribe** | The Noble's mid-combat **Influence** verb (sway an enemy). A **roll** scaled by **Standing** (D62): higher band = cheaper + likelier; a failed sway still spends the Influence and the Act. | "Sway"/"Charm" as the button; abbreviating `Influence` to `Inf` |
+
+> **Retired: `Wait`.** There is no **Wait** verb — **End Turn** covers passing the turn
+> without acting (owner ruling, #151). Do not reintroduce a separate "Wait"/"Skip"/"Pass"
+> button; to hold, a unit just ends its turn.
 
 > **End Turn vs Advance Clock — one button, two jobs.** The green primary reads
 > **End Turn** while *your* unit is up and **Advance Clock** between turns. **End Turn**
@@ -307,8 +310,11 @@ The first copy pass found the live strings already mostly disciplined. State:
 3. **Bare "Rest"** — ✅ **already compliant.** Every meaning is qualified (`Rest node` /
    `Rest Points` / `Rest in place` / `Triage`); bare `Rest` survives only as the
    rest-node event title (the sanctioned node-kind name).
-4. **`Review Route Map` vs `Survey`** — ✅ **already compliant.** "Review" names the
-   read-only *map* button; the planning *screen* is always titled `Survey`.
+4. **`Review Route Map` vs the planning screen title** — ✅ **compliant (updated D80).**
+   "Review" names the read-only *map* button; the planning *screens* are now titled
+   **`React — Night N`** / **`Prep — Night N`** (`OverworldScene.ts` ~`:848`/`:2114`) — the
+   old `Survey` *screen* title is retired (folded into **Camp**; `Survey` the **Scout
+   skill** is unaffected).
 5. **Currency suffixing** — ✅ **already compliant.** Run pool is `Purse`, amounts carry
    `g`; Influence never carries `g` and is never summed into a gold total.
 
@@ -332,12 +338,15 @@ Combat pass:
 9. **Battle HUD `Gold` → `Purse`** — ✅ **fixed.** The in-battle camp readout labelled
    the run pool `Gold N`; it's the same `run.camp.gold` the overworld shows as `Purse Ng`.
    Now unified on `Purse Ng`.
-10. **`Inf` → `Influence`** — ✅ **fixed.** The bribe button read `Bribe (3 Inf)` while
-    its own error spelled out "Influence". Now `Bribe (3 Influence)` (no abbreviation —
-    Influence is never shortened, unlike the sanctioned `RP`).
+10. **`Inf` → `Influence`** — ✅ **fixed.** The bribe button never abbreviates the
+    currency: it reads **`Bribe · `** with the Influence cost spelled out in the
+    description (`BattleScene.ts` ~`:1592`), not `Bribe (3 Inf)`. The rule (Influence is
+    never shortened, unlike the sanctioned `RP`) is intact; the old `Bribe (3 Inf)` example
+    was stale.
 11. **Combat keywords otherwise compliant** — `Advance Clock`, `Turn order`, the status
-    lexicon, `Defend`/`Wait`, Morale tiers, Storage/Kits/RP/Upkeep, and `Captured` all
-    already matched canon; the fog prose stays Layer 2 by design.
+    lexicon, `Defend`, Morale tiers, Storage/Kits/RP/Upkeep, and `Captured` all already
+    matched canon (`Wait` is **retired** — End Turn covers it, #151); the fog prose stays
+    Layer 2 by design.
 
 ## Adding a term
 

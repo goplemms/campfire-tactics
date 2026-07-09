@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "An isometric roguelike tactics game with non-combat jobs (chef, survivalist, merchant).",
+  "description": "An isometric roguelike tactics game with non-combat jobs (cook, scout, merchant).",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

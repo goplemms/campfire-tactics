@@ -31,13 +31,17 @@ It resolves four things:
    difficulty's consequence policy (dying timer, ½-HP redeploy, etc.). The **cleric**
    revive and **Rest-Point** recovery that follow in camp are defined in
    [mortality-recovery](systems/mortality-recovery.md) (D9).
-3. **Rewards.** Loot, gold (boosted by the **Merchant**), and any encounter-specific
+3. **Rewards.** Loot, gold (the win payout boosted by **morale gold-find** — a High/
+   Inspired party finds more, `runloop.ts` → `morale.ts`; **not** the Merchant, who per
+   D61/D70 owns markets/presence with no reward-gold role), and any encounter-specific
    spoils. Consumables actually spent (arrows fired, traps sprung) are deducted —
    the fight's true logistics cost is realized here.
-4. **Morale & state.** Outcomes adjust party **morale** (a clean rescue lifts it;
-   *abandoning* an ally drops it more than a hard-fought loss — see
-   [morale](systems/morale.md)), and the **Cook's** banked buffs are reconciled. Run
-   state (survivors, inventory, gold, seed position) advances.
+4. **Morale & state.** *(**Designed, not built** — outcome-driven morale is deferred,
+   #148: `RunLoop.resolve()` does not yet write morale; today's movers are Cook meals,
+   the +2 rest tick, upkeep breaches, and event deltas.)* Outcomes are designed to adjust
+   party **morale** (a clean rescue lifts it; *abandoning* an ally drops it more than a
+   hard-fought loss — see [morale](systems/morale.md)), and the **Cook's** banked buffs
+   are reconciled. Run state (survivors, inventory, gold, seed position) advances.
 
 The output is an updated **run state** that becomes the starting condition for the
 next Meta/Pre-deployment phase, until the run ends in victory or death.
@@ -51,11 +55,13 @@ next Meta/Pre-deployment phase, until the run ends in victory or death.
 >    **enemy snare** is intact — both **salvaged** to storage (a clean win controls
 >    the whole field, and the trap-trained Scout is standing to sweep the snare, D82).
 > 2. **Captures.** Vale was **rescued** mid-fight → she returns to the roster
->    unharmed (if she'd been left bound at battle's end, she'd be **dead**).
-> 3. **Rewards.** Loot + **180 gold** (Merchant bonus applied). Spent consumables
->    (`18 net arrows`, `1 rune reagent`) **roll their recovery keyword** — a few net
->    arrows return — and the rest are deducted from the ledger.
-> 4. **Morale & state.** The rescue lifts party **morale +1**; the Cook's banked
+>    unharmed (had she been left bound at battle's end, she would become a **rescue
+>    follow-up quest**, not lost — §2/D21).
+> 3. **Rewards.** Loot + **180 gold** (the win payout lifted by the party's **morale
+>    gold-find**). Spent consumables (`18 net arrows`, `1 rune reagent`) **roll their
+>    recovery keyword** — a few net arrows return — and the rest are deducted from the ledger.
+> 4. **Morale & state.** *(Outcome-driven morale is designed-not-built, #148 — so no
+>    rescue-morale bump fires today.)* The rescue is designed to lift party **morale +1**; the Cook's banked
 >    stew heal was consumed at battle start, so it clears. Run state updates: 4
 >    survivors, storage now holding the recovered kit + salvaged snare, 180g — ready
 >    to pay next night's **Upkeep**.

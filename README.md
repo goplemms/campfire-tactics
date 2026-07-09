@@ -9,8 +9,8 @@ happen **around** the battles, not just on the grid.
 Alongside the usual combat classes, your party fills **non-combat jobs** that
 reshape a run:
 
-- **Chef** — raises party morale and provides between-battle healing.
-- **Survivalist** — sets traps on the map *before* an encounter begins.
+- **Cook** — raises party morale and provides between-battle healing.
+- **Scout** — sets traps on the map *before* an encounter begins.
 - **Merchant** — finds a market anywhere and trades goods for gold.
 
 Each job deliberately acts in a *different* part of the game, which drives the
@@ -40,8 +40,8 @@ Because the non-combat jobs act in different places, the game is modeled as
 ordered phases, and jobs/skills are **data** that hook into a phase:
 
 ```
-Meta (camp / party / economy)   →  Chef buffs, Merchant markets & trade
-  → Deployment (pre-battle setup) →  Survivalist places traps
+Meta (camp / party / economy)   →  Cook buffs, Merchant markets & trade
+  → Deployment (pre-battle setup) →  Scout places traps
     → Battle (the iso grid)       →  combat jobs & skills
       → Resolution (rewards, loss) →  feeds back into Meta
 ```
@@ -77,7 +77,6 @@ planning workspace, not here:
 
 - **Resume point:** [`scratchpad/foundations/PROGRESS.md`](scratchpad/foundations/PROGRESS.md)
 - **Decision log (source of truth):**
-  [`scratchpad/foundations/decisions.md`](scratchpad/foundations/decisions.md) — latest
-  **D66**; next queued **D67** (deployment↔combat substrate unification), brief at
-  [`scratchpad/foundations/d67-substrate-unification-build.md`](scratchpad/foundations/d67-substrate-unification-build.md).
+  [`scratchpad/foundations/decisions.md`](scratchpad/foundations/decisions.md) — always
+  read to the latest entry; the log is the running record of every architectural call.
 - **Verify locally:** `npm run test` · `npm run build` · `npm run test:e2e` · `npm run sim`.

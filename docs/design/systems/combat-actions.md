@@ -3,8 +3,9 @@
 > Referenced by: [Combat](../03-combat.md), [Deployment](../02-deployment.md).
 > Decisions: **D4** (the event bus / "actions announce, listeners react"),
 > **D5** (the CT clock), **D42** (the scoring AI — `AIPlan` as intent-as-data),
-> **D56** (swappable battle policy). Touches: `src/core/turn.ts` (the `Battle`
-> driver), `src/core/ai.ts` (`AIPlan`), `src/core/combat.ts`, `src/core/events.ts`.
+> **D56** (swappable battle policy), **D87** (the log is *total* — every mutation
+> flows through `apply`). Touches: `src/core/turn.ts` (the `Battle` driver),
+> `src/core/ai.ts` (`AIPlan`), `src/core/combat.ts`, `src/core/event-bus.ts`.
 >
 > Status: **Phase 1 & Phase 2 built & verified** — command interpreter + action log
 > + replay, the label-derived RNG seam, *and* turn-scoped undo (the take-back), all
@@ -246,11 +247,15 @@ roll ever needs a stateful stream, `Rng` is already serializable (`state()` /
      immutable authored `SkillDef`s ride in the action directly (not rebuilt on
      replay; also keeps ad-hoc test skills working). A pure-id skill form for
      wire-format is a Phase-2 refinement, gated on a skill registry that doesn't exist.
-   - **Deferred from the union (deliberate, behaviour-preserving):** `useHeal` (the
-     med-bridge consumes the *shared stash*, an external resource — see the
-     deployment-verbs open question) and the deployment-phase verbs. Their *turn-end*
-     still flows through `apply` (the render's explicit `endTurn`); only the heal
-     mutation itself is not yet a logged action. `defend` (D41) is reserved, unbuilt.
+   - **The union is now total (D87, R1).** The formerly-deferred verbs all landed as
+     logged `CombatAction`s: the **deployment-phase verbs** (`digIn` / `placeTrap` /
+     `capture` / `beginBattle` / `escape`) flow through `apply` with a logged phase
+     boundary + a replay-drained prelude (`combat-actions.ts`, `turn.ts`), and
+     **`useHeal`** — the med-bridge — is a logged action too (D87 closed the "heal
+     mutated outside the log" gap; a golden rescue+heal battle replays byte-identically,
+     `r1-log-totality.test.ts`). So **nothing** genuinely remains outside `apply`.
+     `defend` **shipped** as a universal `SkillDef` (`DEFEND`, `jobs-data/support.ts`)
+     resolved through the `skill` action — not reserved/unbuilt.
 2. **Phase 2 — undo. ✅ Built.** Snapshot-per-action checkpoints on the log;
    identity-stable in-place restore (units + clock + charges + entities + RNG cursor);
    player-turn-scoped, trap-lock-guarded; surfaced as **Undo Turn** in `BattleScene`.
@@ -284,8 +289,9 @@ This mirrors the purse-journal sequencing: prove the substrate, then layer the f
 
 - **Action granularity** — is "move + attack" one composite turn action or two logged
   actions? (Undo granularity and the `endTurn` spend model depend on this.)
-- **Deployment-phase verbs** (trap placement, capture, range-back) — same `CombatAction`
-  union, or a separate deployment-action set? They're already partly command-shaped.
+- **Deployment-phase verbs** (trap placement, capture, range-back) — *resolved (D87):*
+  the **same `CombatAction` union** (`digIn`/`placeTrap`/`capture`/`beginBattle`/`escape`),
+  with the deploy→battle handoff a single logged `beginBattle` boundary.
 - **How much state the checkpoint must hold** — *resolved (Phase 2):* the units'
   mutable fields + the clock (time + scheduled effects) + entity flags + the log
   length + the RNG draw cursor. The entity/bus relationship is never cloned —

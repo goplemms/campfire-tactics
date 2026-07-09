@@ -188,7 +188,9 @@ roof:
   scout's free read) who have **laid their own snares** (concealment 5–6, damage 16–18)
   — the **node-3 lesson inverted** (avoid *enemy* traps). Slightly richer (140g) because
   it's harder. **Grant:** Sela + `medic-freed`. **Gate:** inaccessible once the Medic is
-  already held *(party-state gate — currently STUBBED; see Open items)*.
+  already held *(party-state gate — **shipped**: authored as `blockedWhen: flagSet
+  "medic-freed"` and read generically by `nodeAccessible`, tested; only the general
+  node-gating vocabulary is still being generalized, #127)*.
 - **6B · The Thieves' Den (`den`, combat):** the **relic** offshoot, reachable from 4B
   and the Market. **Thief enemies skim the purse and bolt** for the edge — kill them to
   drop the gold; let them escape and it's gone (stealth in play). **Reward:** 90g, 1
@@ -767,9 +769,10 @@ Recent work that altered routing or the within-node experience. Newest first.
 
 Known placeholders to resolve as the demo matures:
 
-- **L6A access gate is stubbed.** "Inaccessible once the Medic is held" is the intent,
-  but the proper party-state predicate is deferred — verify `securedWagon` actually
-  gates on `flags["medic-freed"]` before relying on it.
+- **L6A access gate — shipped.** "Inaccessible once the Medic is held" is live: the
+  `securedWagon` node carries `blockedWhen: flagSet "medic-freed"`, read generically by
+  `nodeAccessible` (`run.ts:272-280`) and covered by `feasibility.test.ts`. Only the
+  general node-gating **vocabulary** (more predicate kinds) remains to generalize (#127).
 - **`relic-hollow-blade` effect is TBD** — placeholder unique; design the effect with
   the user.
 - **L7 finale is a stub** — replace once L6–10 are designed.

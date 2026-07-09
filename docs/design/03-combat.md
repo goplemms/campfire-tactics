@@ -32,23 +32,28 @@ whole side early tempo.
 
 Traps, nests, and runes placed in Deployment are **field entities** that register
 as **listeners on the battle trigger bus**. The Combat loop announces moments —
-`onUnitEnterTile`, `onTurnStart`, `onUnitDamaged`, etc. — and entities react. This
-is the architectural hook (decision **D4**) that M3 builds **before** any entity
-exists, so traps/nests/runes are later just listeners, not special cases. See
+`unitEnterTile`, `turnStart`, `unitDamaged`, etc. (the bus lives in
+[`event-bus.ts`](../../src/core/event-bus.ts)) — and entities react. This is the
+architectural hook (decision **D4**) that M3 builds **before** any entity exists, so
+new placeables are later just listeners, not special cases. See
 [field-entities](systems/field-entities.md).
 
-- **Trap** → one-shot listener on `onUnitEnterTile` (enemy steps on it → damage).
+- **Trap** → one-shot listener on `unitEnterTile` (enemy steps on it → damage).
+  *(Built: player + concealed-enemy trap-fields ship.)*
 - **Defensive nest** → passive aura: whoever holds the tile gets cover / range /
-  elevation benefits.
+  elevation benefits. *(**Designed, not built** — no aura entity exists; deferred, #148.)*
 - **Ritual rune** → a **pre-paid charged ability** (the charge was bought in
   Deployment, not spent as a battle turn). **Auto-trigger** = resolves on a
   condition; **manual-trigger** = a unit spends its **Act** to detonate now.
+  *(**Designed, not built** — part of the deferred Vancian magic family, D17/#148.)*
 
 ### 3. Rescue of captured allies
 
 A unit captured during Deployment is on the map, guarded. Freeing it mid-Combat
-converts the side's **−1 to +1**; an ally left captured at battle's end is lost in
-[Resolution](04-resolution.md).
+converts the side's **−1 to +1**. An ally left captured at battle's end is **not
+simply lost**: they resolve through the D9/D21 policy as a **rescue follow-up quest**
+(`resolveCaptured`, `mortality.ts`) — guaranteed / earned / narrow / tight by
+difficulty — rather than permadeath (docs 02/04 tell the same story).
 
 **Captive recruits (D52 extension).** Authored content can *start* a fight with a bound
 unit on the board that **isn't yet yours** — a guarded **captive recruit**
@@ -68,15 +73,26 @@ flashes FX, and future effects (intel reveals, ghost tokens) hook the same event
 the call site. The **post-win auto-free** ("freed by winning the field") is a separate
 Resolution tally, not this live event.
 
+> **Designed, not built (D12/#148):** the in-combat **capture countdown** below is a
+> deferred design. Today a Snare deals damage + **Immobilized** only
+> (`status.ts`); the per-unit counter shape is reserved but unused (`status.ts:258`),
+> so combat capture via the countdown does not yet fire. The banner keeps the intent.
+
 Capture can *also begin during combat*: an enemy **Snare** (a fortified-encounter
 [field entity](systems/field-entities.md)) applies **Immobilized** plus a banded
 **capture countdown** — the abstraction being enemy reinforcements closing on that
 spot. Fail to free the unit (an ally **Act**) before it expires and they enter the
-same captured state. So capture is **one mechanic with two entry points** —
+same captured state. So capture is designed as **one mechanic with two entry points** —
 pre-battle overreach and in-combat helplessness — both resolving through the
 [D9](systems/mortality-recovery.md) policy.
 
 ### Vision & fog of war
+
+> **Designed, not built (D18/#148):** the full **Hidden → Pinged → Seen** ladder,
+> ghost markers, the Awareness ping, and the ambush-from-Hidden bonus below are
+> deferred. What ships today is a **sight-radius seam** (`computeVisibleTiles`,
+> fog-respecting AI) plus the D68 Stealth-adjacency read — not the ladder (see
+> [vision](systems/vision.md)). The section keeps the design intent.
 
 Combat is fought under **symmetric fog of war** (see [vision](systems/vision.md), D18):
 each side perceives enemies on a banded ladder — **Hidden → Pinged** (Awareness sense,
@@ -87,24 +103,37 @@ an **ambush bonus**. A **Tier-3 [intel](systems/intel.md)** read grants starting
 
 ### Forced movement — push / pull (D19)
 
+> **Partly built (D19/#148):** only **push** ships today (`Battle.resolveShove` —
+> the Soldier's Shove); **pull** and **collision damage** are deferred design.
+
 Effects can **push** (away) or **pull** (toward) a unit a banded number of tiles. It's
 **involuntary** — costs the target no CT and doesn't consume their turn — and
 **target-agnostic** (shove an enemy *or* pull an ally out of danger, a clean
 support tool). The payoff is the **combo**: a forced move **onto a field-entity tile
 fires that entity** (push an enemy into a trap → it springs; into a net → Grounded;
 into a snare → capture countdown) — just the [trigger bus](systems/field-entities.md)
-emitting `onUnitEnterTile` for the forced move. A pushed unit **stops** at a
+emitting `unitEnterTile` for the forced move. A pushed unit **stops** at a
 wall/blocker/another unit, with **optional collision damage** (a tuning knob). Vision
 applies (D18): an **AoE** push can catch a **Pinged** tile; a single-target push needs
 **Seen**.
 
 ### Win/lose
 
-Standard objectives (defeat all enemies / survive N / reach a tile). The roguelike
-framing means **permadeath**: fallen and unrescued-captured units do not come back.
+Objectives today are two kinds (`objectives.ts`): **`eliminate-all`** (clear the
+field — every encounter's default win) and **`closing-gate`** (a required constraint
+generalizing the bridge-cut). "Survive N turns / reach a tile" are **not** built.
+Losing a battle is **not** flat permadeath: a downed unit resolves through the D9
+difficulty dial — **full-heal / half-redeploy / dying-timer / permadeath**
+(`mortality.ts`) — with permadeath only the **hardest** setting; captured-and-unrescued
+units become a rescue follow-up (§3). The turn cycle is D60's split-move + explicit
+**End Turn → Advance Clock** flow (see the open question below).
 
 ## Pseudo-example
 
+> Illustrative only — the **fire rune** and **charged Frost** beats depict the
+> *designed* rune / Vancian family that is **not built** (see the §2 banner); the
+> trap, rescue, and CT-clock beats are live.
+>
 > Continuing from Deployment: enemy holds the initiative seed; 2 traps at the
 > canyon mouth; 1 fire rune live; **Vale captured** on a ledge with 2 guards.
 > Illustrative Speeds — Rook 10, Ember 7, enemy Vanguard 9, guards 8.
@@ -112,7 +141,7 @@ framing means **permadeath**: fallen and unrescued-captured units do not come ba
 > | Clock | Event |
 > |------:|-------|
 > | t=0 | Seeds applied. Because Vale was lost from the seed, the **enemy Vanguard starts warmer** and reaches 100 first. |
-> | t≈11 | **Vanguard turn:** advances through the canyon mouth → steps on a tile → **`onUnitEnterTile` fires Bram's trap.** Vanguard takes damage; a second enemy trips the **second trap** moments later. The greedy enemy tempo walked straight into the prep. |
+> | t≈11 | **Vanguard turn:** advances through the canyon mouth → steps on a tile → **`unitEnterTile` fires Bram's trap.** Vanguard takes damage; a second enemy trips the **second trap** moments later. The greedy enemy tempo walked straight into the prep. |
 > | t≈14 | **Rook turn:** Rook sprints toward the ledge (Move) and strikes a guard (Act). CT spent. |
 > | t≈19 | **Ember turn:** Ember casts *Frost* — a **charged** spell — onto the cluster near the rune. It does **not** resolve yet; it schedules on the timeline. |
 > | t≈22 | **Rook's next turn:** he reaches **Vale** and **frees her** (`Act`). Side is now **4 active**; Vale re-enters the clock. |

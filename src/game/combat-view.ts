@@ -403,7 +403,7 @@ export class CombatView {
         this.fillTile(g, fp.landing, onTrap ? COLOR.danger : COLOR.reach, 0.22, col);
         if (onTrap || fp.blocked) {
           const tag = onTrap ? `${ICON.trapArmed.glyph} trap` : "blocked";
-          this.floatTag(fp.landing, tag, onTrap ? "#ff7a3a" : INK.danger);
+          this.floatTag(fp.landing, tag, onTrap ? INK.hot : INK.danger);
         }
         break;
       }
@@ -427,7 +427,7 @@ export class CombatView {
       .text(x, y - TILE_HEIGHT / 2 - 14, text, { color, fontFamily: FONT.family, fontSize: FONT.caption, fontStyle: WEIGHT.bold })
       .setOrigin(0.5)
       .setDepth(6)
-      .setStroke("#1a0d05", 3);
+      .setStroke(INK.outline, 3);
     this.forecastLabels.add(label);
   }
 
@@ -482,10 +482,10 @@ export class CombatView {
       // Incoming-damage tag over the threatened ally: "→N" (lethal mark if it would drop them).
       const tag = intent.ability && intent.damage === 0 ? "snare" : `→${intent.damage}${intent.lethal ? ICON.lethal.glyph : ""}`;
       const label = this.scene.add
-        .text(to.x, to.y - TILE_HEIGHT / 2 - 18, tag, { color: intent.lethal ? "#ff7a3a" : INK.danger, fontFamily: FONT.family, fontSize: FONT.nameplate, fontStyle: WEIGHT.bold })
+        .text(to.x, to.y - TILE_HEIGHT / 2 - 18, tag, { color: intent.lethal ? INK.hot : INK.danger, fontFamily: FONT.family, fontSize: FONT.nameplate, fontStyle: WEIGHT.bold })
         .setOrigin(0.5)
         .setDepth(6)
-        .setStroke("#1a0d05", 3);
+        .setStroke(INK.outline, 3);
       this.forecastLabels.add(label);
     }
   }
@@ -501,12 +501,12 @@ export class CombatView {
   private drawForecast(foe: Unit, f: { damage: number; lethal: boolean; flank: boolean }): void {
     const { x, y } = this.tileToWorld(foe.pos);
     const text = `${f.flank ? ICON.flank.glyph : ""}${f.damage}${f.lethal ? ICON.lethal.glyph : ""}`;
-    const color = f.lethal ? "#ff7a3a" : f.flank ? INK.gold : INK.ember;
+    const color = f.lethal ? INK.hot : f.flank ? INK.gold : INK.ember;
     const label = this.scene.add
       .text(x, y - TILE_HEIGHT / 2 - 30, text, { color, fontFamily: FONT.family, fontSize: FONT.caption, fontStyle: WEIGHT.bold })
       .setOrigin(0.5)
       .setDepth(6)
-      .setStroke("#1a0d05", 3);
+      .setStroke(INK.outline, 3);
     this.forecastLabels.add(label);
   }
 
@@ -898,7 +898,7 @@ export class CombatView {
     const intensity = Math.min(1, amount / Math.max(1, unit.maxHp) / 0.4);
     const sizePx = Math.round(13 + intensity * 11); // 13 (chip) → 24 (heavy)
     // Muted red for a chip, ember-orange mid, white-hot for a crusher.
-    const color = intensity < 0.34 ? INK.danger : intensity < 0.67 ? "#ff9a4a" : "#ff6a2a";
+    const color = intensity < 0.34 ? INK.danger : intensity < 0.67 ? INK.heat : INK.crit;
     const { x, y } = this.tileToWorld(unit.pos);
     this.emitFloat(x, y - TILE_HEIGHT / 2 - 18, `-${amount}`, color, sizePx, intensity);
   }
@@ -914,7 +914,7 @@ export class CombatView {
       .text(x, y, text, { color, fontFamily: FONT.family, fontSize: `${sizePx}px`, fontStyle: WEIGHT.bold })
       .setOrigin(0.5)
       .setDepth(30);
-    if (pop > 0) t.setScale(1 + pop * 0.6).setStroke("#3a0f04", 3);
+    if (pop > 0) t.setScale(1 + pop * 0.6).setStroke(INK.critOutline, 3);
     this.floaters.add(t);
     this.scene.tweens.add({
       targets: t,

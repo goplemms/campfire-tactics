@@ -13,7 +13,7 @@ import {
 } from "./index";
 
 // #135 core-leak 1: the starting roster used to be typed out verbatim in two render
-// files (GuildScene.freshGuild + debug-battle.demoRoster). This pins the authored table
+// files (GuildScene.freshGuild + the boot demos (removed)). This pins the authored table
 // so a stat edit can't silently drift the two copies apart (there is now one).
 describe("STARTING_ROSTER (the authored starter cast)", () => {
   it("is the eight-strong authored roster, exact stats (drift guard)", () => {

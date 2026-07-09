@@ -56,7 +56,7 @@ const STEPS = BOOT === "battle"
       { name: "03-preview", eval: wrap(`s.showPreview(s.loop.reachable()[0]);`) },
       { name: "04-make-camp", eval: wrap(`s.enterCamp(s.loop.reachable().find(n=>n.kind==='combat')||s.loop.reachable()[0]);`) },
       { name: "05-ledger", eval: wrap(`s.openTent(()=>s.renderCamp(),"ledger");`) },
-      { name: "06-survey", eval: wrap(`${clearOverlay}s.showSurvey();`) },
+      { name: "06-survey", eval: wrap(`${clearOverlay}s.showReactCamp();`) },
     ]
   : [
       { name: "01-map-fog", minMs: 700, eval: `void 0;` }, // initial: the map with fog
@@ -68,13 +68,13 @@ const STEPS = BOOT === "battle"
       { name: "04-ledger-skip-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
       { name: "04b-ledger-skip-both", eval: wrap(`s.toggleSkip("repairs",()=>{});`) },
       { name: "04c-ledger-restore-food", eval: wrap(`s.toggleSkip("food",()=>{});`) },
-      { name: "05-survey", eval: wrap(`${clearOverlay}s.showSurvey();`) },
+      { name: "05-survey", eval: wrap(`${clearOverlay}s.showReactCamp();`) },
       { name: "06-after-inplace-rest", eval: wrap(`s.run.party.forEach(u=>{u.hp=Math.max(1,Math.floor(u.maxHp*0.4));});s.doInPlaceRest();`) },
       // The economy classes (D62/D30): field the real Noble + Banker from the roster (the
       // job-gate that replaced the old Int>=3 proxy), give some standing + gold, and expand
       // the Advanced panel → its verbs, each tagged with the specialist who works them.
       { name: "06d-influence-patronize", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);for(const jid of ['noble','banker']){const m=(s.guild?s.guild.roster:[]).find(u=>u.jobId===jid);if(m&&!s.run.party.includes(m))s.run.party.push(m);}s.run.camp.gold=120;s.run.overworld.influence=16;s.renderCamp();`) },
-      { name: "07-break-camp-gate", eval: wrap(`s.run.camp.gold=0;s.run.overworld.debt=30;s.breakCampToMap();`) },
+      { name: "07-break-camp-gate", eval: wrap(`s.run.camp.gold=0;s.run.overworld.debt=30;s.setOutToMap();`) },
     ];
 
 async function ensureChrome() {

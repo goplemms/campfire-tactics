@@ -3,7 +3,7 @@ import { generateOverworld, getNode, reachableFrom } from "./overworld";
 import { eventForNode } from "./node-events";
 
 // Guards the curated Expedition-demo map (M13, Path 1). The seed is pinned in
-// `src/game/debug-battle.ts` (EXPEDITION_SEED); this asserts the showcase it was
+// `src/game/boot/demos.ts` (EXPEDITION_SEED); this asserts the showcase it was
 // chosen for survives any generation change — if it breaks, re-curate + repin.
 const EXPEDITION_SEED = "expedition-350";
 

@@ -52,9 +52,9 @@ const STEPS = [
   { name: "02-gift-accepted", minMs: 500, eval: wrap(`s.onEventChoice(s.loop.eventChoices().find((c) => c.id === "accept-gift"));`) },
   // Break Camp → the GENUINE overflow (slotsOver > 0) forces the discard menu (Trap Kit ×4,
   // Iron Weapons ×1, the medical stacks) — the real state, not a synthetic one.
-  { name: "03-discard-menu", minMs: 500, eval: wrap(`s.afterNode(); s.breakCampToMap();`) },
+  { name: "03-discard-menu", minMs: 500, eval: wrap(`s.afterNode(); s.setOutToMap();`) },
   // Drop one trap-kit: its footprint shrinks 4→3, the stash drops to 2 over, the menu re-renders.
-  { name: "04-after-one-drop", minMs: 500, eval: wrap(`s.run.inventory.counts["trap-kit"] -= 1; s.refreshCampText(); s.breakCampToMap();`) },
+  { name: "04-after-one-drop", minMs: 500, eval: wrap(`s.run.inventory.counts["trap-kit"] -= 1; s.refreshReadoutLine(); s.setOutToMap();`) },
 ];
 
 async function ensureChrome() {

@@ -1,6 +1,6 @@
 // Screenshot the storage-overflow discard menu (D75) headlessly.
 // Boots #overworld, enters camp, over-stuffs the stash past its cap (the state a
-// grant leaves behind), and opens the discard menu via breakCampToMap. A second
+// grant leaves behind), and opens the discard menu via setOutToMap. A second
 // frame shows the menu re-rendered after one drop (a footprint shrinks). Reuses
 // the Chrome contract from the sibling shots scripts (CHROME_BIN to skip the
 // download). Run: node scripts/shots-discard.mjs
@@ -44,10 +44,10 @@ const OVERFLOW = `
 
 const STEPS = [
   { name: "01-enter-camp", minMs: 700, eval: wrap(`s.enterCamp(s.loop.reachable()[0]);`) },
-  { name: "02-overflow-menu", minMs: 450, eval: wrap(`${OVERFLOW}; s.refreshCampText(); s.breakCampToMap();`) },
+  { name: "02-overflow-menu", minMs: 450, eval: wrap(`${OVERFLOW}; s.refreshReadoutLine(); s.setOutToMap();`) },
   // Drop one trap-kit: its footprint shrinks 2→1, the stash drops to 1 over, the
   // menu re-renders (the same path the row's click handler drives).
-  { name: "03-after-one-drop", minMs: 450, eval: wrap(`s.run.inventory.counts["trap-kit"] = 1; s.refreshCampText(); s.breakCampToMap();`) },
+  { name: "03-after-one-drop", minMs: 450, eval: wrap(`s.run.inventory.counts["trap-kit"] = 1; s.refreshReadoutLine(); s.setOutToMap();`) },
 ];
 
 async function ensureChrome() {

@@ -3,11 +3,11 @@
  * jump tooling.
  *
  * A dev-only, `position:fixed` DOM overlay (only ever mounted by the `#debug` boot —
- * {@link "./debug-battle".DebugBootScene}) that lists the expedition's nodes and lets
+ * {@link "./boot/debug".DebugBootScene}) that lists the expedition's nodes and lets
  * a developer boot the game straight into a node in a **plausible previous state**:
  * the best / average / worst-survivor arrival from the population sampler, an exact
  * route, or the default first-enumerated route. Clicking a row hands off to
- * {@link "./debug-battle".jumpToArrival}, which builds the arrival and starts the
+ * {@link "./boot/debug".jumpToArrival}, which builds the arrival and starts the
  * destination scene.
  *
  * Style mirrors {@link "./playtest-log-ui".installPlaytestLogUI}: inline object-assign
@@ -30,7 +30,7 @@ import {
   type Sample,
   type ArrivalDigest,
 } from "../core";
-import { jumpToArrival, type JumpParams } from "./debug-battle";
+import { jumpToArrival, type JumpParams } from "./boot/debug";
 
 /** Stable DOM ids the harness (and a dev) target. */
 export const DEBUG_MENU_TOGGLE_ID = "debug-jump-toggle";

@@ -83,6 +83,7 @@ import {
   type EventOutcome,
   type EventChoice,
   type EventKind,
+  type NodeKind,
   type Unit,
   type SkillDef,
   type Guild,
@@ -316,7 +317,7 @@ export class OverworldScene extends Phaser.Scene {
     this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
     this.hintPanel = new HintPanel(this);
 
-    this.refreshCampText();
+    this.refreshReadoutLine();
 
     // Terminal screens take over the map.
     if (this.loop.isOver()) return this.runEnd();
@@ -325,7 +326,7 @@ export class OverworldScene extends Phaser.Scene {
     // Returning from a resolved node (e.g. back from a combat BattleScene) lands on
     // the **Survey** beat (D46) — the now-informed post-event planning surface —
     // before the map. A fresh run sits at the un-played start node → straight to map.
-    if (this.justResolvedCurrentNode()) return this.showSurvey();
+    if (this.justResolvedCurrentNode()) return this.showReactCamp();
 
     // The Expedition demo (M13) opens with a one-time orientation card.
     if (this.demoIntro) {
@@ -380,7 +381,7 @@ export class OverworldScene extends Phaser.Scene {
   private afterNode(): void {
     if (this.loop.isOver()) return this.runEnd();
     if (this.loop.isComplete()) return this.runComplete();
-    this.showSurvey();
+    this.showReactCamp();
   }
 
   // --- Map drawing ----------------------------------------------------------
@@ -606,14 +607,27 @@ export class OverworldScene extends Phaser.Scene {
     );
   }
 
+  /**
+   * The **node-kind presentation table** — one total record (word + header ink) per
+   * {@link NodeKind}, replacing the three partial per-kind tables that had drifted
+   * (nodeKindWord, nodeKindInk, and the local `word()` in reachableTargetLabels). Read by
+   * the intel card, the reachable-target labels, and the forecast summary. The last-layer
+   * "Final" override stays a caller concern (it's a layer fact, not a kind).
+   */
+  private static readonly NODE_KIND_VISUALS: Record<NodeKind, { word: string; ink: string }> = {
+    combat: { word: "Combat", ink: INK.danger },
+    rest: { word: "Clearing", ink: INK.success },
+    event: { word: "Event", ink: INK.gold },
+  };
+
   /** A player-facing kind word + its ink for the intel card header. */
   private nodeKindWord(node: MapNode): string {
     if (node.layer === this.run.map.layers - 1) return "Final";
-    return node.kind === "combat" ? "Combat" : node.kind === "rest" ? "Clearing" : "Event";
+    return OverworldScene.NODE_KIND_VISUALS[node.kind].word;
   }
   private nodeKindInk(node: MapNode): string {
     if (node.layer === this.run.map.layers - 1) return INK.gold;
-    return node.kind === "rest" ? INK.success : node.kind === "event" ? INK.gold : INK.danger;
+    return OverworldScene.NODE_KIND_VISUALS[node.kind].ink;
   }
 
   /**
@@ -730,7 +744,7 @@ export class OverworldScene extends Phaser.Scene {
    * label get a trailing "#2" so each row still points at a distinct node.
    */
   private reachableTargetLabels(nodes: { id: string; kind: MapNode["kind"]; layer: number }[]): Record<string, string> {
-    const word = (k: MapNode["kind"]) => (k === "combat" ? "Combat" : k === "rest" ? "Clearing" : "Event");
+    const word = (k: MapNode["kind"]) => OverworldScene.NODE_KIND_VISUALS[k].word;
     const base = (n: { kind: MapNode["kind"]; layer: number }) => `${word(n.kind)} (L${n.layer})`;
     const counts: Record<string, number> = {};
     for (const n of nodes) counts[base(n)] = (counts[base(n)] ?? 0) + 1;
@@ -837,7 +851,7 @@ export class OverworldScene extends Phaser.Scene {
   /** Apply a tailored early-event choice: a bypass short-circuits to the react camp; otherwise fight on. */
   private onEarlyChoice(node: MapNode, def: EventDef, choice: EventChoice): void {
     const out: EventOutcome = def.choose!(this.run, node, choice.id);
-    this.refreshCampText();
+    this.refreshReadoutLine();
     clearLayer(this.overlay);
     if (out.bypass) {
       const res = this.loop.bypassEncounter();
@@ -874,7 +888,7 @@ export class OverworldScene extends Phaser.Scene {
   private renderCamp(): void {
     const node = this.campNode!;
     this.clearCamp();
-    this.refreshCampText();
+    this.refreshReadoutLine();
 
     const isCombat = node.kind === "combat";
     const kindLabel = isCombat
@@ -1314,7 +1328,7 @@ export class OverworldScene extends Phaser.Scene {
       const label = this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11);
       // 14px (one above the 13px body label) — the value stays the figure without towering
       // over its label the way the old 16px heading did. Deliberately between body/heading.
-      const value = this.add.text(x + cardW - 12, cy, t.value, { color: ink, fontFamily: FONT.family, fontSize: "14px" }).setOrigin(1, 0.5).setDepth(11);
+      const value = this.add.text(x + cardW - 12, cy, t.value, { color: ink, fontFamily: FONT.family, fontSize: FONT.figure }).setOrigin(1, 0.5).setDepth(11);
       this.campObjects.push(rect, label, value);
       // Pulse a tile the instant its figure changes from the previous paint (an action's
       // effect landing) — but not on the first paint of a camp (`fresh`), which isn't a move.
@@ -1355,7 +1369,7 @@ export class OverworldScene extends Phaser.Scene {
       const cx = x + tileW / 2;
       const rect = this.add.rectangle(x, top, tileW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0).setDepth(6);
       const label = this.add.text(cx, top + 12, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(7);
-      const value = this.add.text(cx, top + 28, t.value, { color: this.tileInk(t), fontFamily: FONT.family, fontSize: "14px" }).setOrigin(0.5).setDepth(7);
+      const value = this.add.text(cx, top + 28, t.value, { color: this.tileInk(t), fontFamily: FONT.family, fontSize: FONT.figure }).setOrigin(0.5).setDepth(7);
       fitText(label, tileW - 10);
       fitText(value, tileW - 10);
       this.nodeObjects.push(rect, label, value);
@@ -2038,7 +2052,7 @@ export class OverworldScene extends Phaser.Scene {
   // Patron's Welcome — a standing-gated boon (D62): auto-resolve the feast + report it.
   private playPatronEvent(): void {
     const res = this.loop.eventNode(); // auto-resolves the boon + records the night
-    this.refreshCampText();
+    this.refreshReadoutLine();
     const o = res.outcome;
     const lines: string[] = [o.summary];
     if (o.moraleDelta) lines.push(`Spirits lift (+${o.moraleDelta} morale).`);
@@ -2050,14 +2064,14 @@ export class OverworldScene extends Phaser.Scene {
   /** Leave the event, record the node-step, and route to the Survey beat/terminal (D46). */
   private finishEvent(netGold: number): void {
     this.loop.recordEventNight(netGold);
-    this.refreshCampText();
+    this.refreshReadoutLine();
     this.afterNode();
   }
 
   // Thief — no choice; resolve the skim (auto path) and report it (D30).
   private playThiefEvent(): void {
     const res = this.loop.eventNode(); // auto-resolves the skim + records the night
-    this.refreshCampText();
+    this.refreshReadoutLine();
     const stolen = res.outcome.stolen ?? 0;
     const lines: string[] = [];
     if (stolen > 0) {
@@ -2117,7 +2131,7 @@ export class OverworldScene extends Phaser.Scene {
   private onEventChoice(choice: EventChoice): void {
     const def = this.loop.eventDef();
     const out: EventOutcome = this.loop.chooseEvent(choice.id);
-    this.refreshCampText();
+    this.refreshReadoutLine();
 
     if (def.kind === "shop" && choice.id.startsWith("buy:")) {
       // Stay in the market: track spend, report, re-render for the next buy.
@@ -2132,7 +2146,7 @@ export class OverworldScene extends Phaser.Scene {
     const lines = [out.summary, "", `Purse now ${this.run.camp.gold}g.`];
     if (out.recruited) lines.push(`${out.recruited.name} now rides with the caravan.`);
     this.loop.recordEventNight(out.goldDelta);
-    this.refreshCampText();
+    this.refreshReadoutLine();
     const good = out.goldDelta >= 0 && out.moraleDelta >= 0;
     this.showOverlay(def.name, lines.join("\n"), good, 520, 200, () => this.afterNode());
   }
@@ -2143,7 +2157,7 @@ export class OverworldScene extends Phaser.Scene {
     // A rest node elapses a night and pays a night's rations — show the spend first.
     this.showLedgerTransition("Before resting for the night…", () => {
       const res = this.loop.restNode();
-      this.refreshCampText();
+      this.refreshReadoutLine();
       this.showRestScreen(res);
     });
   }
@@ -2174,12 +2188,12 @@ export class OverworldScene extends Phaser.Scene {
    * **Set Out** (the soft gate back to the map) or rest in place first (D47, repeatable). The
    * gold route-forecast band up top is this beat's identity, against the prep beat's ember recap.
    */
-  private showSurvey(): void {
+  private showReactCamp(): void {
     this.clearMap();
     this.clearCamp();
     clearLayer(this.overlay);
     this.campNode = currentNode(this.run);
-    this.refreshCampText();
+    this.refreshReadoutLine();
     // The live figures move to the right-side state panel on this beat — hide the line.
     this.campText.setVisible(false);
 
@@ -2209,7 +2223,7 @@ export class OverworldScene extends Phaser.Scene {
     const readoutX = cx + panelW / 2 - 30 - readoutCardW;
 
     // Areas nav across the top of the action area (frees the width below for drawers).
-    const areasBottom = this.renderAreaNav("camp", () => this.showSurvey(), this.campObjects, colX, colTop);
+    const areasBottom = this.renderAreaNav("camp", () => this.showReactCamp(), this.campObjects, colX, colTop);
     let y = areasBottom + 20;
 
     // Live state readouts, stacked on the right of the action drawers.
@@ -2227,10 +2241,10 @@ export class OverworldScene extends Phaser.Scene {
       for (const target of reach) {
         const refusal = this.refusal(survey, surveyor);
         const label = targetLabels[target.id];
-        intel.push({ label: `${survey.name} → ${label} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${label}`, actor: surveyor.name, costs: this.actionCost(survey) });
+        intel.push({ label: `${survey.name} → ${label} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showReactCamp(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${label}`, actor: surveyor.name, costs: this.actionCost(survey) });
       }
     }
-    y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());
+    y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showReactCamp());
 
     // The captain's running to-do sits below the actions.
     this.renderCaptainsJournal(colX, y + 12, panelW - 60);
@@ -2241,7 +2255,7 @@ export class OverworldScene extends Phaser.Scene {
     const rest = this.inPlaceRestReadout();
     const footY = panelBottom - 30;
     this.campButton(cx - 250, footY, 240, 34, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail, inPlaceRestPreview(this.run));
-    const setOutBtn = this.makeTextButton(cx + 130, footY, 240, 34, "Set Out →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
+    const setOutBtn = this.makeTextButton(cx + 130, footY, 240, 34, "Set Out →", COLOR.successDeep, COLOR.success, () => this.setOutToMap());
     this.campObjects.push(setOutBtn);
 
     this.campObjects.push(
@@ -2288,13 +2302,13 @@ export class OverworldScene extends Phaser.Scene {
     // In-place rest is a node-step that pays a night's rations — show the spend first.
     this.showLedgerTransition("Before resting for the night…", () => {
       const res: InPlaceRestResult = this.loop.inPlaceRest();
-      this.refreshCampText();
+      this.refreshReadoutLine();
       if (res.applied) {
         const who = res.healed.length === 1 ? "1 fighter" : `${res.healed.length} fighters`;
         this.setHint(`Rested in place (night ${res.streak} here): −${res.goldSpent}g rations, +${res.hpHealed} HP across ${who}, +${res.rpAdded} RP. A node-step passed.`);
       } else this.setHint(`Can't rest: ${res.reason}`);
       if (this.loop.isOver()) return this.runEnd();
-      this.showSurvey();
+      this.showReactCamp();
     });
   }
 
@@ -2304,10 +2318,10 @@ export class OverworldScene extends Phaser.Scene {
    * stash can leave a node over capacity; the player must choose what to let go
    * before they march. Within cap, this falls straight through to the soft gate.
    */
-  private breakCampToMap(): void {
+  private setOutToMap(): void {
     // The night elapses at departure (D46) — show the ledger first so the spend is
     // seen (and Upkeep still crossable) before the soft gate and the march.
-    const toGate = () => this.showLedgerTransition("Before resting for the night…", () => this.breakCampGate(), true);
+    const toGate = () => this.showLedgerTransition("Before resting for the night…", () => this.setOutGate(), true);
     if (slotsOver(this.run.inventory) > 0) {
       this.showDiscardMenu(toGate);
       return;
@@ -2367,7 +2381,7 @@ export class OverworldScene extends Phaser.Scene {
           detail: `Drop one ${mat?.name ?? id}. Whole stacks free a slot; a partial stack frees one only when it empties. Lowest-value gear is the usual cut.`,
           onPick: () => {
             removeItem(inv, id, 1);
-            this.refreshCampText();
+            this.refreshReadoutLine();
             this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap
           },
         };
@@ -2383,7 +2397,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /** The soft, intent-aware night-end gate (D45) → the map (overflow already cleared). */
-  private breakCampGate(): void {
+  private setOutGate(): void {
     const gate = nightEndGate(this.run);
     if (!gate.warn) return this.toMap();
     // Hard-stop with a forced look only when warranted; never a per-night chore.
@@ -2401,7 +2415,7 @@ export class OverworldScene extends Phaser.Scene {
       depth: 24,
       body: { text: gate.reasons.map((r) => `• ${r}`).join("\n"), offset: 56, originY: 0, textAlign: "left", lineSpacing: 5 },
     });
-    const stay = this.makeTextButton(handle.cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showSurvey()).setDepth(26);
+    const stay = this.makeTextButton(handle.cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showReactCamp()).setDepth(26);
     const go = this.makeTextButton(handle.cx + 110, cy + h / 2 - 22, 180, 30, "Set out anyway", COLOR.danger, COLOR.danger, () => this.toMap()).setDepth(26);
     this.overlay.push(stay, go);
   }
@@ -2523,7 +2537,7 @@ export class OverworldScene extends Phaser.Scene {
   private toggleSkip(id: UpkeepLine["id"], rerender: () => void = () => this.renderTent()): void {
     toggleUpkeepSkip(this.run, id); // core owns the rule (no more render-side type-assertion write)
     const nowSkipped = this.run.camp.skippedUpkeep.includes(id);
-    this.refreshCampText();
+    this.refreshReadoutLine();
     this.setHint(nowSkipped ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
     rerender();
   }
@@ -2585,7 +2599,9 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- UI helpers ------------------------------------------------------------
 
-  private refreshCampText(): void {
+  // Renamed from the misleading `refreshCampText` (#138): it refreshes the always-on camp
+  // readout line, not battle situation text (BattleScene's like-named method → refreshSituationCard).
+  private refreshReadoutLine(): void {
     // The always-on line is the four decision-relevant groups only (D58): Purse,
     // Morale, Storage/Kits, RP/Upkeep. The Banker's purse-state + Influence moved
     // into the camp's Advanced panel / ledger, where they're actionable. The format

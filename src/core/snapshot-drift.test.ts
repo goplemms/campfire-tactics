@@ -22,7 +22,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
-import { snapshotUnit, restoreUnit } from "./turn";
+import { snapshotUnit, restoreUnit } from "./battle-undo";
 import {
   createOverworldEconomy,
   cloneOverworldEconomy,
@@ -31,11 +31,11 @@ import {
 import { EntityRegistry, makeTrap, makeConcealedTrap } from "./entities";
 import { EventBus } from "./events";
 
-// --- Unit — snapshotUnit / restoreUnit (turn.ts) -----------------------------
+// --- Unit — snapshotUnit / restoreUnit (battle-undo.ts) ----------------------
 
 /**
  * The fields {@link snapshotUnit} captures (a logged action can change them, so
- * undo must restore them). Must match `UnitSnapshot` in `turn.ts` exactly.
+ * undo must restore them). Must match `UnitSnapshot` in `battle-undo.ts` exactly.
  */
 const UNIT_SNAPSHOT_KEYS = [
   "pos",

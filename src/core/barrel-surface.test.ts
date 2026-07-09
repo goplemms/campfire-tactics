@@ -41,6 +41,13 @@
  *     and the support/economy classes + universal skills to `jobs-data/support.ts`;
  *     `jobs.ts` keeps the engine (`JOBS`/`SKILLS`/capabilities). Every symbol keeps
  *     its barrel name at its new home (615).
+ *   - increment 6 (#121, turn split): net 0 — the undo substrate moved to
+ *     `battle-undo.ts` (`snapshotUnit`/`restoreUnit` + the checkpoint machinery),
+ *     the replay driver + `planActions` to `battle-replay.ts`, and the roster-aware
+ *     resolvers to `field-effects.ts`. `Battle` stays in `turn.ts`, which re-exports
+ *     `snapshotUnit`/`restoreUnit`/`replay` so the public surface is unchanged; the
+ *     new modules' internal helpers (`captureCheckpoint`, `planActions`,
+ *     `resolveShove`, …) are not surfaced (615).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";

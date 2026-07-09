@@ -48,6 +48,11 @@
  *     `snapshotUnit`/`restoreUnit`/`replay` so the public surface is unchanged; the
  *     new modules' internal helpers (`captureCheckpoint`, `planActions`,
  *     `resolveShove`, …) are not surfaced (615).
+ *   - increment 7 (#127, predicate-on-node seam): +1 — `evalPredicateRun`, the
+ *     unit-less `grants.ts` evaluator `run.ts`'s `nodeAccessible` reads the new
+ *     `MapNode.blockedWhen` access data through. The `securedWagon × medic-freed`
+ *     rule is now authored data in `hollow-mill.ts`; the `flagSet` Predicate leaf +
+ *     `blockedWhen` field are type-only (not runtime surface) (→ 616).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -368,6 +373,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "equipModsSummary",
   "equippedIds",
   "evalPredicate",
+  "evalPredicateRun",
   "eventChoices",
   "eventForNode",
   "eventWeightAt",

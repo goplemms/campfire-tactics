@@ -29,6 +29,7 @@ import type { UnitSpec } from "./units";
 import { getJob, type JobId } from "./jobs";
 import type { AuthoredEncounter } from "./authored";
 import type { OverworldMap, MapNode } from "./overworld";
+import type { Predicate } from "./grants";
 import { registerExpedition, type AuthoredExpedition } from "./expedition";
 
 // --- The cast (D52) — trio on the field; recruits join via their nodes ------
@@ -205,8 +206,9 @@ export const PRISON_WAGON: AuthoredEncounter = {
  * Node 6 (offshoot) — Prison Wagon, SECURED (the Medic catch-up, via the Market). A
  * second rescue attempt against **alert, dug-in captors** (higher Awareness) who have
  * **laid their own snares** — you must spot/avoid enemy traps (inverting node 3). Frees
- * Sela on the win. INACCESSIBLE once the Medic is already held (the party-state gate;
- * see the map's conditional access — STUBBED, see report).
+ * Sela on the win. INACCESSIBLE once the Medic is already held (the party-state gate,
+ * #127): authored on the map node as data — `blockedWhen: flagSet "medic-freed"` — and
+ * read generically by {@link "./run".nodeAccessible} (no node id hardcoded in run.ts).
  */
 export const SECURED_WAGON: AuthoredEncounter = {
   id: "secured-wagon",
@@ -305,9 +307,9 @@ function node(
   layer: number,
   kind: MapNode["kind"],
   edges: string[],
-  opts: { authoredId?: string; eventId?: string; market?: MapNode["market"] } = {},
+  opts: { authoredId?: string; eventId?: string; market?: MapNode["market"]; blockedWhen?: Predicate } = {},
 ): MapNode {
-  return { id, layer, index: 0, kind, edges, authoredId: opts.authoredId, eventId: opts.eventId, market: opts.market };
+  return { id, layer, index: 0, kind, edges, authoredId: opts.authoredId, eventId: opts.eventId, market: opts.market, blockedWhen: opts.blockedWhen };
 }
 
 /**
@@ -331,7 +333,8 @@ function hollowMillMap(): OverworldMap {
     // L5 hub
     market: node("market", 5, "event", ["securedWagon", "den"], { eventId: "merchant-town", market: "basic" }), // Market hub (Merchant)
     // L6 offshoots
-    securedWagon: node("securedWagon", 6, "combat", ["finale"], { authoredId: SECURED_WAGON.id }), // dug-in Wagon (Medic catch-up)
+    // Conditional access as data (#127): blocked once the Medic is freed (no duplicate rescue).
+    securedWagon: node("securedWagon", 6, "combat", ["finale"], { authoredId: SECURED_WAGON.id, blockedWhen: { kind: "flagSet", flag: "medic-freed" } }), // dug-in Wagon (Medic catch-up)
     den: node("den", 6, "combat", ["finale"], { authoredId: THIEVES_DEN.id }), // Thieves' Den (relic)
     // L7 stub finale
     finale: node("finale", 7, "combat", [], { authoredId: STUB_FINALE.id }),

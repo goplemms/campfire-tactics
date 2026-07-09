@@ -31,8 +31,10 @@ export interface PredicateCtx {
 /**
  * A composable, **default-open** eligibility predicate (D65). Leaf kinds read the
  * unit (`jobLevel`/`charLevel`/`unitId`/`remembers`) or the run/context
- * (`holdsItem`/`atNode`/`atNodeKind`); `all`/`any` compose. An empty `all` is
- * trivially true — the default-open base (no gate ⇒ open).
+ * (`holdsItem`/`atNode`/`atNodeKind`/`flagSet`); `all`/`any` compose. An empty `all`
+ * is trivially true — the default-open base (no gate ⇒ open). The run-scoped leaves
+ * are also evaluable **without a unit** via {@link evalPredicateRun} (the #127
+ * predicate-on-node access seam — `flagSet` is that seam's run-flag leaf).
  */
 export type Predicate =
   | { kind: "jobLevel"; job: JobId; min: number }
@@ -42,6 +44,7 @@ export type Predicate =
   | { kind: "atNodeKind"; nodeKind: NodeKind }
   | { kind: "unitId"; id: string }
   | { kind: "remembers"; flag: string }
+  | { kind: "flagSet"; flag: string }
   | { kind: "all"; of: Predicate[] }
   | { kind: "any"; of: Predicate[] };
 
@@ -70,10 +73,49 @@ export function evalPredicate(pred: Predicate, unit: Unit, ctx: PredicateCtx): b
       return unit.id === pred.id;
     case "remembers":
       return recalls(unit, pred.flag);
+    case "flagSet":
+      return Boolean(ctx.run.flags[pred.flag]);
     case "all":
       return pred.of.every((p) => evalPredicate(p, unit, ctx));
     case "any":
       return pred.of.some((p) => evalPredicate(p, unit, ctx));
+    default: {
+      const _exhaustive: never = pred;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Evaluate a **run-level** predicate — the unit-less {@link evalPredicate} flavor
+ * (#127, the predicate-on-node access seam). Node access ({@link "./run".nodeAccessible})
+ * has no acting unit, so only the run-scoped leaves (`flagSet` / `holdsItem` /
+ * `atNode` / `atNodeKind`) and their `all`/`any` compositions are meaningful; a
+ * unit-scoped leaf (`jobLevel` / `charLevel` / `unitId` / `remembers`) in a run-level
+ * predicate is an authoring error and throws loudly (mirrors the D88 load-validator
+ * ethos). Same leaf semantics as {@link evalPredicate}, minus the unit reads.
+ */
+export function evalPredicateRun(pred: Predicate, ctx: PredicateCtx): boolean {
+  switch (pred.kind) {
+    case "flagSet":
+      return Boolean(ctx.run.flags[pred.flag]);
+    case "holdsItem":
+      return (ctx.run.inventory.counts[pred.item] ?? 0) > 0;
+    case "atNode":
+      return (ctx.node?.id ?? ctx.run.mapNodeId) === pred.node;
+    case "atNodeKind": {
+      const node = ctx.node ?? getNode(ctx.run.map, ctx.run.mapNodeId);
+      return node.kind === pred.nodeKind;
+    }
+    case "all":
+      return pred.of.every((p) => evalPredicateRun(p, ctx));
+    case "any":
+      return pred.of.some((p) => evalPredicateRun(p, ctx));
+    case "jobLevel":
+    case "charLevel":
+    case "unitId":
+    case "remembers":
+      throw new Error(`evalPredicateRun: "${pred.kind}" is unit-scoped and has no run-level meaning`);
     default: {
       const _exhaustive: never = pred;
       return _exhaustive;

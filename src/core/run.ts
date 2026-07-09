@@ -50,6 +50,7 @@ import {
   type OverworldEconomy,
 } from "./overworld-state";
 import { accrueDeclaredFaucets, deftHandsSkim } from "./economy-actions";
+import { evalPredicateRun } from "./grants";
 import { nightlyFatigue } from "./fatigue";
 import { RECOVERY } from "./upkeep";
 
@@ -266,17 +267,17 @@ export function reachableNodes(run: RunState): MapNode[] {
 }
 
 /**
- * **Conditional node access** (D52 — the party-state gate). `MapNode.edges` is static,
- * so this is the one roster-conditional map mechanic: a node can be dropped from the
- * reachable set based on run state. Today only one rule (the slice's need): the dug-in
- * **secured Wagon** is inaccessible once the **Medic is already freed** (no duplicate
- * rescue) — keyed by node id + the `medic-freed` flag. Pragmatic/expedition-specific:
- * a general predicate-on-node mechanic is the proper build (see report). Returns true
- * unless a gate rule applies and is unmet.
+ * **Conditional node access** (D52/#127 — the party-state gate, now *data*). `MapNode.edges`
+ * is static, so this is the one roster-conditional map mechanic: a node carries a
+ * predicate-shaped {@link "./overworld".MapNode.blockedWhen} access rule, and a node is
+ * dropped from the reachable set when that run-level {@link "./grants".Predicate} holds
+ * — evaluated generically here via {@link "./grants".evalPredicateRun} (unit-less). No
+ * expedition-specific node id lives here anymore: the Hollow Mill's "secured Wagon
+ * inaccessible once the Medic is freed" rule is authored data in `hollow-mill.ts`.
+ * Returns true unless a node's access rule applies and blocks it.
  */
 export function nodeAccessible(run: RunState, node: MapNode): boolean {
-  if (node.id === "securedWagon" && run.flags["medic-freed"]) return false;
-  return true;
+  return !(node.blockedWhen && evalPredicateRun(node.blockedWhen, { run, node }));
 }
 
 /**

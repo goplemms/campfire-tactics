@@ -14,6 +14,7 @@ import { healUnit, type Unit } from "./units";
 import type { EventBus } from "./events";
 import type { SkillDef } from "./skills";
 import { grantAbilityUseXp } from "./leveling";
+import { bandFor } from "./num";
 import { openingPurseLog, type PurseEntry } from "./purse-journal";
 
 /** Mutable camp / meta state. */
@@ -89,12 +90,24 @@ export function createCamp(init: Partial<Camp> = {}): Camp {
 /** Morale tiers (D8 banding): a legible label for the current morale value. */
 export type MoraleTier = "Low" | "Neutral" | "High" | "Inspired";
 
+/**
+ * The D8 morale band floors, highest-first — the {@link "./num".bandFor} table
+ * behind {@link moraleTier}. Asymmetric (the floor is shallow): anything below 0
+ * is Low (the fallback), 0 is Neutral, the first positive step is already High.
+ * Morale moves in whole points, so High's floor is 1.
+ */
+const MORALE_BANDS: readonly { min: number; tier: MoraleTier }[] = [
+  { min: 3, tier: "Inspired" },
+  { min: 1, tier: "High" },
+  { min: 0, tier: "Neutral" },
+];
+
+/** The below-every-floor fallback band — negative morale reads Low. */
+const MORALE_LOW: { min: number; tier: MoraleTier } = { min: -Infinity, tier: "Low" };
+
 /** Band a raw morale value into its tier (asymmetric — the floor is shallow). */
 export function moraleTier(morale: number): MoraleTier {
-  if (morale < 0) return "Low";
-  if (morale === 0) return "Neutral";
-  if (morale < 3) return "High";
-  return "Inspired";
+  return bandFor(morale, MORALE_BANDS, MORALE_LOW).tier;
 }
 
 /** The morale tiers low→high (D8) — the ordinal spine {@link moraleTierIndex} reads. */

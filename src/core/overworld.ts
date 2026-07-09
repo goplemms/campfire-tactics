@@ -26,6 +26,7 @@ import { Labels } from "./rng-labels";
 import { generateEncounter, type EncounterDef } from "./generation";
 import { fieldedUnits, primaryJobOf, type Unit } from "./units";
 import { getJob, type JobLookup } from "./jobs";
+import { rankOf, clampUp } from "./num";
 
 /**
  * A node kind (D23). A fight (`combat`), a no-battle recovery camp (`rest`), or a
@@ -51,14 +52,14 @@ export type MarketTier = "none" | "poor" | "basic" | "premium";
 /** The market tiers low→high — the ordering the band's compare/clamp read. */
 export const MARKET_TIERS: readonly MarketTier[] = ["none", "poor", "basic", "premium"];
 
-/** A market tier's ordinal (none = 0 … premium = 3), for compare/clamp. */
+/** A market tier's ordinal (none = 0 … premium = 3) — {@link "./num".rankOf} on {@link MARKET_TIERS}. */
 export function marketRank(tier: MarketTier): number {
-  return MARKET_TIERS.indexOf(tier);
+  return rankOf(MARKET_TIERS, tier);
 }
 
-/** The higher of two market tiers — the "raise the floor" op (cf. intel's `clampTier`). */
+/** The higher of two market tiers — {@link "./num".clampUp}, the shared "raise the floor" op. */
 export function clampUpMarket(a: MarketTier, b: MarketTier): MarketTier {
-  return marketRank(a) >= marketRank(b) ? a : b;
+  return clampUp(MARKET_TIERS, a, b);
 }
 
 /** A single node on the run map. */

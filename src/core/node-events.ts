@@ -48,6 +48,7 @@ import { rollMercenary } from "./guild";
 import { recruitClassify, type RecruitOutcome } from "./recruitment";
 import { thiefEventSkim } from "./theft";
 import { earn, spend } from "./purse-journal";
+import { rankOf } from "./num";
 
 /**
  * An event kind (M11; **toll** added M13/D48). New kinds are new records on
@@ -879,8 +880,8 @@ const INFLUENCE_ORDER: readonly InfluenceTier[] = ["unknown", "known", "respecte
  * the no-Noble baseline is unchanged.
  */
 export function eventWeightAt(def: EventDef, tier: InfluenceTier): number {
-  const step = INFLUENCE_ORDER.indexOf(tier); // 0 (unknown) .. 4 (renowned)
-  if (def.minInfluence && INFLUENCE_ORDER.indexOf(def.minInfluence) > step) return 0;
+  const step = rankOf(INFLUENCE_ORDER, tier); // 0 (unknown) .. 4 (renowned)
+  if (def.minInfluence && rankOf(INFLUENCE_ORDER, def.minInfluence) > step) return 0;
   if (def.standingBias === "boon") return def.weight * (1 + 0.5 * step); // up to 3× at renowned
   if (def.standingBias === "bane") return def.weight * Math.max(0.2, 1 - 0.2 * step); // down to 0.2×
   return def.weight;
@@ -999,7 +1000,7 @@ export const BLOCKADE: EventDef = {
     const fee = bypassFee(node);
     const canAfford = run.camp.gold >= fee;
     const standing = influenceTier(run.overworld.influence);
-    const earned = INFLUENCE_ORDER.indexOf(standing) >= INFLUENCE_ORDER.indexOf(BYPASS.floor);
+    const earned = rankOf(INFLUENCE_ORDER, standing) >= rankOf(INFLUENCE_ORDER, BYPASS.floor);
     return [
       {
         id: "pay",

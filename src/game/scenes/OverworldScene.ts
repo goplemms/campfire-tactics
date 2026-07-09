@@ -885,12 +885,6 @@ export class OverworldScene extends Phaser.Scene {
     return eligible.reduce((best, u) => (u.intelligence > best.intelligence ? u : best), eligible[0]);
   }
 
-  /**
-   * Open the party dossier (D-info-surfacing). **Page mode:** launch the dossier on
-   * top and pause this scene, so the camp panel is preserved exactly and restored on
-   * close (a clean seam for the future live-overlay mode — launch the same scene
-   * without pausing). The dossier reads the live run, so its numbers are current.
-   */
   // --- The Captain's Tent (D58): the one deep-info hub ------------------------
 
   /**
@@ -970,8 +964,6 @@ export class OverworldScene extends Phaser.Scene {
   private drawTentParty(bounds: Phaser.Geom.Rectangle): void {
     this.tentDossier = new PartyDossierView(this, {
       bounds,
-      mode: "overlay",
-      embedded: true,
       data: projectDossier(this.run),
       onClose: () => this.closeTent(),
       onEquip: (unitId, itemId) => {

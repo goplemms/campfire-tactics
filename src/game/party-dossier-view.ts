@@ -5,11 +5,11 @@
  *
  * **Presentation-agnostic by design.** The view renders into a `bounds` rectangle
  * (never "the screen") and talks to the outside only through `data` in and an
- * `onClose` intent out — it never reaches into a scene. That decoupling is what
- * lets the same view be hosted as a full **page** today and re-hosted as a live
- * **overlay** later (a transparent backdrop over a still-running overworld) with no
- * change to this file — only the host's launch flag and the `backdrop`/`bounds`
- * it passes differ.
+ * `onClose` intent out — it never reaches into a scene. It is **always embedded in
+ * a host frame** (the Captain's Tent, since D58): the host owns the backdrop, the
+ * tab bar, and Close; the view draws only its rail + detail inside the bounds below
+ * that chrome. (The old standalone page/overlay mode was folded away with D58 —
+ * #137.)
  */
 
 import Phaser from "phaser";
@@ -26,17 +26,10 @@ import {
 import { COLOR, FONT, INK, WEIGHT } from "./theme";
 import { roleColor } from "./roles";
 import { hpColor, statusPips } from "./unit-readout";
-import { Button } from "./button";
-
-/** How the dossier is mounted — drives backdrop opacity (and, in the host, whether
- *  the underlying scene pauses). A page fully covers; an overlay floats over a live
- *  scene. The view only needs the backdrop distinction. */
-export type DossierMode = "page" | "overlay";
 
 export interface DossierViewOptions {
-  /** The rectangle the dossier lays out inside — full viewport for a page. */
+  /** The rectangle the dossier lays out inside — the host's frame below its chrome. */
   bounds: Phaser.Geom.Rectangle;
-  mode: DossierMode;
   data: DossierProjection;
   /** Intent: the player asked to leave the dossier. */
   onClose: () => void;
@@ -50,13 +43,6 @@ export interface DossierViewOptions {
   onEquip?: (unitId: string, itemId: string) => void;
   /** Intent: unequip a member's slot back to the stash (D77). See {@link onEquip}. */
   onUnequip?: (unitId: string, slot: EquipSlot) => void;
-  /**
-   * Embedded in a host that already provides the frame (the Captain's Tent tab
-   * bar + Close + backdrop). When set, the view draws **only** its rail + detail —
-   * no backdrop, no title, no Back — so it reads as one tab among siblings rather
-   * than a competing modal. The host owns close (and the bounds below its chrome).
-   */
-  embedded?: boolean;
 }
 
 /** The human label + colour for a member's standout jeopardy (`null` = none). */
@@ -115,41 +101,13 @@ export class PartyDossierView {
 
   private build(): void {
     const b = this.o.bounds;
-    const s = this.scene;
 
-    // When embedded, the host (Captain's Tent) owns the backdrop, title and Close —
-    // the view contributes only its rail + detail, starting at the top of its bounds.
-    if (!this.o.embedded) {
-      // Backdrop: a page fully covers; an overlay dims the live scene behind it.
-      const backdrop =
-        this.o.mode === "page"
-          ? s.add.rectangle(b.centerX, b.centerY, b.width, b.height, COLOR.bg, 1).setDepth(40)
-          : s.add.rectangle(b.centerX, b.centerY, b.width, b.height, COLOR.black, 0.55).setDepth(40);
-      this.objects.push(backdrop);
-
-      // Header — title + a Back button (top-right).
-      this.objects.push(
-        s.add
-          .text(b.left + 24, b.top + 26, "Party Dossier", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title })
-          .setOrigin(0, 0.5)
-          .setDepth(42),
-      );
-      const back = new Button(s, b.right - 70, b.top + 26, {
-        text: "Back",
-        w: 90,
-        h: 28,
-        fill: COLOR.btnFill,
-        stroke: COLOR.btnStroke,
-        onClick: () => this.o.onClose(),
-      });
-      s.add.existing(back).setDepth(43);
-      this.objects.push(back);
-    }
-
+    // The host (Captain's Tent) owns the backdrop, title and Close — the view
+    // contributes only its rail + detail, starting at the top of its bounds.
     // Layout: a fixed-width rail on the left, the detail panel filling the rest.
     const railX = b.left + 24;
     const railW = 188;
-    const top = this.o.embedded ? b.top + 8 : b.top + 64;
+    const top = b.top + 8;
     this.px = railX + railW + 24;
     this.pw = b.right - 24 - this.px;
     this.ptop = top;

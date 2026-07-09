@@ -215,8 +215,15 @@ export function abilityFootprint(
     case "provisionMeal":
     case "survey":
     case "forage":
+    case "buy":
+    case "sell":
+    case "borrow":
+    case "engageInterest":
+    case "guardPurse":
+    case "patronize":
+    case "triage":
       // A party/camp/overworld meta target — no battle-board footprint (Survey aims at a
-      // *map* node via opts, Forage at the surroundings; floating forecast box).
+      // *map* node via opts, the economy verbs at the purse/market; floating forecast box).
       return { kind: "none" };
   }
 }
@@ -452,6 +459,15 @@ const FORECAST_HANDLERS: {
   provisionMeal: (effect) => ({ kind: "immediate", label: "Rest Points", value: effect.rp }),
   survey: (effect) => ({ kind: "immediate", label: "Intel tier", value: effect.tierBump }),
   forage: (effect) => ({ kind: "immediate", label: "Supplies", value: effect.guaranteed.length + effect.baseRolls }),
+  // The economy verbs (R4/A) — the concrete gold/Influence/HP figures are runtime (market tier,
+  // purse, wound depth), so the forecast is a simple immediate readout naming the mechanism.
+  buy: () => ({ kind: "immediate", label: "Buy supply", value: 1 }),
+  sell: () => ({ kind: "immediate", label: "Sell good", value: 1 }),
+  borrow: () => ({ kind: "immediate", label: "Borrow gold", value: 1 }),
+  engageInterest: () => ({ kind: "immediate", label: "Engage interest", value: 1 }),
+  guardPurse: () => ({ kind: "immediate", label: "Guard the purse", value: 1 }),
+  patronize: () => ({ kind: "immediate", label: "Patronize", value: 1 }),
+  triage: (effect) => ({ kind: "immediate", label: "Triage", value: effect.base }),
 };
 
 /**

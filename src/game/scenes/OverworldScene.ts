@@ -201,6 +201,22 @@ function isNodeAimedOverworld(s: SkillDef): boolean {
   return s.effect.kind === "survey" || s.target === "camp";
 }
 
+/**
+ * BATCH-2 SEAM (R4/A, #112, flagged for batch 3): the economy verbs (buy/sell · borrow/
+ * interest/guard · patronize · triage) are migrating onto `JobDef.skills` +
+ * `UNIVERSAL_OVERWORLD_SKILLS`, so `availableSkills("overworld")` now surfaces them. Until the
+ * projection rewiring lands (batch 3, increment 11) their camp UI stays **hardcoded** — the
+ * Economy drawer, the Market overlay, and the Triage row below. This predicate keeps them out
+ * of the auto-derived recovery/survey drawers so nothing double-renders; batch 3 deletes it
+ * along with the hardcoded buttons.
+ */
+const ECONOMY_VERB_EFFECT_KINDS: ReadonlySet<string> = new Set([
+  "buy", "sell", "borrow", "engageInterest", "guardPurse", "patronize", "triage",
+]);
+function isMigratingEconomyVerb(s: SkillDef): boolean {
+  return ECONOMY_VERB_EFFECT_KINDS.has(s.effect.kind);
+}
+
 export class OverworldScene extends Phaser.Scene {
   private run!: RunState;
   private loop!: RunLoop;
@@ -1389,12 +1405,12 @@ export class OverworldScene extends Phaser.Scene {
    * the gate (class + capability + unlock) is the single projection — no hardcoded id.
    */
   private overworldNodeSkills(u: Unit): SkillDef[] {
-    return availableSkills(u, "overworld").filter((s) => isNodeAimedOverworld(s));
+    return availableSkills(u, "overworld").filter((s) => isNodeAimedOverworld(s) && !isMigratingEconomyVerb(s));
   }
 
   /** A unit's **no-target** overworld camp skills (Cook Stew etc.) — the recovery drawer (D72). */
   private overworldCampSkills(u: Unit): SkillDef[] {
-    return availableSkills(u, "overworld").filter((s) => !isNodeAimedOverworld(s));
+    return availableSkills(u, "overworld").filter((s) => !isNodeAimedOverworld(s) && !isMigratingEconomyVerb(s));
   }
 
   /**

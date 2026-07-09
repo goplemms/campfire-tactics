@@ -12,8 +12,35 @@
  */
 
 import type { JobDef } from "../jobs";
+import type { SkillDef } from "../skills";
 import { PASSIVE } from "../combat";
 import { exposed, swift, immobilized } from "../status";
+
+/** Medic Triage fatigue cost — a literal mirroring `TRIAGE.fatigue` (=2, economy-actions). */
+const MEDIC_TRIAGE_FATIGUE = 2;
+/** Medic Triage HP floor — a literal mirroring `TRIAGE.base` (=6, economy-actions). */
+const MEDIC_TRIAGE_BASE = 6;
+
+/**
+ * **Triage** (D40/D73/#112, R4/A, the ratified ruling) — the Medic's **full-strength** camp heal:
+ * spend the healer's own fatigue (worn out) to mend the party's most-wounded fighter for more than
+ * a Rest, scaling with the Triage passive (heal harder the worse the wound). Capability-gated to a
+ * `healer` (only a healing class can), so it surfaces on the Medic, not every unit — the universal
+ * RP-funded {@link "./support".UNIVERSAL_OVERWORLD_SKILLS} fallback covers Medic-less parties, at
+ * half efficiency. Effect body: {@link "./economy-actions".applyTriageEffect}; the verb
+ * {@link "./economy-actions".triage} reads its fatigue cost from here (today's numbers unchanged).
+ */
+export const MEDIC_TRIAGE: SkillDef = {
+  id: "triage",
+  name: "Triage",
+  description: "Spend the healer's fatigue to mend the most-wounded fighter — more the worse the wound (worn out).",
+  target: "party",
+  range: 0,
+  spend: "act",
+  requires: "healer",
+  overworldCost: { fatigue: MEDIC_TRIAGE_FATIGUE },
+  effect: { kind: "triage", base: MEDIC_TRIAGE_BASE },
+};
 
 /**
  * The **Soldier** — the **formation anchor** (D66): the first per-class pass and the
@@ -173,6 +200,7 @@ export const MEDIC_JOB: JobDef = {
       cost: { charge: KIT.mendCharge },
       effect: { kind: "heal", amount: 18 },
     },
+    MEDIC_TRIAGE,
   ],
 };
 

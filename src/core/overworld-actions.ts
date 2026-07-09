@@ -26,8 +26,8 @@ import { primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
 import { unitHasCapability } from "./jobs";
-import { bumpCounter } from "./num";
-import { reachableFrom, marketOpenedFlag } from "./overworld";
+import { bumpCounter, nonNegInt } from "./num";
+import { reachableFrom, marketOpenedFlag, getNode, effectiveMarketTier } from "./overworld";
 import { satisfyUpkeepLine, accrueRp } from "./upkeep";
 import { applyCampSkill, type CampOutcome } from "./camp";
 import { grantAbilityUseXp, jobLevelOf } from "./leveling";
@@ -35,7 +35,24 @@ import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { grantItem } from "./inventory";
 import { overworldCostOf, checkOverworldCost } from "./overworld-cost";
-import { setNodeFlag, primeFlag, campSkillUses } from "./overworld-state";
+import { setNodeFlag, primeFlag, campSkillUses, isPrimed } from "./overworld-state";
+// The economy-verb effect **cores** (R4/A) — the post-gate mutations each economy verb also
+// runs. The handlers below delegate to these so the projection (batch 3) and the legacy verbs
+// share one body per mechanism (no behaviour drift). One-directional at runtime: economy-actions
+// depends on this module only for the `ActionOutcome` type (erased) + the `DEAL_PRIMED_FLAG`
+// value (used lazily), so importing its cores here is init-safe.
+import {
+  applySellEffect,
+  applyBuyEffect,
+  buyPriceFor,
+  applyBorrowEffect,
+  applyEngageInterestEffect,
+  applyGuardPurseEffect,
+  applyPatronizeEffect,
+  applyTriageEffect,
+  applyTriageFallbackEffect,
+  mostWoundedFielded,
+} from "./economy-actions";
 
 // --- The shared action-result types -----------------------------------------
 
@@ -62,10 +79,16 @@ export interface OverworldActionResult extends ActionOutcome {
   goldSpent?: number;
 }
 
-/** Extra inputs an ability may need (e.g. Scout's chosen target node). */
+/** Extra inputs an ability may need (e.g. Scout's chosen target node, a trade's good/amount). */
 export interface ActionOpts {
   /** Scout: the reachable node whose preview to raise. */
   targetNodeId?: string;
+  /** Buy / Sell (the economy verbs, R4/A): the material id to trade. */
+  materialId?: string;
+  /** Buy (R4/A): the market tier to buy at (defaults to the current node's effective tier). */
+  tier?: import("./overworld").MarketTier;
+  /** Borrow (R4/A): the sum to advance to the purse. */
+  amount?: number;
 }
 
 // --- The interpreter --------------------------------------------------------
@@ -207,6 +230,42 @@ const OVERWORLD_EFFECT_HANDLERS: {
       found.push(pick.id);
     }
     return { ok: true, detail: found.length ? `Foraged: ${found.join(", ")}.` : "Foraged, but found nothing." };
+  },
+  // --- The economy verbs (R4/A) — each delegates to its economy-actions core, so the
+  // projection (batch 3) and the legacy free-function verbs share one body per mechanism.
+  buy: (_effect, { run, opts }) => {
+    // Universal Buy (D61): the good + market tier come from the action opts; the gold price
+    // (with any primed Savvy-Barter overlay) rode the shared gate before this handler.
+    const tier = opts.tier ?? effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld);
+    const primed = isPrimed(run.overworld, DEAL_PRIMED_FLAG);
+    return applyBuyEffect(run, opts.materialId ?? "", tier, buyPriceFor(tier, primed), primed);
+  },
+  sell: (_effect, { run, opts }) => {
+    const r = applySellEffect(run, opts.materialId ?? "");
+    return r.ok ? { ok: true, detail: r.detail } : { ok: false, reason: r.reason };
+  },
+  borrow: (_effect, { run, opts }) => {
+    const amount = nonNegInt(opts.amount ?? 0);
+    if (amount <= 0) return { ok: false, reason: "Nothing to borrow." };
+    return { ok: true, detail: applyBorrowEffect(run, amount).detail };
+  },
+  engageInterest: (_effect, { run }) => {
+    const r = applyEngageInterestEffect(run);
+    return r.ok ? { ok: true, detail: r.detail } : { ok: false, reason: r.reason };
+  },
+  guardPurse: (_effect, { run }) => {
+    return { ok: true, detail: applyGuardPurseEffect(run).detail };
+  },
+  patronize: (_effect, { run }) => {
+    return { ok: true, detail: applyPatronizeEffect(run).detail };
+  },
+  triage: (effect, { run, unit }) => {
+    // Treats the worst first (D40). Two paths (R4, the ratified ruling): the Medic's
+    // full-strength fatigue-fuelled heal, or the universal RP-funded half-efficiency fallback.
+    const wounded = mostWoundedFielded(run);
+    if (!wounded) return { ok: false, reason: "No wounded fighter to triage." };
+    const healed = effect.fallback ? applyTriageFallbackEffect(wounded) : applyTriageEffect(unit, wounded, effect.base);
+    return { ok: true, detail: `Triaged ${wounded.name}: +${healed} HP.` };
   },
 };
 

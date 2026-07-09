@@ -20,8 +20,6 @@ import type { Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
 import type { Cost } from "./cost";
-import { skillContexts } from "./skills";
-import { JOBS } from "./jobs";
 import { nonNegInt, bumpCounter } from "./num";
 import { spendFatigue } from "./fatigue";
 import { spend } from "./purse-journal";
@@ -107,17 +105,11 @@ export function overworldCostOf(skill: SkillDef): OverworldCost {
   return skill.overworldCost ?? {};
 }
 
-// Enforce the two-axis invariant (D61/D72) at load: every overworld/camp **skill's** cost
-// must be paced or priced (no free-and-unlimited). The home is now `JobDef.skills` (A2,
-// D72) — Survey, Cook Stew, the triad's verbs — so a bad record fails fast at import,
-// exactly as the retired `OVERWORLD_ABILITIES` registry did for its `OverworldAbility`s.
-for (const job of Object.values(JOBS)) {
-  for (const skill of job.skills) {
-    if (skillContexts(skill).includes("overworld")) {
-      validateOverworldCost(skill.name, overworldCostOf(skill));
-    }
-  }
-}
+// The two-axis invariant's **load-time walk** (D61/D72) — every overworld skill's cost must be
+// paced or priced (no free-and-unlimited) — now lives in `jobs.ts` (R4/A): it runs after `JOBS`
+// + `UNIVERSAL_OVERWORLD_SKILLS` are assembled, so this module's body stays side-effect-free and
+// safe to pull into the economy-actions ⇄ support ⇄ overworld-cost import cycle. The grammar +
+// {@link validateOverworldCost} live here; the walk that applies them lives beside the data.
 
 /** The per-cast prices a passing check resolved — **captured at check time** (#126). */
 export interface OverworldPrices {

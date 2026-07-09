@@ -77,6 +77,28 @@
  *   - increment 4 (#123 — SkillDef.phase retires): −1 — `unlockedSkills` deleted (its callers
  *     migrated to `availableSkills`, the one authoritative surfacing projection); `unitSkills`
  *     keeps its name (signature dropped the `phase` param). The `Phase` type is deleted too
+ *
+ * R4 batch-2 deltas (#112 — the economy-verb migration):
+ *   - increment 5 (effect kinds + handlers): +10 — the post-gate effect **cores** each economy
+ *     verb shares with the new `OVERWORLD_EFFECT_HANDLERS` entries (`applyBuyEffect`,
+ *     `applySellEffect`, `applyBorrowEffect`, `applyEngageInterestEffect`, `applyGuardPurseEffect`,
+ *     `applyPatronizeEffect`, `applyTriageEffect`, `applyTriageFallbackEffect`), the Triage target
+ *     selector `mostWoundedFielded`, and the `buyPriceFor` Savvy-Barter price helper. The new
+ *     `OverworldActionEffect` variants (sell/borrow/…/buy/triage) are type-only (not runtime).
+ *   - increment 6 (Merchant sell + Banker verbs → SkillDefs): net 0 — +4 SkillDefs
+ *     (`MERCHANT_SELL`, `BANKER_INTEREST`, `BANKER_BORROW`, `BANKER_GUARD` on their jobs),
+ *     −4 dissolved cost consts (`MERCHANT_SELL_COST`, `BANKER_INTEREST_COST`,
+ *     `BANKER_BORROW_COST`, `BANKER_PROTECT_COST` — their rows folded into the SkillDefs).
+ *   - increment 7 (Noble patronize → SkillDef + bribe onto the Influence knob): net 0 —
+ *     +1 `NOBLE_PATRONIZE` (on the Noble), −1 `PATRONIZE_COST` (row folded in). `bribeEnemy`
+ *     keeps its name (its Influence spend now rides the shared gate's `influence` knob).
+ *   - increment 8 (triage + universal buy): +6 −2 (net +4) — +`MEDIC_TRIAGE` (full-strength
+ *     Triage on the Medic), +`UNIVERSAL_BUY` / +`TRIAGE_FALLBACK` / +`UNIVERSAL_OVERWORLD_SKILLS`
+ *     (the universal overworld home), + the cost-provider bodies `merchantBuyGold` /
+ *     `triageFallbackRp`; −`MERCHANT_BUY_COST` (→ `merchantBuyGold` fn) and −`TRIAGE_COST`
+ *     (folded into `MEDIC_TRIAGE`). `VERB_COSTS` is now empty (retires in increment 9).
+ *   - increment 9 (VERB_COSTS retires): −1 — the emptied `VERB_COSTS` registry is deleted along
+ *     with its module-load walk; the D88 guard inverts to prove the absence of standalone verbs.
  *     (type-only, not runtime surface) (→ 616).
  */
 import { describe, it, expect } from "vitest";
@@ -89,10 +111,10 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "AI",
   "ASSASSIN_JOB",
   "BANDIT_TEMPLATES",
-  "BANKER_BORROW_COST",
-  "BANKER_INTEREST_COST",
+  "BANKER_BORROW",
+  "BANKER_GUARD",
+  "BANKER_INTEREST",
   "BANKER_JOB",
-  "BANKER_PROTECT_COST",
   "BLOCKADE",
   "BROTHER",
   "BYPASS",
@@ -170,22 +192,22 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MATERIALS",
   "MAX_TIER",
   "MEDIC_JOB",
+  "MEDIC_TRIAGE",
   "MED_HEAL",
-  "MERCHANT_BUY_COST",
   "MERCHANT_JOB",
   "MERCHANT_KIT",
-  "MERCHANT_SELL_COST",
+  "MERCHANT_SELL",
   "MIRA_MERCHANT",
   "MORALE_TIERS",
   "MORTALITY",
   "MOVE_COST",
   "NEUTRAL_DANGER",
   "NOBLE_JOB",
+  "NOBLE_PATRONIZE",
   "NODE_EVENTS",
   "ORTHO_OFFSETS",
   "PASSIVE",
   "PASSIVE_INFO",
-  "PATRONIZE_COST",
   "PILOT_POLICY",
   "PIP_COOK",
   "PRESTIGE_OFFERS",
@@ -235,12 +257,13 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "TRAP_FIELD",
   "TRAP_INTEL",
   "TRIAGE",
-  "TRIAGE_COST",
+  "TRIAGE_FALLBACK",
   "TURN_THRESHOLD",
   "TileGrid",
+  "UNIVERSAL_BUY",
+  "UNIVERSAL_OVERWORLD_SKILLS",
   "UNIVERSAL_SKILLS",
   "UPKEEP",
-  "VERB_COSTS",
   "VESSELS",
   "abilityFootprint",
   "abilityScaleBonus",
@@ -260,21 +283,29 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "aggregate",
   "aimInRange",
   "analyzeExpedition",
+  "applyBorrowEffect",
+  "applyBuyEffect",
   "applyCampSkill",
   "applyCampToParty",
   "applyCharacterBoons",
   "applyDamage",
+  "applyEngageInterestEffect",
   "applyGearCondition",
   "applyGrant",
   "applyGrantEffect",
+  "applyGuardPurseEffect",
   "applyHeal",
   "applyJobLevelGains",
   "applyOverworldEffect",
+  "applyPatronizeEffect",
   "applyProvisionChoice",
+  "applySellEffect",
   "applyStatDelta",
   "applyStatus",
   "applyStoryChoice",
   "applyTownVisit",
+  "applyTriageEffect",
+  "applyTriageFallbackEffect",
   "armObjectives",
   "armSkillCooldown",
   "arrivalDigest",
@@ -305,6 +336,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "buildGrid",
   "buildLedger",
   "bumpCounter",
+  "buyPriceFor",
   "byReadiest",
   "bypassFee",
   "bypassXp",
@@ -523,11 +555,13 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "memberRefusal",
   "mercPool",
   "merchantBuy",
+  "merchantBuyGold",
   "merchantPrice",
   "merchantSell",
   "moraleModifiers",
   "moraleTier",
   "moraleTierIndex",
+  "mostWoundedFielded",
   "moveBudget",
   "nightEndGate",
   "nightlyFatigue",
@@ -687,6 +721,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "traverseRoute",
   "triage",
   "triageActionPreview",
+  "triageFallbackRp",
   "triageHealAmount",
   "unassignMember",
   "unequip",

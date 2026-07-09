@@ -19,6 +19,7 @@ import {
   bribeEnemy,
   bribeCost,
   bribeChance,
+  triage,
   ECONOMY,
 } from "./economy-actions";
 import { streamFor } from "./rng";
@@ -26,8 +27,12 @@ import { Labels } from "./rng-labels";
 import { gainRunGold, payTreasuryUpkeep } from "./economy";
 import { countOf, addItem, getMaterial } from "./inventory";
 import { currentNode } from "./run";
-import { useOverworldSkill } from "./overworld-actions";
-import { FIND_TRADE } from "./jobs-data/support";
+import { useOverworldSkill, applyOverworldEffect } from "./overworld-actions";
+import { FIND_TRADE, TRIAGE_FALLBACK, UNIVERSAL_BUY } from "./jobs-data/support";
+import { MEDIC_TRIAGE } from "./jobs-data/combat";
+import { chunkHp, restHeal } from "./upkeep";
+import { runDifficulty } from "./run";
+import { availableSkills } from "./leveling";
 import type { NodePreview } from "./intel";
 
 /** A Merchant party member — the trade-broker (Appraisal / Find Trade / Savvy Barter, D70). */
@@ -380,5 +385,178 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
     // The roll is fixed for this target+node — re-attempting (refunded) resists again.
     run.overworld.influence = before;
     expect(bribeEnemy(run, foe).failed).toBe(true);
+  });
+});
+
+// --- The economy-verb effect handlers mirror their legacy verb cores (R4/A inc 5) -----------
+//
+// Each new OverworldActionEffect handler (dispatched via applyOverworldEffect) delegates to the
+// SAME economy-actions core its legacy free-function verb runs, so the registry path and the
+// verb produce identical state mutations. These pin that parity BEFORE increments 6–8 flip the
+// legacy verbs onto SkillDefs — the handler path (the batch-3 projection's route) and the verb
+// path never drift. The gate-owned spends (gold/fatigue via checkOverworldCost + use-XP) live in
+// the verb / useOverworldSkill, not the pure effect core, so these compare only the effect state.
+
+/** A Medic — the healing class (its job carries the Triage passive), for the Triage handler. */
+function medicUnit(): Unit {
+  return createUnit({ id: `medic-${nextId++}`, side: "player", pos: { col: -1, row: -1 }, jobId: "medic", speed: 9, maxHp: 20, attack: 4, defense: 2, moveRange: 3, sightRadius: 4 });
+}
+
+describe("economy-verb effect handlers mirror the legacy verb cores (R4/A inc 5)", () => {
+  it("buy: the handler adds the good to storage exactly like merchantBuy's effect (gold rides the gate)", () => {
+    const legacy = newRun("h-buy", 100);
+    const viaHandler = newRun("h-buy", 100);
+    const a = merchantBuy(legacy, "trap-kit", "poor");
+    expect(a.applied).toBe(true);
+    const res = applyOverworldEffect({ kind: "buy" }, { run: viaHandler, unit: viaHandler.party[0], opts: { materialId: "trap-kit", tier: "poor" } });
+    expect(res.ok).toBe(true);
+    expect(countOf(viaHandler.inventory, "trap-kit")).toBe(countOf(legacy.inventory, "trap-kit"));
+  });
+
+  it("sell: the handler credits the purse + removes one good exactly like merchantSell's effect", () => {
+    const legacy = newRun("h-sell"); addItem(legacy.inventory, "valuables", 2);
+    const viaHandler = newRun("h-sell"); addItem(viaHandler.inventory, "valuables", 2);
+    const goldBefore = legacy.camp.gold;
+    const a = merchantSell(legacy, "valuables");
+    expect(a.applied).toBe(true);
+    const res = applyOverworldEffect({ kind: "sell" }, { run: viaHandler, unit: viaHandler.party[0], opts: { materialId: "valuables" } });
+    expect(res.ok).toBe(true);
+    expect(viaHandler.camp.gold).toBe(legacy.camp.gold); // identical purse credit
+    expect(viaHandler.camp.gold).toBeGreaterThan(goldBefore);
+    expect(countOf(viaHandler.inventory, "valuables")).toBe(countOf(legacy.inventory, "valuables"));
+  });
+
+  it("borrow: the handler advances the purse + records the debt exactly like bankerBorrow's effect", () => {
+    const legacy = newRun("h-borrow", 0);
+    const viaHandler = newRun("h-borrow", 0);
+    const a = bankerBorrow(legacy, 40);
+    expect(a.applied).toBe(true);
+    const res = applyOverworldEffect({ kind: "borrow" }, { run: viaHandler, unit: viaHandler.party[0], opts: { amount: 40 } });
+    expect(res.ok).toBe(true);
+    expect(viaHandler.camp.gold).toBe(legacy.camp.gold);
+    expect(viaHandler.overworld.debt).toBe(legacy.overworld.debt);
+    // a non-positive amount refuses (nothing to borrow), advancing nothing
+    const zero = applyOverworldEffect({ kind: "borrow" }, { run: viaHandler, unit: viaHandler.party[0], opts: { amount: 0 } });
+    expect(zero.ok).toBe(false);
+  });
+
+  it("engageInterest: the handler sets the per-step credit exactly like bankerEngageInterest's effect", () => {
+    const legacy = newRun("h-interest", 100);
+    const viaHandler = newRun("h-interest", 100);
+    const a = bankerEngageInterest(legacy);
+    expect(a.applied).toBe(true);
+    const res = applyOverworldEffect({ kind: "engageInterest" }, { run: viaHandler, unit: viaHandler.party[0], opts: {} });
+    expect(res.ok).toBe(true);
+    expect(viaHandler.overworld.interestPerStep).toBe(legacy.overworld.interestPerStep);
+    expect(viaHandler.overworld.interestPerStep).toBeGreaterThan(0);
+  });
+
+  it("guardPurse: the handler engages protection exactly like bankerProtect's effect (gold rides the gate)", () => {
+    const legacy = newRun("h-guard", 200);
+    const viaHandler = newRun("h-guard", 200);
+    const a = bankerProtect(legacy);
+    expect(a.applied).toBe(true);
+    const res = applyOverworldEffect({ kind: "guardPurse" }, { run: viaHandler, unit: viaHandler.party[0], opts: {} });
+    expect(res.ok).toBe(true);
+    expect(viaHandler.overworld.protection).toBe(legacy.overworld.protection);
+    expect(viaHandler.overworld.protection).toBeGreaterThan(0);
+  });
+
+  it("patronize: the handler credits Influence exactly like patronize's effect (gold rides the gate)", () => {
+    const legacy = newRun("h-patron", 100);
+    const viaHandler = newRun("h-patron", 100);
+    const a = patronize(legacy);
+    expect(a.applied).toBe(true);
+    const res = applyOverworldEffect({ kind: "patronize" }, { run: viaHandler, unit: viaHandler.party[0], opts: {} });
+    expect(res.ok).toBe(true);
+    expect(viaHandler.overworld.influence).toBe(legacy.overworld.influence);
+    expect(viaHandler.overworld.influence).toBe(ECONOMY.noble.patronizeYield);
+  });
+
+  it("triage (full-strength): the handler heals the most-wounded exactly like triage's effect (fatigue rides the gate)", () => {
+    const legacy = newRun("h-triage"); const legacyDoc = medicUnit(); legacy.party.push(legacyDoc); legacy.party[0].hp = 1;
+    const viaHandler = newRun("h-triage"); const handlerDoc = medicUnit(); viaHandler.party.push(handlerDoc); viaHandler.party[0].hp = 1;
+    const a = triage(legacy, legacyDoc);
+    expect(a.applied).toBe(true);
+    expect(a.healed!).toBeGreaterThan(0);
+    const res = applyOverworldEffect({ kind: "triage", base: 6 }, { run: viaHandler, unit: handlerDoc, opts: {} });
+    expect(res.ok).toBe(true);
+    expect(viaHandler.party[0].hp).toBe(legacy.party[0].hp); // identical heal
+  });
+
+  it("triage (universal fallback): a NON-Medic heals ONE rest-chunk — half the chunks per RP (the named change)", () => {
+    // The ratified ruling: a Medic-less party can triage via the universal fallback, healing one
+    // chunk per cast funded by RP at 2× a normal rest's rpPerChunk (pinned in full via useOverworldSkill
+    // in the increment-8 test). Here the effect core heals exactly one chunk, no Triage-passive scaling.
+    const run = newRun("h-triage-fallback");
+    const grunt = fighter("Plain"); // a plain fighter — not a healer
+    run.party.push(grunt);
+    const wounded = run.party[0]; wounded.hp = 1;
+    const chunk = chunkHp(wounded);
+    const res = applyOverworldEffect({ kind: "triage", base: 6, fallback: true }, { run, unit: grunt, opts: {} });
+    expect(res.ok).toBe(true);
+    expect(wounded.hp).toBe(1 + chunk); // exactly one rest-chunk, NOT the full-strength base+scaling
+  });
+});
+
+// --- The universal overworld home + the ONE named behavior change (R4/A inc 8) --------------
+describe("UNIVERSAL_OVERWORLD_SKILLS — buy + the Medic-less Triage fallback (R4/A inc 8)", () => {
+  /** A commoner-only (Medic-less) run — the fallback's whole reason to exist. */
+  function medicLessRun(seed: string, gold = 200): RunState {
+    return createRun(seed, { party: [fighter("Rook"), fighter("Bram")], difficultyId: "normal", gold, storageCap: 8 });
+  }
+
+  it("both universal verbs surface for EVERY unit through availableSkills, regardless of class", () => {
+    const run = medicLessRun("uni-surface");
+    for (const u of run.party) {
+      const ids = availableSkills(u, "overworld").map((s) => s.id);
+      expect(ids).toContain("merchant-buy"); // Buy is job-ungated (M8)
+      expect(ids).toContain("triage-fallback"); // the Medic-less camp heal
+    }
+    // The FULL-strength Triage is capability-gated to a healer — a commoner does NOT surface it.
+    expect(availableSkills(run.party[0], "overworld").map((s) => s.id)).not.toContain("triage");
+    expect(UNIVERSAL_BUY.effect.kind).toBe("buy");
+  });
+
+  it("a Medic surfaces the full-strength Triage (requires healer); the fallback still surfaces too", () => {
+    const run = createRun("uni-medic", { party: [medicUnit()], difficultyId: "normal", gold: 100, storageCap: 8 });
+    const ids = availableSkills(run.party[0], "overworld").map((s) => s.id);
+    expect(ids).toContain("triage"); // MEDIC_TRIAGE — capability gate passes
+    expect(MEDIC_TRIAGE.requires).toBe("healer");
+  });
+
+  it("THE NAMED BEHAVIOR CHANGE: a Medic-less party's Triage fallback heals HALF the chunks per RP", () => {
+    // Ratified ruling #1: the universal fallback converts RP at 2× a normal rest's rpPerChunk —
+    // one rest-chunk per cast, funded from Rest Points, no Medic + no Triage-passive scaling. TUNABLE.
+    const run = medicLessRun("uni-fallback-pin");
+    const policy = runDifficulty(run);
+    const wounded = run.party[0];
+    wounded.hp = 1;
+    const chunk = chunkHp(wounded);
+    run.rp = 100; // plenty of RP to fund the chunk
+
+    const rpBefore = run.rp;
+    const res = useOverworldSkill(run, run.party[1], TRIAGE_FALLBACK); // a commoner casts it (no healer needed)
+    expect(res.applied).toBe(true);
+    const rpSpent = rpBefore - run.rp;
+    const healed = wounded.hp - 1;
+
+    // The pin: one chunk healed, funded at 2× rpPerChunk — half the chunks per RP vs a normal rest.
+    expect(healed).toBe(chunk);
+    expect(rpSpent).toBe(2 * policy.rpPerChunk);
+    // Contrast: a normal rest-heal buys the SAME chunk for HALF the RP.
+    const normal = restHeal({ ...wounded, hp: 1 } as typeof wounded, 100, policy);
+    expect(normal.chunks).toBeGreaterThanOrEqual(1);
+    expect(rpSpent / healed).toBe(2 * (policy.rpPerChunk / chunk)); // exactly twice the RP-per-HP of a rest
+  });
+
+  it("the fallback refuses (standard-shaped) when the party lacks the Rest Points", () => {
+    const run = medicLessRun("uni-fallback-broke");
+    run.party[0].hp = 1;
+    run.rp = 0; // no Rest Points banked
+    const res = useOverworldSkill(run, run.party[1], TRIAGE_FALLBACK);
+    expect(res.applied).toBe(false);
+    expect(res.reason).toMatch(/Rest Points/i);
+    expect(run.party[0].hp).toBe(1); // nothing healed
   });
 });

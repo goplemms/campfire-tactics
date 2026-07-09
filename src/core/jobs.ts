@@ -19,12 +19,13 @@
  */
 
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
-import type { SkillDef } from "./skills";
+import { skillContexts, type SkillDef } from "./skills";
+import { validateOverworldCost, overworldCostOf } from "./overworld-cost";
 import { PASSIVE } from "./combat";
 import type { PrestigeBranch } from "./grants";
 import { SOLDIER_JOB, HEAVY_KNIGHT_JOB, HUNTER_JOB, MEDIC_JOB, SNARE_TRAPPER_JOB } from "./jobs-data/combat";
 import { SCOUT_JOB, ASSASSIN_JOB, THIEF_JOB } from "./jobs-data/scout-line";
-import { SURVIVALIST_JOB, COOK_JOB, MERCHANT_JOB, NOBLE_JOB, BANKER_JOB, UNIVERSAL_SKILLS } from "./jobs-data/support";
+import { SURVIVALIST_JOB, COOK_JOB, MERCHANT_JOB, NOBLE_JOB, BANKER_JOB, UNIVERSAL_SKILLS, UNIVERSAL_OVERWORLD_SKILLS } from "./jobs-data/support";
 
 /**
  * Per-stat growth weights (D39): a job level-up banks **+1 to every main stat**
@@ -171,8 +172,19 @@ export const SKILLS: Record<string, SkillDef> = (() => {
   };
   for (const job of Object.values(JOBS)) for (const s of job.skills) add(s, `job "${job.id}"`);
   for (const s of UNIVERSAL_SKILLS) add(s, "the universal skills");
+  for (const s of UNIVERSAL_OVERWORLD_SKILLS) add(s, "the universal overworld skills");
   return out;
 })();
+
+// The D61/D72 two-axis invariant's **load-time walk** (R4/A, moved here from overworld-cost so it
+// runs after JOBS + the universal home are assembled, keeping overworld-cost side-effect-free):
+// every overworld-surfaced skill's cost must be paced or priced (no free-and-unlimited). A bad
+// record fails fast at import — the JobDef.skills home and the universal overworld home together.
+for (const skill of [...Object.values(JOBS).flatMap((j) => j.skills), ...UNIVERSAL_OVERWORLD_SKILLS]) {
+  if (skillContexts(skill).includes("overworld")) {
+    validateOverworldCost(skill.name, overworldCostOf(skill));
+  }
+}
 
 /** Look up an authored skill by id. Accepts any string (callers handle the `undefined` miss). */
 export function getSkill(id: string): SkillDef | undefined {

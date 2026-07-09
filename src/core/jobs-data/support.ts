@@ -19,6 +19,10 @@ import type { JobDef } from "../jobs";
 import type { SkillDef } from "../skills";
 import { guarded } from "../status";
 import { computeUpkeep } from "../upkeep"; // Cook Stew's computed cost (lazy — closure only, no init-time cycle)
+// The universal economy verbs' cost **provider bodies** (R4/A, #112) — hoisted functions used only
+// inside the lazy `overworldCost` arrows below, so the economy-actions ⇄ support edge is closure-only
+// (no init-time cycle, exactly like `computeUpkeep` above).
+import { merchantBuyGold, triageFallbackRp } from "../economy-actions";
 
 /** Forage kit tuning (D73) — within-clearing pace × across-clearing fatigue + the yield; numbers pass. */
 export const FORAGE_KIT = {
@@ -198,12 +202,31 @@ export const SAVVY_BARTER: SkillDef = {
  * Raw Buy/Sell stay **universal** (market-gated, not job-gated); the Merchant still levels from
  * brokering a sale ({@link "./economy-actions".merchantSell}). Still **noncombat** (camp verbs only).
  */
+/**
+ * **Merchant Sell** (D61/#112, R4/A) — the Merchant's honest gold faucet: convert one carried
+ * good into purse gold at the node's effective market tier (goods → gold). Cost is **selfLimited**
+ * (the carried stock is the limiter — you can't sell what you don't carry), the escape hatch the
+ * two-axis menu declares for exactly this shape. The verb {@link "./economy-actions".merchantSell}
+ * (still callable market-gated, brokered by a live Merchant for use-XP) reads its cost + effect
+ * from this record; the `sell` effect body is {@link "./economy-actions".applySellEffect}.
+ */
+export const MERCHANT_SELL: SkillDef = {
+  id: "merchant-sell",
+  name: "Merchant Sell",
+  description: "Sell a carried good for purse gold at the node's market — the Merchant's honest goods → gold faucet.",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { selfLimited: true },
+  effect: { kind: "sell" },
+};
+
 export const MERCHANT_JOB: JobDef = {
   id: "merchant",
   name: "Merchant",
   description: "Works the economy: appraises markets, drums up trade anywhere, and drives a hard bargain.",
   presence: { marketTierBonus: 1 }, // Appraisal — lifts an existing market one tier
-  skills: [FIND_TRADE, SAVVY_BARTER],
+  skills: [FIND_TRADE, SAVVY_BARTER, MERCHANT_SELL],
 };
 
 /**
@@ -217,6 +240,26 @@ export const MERCHANT_JOB: JobDef = {
  * gate that replaced the interim Intelligence-≥-3 proxy ("a Noble is present" is at
  * last a job, not a stat threshold). Hence **no combat/meta skill** here.
  */
+/** Patronize's gold price — a literal mirroring `ECONOMY.noble.patronizeCost` (=12). */
+const PATRONIZE_GOLD = 12;
+
+/**
+ * **Patronize** (D62/#112, R4/A) — the Noble's active Influence faucet: spend purse gold to court
+ * patrons (gold → standing), layered on the passive Renown accrual. Two-axis cost: **once per node**
+ * × the gold price. Effect body: {@link "./economy-actions".applyPatronizeEffect}; the verb
+ * {@link "./economy-actions".patronize} (party-gated on a fielded Noble) reads its cost here.
+ */
+export const NOBLE_PATRONIZE: SkillDef = {
+  id: "patronize",
+  name: "Patronize",
+  description: "Court patrons — spend purse gold for Influence (gold → standing), once per node.",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: 1, gold: PATRONIZE_GOLD },
+  effect: { kind: "patronize" },
+};
+
 export const NOBLE_JOB: JobDef = {
   id: "noble",
   name: "Noble",
@@ -224,7 +267,7 @@ export const NOBLE_JOB: JobDef = {
   // Renown (D71/D72): the Noble's presence accrues Influence each node-step — the standing
   // anchor as data, read by accrueDeclaredFaucets in breakCamp (mirrors ECONOMY.noble.incomePerStep = 1).
   faucet: { influencePerStep: 1 },
-  skills: [],
+  skills: [NOBLE_PATRONIZE],
 };
 
 /**
@@ -236,11 +279,65 @@ export const NOBLE_JOB: JobDef = {
  * {@link "./economy-actions"}; like the Merchant and Noble it carries no battle skill —
  * fielding a Banker is what {@link "./economy-actions".hasBanker} keys off to unlock them.
  */
+/** Banker theft-protection cost (D61) — a literal mirroring `ECONOMY.banker.protectionCost` (=25). */
+const BANKER_PROTECT_GOLD = 25;
+
+/**
+ * **Invest the Purse** (D30/#112, R4/A) — the Banker's TIME-SHIFT verb: engage flat purse interest
+ * that accrues each node-step. A toggle, **once per node** (re-armed at Break Camp). Effect body:
+ * {@link "./economy-actions".applyEngageInterestEffect}; the verb {@link "./economy-actions".bankerEngageInterest}
+ * (party-gated on a fielded Banker) reads its cost here.
+ */
+export const BANKER_INTEREST: SkillDef = {
+  id: "banker-interest",
+  name: "Invest the Purse",
+  description: "Engage flat purse interest that accrues as the caravan advances — purse only, never the treasury (once per node).",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: 1 },
+  effect: { kind: "engageInterest" },
+};
+
+/**
+ * **Borrow** (D30/#112, R4/A) — the Banker's BUY-ON-DEBT verb: advance gold to the purse now,
+ * auto-repaid from incoming run gold. **One loan arrangement per node**. Effect body:
+ * {@link "./economy-actions".applyBorrowEffect}; the verb {@link "./economy-actions".bankerBorrow}
+ * (party-gated on a fielded Banker) reads its cost here + supplies the amount.
+ */
+export const BANKER_BORROW: SkillDef = {
+  id: "banker-borrow",
+  name: "Borrow",
+  description: "Overspend now against future loot — advanced to the purse, auto-repaid from incoming run gold (once per node).",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: 1 },
+  effect: { kind: "borrow" },
+};
+
+/**
+ * **Guard the Purse** (D30/#112, R4/A) — the Banker's SECURE verb: buy theft protection, a [0,1)
+ * skim reduction that blunts both the mid-battle thief and the thief event node. Gold-priced.
+ * Effect body: {@link "./economy-actions".applyGuardPurseEffect}; the verb
+ * {@link "./economy-actions".bankerProtect} (party-gated on a fielded Banker) reads its cost here.
+ */
+export const BANKER_GUARD: SkillDef = {
+  id: "banker-protect",
+  name: "Guard the Purse",
+  description: "Buy theft protection — blunt a thief's skim, battle thief and event node alike (purse only).",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { gold: BANKER_PROTECT_GOLD },
+  effect: { kind: "guardPurse" },
+};
+
 export const BANKER_JOB: JobDef = {
   id: "banker",
   name: "Banker",
   description: "Works the purse economy: interest on the carried purse, loans against future loot, and theft protection.",
-  skills: [],
+  skills: [BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD],
 };
 
 /**
@@ -283,3 +380,52 @@ export const DIG_IN: SkillDef = {
  * hardcoded Defend append, no `canTrap` special case).
  */
 export const UNIVERSAL_SKILLS: readonly SkillDef[] = [DEFEND, DIG_IN];
+
+/**
+ * **Buy** (D61/M8/#112, R4/A) — the universal supply purchase: spend purse gold to buy one supply
+ * into caravan storage at the node's effective market tier. **Job-ungated by design** (M8's recorded
+ * call — anyone can shop where there's a market), so it lives in {@link UNIVERSAL_OVERWORLD_SKILLS},
+ * the precedent for universal verbs. Cost is the market-tier gold price (the {@link
+ * "./economy-actions".merchantBuyGold} provider); effect body {@link "./economy-actions".applyBuyEffect}.
+ * The legacy {@link "./economy-actions".merchantBuy} verb overlays the Savvy-Barter discount + reads
+ * its base cost here.
+ */
+export const UNIVERSAL_BUY: SkillDef = {
+  id: "merchant-buy",
+  name: "Buy",
+  description: "Buy a supply into caravan storage at the node's market — universal (anyone can shop where there's a market).",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { gold: (run) => merchantBuyGold(run) },
+  effect: { kind: "buy" },
+};
+
+/**
+ * **Triage (Fallback)** (R4, the ratified ruling, #112) — the universal Medic-less camp heal: mend
+ * the party's most-wounded fighter **one rest-chunk**, funded by Rest Points at **half a normal
+ * rest's efficiency** ({@link "./economy-actions".triageFallbackRp} = 2× `rpPerChunk`, a tunable
+ * dial). The **named behavior change** of R4 batch 2: a party without a healing class can still
+ * triage at camp, just slower per RP than a Medic's full-strength (fatigue-fuelled) {@link
+ * "./jobs-data/combat".MEDIC_TRIAGE}. Ungated (no `requires`), so it surfaces for every unit; effect
+ * body {@link "./economy-actions".applyTriageFallbackEffect}.
+ */
+export const TRIAGE_FALLBACK: SkillDef = {
+  id: "triage-fallback",
+  name: "Triage (Fallback)",
+  description: "Mend the most-wounded fighter one rest-chunk from Rest Points — the Medic-less camp heal (half a rest's efficiency).",
+  target: "party",
+  range: 0,
+  spend: "act",
+  overworldCost: { rp: (run) => triageFallbackRp(run) },
+  effect: { kind: "triage", base: 0, fallback: true },
+};
+
+/**
+ * The **universal overworld verbs** (R4/A, the ratified ruling) — the overworld twin of {@link
+ * UNIVERSAL_SKILLS}: verbs every party carries at camp regardless of class. {@link
+ * "./leveling".availableSkills} folds these into the `"overworld"` context exactly as it folds
+ * {@link UNIVERSAL_SKILLS} into combat/pre-combat. `Buy` is job-ungated by design (M8); the Triage
+ * fallback is the Medic-less camp heal (the named behavior change).
+ */
+export const UNIVERSAL_OVERWORLD_SKILLS: readonly SkillDef[] = [UNIVERSAL_BUY, TRIAGE_FALLBACK];

@@ -32,7 +32,7 @@ import { getJob, unitHasCapability, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
 import { isPrimed, consumeFlag } from "./overworld-state";
-import { checkOverworldCost, validateOverworldCost, overworldCostOf, type OverworldCost } from "./overworld-cost";
+import { checkOverworldCost, overworldCostOf, type OverworldCost } from "./overworld-cost";
 import { MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD, NOBLE_PATRONIZE, UNIVERSAL_BUY } from "./jobs-data/support";
 import { MEDIC_TRIAGE } from "./jobs-data/combat";
 import { getDifficulty } from "./mortality";
@@ -685,21 +685,14 @@ export function applyTriageFallbackEffect(wounded: Unit): number {
   return healUnit(wounded, chunkHp(wounded));
 }
 
-// --- The (emptied) standalone-verb cost registry (D61/#112 step 1; R4/A) ------
-
-/**
- * The **standalone-verb cost registry** — historically the two-axis invariant's second home for
- * economy verbs that were free functions with no SkillDef. **Now empty (R4/A, #112):** every verb
- * has migrated its cost onto a SkillDef — the Merchant/Banker/Noble verbs onto their `JobDef.skills`,
- * and `buy` + `triage` onto {@link "./jobs-data/support".UNIVERSAL_BUY} /
- * {@link "./jobs-data/support".UNIVERSAL_OVERWORLD_SKILLS} + the Medic's
- * {@link "./jobs-data/combat".MEDIC_TRIAGE} this increment. `bribeEnemy` rides the gate's
- * `influence` knob with a per-target price. The registry + its load-time walk **retire in
- * increment 9** (the D88 guard inverts to prove no standalone gated verb remains).
- */
-export const VERB_COSTS: Readonly<Record<string, OverworldCost>> = {};
-
-// The load-time invariant now runs entirely over the SkillDef homes (JOBS[*].skills + the
-// universal overworld skills, both walked in overworld-cost.ts). This loop is a no-op over the
-// emptied registry, kept until increment 9 deletes the registry outright.
-for (const [id, cost] of Object.entries(VERB_COSTS)) validateOverworldCost(id, cost);
+// --- The standalone-verb cost registry is RETIRED (D61/#112; R4/A increment 9) ------
+//
+// `VERB_COSTS` and its module-load validation walk are gone: every economy verb's cost has
+// dissolved onto a SkillDef's `overworldCost` — the Merchant/Banker/Noble verbs onto their
+// `JobDef.skills`, `buy` + `triage` onto the universal overworld home / the Medic (validated by
+// the single load-time walk in `jobs.ts`), and `bribeEnemy` onto the gate's `influence` knob with
+// a per-target price. "Free and unlimited" is unrepresentable wherever a verb lives, now over the
+// **one** home. The D88 guard test (`overworld-actions.test.ts`) inverts accordingly: it proves the
+// ABSENCE of any standalone gated verb — every exported verb resolver is a JobDef-skill wrapper, a
+// universal-skill wrapper, or gated elsewhere (bribe's influence knob), and a new unclassified
+// export still fails BY NAME.

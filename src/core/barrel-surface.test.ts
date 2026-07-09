@@ -97,6 +97,8 @@
  *     (the universal overworld home), + the cost-provider bodies `merchantBuyGold` /
  *     `triageFallbackRp`; −`MERCHANT_BUY_COST` (→ `merchantBuyGold` fn) and −`TRIAGE_COST`
  *     (folded into `MEDIC_TRIAGE`). `VERB_COSTS` is now empty (retires in increment 9).
+ *   - increment 9 (VERB_COSTS retires): −1 — the emptied `VERB_COSTS` registry is deleted along
+ *     with its module-load walk; the D88 guard inverts to prove the absence of standalone verbs.
  *     (type-only, not runtime surface) (→ 616).
  */
 import { describe, it, expect } from "vitest";
@@ -262,7 +264,6 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "UNIVERSAL_OVERWORLD_SKILLS",
   "UNIVERSAL_SKILLS",
   "UPKEEP",
-  "VERB_COSTS",
   "VESSELS",
   "abilityFootprint",
   "abilityScaleBonus",

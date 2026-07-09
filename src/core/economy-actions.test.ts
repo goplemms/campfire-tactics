@@ -28,8 +28,11 @@ import { gainRunGold, payTreasuryUpkeep } from "./economy";
 import { countOf, addItem, getMaterial } from "./inventory";
 import { currentNode } from "./run";
 import { useOverworldSkill, applyOverworldEffect } from "./overworld-actions";
-import { FIND_TRADE } from "./jobs-data/support";
-import { chunkHp } from "./upkeep";
+import { FIND_TRADE, TRIAGE_FALLBACK, UNIVERSAL_BUY } from "./jobs-data/support";
+import { MEDIC_TRIAGE } from "./jobs-data/combat";
+import { chunkHp, restHeal } from "./upkeep";
+import { runDifficulty } from "./run";
+import { availableSkills } from "./leveling";
 import type { NodePreview } from "./intel";
 
 /** A Merchant party member — the trade-broker (Appraisal / Find Trade / Savvy Barter, D70). */
@@ -493,5 +496,67 @@ describe("economy-verb effect handlers mirror the legacy verb cores (R4/A inc 5)
     const res = applyOverworldEffect({ kind: "triage", base: 6, fallback: true }, { run, unit: grunt, opts: {} });
     expect(res.ok).toBe(true);
     expect(wounded.hp).toBe(1 + chunk); // exactly one rest-chunk, NOT the full-strength base+scaling
+  });
+});
+
+// --- The universal overworld home + the ONE named behavior change (R4/A inc 8) --------------
+describe("UNIVERSAL_OVERWORLD_SKILLS — buy + the Medic-less Triage fallback (R4/A inc 8)", () => {
+  /** A commoner-only (Medic-less) run — the fallback's whole reason to exist. */
+  function medicLessRun(seed: string, gold = 200): RunState {
+    return createRun(seed, { party: [fighter("Rook"), fighter("Bram")], difficultyId: "normal", gold, storageCap: 8 });
+  }
+
+  it("both universal verbs surface for EVERY unit through availableSkills, regardless of class", () => {
+    const run = medicLessRun("uni-surface");
+    for (const u of run.party) {
+      const ids = availableSkills(u, "overworld").map((s) => s.id);
+      expect(ids).toContain("merchant-buy"); // Buy is job-ungated (M8)
+      expect(ids).toContain("triage-fallback"); // the Medic-less camp heal
+    }
+    // The FULL-strength Triage is capability-gated to a healer — a commoner does NOT surface it.
+    expect(availableSkills(run.party[0], "overworld").map((s) => s.id)).not.toContain("triage");
+    expect(UNIVERSAL_BUY.effect.kind).toBe("buy");
+  });
+
+  it("a Medic surfaces the full-strength Triage (requires healer); the fallback still surfaces too", () => {
+    const run = createRun("uni-medic", { party: [medicUnit()], difficultyId: "normal", gold: 100, storageCap: 8 });
+    const ids = availableSkills(run.party[0], "overworld").map((s) => s.id);
+    expect(ids).toContain("triage"); // MEDIC_TRIAGE — capability gate passes
+    expect(MEDIC_TRIAGE.requires).toBe("healer");
+  });
+
+  it("THE NAMED BEHAVIOR CHANGE: a Medic-less party's Triage fallback heals HALF the chunks per RP", () => {
+    // Ratified ruling #1: the universal fallback converts RP at 2× a normal rest's rpPerChunk —
+    // one rest-chunk per cast, funded from Rest Points, no Medic + no Triage-passive scaling. TUNABLE.
+    const run = medicLessRun("uni-fallback-pin");
+    const policy = runDifficulty(run);
+    const wounded = run.party[0];
+    wounded.hp = 1;
+    const chunk = chunkHp(wounded);
+    run.rp = 100; // plenty of RP to fund the chunk
+
+    const rpBefore = run.rp;
+    const res = useOverworldSkill(run, run.party[1], TRIAGE_FALLBACK); // a commoner casts it (no healer needed)
+    expect(res.applied).toBe(true);
+    const rpSpent = rpBefore - run.rp;
+    const healed = wounded.hp - 1;
+
+    // The pin: one chunk healed, funded at 2× rpPerChunk — half the chunks per RP vs a normal rest.
+    expect(healed).toBe(chunk);
+    expect(rpSpent).toBe(2 * policy.rpPerChunk);
+    // Contrast: a normal rest-heal buys the SAME chunk for HALF the RP.
+    const normal = restHeal({ ...wounded, hp: 1 } as typeof wounded, 100, policy);
+    expect(normal.chunks).toBeGreaterThanOrEqual(1);
+    expect(rpSpent / healed).toBe(2 * (policy.rpPerChunk / chunk)); // exactly twice the RP-per-HP of a rest
+  });
+
+  it("the fallback refuses (standard-shaped) when the party lacks the Rest Points", () => {
+    const run = medicLessRun("uni-fallback-broke");
+    run.party[0].hp = 1;
+    run.rp = 0; // no Rest Points banked
+    const res = useOverworldSkill(run, run.party[1], TRIAGE_FALLBACK);
+    expect(res.applied).toBe(false);
+    expect(res.reason).toMatch(/Rest Points/i);
+    expect(run.party[0].hp).toBe(1); // nothing healed
   });
 });

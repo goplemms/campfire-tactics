@@ -33,7 +33,9 @@ import { PASSIVE } from "./combat";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
 import { isPrimed, consumeFlag } from "./overworld-state";
 import { checkOverworldCost, validateOverworldCost, overworldCostOf, type OverworldCost } from "./overworld-cost";
-import { MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD, NOBLE_PATRONIZE } from "./jobs-data/support";
+import { MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD, NOBLE_PATRONIZE, UNIVERSAL_BUY } from "./jobs-data/support";
+import { MEDIC_TRIAGE } from "./jobs-data/combat";
+import { getDifficulty } from "./mortality";
 import { DEAL_PRIMED_FLAG, type ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
 import type { NodePreview } from "./intel";
@@ -101,15 +103,14 @@ export function merchantPrice(tier: MarketTier): number {
 }
 
 /**
- * Merchant Buy's cost (D61): always **gold-priced**. The concrete per-cast price is
- * computed per call (the caller's market tier × a primed Savvy Barter discount), so
- * the registry entry declares the axis with a provider — the price a buy would gate
- * on at the current node's effective market; {@link merchantBuy} overlays the exact
- * per-cast price onto this entry before the gate.
+ * The Merchant Buy **gold price** at the run's current node — the market-tier base price (D61).
+ * The provider body the universal Buy skill's `overworldCost.gold` calls (R4/A, #112), and the
+ * base {@link merchantBuy} overlays a primed Savvy-Barter discount onto before the gate. A hoisted
+ * function (not a const) so jobs-data can reference it in a lazy cost provider with no init cycle.
  */
-export const MERCHANT_BUY_COST: OverworldCost = {
-  gold: (run) => merchantPrice(effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld)),
-};
+export function merchantBuyGold(run: RunState): number {
+  return merchantPrice(effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld));
+}
 
 /** What a Merchant buy produced. */
 export interface MerchantBuyResult extends ActionOutcome {
@@ -139,7 +140,7 @@ export function merchantBuy(run: RunState, materialId: string, tier: MarketTier)
   // check/spend path as Patronize and every overworld action, so "what paying
   // gold means" lives in one place ({@link checkOverworldCost}), not per verb.
   // The registry row declares the axis; the exact per-cast price overlays it.
-  const cost: OverworldCost = { ...VERB_COSTS["merchant-buy"], gold: price };
+  const cost: OverworldCost = { ...overworldCostOf(UNIVERSAL_BUY), gold: price };
   const check = checkOverworldCost(run, "merchant-buy", cost, `buy ${materialId}`);
   if (!check.ok) return { applied: false, reason: check.reason, price };
   if (!canAdd(run.inventory, materialId)) {
@@ -576,16 +577,26 @@ export const TRIAGE = {
   fatigue: 2,
   /** Flat HP floor a Triage restores before the Triage-scaling on missing HP. */
   base: 6,
+  /**
+   * **Universal fallback efficiency (R4, the ratified ruling) — TUNABLE.** A Medic-less party can
+   * triage via {@link "./jobs-data/support".UNIVERSAL_OVERWORLD_SKILLS}: one rest-chunk funded by
+   * Rest Points at this multiple of a normal rest's `rpPerChunk`. `2` = **half efficiency** (half
+   * the chunks per RP) — the named behavior change, a dial beside D9's `rpPerChunk` (raise it to
+   * make the Medic-less heal dearer, lower it toward parity). Only the fallback reads it; the full
+   * Medic Triage is fatigue-fuelled and unchanged.
+   */
+  fallbackRpMultiplier: 2,
 } as const;
 
 /**
- * Triage's two-axis cost (D61) — the **demanding** fatigue price the shared gate validates +
- * spends. Triage is a **standalone** verb, outside the `JobDef.skills` load-time validator,
- * so this object is its row in the {@link VERB_COSTS} registry (#112). Defined beside its
- * verb (its home), and the registry entry is this same object, so there is exactly one source
- * of truth.
+ * The universal Triage-fallback **RP price** at the run's current node (R4, the ratified ruling):
+ * `fallbackRpMultiplier ×` the difficulty's `rpPerChunk` — funds **one rest-chunk** at half a
+ * normal rest's efficiency. The provider body the fallback skill's `overworldCost.rp` calls;
+ * a hoisted function so jobs-data can reference it in a lazy cost provider with no init cycle.
  */
-export const TRIAGE_COST: OverworldCost = { fatigue: TRIAGE.fatigue };
+export function triageFallbackRp(run: RunState): number {
+  return TRIAGE.fallbackRpMultiplier * getDifficulty(run.difficultyId).rpPerChunk;
+}
 
 /**
  * True if `unit` is a **healing class** — a job stamped with the Medic's Triage
@@ -627,8 +638,7 @@ export function triage(run: RunState, healer: Unit): TriageResult {
   const wounded = mostWoundedFielded(run);
   if (!wounded) return { applied: false, reason: "No wounded fighter to triage." };
 
-  const cost = TRIAGE_COST;
-  const check = checkOverworldCost(run, "triage", cost, "Triage", healer);
+  const check = checkOverworldCost(run, "triage", overworldCostOf(MEDIC_TRIAGE), "Triage", healer);
   if (!check.ok) return { applied: false, reason: check.reason };
 
   const healed = applyTriageEffect(healer, wounded, TRIAGE.base);
@@ -675,32 +685,21 @@ export function applyTriageFallbackEffect(wounded: Unit): number {
   return healUnit(wounded, chunkHp(wounded));
 }
 
-// --- The (shrinking) standalone-verb cost registry (D61/#112 step 1; R4/A) ----
+// --- The (emptied) standalone-verb cost registry (D61/#112 step 1; R4/A) ------
 
 /**
- * The **standalone-verb cost registry** — the two-axis invariant's second home,
- * making it **total**. The load-time walk over `JOBS[*].skills`
- * ({@link "./overworld-cost"}) covers every verb that lives on a job; every
- * economy verb that is still a **free function** with no SkillDef home registers its
- * {@link OverworldCost} here, and the walk below validates each at import — an unpaced,
- * unpriced standalone verb **fails at module load**, exactly like a bad skill record.
- *
- * **Shrinking (R4/A, #112):** the Merchant + Banker verbs migrated their rows onto their
- * `JobDef.skills` (Merchant Sell → {@link "./jobs-data/support".MERCHANT_SELL}; Invest/Borrow/
- * Guard → the Banker skills), and Patronize onto {@link "./jobs-data/support".NOBLE_PATRONIZE};
- * their costs are now validated by the JOBS walk. Only `merchant-buy` and `triage` remain here,
- * both migrating onto {@link "./jobs-data/support".UNIVERSAL_OVERWORLD_SKILLS} / the Medic in
- * increment 8, after which the registry retires entirely (increment 9).
- *
- * **On-gate (R4/A):** {@link bribeEnemy} now rides the shared gate's reserved `influence` knob
- * with a per-target computed price (no static row) — standard-shaped refusals, one check→commit.
+ * The **standalone-verb cost registry** — historically the two-axis invariant's second home for
+ * economy verbs that were free functions with no SkillDef. **Now empty (R4/A, #112):** every verb
+ * has migrated its cost onto a SkillDef — the Merchant/Banker/Noble verbs onto their `JobDef.skills`,
+ * and `buy` + `triage` onto {@link "./jobs-data/support".UNIVERSAL_BUY} /
+ * {@link "./jobs-data/support".UNIVERSAL_OVERWORLD_SKILLS} + the Medic's
+ * {@link "./jobs-data/combat".MEDIC_TRIAGE} this increment. `bribeEnemy` rides the gate's
+ * `influence` knob with a per-target price. The registry + its load-time walk **retire in
+ * increment 9** (the D88 guard inverts to prove no standalone gated verb remains).
  */
-export const VERB_COSTS: Readonly<Record<string, OverworldCost>> = {
-  "merchant-buy": MERCHANT_BUY_COST,
-  triage: TRIAGE_COST,
-};
+export const VERB_COSTS: Readonly<Record<string, OverworldCost>> = {};
 
-// Enforce the D61 two-axis invariant over the standalone verbs at module load (#112)
-// — the twin of overworld-actions' JOBS[*].skills walk. With both homes validated at
-// import, "free and unlimited" is unrepresentable wherever a verb lives.
+// The load-time invariant now runs entirely over the SkillDef homes (JOBS[*].skills + the
+// universal overworld skills, both walked in overworld-cost.ts). This loop is a no-op over the
+// emptied registry, kept until increment 9 deletes the registry outright.
 for (const [id, cost] of Object.entries(VERB_COSTS)) validateOverworldCost(id, cost);

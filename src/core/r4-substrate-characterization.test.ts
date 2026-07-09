@@ -93,10 +93,18 @@ describe("R4 increment 0(a) — the camp-verb board (batch-3 parity reference)",
       [
         "Wynn · Cook Stew: offered",
         "Wynn · Feast: offered",
+        "Wynn · Buy: offered",
+        "Wynn · Triage (Fallback): refused — Not enough Rest Points for Triage (Fallback) (28).",
         "Pia · Find Trade: offered",
         "Pia · Savvy Barter: offered",
         "Pia · Merchant Sell: offered",
+        "Pia · Buy: offered",
+        "Pia · Triage (Fallback): refused — Not enough Rest Points for Triage (Fallback) (28).",
         "Vale · Forage: offered",
+        "Vale · Buy: offered",
+        "Vale · Triage (Fallback): refused — Not enough Rest Points for Triage (Fallback) (28).",
+        "Rook · Buy: offered",
+        "Rook · Triage (Fallback): refused — Not enough Rest Points for Triage (Fallback) (28).",
       ]
     `);
   });

@@ -19,6 +19,10 @@ import type { JobDef } from "../jobs";
 import type { SkillDef } from "../skills";
 import { guarded } from "../status";
 import { computeUpkeep } from "../upkeep"; // Cook Stew's computed cost (lazy — closure only, no init-time cycle)
+// The universal economy verbs' cost **provider bodies** (R4/A, #112) — hoisted functions used only
+// inside the lazy `overworldCost` arrows below, so the economy-actions ⇄ support edge is closure-only
+// (no init-time cycle, exactly like `computeUpkeep` above).
+import { merchantBuyGold, triageFallbackRp } from "../economy-actions";
 
 /** Forage kit tuning (D73) — within-clearing pace × across-clearing fatigue + the yield; numbers pass. */
 export const FORAGE_KIT = {
@@ -376,3 +380,52 @@ export const DIG_IN: SkillDef = {
  * hardcoded Defend append, no `canTrap` special case).
  */
 export const UNIVERSAL_SKILLS: readonly SkillDef[] = [DEFEND, DIG_IN];
+
+/**
+ * **Buy** (D61/M8/#112, R4/A) — the universal supply purchase: spend purse gold to buy one supply
+ * into caravan storage at the node's effective market tier. **Job-ungated by design** (M8's recorded
+ * call — anyone can shop where there's a market), so it lives in {@link UNIVERSAL_OVERWORLD_SKILLS},
+ * the precedent for universal verbs. Cost is the market-tier gold price (the {@link
+ * "./economy-actions".merchantBuyGold} provider); effect body {@link "./economy-actions".applyBuyEffect}.
+ * The legacy {@link "./economy-actions".merchantBuy} verb overlays the Savvy-Barter discount + reads
+ * its base cost here.
+ */
+export const UNIVERSAL_BUY: SkillDef = {
+  id: "merchant-buy",
+  name: "Buy",
+  description: "Buy a supply into caravan storage at the node's market — universal (anyone can shop where there's a market).",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { gold: (run) => merchantBuyGold(run) },
+  effect: { kind: "buy" },
+};
+
+/**
+ * **Triage (Fallback)** (R4, the ratified ruling, #112) — the universal Medic-less camp heal: mend
+ * the party's most-wounded fighter **one rest-chunk**, funded by Rest Points at **half a normal
+ * rest's efficiency** ({@link "./economy-actions".triageFallbackRp} = 2× `rpPerChunk`, a tunable
+ * dial). The **named behavior change** of R4 batch 2: a party without a healing class can still
+ * triage at camp, just slower per RP than a Medic's full-strength (fatigue-fuelled) {@link
+ * "./jobs-data/combat".MEDIC_TRIAGE}. Ungated (no `requires`), so it surfaces for every unit; effect
+ * body {@link "./economy-actions".applyTriageFallbackEffect}.
+ */
+export const TRIAGE_FALLBACK: SkillDef = {
+  id: "triage-fallback",
+  name: "Triage (Fallback)",
+  description: "Mend the most-wounded fighter one rest-chunk from Rest Points — the Medic-less camp heal (half a rest's efficiency).",
+  target: "party",
+  range: 0,
+  spend: "act",
+  overworldCost: { rp: (run) => triageFallbackRp(run) },
+  effect: { kind: "triage", base: 0, fallback: true },
+};
+
+/**
+ * The **universal overworld verbs** (R4/A, the ratified ruling) — the overworld twin of {@link
+ * UNIVERSAL_SKILLS}: verbs every party carries at camp regardless of class. {@link
+ * "./leveling".availableSkills} folds these into the `"overworld"` context exactly as it folds
+ * {@link UNIVERSAL_SKILLS} into combat/pre-combat. `Buy` is job-ungated by design (M8); the Triage
+ * fallback is the Medic-less camp heal (the named behavior change).
+ */
+export const UNIVERSAL_OVERWORLD_SKILLS: readonly SkillDef[] = [UNIVERSAL_BUY, TRIAGE_FALLBACK];

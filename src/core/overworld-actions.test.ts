@@ -30,10 +30,11 @@ import {
   isPrimed,
   cloneOverworldEconomy,
 } from "./overworld-state";
-import { triage, isHealer, TRIAGE, TRIAGE_COST, MERCHANT_BUY_COST, VERB_COSTS } from "./economy-actions";
+import { triage, isHealer, TRIAGE, VERB_COSTS } from "./economy-actions";
 import { getJob, JOBS, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
 import { SURVEY } from "./jobs-data/scout-line";
-import { FORAGE, MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD, NOBLE_PATRONIZE } from "./jobs-data/support";
+import { FORAGE, MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD, NOBLE_PATRONIZE, UNIVERSAL_BUY, UNIVERSAL_OVERWORLD_SKILLS } from "./jobs-data/support";
+import { MEDIC_TRIAGE } from "./jobs-data/combat";
 import { PASSIVE } from "./combat";
 import { skillContexts } from "./skills";
 import { availableSkills } from "./leveling";
@@ -355,42 +356,34 @@ describe("the standalone-verb cost registry — the D61 invariant is total (#112
   // modules must be classified below — a NEW export that is none of these fails BY NAME
   // until it is classified, and classifying it as a verb requires a VERB_COSTS row.
 
-  it("every VERB_COSTS entry is paced or priced (the load-time walk's assertion)", () => {
-    expect(Object.keys(VERB_COSTS).length).toBeGreaterThan(0);
-    for (const [id, cost] of Object.entries(VERB_COSTS)) {
-      expect(() => validateOverworldCost(id, cost)).not.toThrow();
+  it("VERB_COSTS is now empty — every verb's cost has migrated onto a SkillDef (R4/A, #112)", () => {
+    // Increment 8 finished the migration: the standalone registry holds nothing. (Increment 9
+    // deletes it outright and inverts this guard to prove the ABSENCE of standalone gated verbs.)
+    expect(Object.keys(VERB_COSTS)).toEqual([]);
+    // The former standalone rows now live on SkillDefs, validated by the JOBS + universal walks.
+    for (const id of ["merchant-buy", "merchant-sell", "banker-interest", "banker-borrow", "banker-protect", "patronize", "triage"]) {
+      expect(VERB_COSTS[id]).toBeUndefined();
     }
   });
 
-  it("the hoisted per-verb consts ARE the (shrinking) registry entries (one source of truth)", () => {
-    // R4/A: the Merchant/Banker/Noble rows dissolved onto their JobDef.skills; only the two
-    // still-standalone verbs (buy + triage, both migrating in increment 8) remain.
-    expect(VERB_COSTS["triage"]).toBe(TRIAGE_COST);
-    expect(VERB_COSTS["merchant-buy"]).toBe(MERCHANT_BUY_COST);
-    // The migrated verbs no longer have a standalone row — their cost lives on the SkillDef.
-    expect(VERB_COSTS["merchant-sell"]).toBeUndefined();
-    expect(VERB_COSTS["banker-interest"]).toBeUndefined();
-    expect(VERB_COSTS["banker-borrow"]).toBeUndefined();
-    expect(VERB_COSTS["banker-protect"]).toBeUndefined();
-    expect(VERB_COSTS["patronize"]).toBeUndefined();
-  });
+  // Standalone verb resolvers keyed to a VERB_COSTS row — now EMPTY (every verb migrated, R4/A).
+  const VERB_RESOLVERS: Record<string, string> = {};
 
-  // Verb resolvers: exported function → its VERB_COSTS row. A new verb registers here
-  // AND in VERB_COSTS (the registry walk at module load validates its cost).
-  const VERB_RESOLVERS: Record<string, string> = {
-    merchantBuy: "merchant-buy",
-    triage: "triage",
-  };
-
-  // Verbs migrated onto a JobDef.skill (R4/A, #112): the legacy free function is now a thin
-  // wrapper that reads its cost from the SkillDef's overworldCost (validated by the JOBS[*].skills
-  // load-time walk, not VERB_COSTS). Each maps to its SkillDef id — a NEW such verb joins here.
+  // Verbs migrated onto a JobDef.skill (R4/A, #112): the legacy free function is a thin wrapper
+  // reading its cost from the SkillDef's overworldCost (validated by the JOBS[*].skills load-time
+  // walk, not VERB_COSTS). Each maps to its SkillDef — a NEW such verb joins here.
   const GATED_VIA_JOBDEF: Record<string, SkillDef> = {
     merchantSell: MERCHANT_SELL,
     bankerEngageInterest: BANKER_INTEREST,
     bankerBorrow: BANKER_BORROW,
     bankerProtect: BANKER_GUARD,
     patronize: NOBLE_PATRONIZE,
+    triage: MEDIC_TRIAGE,
+  };
+
+  // Verbs migrated onto a UNIVERSAL_OVERWORLD_SKILLS skill (R4/A, #112) — job-ungated by design.
+  const GATED_VIA_UNIVERSAL: Record<string, SkillDef> = {
+    merchantBuy: UNIVERSAL_BUY,
   };
 
   // Verbs whose cost gate lives elsewhere — each with the WHERE, never silently exempt.
@@ -407,11 +400,20 @@ describe("the standalone-verb cost registry — the D61 invariant is total (#112
     }
   });
 
+  it("each universal-migrated verb's SkillDef is in the universal overworld home + paced/priced", () => {
+    const universalIds = new Set(UNIVERSAL_OVERWORLD_SKILLS.map((s) => s.id));
+    for (const [name, skill] of Object.entries(GATED_VIA_UNIVERSAL)) {
+      expect(universalIds.has(skill.id), `verb "${name}" → SkillDef "${skill.id}" must live in UNIVERSAL_OVERWORLD_SKILLS`).toBe(true);
+      expect(() => validateOverworldCost(skill.name, overworldCostOf(skill))).not.toThrow();
+    }
+  });
+
   // Non-verb exports: pure reads, predicates, state plumbing, and the passive faucets
   // breakCamp fires (not player verbs). A new helper joins this list explicitly.
   const NON_VERBS = new Set([
-    // economy-actions — pure reads / predicates
+    // economy-actions — pure reads / predicates + the universal-skill cost provider bodies (R4/A)
     "merchantPrice", "sellPrice", "bribeCost", "bribeChance", "buyPriceFor",
+    "merchantBuyGold", "triageFallbackRp",
     "hasBanker", "hasNoble", "hasThief", "declaredFaucetInfluence",
     // economy-actions — passive per-node-step faucets (fired by breakCamp, not chosen)
     "accrueDeclaredFaucets", "deftHandsSkim",
@@ -440,12 +442,16 @@ describe("the standalone-verb cost registry — the D61 invariant is total (#112
     expect(names).toContain("merchantSell"); // sanity: the enumeration sees the verbs
     for (const name of names) {
       const classified =
-        name in VERB_RESOLVERS || name in GATED_VIA_JOBDEF || name in GATED_ELSEWHERE || NON_VERBS.has(name);
+        name in VERB_RESOLVERS ||
+        name in GATED_VIA_JOBDEF ||
+        name in GATED_VIA_UNIVERSAL ||
+        name in GATED_ELSEWHERE ||
+        NON_VERBS.has(name);
       expect(
         classified,
-        `unclassified export "${name}" — a standalone verb resolver registers a VERB_COSTS row (D61/#112); ` +
-          `a JobDef-migrated verb joins GATED_VIA_JOBDEF with its SkillDef; a verb gated elsewhere joins ` +
-          `GATED_ELSEWHERE with the where; a helper joins NON_VERBS`,
+        `unclassified export "${name}" — a JobDef-migrated verb joins GATED_VIA_JOBDEF with its SkillDef; ` +
+          `a universal verb joins GATED_VIA_UNIVERSAL; a verb gated elsewhere joins GATED_ELSEWHERE with ` +
+          `the where; a helper joins NON_VERBS (VERB_COSTS is empty as of R4/A #112)`,
       ).toBe(true);
     }
     // And every claimed resolver actually resolves to a registered cost.

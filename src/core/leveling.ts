@@ -17,7 +17,7 @@
 
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
 import { getJob, unitSkills, unitHasCapability, type JobLookup } from "./jobs";
-import { UNIVERSAL_SKILLS } from "./jobs-data/support";
+import { UNIVERSAL_SKILLS, UNIVERSAL_OVERWORLD_SKILLS } from "./jobs-data/support";
 import type { SkillDef } from "./skills";
 import { skillContexts, type UsableContext } from "./skills";
 import type { EventBus } from "./event-bus";
@@ -230,18 +230,21 @@ export function skillsUnlockedBetween(unit: Unit, fromLevel: number, toLevel: nu
  * `context`. The **one authoritative surfacing projection** for every surface (the retired
  * `phase` axis / `unlockedSkills` are gone, #123): combat calls `availableSkills(u, "combat")`;
  * deployment `"pre-combat"`; the overworld `"overworld"`.
+ *
+ * The universal home is folded in per surface (R4/A): {@link
+ * "./jobs-data/support".UNIVERSAL_SKILLS} for combat/pre-combat (Defend / Dig In) and {@link
+ * "./jobs-data/support".UNIVERSAL_OVERWORLD_SKILLS} for the overworld (Buy / the Triage fallback) —
+ * both filtered by `context`, so each surface sees only its own universals. A `requires`-gated
+ * universal (none today) is capability-filtered like a job skill.
  */
 export function availableSkills(unit: Unit, context: UsableContext, lookup: JobLookup = getJob): SkillDef[] {
   const lvl = jobLevelOf(unit, primaryJobOf(unit));
-  const jobSkills = unitSkills(unit, lookup).filter(
-    (s) =>
-      (s.unlockLevel ?? 1) <= lvl &&
-      // The Capability gate (D72): a `requires` skill surfaces only for a unit holding it
-      // (no-op for every skill today — none declares `requires`; proven by fixtures).
-      (!s.requires || unitHasCapability(unit, s.requires, lookup)) &&
-      skillContexts(s).includes(context),
-  );
-  const universals = UNIVERSAL_SKILLS.filter((s) => skillContexts(s).includes(context));
+  const gated = (s: SkillDef) =>
+    // The Capability gate (D72): a `requires` skill surfaces only for a unit holding it
+    // (e.g. the Medic-owned full Triage requires `healer`; the universal fallback is ungated).
+    (!s.requires || unitHasCapability(unit, s.requires, lookup)) && skillContexts(s).includes(context);
+  const jobSkills = unitSkills(unit, lookup).filter((s) => (s.unlockLevel ?? 1) <= lvl && gated(s));
+  const universals = [...UNIVERSAL_SKILLS, ...UNIVERSAL_OVERWORLD_SKILLS].filter(gated);
   return [...jobSkills, ...universals];
 }
 

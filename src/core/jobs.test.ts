@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { JOBS, getJob, unitSkills, SKILLS, getSkill, type JobId } from "./jobs";
 import { SOLDIER_JOB } from "./jobs-data/combat";
-import { UNIVERSAL_SKILLS, DEFEND } from "./jobs-data/support";
+import { UNIVERSAL_SKILLS, UNIVERSAL_OVERWORLD_SKILLS, DEFEND } from "./jobs-data/support";
 import { createUnit, type Side, type Unit } from "./units";
 import { skillContexts, type SkillDef } from "./skills";
 import { availableSkills } from "./leveling";
@@ -83,7 +83,9 @@ describe("jobs (data-driven loading)", () => {
         moveRange: 3,
         sightRadius: 4,
       });
-    expect(availableSkills(withJob("Pip", "cook"), "overworld").map((s) => s.id)).toEqual(["cook-stew", "feast"]);
+    // R4/A: availableSkills folds the universal overworld home (Buy + the Triage fallback) into
+    // every unit's overworld row, after the job's own verbs.
+    expect(availableSkills(withJob("Pip", "cook"), "overworld").map((s) => s.id)).toEqual(["cook-stew", "feast", "merchant-buy", "triage-fallback"]);
     expect(availableSkills(withJob("Vale", "survivalist"), "pre-combat").map((s) => s.id)).toContain("set-trap");
     expect(availableSkills(withJob("Rook", "soldier"), "combat").map((s) => s.id)).toContain("debilitating-strike");
   });
@@ -91,10 +93,11 @@ describe("jobs (data-driven loading)", () => {
 
 // The global skill registry (R1 #111) — the skill-by-id log's resolution source.
 describe("SKILLS — the global skill registry (R1 #111)", () => {
-  it("derives every authored skill from JOBS + UNIVERSAL_SKILLS, resolvable by id", () => {
+  it("derives every authored skill from JOBS + UNIVERSAL_SKILLS + UNIVERSAL_OVERWORLD_SKILLS, resolvable by id", () => {
     const expected = new Set<string>();
     for (const job of Object.values(JOBS)) for (const s of job.skills) expected.add(s.id);
     for (const s of UNIVERSAL_SKILLS) expected.add(s.id);
+    for (const s of UNIVERSAL_OVERWORLD_SKILLS) expected.add(s.id); // R4/A: Buy + the Triage fallback
     expect(Object.keys(SKILLS).sort()).toEqual([...expected].sort());
     // Resolution returns the exact authored def objects (by reference).
     expect(getSkill("defend")).toBe(DEFEND);
@@ -112,6 +115,7 @@ describe("SKILLS — the global skill registry (R1 #111)", () => {
     };
     for (const job of Object.values(JOBS)) for (const s of job.skills) note(s);
     for (const s of UNIVERSAL_SKILLS) note(s);
+    for (const s of UNIVERSAL_OVERWORLD_SKILLS) note(s);
     for (const [id, defs] of defsById) {
       expect(defs.size, `skill id "${id}" is claimed by ${defs.size} distinct defs`).toBe(1);
     }

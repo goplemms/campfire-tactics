@@ -92,6 +92,11 @@
  *   - increment 7 (Noble patronize → SkillDef + bribe onto the Influence knob): net 0 —
  *     +1 `NOBLE_PATRONIZE` (on the Noble), −1 `PATRONIZE_COST` (row folded in). `bribeEnemy`
  *     keeps its name (its Influence spend now rides the shared gate's `influence` knob).
+ *   - increment 8 (triage + universal buy): +6 −2 (net +4) — +`MEDIC_TRIAGE` (full-strength
+ *     Triage on the Medic), +`UNIVERSAL_BUY` / +`TRIAGE_FALLBACK` / +`UNIVERSAL_OVERWORLD_SKILLS`
+ *     (the universal overworld home), + the cost-provider bodies `merchantBuyGold` /
+ *     `triageFallbackRp`; −`MERCHANT_BUY_COST` (→ `merchantBuyGold` fn) and −`TRIAGE_COST`
+ *     (folded into `MEDIC_TRIAGE`). `VERB_COSTS` is now empty (retires in increment 9).
  *     (type-only, not runtime surface) (→ 616).
  */
 import { describe, it, expect } from "vitest";
@@ -185,8 +190,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MATERIALS",
   "MAX_TIER",
   "MEDIC_JOB",
+  "MEDIC_TRIAGE",
   "MED_HEAL",
-  "MERCHANT_BUY_COST",
   "MERCHANT_JOB",
   "MERCHANT_KIT",
   "MERCHANT_SELL",
@@ -250,9 +255,11 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "TRAP_FIELD",
   "TRAP_INTEL",
   "TRIAGE",
-  "TRIAGE_COST",
+  "TRIAGE_FALLBACK",
   "TURN_THRESHOLD",
   "TileGrid",
+  "UNIVERSAL_BUY",
+  "UNIVERSAL_OVERWORLD_SKILLS",
   "UNIVERSAL_SKILLS",
   "UPKEEP",
   "VERB_COSTS",
@@ -547,6 +554,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "memberRefusal",
   "mercPool",
   "merchantBuy",
+  "merchantBuyGold",
   "merchantPrice",
   "merchantSell",
   "moraleModifiers",
@@ -712,6 +720,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "traverseRoute",
   "triage",
   "triageActionPreview",
+  "triageFallbackRp",
   "triageHealAmount",
   "unassignMember",
   "unequip",

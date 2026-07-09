@@ -195,7 +195,7 @@ describe("Battle orchestrator", () => {
     const battle = new Battle(grid, [hero, foe]);
     hero.ct = 100;
 
-    const powerStrike = { id: "ps", name: "PS", description: "", phase: "battle", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 } } as const;
+    const powerStrike = { id: "ps", name: "PS", description: "", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 } } as const;
     const out = battle.useSkill(hero, powerStrike, foe);
 
     expect(out.damage).toBe(12); // (8+6) - 2
@@ -210,7 +210,7 @@ describe("Battle orchestrator", () => {
     const battle = new Battle(grid, [hero, foe]);
     hero.ct = 100;
 
-    const powerStrike = { id: "ps", name: "PS", description: "", phase: "battle", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 } } as const;
+    const powerStrike = { id: "ps", name: "PS", description: "", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 } } as const;
     const out = battle.useSkill(hero, powerStrike, foe, { commitTurn: false });
 
     expect(out.damage).toBe(12); // effect still resolves
@@ -225,7 +225,7 @@ describe("Battle orchestrator", () => {
     const battle = new Battle(grid, [medic, ally]);
     medic.ct = 100;
 
-    const mend = { id: "mend", name: "Mend", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } } as const;
+    const mend = { id: "mend", name: "Mend", description: "", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } } as const;
     battle.useSkill(medic, mend, ally, { commitTurn: false });
 
     expect(ally.hp).toBe(9); // healed

@@ -48,11 +48,11 @@ const markSkill = HUNTER_JOB.skills.find((s) => s.id === "mark-prey")!;
 const healSkill = MEDIC_JOB.skills.find((s) => s.id === "heal")!;
 
 const powerStrike: SkillDef = {
-  id: "power-strike", name: "Power Strike", description: "", phase: "battle",
+  id: "power-strike", name: "Power Strike", description: "",
   target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 },
 };
 const setTrap: SkillDef = {
-  id: "set-trap", name: "Set Trap", description: "", phase: "deployment",
+  id: "set-trap", name: "Set Trap", description: "",
   target: "camp", range: 0, spend: "act", effect: { kind: "placeTrap", damage: 12 },
 };
 
@@ -258,7 +258,7 @@ describe("AbilityForecast tagged shapes", () => {
   it("Chef morale is banked + tiered: Neutral → High plus the bundle and banked HP", () => {
     const chef = at("chef", "player", 0, 0);
     const stew: SkillDef = {
-      id: "cook-stew", name: "Cook Stew", description: "", phase: "meta",
+      id: "cook-stew", name: "Cook Stew", description: "",
       target: "party", range: 0, spend: "act", effect: { kind: "morale", morale: 1, partyHeal: 8 },
     };
     const fc = forecastSkill(stew, chef, { morale: 0 });
@@ -307,7 +307,7 @@ describe("abilityFootprint geometry", () => {
     const grid = new TileGrid(6, 6);
     const scout = at("s", "player", 2, 2);
     const dash: SkillDef = {
-      id: "dash", name: "Dash", description: "", phase: "battle",
+      id: "dash", name: "Dash", description: "",
       target: "self", range: 0, spend: "move", effect: { kind: "status", status: { id: "swift", name: "Swift", duration: 1 } },
     };
     const fp = abilityFootprint(dash, scout, scout.pos, grid, [scout]);
@@ -318,7 +318,7 @@ describe("abilityFootprint geometry", () => {
     const grid = new TileGrid(6, 6);
     const chef = at("chef", "player", 0, 0);
     const stew: SkillDef = {
-      id: "cook-stew", name: "Cook Stew", description: "", phase: "meta",
+      id: "cook-stew", name: "Cook Stew", description: "",
       target: "party", range: 0, spend: "act", effect: { kind: "morale", morale: 1, partyHeal: 8 },
     };
     expect(abilityFootprint(stew, chef, { col: 0, row: 0 }, grid, [chef])).toEqual({ kind: "none" });

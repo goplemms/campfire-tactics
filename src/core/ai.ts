@@ -30,7 +30,7 @@ import {
 } from "./combat";
 import { isImmobilized, isDebuffed, hasStatus, EXPOSED } from "./status";
 import { canSeeUnit } from "./vision";
-import { unitSkills } from "./jobs";
+import { availableSkills } from "./leveling";
 import { orderOf } from "./standing-orders";
 
 /** Scoring weights — all tunable data, a numbers pass later (D42). */
@@ -249,9 +249,12 @@ function isolationPenalty(unit: Unit, from: GridCoord, units: readonly Unit[]): 
   return alliesAdjacent === 0 ? AI.isolationPenalty * foesAdjacent : 0;
 }
 
-/** A debuff ability the unit can use on a foe (a status-debuff battle skill). */
+/** A debuff ability the unit can use on a foe (a status-debuff combat skill). */
 function debuffAbility(unit: Unit): SkillDef | undefined {
-  return unitSkills(unit, "battle").find(
+  // The combat surfacing projection (#123 — `availableSkills("combat")` replaces the retired
+  // `unitSkills(_, "battle")`): the universal + capability folds don't matter here (Defend isn't
+  // an enemy-debuff), so this stays byte-identical while dropping the phase axis.
+  return availableSkills(unit, "combat").find(
     (s) =>
       s.target === "enemy" &&
       s.effect.kind === "status" &&

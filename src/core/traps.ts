@@ -17,8 +17,8 @@ import { grantItem, countOf } from "./inventory";
 import type { Rng } from "./rng";
 import { chebyshev, type GridCoord } from "./iso";
 import { clamp01 } from "./num";
-import { unitSkills, getJob } from "./jobs";
-import { grantAbilityUseXp } from "./leveling";
+import { getJob } from "./jobs";
+import { grantAbilityUseXp, availableSkills } from "./leveling";
 import type { PlaceTrapEffect } from "./skills";
 import {
   EntityRegistry,
@@ -162,7 +162,10 @@ export function spotWhileMoving(
 /** True if `unit` can disarm a trap — it carries a Set-Trap skill, or its job is lockpick-trained (the Thief, D68). */
 export function canDisarm(unit: Unit): boolean {
   return (
-    unitSkills(unit, "deployment").some((s) => s.effect.kind === "placeTrap") ||
+    // The pre-combat surfacing projection (#123 — `availableSkills("pre-combat")` replaces the
+    // retired `unitSkills(_, "deployment")`): a placeTrap skill surfaces there; the universal folds
+    // (Dig In / Defend) aren't placeTrap, so `.some(placeTrap)` stays byte-identical.
+    availableSkills(unit, "pre-combat").some((s) => s.effect.kind === "placeTrap") ||
     getJob(primaryJobOf(unit))?.lockpick === true
   );
 }

@@ -18,6 +18,7 @@ import {
   Battle,
   skillsUnlockedBetween,
   availableSkills,
+  skillContexts,
   getJob,
   primaryJobOf,
   onSkillCooldown,
@@ -2422,7 +2423,7 @@ export class BattleScene extends Phaser.Scene {
         const names = fresh.map((s) => s.name).join(", ");
         // Call out a newly-unlocked overworld verb — the between-nodes action the player can
         // now use on the *map* (e.g. the Scout's Survey at L2): the teaching beat.
-        const overworld = fresh.some((s) => s.phase === "meta");
+        const overworld = fresh.some((s) => skillContexts(s).includes("overworld"));
         const tail = names ? ` — unlocked ${names}${overworld ? " (now usable on the overworld — scout a node ahead)" : ""}` : "";
         advancement.push({ icon: "levelUp", text: `${u.name} reached job L${now}${tail}`, color: INK.gold });
       }

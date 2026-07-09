@@ -1,11 +1,11 @@
 /**
  * Skills as data (M4 / D3).
  *
- * A skill is a plain data record — never a subclass. It declares which **phase**
- * it hooks, what it **targets**, its **range**, the CT it **spends**, and a
- * declarative **effect** the resolver interprets against the battle. New skills
- * are new data; the battle loop needs no new branches. M4 exercises the
- * `battle`-phase skills; the other phases are laid as the D3 seam.
+ * A skill is a plain data record — never a subclass. It declares what it **targets**,
+ * its **range**, the CT it **spends**, and a declarative **effect** the resolver interprets
+ * against the battle. Where it surfaces is read off its shape via {@link skillContexts} (the
+ * {@link UsableContext} axis) — the retired `phase` tag is gone (#123). New skills are new
+ * data; the battle loop needs no new branches.
  *
  * Pure logic: no Phaser, no DOM.
  */
@@ -22,14 +22,13 @@ import type { CapabilityId } from "./jobs";
 import type { OverworldCost } from "./overworld-cost";
 import type { Cost } from "./cost";
 
-/** The ordered phases of the game pipeline (D3). */
-export type Phase = "meta" | "deployment" | "battle" | "resolution";
-
 /**
- * The game-wide surfaces where a skill can be **used/surfaced** (D67) — a finer axis than
- * {@link Phase} (the pipeline tier `meta` splits into `overworld` + `guild`). Declared as
- * data on a skill; defaults from the skill's *shape* via {@link skillContexts}, so authors
- * rarely write it. Combat is the substrate; deployment is `pre-combat`.
+ * The game-wide surfaces where a skill can be **used/surfaced** (D67/#123) — the **one
+ * placement axis** now that the pipeline `phase` is retired. Declared as data on a skill;
+ * defaults from the skill's *shape* via {@link skillContexts}, so authors rarely write it.
+ * Combat is the substrate; deployment is `pre-combat`; the meta tier splits into `overworld`
+ * + `guild`. (The D3 pipeline *sequence* — meta → deployment → battle → resolution — stays a
+ * documented runloop contract, D46; it no longer needs a per-skill `phase` tag.)
  */
 export type UsableContext = "overworld" | "guild" | "pre-combat" | "combat";
 
@@ -258,8 +257,6 @@ export interface SkillDef {
   id: string;
   name: string;
   description: string;
-  /** Which phase of the pipeline this skill acts in (D3). */
-  phase: Phase;
   /**
    * Optional override of where this skill may be surfaced/used (D67). When omitted,
    * {@link skillContexts} derives it from the skill's shape (effect kind + target + spend).
@@ -277,7 +274,7 @@ export interface SkillDef {
   /**
    * Job level at which this skill unlocks (D39). Defaults to 1 (available from
    * the start). The four kits start with their passive + one active and earn the
-   * **2nd active at level 2** ({@link "./leveling".unlockedSkills}).
+   * **2nd active at level 2** (gated by {@link "./leveling".availableSkills}).
    */
   unlockLevel?: number;
   /**

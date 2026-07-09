@@ -35,7 +35,8 @@ import { describe, it, expect } from "vitest";
 import { createRun, type RunState } from "./run";
 import { createUnit, type Unit } from "./units";
 import type { JobId } from "./jobs";
-import { availableSkills, unlockedSkills } from "./leveling";
+import { availableSkills } from "./leveling";
+import { unitSkills } from "./jobs";
 import { overworldCostOf, checkOverworldCost } from "./overworld-cost";
 import { noActionsAvailable } from "./battle-flow";
 import { TileGrid } from "./grid";
@@ -109,28 +110,25 @@ describe("R4 increment 0(a) — the camp-verb board (batch-3 parity reference)",
   });
 });
 
-describe("R4 increment 0(b) — the agreement WITNESS (battle-flow vs availableSkills)", () => {
+describe("R4 increment 0(b) — the agreement WITNESS, now FLIPPED authoritative (increment 4, #123)", () => {
   const reg = () => new EntityRegistry(new EventBus());
 
-  it("unlockedSkills('battle') and availableSkills('combat') disagree for a noncombat unit", () => {
-    // A Cook holds no battle-phase job skill, so the set battle-flow reads is empty…
+  it("the divergence source: the universal Defend lives only in the availableSkills projection", () => {
+    // A Cook holds no combat *job* skill, so the raw job set has none of them…
     const cook = jobUnit("Wynn", "cook");
-    expect(unlockedSkills(cook, "battle")).toEqual([]);
-    // …but the surfacing projection folds in the universal Defend, so it is non-empty.
+    expect(unitSkills(cook).filter((s) => s.effect.kind === "damage")).toEqual([]);
+    // …but the authoritative surfacing projection folds in the universal Defend, so it is non-empty.
+    // (This is exactly what the retired unlockedSkills('battle') read missed, plus the `requires`
+    // capability gate — no shipping skill declares `requires`, so the universals are the witness.)
     expect(availableSkills(cook, "combat").map((s) => s.id)).toEqual(["defend"]);
-    // The divergence source #1: the universals (Defend/Dig In) live only in availableSkills.
-    // Source #2 (not concretely constructible from a shipping unit): availableSkills also
-    // applies the `requires` capability gate, but no shipping skill declares `requires`, so
-    // the universals are the one witness a real unit exhibits today.
   });
 
-  it("PRE-FLIP behavior: the D55 backstop auto-passes a boxed-in unit that could actually Defend", () => {
-    // A 1×1 grid pins the Cook; no foes, no entities, no guild. noActionsAvailable reads
-    // unlockedSkills('battle') (empty for the Cook), so it declares "no available action" —
-    // even though availableSkills('combat') offers Defend. This is the latent bug the flip
-    // (increment 4) fixes; the witness pins today's answer so the flip is a visible delta.
+  it("POST-FLIP behavior: the D55 backstop no longer auto-passes a unit that could Defend", () => {
+    // A 1×1 grid pins the Cook; no foes, no entities, no guild. battle-flow now reads
+    // availableSkills('combat') (which offers the universal Defend), so the backstop correctly
+    // reports the unit HAS an action — the flip fixed the latent bug the increment-0 witness pinned.
     const g = new TileGrid(1, 1);
     const cook = jobUnit("Wynn", "cook", { pos: { col: 0, row: 0 }, moveRange: 0 });
-    expect(noActionsAvailable({ actor: cook, units: [cook], grid: g, entities: reg(), hasGuild: false })).toBe(true);
+    expect(noActionsAvailable({ actor: cook, units: [cook], grid: g, entities: reg(), hasGuild: false })).toBe(false);
   });
 });

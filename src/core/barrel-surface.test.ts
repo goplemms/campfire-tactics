@@ -74,6 +74,10 @@
  *     declared material price (→ 617). The `cost.ts` grammar (`Cost`/`CostPrice`/
  *     `ClockDomain`/`MaterialCost`) and the `SkillCost`/`OverworldCost` views are all
  *     type-only (not runtime surface).
+ *   - increment 4 (#123 — SkillDef.phase retires): −1 — `unlockedSkills` deleted (its callers
+ *     migrated to `availableSkills`, the one authoritative surfacing projection); `unitSkills`
+ *     keeps its name (signature dropped the `phase` param). The `Phase` type is deleted too
+ *     (type-only, not runtime surface) (→ 616).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -691,7 +695,6 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "unitPresence",
   "unitSkills",
   "unlockGear",
-  "unlockedSkills",
   "useOverworldSkill",
   "validateExpedition",
   "validateOverworldCost",

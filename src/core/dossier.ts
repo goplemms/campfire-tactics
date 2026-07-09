@@ -21,6 +21,7 @@ import { getEquipment, type EquipmentDef } from "./equipment";
 import { getJob, type JobDef } from "./jobs";
 import { PASSIVE_INFO } from "./combat";
 import type { SkillDef } from "./skills";
+import { skillContexts } from "./skills";
 import { fatigueTier, spendFatigue, type FatigueTier } from "./fatigue";
 import { overworldCostOf } from "./overworld-cost";
 import { moraleTier, type MoraleTier } from "./camp";
@@ -198,12 +199,14 @@ export interface AbilityRow {
   fatigueProjection?: string;
 }
 
-/** A compact "when · how" tag for an active ability (D65 ability surfacing). */
+/** A compact "when · how" tag for an active ability (D65 ability surfacing) — read off the
+ * skill's surface context now that the `phase` axis is retired (#123). */
 function abilityTag(s: SkillDef): string {
-  if (s.phase === "battle") return `Battle · ${s.spend === "act" ? "Act" : "Move"}`;
-  if (s.phase === "deployment") return "Deploy";
-  if (s.phase === "meta") return "Camp";
-  return s.phase;
+  const ctx = skillContexts(s);
+  if (ctx.includes("combat")) return `Battle · ${s.spend === "act" ? "Act" : "Move"}`;
+  if (ctx.includes("pre-combat")) return "Deploy";
+  if (ctx.includes("overworld")) return "Camp";
+  return ctx[0] ?? "";
 }
 
 /**

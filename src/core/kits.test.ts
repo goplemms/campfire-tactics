@@ -13,6 +13,7 @@ import { createUnit, type Side, type Unit } from "./units";
 import { Battle } from "./turn";
 import { effectiveSpeed } from "./clock";
 import { hasStatus, applyStatus, immobilized, GUARDED, SLOWED } from "./status";
+import { skillContexts } from "./skills";
 import { computeFlankBonus, PASSIVE } from "./combat";
 import { makeTrap } from "./entities";
 import { createInventory, addItem, countOf } from "./inventory";
@@ -43,10 +44,10 @@ describe("the four kits load as data (D40)", () => {
     for (const job of [HEAVY_KNIGHT_JOB, HUNTER_JOB, SCOUT_JOB, MEDIC_JOB]) {
       expect(getJob(job.id)).toBe(job);
       expect(job.passives && Object.keys(job.passives).length).toBeGreaterThan(0);
-      // Count the **combat-kit** actives (battle + deployment): the Scout's two span both.
-      // Its overworld Survey (phase "meta", D72) is a non-combat verb layered on top, not
-      // part of the D40 2-active shape — so it doesn't count against the kit guideline.
-      const actives = job.skills.filter((s) => s.phase !== "meta");
+      // Count the **combat-kit** actives (combat + pre-combat): the Scout's two span both.
+      // Its overworld Survey (D72) is a non-combat verb layered on top, not part of the D40
+      // 2-active shape — so it doesn't count against the kit guideline (#123: context, not phase).
+      const actives = job.skills.filter((s) => !skillContexts(s).includes("overworld"));
       expect(actives.length).toBe(2);
       expect(actives.find((s) => s.unlockLevel === 2)).toBeTruthy();
       expect(job.baseline).toBeTruthy();

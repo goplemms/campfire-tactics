@@ -106,7 +106,7 @@ describe("Battle undo — turn-scoped take-back on the action log (Phase 2)", ()
     const medic = at("medic", "player", 0, 0);
     const ally = at("ally", "player", 1, 0, { hp: 4, maxHp: 20 });
     const battle = new Battle(grid, [medic, ally]);
-    const mend: SkillDef = { id: "mend", name: "Mend", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } };
+    const mend: SkillDef = { id: "mend", name: "Mend", description: "", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } };
     battle.beginUndo();
 
     battle.useSkill(medic, mend, ally, { commitTurn: false }); // ok
@@ -122,7 +122,7 @@ describe("Battle undo — turn-scoped take-back on the action log (Phase 2)", ()
     const battle = new Battle(grid, [medic, ally]);
     medic.ct = 100;
     const inv = createInventory(8, { salve: 1 });
-    const heal: SkillDef = { id: "heal", name: "Heal", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200, material: { count: 1 } }, effect: { kind: "med-heal" } };
+    const heal: SkillDef = { id: "heal", name: "Heal", description: "", target: "ally", range: 1, spend: "act", cost: { cooldown: 200, material: { count: 1 } }, effect: { kind: "med-heal" } };
     battle.beginUndo();
 
     const before = snap(battle);
@@ -160,7 +160,7 @@ describe("undo composes with the in-flight clock and the RNG seam", () => {
     const medic = at("m", "player", 0, 0);
     const ally = at("a", "player", 1, 0, { hp: 1, maxHp: 40 });
     const battle = new Battle(grid, [medic, ally]);
-    const charged: SkillDef = { id: "mend-slow", name: "Slow Mend", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { charge: 50 }, effect: { kind: "heal", amount: 16 } };
+    const charged: SkillDef = { id: "mend-slow", name: "Slow Mend", description: "", target: "ally", range: 1, spend: "act", cost: { charge: 50 }, effect: { kind: "heal", amount: 16 } };
     battle.beginUndo();
 
     battle.useSkill(medic, charged, ally, { commitTurn: false });

@@ -20,7 +20,7 @@ import { chebyshev } from "./iso";
 import { isAdjacent, moveBudget } from "./combat";
 import { reachableTiles } from "./ai";
 import { forecastAttack } from "./planning";
-import { unlockedSkills } from "./leveling";
+import { availableSkills } from "./leveling";
 import { hiddenTraps, canDisarm } from "./traps";
 
 /** What advancing the clock does with the next actor (the `onAdvance` branch). */
@@ -66,6 +66,13 @@ export interface ActionScanContext {
  * — no move, no strike, no rescue of a bound ally, no skill, no Search, no disarm,
  * no bribe — so the scene auto-passes it and the clock can never stall. The decision
  * behind `BattleScene.noActionsAvailable`.
+ *
+ * The skill check reads {@link availableSkills}(`"combat"`), the **authoritative** surfacing
+ * projection (#123): it folds in the universal capabilities + the capability gate that the old
+ * `unlockedSkills("battle")` read missed. In practice a unit can always **Defend** (a universal),
+ * so this line no longer fires the backstop on its own — which is correct: no combat turn is
+ * genuinely action-less. The other scans (move / strike / rescue / Search / disarm / bribe) are
+ * what still distinguish a live turn from a dead one for the render's hint.
  */
 export function noActionsAvailable(ctx: ActionScanContext): boolean {
   const { actor, units, grid, entities, hasGuild } = ctx;
@@ -73,7 +80,7 @@ export function noActionsAvailable(ctx: ActionScanContext): boolean {
   if (reachableTiles(actor, units, grid, budget).some((r) => r.tile.col !== actor.pos.col || r.tile.row !== actor.pos.row)) return false;
   if (units.some((u) => u.alive && !u.captured && u.side !== actor.side && forecastAttack(actor, u, units, grid))) return false;
   if (units.some((u) => u.captured && u.side === actor.side && u !== actor && isAdjacent(actor.pos, u.pos))) return false;
-  if (unlockedSkills(actor, "battle").length > 0) return false;
+  if (availableSkills(actor, "combat").length > 0) return false;
   if (hiddenTraps(entities).length > 0) return false; // Search is available
   if (adjacentRevealedTrap(actor, entities) && canDisarm(actor)) return false;
   if (hasGuild && units.some((u) => u.side === "enemy" && u.alive)) return false; // Bribe

@@ -3,7 +3,8 @@ import { JOBS, getJob, unitSkills, SKILLS, getSkill, type JobId } from "./jobs";
 import { SOLDIER_JOB } from "./jobs-data/combat";
 import { UNIVERSAL_SKILLS, DEFEND } from "./jobs-data/support";
 import { createUnit, type Side, type Unit } from "./units";
-import type { SkillDef } from "./skills";
+import { skillContexts, type SkillDef } from "./skills";
+import { availableSkills } from "./leveling";
 
 function soldier(id: string): Unit {
   return createUnit({
@@ -28,23 +29,22 @@ describe("jobs (data-driven loading)", () => {
     expect(getJob("nope")).toBeUndefined();
   });
 
-  it("defines the Soldier's formation kit purely as data hooking the Battle phase", () => {
+  it("defines the Soldier's formation kit purely as data surfacing in combat (#123: usableContext, not phase)", () => {
     const ids = SOLDIER_JOB.skills.map((s) => s.id);
     expect(ids).toContain("debilitating-strike");
     expect(ids).toContain("turtle-formation");
     for (const skill of SOLDIER_JOB.skills) {
-      expect(skill.phase).toBe("battle");
+      expect(skillContexts(skill)).toContain("combat");
       expect(["damage", "guard-allies"]).toContain(skill.effect.kind);
     }
     // Brother-in-arms is its passive identity anchor (D66).
     expect(SOLDIER_JOB.passives?.brotherInArms).toBe(1);
   });
 
-  it("reads a unit's skills back via its jobId, filtered by phase", () => {
+  it("reads a unit's skills back via its jobId (the full authored set — surface filtering is availableSkills)", () => {
     const u = soldier("Rook");
     expect(unitSkills(u).length).toBe(2);
-    expect(unitSkills(u, "battle").length).toBe(2);
-    expect(unitSkills(u, "meta").length).toBe(0);
+    expect(unitSkills(u).map((s) => s.id)).toEqual(["debilitating-strike", "turtle-formation"]);
 
     const jobless = createUnit({
       id: "x",
@@ -60,15 +60,15 @@ describe("jobs (data-driven loading)", () => {
     expect(unitSkills(jobless)).toEqual([]);
   });
 
-  it("ships the three signature jobs, each hooking a different phase (D3)", () => {
-    expect(getJob("survivalist")!.skills[0].phase).toBe("deployment");
-    expect(getJob("cook")!.skills[0].phase).toBe("meta");
+  it("ships the three signature jobs, each surfacing on a different context (#123: usableContext replaces phase)", () => {
+    expect(skillContexts(getJob("survivalist")!.skills[0])).toEqual(["pre-combat"]); // Set Trap
+    expect(skillContexts(getJob("cook")!.skills[0])).toEqual(["overworld"]); // Cook Stew
     // The Merchant's gold-minting Trade camp skill was retired (D61); its kit is now the
-    // overworld trade verbs (Find Trade / Savvy Barter, D70) — both hook the meta phase.
+    // overworld trade verbs (Find Trade / Savvy Barter, D70) — both surface on the overworld.
     expect(getJob("merchant")!.skills.map((s) => s.id)).toEqual(["find-trade", "savvy-barter"]);
-    expect(getJob("merchant")!.skills.every((s) => s.phase === "meta")).toBe(true);
+    expect(getJob("merchant")!.skills.every((s) => skillContexts(s).includes("overworld"))).toBe(true);
 
-    // unitSkills filters a job's skills by the phase each one hooks.
+    // availableSkills surfaces a unit's skills by context (the one projection).
     const withJob = (id: string, job: JobId): Unit =>
       createUnit({
         id,
@@ -82,9 +82,9 @@ describe("jobs (data-driven loading)", () => {
         moveRange: 3,
         sightRadius: 4,
       });
-    expect(unitSkills(withJob("Pip", "cook"), "meta").map((s) => s.id)).toEqual(["cook-stew", "feast"]);
-    expect(unitSkills(withJob("Vale", "survivalist"), "deployment").map((s) => s.id)).toEqual(["set-trap"]);
-    expect(unitSkills(withJob("Rook", "soldier"), "battle").length).toBe(2);
+    expect(availableSkills(withJob("Pip", "cook"), "overworld").map((s) => s.id)).toEqual(["cook-stew", "feast"]);
+    expect(availableSkills(withJob("Vale", "survivalist"), "pre-combat").map((s) => s.id)).toContain("set-trap");
+    expect(availableSkills(withJob("Rook", "soldier"), "combat").map((s) => s.id)).toContain("debilitating-strike");
   });
 });
 

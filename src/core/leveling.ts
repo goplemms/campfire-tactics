@@ -18,7 +18,7 @@
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
 import { getJob, unitSkills, unitHasCapability, type JobLookup } from "./jobs";
 import { UNIVERSAL_SKILLS } from "./jobs-data/support";
-import type { SkillDef, Phase } from "./skills";
+import type { SkillDef } from "./skills";
 import { skillContexts, type UsableContext } from "./skills";
 import type { EventBus } from "./event-bus";
 
@@ -210,20 +210,11 @@ export function abilityScaleBonus(unit: Unit): number {
 }
 
 /**
- * The skills a unit can actually use right now (D39): its job skills filtered to
- * those whose `unlockLevel` its primary job level has reached. The 2nd active
- * gates here — locked at job-L1, unlocked at L2 (the rest-beat payoff).
- */
-export function unlockedSkills(unit: Unit, phase?: Phase): SkillDef[] {
-  const lvl = jobLevelOf(unit, primaryJobOf(unit));
-  return unitSkills(unit, phase).filter((s) => (s.unlockLevel ?? 1) <= lvl);
-}
-
-/**
  * The skills a unit **newly unlocked** by crossing from `fromLevel` to `toLevel` (D74) — its
  * job skills whose `unlockLevel` lands in `(fromLevel, toLevel]`, across **all** surfaces
- * (battle / deployment / overworld). Drives the resolution "you leveled → unlocked X" readout
- * (vs {@link unlockedSkills}, the cumulative set). Empty when the level-up crossed no threshold.
+ * (combat / deployment / overworld). Drives the resolution "you leveled → unlocked X" readout
+ * (vs {@link availableSkills}, the per-context cumulative set). Empty when the level-up crossed
+ * no threshold.
  */
 export function skillsUnlockedBetween(unit: Unit, fromLevel: number, toLevel: number): SkillDef[] {
   return unitSkills(unit).filter((s) => {
@@ -233,15 +224,16 @@ export function skillsUnlockedBetween(unit: Unit, fromLevel: number, toLevel: nu
 }
 
 /**
- * The skills a unit can surface/use in a given **context** (D67) — the level-gated job
- * skills (like {@link unlockedSkills}) **plus the universal capabilities** ({@link
- * "./jobs".DEFEND} / {@link "./jobs".DIG_IN}), all filtered to those whose {@link
- * skillContexts} includes `context`. One projection for every surface: combat calls
- * `availableSkills(u, "combat")`; deployment `"pre-combat"`; the overworld `"overworld"`.
+ * The skills a unit can surface/use in a given **context** (D67/#123) — the level-gated job
+ * skills **plus the universal capabilities** ({@link "./jobs-data/support".DEFEND} / {@link
+ * "./jobs-data/support".DIG_IN}), all filtered to those whose {@link skillContexts} includes
+ * `context`. The **one authoritative surfacing projection** for every surface (the retired
+ * `phase` axis / `unlockedSkills` are gone, #123): combat calls `availableSkills(u, "combat")`;
+ * deployment `"pre-combat"`; the overworld `"overworld"`.
  */
 export function availableSkills(unit: Unit, context: UsableContext, lookup: JobLookup = getJob): SkillDef[] {
   const lvl = jobLevelOf(unit, primaryJobOf(unit));
-  const jobSkills = unitSkills(unit, undefined, lookup).filter(
+  const jobSkills = unitSkills(unit, lookup).filter(
     (s) =>
       (s.unlockLevel ?? 1) <= lvl &&
       // The Capability gate (D72): a `requires` skill surfaces only for a unit holding it

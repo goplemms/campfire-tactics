@@ -85,6 +85,10 @@
  *     `applyPatronizeEffect`, `applyTriageEffect`, `applyTriageFallbackEffect`), the Triage target
  *     selector `mostWoundedFielded`, and the `buyPriceFor` Savvy-Barter price helper. The new
  *     `OverworldActionEffect` variants (sell/borrow/…/buy/triage) are type-only (not runtime).
+ *   - increment 6 (Merchant sell + Banker verbs → SkillDefs): net 0 — +4 SkillDefs
+ *     (`MERCHANT_SELL`, `BANKER_INTEREST`, `BANKER_BORROW`, `BANKER_GUARD` on their jobs),
+ *     −4 dissolved cost consts (`MERCHANT_SELL_COST`, `BANKER_INTEREST_COST`,
+ *     `BANKER_BORROW_COST`, `BANKER_PROTECT_COST` — their rows folded into the SkillDefs).
  *     (type-only, not runtime surface) (→ 616).
  */
 import { describe, it, expect } from "vitest";
@@ -97,10 +101,10 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "AI",
   "ASSASSIN_JOB",
   "BANDIT_TEMPLATES",
-  "BANKER_BORROW_COST",
-  "BANKER_INTEREST_COST",
+  "BANKER_BORROW",
+  "BANKER_GUARD",
+  "BANKER_INTEREST",
   "BANKER_JOB",
-  "BANKER_PROTECT_COST",
   "BLOCKADE",
   "BROTHER",
   "BYPASS",
@@ -182,7 +186,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MERCHANT_BUY_COST",
   "MERCHANT_JOB",
   "MERCHANT_KIT",
-  "MERCHANT_SELL_COST",
+  "MERCHANT_SELL",
   "MIRA_MERCHANT",
   "MORALE_TIERS",
   "MORTALITY",

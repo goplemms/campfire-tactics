@@ -63,9 +63,10 @@ describe("jobs (data-driven loading)", () => {
   it("ships the three signature jobs, each surfacing on a different context (#123: usableContext replaces phase)", () => {
     expect(skillContexts(getJob("survivalist")!.skills[0])).toEqual(["pre-combat"]); // Set Trap
     expect(skillContexts(getJob("cook")!.skills[0])).toEqual(["overworld"]); // Cook Stew
-    // The Merchant's gold-minting Trade camp skill was retired (D61); its kit is now the
-    // overworld trade verbs (Find Trade / Savvy Barter, D70) — both surface on the overworld.
-    expect(getJob("merchant")!.skills.map((s) => s.id)).toEqual(["find-trade", "savvy-barter"]);
+    // The Merchant's gold-minting Trade camp skill was retired (D61); its kit is the overworld
+    // trade verbs (Find Trade / Savvy Barter, D70) plus the migrated Sell verb (R4/A, #112) —
+    // all surface on the overworld.
+    expect(getJob("merchant")!.skills.map((s) => s.id)).toEqual(["find-trade", "savvy-barter", "merchant-sell"]);
     expect(getJob("merchant")!.skills.every((s) => skillContexts(s).includes("overworld"))).toBe(true);
 
     // availableSkills surfaces a unit's skills by context (the one projection).

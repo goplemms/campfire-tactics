@@ -198,12 +198,31 @@ export const SAVVY_BARTER: SkillDef = {
  * Raw Buy/Sell stay **universal** (market-gated, not job-gated); the Merchant still levels from
  * brokering a sale ({@link "./economy-actions".merchantSell}). Still **noncombat** (camp verbs only).
  */
+/**
+ * **Merchant Sell** (D61/#112, R4/A) — the Merchant's honest gold faucet: convert one carried
+ * good into purse gold at the node's effective market tier (goods → gold). Cost is **selfLimited**
+ * (the carried stock is the limiter — you can't sell what you don't carry), the escape hatch the
+ * two-axis menu declares for exactly this shape. The verb {@link "./economy-actions".merchantSell}
+ * (still callable market-gated, brokered by a live Merchant for use-XP) reads its cost + effect
+ * from this record; the `sell` effect body is {@link "./economy-actions".applySellEffect}.
+ */
+export const MERCHANT_SELL: SkillDef = {
+  id: "merchant-sell",
+  name: "Merchant Sell",
+  description: "Sell a carried good for purse gold at the node's market — the Merchant's honest goods → gold faucet.",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { selfLimited: true },
+  effect: { kind: "sell" },
+};
+
 export const MERCHANT_JOB: JobDef = {
   id: "merchant",
   name: "Merchant",
   description: "Works the economy: appraises markets, drums up trade anywhere, and drives a hard bargain.",
   presence: { marketTierBonus: 1 }, // Appraisal — lifts an existing market one tier
-  skills: [FIND_TRADE, SAVVY_BARTER],
+  skills: [FIND_TRADE, SAVVY_BARTER, MERCHANT_SELL],
 };
 
 /**
@@ -236,11 +255,65 @@ export const NOBLE_JOB: JobDef = {
  * {@link "./economy-actions"}; like the Merchant and Noble it carries no battle skill —
  * fielding a Banker is what {@link "./economy-actions".hasBanker} keys off to unlock them.
  */
+/** Banker theft-protection cost (D61) — a literal mirroring `ECONOMY.banker.protectionCost` (=25). */
+const BANKER_PROTECT_GOLD = 25;
+
+/**
+ * **Invest the Purse** (D30/#112, R4/A) — the Banker's TIME-SHIFT verb: engage flat purse interest
+ * that accrues each node-step. A toggle, **once per node** (re-armed at Break Camp). Effect body:
+ * {@link "./economy-actions".applyEngageInterestEffect}; the verb {@link "./economy-actions".bankerEngageInterest}
+ * (party-gated on a fielded Banker) reads its cost here.
+ */
+export const BANKER_INTEREST: SkillDef = {
+  id: "banker-interest",
+  name: "Invest the Purse",
+  description: "Engage flat purse interest that accrues as the caravan advances — purse only, never the treasury (once per node).",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: 1 },
+  effect: { kind: "engageInterest" },
+};
+
+/**
+ * **Borrow** (D30/#112, R4/A) — the Banker's BUY-ON-DEBT verb: advance gold to the purse now,
+ * auto-repaid from incoming run gold. **One loan arrangement per node**. Effect body:
+ * {@link "./economy-actions".applyBorrowEffect}; the verb {@link "./economy-actions".bankerBorrow}
+ * (party-gated on a fielded Banker) reads its cost here + supplies the amount.
+ */
+export const BANKER_BORROW: SkillDef = {
+  id: "banker-borrow",
+  name: "Borrow",
+  description: "Overspend now against future loot — advanced to the purse, auto-repaid from incoming run gold (once per node).",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { usesPerNode: 1 },
+  effect: { kind: "borrow" },
+};
+
+/**
+ * **Guard the Purse** (D30/#112, R4/A) — the Banker's SECURE verb: buy theft protection, a [0,1)
+ * skim reduction that blunts both the mid-battle thief and the thief event node. Gold-priced.
+ * Effect body: {@link "./economy-actions".applyGuardPurseEffect}; the verb
+ * {@link "./economy-actions".bankerProtect} (party-gated on a fielded Banker) reads its cost here.
+ */
+export const BANKER_GUARD: SkillDef = {
+  id: "banker-protect",
+  name: "Guard the Purse",
+  description: "Buy theft protection — blunt a thief's skim, battle thief and event node alike (purse only).",
+  target: "self",
+  range: 0,
+  spend: "act",
+  overworldCost: { gold: BANKER_PROTECT_GOLD },
+  effect: { kind: "guardPurse" },
+};
+
 export const BANKER_JOB: JobDef = {
   id: "banker",
   name: "Banker",
   description: "Works the purse economy: interest on the carried purse, loans against future loot, and theft protection.",
-  skills: [],
+  skills: [BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD],
 };
 
 /**

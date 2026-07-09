@@ -36,9 +36,10 @@ const cookSkill: SkillDef = {
 describe("camp economy + morale (Merchant / Chef, Meta phase)", () => {
   it("the Merchant ships its overworld trade verbs, none gold-minting (D61 retired Trade / D70 kit)", () => {
     // D61: the Merchant is ACCESS + SELL (market verbs), not a +gold camp skill. D70 gives it
-    // its overworld kit (Find Trade / Savvy Barter) — neither mints gold (openMarket / primeDeal).
+    // its overworld kit (Find Trade / Savvy Barter — openMarket / primeDeal) and R4/A migrates
+    // the honest Sell verb (goods → gold) onto the job too. None mints gold from nothing.
     const effects = getJob("merchant")!.skills.map((s) => s.effect.kind);
-    expect(effects).toEqual(["openMarket", "primeDeal"]);
+    expect(effects).toEqual(["openMarket", "primeDeal", "sell"]);
   });
 
   it("Chef's Cook Stew raises morale and banks a heal", () => {

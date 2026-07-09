@@ -95,6 +95,7 @@ describe("R4 increment 0(a) — the camp-verb board (batch-3 parity reference)",
         "Wynn · Feast: offered",
         "Pia · Find Trade: offered",
         "Pia · Savvy Barter: offered",
+        "Pia · Merchant Sell: offered",
         "Vale · Forage: offered",
       ]
     `);

@@ -31,7 +31,7 @@ import {
   DEAL_PRIMED_FLAG,
   type OverworldCost,
 } from "./overworld-actions";
-import { PATRONIZE_COST, BANKER_PROTECT_COST } from "./economy-actions";
+import { PATRONIZE_COST, BANKER_PROTECT_COST, MERCHANT_SELL_COST } from "./economy-actions";
 import { getJob, JOBS, SURVEY, FORAGE, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
 import { skillContexts } from "./skills";
@@ -356,6 +356,7 @@ describe("standalone overworld-verb costs satisfy the D61 invariant (guard)", ()
     Triage: TRIAGE_COST,                   // priced: fatigue
     Patronize: PATRONIZE_COST,             // paced: usesPerNode × priced: gold
     "Banker Protect": BANKER_PROTECT_COST, // priced: gold
+    "Merchant Sell": MERCHANT_SELL_COST,   // selfLimited: bounded by the carried stock (#112)
   };
   for (const [label, cost] of Object.entries(STANDALONE)) {
     it(`${label} is paced or priced`, () => {
@@ -364,10 +365,10 @@ describe("standalone overworld-verb costs satisfy the D61 invariant (guard)", ()
   }
 
   // The other standalone economy verbs satisfy the invariant by construction, not a static
-  // cost object: Merchant Buy is always gold-priced (refused at a `none` market); Merchant
-  // Sell / Banker Borrow are selfLimited (only what you carry / can repay); Bribe is
-  // Influence-priced (spent off-gate via spendInfluence). Give any of them a declared
-  // OverworldCost and it joins STANDALONE above.
+  // cost object: Merchant Buy is always gold-priced (refused at a `none` market); Banker
+  // Borrow is selfLimited (only what you can repay); Bribe is Influence-priced (spent
+  // off-gate via spendInfluence). Give any of them a declared OverworldCost and it joins
+  // STANDALONE above.
 });
 
 describe("computed (provider) costs (D72)", () => {

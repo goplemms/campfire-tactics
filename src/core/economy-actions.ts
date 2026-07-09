@@ -152,6 +152,16 @@ export interface MerchantSellResult extends ActionOutcome {
 }
 
 /**
+ * Merchant Sell's cost (D61/#112): **selfLimited** — the verb is bounded by a finite
+ * consumable (you can only sell goods you carry), the escape hatch the two-axis menu
+ * declares for exactly this shape. What was an informal justification in a comment is
+ * now data the load-time invariant validates, routed through the same check/commit
+ * gate as every other verb (no numbers change; the gate never refuses a selfLimited
+ * cost — the carried stock is the limiter).
+ */
+export const MERCHANT_SELL_COST: OverworldCost = { selfLimited: true };
+
+/**
  * **Merchant SELL** (D61): convert one unit of a carried good into **purse gold** at
  * the **current node's effective market tier** ({@link "./overworld".effectiveMarketTier}
  * — the node's own market raised by a Merchant in the party). This is the Merchant's
@@ -175,8 +185,13 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
   // Savvy Barter (D70): a primed deal fetches +25% on the next sale (consumed on success).
   const primed = isPrimed(run.overworld, DEAL_PRIMED_FLAG);
   const price = primed ? Math.floor(base * ECONOMY.merchant.savvySellFactor) : base;
+  // The shared gate (D61/#112): selfLimited — never refuses (the carried stock is the
+  // limiter), but the verb rides the same check/commit rails as every gated verb.
+  const check = checkOverworldCost(run, "merchant-sell", MERCHANT_SELL_COST, `sell ${material.name}`);
+  if (!check.ok) return { applied: false, reason: check.reason, price };
   removeItem(run.inventory, materialId, 1);
   const { credited } = gainRunGold(run, price, "sale", `Sold ${material.name}`);
+  check.commit(); // a no-op spend (selfLimited declares no knobs) — the shared rail, kept honest
   if (primed) consumeFlag(run.overworld, DEAL_PRIMED_FLAG);
   // The Merchant grows from its signature work (D32/D53) — replacing the use-XP the
   // retired Trade camp skill used to grant. Only a live Merchant brokers (and levels).

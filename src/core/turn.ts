@@ -491,6 +491,16 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "sway": {
+        // The Noble's BRIBE (D30/D62): a swayed enemy turns coat — flip its side to the
+        // player and announce it (the token re-tints on the bus, like unitRescued). Logged
+        // (mirrors rescue) so the defection replays and undo restores the side (snapshotted).
+        const swayed = this.unit(action.target);
+        swayed.side = "player";
+        this.bus.emit("unitSwayed", { unit: swayed, by: action.unit ? this.unit(action.unit) : undefined });
+        this._log.push(action);
+        return { ok: true };
+      }
       case "useHeal": {
         // The Medic's herb heal (D40) — logged (R1 #111): the herb spend comes from
         // the battle's wired stash (the same shared inventory production wires via
@@ -590,6 +600,18 @@ export class Battle {
    */
   rescue(captive: Unit, by?: Unit): void {
     this.apply({ kind: "rescue", target: captive.id, unit: by?.id });
+  }
+
+  /**
+   * **Sway** an enemy to the player's side (D30/D62 bribe) — the on-board half of the
+   * Noble's bribe, after {@link "./economy-actions".bribeEnemy} has spent the Influence and
+   * won the roll. Lowers to the logged `sway` action through {@link apply}: the side flip
+   * rides the state graph (replay reconstructs it, undo crosses it) and announces `unitSwayed`
+   * so the render re-tints the token — replacing the old render-side `side` type-cast. `by` is
+   * the briber, named on the bus event.
+   */
+  bribe(enemy: Unit, by?: Unit): void {
+    this.apply({ kind: "sway", target: enemy.id, unit: by?.id });
   }
 
   /** True if `caster` may use `skill` right now (not cooling down, D37). */

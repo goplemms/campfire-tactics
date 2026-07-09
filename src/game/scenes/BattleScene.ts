@@ -65,10 +65,8 @@ import {
   thiefEscapes,
   previewNode,
   scoutedTier,
-  // D10 — the intel deploy edge: scouted ground deploys safer
-  intelFloor,
-  effectiveIntelTier,
-  intelDeployBonus,
+  // D8/D10 — the deploy edge: morale folded with the intel bundle (core-owned math)
+  deployModifiers,
   // D84 — standing-order behaviors: the stance telegraph + transition narration
   STANDING_ORDERS,
   orderOf,
@@ -87,10 +85,10 @@ import {
   bribeChance,
   influenceTier,
   recruitToRoster,
+  medicalHerbs,
   type RunState,
   type RunLoop,
   type IntelReport,
-  type IntelTier,
   type DeployFront,
   type DeploySource,
   type Rng,
@@ -98,7 +96,6 @@ import {
   aimInRange,
   type GridCoord,
   type Unit,
-  type Side,
   type SkillDef,
   type TheftAttempt,
   type AbilityForecast,
@@ -562,6 +559,12 @@ export class BattleScene extends Phaser.Scene {
       this.flashHeal(unit);
       this.view.logRescue(unit, by);
     });
+    // The Noble's bribe (D30/D62): a swayed enemy turns coat — re-tint its token to the ally
+    // palette here (a listener, like unitRescued), rather than the call site flipping `side`.
+    this.battle.bus.on("unitSwayed", ({ unit }) => {
+      const view = this.view.views.get(unit.id);
+      view?.body.setFillStyle(COLOR.ally).setStrokeStyle(2, COLOR.allyEdge);
+    });
     // Deploy → battle transition (D67): when the alarm trips (or the player commits), the
     // bus announces combat, and the render tears down the staging visuals — lift the D12
     // veil so the foe resolves into view, and retire the deploy zone/reach overlays + the
@@ -800,23 +803,13 @@ export class BattleScene extends Phaser.Scene {
     return moraleModifiers(moraleTier(this.run.camp.morale));
   }
 
-  /** The node's effective intel tier (passive floor + scouting), depth-capped (D86), for the deploy edge (D10). */
-  private intelTier(): IntelTier {
-    return effectiveIntelTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, this.run.mapNodeId), currentEncounter(this.run));
-  }
-
   /**
-   * Deploy modifiers = morale (D8) folded with the intel edge (D10): scouted
-   * ground widens the safe depth and lowers exposure, on top of the morale bundle.
+   * Deploy modifiers = morale (D8) folded with the intel edge (D10). The additive/
+   * multiplicative fold now lives in core {@link deployModifiers} (tested); this is the
+   * scene's pass-through, reading the run's current encounter.
    */
   private deployMods() {
-    const m = this.moraleMods();
-    const intel = intelDeployBonus(this.intelTier());
-    return {
-      ...m,
-      safeDepthBonus: m.safeDepthBonus + intel.safeDepthBonus,
-      exposureMultiplier: m.exposureMultiplier * intel.exposureMultiplier,
-    };
+    return deployModifiers(this.run, currentEncounter(this.run));
   }
 
   private selectDeployActor(unit: Unit | null): void {
@@ -949,7 +942,7 @@ export class BattleScene extends Phaser.Scene {
    * Medic pre-heals a wounded unit exactly as the combat Medic heals mid-fight.
    */
   private openHerbMenu(actor: Unit, skill: SkillDef, ctx: BoardCtx): void {
-    const herbs = ["salve", "stimulant", "antidote"].filter((h) => countOf(this.run.inventory, h) > 0);
+    const herbs = medicalHerbs().filter((h) => countOf(this.run.inventory, h) > 0);
     if (herbs.length === 0) return void this.setHint("No herbs carried — provision some at camp.");
     this.layoutActionMenu(
       herbs.map((h) => ({
@@ -1793,12 +1786,11 @@ export class BattleScene extends Phaser.Scene {
     this.bribeArmed = false;
     // Couldn't afford it (nothing spent) — leave the turn intact so the player can act.
     if (!res.applied && !res.failed) return this.setHint(`Can't bribe: ${res.reason}`);
-    // On success, flip the enemy to the player's side for the rest of the fight. A failed
-    // sway (res.failed) still spent the Influence and the Act — the moment passed.
+    // On success, flip the enemy to the player's side for the rest of the fight — the logged
+    // core `sway` verb (undo/replay see it), which emits `unitSwayed` so the token re-tints on
+    // the bus (below). A failed sway (res.failed) still spent the Influence and the Act.
     if (res.applied) {
-      (foe as unknown as { side: Side }).side = "player";
-      const view = this.view.views.get(foe.id);
-      view?.body.setFillStyle(COLOR.ally).setStrokeStyle(2, COLOR.allyEdge);
+      this.battle.bribe(foe, actor);
       if (res.outcome?.permanent) this.pendingRecruits.push(foe);
     }
     this.busy = true;

@@ -42,6 +42,7 @@ const UNIT_SNAPSHOT_KEYS = [
   "hp",
   "ct",
   "alive",
+  "side",
   "captured",
   "escaped",
   "standingOrder",
@@ -64,7 +65,6 @@ type UnitSnapshotKey = (typeof UNIT_SNAPSHOT_KEYS)[number];
 const UNIT_UNSNAPSHOTTED_KEYS = [
   // Immutable identity — set at creation, never reassigned.
   "id",
-  "side",
   "name",
   "jobId",
   // Job configuration — battle actions never change what jobs a unit holds.
@@ -151,6 +151,7 @@ const UNIT_MUTATIONS: Record<UnitSnapshotKey, { a: (u: Unit) => void; b: (u: Uni
   hp: { a: (u) => (u.hp = 7), b: (u) => (u.hp = 3) },
   ct: { a: (u) => (u.ct = 42), b: (u) => (u.ct = 88) },
   alive: { a: (u) => (u.alive = false), b: (u) => (u.alive = true) },
+  side: { a: (u) => (u.side = "player"), b: (u) => (u.side = "enemy") },
   captured: { a: (u) => (u.captured = true), b: (u) => (u.captured = false) },
   escaped: { a: (u) => (u.escaped = true), b: (u) => (u.escaped = false) },
   standingOrder: { a: (u) => (u.standingOrder = "hold"), b: (u) => (u.standingOrder = "defend") },

@@ -22,8 +22,9 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { fieldedUnits, primaryJobOf, type Unit } from "./units";
+import { fieldedUnits, fieldsJob, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
+import type { MapNode } from "./overworld";
 import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
 import type { MaterialCost } from "./cost";
 import { unitHasCapability, getJob, type JobLookup } from "./jobs";
@@ -54,6 +55,20 @@ import {
   applyTriageFallbackEffect,
   mostWoundedFielded,
 } from "./economy-actions";
+
+/**
+ * Whether a **market is ready to open at `node`** by the Merchant's presence (D30/D70):
+ * a rest node, with a fielded Merchant, and the market ability off cooldown. The
+ * OverworldScene inlined this as a raw `node.kind === "rest" && party.some(u => u.alive &&
+ * u.jobId === "merchant") && cooldownRemaining(...) === 0` in a draw call — a string→mechanic
+ * job check that bypassed {@link fieldsJob} (so it missed the captured-Merchant case and read
+ * the active job, not `primaryJobOf`). Owning it here uses the shared predicate. Beside
+ * {@link "./overworld".effectiveMarketTier} in spirit, but in the action layer because it reads
+ * the run (overworld.ts stays free of the run→overworld cycle).
+ */
+export function marketReadyAt(run: RunState, node: MapNode): boolean {
+  return node.kind === "rest" && fieldsJob(run.party, "merchant") && cooldownRemaining(run.overworld, "market") === 0;
+}
 
 // --- The shared action-result types -----------------------------------------
 

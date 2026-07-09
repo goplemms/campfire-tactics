@@ -12,7 +12,7 @@
  */
 
 import { refreshAuras } from "./combat";
-import type { Unit } from "./units";
+import type { Unit, Side } from "./units";
 import type { Inventory } from "./inventory";
 import type { CTClock, ClockSnapshot } from "./clock";
 import type { EntityRegistry, EntitySnapshot } from "./entities";
@@ -31,6 +31,8 @@ export interface UnitSnapshot {
   hp: number;
   ct: number;
   alive: boolean;
+  /** The unit's faction — a logged `sway` (D30/D62 bribe) flips it, so undo must restore it. */
+  side: Side;
   captured: boolean;
   escaped?: boolean;
   /** The unit's standing order (D84) — a logged strike can transition it (the skittish guard). */
@@ -67,6 +69,7 @@ export function snapshotUnit(u: Unit): UnitSnapshot {
     hp: u.hp,
     ct: u.ct,
     alive: u.alive,
+    side: u.side,
     captured: u.captured,
     escaped: u.escaped,
     standingOrder: u.standingOrder,
@@ -85,6 +88,7 @@ export function restoreUnit(u: Unit, s: UnitSnapshot): void {
   u.hp = s.hp;
   u.ct = s.ct;
   u.alive = s.alive;
+  u.side = s.side;
   u.captured = s.captured;
   u.escaped = s.escaped;
   u.standingOrder = s.standingOrder;

@@ -39,6 +39,8 @@ import {
   merchantPrice,
   sellPrice,
   effectiveMarketTier,
+  marketReadyAt,
+  marketStock,
   getMaterial,
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
   primaryJobOf,
@@ -109,7 +111,6 @@ export interface RunHandoff {
 }
 
 /** Buyable Market stock (D61) — trap kits first (the headline), then the Medic's herbs. */
-const MARKET_STOCK = ["trap-kit", "salve", "stimulant", "antidote"];
 
 /** The hover-preview projection (a list of {@link PreviewChange}) lives in core; the scene
  *  only lays it out. `ReadoutStat`/`ActionPreview` alias the core names for local use. */
@@ -1699,8 +1700,7 @@ export class OverworldScene extends Phaser.Scene {
    */
   private drawLedgerSheet(b: Phaser.Geom.Rectangle, opts: { rerender: () => void; interactive?: boolean }): Ledger {
     const node = this.campNode ?? currentNode(this.run);
-    const merchantReady = node.kind === "rest" && this.run.party.some((u) => u.alive && u.jobId === "merchant") && cooldownRemaining(this.run.overworld, "market") === 0;
-    const ledger: Ledger = buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: merchantReady });
+    const ledger: Ledger = buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: marketReadyAt(this.run, node) });
     const pad = 22;
     const leftX = b.left + pad;
     const rightX = b.right - pad;
@@ -1837,7 +1837,7 @@ export class OverworldScene extends Phaser.Scene {
     let y = top + 64;
     this.overlay.push(this.add.text(leftX, y, `Buy  ·  ${price}g each`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
     y += 28;
-    for (const id of MARKET_STOCK) {
+    for (const id of marketStock()) {
       const mat = getMaterial(id);
       if (!mat) continue;
       const owned = countOf(this.run.inventory, id);

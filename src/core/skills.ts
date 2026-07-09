@@ -20,6 +20,7 @@ import { abilityScaleBonus } from "./leveling";
 import { assertNever } from "./num";
 import type { CapabilityId } from "./jobs";
 import type { OverworldCost } from "./overworld-cost";
+import type { Cost } from "./cost";
 
 /** The ordered phases of the game pipeline (D3). */
 export type Phase = "meta" | "deployment" | "battle" | "resolution";
@@ -244,20 +245,13 @@ export type OverworldActionEffect = OpenMarketEffect | PrimeDealEffect | Provisi
 export type SkillEffect = BattleEffect | FieldEffect | CampEffect | DeploymentEffect | OverworldActionEffect;
 
 /**
- * Optional ability cost beyond the Act (D37). The combat economy is **time**:
- * `charge` commits now and resolves later on the clock; `cooldown` is a sparing
- * re-arm on instant utility. A skill with neither is the instant floor.
+ * Optional ability cost beyond the Act (D37) — the **CT-clock view** of the one {@link Cost}
+ * grammar (#113). The combat economy is **time**: `charge` commits now and resolves later on
+ * the clock; `cooldown` is a sparing re-arm on instant utility. A skill with neither is the
+ * instant floor. (Field docs live on {@link Cost}; a material price joins this view in
+ * increment 3.)
  */
-export interface SkillCost {
-  /**
-   * Charge gauge speed (D5/D37): the effect resolves later, when a
-   * {@link "./clock".ScheduledEffect} filling by this each tick reaches 100.
-   * Lower = a longer charge ("~N turns"); ≥100 lands next tick.
-   */
-  charge?: number;
-  /** CT cooldown armed after use (instant-utility spam-limit, ~150–250 CT). */
-  cooldown?: number;
-}
+export type SkillCost = Pick<Cost, "charge" | "cooldown">;
 
 /** A skill definition — pure data authored in a job file. */
 export interface SkillDef {

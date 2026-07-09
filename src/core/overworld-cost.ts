@@ -19,6 +19,7 @@
 import type { Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
+import type { Cost } from "./cost";
 import { skillContexts } from "./skills";
 import { JOBS } from "./jobs";
 import { nonNegInt, bumpCounter } from "./num";
@@ -52,12 +53,14 @@ export function knobDeclared(knob: CostKnob | undefined): boolean {
 
 /**
  * The **two-axis cost menu** every camp/overworld action declares (D61 — the D29
- * limiter menu made explicit). Two independent axes, each optional:
+ * limiter menu made explicit) — the **node-steps view** of the one {@link Cost} grammar
+ * (#113): it drops the CT-only `charge` and keeps node-steps pacing (`cooldown`/`usesPerNode`)
+ * × the shared price map (`fatigue`/`gold`/`influence`/`rp`/`material`, all documented on
+ * {@link Cost}). Two independent axes, each optional:
  *
  * - **Pacing (axis A) — *how often*:** `cooldown` (node-steps, the D35 spine) and/or
  *   `usesPerNode` (a per-node cap; the costless-signature limiter, e.g. Cook Stew).
- * - **Price (axis B) — *per cast*:** `fatigue` (the loose over-extension guardrail),
- *   `gold` (the run purse), `influence` (the Noble's walled-off currency, D62), `rp`.
+ * - **Price (axis B) — *per cast*:** `fatigue`, `gold`, `influence` (D62), `rp`.
  *
  * The **bug-killing invariant** (enforced once, in {@link validateOverworldCost}):
  * **no action may be both unpaced *and* unpriced** — "free and unlimited" becomes
@@ -65,40 +68,7 @@ export function knobDeclared(knob: CostKnob | undefined): boolean {
  * (the Merchant's *sell* — you can only sell what you carry) declares `selfLimited`
  * to satisfy the invariant honestly.
  */
-export interface OverworldCost {
-  // --- Pacing (axis A): how often the action may fire ---
-  /** Node-steps before this action can fire again — the D35 spine. */
-  cooldown?: number;
-  /** Per-node use cap (reset each node-step) — the limiter for costless signature actions. */
-  usesPerNode?: number;
-  // --- Price (axis B): what each individual cast costs ---
-  /** Fatigue spent on the acting character — the loose guardrail (D35). */
-  fatigue?: number;
-  /** Run gold spent from the purse (`camp.gold`, D34/D30) — static, or a {@link CostKnob} provider. */
-  gold?: CostKnob;
-  /**
-   * Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider.
-   * **Reserved (no verb prices in it yet):** the gate fully checks + spends it ({@link
-   * checkOverworldCost}'s commit closure), kept for the planned **Influence revamp** —
-   * the intended home for routing Bribe's spend through the shared gate (it currently spends
-   * Influence directly via `spendInfluence`, off-gate). Declared-but-unused **on purpose**, not dead.
-   */
-  influence?: CostKnob;
-  /**
-   * Rest Points spent. Static or a provider. **Reserved (no verb prices in it yet):** the gate
-   * honors it for a future RP-priced overworld/clearing verb (RP is live — banked nightly, spent on
-   * healing; D73's Weary heal-cost is recovery-side, not this knob). Declared-but-unused on purpose.
-   */
-  rp?: CostKnob;
-  // --- Escape hatch: an intrinsic limiter outside the two-knob menu ---
-  /**
-   * True when the action is bounded by a finite **consumable** rather than a
-   * pacing/price knob — e.g. the Merchant's *sell* (you can only sell goods you
-   * carry). Lets such an action satisfy the no-free-and-unlimited invariant
-   * without a synthetic cooldown. Use only when the limiter is genuinely real.
-   */
-  selfLimited?: boolean;
-}
+export type OverworldCost = Omit<Cost, "charge" | "clock">;
 
 /** True if `cost` declares any **pacing** knob (cooldown or per-node cap). */
 export function hasPacing(cost: OverworldCost): boolean {

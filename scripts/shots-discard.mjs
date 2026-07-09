@@ -44,10 +44,10 @@ const OVERFLOW = `
 
 const STEPS = [
   { name: "01-enter-camp", minMs: 700, eval: wrap(`s.enterCamp(s.loop.reachable()[0]);`) },
-  { name: "02-overflow-menu", minMs: 450, eval: wrap(`${OVERFLOW}; s.refreshReadoutLine(); s.setOutToMap();`) },
+  { name: "02-overflow-menu", minMs: 450, eval: wrap(`${OVERFLOW}; s.setOutToMap();`) },
   // Drop one trap-kit: its footprint shrinks 2→1, the stash drops to 1 over, the
   // menu re-renders (the same path the row's click handler drives).
-  { name: "03-after-one-drop", minMs: 450, eval: wrap(`s.run.inventory.counts["trap-kit"] = 1; s.refreshReadoutLine(); s.setOutToMap();`) },
+  { name: "03-after-one-drop", minMs: 450, eval: wrap(`s.run.inventory.counts["trap-kit"] = 1; s.setOutToMap();`) },
 ];
 
 async function ensureChrome() {

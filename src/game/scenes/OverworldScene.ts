@@ -6,22 +6,16 @@ import { PartyDossierView } from "../party-dossier-view";
 type TentTab = "party" | "stores" | "ledger" | "map";
 import {
   RunLoop,
-  previewNode,
   countOf,
-  canAdd,
   removeItem,
   slotsFor,
   slotsUsed,
   slotsOver,
   campReadoutLine,
-  campReadout,
-  type CampReadout,
   // M8 — the overworld action economy (D35) · D72 unified onto SkillDef
   overworldCostOf,
   resolveKnob,
   cooldownRemaining,
-  scoutedTier,
-  MAX_TIER,
   fatigueTier,
   projectDossier,
   attentionCount,
@@ -36,28 +30,21 @@ import {
   merchantBuy,
   // D61 — market access + the Merchant buy/sell faucet
   merchantSell,
-  merchantPrice,
-  sellPrice,
   effectiveMarketTier,
   marketReadyAt,
-  marketStock,
   getMaterial,
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
   primaryJobOf,
   influenceTier,
   // M11 — the data-driven event-node registry (D4/D23)
-  eventForNode,
   storyForNode,
   // M13 — the overworld economic layer (D45/D46/D47/D48)
   currentNode,
-  visibleNodes,
   projectForecast,
   buildLedger,
   nightEndGate,
   computeUpkeep,
   toggleUpkeepSkip,
-  type PreviewChange,
-  type PreviewStat,
   skillEffectPreview,
   triageActionPreview,
   inPlaceRestPreview,
@@ -77,13 +64,10 @@ import {
   type EventDef,
   type RunState,
   type MapNode,
-  type NodePreview,
   type RestResult,
   type InPlaceRestResult,
   type EventOutcome,
   type EventChoice,
-  type EventKind,
-  type NodeKind,
   type Unit,
   type SkillDef,
   type Guild,
@@ -93,11 +77,15 @@ import {
   type JournalConcern,
   type EquipSlot,
 } from "../../core";
-import { fitText, clearLayer, isScreenshotMode } from "../ui";
+import { clearLayer } from "../ui";
 import { Button, probeWidth } from "../button";
 import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
+import { drawLedgerSheet } from "../ledger-sheet";
+import { MapView, NODE_KIND_VISUALS } from "../map-view";
+import { CampPanel, type CampAction, type ActionCost, type ActionPreview } from "../camp-panel";
+import { drawMarket } from "../market-view";
+import { renderChoicePanel } from "../event-panels";
 import { HintPanel } from "../hint-panel";
-import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
 
 /** Data handed between the overworld and a combat node's BattleScene. */
 export interface RunHandoff {
@@ -112,67 +100,6 @@ export interface RunHandoff {
 }
 
 /** Buyable Market stock (D61) — trap kits first (the headline), then the Medic's herbs. */
-
-/** The hover-preview projection (a list of {@link PreviewChange}) lives in core; the scene
- *  only lays it out. `ReadoutStat`/`ActionPreview` alias the core names for local use. */
-type ReadoutStat = PreviewStat;
-type ActionPreview = PreviewChange[];
-
-/** One action row inside a collapsible camp category drawer (Recovery/Intel/Economy). */
-interface CampAction {
-  /** The button label — already tagged with the acting member (` · Name`). */
-  label: string;
-  /** False greys the row (e.g. a market verb with no market, an unaffordable cost). */
-  enabled: boolean;
-  onClick: () => void;
-  /** The hover hint explaining what it does (and why it's greyed, when it is). */
-  tip: string;
-  /** The projected effect shown on hover (arrows on the readout tiles + off-panel area). */
-  preview?: ActionPreview;
-  // --- Structured fields (the card-row prototype) — a verb split into readout-tile slots ---
-  /** The verb, on its own (e.g. "Cook Stew"). When set, the row renders as a cost-bearing card. */
-  name?: string;
-  /** Who performs it (e.g. "Pip"), shown as a muted second slot. */
-  actor?: string;
-  /** Structured cost, rendered as fixed-order icon+number **component chips** (D&D-style). */
-  costs?: ActionCost;
-}
-
-/**
- * A structured action cost (the standardized **component** model) — each present field renders as a
- * fixed-slot icon+number chip (gold / fatigue / material / cooldown), so costs read the same way and
- * line up across every action row. Absent fields show nothing; an all-absent cost reads "free".
- */
-interface ActionCost {
-  /** Purse gold spent. */
-  gold?: number;
-  /** Overworld effort accrued on the actor. */
-  fatigue?: number;
-  /** A consumed material (id → count), when an action spends stock. */
-  material?: { id: string; n: number };
-  /** Nights until it's ready again (a cooldown already ticking). */
-  cooldown?: number;
-}
-
-/** One caravan-state readout tile — a labelled, semantically-coloured figure with day-move data. */
-interface ReadoutTile {
-  stat: ReadoutStat;
-  label: string;
-  value: string;
-  ink: string;
-  cur: number;
-  base: number;
-  last: number;
-  betterHigher?: boolean;
-}
-
-/** The cost **components** in fixed render order — the standardized slots every action reads through. */
-const COST_COMPONENTS: readonly { key: keyof ActionCost; glyph: string; ink: string; name: string }[] = [
-  { key: "gold", glyph: "¤", ink: INK.gold, name: "gold" },
-  { key: "fatigue", glyph: "✦", ink: INK.ember, name: "fatigue" },
-  { key: "material", glyph: "◆", ink: INK.cyan, name: "material" },
-  { key: "cooldown", glyph: "◷", ink: INK.muted, name: "cooldown (nights)" },
-];
 
 /**
  * The **overworld** screen — the seeded, branching run map (D22) and, since M8,
@@ -231,9 +158,8 @@ export class OverworldScene extends Phaser.Scene {
   /** One-shot Expedition-demo intro flag (cleared after it shows once). */
   private demoIntro = false;
 
-  private graph?: Phaser.GameObjects.Graphics;
-  private nodePos = new Map<string, { x: number; y: number }>();
-  private nodeObjects: Phaser.GameObjects.GameObject[] = [];
+  /** The overworld map board + pinned intel card (D22/D24/D48/D80) — its own view module. */
+  private mapView!: MapView;
   private overlay: Phaser.GameObjects.GameObject[] = [];
   /** The current resting hint — a button's hover-hint restores to this on pointer-out
    *  (the `idle` sink, mirroring BattleScene.lastHint). */
@@ -262,30 +188,17 @@ export class OverworldScene extends Phaser.Scene {
   private marketQty: Record<string, number> = {};
 
   private titleText!: Phaser.GameObjects.Text;
-  private campText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
-
-  // The pinned **intel card** (D80 map pass) — a structured readout of the last node the player
-  // hovered/clicked, held (sticky) until they inspect another. Its objects live on their own layer
-  // so it redraws without touching the board; `inspectedNodeId` is what it's showing.
-  private intelCardObjects: Phaser.GameObjects.GameObject[] = [];
-  private inspectedNodeId?: string;
+  /** The shared camp-beat chrome (D58) — readout tiles + effect preview, drawers, action cards,
+   *  camp buttons, nav tabs. The prep + react beats are two thin configurations of it. */
+  private panel!: CampPanel;
 
   // The prep camp's "last night's rest" recap (D80): what the arrival rest healed / fatigue it
   // shed, captured by diffing the party across `loop.choose` in enterCamp. UI-only, per-arrival.
   private arrivalRecap: string[] = [];
 
-  // The right-side state readouts (D58): the day's opening figures (to colour each value
-  // by its net move *this day*, keyed by the node we're camped at), the previous render's
-  // figures (to pulse a tile the instant a value changes), and the live pulse tweens (torn
-  // down with the camp so a tween never ticks a destroyed tile).
-  private readoutBaseline?: CampReadout;
-  private readoutBaselineKey?: string;
-  private readoutLast?: CampReadout;
-  private readoutTweens: Phaser.Tweens.Tween[] = [];
-  // The hover-preview layer: where each readout tile sits (to arrow its gutter) + the
-  // off-panel area geometry, and the transient preview objects (cleared on hover-out).
-  private readoutGeom?: { x: number; cardW: number; tileCy: Partial<Record<ReadoutStat, number>>; areaX: number; areaW: number; areaTop: number };
+  // The hover-preview layer: the transient preview objects (cleared on hover-out). Kept as a scene
+  // layer (its readout geometry + pulse state live in the CampPanel); the panel pushes onto it.
   private previewObjects: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
@@ -314,10 +227,27 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
-    this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
     this.hintPanel = new HintPanel(this);
+    // The panel + map view are built once and persist across create() calls (a return from a
+    // BattleScene re-runs create on the same scene instance) — matching the old instance-field
+    // state, so the readout day-move baseline + the sticky intel node survive the battle round-trip.
+    // The hint sink delegates to the live hintPanel (which IS recreated each create).
+    this.panel ??= new CampPanel({
+      scene: this,
+      run: () => this.run,
+      campObjects: () => this.campObjects,
+      previewObjects: () => this.previewObjects,
+      drawers: () => this.campDrawers,
+      hint: { setText: (t) => this.hintPanel.setText(t) },
+    });
+    this.mapView ??= new MapView(this, {
+      getRun: () => this.run,
+      reachable: () => this.loop.reachable(),
+      onChoose: (node) => this.enterCamp(node),
+      setHint: (t) => this.setHint(t),
+      renderReadouts: (layer) => this.panel.renderMapReadouts(40, layer),
+    });
 
-    this.refreshReadoutLine();
 
     // Terminal screens take over the map.
     if (this.loop.isOver()) return this.runEnd();
@@ -386,356 +316,19 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- Map drawing ----------------------------------------------------------
 
+  /** Draw the overworld board via {@link MapView}: set the map title, then hand off to the view.
+   *  `interactive: false` is the read-only Route-map review (Tent Map page). */
   private drawMap(interactive = true): void {
-    clearLayer(this.nodeObjects);
-    this.graph?.destroy();
-    this.nodePos.clear();
-    // The map has no action column to sit beside, so the caravan's figures ride a horizontal
-    // **readout-tile row** across the top here — the same tile grammar the camp/survey beats
-    // stack on the right, so the two surfaces speak one visual language (was an inline HUD line).
-    this.campText.setVisible(false);
-    this.renderMapReadouts(40);
-
-    const map = this.run.map;
-    const reachableIds = new Set(this.loop.reachable().map((n) => n.id));
-    const onPath = new Set(this.run.path);
-    // Overworld fog (D48): only nodes within intel reach are drawn in full; the
-    // rest are silhouettes. Immediate choices are always visible (never stuck).
-    const visibleIds = new Set(visibleNodes(this.run).map((n) => n.id));
-
     this.titleText.setText(`Overworld — Night ${this.run.night + 1} · choose your next move`);
-
-    // Layout: layers left→right, nodes spread vertically within each layer.
-    const marginX = 80;
-    const usableW = this.scale.width - 2 * marginX;
-    const centerY = this.scale.height / 2 - 20;
-    const byLayer = new Map<number, MapNode[]>();
-    for (const id of map.order) {
-      const node = map.nodes[id];
-      byLayer.set(node.layer, [...(byLayer.get(node.layer) ?? []), node]);
-    }
-    for (const [layer, nodes] of byLayer) {
-      const x = map.layers > 1 ? marginX + (layer * usableW) / (map.layers - 1) : this.scale.width / 2;
-      const rowGap = 84;
-      nodes.forEach((node, i) => {
-        const y = centerY + (i - (nodes.length - 1) / 2) * rowGap;
-        this.nodePos.set(node.id, { x, y });
-      });
-    }
-
-    // Edges underneath the nodes — only between visible endpoints (fog, D48).
-    this.graph = this.add.graphics().setDepth(0);
-    for (const id of map.order) {
-      const from = this.nodePos.get(id)!;
-      for (const e of map.nodes[id].edges) {
-        if (!visibleIds.has(id) || !visibleIds.has(e)) continue; // hide fogged edges
-        const to = this.nodePos.get(e)!;
-        const live = this.run.mapNodeId === id; // edges out of the current node
-        this.graph.lineStyle(live ? 3 : 1.5, live ? COLOR.accent : COLOR.border, live ? 0.9 : 0.5);
-        this.graph.lineBetween(from.x, from.y, to.x, to.y);
-      }
-    }
-
-    // Nodes on top.
-    for (const id of map.order) {
-      const node = map.nodes[id];
-      const pos = this.nodePos.get(id)!;
-      const reachable = reachableIds.has(id);
-      const current = this.run.mapNodeId === id;
-      const visited = onPath.has(id) && !current;
-      if (!visibleIds.has(id)) this.drawFogged(pos);
-      else this.drawNode(node, pos, { reachable, current, visited }, interactive);
-    }
-
-    // A compact, always-on key in the corner — replaces the glyph dump that used to
-    // crowd the hint bar (D58); the hint now carries action guidance only.
-    this.drawMapLegend();
-    this.setHint("Click a node to preview it; click again to camp there. Deeper nodes are fogged — raise intel to see farther.");
-    // The pinned intel card, re-shown for the last-inspected node (sticky across map redraws).
-    this.renderIntelCardSticky();
-  }
-
-  /**
-   * A small, muted key pinned to the map's bottom-left (D58) — **generated from the
-   * {@link ICON} registry** (D59), so it can never drift from the board, and rendered
-   * in the UI font (the glyphs are verified safe there). Clears with the map.
-   */
-  private drawMapLegend(): void {
-    const key = legendLine(["combat", "rest", "goal", "thief", "shop", "recruiter", "story", "toll", "fogged"]);
-    const legend = this.add
-      .text(20, this.scale.height - 30, key, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption })
-      .setOrigin(0, 0.5)
-      .setDepth(3);
-    this.nodeObjects.push(legend);
-  }
-
-  /**
-   * Icon key + circle tint per event kind (M11) — a **total** map so a new event
-   * kind can't silently inherit the thief glyph: adding one to {@link EventKind}
-   * fails to compile until it has a visual here. (Colours stay render-side; the
-   * core record carries no presentation.)
-   */
-  private static readonly EVENT_VISUALS: Record<EventKind, { key: IconKey; color: number }> = {
-    thief: { key: "thief", color: COLOR.captive },
-    shop: { key: "shop", color: COLOR.gold },
-    recruiter: { key: "recruiter", color: COLOR.info },
-    story: { key: "story", color: COLOR.captive },
-    toll: { key: "toll", color: COLOR.gold },
-    patron: { key: "patron", color: COLOR.gold },
-    // Authored Hollow Mill event nodes (D52) — the pick-one camp + the Merchant town.
-    provision: { key: "shop", color: COLOR.gold },
-    town: { key: "recruiter", color: COLOR.gold },
-  };
-
-  /** Icon key + circle tint for an event node, keyed by which event it runs (M11). */
-  private eventVisual(node: MapNode): { key: IconKey; color: number } {
-    return OverworldScene.EVENT_VISUALS[eventForNode(this.run.seed, node, influenceTier(this.run.overworld.influence)).kind];
-  }
-
-  /** A fogged node (D48): a dim silhouette with no contents — out of intel reach. */
-  private drawFogged(pos: { x: number; y: number }): void {
-    const circle = this.add.circle(pos.x, pos.y, 13, COLOR.tileDark, 0.5).setDepth(1);
-    circle.setStrokeStyle(1, COLOR.border, 0.4);
-    // ◌ (not "?", which now means a story event) — disambiguated via the registry.
-    const label = placeIcon(this, pos.x, pos.y, "fogged", { color: INK.disabled }).setDepth(2);
-    this.nodeObjects.push(circle, label);
-  }
-
-  private drawNode(node: MapNode, pos: { x: number; y: number }, state: { reachable: boolean; current: boolean; visited: boolean }, interactive = true): void {
-    const isFinal = node.layer === this.run.map.layers - 1;
-    const event = node.kind === "event" ? this.eventVisual(node) : undefined;
-    const baseColor =
-      node.kind === "rest" ? COLOR.success : event ? event.color : isFinal ? COLOR.gold : COLOR.danger;
-    const radius = isFinal ? 20 : 15;
-
-    let alpha = 0.32;
-    if (state.current) alpha = 1;
-    else if (state.reachable) alpha = 1;
-    else if (state.visited) alpha = 0.6;
-
-    const circle = this.add.circle(pos.x, pos.y, radius, baseColor, alpha).setDepth(1);
-    if (state.current) circle.setStrokeStyle(3, COLOR.white, 1);
-    else if (state.reachable) circle.setStrokeStyle(3, COLOR.accent, 1);
-    else circle.setStrokeStyle(1, COLOR.tileDark, 0.8);
-    this.nodeObjects.push(circle);
-
-    // Kind glyph, from the registry (event nodes carry a per-event icon, M11). Routed
-    // through placeIcon so a future atlas swaps in without touching this call (D59).
-    const iconKey: IconKey = node.kind === "rest" ? "rest" : event ? event.key : isFinal ? "goal" : "combat";
-    const label = placeIcon(this, pos.x, pos.y, iconKey, { color: INK.onLight, size: isFinal ? FONT.heading : FONT.body }).setDepth(2);
-    this.nodeObjects.push(label);
-
-    if (state.visited) {
-      const tick = this.add.text(pos.x + radius - 2, pos.y - radius + 2, ICON.check.glyph, { color: INK.success, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5).setDepth(2);
-      this.nodeObjects.push(tick);
-    }
-
-    // Intel meter (D80): a segmented ring around a combat node — one arc per intel tier, filled as
-    // your knowledge of it deepens (party Intelligence floor + Survey scouting). A glance shows which
-    // nodes are still mysteries and which you've learned all they'll tell you (a full ring = "done").
-    if (node.kind === "combat" && !state.visited) {
-      // Depth-capped (D86): the ring shows the node's *own* depth in arcs, filled to the
-      // read — a shallow node reads as "less to learn" and fills sooner.
-      const p = previewNode(this.run, node.id, scoutedTier(this.run.overworld, node.id));
-      this.drawIntelMeter(pos, radius + 6, p.intel?.tier ?? 0, p.intelDepth ?? MAX_TIER);
-    }
-
-    if (state.reachable) {
-      // Hover always previews; the commit click is gated so the read-only Route-map
-      // review can show the same board without letting you re-choose a node (D58).
-      circle.setInteractive({ useHandCursor: interactive });
-      circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showPreview(node));
-      if (interactive) circle.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.enterCamp(node));
-    }
-  }
-
-  /**
-   * The **intel meter** (D80/D86) — a segmented ring around a node, **one arc per tier of
-   * the node's own intel depth**, filled (bright) up to the current read and dim beyond. A
-   * full ring means you've learned everything this node will tell; a shallow node draws
-   * fewer arcs, so it reads as "less to learn" and completes sooner. Cream fill reads as
-   * "knowledge marks", distinct from the warm state ring.
-   */
-  private drawIntelMeter(pos: { x: number; y: number }, r: number, tier: number, depth = MAX_TIER): void {
-    const g = this.add.graphics().setDepth(2);
-    const segs = Math.max(1, depth);
-    const gap = Phaser.Math.DegToRad(26);
-    const seg = (Math.PI * 2) / segs - gap;
-    let a = -Math.PI / 2 + gap / 2; // start near the top, clockwise
-    for (let i = 0; i < segs; i++) {
-      const filled = tier >= i + 1;
-      // A visible dim **track** under every segment, then the bright cream fill up to the tier — so
-      // an empty ring still reads as "3 to learn" and the fill stands out on it.
-      g.lineStyle(3, filled ? COLOR.net : COLOR.borderSoft, filled ? 1 : 0.7);
-      g.beginPath();
-      g.arc(pos.x, pos.y, r, a, a + seg, false);
-      g.strokePath();
-      a += seg + gap;
-    }
-    this.nodeObjects.push(g);
+    this.mapView.draw(interactive);
   }
 
   // --- Selection / preview (D24) --------------------------------------------
 
-  /** Inspect a node — pin its intel card (sticky until the player inspects another). */
-  private showPreview(node: MapNode): void {
-    this.inspectedNodeId = node.id;
-    this.renderIntelCard(node);
-  }
-
-  /** The pinned intel card, re-shown for the last-inspected node (or a prompt) on each map draw. */
-  private renderIntelCardSticky(): void {
-    const id = this.inspectedNodeId;
-    const node = id ? this.run.map.nodes[id] : undefined;
-    if (node && visibleNodes(this.run).some((n) => n.id === id)) this.renderIntelCard(node);
-    else this.renderIntelCardPrompt();
-  }
-
-  /** Geometry for the pinned card, above the legend. */
-  private intelCardGeom() {
-    const w = 680;
-    return { w, cx: this.scale.width / 2, top: this.scale.height - 150, left: this.scale.width / 2 - w / 2 + 18 };
-  }
-
-  private renderIntelCardPrompt(): void {
-    clearLayer(this.intelCardObjects);
-    const { w, cx, top } = this.intelCardGeom();
-    const h = 72;
-    this.intelCardObjects.push(
-      this.add.rectangle(cx, top + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9),
-      this.add.text(cx, top + h / 2, "Hover a node to inspect it — its kind, intel, and what waits on the road.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10),
-    );
-  }
-
-  /**
-   * The **node-kind presentation table** — one total record (word + header ink) per
-   * {@link NodeKind}, replacing the three partial per-kind tables that had drifted
-   * (nodeKindWord, nodeKindInk, and the local `word()` in reachableTargetLabels). Read by
-   * the intel card, the reachable-target labels, and the forecast summary. The last-layer
-   * "Final" override stays a caller concern (it's a layer fact, not a kind).
-   */
-  private static readonly NODE_KIND_VISUALS: Record<NodeKind, { word: string; ink: string }> = {
-    combat: { word: "Combat", ink: INK.danger },
-    rest: { word: "Clearing", ink: INK.success },
-    event: { word: "Event", ink: INK.gold },
-  };
-
-  /** A player-facing kind word + its ink for the intel card header. */
-  private nodeKindWord(node: MapNode): string {
-    if (node.layer === this.run.map.layers - 1) return "Final";
-    return OverworldScene.NODE_KIND_VISUALS[node.kind].word;
-  }
-  private nodeKindInk(node: MapNode): string {
-    if (node.layer === this.run.map.layers - 1) return INK.gold;
-    return OverworldScene.NODE_KIND_VISUALS[node.kind].ink;
-  }
-
-  /**
-   * The intel fields (label · value · ink) for a node's preview — gated by what the player knows.
-   * A field intel *would* reveal but hasn't yet reads **`???`** (dim), so the reveal loop is legible:
-   * scout the node (Survey) or raise Intelligence and the `???` fills in.
-   */
-  private intelFields(p: NodePreview): { label: string; value: string; ink: string }[] {
-    const HIDDEN = "???";
-    const hide = (v: string | undefined, ink: string) => (v ? { value: v, ink } : { value: HIDDEN, ink: INK.disabled });
-    if (p.kind === "rest") return [{ label: "Recovery", ...hide(p.restHint, INK.success) }];
-    if (p.kind === "event") return [{ label: "Event", ...hide(p.eventHint, INK.gold) }];
-    const enemies = p.intel?.types ? p.intel.types.join(", ") + (p.intel.count !== undefined ? ` ×${p.intel.count}` : "") : undefined;
-    const fields = [
-      { label: "Enemies", ...hide(enemies, INK.secondary) },
-      { label: "Hazards", ...this.hazardField(p) },
-      { label: "Reward", ...hide(p.rewardHint, INK.gold) },
-    ];
-    // An authored node has no procedural *shape* to ever reveal (D85), so the Type
-    // lane would read a permanent `???` — omit it rather than dangle phantom intel.
-    if (!p.authored) fields.unshift({ label: "Type", ...hide(p.encounterType, INK.secondary) });
-    return fields;
-  }
-
-  /**
-   * The trap-lane read (D83) as a card value: `???` below the presence tier (shown on
-   * EVERY combat node, so the row's presence never leaks what tier 0 hides), then
-   * presence → count → the careless marks.
-   */
-  private hazardField(p: NodePreview): { value: string; ink: string } {
-    const t = p.intel?.traps;
-    if (!t) return { value: "???", ink: INK.disabled };
-    if (!t.present) return { value: "none sensed", ink: INK.muted };
-    if (t.count === undefined) return { value: "the ground is worked", ink: INK.danger };
-    const marks = t.marked === undefined ? "" : t.marked > 0 ? ` · ${t.marked} marked` : " · none marked";
-    return { value: `${t.count} snare${t.count === 1 ? "" : "s"}${marks}`, ink: INK.danger };
-  }
-
-  /**
-   * The pinned **intel card** for a node (D80 map pass) — a structured readout in the card language:
-   * a kind + depth header (in the kind's colour), a row of label · value intel fields (gated by what
-   * you know — "unknown" reads dim), a "scouted" tag, and an "on the road" line when surveyed.
-   * Replaces the old run-on preview text; held sticky until the player inspects another node.
-   */
-  private renderIntelCard(node: MapNode): void {
-    clearLayer(this.intelCardObjects);
-    const p = previewNode(this.run, node.id, scoutedTier(this.run.overworld, node.id));
-    const { w, cx, top, left } = this.intelCardGeom();
-
-    // Header: kind + depth, in the kind's colour.
-    this.intelCardObjects.push(this.add.text(left, top + 18, `${this.nodeKindWord(node)}  ·  Layer ${node.layer}`, { color: this.nodeKindInk(node), fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(10));
-    // A "scouted" tag on the right when Survey sharpened this node (D80).
-    if (scoutedTier(this.run.overworld, node.id) > 0) {
-      this.intelCardObjects.push(this.add.text(cx + w / 2 - 18, top + 18, `${ICON.scouted.glyph} scouted`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(1, 0.5).setDepth(10));
-    }
-
-    // Intel fields, laid left→right: a muted label + a coloured value ("unknown" reads dim).
-    let fx = left;
-    const fieldY = top + 44;
-    for (const f of this.intelFields(p)) {
-      const lbl = this.add.text(fx, fieldY, f.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(10);
-      const val = this.add.text(fx + Math.ceil(lbl.width) + 6, fieldY, f.value, { color: f.ink, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(10);
-      this.intelCardObjects.push(lbl, val);
-      fx += Math.ceil(lbl.width) + 6 + Math.ceil(val.width) + 22;
-    }
-
-    // Variable-height rows stack below the fields; the surface is sized after.
-    let y = top + 58;
-
-    // The early event on the road in, revealed by Survey (D80, effect B).
-    if (p.earlyEventHint) {
-      const lbl = this.add.text(left, y + 3, "ON THE ROAD", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(10);
-      const txt = this.add.text(left + Math.ceil(lbl.width) + 6, y, p.earlyEventHint, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - Math.ceil(lbl.width) - 44 } }).setOrigin(0, 0).setDepth(10);
-      this.intelCardObjects.push(lbl, txt);
-      y += Math.max(txt.height, lbl.height) + 6;
-    }
-
-    // The info box (D83): the node's rumor lines — free-form intel mirroring the
-    // structured lanes. `rumors[i]` unlocks at tier i+1; locked lines read ???.
-    if (p.intel?.notesTotal) {
-      const lbl = this.add.text(left, y + 3, "RUMORS", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(10);
-      this.intelCardObjects.push(lbl);
-      const rx = left + Math.ceil(lbl.width) + 6;
-      for (let i = 0; i < p.intel.notesTotal; i++) {
-        const line = p.intel.notes?.[i];
-        const txt = this.add.text(rx, y, line ?? "???", { color: line ? INK.secondary : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label, wordWrap: { width: w - (rx - left) - 24 } }).setOrigin(0, 0).setDepth(10);
-        this.intelCardObjects.push(txt);
-        y += txt.height + 4;
-      }
-      y += 2;
-    }
-
-    // The terminal (D85): once the node is read to the deepest tier, a "nothing more to
-    // find" line tells the player to stop spending scout resources — the ??? placeholders
-    // are all resolved, and the intel meter ring reads full.
-    if (p.intelComplete) {
-      const done = this.add.text(left, y, "✓ No new intel to find", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0).setDepth(10);
-      this.intelCardObjects.push(done);
-      y += done.height + 4;
-    }
-
-    // The surface, sized to the stacked content (min height keeps short cards tidy).
-    const h = Math.max(72, y - top + 10);
-    // A tall card (road line + rumors) must never run off the canvas: lift the whole
-    // stack so the bottom edge stays on-screen — the card grows UPWARD past its dock.
-    const lift = Math.max(0, top + h - (this.scale.height - 12));
-    if (lift > 0) for (const o of this.intelCardObjects) (o as unknown as { y: number }).y -= lift;
-    this.intelCardObjects.push(this.add.rectangle(cx, top - lift + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9));
+  /** Inspect a node — pin its intel card (sticky until the player inspects another). The map
+   *  view owns the card; the only caller is now the screenshot harness (`s.showPreview(node)`). */
+  showPreview(node: MapNode): void {
+    this.mapView.inspect(node);
   }
 
   /**
@@ -744,7 +337,7 @@ export class OverworldScene extends Phaser.Scene {
    * label get a trailing "#2" so each row still points at a distinct node.
    */
   private reachableTargetLabels(nodes: { id: string; kind: MapNode["kind"]; layer: number }[]): Record<string, string> {
-    const word = (k: MapNode["kind"]) => OverworldScene.NODE_KIND_VISUALS[k].word;
+    const word = (k: MapNode["kind"]) => NODE_KIND_VISUALS[k].word;
     const base = (n: { kind: MapNode["kind"]; layer: number }) => `${word(n.kind)} (L${n.layer})`;
     const counts: Record<string, number> = {};
     for (const n of nodes) counts[base(n)] = (counts[base(n)] ?? 0) + 1;
@@ -758,10 +351,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private clearMap(): void {
-    clearLayer(this.nodeObjects);
-    this.graph?.destroy();
-    this.graph = undefined;
-    clearLayer(this.intelCardObjects); // the pinned intel card is map-screen UI (its node id persists)
+    this.mapView.clear();
   }
 
   // --- The unified overworld camp (D35) -------------------------------------
@@ -793,7 +383,16 @@ export class OverworldScene extends Phaser.Scene {
   private playEarlyEvent(node: MapNode, def: EventDef): void {
     const choices = def.choices?.(this.run, node) ?? [];
     if (choices.length > 0) {
-      this.renderChoicePanel(`On the road — ${def.name}`, def.teaser, choices, (c) => this.onEarlyChoice(node, def, c), 380);
+      renderChoicePanel(this, this.overlay, {
+        title: `On the road — ${def.name}`,
+        body: def.teaser,
+        gold: this.run.camp.gold,
+        choices,
+        onPick: (c) => this.onEarlyChoice(node, def, c),
+        btnW: 380,
+        make: this.makeTextButton.bind(this),
+        onHint: (t) => this.setHint(t),
+      });
       return;
     }
     const outcome = resolveEarlyEvent(this.run, node, def);
@@ -808,50 +407,9 @@ export class OverworldScene extends Phaser.Scene {
    * keep HP + EXP, forgo loot) and returns to the react camp; any other choice proceeds to the prep
    * camp and the normal fight.
    */
-  /**
-   * The shared event-choice modal (#133) — folds the early-event and event-node panels
-   * (once ~90% line-identical) into one. A titled info card with a `${body}\nPurse Ng`
-   * subhead and one button per choice; `onPick` fires for the taken (available) option.
-   * `extraRow` appends a trailing button (a shop's explicit Leave). Always backdropped.
-   */
-  private renderChoicePanel(
-    title: string,
-    body: string,
-    choices: EventChoice[],
-    onPick: (choice: EventChoice) => void,
-    btnW: number,
-    extraRow?: { label: string; onPick: () => void },
-  ): void {
-    const w = 560;
-    const rows = choices.length + (extraRow ? 1 : 0);
-    const h = 130 + rows * 40;
-    clearLayer(this.overlay);
-    const handle = showModal(this, this.overlay, {
-      title,
-      tone: "info",
-      w,
-      h,
-      cy: this.scale.height / 2 - 20,
-      body: { text: `${body}\nPurse ${this.run.camp.gold}g`, offset: 58, color: INK.muted },
-    });
-    const endOffset = renderChoiceStack(this.overlay, handle, {
-      choices: choices.map((c) => ({ label: c.label, enabled: c.available, detail: c.detail, onPick: () => onPick(c) })),
-      startOffset: 110,
-      step: 40,
-      btnW,
-      btnH: 30,
-      make: this.makeTextButton.bind(this),
-      onHint: (t) => this.setHint(t),
-    });
-    if (extraRow) {
-      this.overlay.push(this.makeTextButton(handle.cx, handle.top + endOffset, btnW, 30, extraRow.label, COLOR.successDeep, COLOR.success, extraRow.onPick));
-    }
-  }
-
   /** Apply a tailored early-event choice: a bypass short-circuits to the react camp; otherwise fight on. */
   private onEarlyChoice(node: MapNode, def: EventDef, choice: EventChoice): void {
     const out: EventOutcome = def.choose!(this.run, node, choice.id);
-    this.refreshReadoutLine();
     clearLayer(this.overlay);
     if (out.bypass) {
       const res = this.loop.bypassEncounter();
@@ -888,7 +446,6 @@ export class OverworldScene extends Phaser.Scene {
   private renderCamp(): void {
     const node = this.campNode!;
     this.clearCamp();
-    this.refreshReadoutLine();
 
     const isCombat = node.kind === "combat";
     const kindLabel = isCombat
@@ -911,9 +468,6 @@ export class OverworldScene extends Phaser.Scene {
     const readoutCardW = 200;
     const readoutX = cx + panelW / 2 - 30 - readoutCardW;
 
-    // The live figures move off the static top line into a right-side state panel
-    // (below) — hide the header line so the caravan's state reads in one place.
-    this.campText.setVisible(false);
 
     // The "last night's rest" recap band (ember) — what the arrival rest restored (D80).
     const recapBottom = this.renderPrepRecap(colX, top, panelW);
@@ -931,7 +485,7 @@ export class OverworldScene extends Phaser.Scene {
     // down by half the height difference (5px) so the first tile's top sits level with the
     // Recovery button's top.
     const actionsBottom = this.renderCampActions(colX, bodyTop, rowH);
-    this.renderReadouts(readoutX, bodyTop + 5, readoutCardW);
+    this.panel.renderReadouts(readoutX, bodyTop + 5, readoutCardW);
 
     // The captain's running to-do sits below the actions, kept clear of the readouts.
     this.renderCaptainsJournal(colX, actionsBottom + 12, readoutX - 16 - colX);
@@ -1007,26 +561,10 @@ export class OverworldScene extends Phaser.Scene {
     let bx = x;
     for (const e of entries) {
       const bw = this.measureButtonWidth(e.label);
-      this.navButton(bx, y, bw, h, e.label, e.id === active, e.onClick, e.tip, layer);
+      this.panel.navButton(bx, y, bw, h, e.label, e.id === active, e.onClick, e.tip, layer);
       bx += bw + gap;
     }
     return y + h / 2;
-  }
-
-  /** One areas-nav button — a left-anchored tab with an active (gold) highlight, a hover
-   *  hint, drawn onto the given `layer` so the nav can live on the camp or the page. */
-  private navButton(x: number, y: number, w: number, h: number, text: string, active: boolean, onClick: () => void, description: string, layer: Phaser.GameObjects.GameObject[]): void {
-    // Deliberately NOT a Button (#134): a nav tab draws its rect at depth 25 and its label
-    // at depth 26 — straddling overlapping ledger-transition content (depth 25) that bleeds
-    // through under the tab but behind the label. A Button is a single-depth Container, so it
-    // can't put the rect below and the label above the same sibling; kept hand-rolled to hold
-    // that exact layering (the survey nav persists under the night-end ledger sheet).
-    const bg = this.add.rectangle(x, y, w, h, active ? COLOR.btnFill : COLOR.surfaceAlt).setStrokeStyle(1, active ? COLOR.gold : COLOR.borderSoft).setOrigin(0, 0.5).setDepth(25).setInteractive({ useHandCursor: true });
-    const label = this.add.text(x + 10, y, text, { color: active ? INK.gold : INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(26);
-    fitText(label, w - 16);
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hintPanel.setText(description));
-    layer.push(bg, label);
   }
 
   /** Compact toolbar variant of the tent label — "Tent" (+ a ⚠ attention badge). */
@@ -1048,7 +586,7 @@ export class OverworldScene extends Phaser.Scene {
    */
   private renderCampActions(colX: number, top: number, rowH: number): number {
     let y = top;
-    y = this.renderDrawer("recovery", "Recovery", colX, y, rowH, this.campRecoveryActions(), () => this.renderCamp());
+    y = this.panel.renderDrawer("recovery", "Recovery", colX, y, rowH, this.campRecoveryActions(), () => this.renderCamp());
     y = this.renderEconomyDrawer(colX, y, rowH);
     return y + 8;
   }
@@ -1205,7 +743,7 @@ export class OverworldScene extends Phaser.Scene {
       .filter((v) => ECONOMY_DRAWER_ORDER.includes(v.effectKind) && !seen.has(v.effectKind) && seen.add(v.effectKind))
       .sort((a, b) => ECONOMY_DRAWER_ORDER.indexOf(a.effectKind) - ECONOMY_DRAWER_ORDER.indexOf(b.effectKind));
     if (views.length === 0) return y;
-    y = this.drawerHeader(colX, y, 360, "economy", "Economy", views.length, () => this.renderCamp());
+    y = this.panel.drawerHeader(colX, y, 360, "economy", "Economy", views.length, () => this.renderCamp());
     if (!this.campDrawers.economy) return y;
     const childX = colX + 14;
     const childW = 346;
@@ -1216,7 +754,7 @@ export class OverworldScene extends Phaser.Scene {
     for (const view of views) {
       const row = this.actionRow(view);
       if (!row) continue;
-      this.renderActionCard(childX, y, childW, 26, row);
+      this.panel.renderActionCard(childX, y, childW, 26, row);
       y += rowH;
     }
     // The Banker's/Noble's purse-state, surfaced in context (D58). The Influence line shows whenever a
@@ -1233,205 +771,6 @@ export class OverworldScene extends Phaser.Scene {
       y += rowH;
     }
     return y;
-  }
-
-  /**
-   * A collapsible **category drawer** header: a ▾/▸ chevron, the category name, and a
-   * count of the actions inside. Returns the `y` past the header; the caller renders the
-   * child rows only when the drawer is open. `rerender` redraws the owning beat (camp or
-   * survey) when the drawer is toggled.
-   */
-  private drawerHeader(x: number, y: number, w: number, id: string, label: string, count: number, rerender: () => void): number {
-    const open = this.campDrawers[id] ?? true;
-    const glyph = open ? ICON.collapse.glyph : ICON.expand.glyph;
-    this.campButton(x, y, w, 24, `${glyph}  ${label}  (${count})`, true, () => { this.campDrawers[id] = !open; rerender(); }, `${label}: ${count} action${count === 1 ? "" : "s"} here — click to ${open ? "collapse" : "expand"}.`);
-    return y + 30;
-  }
-
-  /**
-   * Render a collapsible category drawer of simple action rows (the shared path for
-   * Recovery and Intel). Draws **nothing** when the category is empty — an action the
-   * party can't field is no drawer at all. Returns the `y` past it.
-   */
-  private renderDrawer(id: string, label: string, colX: number, y: number, rowH: number, actions: CampAction[], rerender: () => void): number {
-    if (actions.length === 0) return y;
-    y = this.drawerHeader(colX, y, 360, id, label, actions.length, rerender);
-    if (this.campDrawers[id] ?? true) {
-      for (const a of actions) {
-        // The card-row prototype: a structured action (with a `name`) renders as a cost-bearing
-        // card; the rest stay simple buttons until the new grammar is proven and rolled out.
-        if (a.name) this.renderActionCard(colX + 14, y, 346, 26, a);
-        else this.campButton(colX + 14, y, 346, 24, a.label, a.enabled, a.onClick, a.tip, a.preview);
-        y += rowH;
-      }
-    }
-    return y;
-  }
-
-  /**
-   * The caravan's live **state readouts** (D58) — Purse / Morale / Storage / Kits / RP /
-   * Upkeep as a vertical stack of value tiles, drawn to the right of the action column so
-   * the figures read as live gauges of the caravan's state rather than a static header
-   * line. Each tile pairs a muted label with a semantically-coloured, prominent value
-   * (purse gold, morale by tier, storage ember when full, upkeep as a warm drain). Pure
-   * figures come from {@link "../../core".campReadout}. Returns the `y` past the stack.
-   */
-  /**
-   * Build the caravan-state readout tiles (shared by the camp stack and the map row). Anchors the
-   * "this day" comparison to the node we're camped at — a value's colour tracks its **net move since
-   * we made camp here** — re-baselining (and suppressing the change-pulse) on a fresh node/scene.
-   */
-  private buildReadoutTiles(): { tiles: ReadoutTile[]; fresh: boolean } {
-    const r = campReadout(this.run);
-    const nodeKey = this.run.mapNodeId;
-    const fresh = this.readoutBaselineKey !== nodeKey;
-    if (fresh) {
-      this.readoutBaseline = r;
-      this.readoutBaselineKey = nodeKey;
-      this.readoutLast = r;
-    }
-    const base = this.readoutBaseline!;
-    const last = this.readoutLast!;
-    const moraleInk = r.moraleTier === "Low" ? INK.ember : r.moraleTier === "Neutral" ? INK.secondary : INK.success;
-    // `betterHigher` gives each value a *sense* — a rising purse reads good (green), a rising Upkeep
-    // bad (red). Storage carries no valence (loot vs. headroom), so it keeps its semantic ink.
-    const tiles: ReadoutTile[] = [
-      { stat: "purse", label: "Purse", value: `${r.purse}g`, ink: INK.gold, cur: r.purse, base: base.purse, last: last.purse, betterHigher: true },
-      { stat: "morale", label: "Morale", value: `${r.moraleTier} (${r.morale >= 0 ? "+" : ""}${r.morale})`, ink: moraleInk, cur: r.morale, base: base.morale, last: last.morale, betterHigher: true },
-      { stat: "storage", label: "Storage", value: `${r.storageUsed}/${r.storageCap}`, ink: r.storageUsed >= r.storageCap ? INK.ember : INK.secondary, cur: r.storageUsed, base: base.storageUsed, last: last.storageUsed },
-      { stat: "kits", label: "Trap Kits", value: `${r.kits}`, ink: r.kits > 0 ? INK.secondary : INK.disabled, cur: r.kits, base: base.kits, last: last.kits, betterHigher: true },
-      { stat: "rp", label: "Rest Pts", value: `${r.rp}`, ink: INK.secondary, cur: r.rp, base: base.rp, last: last.rp, betterHigher: true },
-      { stat: "upkeep", label: "Upkeep", value: `${r.upkeep}g/night`, ink: INK.ember, cur: r.upkeep, base: base.upkeep, last: last.upkeep, betterHigher: false },
-    ];
-    this.readoutLast = r;
-    return { tiles, fresh };
-  }
-
-  /** A tile's **day-move colour**: green if it moved the good way since we made camp, red if bad. */
-  private tileInk(t: ReadoutTile): string {
-    if (t.betterHigher !== undefined && t.cur !== t.base) {
-      return (t.cur > t.base) === t.betterHigher ? INK.success : INK.danger;
-    }
-    return t.ink;
-  }
-
-  private renderReadouts(x: number, top: number, cardW: number): number {
-    const { tiles, fresh } = this.buildReadoutTiles();
-    const cardH = 34;
-    const pitch = 42;
-    const tileCy: Partial<Record<ReadoutStat, number>> = {};
-    tiles.forEach((t, i) => {
-      const cy = top + i * pitch;
-      tileCy[t.stat] = cy;
-      const ink = this.tileInk(t);
-      const rect = this.add.rectangle(x, cy, cardW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0.5).setDepth(10);
-      const label = this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11);
-      // 14px (one above the 13px body label) — the value stays the figure without towering
-      // over its label the way the old 16px heading did. Deliberately between body/heading.
-      const value = this.add.text(x + cardW - 12, cy, t.value, { color: ink, fontFamily: FONT.family, fontSize: FONT.figure }).setOrigin(1, 0.5).setDepth(11);
-      this.campObjects.push(rect, label, value);
-      // Pulse a tile the instant its figure changes from the previous paint (an action's
-      // effect landing) — but not on the first paint of a camp (`fresh`), which isn't a move.
-      if (!fresh && t.cur !== t.last && !isScreenshotMode()) this.pulseTile(x, cy, cardW, cardH, value);
-    });
-
-    // The off-panel preview area, below the tiles: a header + a rule, then the transient
-    // body ({@link showActionPreview}) — arrows land in the gutter beside the tiles above,
-    // off-panel effects (HP/Fatigue/Influence/…) list here. Reserve it so hover has a home.
-    const tilesBottom = top + (tiles.length - 1) * pitch + cardH / 2;
-    const areaTop = tilesBottom + 14;
-    this.campObjects.push(this.add.text(x, areaTop, "EFFECT PREVIEW", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
-    const rule = this.add.graphics().setDepth(11);
-    rule.lineStyle(1, COLOR.borderSoft, 0.7);
-    rule.lineBetween(x, areaTop + 12, x + cardW, areaTop + 12);
-    this.campObjects.push(rule);
-    this.readoutGeom = { x, cardW, tileCy, areaX: x, areaW: cardW, areaTop: areaTop + 12 };
-    this.showActionPreview(null);
-
-    return tilesBottom;
-  }
-
-  /**
-   * The caravan-state readouts as a **horizontal tile row** across the map's top (D80 consistency):
-   * the same label+value cards the camp/survey beats stack on the right, laid out in a row since the
-   * map has no side panel. Values day-colour like the camp tiles. Drawn onto `nodeObjects` so it
-   * clears with the map. Replaces the old inline "Purse … · Upkeep …" HUD text line.
-   */
-  private renderMapReadouts(top: number): void {
-    const { tiles } = this.buildReadoutTiles();
-    const marginX = 80;
-    const usableW = this.scale.width - 2 * marginX;
-    const gap = 8;
-    const tileW = (usableW - gap * (tiles.length - 1)) / tiles.length;
-    const cardH = 40;
-    tiles.forEach((t, i) => {
-      const x = marginX + i * (tileW + gap);
-      const cx = x + tileW / 2;
-      const rect = this.add.rectangle(x, top, tileW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0).setDepth(6);
-      const label = this.add.text(cx, top + 12, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(7);
-      const value = this.add.text(cx, top + 28, t.value, { color: this.tileInk(t), fontFamily: FONT.family, fontSize: FONT.figure }).setOrigin(0.5).setDepth(7);
-      fitText(label, tileW - 10);
-      fitText(value, tileW - 10);
-      this.nodeObjects.push(rect, label, value);
-    });
-  }
-
-  /**
-   * Paint the hover preview for one action (or clear it, `preview === null`, to the resting
-   * "hover an action" prompt). Panel changes draw a signed arrow in the gutter *left of*
-   * their readout tile; off-panel changes (HP, Fatigue, Influence, Debt, …) list in the
-   * preview area below the tiles. Lives on its own {@link previewObjects} layer so a
-   * hover-out redraws just this, never the whole camp. Colour follows each change's `good`.
-   */
-  private showActionPreview(preview: ActionPreview | null): void {
-    clearLayer(this.previewObjects);
-    const g = this.readoutGeom;
-    if (!g) return;
-    if (!preview || preview.length === 0) {
-      this.previewObjects.push(this.add.text(g.areaX, g.areaTop + 14, "Hover an action to preview its effect.", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption, lineSpacing: 3, wordWrap: { width: g.areaW } }).setOrigin(0, 0).setDepth(13));
-      return;
-    }
-    const disp = (c: PreviewChange): { text: string; ink: string } => {
-      const good = c.good ?? (c.amount ?? 0) >= 0;
-      const arrow = c.amount === undefined ? "" : c.amount >= 0 ? "▲" : "▼";
-      const text = c.text ?? `${c.amount! >= 0 ? "+" : ""}${c.amount}`;
-      return { text: `${arrow}${arrow ? " " : ""}${text}`, ink: good ? INK.success : INK.danger };
-    };
-    // Panel changes → an arrow in the gutter beside the matching tile.
-    for (const c of preview) {
-      if (!c.stat) continue;
-      const cy = g.tileCy[c.stat];
-      if (cy === undefined) continue;
-      const d = disp(c);
-      this.previewObjects.push(this.add.text(g.x - 12, cy, d.text, { color: d.ink, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(13));
-    }
-    // Off-panel changes → the reserved area below the tiles.
-    const off = preview.filter((c) => !c.stat);
-    if (off.length === 0) {
-      this.previewObjects.push(this.add.text(g.areaX, g.areaTop + 14, "No off-panel effects.", { color: INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0).setDepth(13));
-      return;
-    }
-    let ay = g.areaTop + 20;
-    for (const c of off) {
-      const d = disp(c);
-      this.previewObjects.push(
-        this.add.text(g.areaX, ay, c.label, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(13),
-        this.add.text(g.areaX + g.areaW, ay, d.text, { color: d.ink, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(13),
-      );
-      ay += 20;
-    }
-  }
-
-  /** A one-shot attention pulse on a just-changed readout tile: a quick value bump + a
-   *  fading firelight glow. Tweens are tracked so {@link clearCamp} can tear them down. */
-  private pulseTile(x: number, cy: number, cardW: number, cardH: number, value: Phaser.GameObjects.Text): void {
-    value.setScale(1.4);
-    this.readoutTweens.push(this.tweens.add({ targets: value, scale: 1, duration: 360, ease: "Back.out" }));
-    // A translucent glow over the tile (no numeric colour-tween — that would lerp to muddy
-    // in-between hues), faded to nothing so the eye catches the change then settles.
-    const glow = this.add.rectangle(x, cy, cardW, cardH, COLOR.accent, 0.3).setOrigin(0, 0.5).setDepth(12);
-    this.campObjects.push(glow);
-    this.readoutTweens.push(this.tweens.add({ targets: glow, alpha: 0, duration: 460, ease: "Cubic.out" }));
   }
 
   /**
@@ -1607,7 +946,6 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     // Panel pages (Party / Stores / Ledger): a near-full-screen page, nav pinned upper-left.
-    this.campText.setVisible(false);
     const panelTop = 60;
     const panelBottom = this.scale.height - 16;
     this.overlay.push(
@@ -1701,50 +1039,19 @@ export class OverworldScene extends Phaser.Scene {
   /** Ledger page — gold flow (realized + projected) + the route forecast (D45/D48). Market
    *  access lives in the shared nav's Market tab now, so no in-page shortcut is needed. */
   private drawTentLedger(b: Phaser.Geom.Rectangle): void {
-    this.drawLedgerSheet(b, { rerender: () => this.renderTent() });
+    drawLedgerSheet(this, this.overlay, {
+      bounds: b,
+      ledger: this.buildRunLedger(),
+      onToggleSkip: (id) => this.toggleSkip(id, () => this.renderTent()),
+      onHint: (t) => this.setHint(t),
+    });
   }
 
-  /**
-   * The ledger sheet itself (D45/D48) — Balance/Influence header, the category rows,
-   * and the route forecast — drawn into `b`. Shared by the Captain's Tent ledger tab
-   * and the night-end {@link showLedgerTransition}; returns the built {@link Ledger}
-   * so the caller can add its own chrome (the Tent's Market shortcut). `rerender`
-   * fires after an Upkeep line is crossed off so the owning surface redraws itself;
-   * `interactive: false` makes the sheet read-only (the rest tiers force-pay Upkeep).
-   */
-  private drawLedgerSheet(b: Phaser.Geom.Rectangle, opts: { rerender: () => void; interactive?: boolean }): Ledger {
+  /** Build the run's {@link Ledger} for the sheet (D45/D48) — realized + projected gold flow at
+   *  the node we're camped at (or the current node). The two ledger hosts pass the result in. */
+  private buildRunLedger(): Ledger {
     const node = this.campNode ?? currentNode(this.run);
-    const ledger: Ledger = buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: marketReadyAt(this.run, node) });
-    const pad = 22;
-    const leftX = b.left + pad;
-    const rightX = b.right - pad;
-    const colX = rightX - 86;
-    const rowH = 22;
-    const g = this.add.graphics().setDepth(24);
-    this.overlay.push(
-      g,
-      this.add.text(leftX, b.top + 10, `Balance  ${ledger.balance}g`, { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(rightX, b.top + 10, `Influence ${ledger.influence} · never pays Upkeep`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
-    );
-    g.lineStyle(1, COLOR.borderSoft, 0.9);
-    g.lineBetween(leftX, b.top + 24, rightX, b.top + 24);
-    g.lineBetween(leftX, b.top + 26, rightX, b.top + 26);
-
-    let y = this.drawLedgerRows(ledger, g, { leftX, rightX, colX, rowH, cx: b.centerX, pad, w: b.width }, b.top + 26 + 18, opts);
-    // Forecasted balance — the estimated purse carried into tomorrow (current balance after
-    // tonight's projected Upkeep/Banker). A bottom-line bookend to the top Balance; a rule
-    // sets it apart from the category rows.
-    y += 4;
-    g.lineStyle(1, COLOR.borderSoft, 0.9);
-    g.lineBetween(leftX, y, rightX, y);
-    y += 14;
-    this.overlay.push(
-      this.add.text(leftX, y, "Forecasted balance  · into tomorrow", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(rightX, y, `${ledger.forecastBalance}g`, { color: ledger.forecastBalance < 0 ? INK.danger : INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
-    );
-    // The route forecast (runway + per-edge) is planning, not accounting — it lives on the
-    // Survey panel, so the ledger stops at its own bottom line.
-    return ledger;
+    return buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: marketReadyAt(this.run, node) });
   }
 
   /**
@@ -1820,191 +1127,40 @@ export class OverworldScene extends Phaser.Scene {
    * Tent overlay's frame/teardown so the two read as siblings.
    */
   private renderMarket(): void {
-    clearLayer(this.overlay);
-    const tier = effectiveMarketTier(this.campNode ?? currentNode(this.run), this.run.party);
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2;
-    const w = 560;
-    const h = 400;
-    const left = cx - w / 2;
-    const top = cy - h / 2;
-
-    installBackdrop(this, this.overlay, 22);
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
-      this.add.text(left + 24, top + 24, "Market", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(left + 122, top + 26, `· ${tier === "none" ? "no market" : `${tier} market`}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-    );
-    this.overlay.push(this.makeTextButton(left + w - 60, top + 26, 96, 28, "Close", COLOR.surfaceRaised, COLOR.border, () => this.closeMarket()).setDepth(26));
-    // Storage on the header so the space you're spending is visible while you shop — buys eat
-    // slots (see each row's Space) and a full stash blocks them, so surface the cap up front.
-    const invUsed = slotsUsed(this.run.inventory);
-    this.overlay.push(this.add.text(left + w - 24, top + 52, `Storage ${invUsed}/${this.run.inventory.storageCap} (free ${this.run.inventory.storageCap - invUsed})`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25));
-
-    const leftX = left + 24;
-    if (tier === "none") {
-      this.overlay.push(this.add.text(leftX, top + 80, "No market here — route to a market node, or bring a Merchant to open one anywhere.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label, lineSpacing: 4, wordWrap: { width: w - 48 } }).setOrigin(0, 0).setDepth(25));
-      return;
-    }
-
-    const price = merchantPrice(tier);
-    let y = top + 64;
-    this.overlay.push(this.add.text(leftX, y, `Buy  ·  ${price}g each`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-    y += 28;
-    for (const id of marketStock()) {
-      const mat = getMaterial(id);
-      if (!mat) continue;
-      const owned = countOf(this.run.inventory, id);
-      const room = canAdd(this.run.inventory, id);
-      const affordable = Math.floor(this.run.camp.gold / price);
-      const buyable = room && affordable >= 1;
-      this.overlay.push(
-        this.add.text(leftX, y, mat.name, { color: buyable ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-        this.add.text(leftX + 150, y, `own ${owned}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-      );
-      if (!buyable) {
-        this.overlay.push(this.add.text(leftX + 244, y, room ? `need ${price}g` : "storage full", { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25));
-      } else {
-        const qty = Math.min(affordable, Math.max(1, this.marketQty[id] ?? 1));
-        // Space this purchase will add (stacks pack, so buying into a partial stack can add 0) —
-        // the "how much room am I about to spend" readout, live with the stepper.
-        const addSlots = slotsFor(mat, owned + qty) - slotsFor(mat, owned);
-        this.overlay.push(this.add.text(leftX + 200, y, `Space: +${addSlots}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(25));
-        this.overlay.push(this.makeTextButton(leftX + 268, y, 22, 22, "−", COLOR.surfaceRaised, COLOR.border, () => { this.marketQty[id] = Math.max(1, qty - 1); this.renderMarket(); }).setDepth(26));
-        this.overlay.push(this.add.text(leftX + 292, y, `${qty}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0.5, 0.5).setDepth(25));
-        this.overlay.push(this.makeTextButton(leftX + 316, y, 22, 22, "+", COLOR.surfaceRaised, COLOR.border, () => { this.marketQty[id] = Math.min(affordable, qty + 1); this.renderMarket(); }).setDepth(26));
-        this.overlay.push(this.makeTextButton(leftX + 392, y, 84, 22, `Buy ×${qty}`, COLOR.btnFill, COLOR.gold, () => this.marketBuy(id, qty)).setDepth(26));
-      }
-      y += 30;
-    }
-
-    y += 8;
-    this.overlay.push(this.add.text(leftX, y, "Sell", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-    y += 28;
-    const valCount = countOf(this.run.inventory, "valuables");
-    const unitSell = sellPrice(getMaterial("valuables")!, tier);
-    if (valCount > 0 && unitSell > 0) {
-      this.overlay.push(this.add.text(leftX, y, `Valuables  ·  ×${valCount} at ${unitSell}g each`, { color: INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-      this.overlay.push(this.makeTextButton(leftX + 392, y, 84, 22, "Sell all", COLOR.btnFill, COLOR.gold, () => this.sellValuables()).setDepth(26));
-    } else {
-      this.overlay.push(this.add.text(leftX, y, valCount === 0 ? "No salvage to sell." : "Salvage can't be sold here.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-    }
-
-    const m = projectManifest(this.run, this.caravanInfo());
-    this.overlay.push(this.add.text(leftX, top + h - 22, `Purse ${m.purse}g     ·     Storage ${m.storageUsed}/${m.storageCap}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-  }
-
-  /** A camp button that greys out (non-interactive) when disabled, with a reason on hover.
-   *  A thin {@link Button} (left-anchored row): left edge at x, label inset 8 (pad/2). */
-  private campButton(x: number, y: number, w: number, h: number, text: string, enabled: boolean, onClick: () => void, description: string, preview?: ActionPreview): void {
-    const btn = new Button(this, x + w / 2, y, {
-      text,
-      w,
-      h,
-      fill: enabled ? COLOR.surfaceAlt : COLOR.surfaceRaised,
-      stroke: enabled ? COLOR.borderSoft : COLOR.surfaceAlt,
-      strokeWidth: 1,
-      color: enabled ? INK.bright : INK.disabled,
-      fontSize: FONT.label,
-      pad: 16,
-      align: "left",
-      hover: false, // camp rows carry their state fill; they never brighten-highlighted on hover
-      enabled,
-      onClick,
-      // The hint + (even when greyed) effect preview drive off the shared hover hooks;
-      // seeing *what it would do* explains the grey, snapping back to the resting prompt out.
-      onHover: () => {
-        this.hintPanel.setText(description);
-        if (preview) this.showActionPreview(preview);
-      },
-      onOut: preview ? () => this.showActionPreview(null) : undefined,
+    drawMarket(this, this.overlay, {
+      run: this.run,
+      node: this.campNode ?? currentNode(this.run),
+      marketQty: this.marketQty,
+      caravan: this.caravanInfo(),
+      make: this.makeTextButton.bind(this),
+      onBuy: (id, qty) => this.marketBuy(id, qty),
+      onSellAll: () => this.sellValuables(),
+      onClose: () => this.closeMarket(),
+      rerender: () => this.renderMarket(),
     });
-    this.add.existing(btn).setDepth(11);
-    this.campObjects.push(btn);
   }
 
-  /**
-   * A **cost-bearing action card** (the readout-tile grammar applied to a verb, prototype): the
-   * action **name** (bright) + **actor** (muted) on the left, its compact **cost** right-aligned
-   * and coloured by kind — so a row answers "what does this cost and who does it" at a glance, the
-   * way the state tiles answer "what is this figure". Hover still drives the richer EFFECT PREVIEW.
-   */
-  private renderActionCard(x: number, y: number, w: number, h: number, a: CampAction, packed = false): void {
-    const enabled = a.enabled;
-    const bg = this.add.rectangle(x, y, w, h, COLOR.surfaceRaised, enabled ? 1 : 0.5).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.border).setOrigin(0, 0.5).setDepth(10);
-    // Three aligned lanes: the verb (fixed name column), the actor (its own fixed column), then
-    // the cost components on the right — so name / unit / costs line up down every row.
-    const nameColW = OverworldScene.NAME_COL_W;
-    const name = this.add.text(x + 12, y, a.name ?? a.label, { color: enabled ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
-    fitText(name, nameColW);
-    this.campObjects.push(bg, name);
-    if (a.actor) {
-      const actor = this.add.text(x + 12 + nameColW + 10, y, a.actor, { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11);
-      fitText(actor, OverworldScene.ACTOR_COL_W);
-      this.campObjects.push(actor);
-    }
-    this.renderCostChips(x + w - 12, y, a.costs, enabled, packed);
-    if (enabled) {
-      bg.setInteractive({ useHandCursor: true });
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, a.onClick);
-    }
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hintPanel.setText(a.tip));
-    if (a.preview) {
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showActionPreview(a.preview!));
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showActionPreview(null));
-    }
+  /** Delegate to the camp panel — kept on the scene as the screenshot harness's entry
+   *  point (`s.renderActionCard(...)`) into the action-card chrome. */
+  renderActionCard(x: number, y: number, w: number, h: number, a: CampAction): void {
+    this.panel.renderActionCard(x, y, w, h, a);
   }
 
-  /** Width of one fixed cost-component column (prototype) — sized to hold an "icon NN" chip. */
-  private static readonly COST_SLOT_W = 40;
-  /** The fixed **verb** column width, so the actor lane starts at the same x down every row. */
-  private static readonly NAME_COL_W = 116;
-  /** The fixed **actor** column width (its lane, before the cost components). */
-  private static readonly ACTOR_COL_W = 44;
-
-  /**
-   * The **cost components** of an action row (prototype) — **strict, left-aligned columns**: each
-   * component owns a fixed slot in {@link COST_COMPONENTS} order (gold first … cooldown last), and
-   * every chip **left-aligns** at its slot's x — so all the ¤ icons line up down the rows, all the ✦
-   * icons line up, and so on (the number, not the icon, varies). Scan a column to see which actions
-   * cost that resource. Absent components leave their slot blank; an all-blank cost reads "free".
-   */
-  private renderCostChips(rightX: number, y: number, costs: ActionCost | undefined, enabled: boolean, packed = false): void {
-    const present = COST_COMPONENTS.filter((c) => costs?.[c.key] != null);
-    const chipText = (c: (typeof COST_COMPONENTS)[number]) => {
-      const v = costs![c.key]!;
-      const n = c.key === "material" ? (v as { n: number }).n : (v as number);
-      return `${c.glyph} ${n}`;
-    };
-    const slotW = OverworldScene.COST_SLOT_W;
-    const areaLeft = rightX - COST_COMPONENTS.length * slotW;
-    if (present.length === 0) {
-      // "free" sits where the first (gold) column would start, so it reads in line with the icons.
-      this.campObjects.push(this.add.text(areaLeft, y, "free", { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
-      return;
-    }
-    if (packed) {
-      // Packed: chips hug the right edge (each row's costs clump together, no fixed columns).
-      const gap = 12;
-      const texts = present.map((c) => this.add.text(0, y, chipText(c), { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
-      const widths = texts.map((t) => Math.ceil(t.width));
-      let cx = rightX - (widths.reduce((s, w) => s + w, 0) + gap * (texts.length - 1));
-      texts.forEach((t, i) => { t.x = cx; cx += widths[i] + gap; this.campObjects.push(t); });
-      return;
-    }
-    COST_COMPONENTS.forEach((c, i) => {
-      if (costs?.[c.key] == null) return;
-      // Left-align each chip at its fixed slot x, so the *icons* line up down every row.
-      this.campObjects.push(this.add.text(areaLeft + i * slotW, y, chipText(c), { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
-    });
+  /** Delegate to the camp panel — the screenshot harness's entry point (`s.showActionPreview(...)`)
+   *  into the hover effect-preview area. */
+  showActionPreview(preview: ActionPreview | null): void {
+    this.panel.showActionPreview(preview);
   }
 
   private clearCamp(): void {
-    // Stop any in-flight readout pulses before their tiles are destroyed below.
-    this.readoutTweens.forEach((t) => t.remove());
-    this.readoutTweens = [];
+    // Drop any transient hover-tip whose button we're about to destroy (#137): a hovered camp/nav
+    // button rebuilt out from under the pointer never fires its pointer-out, so the tip would stick.
+    // clearCamp is the single teardown all camp beats + renderTent route through, so this covers both.
+    this.hintPanel.clearTip();
+    // Stop any in-flight readout pulses (+ drop the preview geometry) before their tiles are
+    // destroyed below — the panel owns that state; the shared layers are cleared here.
+    this.panel.clearReadouts();
     clearLayer(this.previewObjects);
-    this.readoutGeom = undefined;
     clearLayer(this.campObjects);
   }
 
@@ -2052,7 +1208,6 @@ export class OverworldScene extends Phaser.Scene {
   // Patron's Welcome — a standing-gated boon (D62): auto-resolve the feast + report it.
   private playPatronEvent(): void {
     const res = this.loop.eventNode(); // auto-resolves the boon + records the night
-    this.refreshReadoutLine();
     const o = res.outcome;
     const lines: string[] = [o.summary];
     if (o.moraleDelta) lines.push(`Spirits lift (+${o.moraleDelta} morale).`);
@@ -2064,14 +1219,12 @@ export class OverworldScene extends Phaser.Scene {
   /** Leave the event, record the node-step, and route to the Survey beat/terminal (D46). */
   private finishEvent(netGold: number): void {
     this.loop.recordEventNight(netGold);
-    this.refreshReadoutLine();
     this.afterNode();
   }
 
   // Thief — no choice; resolve the skim (auto path) and report it (D30).
   private playThiefEvent(): void {
     const res = this.loop.eventNode(); // auto-resolves the skim + records the night
-    this.refreshReadoutLine();
     const stolen = res.outcome.stolen ?? 0;
     const lines: string[] = [];
     if (stolen > 0) {
@@ -2124,14 +1277,23 @@ export class OverworldScene extends Phaser.Scene {
             },
           }
         : undefined;
-    this.renderChoicePanel(title, body, this.loop.eventChoices(), (c) => this.onEventChoice(c), 360, extraRow);
+    renderChoicePanel(this, this.overlay, {
+      title,
+      body,
+      gold: this.run.camp.gold,
+      choices: this.loop.eventChoices(),
+      onPick: (c) => this.onEventChoice(c),
+      btnW: 360,
+      extraRow,
+      make: this.makeTextButton.bind(this),
+      onHint: (t) => this.setHint(t),
+    });
   }
 
   /** Apply a chosen event option, then re-render (shop) or continue (terminal). */
   private onEventChoice(choice: EventChoice): void {
     const def = this.loop.eventDef();
     const out: EventOutcome = this.loop.chooseEvent(choice.id);
-    this.refreshReadoutLine();
 
     if (def.kind === "shop" && choice.id.startsWith("buy:")) {
       // Stay in the market: track spend, report, re-render for the next buy.
@@ -2146,7 +1308,6 @@ export class OverworldScene extends Phaser.Scene {
     const lines = [out.summary, "", `Purse now ${this.run.camp.gold}g.`];
     if (out.recruited) lines.push(`${out.recruited.name} now rides with the caravan.`);
     this.loop.recordEventNight(out.goldDelta);
-    this.refreshReadoutLine();
     const good = out.goldDelta >= 0 && out.moraleDelta >= 0;
     this.showOverlay(def.name, lines.join("\n"), good, 520, 200, () => this.afterNode());
   }
@@ -2157,7 +1318,6 @@ export class OverworldScene extends Phaser.Scene {
     // A rest node elapses a night and pays a night's rations — show the spend first.
     this.showLedgerTransition("Before resting for the night…", () => {
       const res = this.loop.restNode();
-      this.refreshReadoutLine();
       this.showRestScreen(res);
     });
   }
@@ -2193,9 +1353,6 @@ export class OverworldScene extends Phaser.Scene {
     this.clearCamp();
     clearLayer(this.overlay);
     this.campNode = currentNode(this.run);
-    this.refreshReadoutLine();
-    // The live figures move to the right-side state panel on this beat — hide the line.
-    this.campText.setVisible(false);
 
     // The REACT camp (D80): the post-encounter planning beat — read the road ahead, scout, bank
     // loot — ending in **Set Out**. Its identity is gold (intel/route), paired against the prep
@@ -2227,7 +1384,7 @@ export class OverworldScene extends Phaser.Scene {
     let y = areasBottom + 20;
 
     // Live state readouts, stacked on the right of the action drawers.
-    this.renderReadouts(readoutX, y, readoutCardW);
+    this.panel.renderReadouts(readoutX, y, readoutCardW);
 
     // Intel drawer: survey a reachable node — raises its preview, tightening the forecast
     // (D48). Job-gated to the Scout; the whole drawer is absent when none is aboard. Each
@@ -2244,7 +1401,7 @@ export class OverworldScene extends Phaser.Scene {
         intel.push({ label: `${survey.name} → ${label} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showReactCamp(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${label}`, actor: surveyor.name, costs: this.actionCost(survey) });
       }
     }
-    y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showReactCamp());
+    y = this.panel.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showReactCamp());
 
     // The captain's running to-do sits below the actions.
     this.renderCaptainsJournal(colX, y + 12, panelW - 60);
@@ -2254,7 +1411,7 @@ export class OverworldScene extends Phaser.Scene {
     // sibling). Right: Set Out → — commit to the route and march to the map (the old Break Camp).
     const rest = this.inPlaceRestReadout();
     const footY = panelBottom - 30;
-    this.campButton(cx - 250, footY, 240, 34, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail, inPlaceRestPreview(this.run));
+    this.panel.campButton(cx - 250, footY, 240, 34, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail, inPlaceRestPreview(this.run));
     const setOutBtn = this.makeTextButton(cx + 130, footY, 240, 34, "Set Out →", COLOR.successDeep, COLOR.success, () => this.setOutToMap());
     this.campObjects.push(setOutBtn);
 
@@ -2302,7 +1459,6 @@ export class OverworldScene extends Phaser.Scene {
     // In-place rest is a node-step that pays a night's rations — show the spend first.
     this.showLedgerTransition("Before resting for the night…", () => {
       const res: InPlaceRestResult = this.loop.inPlaceRest();
-      this.refreshReadoutLine();
       if (res.applied) {
         const who = res.healed.length === 1 ? "1 fighter" : `${res.healed.length} fighters`;
         this.setHint(`Rested in place (night ${res.streak} here): −${res.goldSpent}g rations, +${res.hpHealed} HP across ${who}, +${res.rpAdded} RP. A node-step passed.`);
@@ -2381,7 +1537,6 @@ export class OverworldScene extends Phaser.Scene {
           detail: `Drop one ${mat?.name ?? id}. Whole stacks free a slot; a partial stack frees one only when it empties. Lowest-value gear is the usual cut.`,
           onPick: () => {
             removeItem(inv, id, 1);
-            this.refreshReadoutLine();
             this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap
           },
         };
@@ -2437,107 +1592,11 @@ export class OverworldScene extends Phaser.Scene {
     return { vesselLabel: vessel.label, partyCapacity: vessel.capacity };
   }
 
-  /**
-   * The category/line rows — the bulk of the ledger sheet: each category header
-   * (label + running total), its lines (amount, skip-strike, faint per-row rule),
-   * the clickable hit-rects on Upkeep lines, and the vertical amount-column rule.
-   * Draws onto the shared graphics `g`; returns the `y` just past the last row.
-   */
-  private drawLedgerRows(
-    ledger: Ledger,
-    g: Phaser.GameObjects.Graphics,
-    geom: { leftX: number; rightX: number; colX: number; rowH: number; cx: number; pad: number; w: number },
-    startY: number,
-    opts: { rerender: () => void; interactive?: boolean } = { rerender: () => this.renderTent() },
-  ): number {
-    const { leftX, rightX, colX, rowH, cx, pad, w } = geom;
-    let y = startY;
-    const rowsTop = y - rowH / 2;
-    for (const cat of ledger.categories) {
-      // Category header row (label + running total, both in gold).
-      const tag = cat.projected ? "  (projected)" : "";
-      // The total figure reads red when it's an outflow (Upkeep's drain, a net field spend) —
-      // the same red-for-negative convention the individual line amounts use; the label stays
-      // gold as the section marker. This is where the "burn" now lives (the text is gone).
-      this.overlay.push(
-        this.add.text(leftX, y, `${cat.label}${tag}`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
-        this.add.text(rightX, y, this.signed(cat.total), { color: cat.total < 0 ? INK.danger : INK.gold, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(1, 0.5).setDepth(25),
-      );
-      g.lineStyle(1, COLOR.border, 0.5);
-      g.lineBetween(leftX, y + rowH / 2, rightX, y + rowH / 2);
-      y += rowH;
-
-      for (const l of cat.lines) {
-        const skipped = l.note === "voluntarily skipped";
-        const skippable = (opts.interactive ?? true) && cat.id === "upkeep"; // only Upkeep lines are skippable, and only when the surface allows it
-        const labelInk = skipped ? INK.disabled : skippable ? INK.bright : INK.secondary;
-        this.overlay.push(
-          this.add.text(leftX + 18, y, l.label, { color: labelInk, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25),
-        );
-        // The amount on the right stays even when crossed off (D45) — dimmed and struck (below),
-        // it's not in the total, but it tells the player what restoring the line would cost. A
-        // skipped line's `amount` is 0 (out of the total), so show its `restoreAmount` instead.
-        const shownAmount = skipped ? l.restoreAmount ?? l.amount : l.amount;
-        this.overlay.push(
-          this.add.text(rightX, y, this.signed(shownAmount), { color: skipped ? INK.disabled : shownAmount < 0 ? INK.danger : INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
-        );
-        // Strike the row through when crossed off — from the label (leftX + 18), so the
-        // checkbox in the indent gutter stays legible rather than being slashed through.
-        if (skipped) {
-          g.lineStyle(1.5, COLOR.danger, 0.85);
-          g.lineBetween(leftX + 18, y, rightX, y);
-        }
-        // Faint per-entry rule (ledger paper).
-        g.lineStyle(1, COLOR.border, 0.28);
-        g.lineBetween(leftX + 12, y + rowH / 2, rightX, y + rowH / 2);
-
-        // Upkeep rows are clickable: cross off (skip) / restore. The hit rect sits
-        // below the text (depth 24) so its hover wash reads behind the ink.
-        if (skippable) {
-          // A checkbox in the indent gutter makes the "you can cross this off" affordance
-          // obvious at a glance (D45): checked (gold box + tick) = the expense stands;
-          // unchecked (empty box) + the strike above = crossed off.
-          const boxSize = 12;
-          const boxX = leftX;
-          const boxY = y - boxSize / 2;
-          g.lineStyle(1.2, skipped ? COLOR.borderSoft : COLOR.gold, skipped ? 0.7 : 0.95);
-          g.strokeRect(boxX, boxY, boxSize, boxSize);
-          if (!skipped) {
-            g.lineStyle(1.8, COLOR.success, 1);
-            g.lineBetween(boxX + 2.5, boxY + 6.5, boxX + 5, boxY + 9);
-            g.lineBetween(boxX + 5, boxY + 9, boxX + 9.5, boxY + 3);
-          }
-          const lineId = l.id.replace("upkeep:", "") as UpkeepLine["id"];
-          const hit = this.add.rectangle(cx, y, w - 2 * pad + 12, rowH, COLOR.surfaceAlt, 0).setDepth(24).setInteractive({ useHandCursor: true });
-          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {
-            hit.setFillStyle(COLOR.surfaceAlt, 0.35);
-            this.setHint(skipped ? `Click to restore ${l.label} to the ledger (fund it again).` : `Click to cross ${l.label} off the ledger — frees its gold; you'll take the consequence and the gate won't nag.`);
-          });
-          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => hit.setFillStyle(COLOR.surfaceAlt, 0));
-          hit.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.toggleSkip(lineId, opts.rerender));
-          this.overlay.push(hit);
-        }
-        y += rowH;
-      }
-    }
-
-    // The vertical amount-column rule down the rows region.
-    g.lineStyle(1, COLOR.borderSoft, 0.45);
-    g.lineBetween(colX, rowsTop, colX, y - rowH / 2);
-    return y;
-  }
-
-  /** A signed gold figure for the ledger (`+5g` / `-5g`). */
-  private signed(n: number): string {
-    return `${n >= 0 ? "+" : ""}${n}g`;
-  }
-
   /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. The
    *  owning surface (Tent or night-end transition) supplies its own `rerender`. */
   private toggleSkip(id: UpkeepLine["id"], rerender: () => void = () => this.renderTent()): void {
     toggleUpkeepSkip(this.run, id); // core owns the rule (no more render-side type-assertion write)
     const nowSkipped = this.run.camp.skippedUpkeep.includes(id);
-    this.refreshReadoutLine();
     this.setHint(nowSkipped ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
     rerender();
   }
@@ -2545,6 +1604,7 @@ export class OverworldScene extends Phaser.Scene {
   // --- Terminal screens ------------------------------------------------------
 
   private runComplete(): void {
+    this.drawTerminalReadout();
     const won = this.run.history.filter((h) => h.winner === "player").length;
     const toHall = !!this.guild;
     const lines = [
@@ -2561,6 +1621,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private runEnd(): void {
+    this.drawTerminalReadout();
     const won = this.run.history.filter((h) => h.winner === "player").length;
     const last = this.run.history[this.run.history.length - 1];
     const toHall = !!this.guild;
@@ -2599,14 +1660,11 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- UI helpers ------------------------------------------------------------
 
-  // Renamed from the misleading `refreshCampText` (#138): it refreshes the always-on camp
-  // readout line, not battle situation text (BattleScene's like-named method → refreshSituationCard).
-  private refreshReadoutLine(): void {
-    // The always-on line is the four decision-relevant groups only (D58): Purse,
-    // Morale, Storage/Kits, RP/Upkeep. The Banker's purse-state + Influence moved
-    // into the camp's Advanced panel / ledger, where they're actionable. The format
-    // is owned by core (campReadoutLine) so the battle + overworld HUDs can't drift.
-    this.campText.setText(campReadoutLine(this.run));
+  /** The terminal screens' readout line (D58) — the four decision-relevant groups (Purse, Morale,
+   *  Storage/Kits, RP/Upkeep), formatted by core `campReadoutLine`. Replaces the old always-on
+   *  `campText` field, which every beat hid and only the terminals showed by accident of ordering (#137). */
+  private drawTerminalReadout(): void {
+    this.add.text(this.scale.width / 2, 40, campReadoutLine(this.run), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
   }
 
   private setHint(text: string): void {
@@ -2644,7 +1702,13 @@ export class OverworldScene extends Phaser.Scene {
 
     const contentTop = top + 56;
     const bounds = new Phaser.Geom.Rectangle(left + 8, contentTop, w - 16, h - (contentTop - top) - 52);
-    this.drawLedgerSheet(bounds, { rerender: () => this.showLedgerTransition(title, onContinue, interactive), interactive });
+    drawLedgerSheet(this, this.overlay, {
+      bounds,
+      ledger: this.buildRunLedger(),
+      interactive,
+      onToggleSkip: (id) => this.toggleSkip(id, () => this.showLedgerTransition(title, onContinue, interactive)),
+      onHint: (t) => this.setHint(t),
+    });
 
     const btn = this.makeTextButton(cx, top + h - 24, 240, 32, "Continue →", COLOR.successDeep, COLOR.success, () => {
       clearLayer(this.overlay);

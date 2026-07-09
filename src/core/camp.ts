@@ -97,6 +97,19 @@ export function moraleTier(morale: number): MoraleTier {
   return "Inspired";
 }
 
+/** The morale tiers low→high (D8) — the ordinal spine {@link moraleTierIndex} reads. */
+export const MORALE_TIERS: readonly MoraleTier[] = ["Low", "Neutral", "High", "Inspired"];
+
+/**
+ * The numeric **tier index** of a raw morale value (Low = 0 … Inspired = 3) — the
+ * ordinal twin of {@link "./fatigue".fatigueTierIndex}. A consumer that needs "how
+ * high is morale, as a number" (the arrivals score) reads the ladder here instead
+ * of re-keying its own string table that a renamed tier label would silently `NaN`.
+ */
+export function moraleTierIndex(morale: number): number {
+  return MORALE_TIERS.indexOf(moraleTier(morale));
+}
+
 /** What a camp skill changed, for the render layer to report. */
 export interface CampOutcome {
   morale?: number;

@@ -101,6 +101,23 @@ describe("scoreArrival (Phase 3)", () => {
     const again = traverseRoute(EXP, DEN_VIA_WAGON).run;
     expect(scoreArrival(again)).toEqual(scoreArrival(run));
   });
+
+  it("pins the canonical den-via-wagon score across the R2 ordinal refactor (#125)", () => {
+    // Recorded BEFORE the R2 increment-3 motion (string ordinal tables → the shared
+    // moraleTierIndex/fatigueTierIndex ladders; the levelTotal/avg-HP folds extracted).
+    // The refactor is pure motion, so the exact score — and the digest the same folds
+    // feed — must not move. If a *deliberate* scoring change lands later, repin.
+    const { run } = traverseRoute(EXP, DEN_VIA_WAGON);
+    const score = scoreArrival(run);
+    expect(score.total).toBeCloseTo(68.84541062801932, 10);
+    expect(score.parts.levels).toBeCloseTo(13, 10);
+    expect(score.parts.health).toBeCloseTo(16.67874396135266, 10);
+    expect(score.parts.morale).toBeCloseTo(4, 10);
+    expect(score.parts.fatigue).toBeCloseTo(0, 10);
+    const digest = arrivalDigest(run);
+    expect(digest.levelTotal).toBe(26);
+    expect(digest.avgHpPct).toBe(67);
+  });
 });
 
 describe("arrivalDigest (Phase 5)", () => {

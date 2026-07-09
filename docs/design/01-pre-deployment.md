@@ -26,12 +26,14 @@ that don't act on the map do their work:
   carried as a storage item.
 - **Quartermaster role (any unit)** — **load the loadout**: distribute ammo, trap
   kits, and rune reagents into limited storage slots.
-- **Seer** — **gather [intel](systems/intel.md)** on the coming fight, reading a
-  divination reagent (or, at master rank, freely) to lift the provisioning fog. The
-  exemplar intel job (the intel counterpart to the Survivalist's traps).
-- **Mages** — **allocate scribed spells** (see [magic](systems/magic.md)): distribute
-  each mage's daily castings across their known spells, re-allocatable up until the
-  deployment commit.
+- **Seer** *(designed, not built — deferred, D10/#148)* — **gather
+  [intel](systems/intel.md)** on the coming fight, reading a divination reagent (or, at
+  master rank, freely) to lift the provisioning fog. The exemplar intel job; today
+  `seerDivine` is an unwired function with no job behind it — the intel floor comes from
+  the Intelligence stat + the Scout's Survey instead.
+- **Mages** *(designed, not built — deferred, D17/#148)* — **allocate scribed spells**
+  (see [magic](systems/magic.md)): distribute each mage's daily castings across their
+  known spells, re-allocatable up until the deployment commit. No magic module exists yet.
 
 ### Camp: Upkeep
 
@@ -40,7 +42,8 @@ maintenance (Food via the Cook, Repairs via a Blacksmith, …), per the
 **gold-as-solvent** convention (D15). Pay it in full (the chore), or **underfund a
 line** when broke (the *choice*): skipping **food** is a fast, **high** morale hit;
 letting **repairs** slide is a slower, **moderate** hit that also drops **gear
-condition** (−defense, −crit). See [logistics](systems/logistics.md).
+condition** (−defense; there is no crit stat in combat, `gear-condition.ts`). See
+[logistics](systems/logistics.md).
 
 ### Camp: recovery & revival
 
@@ -61,7 +64,9 @@ map, you cannot return to the shop — you fight with what you brought.
 Key tensions a crunch player optimizes here:
 
 - **Storage is scarce.** Arrows compete with trap kits compete with rations. The
-  Merchant's storage stat is the dial that loosens this.
+  dial that loosens this is the **caravan/vessel's** storage cap (`caravan.ts`) —
+  *not* a Merchant stat (D61 retired the old storage-stat; the Merchant lifts
+  *market access*, not the cap).
 - **Provisioning is blind-ish.** You commit *before* (or with only partial intel
   of) the battlefield, so you're betting on what you'll need. **[Intel](systems/intel.md)**
   lifts that fog in banded tiers (types → numbers → positions) via three lanes:

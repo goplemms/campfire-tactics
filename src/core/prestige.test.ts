@@ -15,7 +15,7 @@ import type { RunState } from "./run";
 // asserted without polluting the registry.
 
 function fixSkill(id: string): SkillDef {
-  return { id, name: id, description: "", phase: "battle", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 0 } };
+  return { id, name: id, description: "", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 0 } };
 }
 
 const FIX_BASE: JobDef = {
@@ -79,7 +79,7 @@ describe("prestige — replace-in-place (D65)", () => {
 
     // Passives + skills are the EVOLVED job's (the standardized readers go via primaryJobOf).
     expect(u.passives).toEqual({ "fix-elite-passive": 9 });
-    expect(unitSkills(u, undefined, lookup).map((s) => s.id)).toEqual(["fix-elite-cut", "fix-elite-guard"]);
+    expect(unitSkills(u, lookup).map((s) => s.id)).toEqual(["fix-elite-cut", "fix-elite-guard"]);
   });
 
   it("chains — an evolved job can itself prestige again (tier 1 → 2 → 3)", () => {

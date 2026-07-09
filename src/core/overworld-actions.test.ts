@@ -67,7 +67,7 @@ function actor(run: RunState): Unit {
  * computed-cost `provisionMeal`, D71). The cap/reset machinery is what these tests exercise.
  */
 function cookSkill(): SkillDef {
-  return { id: "fx-stew", name: "Fixture Stew", description: "", phase: "meta", target: "party", range: 0, spend: "act", usesPerNode: 1, effect: { kind: "morale", morale: 1, partyHeal: 8 } };
+  return { id: "fx-stew", name: "Fixture Stew", description: "", target: "party", range: 0, spend: "act", overworldCost: { usesPerNode: 1 }, effect: { kind: "morale", morale: 1, partyHeal: 8 } };
 }
 
 describe("overworld-actions — Survey is the Scout's overworld skill (D74)", () => {
@@ -260,7 +260,7 @@ describe("overworld-actions — Triage is the healer's fatigue-fuelled camp heal
 
 describe("overworld-actions — the per-node camp-skill cap (D35)", () => {
   it("declares the cap on the skill (Cook Stew is once per node)", () => {
-    expect(cookSkill().usesPerNode).toBe(1);
+    expect(cookSkill().overworldCost?.usesPerNode).toBe(1);
   });
 
   it("a costless camp skill applies up to its cap, then refuses (no more unlimited use)", () => {
@@ -299,7 +299,7 @@ describe("overworld-actions — the per-node camp-skill cap (D35)", () => {
     const run = newRun("camp-uncapped");
     const a = actor(run);
     // A hypothetical resource-paid action: no per-node cap → fires repeatedly.
-    const uncapped: SkillDef = { ...cookSkill(), id: "cook-uncapped", usesPerNode: undefined };
+    const uncapped: SkillDef = { ...cookSkill(), id: "cook-uncapped", overworldCost: {} };
     expect(campSkillUsesLeft(run.overworld, uncapped)).toBe(Infinity);
     expect(useOverworldSkill(run, a, uncapped).applied).toBe(true);
     expect(useOverworldSkill(run, a, uncapped).applied).toBe(true);
@@ -567,7 +567,7 @@ describe("capability-gate taxonomy (D72)", () => {
   it("a SkillDef.requires expresses the gate as data, layered on the class home", () => {
     // The gate predicate the interpreter (inc 5) and the projection apply.
     const passes = (u: Unit, skill: SkillDef) => !skill.requires || unitHasCapability(u, skill.requires);
-    const gated: SkillDef = { id: "fx-triage", name: "Field Triage", description: "", phase: "meta", target: "party", range: 0, spend: "act", requires: "healer", effect: { kind: "morale", morale: 0, partyHeal: 0 } };
+    const gated: SkillDef = { id: "fx-triage", name: "Field Triage", description: "", target: "party", range: 0, spend: "act", requires: "healer", effect: { kind: "morale", morale: 0, partyHeal: 0 } };
     expect(passes(mk("doc", "medic"), gated)).toBe(true);
     expect(passes(mk("rook", "scout"), gated)).toBe(false);
     // An ungated action (no `requires`) is open to its class home.
@@ -633,7 +633,7 @@ describe("the overworld-effect registry (D72)", () => {
   });
 
   it("the new effect kinds surface on the overworld beat (skillContexts)", () => {
-    const base = { name: "Fx", description: "", phase: "meta", target: "party", range: 0, spend: "act" } as const;
+    const base = { name: "Fx", description: "", target: "party", range: 0, spend: "act" } as const;
     expect(skillContexts({ id: "a", ...base, effect: { kind: "openMarket" } })).toEqual(["overworld"]);
     expect(skillContexts({ id: "b", ...base, effect: { kind: "primeDeal" } })).toEqual(["overworld"]);
     expect(skillContexts({ id: "c", ...base, effect: { kind: "provisionMeal", rp: 1 } })).toEqual(["overworld"]);

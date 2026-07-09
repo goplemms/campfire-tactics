@@ -178,6 +178,35 @@ describe("R1 #111 — golden rescue+heal battle (log-totality characterization)"
     expect(countOf(inv, "salve")).toBe(1);
   });
 
+  it("herb consumption rides the DECLARED material price commit-side (#113), undo/replay-identical", () => {
+    // The Medic's Heal now declares its herb price as data (`cost.material.count`), and the
+    // resolver no longer spends it — consumption moved to the apply path's commit half. This
+    // pins that the new path is undo/replay-faithful: the golden replay (a JSON round-trip)
+    // burns exactly the same herb, and undo refunds it, all driven by the declared price.
+    expect(HEAL.cost?.material).toEqual({ count: 1 }); // the price is declared as data
+    const { battle } = playGolden();
+    const grid = new TileGrid(8, 3);
+    const inv = createInventory(8, { salve: 2 });
+    const wire = JSON.parse(JSON.stringify(battle.log)) as CombatAction[];
+    const rebuilt = replay(grid, roster(), wire, { ...GOLDEN_OPTS, stash: inv });
+    expect(countOf(inv, "salve")).toBe(1); // the replayed commit-side spend matches the live one
+    expect(rebuilt.units).toEqual(battle.units);
+
+    // Undo the commit-side herb spend: the checkpoint's stash snapshot refunds it exactly.
+    const g2 = new TileGrid(8, 3);
+    const b2 = new Battle(g2, roster(), GOLDEN_OPTS);
+    const inv2 = createInventory(8, { salve: 2 });
+    b2.setStash(inv2);
+    b2.seed();
+    b2.beginUndo();
+    const medic = unitIn(b2, "medic");
+    const ally = unitIn(b2, "ally");
+    b2.useHeal(medic, HEAL, ally, "salve", inv2, { commitTurn: false });
+    expect(countOf(inv2, "salve")).toBe(1); // spent commit-side
+    b2.undo();
+    expect(countOf(inv2, "salve")).toBe(2); // refunded by the checkpoint's stash snapshot
+  });
+
   it("undo/undoAll cross both verbs — the armed span rolls back byte-identically (#111)", () => {
     const grid = new TileGrid(8, 3);
     const battle = new Battle(grid, roster(), GOLDEN_OPTS);

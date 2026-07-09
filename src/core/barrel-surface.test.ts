@@ -67,6 +67,17 @@
  *     `node-events.ts`) and `jobPresenceSummary` (was in `jobs.ts`) move to
  *     `dossier.ts` beside the other read-only projections; both keep their barrel
  *     names at the new home (616).
+ *
+ * R4 batch-1 deltas (#113 — the cost grammar):
+ *   - increment 3 (material prices): +1 — `canAffordMaterial` (inventory.ts), the core
+ *     availability projection deriving a "0 herbs / 0 kits" greyed state from a skill's
+ *     declared material price (→ 617). The `cost.ts` grammar (`Cost`/`CostPrice`/
+ *     `ClockDomain`/`MaterialCost`) and the `SkillCost`/`OverworldCost` views are all
+ *     type-only (not runtime surface).
+ *   - increment 4 (#123 — SkillDef.phase retires): −1 — `unlockedSkills` deleted (its callers
+ *     migrated to `availableSkills`, the one authoritative surfacing projection); `unitSkills`
+ *     keeps its name (signature dropped the `phase` param). The `Phase` type is deleted too
+ *     (type-only, not runtime surface) (→ 616).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -305,6 +316,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "campfireRadius",
   "canAdd",
   "canAffordInfluence",
+  "canAffordMaterial",
   "canDisarm",
   "canPlacePlayerTrap",
   "canSee",
@@ -683,7 +695,6 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "unitPresence",
   "unitSkills",
   "unlockGear",
-  "unlockedSkills",
   "useOverworldSkill",
   "validateExpedition",
   "validateOverworldCost",

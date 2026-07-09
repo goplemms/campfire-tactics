@@ -71,7 +71,7 @@ describe("Battle.apply — the single command interpreter", () => {
     const grid = new TileGrid(8, 1);
     const medic = at("medic", "player", 0, 0);
     const ally = at("ally", "player", 1, 0, { hp: 4, maxHp: 20 });
-    const mend: SkillDef = { id: "mend-fixture", name: "Mend", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } };
+    const mend: SkillDef = { id: "mend-fixture", name: "Mend", description: "", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } };
     // A raw apply carries only the skill id (R1 #111); the fixture def resolves
     // through the injectable lookup (the D65 pattern) — never the global registry.
     const battle = new Battle(grid, [medic, ally], { skills: (id) => (id === mend.id ? mend : undefined) });
@@ -89,7 +89,7 @@ describe("Battle.apply — the single command interpreter", () => {
     const knight = at("k", "player", 0, 0);
     const foe = at("f", "enemy", 1, 0);
     const battle = new Battle(grid, [knight, foe]);
-    const shove: SkillDef = { id: "shove", name: "Shove", description: "", phase: "battle", target: "enemy", range: 1, spend: "act", effect: { kind: "forced-move", tiles: 2 } };
+    const shove: SkillDef = { id: "shove", name: "Shove", description: "", target: "enemy", range: 1, spend: "act", effect: { kind: "forced-move", tiles: 2 } };
 
     battle.useSkill(knight, shove, foe, { commitTurn: false });
     expect(foe.pos).toEqual({ col: 3, row: 0 }); // pushed two tiles

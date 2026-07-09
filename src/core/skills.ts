@@ -1,11 +1,11 @@
 /**
  * Skills as data (M4 / D3).
  *
- * A skill is a plain data record — never a subclass. It declares which **phase**
- * it hooks, what it **targets**, its **range**, the CT it **spends**, and a
- * declarative **effect** the resolver interprets against the battle. New skills
- * are new data; the battle loop needs no new branches. M4 exercises the
- * `battle`-phase skills; the other phases are laid as the D3 seam.
+ * A skill is a plain data record — never a subclass. It declares what it **targets**,
+ * its **range**, the CT it **spends**, and a declarative **effect** the resolver interprets
+ * against the battle. Where it surfaces is read off its shape via {@link skillContexts} (the
+ * {@link UsableContext} axis) — the retired `phase` tag is gone (#123). New skills are new
+ * data; the battle loop needs no new branches.
  *
  * Pure logic: no Phaser, no DOM.
  */
@@ -15,20 +15,20 @@ import type { EventBus } from "./event-bus";
 import type { StatusInstance } from "./status";
 import { resolveAttack, manhattan, PASSIVE } from "./combat";
 import { applyStatus, markPrey, cleanseOne, hastened } from "./status";
-import { countOf, removeItem, type Inventory } from "./inventory";
+import { countOf, type Inventory } from "./inventory";
 import { abilityScaleBonus } from "./leveling";
 import { assertNever } from "./num";
 import type { CapabilityId } from "./jobs";
 import type { OverworldCost } from "./overworld-cost";
-
-/** The ordered phases of the game pipeline (D3). */
-export type Phase = "meta" | "deployment" | "battle" | "resolution";
+import type { Cost } from "./cost";
 
 /**
- * The game-wide surfaces where a skill can be **used/surfaced** (D67) — a finer axis than
- * {@link Phase} (the pipeline tier `meta` splits into `overworld` + `guild`). Declared as
- * data on a skill; defaults from the skill's *shape* via {@link skillContexts}, so authors
- * rarely write it. Combat is the substrate; deployment is `pre-combat`.
+ * The game-wide surfaces where a skill can be **used/surfaced** (D67/#123) — the **one
+ * placement axis** now that the pipeline `phase` is retired. Declared as data on a skill;
+ * defaults from the skill's *shape* via {@link skillContexts}, so authors rarely write it.
+ * Combat is the substrate; deployment is `pre-combat`; the meta tier splits into `overworld`
+ * + `guild`. (The D3 pipeline *sequence* — meta → deployment → battle → resolution — stays a
+ * documented runloop contract, D46; it no longer needs a per-skill `phase` tag.)
  */
 export type UsableContext = "overworld" | "guild" | "pre-combat" | "combat";
 
@@ -244,28 +244,19 @@ export type OverworldActionEffect = OpenMarketEffect | PrimeDealEffect | Provisi
 export type SkillEffect = BattleEffect | FieldEffect | CampEffect | DeploymentEffect | OverworldActionEffect;
 
 /**
- * Optional ability cost beyond the Act (D37). The combat economy is **time**:
- * `charge` commits now and resolves later on the clock; `cooldown` is a sparing
- * re-arm on instant utility. A skill with neither is the instant floor.
+ * Optional ability cost beyond the Act (D37) — the **CT-clock view** of the one {@link Cost}
+ * grammar (#113). The combat economy is **time**: `charge` commits now and resolves later on
+ * the clock; `cooldown` is a sparing re-arm on instant utility. A skill with neither is the
+ * instant floor. Also carries the CT view's **material price** (#113) — a carried item a cast
+ * consumes (the Medic Heal's herb, Set Trap's kit). Field docs live on {@link Cost}.
  */
-export interface SkillCost {
-  /**
-   * Charge gauge speed (D5/D37): the effect resolves later, when a
-   * {@link "./clock".ScheduledEffect} filling by this each tick reaches 100.
-   * Lower = a longer charge ("~N turns"); ≥100 lands next tick.
-   */
-  charge?: number;
-  /** CT cooldown armed after use (instant-utility spam-limit, ~150–250 CT). */
-  cooldown?: number;
-}
+export type SkillCost = Pick<Cost, "charge" | "cooldown" | "material">;
 
 /** A skill definition — pure data authored in a job file. */
 export interface SkillDef {
   id: string;
   name: string;
   description: string;
-  /** Which phase of the pipeline this skill acts in (D3). */
-  phase: Phase;
   /**
    * Optional override of where this skill may be surfaced/used (D67). When omitted,
    * {@link skillContexts} derives it from the skill's shape (effect kind + target + spend).
@@ -283,21 +274,9 @@ export interface SkillDef {
   /**
    * Job level at which this skill unlocks (D39). Defaults to 1 (available from
    * the start). The four kits start with their passive + one active and earn the
-   * **2nd active at level 2** ({@link "./leveling".unlockedSkills}).
+   * **2nd active at level 2** (gated by {@link "./leveling".availableSkills}).
    */
   unlockLevel?: number;
-  /**
-   * For a **meta/camp** skill: the maximum times it may be fired **at a single
-   * overworld node** (D35 spine). The overworld action economy gates every verb so
-   * it can't be spammed; `usesPerNode` is the gate for a *costless* signature job
-   * action (Cook's stew, Merchant's trade), reset each node-step ({@link
-   * "./overworld-actions".tickCooldowns}). **Undefined ⇒ uncapped** — a skill that
-   * pays its own way each cast (a Vancian charge, a gold/resource buy) is gated by
-   * that cost and may fire as many times as it can afford. Enforced by {@link
-   * "./overworld-actions".useOverworldSkill}; combat-phase skills ignore it (the CT
-   * clock is their limiter).
-   */
-  usesPerNode?: number;
   /**
    * An optional **capability gate** (D72): the action is available only to a unit that
    * *holds* this {@link "./jobs".CapabilityId} (the Triage / lockpick shape — the
@@ -307,13 +286,13 @@ export interface SkillDef {
    */
   requires?: CapabilityId;
   /**
-   * The **two-axis overworld cost** (D72) a between-nodes action declares — the full
-   * {@link "./overworld-actions".OverworldCost} menu (cooldown / per-node cap / fatigue /
+   * The **two-axis overworld cost** (D72/#113) a between-nodes action declares — the full
+   * {@link "./overworld-cost".OverworldCost} menu (cooldown / per-node cap / fatigue /
    * gold / influence / rp, computed prices and all), gating the action through the shared
-   * {@link "./overworld-actions".checkOverworldCost} limiter. Omitted ⇒ derived from
-   * `usesPerNode` alone (a costless signature action like Cook Stew), via
-   * {@link "./overworld-actions".overworldCostOf}. Combat skills ignore it (the CT clock /
-   * `cost` is their limiter); it's the overworld twin of {@link SkillCost}.
+   * {@link "./overworld-cost".checkOverworldCost} limiter. It is the **one home** for a
+   * between-nodes verb's pacing + price — the per-node cap lives here as `usesPerNode`, not
+   * as a separate `SkillDef` field (the #113 fold). Combat skills ignore it (the CT clock /
+   * `cost` is their limiter); it's the node-steps view of the one {@link "./cost".Cost} grammar.
    */
   overworldCost?: OverworldCost;
   /**
@@ -444,9 +423,12 @@ export function medHealAmount(
  * from the shared stash and heal `target`, with a **rider keyed by the herb**:
  * salve → bigger heal; stimulant → Hastened; antidote → cleanse a debuff. Base
  * heal scales with the Medic's Triage passive (more wounded → more healing).
- * Returns an empty outcome (no heal) if the herb isn't carried. The heal figure +
- * rider come from the pure {@link medHealAmount} predict-core (D64) — this
- * resolver only *applies* them (consume herb, heal, apply the rider).
+ * Returns an empty outcome (no heal) if the herb isn't carried — the availability gate. The
+ * heal figure + rider come from the pure {@link medHealAmount} predict-core (D64); this resolver
+ * only *applies* them (heal + rider). The herb **consumption** moved commit-side (#113): the
+ * apply path ({@link "./turn".Battle.apply}) spends the declared material price after the heal
+ * lands, so undo/replay ride the checkpoint's stash snapshot — the resolver no longer mutates
+ * the stash (`inv` is now read-only, the availability check alone).
  */
 export function resolveMedHeal(
   medic: Unit,
@@ -456,7 +438,6 @@ export function resolveMedHeal(
   bus?: EventBus,
 ): SkillOutcome {
   if (countOf(inv, herbId) < 1) return {};
-  removeItem(inv, herbId, 1);
 
   const { amount, rider } = medHealAmount(medic, target, herbId);
   const out: SkillOutcome = applyHeal(medic, target, amount, bus);

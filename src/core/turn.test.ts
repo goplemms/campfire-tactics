@@ -195,7 +195,7 @@ describe("Battle orchestrator", () => {
     const battle = new Battle(grid, [hero, foe]);
     hero.ct = 100;
 
-    const powerStrike = { id: "ps", name: "PS", description: "", phase: "battle", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 } } as const;
+    const powerStrike = { id: "ps", name: "PS", description: "", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 } } as const;
     const out = battle.useSkill(hero, powerStrike, foe);
 
     expect(out.damage).toBe(12); // (8+6) - 2
@@ -210,7 +210,7 @@ describe("Battle orchestrator", () => {
     const battle = new Battle(grid, [hero, foe]);
     hero.ct = 100;
 
-    const powerStrike = { id: "ps", name: "PS", description: "", phase: "battle", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 } } as const;
+    const powerStrike = { id: "ps", name: "PS", description: "", target: "enemy", range: 1, spend: "act", effect: { kind: "damage", bonusAttack: 6 } } as const;
     const out = battle.useSkill(hero, powerStrike, foe, { commitTurn: false });
 
     expect(out.damage).toBe(12); // effect still resolves
@@ -225,7 +225,7 @@ describe("Battle orchestrator", () => {
     const battle = new Battle(grid, [medic, ally]);
     medic.ct = 100;
 
-    const mend = { id: "mend", name: "Mend", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } } as const;
+    const mend = { id: "mend", name: "Mend", description: "", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "heal", amount: 5 } } as const;
     battle.useSkill(medic, mend, ally, { commitTurn: false });
 
     expect(ally.hp).toBe(9); // healed
@@ -273,9 +273,9 @@ describe("Battle — deployment verbs (D63)", () => {
     const stash = createInventory(6, { "trap-kit": 2 });
     battle.setStash(stash);
 
-    const res = battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0");
+    const res = battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0", { id: "trap-kit", count: 1 });
     expect(res.ok && res.trap).toBeTruthy();
-    expect(countOf(stash, "trap-kit")).toBe(1); // one kit spent
+    expect(countOf(stash, "trap-kit")).toBe(1); // one kit spent (commit-side, #113)
     expect(battle.entities.all().some((e) => e.id === "ptrap-0")).toBe(true);
     expect(battle.log[battle.log.length - 1]).toMatchObject({ kind: "placeTrap", unit: "t", id: "ptrap-0" });
   });
@@ -287,7 +287,7 @@ describe("Battle — deployment verbs (D63)", () => {
     const stash = createInventory(6, { "trap-kit": 1 });
     battle.setStash(stash);
     battle.beginUndo();
-    battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0");
+    battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0", { id: "trap-kit", count: 1 });
     expect(countOf(stash, "trap-kit")).toBe(0);
     battle.undo();
     expect(countOf(stash, "trap-kit")).toBe(1); // kit refunded

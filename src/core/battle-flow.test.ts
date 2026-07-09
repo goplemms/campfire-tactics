@@ -80,11 +80,14 @@ describe("noActionsAvailable — the D55 auto-pass backstop", () => {
     expect(noActionsAvailable({ actor, units: [actor, foe], grid: g, entities: reg(), hasGuild: false })).toBe(false);
   });
 
-  it("a stuck unit with no move, no foe, no skill, no trap, no bribe has nothing to do", () => {
-    // A 1x1 grid pins the unit; no foes, no entities, no guild → true backstop.
+  it("a boxed-in unit can still always Defend, so the backstop no longer fires (#123 flip)", () => {
+    // A 1x1 grid pins the unit; no foes, no entities, no guild. The backstop now reads
+    // availableSkills('combat') (the authoritative projection), which always offers the universal
+    // Defend — so no combat turn is truly action-less. This is the increment-4 flip of the
+    // increment-0 witness: unlockedSkills('battle') used to report "nothing to do" here.
     const g = new TileGrid(1, 1);
     const actor = unit("h", "player", { pos: { col: 0, row: 0 }, moveRange: 0 });
-    expect(noActionsAvailable({ actor, units: [actor], grid: g, entities: reg(), hasGuild: false })).toBe(true);
+    expect(noActionsAvailable({ actor, units: [actor], grid: g, entities: reg(), hasGuild: false })).toBe(false);
   });
 
   it("the same stuck unit gains an action when a guild lets it bribe a living enemy", () => {

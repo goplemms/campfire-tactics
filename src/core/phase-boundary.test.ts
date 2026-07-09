@@ -20,7 +20,6 @@ const DASH: SkillDef = {
   id: "dash",
   name: "Dash",
   description: "",
-  phase: "battle",
   target: "self",
   range: 0,
   spend: "move",

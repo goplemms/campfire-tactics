@@ -222,19 +222,22 @@ describe("player trap placement — the pure Set Trap resolver (D11)", () => {
   // The placement spec the deploy verb now sources from the acting unit's own Set Trap skill.
   const trap: PlaceTrapEffect = { kind: "placeTrap", damage: 3 };
 
-  it("a trapper places a trap: kit spent, entity registered on the field, XP gained", () => {
+  it("a trapper places a trap: entity registered on the field, XP gained (kit consumed commit-side, #113)", () => {
     const r = reg();
     const inv = createInventory(8, { "trap-kit": 2 });
     const actor = unit("trapper", "player", { jobId: "scout" });
     const xpBefore = actor.xp;
     const res = placePlayerTrap(inv, r, actor, { col: 2, row: 2 }, trap, "pt-0");
     expect(res.ok).toBe(true);
-    expect(countOf(inv, "trap-kit")).toBe(1); // one kit consumed
+    // The pure resolver no longer spends the kit (#113): consumption is the apply path's
+    // commit half (Battle.apply — see turn.test.ts), so undo/replay ride the checkpoint's
+    // stash snapshot. The resolver only checks the kit is present + registers the entity.
+    expect(countOf(inv, "trap-kit")).toBe(2);
     expect(r.all().some((e) => e.id === "pt-0")).toBe(true); // live on the field
     expect(actor.xp).toBeGreaterThan(xpBefore); // signature-action use-XP
   });
 
-  it("refuses with no kit, and refuses a second trap on the same tile (spending nothing)", () => {
+  it("refuses with no kit, and refuses a second trap on the same tile (the resolver spends nothing)", () => {
     const r = reg();
     const inv = createInventory(8); // no kits
     const actor = unit("trapper2", "player", { jobId: "scout" });
@@ -246,7 +249,7 @@ describe("player trap placement — the pure Set Trap resolver (D11)", () => {
     const dup = placePlayerTrap(inv, r, actor, { col: 1, row: 1 }, trap, "c");
     expect(dup.ok).toBe(false);
     expect(dup.reason).toMatch(/already a trap/i);
-    expect(countOf(inv, "trap-kit")).toBe(1); // only the one successful place spent a kit
+    expect(countOf(inv, "trap-kit")).toBe(2); // the resolver never spends — kits consumed commit-side (#113)
   });
 
   it("the placed trap emits trapSprung when an enemy steps on it (no shadow model)", () => {

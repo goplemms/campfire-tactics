@@ -13,12 +13,12 @@
  */
 import { primaryJobOf, type Unit } from "./units";
 import type { Inventory } from "./inventory";
-import { grantItem, countOf, removeItem } from "./inventory";
+import { grantItem, countOf } from "./inventory";
 import type { Rng } from "./rng";
 import { chebyshev, type GridCoord } from "./iso";
 import { clamp01 } from "./num";
-import { unitSkills, getJob } from "./jobs";
-import { grantAbilityUseXp } from "./leveling";
+import { getJob } from "./jobs";
+import { grantAbilityUseXp, availableSkills } from "./leveling";
 import type { PlaceTrapEffect } from "./skills";
 import {
   EntityRegistry,
@@ -162,7 +162,10 @@ export function spotWhileMoving(
 /** True if `unit` can disarm a trap — it carries a Set-Trap skill, or its job is lockpick-trained (the Thief, D68). */
 export function canDisarm(unit: Unit): boolean {
   return (
-    unitSkills(unit, "deployment").some((s) => s.effect.kind === "placeTrap") ||
+    // The pre-combat surfacing projection (#123 — `availableSkills("pre-combat")` replaces the
+    // retired `unitSkills(_, "deployment")`): a placeTrap skill surfaces there; the universal folds
+    // (Dig In / Defend) aren't placeTrap, so `.some(placeTrap)` stays byte-identical.
+    availableSkills(unit, "pre-combat").some((s) => s.effect.kind === "placeTrap") ||
     getJob(primaryJobOf(unit))?.lockpick === true
   );
 }
@@ -200,11 +203,15 @@ export interface PlaceTrapResult {
 /**
  * **Place a player trap** (D11/D13) — the pure resolver behind the Deployment Set
  * Trap verb (previously living entirely in the BattleScene): validate the kit +
- * tile ({@link canPlacePlayerTrap}), consume one kit, register a one-shot
- * {@link makeTrap} entity (`id`, owner `player`, the skill's damage + snare status)
- * on the battle's {@link EntityRegistry}, and grant the actor ability-use XP. The
- * registered entity is the single source of truth for its sprung state (the render
- * reacts to the `trapSprung` bus event), so no shadow model is needed.
+ * tile ({@link canPlacePlayerTrap}), register a one-shot {@link makeTrap} entity
+ * (`id`, owner `player`, the skill's damage + snare status) on the battle's
+ * {@link EntityRegistry}, and grant the actor ability-use XP. The registered entity
+ * is the single source of truth for its sprung state (the render reacts to the
+ * `trapSprung` bus event), so no shadow model is needed. The **kit consumption**
+ * moved commit-side (#113): the apply path ({@link "./turn".Battle.apply}) spends the
+ * declared material price after this succeeds, so undo/replay ride the checkpoint's
+ * stash snapshot — the resolver no longer removes the kit (`inv` is the availability
+ * check alone).
  */
 export function placePlayerTrap(
   inv: Inventory,
@@ -216,7 +223,6 @@ export function placePlayerTrap(
 ): PlaceTrapResult {
   const check = canPlacePlayerTrap(inv, entities, tile);
   if (!check.ok) return { ok: false, reason: check.reason };
-  removeItem(inv, "trap-kit", 1);
   const trap = makeTrap(id, tile, "player", effect.damage, { status: effect.status });
   entities.register(trap);
   const levels = grantAbilityUseXp(actor);

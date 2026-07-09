@@ -2,9 +2,10 @@
  * Jobs as data (M4) — the **engine**.
  *
  * A job is a named bundle of {@link SkillDef}s — pure data, no subclasses. A
- * unit's `jobId` links it here; {@link unitSkills} reads back its skills (filtered
- * by phase). Adding a job — or a whole non-combat role later — is adding a record to
- * the `jobs-data/` content modules and a key to {@link JOBS}, nothing more.
+ * unit's `jobId` links it here; {@link unitSkills} reads back its skills (the full set;
+ * surface filtering is {@link "./leveling".availableSkills}'s job by `usableContext`, #123).
+ * Adding a job — or a whole non-combat role later — is adding a record to the `jobs-data/`
+ * content modules and a key to {@link JOBS}, nothing more.
  *
  * The authored job records themselves live in `jobs-data/` (R3, #130): the combat
  * roster in {@link "./jobs-data/combat"}, the Scout prestige line in
@@ -18,7 +19,7 @@
  */
 
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
-import type { Phase, SkillDef } from "./skills";
+import type { SkillDef } from "./skills";
 import { PASSIVE } from "./combat";
 import type { PrestigeBranch } from "./grants";
 import { SOLDIER_JOB, HEAVY_KNIGHT_JOB, HUNTER_JOB, MEDIC_JOB, SNARE_TRAPPER_JOB } from "./jobs-data/combat";
@@ -234,13 +235,13 @@ export function stampPassives(unit: Unit, lookup: JobLookup = getJob): void {
 }
 
 /**
- * The skills a unit has via its job, optionally filtered to one phase. Returns
- * an empty list for a unit with no job.
+ * The skills a unit has via its job (the full authored set). Returns an empty list for a unit
+ * with no job. The `phase` axis is retired (#123) — surface filtering is {@link
+ * "./leveling".availableSkills}'s job (by `usableContext`), so this is the raw per-job set.
  */
-export function unitSkills(unit: Unit, phase?: Phase, lookup: JobLookup = getJob): SkillDef[] {
+export function unitSkills(unit: Unit, lookup: JobLookup = getJob): SkillDef[] {
   // Effective primary (D65 standardization): a prestiged unit draws the evolved
   // job's skills, not its frozen jobId's. Byte-identical when primaryJobOf === jobId.
   const job = lookup(primaryJobOf(unit));
-  if (!job) return [];
-  return phase ? job.skills.filter((s) => s.phase === phase) : job.skills;
+  return job ? job.skills : [];
 }

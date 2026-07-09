@@ -29,8 +29,8 @@ function unit(id: string, side: Side, hp: number, maxHp: number): Unit {
 // A costless morale camp skill (the old Cook Stew shape) — a fixture for the camp morale
 // resolver tests, decoupled from the real Cook kit (Cook Stew is now a provisionMeal, D71).
 const cookSkill: SkillDef = {
-  id: "fx-stew", name: "Fixture Stew", description: "", phase: "meta", target: "party", range: 0, spend: "act",
-  usesPerNode: 1, effect: { kind: "morale", morale: 1, partyHeal: 8 },
+  id: "fx-stew", name: "Fixture Stew", description: "", target: "party", range: 0, spend: "act",
+  overworldCost: { usesPerNode: 1 }, effect: { kind: "morale", morale: 1, partyHeal: 8 },
 };
 
 describe("camp economy + morale (Merchant / Chef, Meta phase)", () => {
@@ -71,7 +71,6 @@ describe("camp economy + morale (Merchant / Chef, Meta phase)", () => {
       id: "x",
       name: "x",
       description: "",
-      phase: "battle",
       target: "enemy",
       range: 1,
       spend: "act",

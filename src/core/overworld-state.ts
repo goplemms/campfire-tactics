@@ -30,7 +30,7 @@ export interface OverworldState {
   /**
    * Times each **camp job skill** has been used **at the current node**, keyed by
    * skill id — the limiter for costless signature actions (D35; Cook stew, Merchant
-   * trade). Compared against {@link "./skills".SkillDef.usesPerNode} and **reset to
+   * trade). Compared against the skill's `overworldCost.usesPerNode` (#113) and **reset to
    * empty each node-step** ({@link tickCooldowns}), so the allowance is per-node, not
    * per-run.
    */
@@ -145,12 +145,14 @@ export function campSkillUses(eco: OverworldState, skillId: string): number {
 }
 
 /**
- * Uses **left** for a camp job skill at the current node. `usesPerNode` undefined ⇒
- * uncapped (the skill is gated by its own per-cast cost), reported as `Infinity`.
+ * Uses **left** for a camp job skill at the current node. The per-node cap now lives inside
+ * `overworldCost` (#113 fold); undefined ⇒ uncapped (the skill is gated by its own per-cast
+ * cost), reported as `Infinity`.
  */
 export function campSkillUsesLeft(eco: OverworldState, skill: SkillDef): number {
-  if (skill.usesPerNode === undefined) return Infinity;
-  return Math.max(0, skill.usesPerNode - campSkillUses(eco, skill.id));
+  const cap = skill.overworldCost?.usesPerNode;
+  if (cap === undefined) return Infinity;
+  return Math.max(0, cap - campSkillUses(eco, skill.id));
 }
 
 /** The extra intel tier bought for a node so far (the Scout bump). */

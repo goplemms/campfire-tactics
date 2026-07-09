@@ -10,8 +10,8 @@
  */
 import { describe, it, expect } from "vitest";
 import { skillContexts, type SkillDef, type SkillEffect, type UsableContext } from "./skills";
-import { availableSkills, unlockedSkills } from "./leveling";
-import { JOBS, type JobId } from "./jobs";
+import { availableSkills } from "./leveling";
+import { JOBS, unitSkills, type JobId } from "./jobs";
 import { DEFEND } from "./jobs-data/support";
 import { createUnit, type Unit } from "./units";
 
@@ -20,7 +20,6 @@ function mk(over: Partial<SkillDef> & { effect: SkillEffect }): SkillDef {
     id: "t",
     name: "T",
     description: "",
-    phase: "battle",
     target: "enemy",
     range: 1,
     spend: "act",
@@ -75,11 +74,11 @@ describe("skillContexts — support and self/ally buffs are shared across both b
 
 describe("skillContexts — phase-specific kinds", () => {
   it("placeTrap ⇒ pre-combat only", () => {
-    expect(skillContexts(mk({ phase: "deployment", target: "self", effect: { kind: "placeTrap", damage: 3 } }))).toEqual(["pre-combat"]);
+    expect(skillContexts(mk({ target: "self", effect: { kind: "placeTrap", damage: 3 } }))).toEqual(["pre-combat"]);
   });
 
   it("morale (camp) ⇒ overworld", () => {
-    expect(skillContexts(mk({ phase: "meta", target: "party", effect: { kind: "morale", morale: 1, partyHeal: 8 } }))).toEqual(["overworld"]);
+    expect(skillContexts(mk({ target: "party", effect: { kind: "morale", morale: 1, partyHeal: 8 } }))).toEqual(["overworld"]);
   });
 });
 
@@ -122,9 +121,12 @@ function jobUnit(jobId: JobId): Unit {
 describe("availableSkills — parity with today's surfacing + the dual-context win (D67 increment 3)", () => {
   const jobIds = Object.keys(JOBS) as JobId[];
 
-  it.each(jobIds)("%s: availableSkills('combat') == unlockedSkills('battle') + the universal Defend", (jobId) => {
+  it.each(jobIds)("%s: availableSkills('combat') == the job's unlocked combat skills + the universal Defend", (jobId) => {
     const u = jobUnit(jobId);
-    expect(availableSkills(u, "combat")).toEqual([...unlockedSkills(u, "battle"), DEFEND]);
+    // The retired unlockedSkills('battle') is now: the job's combat-context skills, unlockLevel-
+    // filtered (#123). availableSkills folds the universal Defend in last — pin the composition.
+    const jobCombat = unitSkills(u).filter((s) => skillContexts(s).includes("combat") && (s.unlockLevel ?? 1) <= 1);
+    expect(availableSkills(u, "combat")).toEqual([...jobCombat, DEFEND]);
   });
 
   it("the Cook's camp skill surfaces in the overworld", () => {

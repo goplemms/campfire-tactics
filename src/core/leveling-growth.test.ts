@@ -5,7 +5,7 @@ import {
   grantJobXp,
   routeCombatXp,
   jobLevelOf,
-  unlockedSkills,
+  availableSkills,
   skillsUnlockedBetween,
   abilityScaleBonus,
   applyJobLevelGains,
@@ -51,11 +51,15 @@ describe("hybrid leveling — per-job stat growth (D39)", () => {
 
   it("the 2nd active gates on job level — locked at L1, unlocked at L2", () => {
     const k = knight();
-    const atL1 = unlockedSkills(k, "battle").map((s) => s.id);
+    // availableSkills is the surfacing projection now (#123); filter to the job's own combat
+    // skills (drop the universal Defend fold) to read the unlock gating.
+    const jobIds = HEAVY_KNIGHT_JOB.skills.map((s) => s.id);
+    const combatJobSkills = (u: Unit) => availableSkills(u, "combat").filter((s) => jobIds.includes(s.id)).map((s) => s.id);
+    const atL1 = combatJobSkills(k);
     expect(atL1).toContain("cleave"); // unlockLevel 1
     expect(atL1).not.toContain("shove"); // unlockLevel 2 — still locked
     grantJobXp(k, "heavy-knight", LEVELING.xpPerJobLevel);
-    const atL2 = unlockedSkills(k, "battle").map((s) => s.id);
+    const atL2 = combatJobSkills(k);
     expect(atL2).toContain("shove");
     expect(atL2.length).toBe(HEAVY_KNIGHT_JOB.skills.length);
   });

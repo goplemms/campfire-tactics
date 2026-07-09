@@ -25,23 +25,23 @@ import type { SkillDef } from "./skills";
 
 /** Computed-cost meal priced at *the night's upkeep value* (provider) → bank RP + satisfy Food. */
 const COOK_FIX: SkillDef = {
-  id: "fx-cook-stew", name: "Fixture Cook Stew", description: "", phase: "meta", target: "party", range: 0, spend: "act",
+  id: "fx-cook-stew", name: "Fixture Cook Stew", description: "", target: "party", range: 0, spend: "act",
   overworldCost: { usesPerNode: 1, gold: (run) => computeUpkeep(run.party).total },
   effect: { kind: "provisionMeal", rp: 4 },
 };
 /** Per-node-state verb: open an impromptu market here (the Find-Trade shape). */
 const FIND_FIX: SkillDef = {
-  id: "fx-find-trade", name: "Fixture Find Trade", description: "", phase: "meta", target: "self", range: 0, spend: "act",
+  id: "fx-find-trade", name: "Fixture Find Trade", description: "", target: "self", range: 0, spend: "act",
   overworldCost: { cooldown: 1 }, effect: { kind: "openMarket" },
 };
 /** One-shot primed verb: the next deal goes my way (the Savvy-Barter shape). */
 const BARTER_FIX: SkillDef = {
-  id: "fx-savvy-barter", name: "Fixture Savvy Barter", description: "", phase: "meta", target: "self", range: 0, spend: "act",
+  id: "fx-savvy-barter", name: "Fixture Savvy Barter", description: "", target: "self", range: 0, spend: "act",
   overworldCost: { cooldown: 1 }, effect: { kind: "primeDeal" },
 };
 /** Capability-gated verb: only a healer may (the Triage/Capability shape). */
 const TRIAGE_FIX: SkillDef = {
-  id: "fx-field-triage", name: "Fixture Field Triage", description: "", phase: "meta", target: "party", range: 0, spend: "act",
+  id: "fx-field-triage", name: "Fixture Field Triage", description: "", target: "party", range: 0, spend: "act",
   requires: "healer", overworldCost: { fatigue: 1 }, effect: { kind: "provisionMeal", rp: 1 },
 };
 

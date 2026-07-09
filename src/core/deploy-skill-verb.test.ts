@@ -22,30 +22,29 @@ const DASH: SkillDef = {
   id: "dash",
   name: "Dash",
   description: "",
-  phase: "battle",
   target: "self",
   range: 0,
   spend: "move",
   effect: { kind: "status", status: { id: "swift", name: "Swift", duration: 1, kind: "buff", data: { amount: 3 } } },
 };
 
-const PLAIN_HEAL: SkillDef = { id: "mend", name: "Mend", description: "", phase: "battle", target: "ally", range: 2, spend: "act", effect: { kind: "heal", amount: 10 } };
+const PLAIN_HEAL: SkillDef = { id: "mend", name: "Mend", description: "", target: "ally", range: 2, spend: "act", effect: { kind: "heal", amount: 10 } };
 
 /** An attack with a cooldown — combat-only (the engagement invariant refuses it pre-combat). */
 const GUARD_BREAK: SkillDef = {
-  id: "guard-break", name: "Guard Break", description: "", phase: "battle", target: "enemy", range: 1, spend: "act",
+  id: "guard-break", name: "Guard Break", description: "", target: "enemy", range: 1, spend: "act",
   cost: { cooldown: 200 }, effect: { kind: "damage", bonusAttack: 3 },
 };
 
 /** A heal with a cooldown — **dual-context** support: castable in either phase, to observe
  *  the turn split (both arm the cooldown; combat also spends CT, pre-combat doesn't). */
 const MENDER: SkillDef = {
-  id: "mender", name: "Mender", description: "", phase: "battle", target: "ally", range: 2, spend: "act",
+  id: "mender", name: "Mender", description: "", target: "ally", range: 2, spend: "act",
   cost: { cooldown: 200 }, effect: { kind: "heal", amount: 10 },
 };
 
 /** The Medic's herb-stash heal — a board skill in both phases now (W8). */
-const MED_HEAL: SkillDef = { id: "heal", name: "Heal", description: "", phase: "battle", target: "ally", range: 2, spend: "act", effect: { kind: "med-heal" } };
+const MED_HEAL: SkillDef = { id: "heal", name: "Heal", description: "", target: "ally", range: 2, spend: "act", cost: { material: { count: 1 } }, effect: { kind: "med-heal" } };
 
 function pawn(id: string, col: number, side: Side = "player"): Unit {
   return createUnit({ id, side, pos: { col, row: 0 }, awareness: 2, speed: 10, maxHp: 20, attack: 5, defense: 1, moveRange: 3, sightRadius: 4 });

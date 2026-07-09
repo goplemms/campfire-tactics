@@ -35,7 +35,7 @@
 
 import type { RunState } from "./run";
 import { marketOpenedFlag, type MapNode } from "./overworld";
-import { createUnit, primaryJobOf, remember, type Unit, type UnitSpec } from "./units";
+import { createUnit, fieldsJob, primaryJobOf, remember, type Unit, type UnitSpec } from "./units";
 import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
@@ -732,7 +732,9 @@ export const EVENTS: readonly EventDef[] = [
       return applyProvisionChoice(run, "accept-gift");
     },
     choices(run, _node) {
-      const cook = run.party.some((u) => primaryJobOf(u) === "cook" && u.alive);
+      // A **fielded** Cook (D7): a captured Cook is bound and cooks nothing — this
+      // check had forgotten `!u.captured` (the R2 audit's named behavior fix, #125).
+      const cook = fieldsJob(run.party, "cook");
       return [
         {
           id: "accept-gift",

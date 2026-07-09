@@ -4,9 +4,10 @@
  * These tests pin TODAY'S behaviors before the R2 refactor touches them, so each
  * later increment flips (or retires) exactly the witness it named and nothing else:
  *
- * - (a) A **captured** Cook is still offered the stew choice — the node-events Cook
- *   check forgot `!u.captured` (the audit's real inconsistency). **Flips at
- *   increment 2** (the one named behavior change of this brief).
+ * - (a) A **captured** Cook and the stew choice — the node-events Cook check had
+ *   forgotten `!u.captured` (the audit's real inconsistency), so a captured Cook
+ *   still offered stew. **Flipped at increment 2** (the one named behavior change
+ *   of this brief): the check now rides `fieldsJob`, and the witness pins the fix.
  * - (b) `bankerBorrow` / `bankerEngageInterest` succeed **back-to-back with no
  *   refusal** — neither routes through the D61 cost gate (no pacing, no price;
  *   Borrow is an unbounded gold advance). **Flips at increment 7.**
@@ -68,18 +69,18 @@ function newRun(seed: string, party: Unit[], gold = 200): RunState {
 
 // --- Witness (a): the captured-Cook stew offer (flips at increment 2) --------
 
-describe("R2 witness (a) — a captured Cook IS offered the stew choice today", () => {
-  it("provision-choice offers cook-stew even when the only Cook is captured", () => {
+describe("R2 witness (a) — a captured Cook is NOT offered the stew choice (fixed, increment 2)", () => {
+  it("provision-choice withholds cook-stew when the only Cook is captured", () => {
     const cook = member("Pip", "cook");
-    cook.captured = true; // bound on the map — but the Cook check forgot `!u.captured`
+    cook.captured = true; // bound on the map (D7) — a captured Cook cooks nothing
     const run = newRun("r2-w-a", [member("Rook", "soldier"), cook]);
     const node: MapNode = { id: "n2-0", layer: 2, index: 0, kind: "event", edges: [] };
 
     const choices = getEvent("provision-choice").choices!(run, node);
-    // TODAY: the captured Cook still offers to cook the stew — the check reads only
-    // `primaryJobOf(u) === "cook" && u.alive`, missing `!u.captured`. Increment 2
-    // migrates it onto `fieldsJob` and this expectation flips to false.
-    expect(choices.some((c) => c.id === "cook-stew")).toBe(true);
+    // FIXED (increment 2, the brief's one named behavior change): the Cook check now
+    // rides `fieldsJob`, which requires `!u.captured` — before this it read only
+    // `primaryJobOf(u) === "cook" && u.alive`, so a captured Cook still offered stew.
+    expect(choices.some((c) => c.id === "cook-stew")).toBe(false);
   });
 
   it("(control) an un-captured Cook is offered it, and no Cook at all is not", () => {

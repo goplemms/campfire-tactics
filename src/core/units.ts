@@ -367,6 +367,34 @@ export function primaryJobOf(unit: Pick<Unit, "primaryJob" | "jobId">): JobId | 
 }
 
 /**
+ * The party members currently **fielded** (the overworld twin of {@link isActive}):
+ * alive and not captured — the bodies the caravan can actually draw on between
+ * nodes. A captured member is still "alive" but bound (D7) and fields nothing —
+ * no brokering, no class-economy unlock, no stew. The single home for the
+ * `u.alive && !u.captured` roster filter that was copy-pasted per call site.
+ * (Unlike {@link isActive} it does not read `escaped` — that is a battle-scoped
+ * flag; the roster filters never consulted it, and this stays pure motion.)
+ */
+export function fieldedUnits<U extends Pick<Unit, "alive" | "captured">>(party: readonly U[]): U[] {
+  return party.filter((u) => u.alive && !u.captured);
+}
+
+/**
+ * True if the party **fields a live, uncaptured member of job** `jobId` (by
+ * {@link primaryJobOf}) — the class-in-the-party economy gate (D30/D62/D68):
+ * a class in the party unlocks that class's economy, and a captured or dead
+ * member unlocks nothing. The single spelling of the per-class
+ * `u.alive && !u.captured && primaryJobOf(u) === "<job>"` idiom whose per-site
+ * copies had drifted (the captured-Cook bug).
+ */
+export function fieldsJob(
+  party: readonly Pick<Unit, "alive" | "captured" | "primaryJob" | "jobId">[],
+  jobId: JobId,
+): boolean {
+  return fieldedUnits(party).some((u) => primaryJobOf(u) === jobId);
+}
+
+/**
  * Per-unit **memory** (D65) — write a run-scoped flag onto the unit's {@link
  * Unit.memory} bag. Defaults the value to `true` (the common "this happened"
  * marker); pass a string/number for richer linked state. Pure; mutates the bag.

@@ -30,7 +30,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { healUnit, primaryJobOf, type Unit } from "./units";
+import { fieldedUnits, healUnit, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
 import { skillContexts } from "./skills";
@@ -566,9 +566,9 @@ export function triage(run: RunState, healer: Unit): TriageResult {
   if (!isHealer(healer)) {
     return { applied: false, reason: `${healer.name} can't triage — only a healer can.` };
   }
-  // Triage treats the worst first: the most-wounded living, uncaptured ally.
-  const wounded = run.party
-    .filter((u) => u.alive && !u.captured && u.hp < u.maxHp)
+  // Triage treats the worst first: the most-wounded fielded ally.
+  const wounded = fieldedUnits(run.party)
+    .filter((u) => u.hp < u.maxHp)
     .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
   if (!wounded) return { applied: false, reason: "No wounded fighter to triage." };
 

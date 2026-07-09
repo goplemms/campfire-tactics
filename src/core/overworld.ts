@@ -24,7 +24,7 @@
 import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { generateEncounter, type EncounterDef } from "./generation";
-import { primaryJobOf, type Unit } from "./units";
+import { fieldedUnits, primaryJobOf, type Unit } from "./units";
 import { getJob, type JobLookup } from "./jobs";
 
 /**
@@ -151,8 +151,7 @@ function nodeMarket(rng: ReturnType<typeof streamFor>, kind: NodeKind): MarketTi
  */
 export function marketTierBonus(party: readonly Unit[], lookup: JobLookup = getJob): number {
   let bonus = 0;
-  for (const u of party) {
-    if (!u.alive || u.captured) continue;
+  for (const u of fieldedUnits(party)) {
     bonus += lookup(primaryJobOf(u))?.presence?.marketTierBonus ?? 0;
   }
   return bonus;

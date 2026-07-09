@@ -27,7 +27,7 @@
  */
 
 import type { RunState } from "./run";
-import { primaryJobOf, type Unit } from "./units";
+import { fieldedUnits, fieldsJob, primaryJobOf, type Unit } from "./units";
 import { getJob, type JobLookup } from "./jobs";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
 import { checkOverworldCost, commitOverworldCost, isPrimed, consumeFlag, DEAL_PRIMED_FLAG, type OverworldCost, type ActionOutcome } from "./overworld-actions";
@@ -180,7 +180,7 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
   if (primed) consumeFlag(run.overworld, DEAL_PRIMED_FLAG);
   // The Merchant grows from its signature work (D32/D53) — replacing the use-XP the
   // retired Trade camp skill used to grant. Only a live Merchant brokers (and levels).
-  const broker = run.party.find((u) => u.alive && !u.captured && primaryJobOf(u) === "merchant");
+  const broker = fieldedUnits(run.party).find((u) => primaryJobOf(u) === "merchant");
   const levels = broker ? grantAbilityUseXp(broker) : 0;
   return { applied: true, earned: credited, price, levels, detail: `Sold ${material.name} for ${price}g${primed ? " (savvy barter)" : ""} (${tier} market).` };
 }
@@ -194,7 +194,7 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
  * a class in the party unlocks that class's economy. No Banker present ⇒ no purse-finance.
  */
 export function hasBanker(party: readonly Unit[]): boolean {
-  return party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "banker");
+  return fieldsJob(party, "banker");
 }
 
 /**
@@ -270,7 +270,7 @@ export function bankerProtect(run: RunState): BankerProtectResult {
  * {@link hasNoble}: a class in the party unlocks that class's economy.
  */
 export function hasThief(party: readonly Unit[]): boolean {
-  return party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "thief");
+  return fieldsJob(party, "thief");
 }
 
 /** Deft Hands tuning (D68) — the per-node skim chance + take. Tunable; modest vs the scarce economy. */
@@ -302,7 +302,7 @@ export function deftHandsSkim(run: RunState): number {
  * "a Noble is present" is now job-specific, not a stat threshold any member can clear.
  */
 export function hasNoble(party: readonly Unit[]): boolean {
-  return party.some((u) => u.alive && !u.captured && primaryJobOf(u) === "noble");
+  return fieldsJob(party, "noble");
 }
 
 /**
@@ -312,8 +312,7 @@ export function hasNoble(party: readonly Unit[]): boolean {
  */
 export function declaredFaucetInfluence(party: readonly Unit[], lookup: JobLookup = getJob): number {
   let inf = 0;
-  for (const u of party) {
-    if (!u.alive || u.captured) continue;
+  for (const u of fieldedUnits(party)) {
     inf += lookup(primaryJobOf(u))?.faucet?.influencePerStep ?? 0;
   }
   return inf;

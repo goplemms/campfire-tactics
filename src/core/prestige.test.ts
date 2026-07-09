@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, primaryJobOf, type Unit, type UnitSpec } from "./units";
-import { getJob, stampPassives, unitSkills, SOLDIER, type JobDef, type JobId, type JobLookup } from "./jobs";
+import { getJob, stampPassives, unitSkills, type JobDef, type JobId, type JobLookup } from "./jobs";
+import { SOLDIER_JOB } from "./jobs-data/combat";
 import { jobLevelOf } from "./leveling";
 import { prestige, eligibleGrants, applyGrant, type Grant, type PredicateCtx } from "./grants";
 import { rpPerNight, computeUpkeep, UPKEEP } from "./upkeep";
 import { marketTierBonus } from "./overworld";
-import { describeUnit } from "./node-events";
+import { describeUnit } from "./dossier";
 import type { SkillDef } from "./skills";
 import type { RunState } from "./run";
 
@@ -158,8 +159,8 @@ describe("jobId → primaryJob standardization (D65) — closes the silent no-op
   it("a non-prestiged unit's passives + skills are UNCHANGED by the standardization", () => {
     const u = unit({ jobId: "soldier" });
     stampPassives(u);
-    expect(u.passives).toEqual(SOLDIER.passives);
-    expect(unitSkills(u)).toEqual(SOLDIER.skills);
+    expect(u.passives).toEqual(SOLDIER_JOB.passives);
+    expect(unitSkills(u)).toEqual(SOLDIER_JOB.skills);
     // primaryJobOf === jobId for a normal unit, so the read is identical to before.
     expect(primaryJobOf(u)).toBe("soldier");
   });

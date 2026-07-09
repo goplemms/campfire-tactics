@@ -87,7 +87,7 @@ export interface TerminalOutcome {
  * {@link RunLoop.playCurrentNode} to resolve the final node.
  *
  * Classifies: `run.complete` ⇒ `complete`; `run.over` (and not complete) ⇒ read the
- * last {@link "./run".EncounterRecord.result} to tell `wipe` from `objective-failure`;
+ * last {@link "./run".NightRecord.result} to tell `wipe` from `objective-failure`;
  * neither terminal ⇒ `stuck` (with a reason). A {@link traverseRoute} throw — a
  * {@link "./run".nodeAccessible}-gated hop the route can't actually take — is caught and
  * returned as `stuck` with the gate's message. **Never throws.**

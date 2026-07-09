@@ -19,7 +19,7 @@ function playOut(grid: TileGrid, units: Unit[], opts: BattleOptions, maxTurns = 
   while (!battle.outcome().over && guard++ < maxTurns) {
     const actor = battle.nextActor();
     if (!actor) break;
-    battle.runEnemyTurn(actor);
+    battle.runPolicyTurn(actor);
   }
   return battle;
 }

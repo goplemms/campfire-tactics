@@ -22,20 +22,20 @@
  */
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
-import { snapshotUnit, restoreUnit } from "./turn";
+import { snapshotUnit, restoreUnit } from "./battle-undo";
 import {
   createOverworldEconomy,
   cloneOverworldEconomy,
-  type OverworldEconomy,
-} from "./overworld-actions";
+  type OverworldState,
+} from "./overworld-state";
 import { EntityRegistry, makeTrap, makeConcealedTrap } from "./entities";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 
-// --- Unit — snapshotUnit / restoreUnit (turn.ts) -----------------------------
+// --- Unit — snapshotUnit / restoreUnit (battle-undo.ts) ----------------------
 
 /**
  * The fields {@link snapshotUnit} captures (a logged action can change them, so
- * undo must restore them). Must match `UnitSnapshot` in `turn.ts` exactly.
+ * undo must restore them). Must match `UnitSnapshot` in `battle-undo.ts` exactly.
  */
 const UNIT_SNAPSHOT_KEYS = [
   "pos",
@@ -237,9 +237,9 @@ describe("Unit snapshot tripwire (#115)", () => {
   });
 });
 
-// --- OverworldEconomy — cloneOverworldEconomy (overworld-actions.ts) ---------
+// --- OverworldState — cloneOverworldEconomy (overworld-actions.ts) ---------
 
-/** Every OverworldEconomy field; all are cloned (no allowlist — the shape is all-mutable). */
+/** Every OverworldState field; all are cloned (no allowlist — the shape is all-mutable). */
 const ECONOMY_KEYS = [
   "cooldowns",
   "scouted",
@@ -254,7 +254,7 @@ const ECONOMY_KEYS = [
 ] as const;
 
 /** An economy with every field set away from its default. */
-function makeFullEconomy(): OverworldEconomy {
+function makeFullEconomy(): OverworldState {
   const eco = createOverworldEconomy();
   eco.cooldowns.survey = 2;
   eco.scouted.n3 = 1;
@@ -269,19 +269,19 @@ function makeFullEconomy(): OverworldEconomy {
   return eco;
 }
 
-describe("OverworldEconomy clone tripwire (#115)", () => {
+describe("OverworldState clone tripwire (#115)", () => {
   it("every economy field is listed — a new field must be added to the clone and here", () => {
     const keys = Object.keys(createOverworldEconomy());
     const listed = new Set<string>(ECONOMY_KEYS);
     for (const key of keys) {
       expect(
         listed.has(key),
-        `OverworldEconomy."${key}" is unlisted — add it to cloneOverworldEconomy ` +
+        `OverworldState."${key}" is unlisted — add it to cloneOverworldEconomy ` +
           `(overworld-actions.ts) AND to ECONOMY_KEYS + makeFullEconomy here (#115)`,
       ).toBe(true);
     }
     for (const key of ECONOMY_KEYS) {
-      expect(keys, `"${key}" is listed here but no longer an OverworldEconomy field — drop it`).toContain(key);
+      expect(keys, `"${key}" is listed here but no longer an OverworldState field — drop it`).toContain(key);
     }
   });
 

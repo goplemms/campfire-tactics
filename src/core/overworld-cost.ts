@@ -1,0 +1,238 @@
+/**
+ * The overworld two-axis cost gate (D61/D72/#126) — knobs, the invariant, the check
+ * closure, and the load-time validator.
+ *
+ * Split out of `overworld-actions.ts` (R3, #129): the {@link CostKnob} / {@link
+ * OverworldCost} grammar, the D61 two-axis invariant + its {@link validateOverworldCost},
+ * the {@link overworldCostOf} resolver, and the single {@link checkOverworldCost}
+ * limiter gate whose passing check carries a **commit closure** spending exactly the
+ * prices captured at check time (the #126 re-resolution trap is dead by construction).
+ * Camp jobs, overworld abilities, and economy verbs all route through this one gate.
+ *
+ * The load-time walk over `JOBS[*].skills` (below) enforces the invariant at import —
+ * a one-way dependency on `jobs.ts` (which does not import back), so the cycle the old
+ * co-located version implied is relaxed.
+ *
+ * Pure logic: no Phaser, no DOM.
+ */
+
+import type { Unit } from "./units";
+import type { RunState } from "./run";
+import type { SkillDef } from "./skills";
+import { skillContexts } from "./skills";
+import { JOBS } from "./jobs";
+import { nonNegInt, bumpCounter } from "./num";
+import { spendFatigue } from "./fatigue";
+import { spend } from "./purse-journal";
+import { spendInfluence } from "./economy";
+import { spendRp } from "./upkeep";
+import { cooldownRemaining, campSkillUses } from "./overworld-state";
+
+/**
+ * A **price knob** (D72): either a fixed number, or a **provider** computed from the
+ * run at gate time. The provider is how Cook Stew prices itself at *the night's Food
+ * value* (`(run) => computeUpkeep(run.party).total`) rather than a static figure —
+ * a single, generic seam that keeps the two-axis menu (no new typed cost-kind per
+ * dynamic price). Must be a **pure** function of run state. It is resolved **once, at
+ * check time** (#126): the passing check captures the resolved prices in its commit
+ * closure, so an effect that moves party composition mid-verb can no longer drift the
+ * committed spend away from the price the check gated on (the old re-resolution trap).
+ */
+export type CostKnob = number | ((run: RunState) => number);
+
+/** Resolve a {@link CostKnob} against the run — a provider is sanitized to a non-negative int. */
+export function resolveKnob(knob: CostKnob | undefined, run: RunState): number {
+  return typeof knob === "function" ? nonNegInt(knob(run)) : knob ?? 0;
+}
+
+/** True if a price {@link CostKnob} is **declared** — a provider always counts (its value isn't known at load). */
+export function knobDeclared(knob: CostKnob | undefined): boolean {
+  return typeof knob === "function" || (knob ?? 0) > 0;
+}
+
+/**
+ * The **two-axis cost menu** every camp/overworld action declares (D61 — the D29
+ * limiter menu made explicit). Two independent axes, each optional:
+ *
+ * - **Pacing (axis A) — *how often*:** `cooldown` (node-steps, the D35 spine) and/or
+ *   `usesPerNode` (a per-node cap; the costless-signature limiter, e.g. Cook Stew).
+ * - **Price (axis B) — *per cast*:** `fatigue` (the loose over-extension guardrail),
+ *   `gold` (the run purse), `influence` (the Noble's walled-off currency, D62), `rp`.
+ *
+ * The **bug-killing invariant** (enforced once, in {@link validateOverworldCost}):
+ * **no action may be both unpaced *and* unpriced** — "free and unlimited" becomes
+ * unrepresentable. An action bounded by a finite **consumable** instead of a knob
+ * (the Merchant's *sell* — you can only sell what you carry) declares `selfLimited`
+ * to satisfy the invariant honestly.
+ */
+export interface OverworldCost {
+  // --- Pacing (axis A): how often the action may fire ---
+  /** Node-steps before this action can fire again — the D35 spine. */
+  cooldown?: number;
+  /** Per-node use cap (reset each node-step) — the limiter for costless signature actions. */
+  usesPerNode?: number;
+  // --- Price (axis B): what each individual cast costs ---
+  /** Fatigue spent on the acting character — the loose guardrail (D35). */
+  fatigue?: number;
+  /** Run gold spent from the purse (`camp.gold`, D34/D30) — static, or a {@link CostKnob} provider. */
+  gold?: CostKnob;
+  /**
+   * Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider.
+   * **Reserved (no verb prices in it yet):** the gate fully checks + spends it ({@link
+   * checkOverworldCost}'s commit closure), kept for the planned **Influence revamp** —
+   * the intended home for routing Bribe's spend through the shared gate (it currently spends
+   * Influence directly via `spendInfluence`, off-gate). Declared-but-unused **on purpose**, not dead.
+   */
+  influence?: CostKnob;
+  /**
+   * Rest Points spent. Static or a provider. **Reserved (no verb prices in it yet):** the gate
+   * honors it for a future RP-priced overworld/clearing verb (RP is live — banked nightly, spent on
+   * healing; D73's Weary heal-cost is recovery-side, not this knob). Declared-but-unused on purpose.
+   */
+  rp?: CostKnob;
+  // --- Escape hatch: an intrinsic limiter outside the two-knob menu ---
+  /**
+   * True when the action is bounded by a finite **consumable** rather than a
+   * pacing/price knob — e.g. the Merchant's *sell* (you can only sell goods you
+   * carry). Lets such an action satisfy the no-free-and-unlimited invariant
+   * without a synthetic cooldown. Use only when the limiter is genuinely real.
+   */
+  selfLimited?: boolean;
+}
+
+/** True if `cost` declares any **pacing** knob (cooldown or per-node cap). */
+export function hasPacing(cost: OverworldCost): boolean {
+  return (cost.cooldown ?? 0) > 0 || cost.usesPerNode !== undefined;
+}
+
+/** True if `cost` declares any **price** knob (fatigue / gold / influence / rp) — a provider counts (D72). */
+export function hasPrice(cost: OverworldCost): boolean {
+  return (cost.fatigue ?? 0) > 0 || knobDeclared(cost.gold) || knobDeclared(cost.influence) || knobDeclared(cost.rp);
+}
+
+/**
+ * The **two-axis invariant** (D61): a camp/overworld action may not be both unpaced
+ * *and* unpriced (unless it's `selfLimited` by a finite consumable). Throws if it is —
+ * so "free and unlimited", the bug class behind the unlimited camp actions, is
+ * unrepresentable. Run over every registered ability at module load.
+ */
+export function validateOverworldCost(label: string, cost: OverworldCost): void {
+  if (!hasPacing(cost) && !hasPrice(cost) && !cost.selfLimited) {
+    throw new Error(
+      `Overworld action "${label}" is free and unlimited — give it pacing ` +
+        `(cooldown/usesPerNode) or a price (fatigue/gold/influence/rp), or mark it selfLimited. ` +
+        `(D61 two-axis invariant)`,
+    );
+  }
+}
+
+/**
+ * The {@link OverworldCost} an overworld/camp {@link SkillDef} resolves through the gate
+ * (D61/D72): the skill's own `overworldCost` (the full two-axis menu — Survey's cooldown +
+ * fatigue, a computed price, …), or — for a costless signature action that declares only
+ * `usesPerNode` (Cook Stew) — the per-node cap alone. Supersedes the former `campSkillCost`,
+ * widening it from the pacing knob to the whole menu. (`usesPerNode` undefined ⇒ no cap,
+ * the legacy "pays its own way" escape.)
+ */
+export function overworldCostOf(skill: SkillDef): OverworldCost {
+  return skill.overworldCost ?? { usesPerNode: skill.usesPerNode };
+}
+
+// Enforce the two-axis invariant (D61/D72) at load: every overworld/camp **skill's** cost
+// must be paced or priced (no free-and-unlimited). The home is now `JobDef.skills` (A2,
+// D72) — Survey, Cook Stew, the triad's verbs — so a bad record fails fast at import,
+// exactly as the retired `OVERWORLD_ABILITIES` registry did for its `OverworldAbility`s.
+for (const job of Object.values(JOBS)) {
+  for (const skill of job.skills) {
+    if (skillContexts(skill).includes("overworld")) {
+      validateOverworldCost(skill.name, overworldCostOf(skill));
+    }
+  }
+}
+
+/** The per-cast prices a passing check resolved — **captured at check time** (#126). */
+export interface OverworldPrices {
+  /** Fatigue to spend on the acting unit (base only — no surcharge, D73; 0 with no actor). */
+  fatigue: number;
+  /** Gold to spend from the purse (a provider knob, already resolved). */
+  gold: number;
+  /** Influence to spend (already resolved). */
+  influence: number;
+  /** Rest Points to spend (already resolved). */
+  rp: number;
+}
+
+/**
+ * A two-axis cost check verdict — affordable (with the captured {@link OverworldPrices}
+ * and the `commit` closure that spends exactly them), or why not.
+ */
+export type OverworldCostCheck =
+  | { ok: true; prices: OverworldPrices; commit(): void }
+  | { ok: false; reason: string };
+
+/**
+ * The **single limiter gate** (D61): check an action's two-axis {@link OverworldCost}
+ * against the run — pacing (cooldown / per-node cap) and price (fatigue headroom /
+ * gold / influence / rp). A pure check that spends nothing; a passing check carries
+ * its **commit closure** (#126) — call `check.commit()` once the effect applied to
+ * spend the costs and arm the pacing. The prices are **resolved once, at check time**,
+ * and the closure spends exactly those figures: an effect that moves party composition
+ * between check and commit can no longer drift a provider-priced spend away from what
+ * the check gated on (the old re-resolution trap is dead by construction).
+ *
+ * `id` keys the pacing ledgers (cooldown + per-node uses); `label` names the action in
+ * refusals. `unit` is the acting character — **required only when the cost has
+ * `fatigue`** (an economy verb with no actor, e.g. Patronize, may omit it).
+ *
+ * Camp jobs, overworld abilities, and economy verbs all route through this one gate —
+ * the D61 fold.
+ */
+export function checkOverworldCost(run: RunState, id: string, cost: OverworldCost, label: string, unit?: Unit): OverworldCostCheck {
+  const eco = run.overworld;
+  // Pacing — the cooldown spine.
+  if ((cost.cooldown ?? 0) > 0) {
+    const cd = cooldownRemaining(eco, id);
+    if (cd > 0) return { ok: false, reason: `${label} is on cooldown (${cd} node${cd === 1 ? "" : "s"}).` };
+  }
+  // Pacing — the per-node cap.
+  if (cost.usesPerNode !== undefined && campSkillUses(eco, id) >= cost.usesPerNode) {
+    return { ok: false, reason: `${label} is spent for tonight — Rest & Set Out to use it again.` };
+  }
+  // Price — the loose fatigue guardrail (D73): a clearing verb spends only its **base** fatigue
+  // on the acting unit. Over-extension is **never gated here** (no surcharge, no lock) — the bite
+  // is deferred to the recovery/combat consequences (pricier rest-heal, next-day carryover, the
+  // Exhausted Slow). A fatigue price still needs an actor to spend it on (an actorless economy
+  // verb declares no fatigue).
+  const fatigueSpend = unit ? (cost.fatigue ?? 0) : 0;
+  // Price — gold (the run purse). The knob may be a provider (D72) — resolve it now, once.
+  const goldCost = resolveKnob(cost.gold, run);
+  if (goldCost > 0 && run.camp.gold < goldCost) {
+    return { ok: false, reason: `Not enough gold for ${label} (${goldCost}g).` };
+  }
+  // Price — Influence (the Noble's per-expedition standing, D62).
+  const influenceCost = resolveKnob(cost.influence, run);
+  if (influenceCost > 0 && eco.influence < influenceCost) {
+    return { ok: false, reason: `Not enough Influence for ${label} (${influenceCost}).` };
+  }
+  // Price — Rest Points.
+  const rpCost = resolveKnob(cost.rp, run);
+  if (rpCost > 0 && run.rp < rpCost) {
+    return { ok: false, reason: `Not enough Rest Points for ${label} (${rpCost}).` };
+  }
+  const prices: OverworldPrices = { fatigue: fatigueSpend, gold: goldCost, influence: influenceCost, rp: rpCost };
+  return {
+    ok: true,
+    prices,
+    // The commit half of the gate (D61/#126), called only after the effect applied:
+    // spend the **captured** prices (never re-resolved — the effect may have moved the
+    // run since the check), arm the cooldown, and bump the per-node use count.
+    commit(): void {
+      if (prices.fatigue > 0 && unit) unit.fatigue = spendFatigue(unit.fatigue, prices.fatigue);
+      if (prices.gold > 0) spend(run.camp, prices.gold, "action", id, { nodeId: run.mapNodeId, night: run.night });
+      if (prices.influence > 0) spendInfluence(eco, prices.influence);
+      if (prices.rp > 0) spendRp(run, prices.rp);
+      if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;
+      if (cost.usesPerNode !== undefined) bumpCounter(eco.campUses, id);
+    },
+  };
+}

@@ -4,7 +4,7 @@ import { createRun, type RunState } from "./run";
 import { useOverworldSkill } from "./overworld-actions";
 import { availableSkills } from "./leveling";
 import { computeUpkeep, payUpkeep } from "./upkeep";
-import { COOK_STEW, FEAST, COOK_KIT } from "./jobs";
+import { COOK_STEW, FEAST, COOK_KIT } from "./jobs-data/support";
 
 // D71 — the Cook kit (renamed from Chef), consuming the D72 substrate:
 // Field Kitchen (food-upkeep discount), Cook Stew (provisionMeal — food → RP), Feast (morale).

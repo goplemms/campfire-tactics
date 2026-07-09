@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit, type UnitSpec } from "./units";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 import type { MapNode } from "./overworld";
 import type { AuthoredEncounter } from "./authored";
 import { registerExpedition, type AuthoredExpedition } from "./expedition";

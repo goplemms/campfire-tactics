@@ -5,28 +5,27 @@
  * {@link EventBus} announces moments (turn start/end, tile enter/leave, damage,
  * defeat), the {@link EntityRegistry} lets entities react, {@link combat}
  * resolves attacks, and {@link planEnemyTurn} runs the enemy. The render layer
- * calls `nextActor`, then `moveUnit` / `attack` / `endTurn` (or `runEnemyTurn`),
+ * calls `nextActor`, then `moveUnit` / `attack` / `endTurn` (or `runPolicyTurn`),
  * then checks `outcome` — it owns no rules.
  *
  * Pure logic: no Phaser, no DOM.
  */
 
-import { isActive, activeUnits, opposite, type Unit, type Side } from "./units";
+import { activeUnits, opposite, type Unit, type Side } from "./units";
 import type { GridCoord } from "./iso";
 import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 import { CTClock, type TurnSpend, onSkillCooldown, armSkillCooldown } from "./clock";
 import { EntityRegistry } from "./entities";
 import {
   resolveAttack,
   battleOutcome,
   refreshAuras,
-  isAdjacent,
   manhattan,
   type BattleOutcome,
 } from "./combat";
-import { tickStatuses, applyStatus, slowed, guarded, GUARDED } from "./status";
+import { tickStatuses, applyStatus, slowed } from "./status";
 import { computeVisibleTiles } from "./vision";
 import { PILOT_POLICY, edgeDistance, type AIPlan, type BattlePolicy } from "./ai";
 import { orderOf } from "./standing-orders";
@@ -40,97 +39,28 @@ import {
   type PlaceTrapEffect,
 } from "./skills";
 import {
-  commitsTurn,
   type CombatAction,
   type BattleActionResult,
   type UnitId,
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
-import { cleaveArc, shoveLanding } from "./ability-forecast";
 import { captureUnit, freeCaptive } from "./deployment";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
-import type { ClockSnapshot } from "./clock";
-import type { EntitySnapshot } from "./entities";
-import type { StatusInstance } from "./status";
-import type { GridCoord as Coord } from "./iso";
+import { captureCheckpoint, restoreCheckpoint, type BattleCheckpoint } from "./battle-undo";
+import {
+  resolveShove as resolveShoveEffect,
+  resolveGuardAllies as resolveGuardAlliesEffect,
+  execCleave as execCleaveEffect,
+} from "./field-effects";
+import { planActions } from "./battle-replay";
 
-/**
- * A unit's undoable mutable state (everything a logged action can change).
- * The field list is **tripwired** by `snapshot-drift.test.ts` (#115): a new
- * `Unit` field must be classified there (snapshotted or deliberately not) and,
- * if snapshotted, added to {@link snapshotUnit}/{@link restoreUnit} in step.
- */
-export interface UnitSnapshot {
-  pos: Coord;
-  hp: number;
-  ct: number;
-  alive: boolean;
-  captured: boolean;
-  escaped?: boolean;
-  /** The unit's standing order (D84) — a logged strike can transition it (the skittish guard). */
-  standingOrder?: string;
-  dugIn?: boolean;
-  hidden?: boolean;
-  concealed?: boolean;
-  statuses: StatusInstance[];
-  counters: Record<string, number>;
-  cooldowns: Record<string, number>;
-}
-
-/**
- * A turn-undo checkpoint (combat-actions Phase 2): the battle's mutable state
- * **before** one applied action — enough to roll it back in place. Captures the
- * log length and the RNG draw counter (so re-rolled values re-derive identically),
- * plus the unit / clock / entity state. Restored by value into identity-stable
- * objects, so the render keeps every reference (no re-emission, no re-binding).
- */
-interface BattleCheckpoint {
-  logLen: number;
-  drawCount: number;
-  units: Map<UnitId, UnitSnapshot>;
-  clock: ClockSnapshot;
-  entities: EntitySnapshot;
-  /** Shared-stash counts by value (D63) — so undoing a `placeTrap` refunds its kit. */
-  stash?: Record<string, number>;
-}
-
-/** Capture a unit's undoable mutable state by value (tripwired, #115). */
-export function snapshotUnit(u: Unit): UnitSnapshot {
-  return {
-    pos: { col: u.pos.col, row: u.pos.row },
-    hp: u.hp,
-    ct: u.ct,
-    alive: u.alive,
-    captured: u.captured,
-    escaped: u.escaped,
-    standingOrder: u.standingOrder,
-    dugIn: u.dugIn,
-    hidden: u.hidden,
-    concealed: u.concealed,
-    statuses: u.statuses.map((s) => ({ ...s, data: s.data ? { ...s.data } : undefined })),
-    counters: { ...u.counters },
-    cooldowns: { ...u.cooldowns },
-  };
-}
-
-/** Write a unit snapshot back onto the (identity-stable) live unit (tripwired, #115). */
-export function restoreUnit(u: Unit, s: UnitSnapshot): void {
-  u.pos = { col: s.pos.col, row: s.pos.row };
-  u.hp = s.hp;
-  u.ct = s.ct;
-  u.alive = s.alive;
-  u.captured = s.captured;
-  u.escaped = s.escaped;
-  u.standingOrder = s.standingOrder;
-  u.dugIn = s.dugIn;
-  u.hidden = s.hidden;
-  u.concealed = s.concealed;
-  u.statuses = s.statuses.map((x) => ({ ...x, data: x.data ? { ...x.data } : undefined }));
-  u.counters = { ...s.counters };
-  u.cooldowns = { ...s.cooldowns };
-}
+// The undo machinery + the replay driver live in sibling modules now (R3, #121);
+// re-export the formerly-`turn.ts` public surface so the barrel + existing importers
+// are unchanged (sanctioned migration re-exports).
+export { snapshotUnit, restoreUnit } from "./battle-undo";
+export { replay } from "./battle-replay";
 
 /**
  * Construction-time battle settings (all optional, all defaulting to the
@@ -379,32 +309,16 @@ export class Battle {
 
   /** Capture the battle's mutable state before an action (a turn-undo checkpoint). */
   private captureCheckpoint(): BattleCheckpoint {
-    const units = new Map<UnitId, UnitSnapshot>();
-    for (const u of this.units) units.set(u.id, snapshotUnit(u));
-    return {
-      logLen: this._log.length,
-      drawCount: this.drawCount,
-      units,
-      clock: this.clock.snapshot(),
-      entities: this.entities.snapshot(),
-      stash: this.stash ? { ...this.stash.counts } : undefined,
-    };
+    return captureCheckpoint(this.units, this._log.length, this.drawCount, this.clock, this.entities, this.stash);
   }
 
   /** Roll all mutable state (and the log) back to a checkpoint — the undo primitive. */
   private restoreCheckpoint(cp: BattleCheckpoint): void {
-    for (const u of this.units) {
-      const s = cp.units.get(u.id);
-      if (s) restoreUnit(u, s);
-    }
-    this.clock.restore(cp.clock);
-    this.entities.restore(cp.entities);
-    if (cp.stash && this.stash) this.stash.counts = { ...cp.stash };
     this.drawCount = cp.drawCount;
     this._log.length = cp.logLen; // drop the actions taken since the checkpoint
-    // Positions reverted → re-derive the position-dependent tarpit aura (D40). The
-    // restored statuses already match, so this is a confirming no-op in practice.
-    refreshAuras(this.units);
+    // The unit / clock / entity / stash restore + tarpit-aura re-derive live in the
+    // battle-undo primitive (over explicit inputs).
+    restoreCheckpoint(cp, this.units, this.clock, this.entities, this.stash);
   }
 
   /**
@@ -698,28 +612,16 @@ export class Battle {
    * shove hit. Returns how far it actually moved + any damage.
    */
   resolveShove(caster: Unit, target: Unit, tiles: number, bonusAttack = 0): SkillOutcome {
-    // Walk the shove one tile at a time toward the landing the pure `shoveLanding`
-    // core computes (D64 single-source-of-truth: the telegraph reads the *same*
-    // geometry the resolver does, so the push arrow and into-trap read can't
-    // drift). Each step goes through `moveUnit` so entities (traps) fire en route.
-    const dc = Math.sign(target.pos.col - caster.pos.col);
-    const dr = Math.sign(target.pos.row - caster.pos.row);
-    const { moved } = shoveLanding(
-      caster.pos,
-      target.pos,
+    return resolveShoveEffect(
+      caster,
+      target,
       tiles,
-      (c) => this.grid.isWalkable(c),
-      (c) => this.units.some((u) => u.alive && u !== target && u.pos.col === c.col && u.pos.row === c.row),
+      bonusAttack,
+      this.grid,
+      this.units,
+      this.bus,
+      (u, path, forced) => this.moveUnit(u, path, forced),
     );
-    for (let i = 0; i < moved; i++) {
-      this.moveUnit(target, [{ col: target.pos.col + dc, row: target.pos.row + dr }], true);
-    }
-    const out: SkillOutcome = {};
-    if (bonusAttack !== 0 && target.alive) {
-      out.damage = resolveAttack(caster, target, this.bus, caster.attack + bonusAttack, this.units);
-    }
-    void moved;
-    return out;
   }
 
   /**
@@ -730,14 +632,7 @@ export class Battle {
    * when it braced anyone.
    */
   resolveGuardAllies(caster: Unit, amount: number, duration: number): SkillOutcome {
-    let braced = 0;
-    for (const u of this.units) {
-      if (isActive(u) && u.side === caster.side && u !== caster && isAdjacent(u.pos, caster.pos)) {
-        applyStatus(u, guarded(duration, amount));
-        braced += 1;
-      }
-    }
-    return braced > 0 ? { status: GUARDED } : {};
+    return resolveGuardAlliesEffect(caster, amount, duration, this.units);
   }
 
   /**
@@ -754,21 +649,7 @@ export class Battle {
 
   /** The raw arc resolution (the cleave-action body) — hit every foe in the 90° arc. */
   private execCleave(caster: Unit, skill: SkillDef, dir: GridCoord): { hits: number; damage: number } {
-    const bonus = skill.effect.kind === "cleave" ? skill.effect.bonusAttack : 0;
-    // The arc geometry comes from the shared `cleaveArc` core (D64) so the
-    // telegraph washes exactly the tiles this resolver sweeps — one source of truth.
-    const arc: GridCoord[] = cleaveArc(caster.pos, dir);
-    const key = (g: GridCoord) => `${g.col},${g.row}`;
-    const arcKeys = new Set(arc.map(key));
-    let hits = 0;
-    let damage = 0;
-    for (const u of this.units) {
-      if (u.alive && u.side !== caster.side && arcKeys.has(key(u.pos))) {
-        damage += resolveAttack(caster, u, this.bus, caster.attack + bonus, this.units, this.damageScale(caster, u));
-        hits += 1;
-      }
-    }
-    return { hits, damage };
+    return execCleaveEffect(caster, skill, dir, this.units, this.bus, (a, d) => this.damageScale(a, d));
   }
 
   /**
@@ -858,10 +739,11 @@ export class Battle {
   /**
    * Run a full AI turn for `unit`: plan via the given {@link BattlePolicy} (the
    * **pilot** policy by default, D56), execute it through the bus, and end the
-   * turn. Returns the plan for the render layer to animate. "Enemy" is historical —
-   * the same path drives either side headlessly (the sim passes a policy per side).
+   * turn. Returns the plan for the render layer to animate. Renamed from the
+   * historical `runEnemyTurn` (#128): the same path drives **either** side headlessly
+   * (the sim passes a policy per side), so it's a policy turn, not an enemy one.
    */
-  runEnemyTurn(unit: Unit, policy: BattlePolicy = PILOT_POLICY): AIPlan {
+  runPolicyTurn(unit: Unit, policy: BattlePolicy = PILOT_POLICY): AIPlan {
     // Turn-open standing-order transition (D84): the wary guard, provoked by a foe
     // pressing its POST, commits to its next order — sticky (no bait-and-retreat
     // reset). Shapes only future plans (logged as concrete actions), so replay
@@ -901,76 +783,4 @@ export class Battle {
   visibleTiles(side: Side): Set<string> {
     return computeVisibleTiles(this.units, side);
   }
-}
-
-/**
- * Lower an {@link AIPlan} (intent-as-data, D42) to the {@link CombatAction}s that
- * realize it — the *plan → actions* half of the AI/player convergence. Mirrors the
- * old `runEnemyTurn` ordering exactly: an optional move, then **either** a
- * turn-ending ability (the snare) **or** an optional attack followed by an explicit
- * `endTurn`. A skill commits the turn itself, so no `endTurn` follows it.
- */
-function planActions(plan: AIPlan): CombatAction[] {
-  const unit = plan.unit.id;
-  const actions: CombatAction[] = [];
-  if (plan.path.length > 0) actions.push({ kind: "move", unit, path: plan.path.map((t) => ({ ...t })) });
-  if (plan.ability && plan.target?.alive) {
-    actions.push({ kind: "skill", unit, skill: plan.ability.id, target: plan.target.id, commitTurn: true });
-    return actions; // the skill ends the turn (commitSkill spends the CT)
-  }
-  if (plan.target?.alive) actions.push({ kind: "attack", unit, target: plan.target.id });
-  actions.push({ kind: "endTurn", unit, spend: { moved: plan.path.length > 0, acted: plan.target !== null } });
-  return actions;
-}
-
-/**
- * **Replay** a recorded action {@link log} from an initial roster and assert it
- * reconstructs the same battle (the `replay(initial, log) === state` invariant —
- * the combat analog of the purse journal's `sum(log) === gold`). Combat state is a
- * graph, not a scalar, so it rebuilds by **re-running** rather than summing: build a
- * fresh {@link Battle} from `initialUnits` (a pre-construction snapshot), seed it
- * identically, then drive the deterministic, RNG-free turn loop — for each
- * {@link Battle.nextActor} (which ticks the clock + statuses identically), apply the
- * recorded actions for that turn (up to and including the one that {@link
- * commitsTurn commits} it) instead of planning. Returns the rebuilt battle.
- *
- * `initialUnits` is **mutated** (the {@link Battle} constructor stamps passives) —
- * pass throwaway clones of the pre-seed roster. `opts` must carry the **same**
- * {@link BattleOptions} (seed + variance) the original battle used, so any seeded
- * rolls re-derive identically; `moraleBonus` re-applies the initiative warming.
- * `stash` re-wires the shared supply inventory a log with stash-consuming actions
- * (`placeTrap`, `useHeal`) draws from — pass a clone of its **initial** counts.
- */
-export function replay(
-  grid: TileGrid,
-  initialUnits: Unit[],
-  log: readonly CombatAction[],
-  opts: BattleOptions & { moraleBonus?: number; stash?: Inventory } = {},
-): Battle {
-  const battle = new Battle(grid, initialUnits, opts);
-  if (opts.stash) battle.setStash(opts.stash);
-  // Drain the pre-combat prelude (D67): everything up to (and including) the logged
-  // `beginBattle` boundary — the deploy actions resolve in the pre-combat phase (no
-  // combat commit), then the marker flips to combat — before seeding + driving the loop.
-  // A log with no boundary is a pure-combat log (the common test case): no prelude to
-  // drain, so seed straight into the combat loop, exactly as before.
-  let i = 0;
-  const boundary = log.findIndex((a) => a.kind === "beginBattle");
-  if (boundary >= 0) {
-    battle.enterDeploy(); // the prelude resolves in the pre-combat phase
-    while (i <= boundary) battle.apply(log[i++]); // deploy actions + the beginBattle flip → combat
-  }
-  battle.seed(opts.moraleBonus ?? 0);
-  while (i < log.length) {
-    const actor = battle.nextActor();
-    if (!actor) break;
-    // Apply this actor's recorded turn: every turn's actions end in exactly one
-    // committing action (an endTurn, a cleave, or a turn-committing skill).
-    while (i < log.length) {
-      const action = log[i++];
-      battle.apply(action);
-      if (commitsTurn(action)) break;
-    }
-  }
-  return battle;
 }

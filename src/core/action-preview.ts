@@ -13,7 +13,8 @@
 
 import type { SkillDef } from "./skills";
 import type { RunState } from "./run";
-import { overworldCostOf, resolveKnob, TRIAGE } from "./overworld-actions";
+import { overworldCostOf, resolveKnob } from "./overworld-cost";
+import { TRIAGE } from "./economy-actions";
 import { ECONOMY } from "./economy-actions";
 import { computeUpkeep, rpPerNight } from "./upkeep";
 

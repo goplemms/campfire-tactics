@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 import { EntityRegistry, makeTrap, type FieldEntity } from "./entities";
 import { createUnit, type Side, type Unit } from "./units";
 

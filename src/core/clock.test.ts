@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CTClock, ACT_COST, MOVE_COST, sideSeed, byReadiest, tickUntilReady, TURN_THRESHOLD } from "./clock";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 import { createUnit, type Unit } from "./units";
 
 function unit(id: string, speed: number, side: "player" | "enemy" = "player"): Unit {

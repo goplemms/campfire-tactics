@@ -11,7 +11,7 @@ import {
   applyJobLevelGains,
 } from "./leveling";
 import { computeDamage } from "./combat";
-import { HEAVY_KNIGHT } from "./jobs";
+import { HEAVY_KNIGHT_JOB } from "./jobs-data/combat";
 
 function knight(id = "k"): Unit {
   return createUnit({
@@ -57,7 +57,7 @@ describe("hybrid leveling — per-job stat growth (D39)", () => {
     grantJobXp(k, "heavy-knight", LEVELING.xpPerJobLevel);
     const atL2 = unlockedSkills(k, "battle").map((s) => s.id);
     expect(atL2).toContain("shove");
-    expect(atL2.length).toBe(HEAVY_KNIGHT.skills.length);
+    expect(atL2.length).toBe(HEAVY_KNIGHT_JOB.skills.length);
   });
 
   it("skillsUnlockedBetween reports only the threshold just crossed (the unlock readout, D74)", () => {

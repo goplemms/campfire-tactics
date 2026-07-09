@@ -3,7 +3,7 @@ import { createUnit, type Unit } from "./units";
 import { createRun } from "./run";
 import type { MapNode } from "./overworld";
 import type { JobId } from "./jobs";
-import { applyStoryChoice, type StorySpec } from "./node-events";
+import { applyStoryChoice, type StorySpec } from "./stories";
 
 const NODE: MapNode = { id: "n", layer: 1, index: 0, kind: "event", edges: [] } as MapNode;
 const BASE = "fix-base" as JobId;

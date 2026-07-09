@@ -2,12 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   createCamp,
   applyCampSkill,
-  useCampJobSkill,
   applyCampToParty,
   moraleTier,
 } from "./camp";
-import { LEVELING } from "./leveling";
-import { EventBus } from "./events";
+import { LEVELING, grantAbilityUseXp } from "./leveling";
+import { EventBus } from "./event-bus";
 import { getJob } from "./jobs";
 import { createUnit, type Side, type Unit } from "./units";
 import type { SkillDef } from "./skills";
@@ -51,17 +50,20 @@ describe("camp economy + morale (Merchant / Chef, Meta phase)", () => {
     expect(camp.pendingHeal).toBe(8);
   });
 
-  it("useCampJobSkill applies the effect AND levels its owner (D32/D53)", () => {
+  it("applyCampSkill + grantAbilityUseXp: the effect lands AND the owner levels (D32/D53)", () => {
+    // Canonical primitives behind the old `useCampJobSkill` composite (deleted #128):
+    // in production this pairing lives inside `useOverworldSkill`.
     const chef = unit("chef", "player", 20, 20);
     const camp = createCamp();
     const before = chef.xp;
-    const out = useCampJobSkill(chef, cookSkill, camp);
+    const out = applyCampSkill(cookSkill, camp);
+    const levels = grantAbilityUseXp(chef);
     // The camp effect still lands…
     expect(camp.morale).toBe(1);
     expect(out.bankedHeal).toBe(8);
     // …and the actor gained ability-use XP from its signature action.
     expect(chef.xp).toBe(before + LEVELING.abilityUseBonus);
-    expect(out).toHaveProperty("levels");
+    expect(typeof levels).toBe("number");
   });
 
   it("rejects a non-camp effect", () => {

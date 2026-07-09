@@ -9,7 +9,7 @@
 
 import { isActive, activeUnits, hasActive, opposite, type Unit, type Side } from "./units";
 import type { GridCoord } from "./iso";
-import type { EventBus } from "./events";
+import type { EventBus } from "./event-bus";
 import { nonNegInt } from "./num";
 import {
   hasStatus,

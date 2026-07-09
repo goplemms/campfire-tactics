@@ -2,14 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   getJob,
   stampPassives,
-  HEAVY_KNIGHT,
-  HUNTER,
-  SCOUT_JOB,
-  MEDIC,
-  DEFEND,
   JOBS,
   type JobId,
 } from "./jobs";
+import { HEAVY_KNIGHT_JOB, HUNTER_JOB, MEDIC_JOB } from "./jobs-data/combat";
+import { SCOUT_JOB } from "./jobs-data/scout-line";
+import { DEFEND } from "./jobs-data/support";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import { Battle } from "./turn";
@@ -18,7 +16,7 @@ import { hasStatus, applyStatus, immobilized, GUARDED, SLOWED } from "./status";
 import { computeFlankBonus, PASSIVE } from "./combat";
 import { makeTrap } from "./entities";
 import { createInventory, addItem, countOf } from "./inventory";
-import { MEDIC as _MEDIC } from "./jobs";
+import { MEDIC_JOB as _MEDIC } from "./jobs-data/combat";
 
 function at(id: string, side: Side, col: number, row: number, jobId?: JobId, o: Partial<Unit> = {}): Unit {
   const u = {
@@ -42,7 +40,7 @@ function at(id: string, side: Side, col: number, row: number, jobId?: JobId, o: 
 
 describe("the four kits load as data (D40)", () => {
   it("each is registered with a passive + 2 actives (2nd unlocks at level 2)", () => {
-    for (const job of [HEAVY_KNIGHT, HUNTER, SCOUT_JOB, MEDIC]) {
+    for (const job of [HEAVY_KNIGHT_JOB, HUNTER_JOB, SCOUT_JOB, MEDIC_JOB]) {
       expect(getJob(job.id)).toBe(job);
       expect(job.passives && Object.keys(job.passives).length).toBeGreaterThan(0);
       // Count the **combat-kit** actives (battle + deployment): the Scout's two span both.
@@ -159,7 +157,7 @@ describe("Heavy Knight — Shove (D19 forced movement)", () => {
     const foe = at("f", "enemy", 3, 0, undefined, { speed: 12 });
     const battle = new Battle(grid, [knight, foe]);
     knight.ct = 100;
-    battle.useSkill(knight, HEAVY_KNIGHT.skills[1], foe); // Shove
+    battle.useSkill(knight, HEAVY_KNIGHT_JOB.skills[1], foe); // Shove
     expect(foe.pos).toEqual({ col: 4, row: 0 });
   });
 
@@ -169,7 +167,7 @@ describe("Heavy Knight — Shove (D19 forced movement)", () => {
     const foe = at("f", "enemy", 3, 0);
     const battle = new Battle(grid, [knight, foe]);
     knight.ct = 100;
-    battle.useSkill(knight, HEAVY_KNIGHT.skills[1], foe);
+    battle.useSkill(knight, HEAVY_KNIGHT_JOB.skills[1], foe);
     expect(foe.pos).toEqual({ col: 3, row: 0 }); // didn't move into the wall
   });
 
@@ -180,7 +178,7 @@ describe("Heavy Knight — Shove (D19 forced movement)", () => {
     const battle = new Battle(grid, [knight, foe]);
     battle.entities.register(makeTrap("t", { col: 4, row: 0 }, "player", 12));
     knight.ct = 100;
-    battle.useSkill(knight, HEAVY_KNIGHT.skills[1], foe);
+    battle.useSkill(knight, HEAVY_KNIGHT_JOB.skills[1], foe);
     expect(foe.pos).toEqual({ col: 4, row: 0 });
     expect(foe.hp).toBe(18); // the trap fired on the forced entry
   });
@@ -195,7 +193,7 @@ describe("Heavy Knight — Cleave (directional AoE)", () => {
     const behind = at("c", "enemy", 0, 2, undefined, { hp: 30, maxHp: 30, defense: 0 });
     const battle = new Battle(grid, [knight, a, b, behind]);
     knight.ct = 100;
-    const res = battle.cleave(knight, HEAVY_KNIGHT.skills[0], { col: 1, row: 0 }); // facing east
+    const res = battle.cleave(knight, HEAVY_KNIGHT_JOB.skills[0], { col: 1, row: 0 }); // facing east
     expect(res.hits).toBe(2); // a (east) + b (north-east diagonal), not the one behind
     expect(behind.hp).toBe(30);
   });

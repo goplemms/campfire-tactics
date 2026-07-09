@@ -27,10 +27,13 @@
  */
 
 import type { RunState } from "./run";
-import { fieldedUnits, fieldsJob, primaryJobOf, type Unit } from "./units";
-import { getJob, type JobLookup } from "./jobs";
+import { fieldedUnits, fieldsJob, primaryJobOf, healUnit, type Unit } from "./units";
+import { getJob, unitHasCapability, type JobLookup } from "./jobs";
+import { PASSIVE } from "./combat";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
-import { checkOverworldCost, validateOverworldCost, isPrimed, consumeFlag, DEAL_PRIMED_FLAG, TRIAGE_COST, type OverworldCost, type ActionOutcome } from "./overworld-actions";
+import { isPrimed, consumeFlag } from "./overworld-state";
+import { checkOverworldCost, validateOverworldCost, type OverworldCost } from "./overworld-cost";
+import { DEAL_PRIMED_FLAG, type ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
@@ -215,7 +218,7 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
 // --- Banker — TIME-SHIFT + SECURE (purse only, never the treasury) ----------
 
 /**
- * True if the party fields a **Banker** — the {@link "./jobs".BANKER} job (D30), the
+ * True if the party fields a **Banker** — the {@link "./jobs".BANKER_JOB} job (D30), the
  * financier whose verbs (Invest / Borrow / Guard the Purse) work the carried purse.
  * The third economy class's twin of {@link hasNoble} / {@link "./overworld".merchantFloor}:
  * a class in the party unlocks that class's economy. No Banker present ⇒ no purse-finance.
@@ -353,7 +356,7 @@ export function deftHandsSkim(run: RunState): number {
 }
 
 /**
- * True if the party fields a **Noble** — the {@link "./jobs".NOBLE} job (D62), the
+ * True if the party fields a **Noble** — the {@link "./jobs".NOBLE_JOB} job (D62), the
  * standing-bearer whose presence accrues Influence, works the Patronize verb, and
  * backs the mid-battle bribe ({@link bribeEnemy}). Mirrors {@link
  * "./overworld".merchantFloor}: a class in the party unlocks that class's economy.
@@ -492,12 +495,97 @@ export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | 
   return { applied: true, cost, outcome, detail };
 }
 
+// --- Triage — the healer's fatigue-fuelled camp heal (the audit pass) --------
+
+/** Triage tuning — the healer's between-nodes heal, all data. */
+export const TRIAGE = {
+  /**
+   * Fatigue the healer spends per Triage — a **demanding** cost (D73): over-triaging pushes the
+   * healer through Weary into Exhausted, where their own rest-heal costs more RP and they field
+   * **Slowed** next fight. That mounting consequence — not a hard lock — is the limiter (pure
+   * fatigue — no RP, the Rest's currency).
+   */
+  fatigue: 2,
+  /** Flat HP floor a Triage restores before the Triage-scaling on missing HP. */
+  base: 6,
+} as const;
+
+/**
+ * Triage's two-axis cost (D61) — the **demanding** fatigue price the shared gate validates +
+ * spends. Triage is a **standalone** verb, outside the `JobDef.skills` load-time validator,
+ * so this object is its row in the {@link VERB_COSTS} registry (#112). Defined beside its
+ * verb (its home), and the registry entry is this same object, so there is exactly one source
+ * of truth.
+ */
+export const TRIAGE_COST: OverworldCost = { fatigue: TRIAGE.fatigue };
+
+/**
+ * True if `unit` is a **healing class** — a job stamped with the Medic's Triage
+ * passive ({@link "./combat".PASSIVE.triage}). The capability gate for {@link triage},
+ * now the `healer` entry of the shared {@link "./jobs".unitHasCapability} taxonomy
+ * (D72) — own the capability, not a hard-coded job id, so it **auto-extends to any
+ * future healer**. Reads the **job def** (not `unit.passives`, which is only stamped at
+ * battle setup), so it's valid in camp. Kept as a named alias for the many call sites.
+ */
+export function isHealer(unit: Unit): boolean {
+  return unitHasCapability(unit, "healer");
+}
+
+/** What a camp {@link triage} produced. */
+export interface TriageResult extends ActionOutcome {
+  /** HP restored to the treated fighter. */
+  healed?: number;
+  /** The treated unit's id. */
+  targetId?: string;
+  /** Fatigue spent on the healer (base + any over-extension surcharge). */
+  fatigueSpent?: number;
+}
+
+/**
+ * **Triage** (the audit pass) — the **healer's** camp heal, distinct from the universal
+ * Rest ({@link "./upkeep".restHeal}, RP/rations): a healing class spends **their own
+ * fatigue** (worn out) to mend the party's **most-wounded** fighter for *more* than a
+ * Rest — scaling with the Medic's Triage (heal harder the worse the wound). Job-gated to
+ * a {@link isHealer} (only a healer can triage); the fatigue rides the shared
+ * {@link "./overworld-cost".checkOverworldCost} gate. Over-triaging is **not** locked (D73) — it accrues fatigue
+ * toward the Exhausted consequences (pricier rest-heal, the combat Slow), the consequence-based
+ * limiter. Pure fatigue — no RP. Refuses (spending nothing) without a healer or with no one wounded.
+ */
+export function triage(run: RunState, healer: Unit): TriageResult {
+  if (!isHealer(healer)) {
+    return { applied: false, reason: `${healer.name} can't triage — only a healer can.` };
+  }
+  // Triage treats the worst first: the most-wounded fielded ally.
+  const wounded = fieldedUnits(run.party)
+    .filter((u) => u.hp < u.maxHp)
+    .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+  if (!wounded) return { applied: false, reason: "No wounded fighter to triage." };
+
+  const cost = TRIAGE_COST;
+  const check = checkOverworldCost(run, "triage", cost, "Triage", healer);
+  if (!check.ok) return { applied: false, reason: check.reason };
+
+  // Heal scales with the healer's Triage (read from the job def — camp units aren't
+  // stamped) and the wound's depth: more missing HP → more healing.
+  const triageVal = getJob(primaryJobOf(healer))?.passives?.[PASSIVE.triage] ?? 0;
+  const amount = TRIAGE.base + Math.floor(triageVal * (wounded.maxHp - wounded.hp));
+  const healed = healUnit(wounded, amount);
+  check.commit();
+  return {
+    applied: true,
+    healed,
+    targetId: wounded.id,
+    fatigueSpent: check.prices.fatigue,
+    detail: `Triaged ${wounded.name}: +${healed} HP (${healer.name} worn out).`,
+  };
+}
+
 // --- The standalone-verb cost registry (D61/#112 step 1) ---------------------
 
 /**
  * The **standalone-verb cost registry** — the two-axis invariant's second home,
  * making it **total**. The load-time walk over `JOBS[*].skills`
- * ({@link "./overworld-actions"}) covers every verb that lives on a job; every
+ * ({@link "./overworld-cost"}) covers every verb that lives on a job; every
  * economy verb that is a **free function** (this module's, plus Triage) registers
  * its {@link OverworldCost} here, and the walk below validates each at import —
  * an unpaced, unpriced standalone verb **fails at module load**, exactly like a

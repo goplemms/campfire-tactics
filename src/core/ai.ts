@@ -93,7 +93,7 @@ export function edgeDistance(grid: TileGrid, t: GridCoord): number {
  * Plan a **flee-posture** turn (D84): never fight — head for the nearest map
  * edge, preferring (in order) tiles closer to an edge, then farther from the
  * nearest foe, then the cheaper walk. The turn loop commits the actual **escape**
- * when the runner ends its move on an edge tile ({@link "./turn".Battle.runEnemyTurn}).
+ * when the runner ends its move on an edge tile ({@link "./turn".Battle.runPolicyTurn}).
  */
 function planFlee(unit: Unit, units: readonly Unit[], grid: TileGrid): AIPlan {
   const foes = activeUnits(units, opposite(unit.side));

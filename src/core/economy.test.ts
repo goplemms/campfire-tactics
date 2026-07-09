@@ -17,7 +17,7 @@ import {
   canAffordInfluence,
   influenceTier,
 } from "./economy";
-import { createOverworldEconomy } from "./overworld-actions";
+import { createOverworldEconomy } from "./overworld-state";
 
 let nextId = 0;
 function fighter(name: string): Unit {

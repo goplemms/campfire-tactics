@@ -3,7 +3,8 @@ import { Battle } from "./turn";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import { computeDamage, BROTHER } from "./combat";
-import { stampPassives, SOLDIER } from "./jobs";
+import { stampPassives } from "./jobs";
+import { SOLDIER_JOB } from "./jobs-data/combat";
 import { resolveSkill } from "./skills";
 import { hasStatus, statusAmount, GUARDED, EXPOSED } from "./status";
 
@@ -59,7 +60,7 @@ describe("Soldier — the formation kit (D66)", () => {
   it("Debilitating Strike deals +3 and leaves the foe Exposed", () => {
     const s = mk("s", "player", 0, 0, { attack: 10, jobId: "soldier" });
     const foe = mk("e", "enemy", 0, 1, { defense: 0, maxHp: 40, hp: 40 });
-    const skill = SOLDIER.skills.find((sk) => sk.id === "debilitating-strike")!;
+    const skill = SOLDIER_JOB.skills.find((sk) => sk.id === "debilitating-strike")!;
 
     const out = resolveSkill(skill, s, foe, undefined, [s, foe]);
     expect(out.damage).toBe(13); // 10 base + 3 bonus (no flank: lone attacker)

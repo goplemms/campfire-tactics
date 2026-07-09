@@ -27,7 +27,7 @@ import { gainRunGold, payTreasuryUpkeep } from "./economy";
 import { countOf, addItem, getMaterial } from "./inventory";
 import { currentNode } from "./run";
 import { useOverworldSkill } from "./overworld-actions";
-import { FIND_TRADE } from "./jobs";
+import { FIND_TRADE } from "./jobs-data/support";
 import type { NodePreview } from "./intel";
 
 /** A Merchant party member — the trade-broker (Appraisal / Find Trade / Savvy Barter, D70). */

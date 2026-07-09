@@ -3,7 +3,8 @@ import { createUnit, type Unit } from "./units";
 import { createRun, type RunState } from "./run";
 import { effectiveMarketTier, marketTierBonus, type MapNode } from "./overworld";
 import { declaredFaucetInfluence, accrueDeclaredFaucets } from "./economy-actions";
-import { getJob, jobPresenceSummary, JOBS, type JobDef, type JobLookup } from "./jobs";
+import { getJob, JOBS, type JobDef, type JobLookup } from "./jobs";
+import { jobPresenceSummary } from "./dossier";
 
 // D72 — the presence / faucet declaration substrate (decision 4). A class's standing
 // "by being fielded" (Appraisal's market lift, Renown's Influence trickle) is **data** on

@@ -13,7 +13,7 @@
  * a wipe and replay a seed.
  */
 
-import { healUnit, woundedBySeverity, createUnit, type Unit } from "./units";
+import { createUnit, type Unit } from "./units";
 import type { SkillDef } from "./skills";
 import { Battle } from "./turn";
 import {
@@ -27,7 +27,6 @@ import {
   recordNight,
   reachableNodes,
   chooseNode,
-  breakCamp,
 } from "./run";
 import {
   stageEncounter,
@@ -46,17 +45,17 @@ import {
 import type { MapNode } from "./overworld";
 import { influenceTier } from "./economy";
 import { moraleModifiers } from "./morale";
-import { moraleTier, nudgeMorale, applyCampToParty } from "./camp";
+import { moraleTier, applyCampToParty } from "./camp";
 import { freeCaptive } from "./deployment";
 import { isConcealedTrap, type ConcealedTrap } from "./entities";
 import { recoverMaterials } from "./resolution";
 import { grantItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
-import { rpPerNight, payUpkeep, restHeal, computeUpkeep, accrueRp, spendRp, RECOVERY, type UpkeepResult } from "./upkeep";
+import { rpPerNight, payUpkeep, accrueRp, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, effectiveIntelTier, MAX_TIER, TRAP_INTEL, type IntelReport } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
-import { restoreFatigue, nightlyFatigue, isFatigueTier0 } from "./fatigue";
-import { useOverworldSkill, scoutedTier, type ActionOpts, type CampSkillResult } from "./overworld-actions";
+import { useOverworldSkill, type ActionOpts, type CampSkillResult } from "./overworld-actions";
+import { scoutedTier } from "./overworld-state";
 import { gainRunGold } from "./economy";
 import { applyGearCondition } from "./gear-condition";
 import {
@@ -72,11 +71,12 @@ import {
   resolveEvent,
   eventChoices,
   chooseEventOption,
-  bypassXp,
   type EventDef,
   type EventOutcome,
   type EventChoice,
 } from "./node-events";
+import { bypassXp } from "./early-events";
+import { deepRest, inPlaceRest, type DeepRestOutcome } from "./recovery";
 
 /**
  * How the party engaged the **concealed enemy traps** an encounter staged (D12/D54)
@@ -183,18 +183,6 @@ export interface EventResolution {
   over: boolean;
 }
 
-/** Rest-node tuning — the recovery a no-battle camp grants (data, D23). */
-export const REST = {
-  /**
-   * Healing chunks a restful night funds, in addition to the nightly Rest
-   * Points. Denominated in **chunks** (each costs `policy.rpPerChunk` RP) so a
-   * rest is meaningful at every difficulty — the dying-clock dial scales with it.
-   */
-  chunks: 3,
-  /** Morale a good rest restores (D8). */
-  moraleGain: 2,
-} as const;
-
 /** The concealed **enemy** traps currently on `battle`'s field, in any state. */
 function enemyTraps(battle: Battle): ConcealedTrap[] {
   return battle.entities.all().filter((e): e is ConcealedTrap => isConcealedTrap(e) && e.owner === "enemy");
@@ -279,14 +267,6 @@ export class RunLoop {
     return useOverworldSkill(this.run, unit, skill, opts);
   }
 
-  /**
-   * Use a **camp job skill** at the current node (D35) — the signature non-combat action
-   * (Cook Stew). A thin alias of {@link useOverworldSkill} for the no-target call sites.
-   */
-  useCampSkill(unit: Unit, skill: SkillDef): CampSkillResult {
-    return useOverworldSkill(this.run, unit, skill);
-  }
-
   // --- Rest node (no battle, D23) -------------------------------------------
 
   /**
@@ -298,71 +278,23 @@ export class RunLoop {
    * records the night. Returns a summary for the render's rest screen.
    */
   restNode(): RestResult {
-    const policy = runDifficulty(this.run);
-    // The premium tier pays a full night (no voluntary skips) — it clears debt, it
-    // doesn't add to it (D47).
-    const upkeep = payUpkeep(this.run.camp, this.run.party, { skip: [] });
-    const rpAdded = rpPerNight(this.run.party) + REST.chunks * policy.rpPerChunk;
-    accrueRp(this.run, rpAdded);
-
-    // D80: the big heal is gated on **Tier 0 at rest-time** — snapshot eligibility *before* the
-    // Deep Rest wipes fatigue (else the wipe would make everyone trivially eligible). One check
-    // folds in both *how worn a unit arrived* and *what it did here* (heavy effort at the Clearing
-    // tips it out of Tier 0 → wipe only, no heal).
-    const bigHealEligible = new Set(
-      this.run.party.filter((u) => isFatigueTier0(u.fatigue)).map((u) => u.id),
-    );
-
-    // The Deep Rest (D80): wipe **every** member's overworld fatigue to Rested — no assignment,
-    // no opt-out (units already Rested are a no-op, not listed).
-    const fatigueRestored: string[] = [];
-    for (const u of this.run.party) {
-      if (u.fatigue > 0) {
-        u.fatigue = restoreFatigue(u.fatigue);
-        fatigueRestored.push(u.id);
-      }
-    }
-
-    // The heal, tiered by the gate (D80): a **Tier-0** unit cashes the **big heal** (rest-heal down
-    // the RP pool, worst-first); the too-worn (or an eligible unit once the pool's spent) get only
-    // the free nightly **chip** — they rested off their fatigue, not their wounds. So route hurt
-    // units to a Clearing *at Tier 0* to bank the full recovery ("rest the hurt, work the healthy").
-    const healed: { unitId: string; hp: number }[] = [];
-    const chipHealed: { unitId: string; hp: number }[] = [];
-    const wounded = woundedBySeverity(combatRoster(this.run));
-    for (const u of wounded) {
-      if (bigHealEligible.has(u.id) && this.run.rp >= policy.rpPerChunk) {
-        const res = restHeal(u, this.run.rp, policy);
-        if (res.rpSpent > 0) {
-          spendRp(this.run, res.rpSpent);
-          healed.push({ unitId: u.id, hp: res.hpHealed });
-          continue;
-        }
-      }
-      // Not Tier 0, or the pool's spent: the free nightly chip — the floor at every node (D80).
-      const hp = healUnit(u, RECOVERY.nightlyChipHp);
-      if (hp > 0) chipHealed.push({ unitId: u.id, hp });
-    }
-
-    nudgeMorale(this.run.camp, REST.moraleGain);
-
-    // Premium tier (D47): clear accumulated Upkeep debt (hunger / worn gear from
-    // voluntary underfunding) in one swipe — what in-place rest does *not* do.
-    const debtCleared = this.run.camp.gearWear;
-    this.run.camp.gearWear = 0;
-    this.run.camp.skippedUpkeep = [];
-
-    const lost = tickDyingClocks(this.run.party);
-    for (const u of lost) removeFromRoster(this.run, u);
+    // The recovery economy (upkeep, RP, the Tier-0 heal gate, the fatigue wipe, debt
+    // clear, dying-clock tick) lives in recovery.ts (D120); RunLoop wires it — the call,
+    // the night record, and the telemetry.
+    const r: DeepRestOutcome = deepRest(this.run);
     const node = currentNode(this.run);
     const over = recordNight(this.run, {
       nodeId: node.id,
       layer: node.layer,
       kind: node.kind,
       goldEarned: 0,
-      fallen: lost.map((u) => u.id),
+      fallen: r.lost.map((u) => u.id),
     });
-    const result: RestResult = { upkeep, rpAdded, healed, chipHealed, moraleGained: REST.moraleGain, fatigueRestored, debtCleared, dyingLost: lost.map((u) => u.id), over };
+    const result: RestResult = {
+      upkeep: r.upkeep, rpAdded: r.rpAdded, healed: r.healed, chipHealed: r.chipHealed,
+      moraleGained: r.moraleGained, fatigueRestored: r.fatigueRestored, debtCleared: r.debtCleared,
+      dyingLost: r.lost.map((u) => u.id), over,
+    };
     recordRestNode(this.log, this.run, result);
     return result;
   }
@@ -384,70 +316,10 @@ export class RunLoop {
    * restore fatigue or clear worn-gear debt — those stay rest-node-only (D47).
    */
   inPlaceRest(): InPlaceRestResult {
-    const policy = runDifficulty(this.run);
-    const refuse = (reason: string): InPlaceRestResult => ({
-      applied: false, reason, goldSpent: 0, rpAdded: 0, healed: [], hpHealed: 0, streak: this.run.overworld.restStreak,
-    });
-
-    // Refuse at full health (no empty drain, D47) — only wounded fighters count.
-    const wounded = woundedBySeverity(combatRoster(this.run));
-    if (wounded.length === 0) return refuse("The party is already at full health.");
-
-    // Soft cap (D80): if a max consecutive-nights cap is set, refuse past it (uncapped by default).
-    const cap = RECOVERY.maxInPlaceStreak;
-    if (cap != null && this.run.overworld.restStreak >= cap) {
-      return refuse(`The party has rested here ${this.run.overworld.restStreak} night(s) — time to move on.`);
-    }
-
-    // Gold cap (D47): refuse if the purse can't cover a full night's rations — no
-    // breach, no morale teeth; the in-place rest only proceeds when fully funded.
-    const bill = computeUpkeep(this.run.party);
-    if (this.run.camp.gold < bill.total) {
-      return refuse(`Not enough gold for a night's rations (${bill.total}g).`);
-    }
-
-    const upkeep = payUpkeep(this.run.camp, this.run.party, { skip: [] });
-    const rpAdded = rpPerNight(this.run.party);
-    accrueRp(this.run, rpAdded);
-
-    const healed: { unitId: string; hp: number }[] = [];
-    let hpHealed = 0;
-    const credit = (unitId: string, hp: number) => {
-      if (hp <= 0) return;
-      hpHealed += hp;
-      const row = healed.find((h) => h.unitId === unitId);
-      if (row) row.hp += hp;
-      else healed.push({ unitId, hp });
-    };
-
-    // The **free floor** (D80): every alive unit heals the flat nightly chip — the baseline you
-    // always get, even with zero RP (this is why a paid rest never reads "healed 0").
-    for (const u of this.run.party) if (u.alive) credit(u.id, healUnit(u, RECOVERY.nightlyChipHp));
-
-    // The **RP accelerator** (D80): spend banked Rest Points to heal the wounded *beyond* the floor,
-    // worst-first. RP banks per night and is boosted by support roles (Cook/Medic) — bringing
-    // support heals the party faster. No Clearing bonus RP here, so it stays slower than a Clearing.
-    for (const u of woundedBySeverity(combatRoster(this.run))) {
-      if (this.run.rp < policy.rpPerChunk) break;
-      const res = restHeal(u, this.run.rp, policy);
-      if (res.rpSpent > 0) {
-        spendRp(this.run, res.rpSpent);
-        credit(u.id, res.hpHealed);
-      }
-    }
-
-    // D73/D80: an in-place rest is an ordinary night — step Fatigue down one tier (nightlyFatigue).
-    // (The heal above already paid any Weary RP surcharge; the step-down follows it.)
-    for (const u of this.run.party) u.fatigue = nightlyFatigue(u.fatigue, false);
-
-    // Each rest is a full node-step (D47): Break Camp ticks the spine + accrues interest, and a
-    // night passes — but the run stays at this node (repeatable). Count the consecutive-night streak
-    // (reset when the caravan moves on, in chooseNode) — a hook for a cap + streak-triggered events.
-    breakCamp(this.run);
-    this.run.night += 1;
-    this.run.overworld.restStreak += 1;
-    const result: InPlaceRestResult = { applied: true, goldSpent: upkeep.paid, rpAdded, healed, hpHealed, streak: this.run.overworld.restStreak };
-    recordInPlaceRest(this.log, this.run, result);
+    // The recovery rules (the caps, the funded night, the free floor + RP accelerator, the
+    // node-step) live in recovery.ts (D120); RunLoop wires it — the call + the telemetry.
+    const result = inPlaceRest(this.run);
+    if (result.applied) recordInPlaceRest(this.log, this.run, result);
     return result;
   }
 
@@ -680,11 +552,11 @@ export class RunLoop {
 
   /**
    * **Bypass** the current node's encounter (D80) — the paid short-circuit of a tailored bypass
-   * event. No fight: each combatant keeps a flat {@link "./node-events".bypassXp} (below a won
+   * event. No fight: each combatant keeps a flat {@link "./early-events".bypassXp} (below a won
    * fight, so bypassing is never strictly better), the **loot is forgone** (`goldEarned: 0`), and
    * the night is recorded as a player resolution so the run advances. The passage fee was already
    * spent by the event's `choose` handler; this is the run-flow half. Never offered on the final
-   * node (guarded in {@link "./node-events".tailoredEarlyEventFor}), so it can't end the run.
+   * node (guarded in {@link "./early-events".tailoredEarlyEventFor}), so it can't end the run.
    */
   bypassEncounter(): BypassResult {
     const node = currentNode(this.run);
@@ -921,9 +793,9 @@ export class RunLoop {
       if (decided()) return battle.outcome().winner;
       const actor = battle.nextActor();
       if (!actor) break;
-      // The whole plan→execute→endTurn step lives in Battle.runEnemyTurn — drive it
+      // The whole plan→execute→endTurn step lives in Battle.runPolicyTurn — drive it
       // with the acting side's policy (the seam the sim swaps for A/B, D56).
-      battle.runEnemyTurn(actor, actor.side === "player" ? player : enemy);
+      battle.runPolicyTurn(actor, actor.side === "player" ? player : enemy);
     }
     return battle.outcome().winner;
   }

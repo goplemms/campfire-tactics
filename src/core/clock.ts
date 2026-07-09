@@ -15,7 +15,7 @@
  */
 
 import { isActive, activeUnits, type Unit, type Side } from "./units";
-import type { EventBus } from "./events";
+import type { EventBus } from "./event-bus";
 import { hasStatus, statusAmount, SLOWED, HASTENED } from "./status";
 import { decayCounters } from "./num";
 

@@ -18,11 +18,11 @@
 import type { RunState } from "./run";
 import { primaryJobOf, type Unit, type EquipSlot } from "./units";
 import { getEquipment, type EquipmentDef } from "./equipment";
-import { getJob } from "./jobs";
+import { getJob, type JobDef } from "./jobs";
 import { PASSIVE_INFO } from "./combat";
 import type { SkillDef } from "./skills";
 import { fatigueTier, spendFatigue, type FatigueTier } from "./fatigue";
-import { overworldCostOf } from "./overworld-actions";
+import { overworldCostOf } from "./overworld-cost";
 import { moraleTier, type MoraleTier } from "./camp";
 import { computeUpkeep } from "./upkeep";
 import { DYING_COUNTER, isDying } from "./mortality";
@@ -329,4 +329,34 @@ export function projectDossier(run: RunState): DossierProjection {
 /** Total members needing the player's eye (any non-null jeopardy) — the badge count. */
 export function attentionCount(proj: DossierProjection): number {
   return proj.members.filter((m) => m.jeopardy != null).length;
+}
+
+// --- Stranded presentation helpers (R3, #128 part C) ------------------------
+// Two one-line roster/card blurbs that lived beside unrelated engines
+// (`node-events.ts`, `jobs.ts`) — pure projections of a unit / job into a
+// display string, so they belong with the dossier's other read-only projections.
+
+/**
+ * A one-line stat blurb for an offered/featured body. Names the unit's **effective**
+ * class via {@link primaryJobOf} (D65) — a prestiged unit reads as its evolved job,
+ * not its frozen `jobId`. Exported so that standardization is asserted directly
+ * (`prestige.test.ts`) rather than only covered by the read-swap.
+ */
+export function describeUnit(u: Unit): string {
+  return `${primaryJobOf(u) ?? "fighter"} · HP ${u.maxHp} · ATK ${u.attack} · SPD ${u.speed}`;
+}
+
+/**
+ * Human-readable lines describing a job's **presence / faucet** declarations (D72) — the
+ * **card-surfacing hook**: a class's standing-by-presence read as data, so the render can
+ * show "Markets +1 tier while fielded" / "+1 Influence per step" without a bespoke string
+ * per class. Empty for a job that declares neither (every job today, until the kit pass).
+ */
+export function jobPresenceSummary(job: JobDef): string[] {
+  const out: string[] = [];
+  const lift = job.presence?.marketTierBonus ?? 0;
+  if (lift > 0) out.push(`Markets read +${lift} tier while fielded`);
+  const inf = job.faucet?.influencePerStep ?? 0;
+  if (inf > 0) out.push(`+${inf} Influence per node-step`);
+  return out;
 }

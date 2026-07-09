@@ -11,7 +11,7 @@
  */
 
 import { healUnit, type Unit } from "./units";
-import type { EventBus } from "./events";
+import type { EventBus } from "./event-bus";
 import type { StatusInstance } from "./status";
 import { resolveAttack, manhattan, PASSIVE } from "./combat";
 import { applyStatus, markPrey, cleanseOne, hastened } from "./status";
@@ -19,7 +19,7 @@ import { countOf, removeItem, type Inventory } from "./inventory";
 import { abilityScaleBonus } from "./leveling";
 import { assertNever } from "./num";
 import type { CapabilityId } from "./jobs";
-import type { OverworldCost } from "./overworld-actions";
+import type { OverworldCost } from "./overworld-cost";
 
 /** The ordered phases of the game pipeline (D3). */
 export type Phase = "meta" | "deployment" | "battle" | "resolution";
@@ -294,7 +294,7 @@ export interface SkillDef {
    * "./overworld-actions".tickCooldowns}). **Undefined ⇒ uncapped** — a skill that
    * pays its own way each cast (a Vancian charge, a gold/resource buy) is gated by
    * that cost and may fire as many times as it can afford. Enforced by {@link
-   * "./overworld-actions".useCampSkillAtNode}; combat-phase skills ignore it (the CT
+   * "./overworld-actions".useOverworldSkill}; combat-phase skills ignore it (the CT
    * clock is their limiter).
    */
   usesPerNode?: number;

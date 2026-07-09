@@ -17,13 +17,13 @@ import {
   shopBuy,
   recruiterOffer,
   hireRecruit,
-  storyForNode,
-  applyStoryChoice,
-  STORIES,
-  getStory,
   NODE_EVENTS,
   tollFee,
   nodeFee,
+  type EventKind,
+} from "./node-events";
+import { storyForNode, applyStoryChoice, STORIES, getStory } from "./stories";
+import {
   EARLY_EVENT,
   earlyEventForNode,
   resolveEarlyEvent,
@@ -32,8 +32,7 @@ import {
   bypassFee,
   bypassXp,
   tailoredEarlyEventFor,
-  type EventKind,
-} from "./node-events";
+} from "./early-events";
 
 let nextId = 0;
 function fighter(name: string): Unit {
@@ -97,6 +96,31 @@ describe("node-events — the registry is data (D4)", () => {
   it("getEvent looks an event up by id (throws if absent)", () => {
     expect(getEvent("thief").kind).toBe("thief");
     expect(() => getEvent("nope")).toThrow();
+  });
+});
+
+// --- Registration-order pin (#119) ------------------------------------------
+
+describe("node-events — the seeded weighted pick is pinned (registration order must not shift it)", () => {
+  // The exact eventForNode picks for a fixed seed sweep — pinned BEFORE the R3 split
+  // moves the authored Hollow Mill records out to hollow-mill-events.ts (registered via
+  // registerEvent). The registry iteration order EVENTS relies on must reproduce these
+  // byte-for-byte; the weight-0 authored records never enter the pool, so their position
+  // is provably irrelevant, and this pin proves the CORE record order is unchanged too.
+  it("reproduces the pinned pick sequence at 'unknown' standing", () => {
+    const picks = Array.from({ length: 12 }, (_, i) => eventForNode(`evt-${i}`, NODE).id);
+    expect(picks).toEqual([
+      "shop", "toll", "thief", "story", "shop", "thief",
+      "recruiter", "thief", "thief", "shop", "thief", "thief",
+    ]);
+  });
+
+  it("reproduces the pinned pick sequence at 'renowned' standing (weight-biased pool)", () => {
+    const picks = Array.from({ length: 12 }, (_, i) => eventForNode(`evt-${i}`, NODE, "renowned").id);
+    expect(picks).toEqual([
+      "recruiter", "patron-welcome", "shop", "patron-welcome", "recruiter", "shop",
+      "story", "thief", "shop", "recruiter", "shop", "shop",
+    ]);
   });
 });
 

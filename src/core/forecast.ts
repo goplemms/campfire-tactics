@@ -34,7 +34,7 @@ import {
 } from "./overworld";
 import { computeUpkeep } from "./upkeep";
 import { intelFloor, clampTier, REWARD_BANDS, rewardBand, type IntelTier } from "./intel";
-import { scoutedTier } from "./overworld-actions";
+import { scoutedTier } from "./overworld-state";
 import { nodeFee } from "./node-events";
 import { visibleNodes } from "./fog";
 

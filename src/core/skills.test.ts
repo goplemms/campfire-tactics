@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolveSkill, isValidSkillTarget, type SkillDef } from "./skills";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 import { computeDamage } from "./combat";
 import { isImmobilized } from "./status";
 import { createUnit, type Side, type Unit } from "./units";

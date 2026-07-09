@@ -30,7 +30,7 @@
 
 import type { Guild } from "./guild";
 import type { RunState } from "./run";
-import type { OverworldEconomy } from "./overworld-actions";
+import type { OverworldState } from "./overworld-state";
 import type { Unit } from "./units";
 import { nonNegInt, bandFor } from "./num";
 import { earn, type PurseSource } from "./purse-journal";
@@ -49,7 +49,7 @@ export interface RunGoldResult {
 /**
  * Credit gold to the **run purse** (`camp.gold`) — the field faucet (D34). Loot
  * routes here, never to the treasury. If the Banker's **buy-on-debt** ledger
- * carries a balance ({@link "./overworld-actions".OverworldEconomy.debt}), the
+ * carries a balance ({@link "./overworld-actions".OverworldState.debt}), the
  * incoming gold **auto-repays it first** (D30), and only the remainder lands in the
  * purse. Returns the split.
  */
@@ -147,14 +147,14 @@ export function influenceTier(value: number): InfluenceTier {
  * (it can never pay Upkeep or buy gear) and is rebuilt each run like the purse — it
  * does **not** bank to the guild.
  */
-export function addInfluence(eco: OverworldEconomy, amount: number): number {
+export function addInfluence(eco: OverworldState, amount: number): number {
   const n = nonNegInt(amount);
   eco.influence += n;
   return eco.influence;
 }
 
 /** True if the run holds enough Influence to afford `cost`. */
-export function canAffordInfluence(eco: OverworldEconomy, cost: number): boolean {
+export function canAffordInfluence(eco: OverworldState, cost: number): boolean {
   return eco.influence >= cost;
 }
 
@@ -163,7 +163,7 @@ export function canAffordInfluence(eco: OverworldEconomy, cost: number): boolean
  * deducted, false otherwise (the caller leaves the action un-applied). Influence
  * **only** flows out through the Noble's verbs — never as Upkeep or gear.
  */
-export function spendInfluence(eco: OverworldEconomy, cost: number): boolean {
+export function spendInfluence(eco: OverworldState, cost: number): boolean {
   const n = nonNegInt(cost);
   if (eco.influence < n) return false;
   eco.influence -= n;

@@ -28,7 +28,7 @@ export { FLANK } from "./combat";
 export { STATUS_TUNING, CHANNEL_TUNING } from "./status";
 export { TURN_THRESHOLD, ACT_COST, MOVE_COST, CHARGE_THRESHOLD } from "./clock";
 export { MED_HEAL } from "./skills";
-export { KIT } from "./jobs";
+export { KIT } from "./jobs-data/combat";
 export { SPOT } from "./traps";
 
 // --- AI ----------------------------------------------------------------------
@@ -44,7 +44,7 @@ export { MORTALITY } from "./mortality";
 
 // --- Camp economy: upkeep, recovery, rest ------------------------------------
 export { UPKEEP, RECOVERY, CHUNK_FRACTION, CLERIC_COST } from "./upkeep";
-export { REST } from "./runloop";
+export { REST } from "./recovery";
 export { ECONOMY } from "./economy-actions";
 export { THEFT } from "./theft";
 

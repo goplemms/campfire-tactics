@@ -47,14 +47,15 @@ import {
   cloneOverworldEconomy,
   tickCooldowns,
   accruePurseInterest,
-  type OverworldEconomy,
-} from "./overworld-actions";
+  type OverworldState,
+} from "./overworld-state";
 import { accrueDeclaredFaucets, deftHandsSkim } from "./economy-actions";
+import { evalPredicateRun } from "./grants";
 import { nightlyFatigue } from "./fatigue";
 import { RECOVERY } from "./upkeep";
 
 /** A recorded node outcome, for the run history / run-end screen. */
-export interface EncounterRecord {
+export interface NightRecord {
   /** The map node this record is for. */
   nodeId: string;
   /** The node's layer (its difficulty index for combat). */
@@ -129,12 +130,12 @@ export interface RunState {
    * cooldowns (the spine) + per-node bought intel tiers (Scout). Deterministic
    * run state — no live RNG (D22).
    */
-  overworld: OverworldEconomy;
+  overworld: OverworldState;
   /** Nights elapsed (the universal time unit, D9). */
   night: number;
   /** Difficulty id → the consequence policy the run consults (D9). */
   difficultyId: string;
-  history: EncounterRecord[];
+  history: NightRecord[];
   /**
    * Outstanding rescue follow-ups (D9/D21): a companion left captured-and-unrescued
    * becomes a {@link "./mortality".RescueQuest} here, so the abandonment is never
@@ -182,7 +183,7 @@ export function createRun(seed: string | number, opts: CreateRunOptions): RunSta
     path: [map.startId],
     party: opts.party,
     inventory: createInventory(storageCap, opts.inventory ?? {}),
-    camp: createCamp({ gold: opts.gold ?? 0, storageCap, morale: opts.morale ?? 0 }),
+    camp: createCamp({ gold: opts.gold ?? 0, morale: opts.morale ?? 0 }),
     rp: 0,
     overworld: createOverworldEconomy(),
     night: 0,
@@ -266,17 +267,17 @@ export function reachableNodes(run: RunState): MapNode[] {
 }
 
 /**
- * **Conditional node access** (D52 — the party-state gate). `MapNode.edges` is static,
- * so this is the one roster-conditional map mechanic: a node can be dropped from the
- * reachable set based on run state. Today only one rule (the slice's need): the dug-in
- * **secured Wagon** is inaccessible once the **Medic is already freed** (no duplicate
- * rescue) — keyed by node id + the `medic-freed` flag. Pragmatic/expedition-specific:
- * a general predicate-on-node mechanic is the proper build (see report). Returns true
- * unless a gate rule applies and is unmet.
+ * **Conditional node access** (D52/#127 — the party-state gate, now *data*). `MapNode.edges`
+ * is static, so this is the one roster-conditional map mechanic: a node carries a
+ * predicate-shaped {@link "./overworld".MapNode.blockedWhen} access rule, and a node is
+ * dropped from the reachable set when that run-level {@link "./grants".Predicate} holds
+ * — evaluated generically here via {@link "./grants".evalPredicateRun} (unit-less). No
+ * expedition-specific node id lives here anymore: the Hollow Mill's "secured Wagon
+ * inaccessible once the Medic is freed" rule is authored data in `hollow-mill.ts`.
+ * Returns true unless a node's access rule applies and blocks it.
  */
 export function nodeAccessible(run: RunState, node: MapNode): boolean {
-  if (node.id === "securedWagon" && run.flags["medic-freed"]) return false;
-  return true;
+  return !(node.blockedWhen && evalPredicateRun(node.blockedWhen, { run, node }));
 }
 
 /**
@@ -404,7 +405,7 @@ export function isRunComplete(run: RunState): boolean {
  * ({@link breakCamp}, fired from {@link chooseNode}), so one night's allowance is
  * timed across the whole node visit rather than at the event seam.
  */
-export function recordNight(run: RunState, record: Omit<EncounterRecord, "night">): boolean {
+export function recordNight(run: RunState, record: Omit<NightRecord, "night">): boolean {
   run.history.push({ ...record, night: run.night });
   run.night += 1;
   // D80 night-after-arrival: the free nightly rest (Fatigue step-down + chip heal) no longer fires
@@ -444,7 +445,7 @@ export interface RunSnapshot {
    * The overworld economy state (D35): cooldowns + scouted tiers. Captured so a
    * save round-trips the action economy, not just the route.
    */
-  overworld: OverworldEconomy;
+  overworld: OverworldState;
 }
 
 /** Capture a snapshot sufficient to reproduce the run's map, route and position. */

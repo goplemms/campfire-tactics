@@ -26,6 +26,7 @@ import { Labels } from "./rng-labels";
 import { generateEncounter, type EncounterDef } from "./generation";
 import { fieldedUnits, primaryJobOf, type Unit } from "./units";
 import { getJob, type JobLookup } from "./jobs";
+import type { Predicate } from "./grants";
 import { rankOf, clampUp } from "./num";
 
 /**
@@ -95,6 +96,15 @@ export interface MapNode {
    * {@link effectiveMarketTier}, which folds in the Merchant floor.
    */
   market?: MarketTier;
+  /**
+   * **Conditional node access as data (#127)** — a run-level {@link "./grants".Predicate}
+   * that, when it holds, makes this node **inaccessible** ({@link "./run".nodeAccessible}
+   * drops it from the reachable set). Evaluated unit-lessly via
+   * {@link "./grants".evalPredicateRun}. Absent ⇒ always accessible (the default). The
+   * authored Hollow Mill uses it for the secured Wagon (blocked once the Medic is freed);
+   * procedural nodes leave it unset.
+   */
+  blockedWhen?: Predicate;
 }
 
 /** A fully-generated, deterministic run map. */

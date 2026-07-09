@@ -10,7 +10,7 @@
 import type { GridCoord } from "./iso";
 import type { StatusInstance } from "./status";
 import type { JobId } from "./jobs";
-import type { EventBus } from "./events";
+import type { EventBus } from "./event-bus";
 
 /** Which side a unit fights for. */
 export type Side = "player" | "enemy";

@@ -213,17 +213,37 @@ export function hasBanker(party: readonly Unit[]): boolean {
 }
 
 /**
+ * Engage Interest's cost (D61/#112 step 1): **once per node** — a toggle, re-armed each
+ * node-step. An illustrative structure-proving default (the house D80-brief rule), not a
+ * balance call: the point is that the verb is no longer unpaced AND unpriced.
+ */
+export const BANKER_INTEREST_COST: OverworldCost = { usesPerNode: 1 };
+
+/** What engaging purse interest produced. */
+export interface BankerInterestResult extends ActionOutcome {
+  /** The per-node-step credit now engaged. */
+  perStep?: number;
+}
+
+/**
  * **Banker TIME-SHIFT** (D30): engage flat purse **interest**. Sets a per-node-step
  * credit of `ceil(purse × rate)` (at least 1 when the purse is non-empty), accrued
  * by {@link "./overworld-actions".accruePurseInterest} as the caravan advances.
- * Purse-only — it never touches the treasury (D34). Job-gated (the Banker's verb):
- * **no Banker ⇒ a no-op returning 0** (nothing engaged). Returns the per-step amount.
+ * Purse-only — it never touches the treasury (D34). Job-gated (the Banker's verb) and
+ * paced through the shared D61 gate (**once per node** — re-arming waits for Break
+ * Camp, #112): refuses without a Banker, when already engaged this node, or with an
+ * empty purse (nothing to earn on — the use isn't burned).
  */
-export function bankerEngageInterest(run: RunState): number {
-  if (!hasBanker(run.party)) return 0;
-  const perStep = run.camp.gold > 0 ? Math.max(1, Math.ceil(run.camp.gold * ECONOMY.banker.interestRate)) : 0;
+export function bankerEngageInterest(run: RunState): BankerInterestResult {
+  if (!hasBanker(run.party)) return { applied: false, reason: "No Banker in the party to engage interest." };
+  // The shared two-axis gate (D61/#112): a toggle, once per node.
+  const check = checkOverworldCost(run, "banker-interest", BANKER_INTEREST_COST, "Engage Interest");
+  if (!check.ok) return { applied: false, reason: check.reason };
+  if (run.camp.gold <= 0) return { applied: false, reason: "No purse to earn interest on." };
+  const perStep = Math.max(1, Math.ceil(run.camp.gold * ECONOMY.banker.interestRate));
   run.overworld.interestPerStep = perStep;
-  return perStep;
+  check.commit();
+  return { applied: true, perStep, detail: `Purse interest engaged — +${perStep}g per node-step.` };
 }
 
 /** What a buy-on-debt drew. */
@@ -235,17 +255,30 @@ export interface BankerBorrowResult extends ActionOutcome {
 }
 
 /**
+ * Borrow's cost (D61/#112 step 1): **one loan arrangement per node**. An illustrative
+ * structure-proving default (the house D80-brief rule) — the natural future price axis
+ * is a **debt ceiling** (cap outstanding principal against expected loot), a knob for
+ * the decision record, not this pass.
+ */
+export const BANKER_BORROW_COST: OverworldCost = { usesPerNode: 1 };
+
+/**
  * **Banker BUY-ON-DEBT** (D30): advance gold to the purse **now**, recorded as debt
  * that **auto-repays from incoming run gold** ({@link "./economy".gainRunGold}).
  * Lets a caravan overspend on a key buy/bribe and settle it from later loot. Purse
- * + debt only — the treasury is never involved (D34).
+ * + debt only — the treasury is never involved (D34). Paced through the shared D61
+ * gate (**one loan arrangement per node**, #112) — no longer an unbounded advance.
  */
 export function bankerBorrow(run: RunState, amount: number): BankerBorrowResult {
   if (!hasBanker(run.party)) return { applied: false, reason: "No Banker in the party to advance a loan." };
   const borrowed = nonNegInt(amount);
   if (borrowed <= 0) return { applied: false, reason: "Nothing to borrow." };
+  // The shared two-axis gate (D61/#112): one loan arrangement per node.
+  const check = checkOverworldCost(run, "banker-borrow", BANKER_BORROW_COST, "Borrow");
+  if (!check.ok) return { applied: false, reason: check.reason };
   earn(run.camp, borrowed, "banker", "Banker loan", { nodeId: run.mapNodeId, night: run.night });
   run.overworld.debt += borrowed;
+  check.commit();
   return { applied: true, borrowed, debt: run.overworld.debt, detail: `Borrowed ${borrowed}g against future loot.` };
 }
 

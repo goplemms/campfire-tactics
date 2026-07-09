@@ -8,9 +8,11 @@
  *   forgotten `!u.captured` (the audit's real inconsistency), so a captured Cook
  *   still offered stew. **Flipped at increment 2** (the one named behavior change
  *   of this brief): the check now rides `fieldsJob`, and the witness pins the fix.
- * - (b) `bankerBorrow` / `bankerEngageInterest` succeed **back-to-back with no
- *   refusal** — neither routes through the D61 cost gate (no pacing, no price;
- *   Borrow is an unbounded gold advance). **Flips at increment 7.**
+ * - (b) `bankerBorrow` / `bankerEngageInterest` used to succeed **back-to-back
+ *   with no refusal** — neither routed through the D61 cost gate (no pacing, no
+ *   price; Borrow was an unbounded gold advance). **Flipped at increment 7**
+ *   (#112 step 1): both now declare `{ usesPerNode: 1 }` through the shared gate,
+ *   so the second call this node refuses with the standard per-node reason.
  * - (c) The **CostKnob re-resolution trap** (the old check→commit drift bomb):
  *   `commitOverworldCost` used to re-resolve gold knobs **after** the effect, so an
  *   effect that moved party composition mid-verb committed a price different from
@@ -32,7 +34,7 @@
 
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
-import { createRun, type RunState } from "./run";
+import { createRun, breakCamp, type RunState } from "./run";
 import type { JobId } from "./jobs";
 import { getEvent } from "./node-events";
 import type { MapNode } from "./overworld";
@@ -89,33 +91,39 @@ describe("R2 witness (a) — a captured Cook is NOT offered the stew choice (fix
   });
 });
 
-// --- Witness (b): the ungated Banker verbs (flips at increment 7) ------------
+// --- Witness (b): the Banker verbs are gated (FLIPPED at increment 7) --------
 
-describe("R2 witness (b) — bankerBorrow / bankerEngageInterest are ungated today", () => {
-  it("bankerBorrow succeeds back-to-back with no refusal (no pacing, no price)", () => {
+describe("R2 witness (b) — bankerBorrow / bankerEngageInterest are paced through the D61 gate (#112)", () => {
+  it("bankerBorrow's second call this node refuses (one loan arrangement per node); Break Camp re-arms it", () => {
     const run = newRun("r2-w-b", [member("Vault", "banker")], 50);
     const first = bankerBorrow(run, 40);
     expect(first.applied).toBe(true);
     expect(first.borrowed).toBe(40);
-    // TODAY: an immediate second loan is granted without refusal — Borrow never
-    // opted into the D61 gate. Increment 7 gives it `{ usesPerNode: 1 }` and the
-    // second call refuses.
+    // FIXED (increment 7, #112 step 1): Borrow declares `{ usesPerNode: 1 }` through
+    // the shared gate — an immediate second loan refuses with the standard per-node
+    // reason, advancing nothing (Borrow is no longer an unbounded gold advance).
     const second = bankerBorrow(run, 40);
-    expect(second.applied).toBe(true);
-    expect(second.borrowed).toBe(40);
+    expect(second.applied).toBe(false);
+    expect(second.reason).toMatch(/spent for tonight/i);
+    expect(run.overworld.debt).toBe(40);
+    expect(run.camp.gold).toBe(50 + 40);
+    // The pacing is per-node: the node-step re-arms the verb.
+    breakCamp(run);
+    expect(bankerBorrow(run, 40).applied).toBe(true);
     expect(run.overworld.debt).toBe(80);
-    expect(run.camp.gold).toBe(50 + 80);
   });
 
-  it("bankerEngageInterest re-engages back-to-back with no refusal", () => {
+  it("bankerEngageInterest's re-engage this node refuses (a toggle, re-armed per node)", () => {
     const run = newRun("r2-w-b2", [member("Vault", "banker")], 100);
     const first = bankerEngageInterest(run);
-    expect(first).toBeGreaterThan(0);
-    // TODAY: engaging again immediately just recomputes and re-arms — no pacing.
-    // Increment 7 gives it `{ usesPerNode: 1 }` and the second call refuses.
+    expect(first.applied).toBe(true);
+    expect(first.perStep).toBeGreaterThan(0);
+    // FIXED (increment 7, #112 step 1): engaging again this node refuses with the
+    // standard per-node reason; the engaged rate stands untouched.
     const second = bankerEngageInterest(run);
-    expect(second).toBeGreaterThan(0);
-    expect(run.overworld.interestPerStep).toBe(second);
+    expect(second.applied).toBe(false);
+    expect(second.reason).toMatch(/spent for tonight/i);
+    expect(run.overworld.interestPerStep).toBe(first.perStep);
   });
 });
 

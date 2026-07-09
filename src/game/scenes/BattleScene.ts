@@ -4,7 +4,6 @@ import { roleColor } from "../roles";
 import { CombatView } from "../combat-view";
 import { addVignette } from "../vignette";
 import {
-  type ResolveResult,
   reachableTiles,
   moveBudget,
   isImmobilized,
@@ -14,9 +13,7 @@ import {
   TileGrid,
   TILE_HEIGHT,
   Battle,
-  skillsUnlockedBetween,
   availableSkills,
-  skillContexts,
   getJob,
   primaryJobOf,
   onSkillCooldown,
@@ -25,7 +22,6 @@ import {
   canSee,
   // M5b/D11 — deployment: the shared stealth-alert model
   countOf,
-  campReadout,
   freeCaptive,
   // D63 — the closing net: two radial influence sources. The party's campfire
   // (safe ground, sized by presence) vs. the enemy source (danger, growing on the
@@ -51,7 +47,6 @@ import {
   moraleModifiers,
   // M6 — the run loop
   currentEncounter,
-  isAuthoredEncounter,
   encounterOutcome,
   jobLevelOf,
   // M10 — theft (D30) + mid-combat bribe → recruitment (D33)
@@ -96,13 +91,15 @@ import type { RunHandoff } from "./OverworldScene";
 import { Button, probeWidth } from "../button";
 import { CommandMenu, type ActionSpec, MENU_BW, MENU_PAD, MENU_LEFT } from "../command-menu";
 import { PreviewCardController, attackPreviewRows as computeAttackPreviewRows } from "../forecast-cards";
+import { SituationCard, type SituationCtx, type CardView } from "../situation-card";
+import { buildResolutionSummary, showResolutionReport } from "../resolution-report";
 import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
 import { MiniCard, type CardRow } from "../info-cards";
 import { dropNet as dropNetCage } from "../deploy-fx";
-import { ICON, placeIcon, type IconKey, type IconSpec } from "../icons";
+import { ICON, placeIcon } from "../icons";
 
 /**
  * Board zoom for the real combat field (D-UX): enlarge tiles + tokens so details
@@ -110,44 +107,6 @@ import { ICON, placeIcon, type IconKey, type IconSpec } from "../icons";
  * centred full-width and has the room. Applied via {@link CombatView.boardScale}.
  */
 const BOARD_SCALE = 1.4;
-
-/**
- * Compact the intel foe-type list for the HUD line: when every type shares a leading
- * word (a faction — "Bandit Thug", "Bandit Bowman"…), factor it out once
- * ("Bandit: Thug, Bowman, …") instead of repeating it per name. Falls back to a plain
- * join when there's no shared prefix (or a bare one-word type), so it never mangles a
- * mixed list. Display-only; the intel set itself is unchanged.
- */
-function compactFoeTypes(types: readonly string[]): string {
-  if (types.length < 2) return types.join(", ");
-  const lead = types[0].split(" ")[0];
-  const shareLead = types.every((t) => t.split(" ")[0] === lead && t.split(" ").length > 1);
-  if (!shareLead) return types.join(", ");
-  return `${lead}: ${types.map((t) => t.slice(lead.length).trim()).join(", ")}`;
-}
-
-/** One icon-led line in a resolution section — an outcome and the colour it reads as. */
-interface ReportRow {
-  /** Registry icon keying the row's glyph + default tint; omit for a plain bullet. */
-  icon?: IconKey;
-  text: string;
-  /** Text colour override (the row's valence), else the section default. */
-  color?: string;
-}
-
-/** A titled group of {@link ReportRow}s — dropped entirely when it has no rows. */
-interface ReportSection {
-  heading: string;
-  rows: ReportRow[];
-}
-
-/** The full after-action report: a toned headline + subtitle over grouped sections. */
-interface ResolutionReport {
-  title: string;
-  good: boolean;
-  subtitle: string;
-  sections: ReportSection[];
-}
 
 /**
  * The two interactive board phases that share the scene's render/interaction path
@@ -205,15 +164,21 @@ export class BattleScene extends Phaser.Scene {
   /** Active-unit focus card (left, the decision zone) + the peripheral situation card. */
   private focusCard!: MiniCard;
   /**
-   * The top-right **situation card** — a Camp ↔ Intel toggle (D-feel). It shows the run's
+   * The top-right **situation card** (#131) — a Camp ↔ Intel toggle (D-feel). It shows the run's
    * **camp** economy (morale / purse / storage) or the encounter **intel** (foes / tier / shape /
    * types), flipped by the two tabs over the card. Defaults per phase: **Intel** in deployment
-   * (it informs placement), **Camp** in battle (the foes are on the board by then).
+   * (it informs placement), **Camp** in battle (the foes are on the board by then). Owns its
+   * MiniCard + tabs + view state; the scene hands it a fresh {@link SituationCtx} each refresh.
    */
-  private campCard!: MiniCard;
-  private cardView: "camp" | "intel" = "intel";
-  /** The Camp/Intel tab chips over the situation card — restyled by {@link updateCardTabs}. */
-  private cardTabs: { view: "camp" | "intel"; bg: Phaser.GameObjects.Rectangle; accent: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }[] = [];
+  private situationCard!: SituationCard;
+  /** The active Camp/Intel view — owned by {@link situationCard}; exposed for the e2e harness. */
+  get cardView(): CardView {
+    return this.situationCard.view;
+  }
+  /** The Camp/Intel tab chips — owned by {@link situationCard}; exposed for the e2e harness. */
+  get cardTabs(): SituationCard["tabs"] {
+    return this.situationCard.tabs;
+  }
   /**
    * The docked **preview card** — the "before you commit" read (docked just under the
    * focus card): the armed-ability forecast (D64), or, on hover, the move-tile (cost +
@@ -388,14 +353,9 @@ export class BattleScene extends Phaser.Scene {
     // never overlaps a tall card). Surfaces the armed-ability forecast (D64) or, on hover,
     // the move-tile / enemy / deploy-tile outcome before you commit.
     this.previewCtl = new PreviewCardController(this, this.focusCard);
-    this.campCard = new MiniCard(this, this.scale.width - 158, 42, { w: 150 });
-    // The Camp ↔ Intel toggle: two tab chips forming the card's header row, so it reads as a
-    // switching-context area. The active chip is lighter, brighter, and gold-barred; the inactive
-    // one recedes. The card title is left blank so the chips own the row.
-    const cardLeft = this.scale.width - 158, cardW = 150, tabH = 18, tabGap = 2, tabY = 42;
-    const tabW = (cardW - tabGap) / 2;
-    this.makeCardTab("Camp", "camp", cardLeft, tabY, tabW, tabH);
-    this.makeCardTab("Intel", "intel", cardLeft + tabW + tabGap, tabY, tabW, tabH);
+    // The top-right situation card (Camp ↔ Intel) — the component builds its MiniCard + the two
+    // header tab chips; the scene supplies the live render context and the tab-hover hint sink.
+    this.situationCard = new SituationCard(this, this.scale.width - 158, 42, 150, () => this.situationCtx(), (s) => this.setHint(s));
     this.hintPanel = new HintPanel(this);
     // The persistent board colour key — the same component carries across phases, re-keyed in
     // enterDeploy / startBattle so the wash language is always legible. Docked bottom, just right
@@ -467,7 +427,7 @@ export class BattleScene extends Phaser.Scene {
 
     // Intel read (D10), then straight into Deployment.
     this.intel = this.loop.intel();
-    this.cardView = "intel"; // a fresh node opens in deployment — lead the situation card with intel
+    this.situationCard.resetView("intel"); // a fresh node opens in deployment — lead the situation card with intel
     this.refreshSituationCard();
     const upkeepNote =
       camp.upkeep.underfunded.length > 0
@@ -1323,7 +1283,7 @@ export class BattleScene extends Phaser.Scene {
     // deploy overlays + markers — and the log marker lets replay delimit the deploy prelude.
     this.battle.beginBattle();
     this.titleText.setText("Battle");
-    this.cardView = "camp"; // foes are on the board now — default the situation card back to Camp
+    this.situationCard.resetView("camp"); // foes are on the board now — default the situation card back to Camp
     this.refreshSituationCard();
     this.drawRail(false); // swap the deploy rail (player + net) for the full combat roster
     this.legendStrip.setItems(BATTLE_LEGEND);
@@ -2326,8 +2286,17 @@ export class BattleScene extends Phaser.Scene {
     // freed-then-downed captive keeps its death visual instead of recoloring to a live ally.
     for (const u of this.battle.units) if (u.side === "player" && u.alive && !u.captured) this.tintCaptured(u, false);
 
-    const report = this.buildResolutionSummary(res, goldEscaped, recruited);
-    this.showResolutionReport(report);
+    const report = buildResolutionSummary({
+      res,
+      goldEscaped,
+      recruited,
+      units: this.battle.units,
+      preBattleJobLevels: this.preBattleJobLevels,
+      goldStolen: this.goldStolen,
+      goldRecovered: this.goldRecovered,
+      runComplete: this.loop.isComplete(),
+    });
+    showResolutionReport(this, this.overlay, report);
     this.setHint(`Resolution — ${report.title}. ${report.subtitle}`);
     // On any terminal (wipe / loss / run-complete) the overworld shows the end
     // screen; otherwise the player returns to the map to pick the next node.
@@ -2360,129 +2329,9 @@ export class BattleScene extends Phaser.Scene {
     return recruited;
   }
 
-  /**
-   * Build the three-way graded terminal (D50/D51) — win / objective-failure / wipe —
-   * as a structured **after-action report**: a titled, toned headline and grouped,
-   * icon-led sections (Spoils, The party, Advancement, Aftermath). Pure assembly off
-   * the resolved result; empty sections are dropped by the renderer. The grouping
-   * follows the D-UX rule — the payoff (spoils, level-ups) and the costs (casualties,
-   * captures) read as distinct, colour-coded blocks instead of one grey wall.
-   */
-  private buildResolutionSummary(
-    res: ResolveResult,
-    goldEscaped: number,
-    recruited: string[],
-  ): ResolutionReport {
-    const won = res.result === "win";
-    const title = won ? "Victory!" : res.result === "objective-failure" ? "Objective Failed — Retreat" : "Defeat";
-    const subtitle = won
-      ? "The field is won — gather the spoils and move on."
-      : res.result === "objective-failure"
-        ? "The objective was lost — the party retreats alive, the prize forfeited."
-        : "The party was overwhelmed.";
-    const nameOf = (id: string) => this.battle.units.find((u) => u.id === id)?.name ?? id;
-
-    const spoils: ReportRow[] = [];
-    if (won) {
-      spoils.push({ icon: "spoils", text: `+${res.goldEarned} gold`, color: INK.gold });
-      spoils.push(
-        res.recovered.length
-          ? { icon: "loot", text: `Recovered ${res.recovered.length} unsprung trap kit${res.recovered.length === 1 ? "" : "s"}` }
-          : { text: "No unsprung materials to recover.", color: INK.muted },
-      );
-    }
-
-    // The party (D51): rescues and casualties apply on either survivable outcome.
-    const party: ReportRow[] = [];
-    if (res.rescued.length) party.push({ icon: "rescued", text: `Freed by winning the field: ${res.rescued.map(nameOf).join(", ")}`, color: INK.success });
-    if (res.result !== "wipe") {
-      if (res.downed.length) party.push({ icon: "fallen", text: `Downed: ${res.downed.map((d) => `${nameOf(d.unitId)} (${d.resolution})`).join(", ")}`, color: INK.ember });
-      if (res.permadeaths.length) party.push({ icon: "lost", text: `Lost forever: ${res.permadeaths.map(nameOf).join(", ")}`, color: INK.danger });
-    }
-    // Captives left behind become rescue follow-ups (D9/D21) — name them so the
-    // abandonment isn't silently dropped; the Captain's Journal keeps nagging after.
-    if (res.rescueQuests.length) party.push({ icon: "captive", text: `Captured — needs rescue: ${res.rescueQuests.map((q) => nameOf(q.unitId)).join(", ")}`, color: INK.ember });
-
-    // Advancement (D53): who reached a new job level, with their new actives.
-    const advancement: ReportRow[] = [];
-    for (const u of this.battle.units) {
-      if (u.side !== "player") continue;
-      const was = this.preBattleJobLevels.get(u.id) ?? jobLevelOf(u, u.primaryJob);
-      const now = jobLevelOf(u, u.primaryJob);
-      if (now > was) {
-        // The abilities this level-up just unlocked, across all surfaces (D74) — not the
-        // cumulative set, so the readout reads as a reveal ("unlocked Recon"), not a roster.
-        const fresh = skillsUnlockedBetween(u, was, now);
-        const names = fresh.map((s) => s.name).join(", ");
-        // Call out a newly-unlocked overworld verb — the between-nodes action the player can
-        // now use on the *map* (e.g. the Scout's Survey at L2): the teaching beat.
-        const overworld = fresh.some((s) => skillContexts(s).includes("overworld"));
-        const tail = names ? ` — unlocked ${names}${overworld ? " (now usable on the overworld — scout a node ahead)" : ""}` : "";
-        advancement.push({ icon: "levelUp", text: `${u.name} reached job L${now}${tail}`, color: INK.gold });
-      }
-    }
-
-    // Aftermath (M10): theft, recruitment, and the run-complete flourish.
-    const aftermath: ReportRow[] = [];
-    if (this.goldStolen > 0) aftermath.push({ icon: "theft", text: `Thieves skimmed ${this.goldStolen}g — recovered ${this.goldRecovered}g${goldEscaped > 0 ? `, ${goldEscaped}g escaped` : ""}`, color: INK.ember });
-    if (recruited.length) aftermath.push({ icon: "recruited", text: `Swayed to the guild (permanent): ${recruited.join(", ")}`, color: INK.cyan });
-    if (won && this.loop.isComplete()) aftermath.push({ icon: "levelUp", text: "The final mission is cleared — the run is complete!", color: INK.gold });
-
-    const sections: ReportSection[] = [
-      { heading: "Spoils", rows: spoils },
-      { heading: "The party", rows: party },
-      { heading: "Advancement", rows: advancement },
-      { heading: "Aftermath", rows: aftermath },
-    ];
-    return { title, good: won, subtitle, sections };
-  }
-
   /** Hand the run back to the overworld so the player can pick the next node. */
   private returnToOverworld(): void {
     this.scene.start("OverworldScene", { run: this.run, loop: this.loop, guild: this.guild, caravanId: this.caravanId } as RunHandoff);
-  }
-
-  /**
-   * Render the {@link ResolutionReport} as a centred after-action card: a toned
-   * headline + subtitle over icon-led, colour-coded sections. Self-sizes to its
-   * content (empty sections skipped, long rows wrap) and is built in a Container so a
-   * single clearLayer tears the whole report down on Return to Map.
-   */
-  private showResolutionReport(r: ResolutionReport): void {
-    clearLayer(this.overlay);
-    const w = 484;
-    const padX = 26;
-    const leftX = -w / 2 + padX;
-    const accent = r.good ? COLOR.success : COLOR.danger;
-    const card = this.add.container(this.scale.width / 2, 0).setDepth(20);
-
-    let y = 22;
-    card.add(this.add.text(0, y, r.title, { color: r.good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5, 0));
-    y += 36;
-    const sub = this.add.text(0, y, r.subtitle, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body, align: "center", wordWrap: { width: w - 2 * padX } }).setOrigin(0.5, 0);
-    card.add(sub);
-    y += sub.height + 12;
-
-    for (const sec of r.sections) {
-      if (sec.rows.length === 0) continue;
-      card.add(this.add.text(leftX, y, sec.heading.toUpperCase(), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0));
-      card.add(this.add.rectangle(leftX, y + 15, w - 2 * padX, 1, COLOR.borderSoft).setOrigin(0, 0.5));
-      y += 22;
-      for (const row of sec.rows) {
-        const spec: IconSpec | undefined = row.icon ? ICON[row.icon] : undefined;
-        const glyph = this.add.text(leftX, y, spec?.glyph ?? "·", { color: spec?.color ?? INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0);
-        const text = this.add.text(leftX + 20, y, row.text, { color: row.color ?? INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, wordWrap: { width: w - 2 * padX - 20 } }).setOrigin(0, 0);
-        card.add([glyph, text]);
-        y += Math.max(text.height, 17) + 4;
-      }
-      y += 10;
-    }
-
-    const totalH = y + 6;
-    const bg = this.add.rectangle(0, totalH / 2, w, totalH, COLOR.bg, 0.96).setStrokeStyle(2, accent);
-    card.addAt(bg, 0);
-    card.setY(Math.max(8, this.scale.height / 2 - totalH / 2));
-    this.overlay.push(card);
   }
 
   // --- Drawing helpers -------------------------------------------------------
@@ -2642,89 +2491,26 @@ export class BattleScene extends Phaser.Scene {
     if (revealed) this.refreshUnits(); // refreshUnits re-reads hidden → un-fades the token
   }
 
-  /**
-   * The top-right **situation card** — renders whichever view the Camp/Intel toggle has active,
-   * then re-tints the tabs. Called wherever camp economy *or* intel might have changed; cheap to
-   * re-render either side. (Renamed from `refreshCampText` (#138): it renders the Camp **or**
-   * Intel card, not just camp text.)
-   */
+  /** The live read the {@link situationCard} renders from — a fresh snapshot each refresh. */
+  private situationCtx(): SituationCtx {
+    return {
+      run: this.run,
+      phase: this.phase,
+      intel: this.intel,
+      // High morale trims open-ground capture risk in Deployment (D-UX) — pass the applied
+      // multiplier where it lands, 1 elsewhere, so the camp card reads "High (−20% open risk)".
+      openRiskMultiplier: this.phase === "deployment" ? this.moraleMods().exposureMultiplier : 1,
+    };
+  }
+
+  /** Re-render the top-right situation card (Camp **or** Intel) — delegates to {@link situationCard}. */
   private refreshSituationCard(): void {
-    if (this.cardView === "intel") this.renderIntelCard();
-    else this.renderCampCard();
-    this.updateCardTabs();
+    this.situationCard.refresh();
   }
 
-  /**
-   * The **camp** view (passive reference you can't change mid-mission — morale, purse, storage),
-   * grouped out of the decision zone. Figures owned by core (`campReadout`); the camp-time levers
-   * it omits (RP/Upkeep) live on the overworld camp where they're actually spent.
-   */
-  private renderCampCard(): void {
-    const r = campReadout(this.run);
-    // Attribute morale to its *effect* here (D-UX): in Deployment high morale trims the
-    // capture risk on open (neutral) ground, so the otherwise-inert tier reads as
-    // "High (−20% open risk)" — its mechanical pull legible where it lands, not a bare stat.
-    const em = this.phase === "deployment" ? this.moraleMods().exposureMultiplier : 1;
-    const morale = em < 1 ? `${r.moraleTier} (−${Math.round((1 - em) * 100)}% open risk)` : r.moraleTier;
-    this.campCard.set("", [
-      { label: "Morale", value: morale },
-      { label: "Purse", value: `${r.purse}g` },
-      { label: "Storage", value: `${r.storageUsed}/${r.storageCap}` },
-    ]);
-  }
-
-  /**
-   * The **intel** view (D10) — the scouted encounter: foe count, intel tier, and (in deployment,
-   * where they inform placement) the field shape + a granted-vision flag, with the foe-type roster
-   * as a wrapped note. The foes are on the board once battle joins, so this recedes to a recap.
-   */
-  private renderIntelCard(): void {
-    const r = this.intel;
-    if (!r) return void this.campCard.set("", [{ label: "Intel", value: "—" }]);
-    const battle = this.phase === "battle";
-    const def = currentEncounter(this.run);
-    const shape = !battle && !isAuthoredEncounter(def) ? def.type : undefined;
-    const rows: CardRow[] = [];
-    if (r.count !== undefined) rows.push({ label: "Foes", value: `${r.count}` });
-    rows.push({ label: "Intel", value: `T${r.tier}` });
-    if (shape) rows.push({ label: "Field", value: shape });
-    // The trap lane (D83): presence → count → the careless marks, where it informs placement.
-    if (r.traps) {
-      const t = r.traps;
-      const marks = t.marked === undefined ? "" : t.marked > 0 ? ` · ${t.marked} marked` : " · none marked";
-      rows.push({ label: "Hazards", value: !t.present ? "none sensed" : t.count === undefined ? "worked ground" : `${t.count} snares${marks}` });
-    }
-    if (!battle && r.grantsVision) rows.push({ label: "Vision", value: "yes" });
-    const note = r.types && r.types.length ? compactFoeTypes(r.types) : undefined;
-    this.campCard.set("", rows, undefined, note);
-  }
-
-  /** Build one Camp/Intel tab chip (bordered, with a top accent bar for the active state). */
-  private makeCardTab(label: string, view: "camp" | "intel", x: number, y: number, w: number, h: number): void {
-    const bg = this.add.rectangle(x, y, w, h, COLOR.surfaceRaised).setOrigin(0, 0).setStrokeStyle(1, COLOR.border).setDepth(12);
-    const accent = this.add.rectangle(x, y, w, 2, COLOR.accent).setOrigin(0, 0).setDepth(13).setVisible(false); // active-tab selection bar
-    const text = this.add.text(x + w / 2, y + h / 2 + 1, label, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(13);
-    bg.setInteractive({ useHandCursor: true });
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, () => this.setCardView(view));
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(view === "intel" ? "Show the scouted foe intel." : "Show the camp economy (morale / purse / storage)."));
-    this.cardTabs.push({ view, bg, accent, label: text });
-  }
-
-  /** Flip the situation card to Camp or Intel and re-render. */
-  private setCardView(view: "camp" | "intel"): void {
-    if (this.cardView === view) return;
-    this.cardView = view;
-    this.refreshSituationCard();
-  }
-
-  /** Restyle the tab chips by the active view — active = lighter fill + bright text + gold bar. */
-  private updateCardTabs(): void {
-    for (const t of this.cardTabs) {
-      const active = t.view === this.cardView;
-      t.bg.setFillStyle(active ? COLOR.surfaceAlt : COLOR.surfaceRaised).setStrokeStyle(1, active ? COLOR.borderSoft : COLOR.border);
-      t.label.setColor(active ? INK.bright : INK.muted);
-      t.accent.setVisible(active);
-    }
+  /** Flip the situation card to Camp or Intel — exposed for the e2e harness (`s.setCardView`). */
+  setCardView(view: CardView): void {
+    this.situationCard.setView(view);
   }
 
   /**

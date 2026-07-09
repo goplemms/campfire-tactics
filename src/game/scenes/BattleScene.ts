@@ -102,6 +102,7 @@ import {
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
 import { Button, probeWidth } from "../button";
+import { CommandMenu, type ActionSpec, MENU_BW, MENU_PAD, MENU_LEFT } from "../command-menu";
 import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
@@ -163,20 +164,6 @@ interface ResolutionReport {
  * differ inside.
  */
 type BoardCtx = "deployment" | "battle";
-
-/** One entry in the bottom-left command row — a labelled button with an optional tooltip. */
-type ActionSpec = { text: string; description?: string; onClick: () => void; enabled?: boolean };
-
-/** Command-menu geometry (the bottom-left stacked action box) — shared so the docked
- *  primary and the verb stack agree on width/pitch/anchor. */
-const MENU_BW = 150;
-const MENU_BH = 28;
-const MENU_PITCH = 31;
-const MENU_PAD = 7;
-const MENU_LEFT = 12; // box left margin
-const MENU_CX = MENU_LEFT + MENU_PAD + MENU_BW / 2; // button centre x (bottom-left)
-const MENU_GAP = 12; // vertical gap between the verb box and the turn-control box below it
-const PAIR_GAP = 6; // horizontal gap between Undo and the primary in the control box's bottom row
 
 /**
  * The mission driver (M6 phase loop, M7-framed): plays **one combat node** of the
@@ -251,8 +238,19 @@ export class BattleScene extends Phaser.Scene {
   /** The always-on board colour key (safe/danger washes), set per phase. */
   private legendStrip!: LegendStrip;
   private lastHint = "";
-  private primary!: Button;
-  private actionButtons: Phaser.GameObjects.GameObject[] = [];
+  /** The bottom-left command menu (#131): the two stacked verb/turn-control boxes + the
+   *  docked green primary. Spec-builders hand it {@link ActionSpec}[]; it owns the layout. */
+  private menu!: CommandMenu;
+  /** The green End Turn / Advance Clock primary — owned by {@link menu}; exposed for the
+   *  screenshot/e2e harness (`s.primary`), which reads its label/position. */
+  get primary(): Button {
+    return this.menu.primary;
+  }
+  /** The command menu's live buttons — owned by {@link menu}; exposed for the e2e harness
+   *  (`s.actionButtons`), which reads the rendered verb labels. */
+  get actionButtons(): Phaser.GameObjects.GameObject[] {
+    return this.menu.buttons;
+  }
   private overlay: Phaser.GameObjects.GameObject[] = [];
   /** The toggleable Legend & Keys panel (L) — empty when hidden. */
   private legend: Phaser.GameObjects.GameObject[] = [];
@@ -425,8 +423,7 @@ export class BattleScene extends Phaser.Scene {
     this.auraGfx = this.add.graphics().setDepth(0.38);
     this.preview = this.add.graphics().setDepth(0.4);
     this.highlight = this.add.graphics().setDepth(0.5);
-    this.primary = this.makeTextButton(MENU_CX, this.scale.height - 40, MENU_BW, MENU_BH, "", COLOR.successDeep, COLOR.success, () => this.onPrimary());
-    this.primary.setDepth(12);
+    this.menu = new CommandMenu(this, this.hintPanel, () => this.lastHint, () => this.onPrimary());
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
     // Hover routing (D60): light the path to the tile under the cursor as it moves.
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPointerMove, this);
@@ -2986,128 +2983,21 @@ export class BattleScene extends Phaser.Scene {
     this.view.highlightTile(this.highlight, coord);
   }
 
-  // --- Buttons ---------------------------------------------------------------
+  // --- Command menu (thin delegators to CommandMenu, #131) -------------------
 
-  private makeTextButton(x: number, y: number, w: number, h: number, text: string, fill: number, stroke: number, onClick: () => void, description?: string, enabled = true): Button {
-    const btn = new Button(this, x, y, {
-      text,
-      w,
-      h,
-      // A disabled button renders greyed + inert (no click/hover/cursor) but keeps its
-      // hover-hint, so an unavailable control stays a visible, self-explaining affordance.
-      fill: enabled ? fill : COLOR.surfaceRaised,
-      stroke: enabled ? stroke : COLOR.border,
-      color: enabled ? undefined : INK.disabled,
-      enabled,
-      onClick,
-      hint: { bar: this.hintPanel, description, idle: () => this.lastHint },
-    });
-    this.add.existing(btn).setDepth(12);
-    return btn;
-  }
-
+  /** Set the green primary's label/visibility (End Turn / Advance Clock / …). */
   private setPrimary(text: string, visible = true): void {
-    // Fit the label at *full* width first: a long label (e.g. "Advance Clock") set while the
-    // primary is still half-width (paired with Undo on the turn just ended) would over-fit and
-    // ellipsize. The control-box layout re-narrows to half afterward for the short "End Turn".
-    this.primary.setWidth(MENU_BW).setLabel(text).setVisible(visible);
+    this.menu.setPrimary(text, visible);
   }
 
-  /** The resting Y of the End Turn / Advance Clock primary — the box's bottom slot. */
-  private primaryRestY(): number {
-    return this.scale.height - 40;
-  }
-
+  /** Tear the command menu down and float the primary back to its lone resting spot. */
   private clearActionButtons(): void {
-    clearLayer(this.actionButtons);
-    // With no command menu up, the primary (End Turn / Advance Clock / …) stands alone,
-    // bottom-left at full width; layoutActionMenu re-docks (and may halve) it as needed.
-    this.primary?.setWidth(MENU_BW).setPosition(MENU_CX, this.primaryRestY());
+    this.menu.clear();
   }
 
-  /**
-   * Lay the command menu as **two** stacked boxes docked **bottom-left** (D-UX): the
-   * unit's **verbs** on top, and a separate **turn-control** box below it, with a
-   * {@link MENU_GAP} between them. "What this unit does" reads apart from "control the
-   * turn/clock". The control box stacks any full-width `controls` rows (e.g. Start
-   * Battle) above a **bottom row** that pairs **Undo** side-by-side with the green End
-   * Turn / Advance Clock primary (equal halves) — or the primary alone, full width, when
-   * there's nothing to take back. Undo is only ever live *during* a player turn, so it
-   * only pairs with **End Turn** (never the between-turns Advance Clock). Shared by both
-   * phases and the herb submenu (which passes verbs only). Boxes are tracked with the
-   * buttons; {@link clearActionButtons} tears them down and floats the primary back to
-   * its lone, full-width resting spot.
-   */
+  /** Lay the two stacked verb/turn-control boxes from spec rows (see {@link CommandMenu.layout}). */
   private layoutActionMenu(verbs: ActionSpec[], opts: { undo?: ActionSpec; controls?: ActionSpec[] } = {}): void {
-    this.clearActionButtons();
-    const dockPrimary = this.primary.visible;
-    const controls = opts.controls ?? [];
-    const hasCluster = dockPrimary || controls.length > 0 || !!opts.undo;
-    const clusterTopEdge = hasCluster
-      ? this.drawControlBox(controls, opts.undo, dockPrimary)
-      : this.primaryRestY() + MENU_BH / 2 + MENU_PAD; // nothing below — verbs take the bottom
-    if (verbs.length > 0) {
-      const verbsBottomY = hasCluster ? clusterTopEdge - MENU_GAP - MENU_BH / 2 - MENU_PAD : this.primaryRestY();
-      this.drawMenuBox(verbs, verbsBottomY, false);
-    }
-  }
-
-  /**
-   * Draw the bottom-left **turn-control box**: `controls` (full-width rows, e.g. Start
-   * Battle) stacked above a bottom row that pairs {@link undo} with the docked primary as
-   * equal halves (or the primary alone, full width, when there's no `undo`). Returns the
-   * box's **top edge** Y so the verb box can stack above it.
-   */
-  private drawControlBox(controls: ActionSpec[], undo: ActionSpec | undefined, dockPrimary: boolean): number {
-    const cx = MENU_CX;
-    const bottomY = this.primaryRestY();
-    const rows = controls.length + (dockPrimary || undo ? 1 : 0); // +1 for the bottom Undo/primary row
-    const topY = bottomY - (Math.max(rows, 1) - 1) * MENU_PITCH;
-    this.actionButtons.push(
-      this.add
-        .rectangle(cx, (topY + bottomY) / 2, MENU_BW + 2 * MENU_PAD, (Math.max(rows, 1) - 1) * MENU_PITCH + MENU_BH + 2 * MENU_PAD, COLOR.surface, 0.85)
-        .setStrokeStyle(1, COLOR.borderSoft)
-        .setDepth(11),
-    );
-    // Full-width control rows (Start Battle …) above the bottom Undo/primary row.
-    controls.forEach((spec, i) => {
-      this.actionButtons.push(this.makeTextButton(cx, topY + i * MENU_PITCH, MENU_BW, MENU_BH, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
-    });
-    // Bottom row: Undo | primary side-by-side (equal halves), or the primary alone. Undo
-    // renders greyed/inert when `enabled === false` (a visible-but-disabled affordance).
-    if (undo && dockPrimary) {
-      const half = (MENU_BW - PAIR_GAP) / 2;
-      this.actionButtons.push(this.makeTextButton(cx - (half + PAIR_GAP) / 2, bottomY, half, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description, undo.enabled !== false));
-      this.primary.setWidth(half).setPosition(cx + (half + PAIR_GAP) / 2, bottomY);
-    } else if (undo) {
-      this.actionButtons.push(this.makeTextButton(cx, bottomY, MENU_BW, MENU_BH, undo.text, COLOR.btnFill, COLOR.btnStroke, undo.onClick, undo.description, undo.enabled !== false));
-    } else if (dockPrimary) {
-      this.primary.setWidth(MENU_BW).setPosition(cx, bottomY);
-    }
-    return topY - MENU_BH / 2 - MENU_PAD;
-  }
-
-  /**
-   * Draw one stacked, bordered box of buttons whose **bottom button centre** sits at
-   * `bottomY`. When `dockPrimary`, the green primary takes the box's bottom slot and the
-   * specs stack above it. Returns the box's **top edge** Y so a caller can stack another
-   * box above it.
-   */
-  private drawMenuBox(specs: ActionSpec[], bottomY: number, dockPrimary: boolean): number {
-    const cx = MENU_CX;
-    const slots = specs.length + (dockPrimary ? 1 : 0);
-    if (slots === 0) return bottomY - MENU_BH / 2 - MENU_PAD;
-    const topY = bottomY - (slots - 1) * MENU_PITCH;
-    const box = this.add
-      .rectangle(cx, (topY + bottomY) / 2, MENU_BW + 2 * MENU_PAD, (slots - 1) * MENU_PITCH + MENU_BH + 2 * MENU_PAD, COLOR.surface, 0.85)
-      .setStrokeStyle(1, COLOR.borderSoft)
-      .setDepth(11);
-    this.actionButtons.push(box);
-    specs.forEach((spec, i) => {
-      this.actionButtons.push(this.makeTextButton(cx, topY + i * MENU_PITCH, MENU_BW, MENU_BH, spec.text, COLOR.btnFill, COLOR.btnStroke, spec.onClick, spec.description));
-    });
-    if (dockPrimary) this.primary.setPosition(cx, topY + specs.length * MENU_PITCH);
-    return topY - MENU_BH / 2 - MENU_PAD;
+    this.menu.layout(verbs, opts);
   }
 
   // --- Animation -------------------------------------------------------------

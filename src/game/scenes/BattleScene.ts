@@ -9,8 +9,6 @@ import {
   moveBudget,
   isImmobilized,
   inAttackRange,
-  computeDamage,
-  retaliationDamage,
   refreshAuras,
   isAdjacent,
   TileGrid,
@@ -39,8 +37,6 @@ import {
   inDangerZone,
   inSafeZone,
   isProtected,
-  captureChanceAt,
-  captureEvasionFactor,
   stepDistance,
   deployForecast,
   // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
@@ -69,7 +65,6 @@ import {
   deployModifiers,
   // D84 — standing-order behaviors: the stance telegraph + transition narration
   STANDING_ORDERS,
-  orderOf,
   // D12 — the enemy trap-field: spot, search, and Survivalist disarm
   isConcealedTrap,
   hiddenTraps,
@@ -92,17 +87,15 @@ import {
   type DeployFront,
   type DeploySource,
   type Rng,
-  forecastSkill,
-  aimInRange,
   type GridCoord,
   type Unit,
   type SkillDef,
   type TheftAttempt,
-  type AbilityForecast,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
 import { Button, probeWidth } from "../button";
 import { CommandMenu, type ActionSpec, MENU_BW, MENU_PAD, MENU_LEFT } from "../command-menu";
+import { PreviewCardController, attackPreviewRows as computeAttackPreviewRows } from "../forecast-cards";
 import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
@@ -226,7 +219,12 @@ export class BattleScene extends Phaser.Scene {
    * focus card): the armed-ability forecast (D64), or, on hover, the move-tile (cost +
    * tiles left), the enemy (deal + hits-back), or the deploy-tile (capture risk).
    */
-  private previewCard!: MiniCard;
+  private previewCtl!: PreviewCardController;
+  /** The docked preview MiniCard — owned by {@link previewCtl}; exposed for the e2e harness
+   *  (`s.previewCard`), which reads its `.visible`. */
+  get previewCard(): MiniCard {
+    return this.previewCtl.card;
+  }
   /** Initiative rail collapse (D-UX): show the soonest few, chevron to reveal the rest. */
   private static readonly RAIL_COLLAPSED = 3;
   private railExpanded = false;
@@ -389,7 +387,7 @@ export class BattleScene extends Phaser.Scene {
     // The preview card — docked just under the focus card (repositioned per refresh so it
     // never overlaps a tall card). Surfaces the armed-ability forecast (D64) or, on hover,
     // the move-tile / enemy / deploy-tile outcome before you commit.
-    this.previewCard = new MiniCard(this, 8, 184, { w: 150 }).hide();
+    this.previewCtl = new PreviewCardController(this, this.focusCard);
     this.campCard = new MiniCard(this, this.scale.width - 158, 42, { w: 150 });
     // The Camp ↔ Intel toggle: two tab chips forming the card's header row, so it reads as a
     // switching-context area. The active chip is lighter, brighter, and gold-barred; the inactive
@@ -2802,7 +2800,7 @@ export class BattleScene extends Phaser.Scene {
       this.view.clearPreview(this.preview);
       this.threatGfx.clear();
       this.refreshAuras();
-      this.previewCard.hide();
+      this.previewCtl.hide();
       return;
     }
     if (this.showThreat) this.view.drawThreatZone(this.threatGfx, this.battle.units, this.grid, "player");
@@ -2835,148 +2833,33 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * The docked **preview card** — "what happens if I commit?" — keyed to the current
-   * hover/selection. In Battle: an armed ability's forecast (D64); else the hovered
-   * enemy's deal / hits-back; else the hovered move tile's cost + tiles-left. In
-   * Deployment: the hovered tile's capture risk. Hidden when there's nothing to
-   * preview. Re-docked just under the focus card each call (so it never overlaps a tall
-   * card) and recomputed live (HP/stacks/position change as the turn unfolds).
+   * Route the docked **preview card** ("what happens if I commit?") to the right read for
+   * the current hover/selection, handing {@link PreviewCardController} the resolved live
+   * inputs. In Battle: an armed ability's forecast (D64); else the hovered enemy's deal /
+   * hits-back; else the hovered move tile's cost + tiles-left. In Deployment: the hovered
+   * tile's capture risk. Hidden when there's nothing to preview.
    */
   private refreshPreviewCard(): void {
     if (this.phase === "battle") {
       const actor = this.waitingFor;
-      if (!actor || this.busy || this.over) return void this.previewCard.hide();
-      if (this.armedSkill) return this.showAbilityForecast(actor);
-      if (this.hoverFoe && this.hoverFoe.alive && !this.hoverFoe.hidden) return this.showAttackPreview(actor, this.hoverFoe);
-      if (this.hoverTile) return this.showMovePreview(this.hoverTile);
-      return void this.previewCard.hide();
+      if (!actor || this.busy || this.over) return this.previewCtl.hide();
+      if (this.armedSkill) return this.previewCtl.showAbilityForecast(actor, this.armedSkill, this.armedAim, this.battle.units, this.run.inventory, this.run.camp.morale);
+      if (this.hoverFoe && this.hoverFoe.alive && !this.hoverFoe.hidden) return this.previewCtl.showAttackPreview(actor, this.hoverFoe, this.battle.units);
+      if (this.hoverTile) return this.previewCtl.showMovePreview(this.reachByKey.get(`${this.hoverTile.col},${this.hoverTile.row}`), this.moveBudget, this.acted);
+      return this.previewCtl.hide();
     }
     if (this.phase === "deployment") {
       const actor = this.deployActor;
-      if (!actor || this.busy || actor.captured || this.armedSkill || !this.deployHoverTile) return void this.previewCard.hide();
-      return this.showDeployPreview(actor, this.deployHoverTile);
+      if (!actor || this.busy || actor.captured || this.armedSkill || !this.deployHoverTile) return this.previewCtl.hide();
+      return this.previewCtl.showDeployPreview(actor, this.deployHoverTile, this.campfire, this.front, this.deployMods().exposureMultiplier);
     }
-    this.previewCard.hide();
+    this.previewCtl.hide();
   }
 
-  /** Show the preview card with `title`/`rows`, docked just beneath the focus card. */
-  private showPreview(title: string, rows: CardRow[], alpha = 1): void {
-    this.previewCard.set(title, rows).setPosition(8, this.focusCard.bottomY() + 6).setAlpha(alpha);
-  }
-
-  /**
-   * The armed-ability forecast (D64): build the {@link AbilityForecast} from live state
-   * and render it; an out-of-range aim still telegraphs but dims the box.
-   */
-  private showAbilityForecast(actor: Unit): void {
-    const skill = this.armedSkill;
-    if (!skill) return void this.previewCard.hide();
-    const target = this.armedAim
-      ? this.battle.units.find((u) => u.alive && u.pos.col === this.armedAim!.col && u.pos.row === this.armedAim!.row)
-      : undefined;
-    const fc = forecastSkill(skill, actor, { target, units: this.battle.units, inventory: this.run.inventory, morale: this.run.camp.morale });
-    const inRange = !this.armedAim || aimInRange(skill, actor, this.armedAim);
-    this.showPreview(skill.name, this.forecastRows(fc), inRange ? 1 : 0.4);
-  }
-
-  /** Battle hover — a foe: the strike's expected damage, the hit-back next turn, and whether it's in reach. */
-  private showAttackPreview(actor: Unit, foe: Unit): void {
-    this.showPreview(foe.name, this.attackPreviewRows(actor, foe), inAttackRange(actor, foe) ? 1 : 0.6);
-  }
-
-  /**
-   * The deal / hits-back / range rows for hovering `foe` (D-feel). "Deal" is the strike
-   * (flank-aware); "Hits back" is the **auto-counter** the strike would provoke — `0`
-   * today (no riposte/thorns mechanic), via {@link retaliationDamage}, the seam a future
-   * retaliate effect plugs into. It is *not* the foe's own next turn.
-   */
-  private attackPreviewRows(actor: Unit, foe: Unit): CardRow[] {
-    const units = this.battle.units;
-    const deal = computeDamage(actor, foe, actor.attack, units);
-    const back = retaliationDamage(actor, foe, units);
-    const reach = inAttackRange(actor, foe);
-    const skull = (n: number, t: Unit) => (n >= t.hp ? ` ${ICON.lethal.glyph}` : "");
-    const rows: CardRow[] = [
-      { label: "Deal", value: `${deal}${skull(deal, foe)}`, color: deal >= foe.hp ? INK.ember : INK.danger, emphasize: true },
-      { label: "Hits back", value: `${back}${skull(back, actor)}`, color: back >= actor.hp ? INK.danger : INK.muted },
-      { label: "Range", value: reach ? "in reach" : "move adjacent", color: reach ? INK.success : INK.muted },
-    ];
-    // An ordered foe telegraphs its stance (D81/D84) — the intent, never the trigger.
-    const stance = orderOf(foe)?.stance;
-    if (stance) rows.push({ label: "Stance", value: stance, color: INK.muted });
-    return rows;
-  }
-
-  /** Battle hover — a reachable tile: this step's cost, the budget left after it, and whether the Act is still up. */
-  private showMovePreview(tile: GridCoord): void {
-    const r = this.reachByKey.get(`${tile.col},${tile.row}`);
-    if (!r || r.path.length === 0) return void this.previewCard.hide();
-    const left = Math.max(0, this.moveBudget - r.cost);
-    this.showPreview("Move here", [
-      { label: "Move cost", value: `${r.cost}`, color: INK.secondary },
-      { label: "Tiles left", value: `${left}`, color: left > 0 ? INK.success : INK.muted, emphasize: true },
-      // Reinforce that one Act can still fall before/after the move (the D60 free-move turn).
-      { label: "Action", value: this.acted ? "spent" : "ready", color: this.acted ? INK.muted : INK.success },
-    ]);
-  }
-
-  /** Deployment hover — a walkable tile: its capture risk for the active unit, plus the band it sits in. */
-  private showDeployPreview(actor: Unit, tile: GridCoord): void {
-    const protectedHere = isProtected(tile, this.campfire);
-    const inNet = inDangerZone(tile, this.front);
-    const risk = captureChanceAt(tile, this.campfire, this.front, {
-      evasion: captureEvasionFactor(actor),
-      exposureMultiplier: this.deployMods().exposureMultiplier,
-    });
-    const band = protectedHere ? "Safe core" : inNet ? "In the net" : "Open ground";
-    this.showPreview("If moved here", [
-      { label: "Capture risk", value: protectedHere ? "none" : `${Math.round(risk * 100)}%`, color: protectedHere ? INK.success : inNet ? INK.danger : INK.ember, emphasize: true },
-      { label: "Zone", value: band, color: protectedHere ? INK.success : inNet ? INK.danger : INK.muted },
-    ]);
-  }
-
-  /** Map a tagged {@link AbilityForecast} to the forecast box's label→value rows (D64). */
-  private forecastRows(fc: AbilityForecast): CardRow[] {
-    const glyphs = (g?: { lethal?: boolean }) => (g?.lethal ? ` ${ICON.lethal.glyph}` : "");
-    switch (fc.kind) {
-      case "immediate":
-      case "computed":
-        return [{ label: fc.label, value: `${fc.value}${glyphs(fc.glyphs)}`, color: fc.glyphs?.lethal ? INK.ember : INK.secondary, emphasize: true }];
-      case "conditional":
-        // "Damage 12 (vs debuffed +4)" / "Trap — if a foe enters: 12".
-        return fc.value > 0
-          ? [
-              { label: fc.label, value: `${fc.value}${glyphs(fc.glyphs)}`, emphasize: true },
-              { label: fc.condition, value: `+${fc.bonus}`, color: INK.gold },
-            ]
-          : [{ label: fc.label, value: `${fc.condition}: ${fc.bonus}`, color: INK.ember }];
-      case "deferred": {
-        // "Mark Prey — 0 now → +2/hit (cap +8)".
-        const parts: string[] = [`${fc.now} now`];
-        if (fc.perHit !== undefined) parts.push(`+${fc.perHit}/hit`);
-        if (fc.cap !== undefined) parts.push(`(cap +${fc.cap})`);
-        if (fc.etaTurns !== undefined) parts.push(`in ~${fc.etaTurns}t`);
-        return [{ label: fc.label, value: parts.join(" "), color: INK.ember }];
-      }
-      case "banked":
-        return [{ label: fc.label, value: `+${fc.value} party · next battle`, color: INK.success }];
-      case "tiered": {
-        // "Morale Neutral → High" + a couple of headline modifiers from the bundle.
-        const rows: CardRow[] = [{ label: fc.label, value: `${fc.from} → ${fc.to}`, color: INK.success, emphasize: true }];
-        const m = fc.modifiers;
-        if (m.initiativeBonus) rows.push({ label: "Initiative", value: `+${m.initiativeBonus}`, color: INK.gold });
-        if (m.safeDepthBonus) rows.push({ label: "Safe depth", value: `+${m.safeDepthBonus}`, color: INK.gold });
-        if (fc.banked) rows.push({ label: "Banked heal", value: `+${fc.banked} · next battle`, color: INK.success });
-        return rows;
-      }
-      case "branching":
-        // One row per herb, greyed when unavailable, the rider tag appended (D64).
-        return fc.rows.map((r) => ({
-          label: r.label,
-          value: `+${r.value}${r.rider ? ` ${r.rider}` : ""}`,
-          color: r.available ? INK.secondary : INK.disabled,
-        }));
-    }
+  /** The hovered-foe deal/hits-back rows — a thin wrapper over the pure {@link
+   *  computeAttackPreviewRows} formatter, exposed for the e2e harness (`s.attackPreviewRows`). */
+  attackPreviewRows(actor: Unit, foe: Unit): CardRow[] {
+    return computeAttackPreviewRows(actor, foe, this.battle.units);
   }
 
   private highlightTile(coord: GridCoord | null): void {

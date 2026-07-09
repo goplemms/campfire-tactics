@@ -77,6 +77,14 @@
  *   - increment 4 (#123 — SkillDef.phase retires): −1 — `unlockedSkills` deleted (its callers
  *     migrated to `availableSkills`, the one authoritative surfacing projection); `unitSkills`
  *     keeps its name (signature dropped the `phase` param). The `Phase` type is deleted too
+ *
+ * R4 batch-2 deltas (#112 — the economy-verb migration):
+ *   - increment 5 (effect kinds + handlers): +10 — the post-gate effect **cores** each economy
+ *     verb shares with the new `OVERWORLD_EFFECT_HANDLERS` entries (`applyBuyEffect`,
+ *     `applySellEffect`, `applyBorrowEffect`, `applyEngageInterestEffect`, `applyGuardPurseEffect`,
+ *     `applyPatronizeEffect`, `applyTriageEffect`, `applyTriageFallbackEffect`), the Triage target
+ *     selector `mostWoundedFielded`, and the `buyPriceFor` Savvy-Barter price helper. The new
+ *     `OverworldActionEffect` variants (sell/borrow/…/buy/triage) are type-only (not runtime).
  *     (type-only, not runtime surface) (→ 616).
  */
 import { describe, it, expect } from "vitest";
@@ -260,21 +268,29 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "aggregate",
   "aimInRange",
   "analyzeExpedition",
+  "applyBorrowEffect",
+  "applyBuyEffect",
   "applyCampSkill",
   "applyCampToParty",
   "applyCharacterBoons",
   "applyDamage",
+  "applyEngageInterestEffect",
   "applyGearCondition",
   "applyGrant",
   "applyGrantEffect",
+  "applyGuardPurseEffect",
   "applyHeal",
   "applyJobLevelGains",
   "applyOverworldEffect",
+  "applyPatronizeEffect",
   "applyProvisionChoice",
+  "applySellEffect",
   "applyStatDelta",
   "applyStatus",
   "applyStoryChoice",
   "applyTownVisit",
+  "applyTriageEffect",
+  "applyTriageFallbackEffect",
   "armObjectives",
   "armSkillCooldown",
   "arrivalDigest",
@@ -305,6 +321,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "buildGrid",
   "buildLedger",
   "bumpCounter",
+  "buyPriceFor",
   "byReadiest",
   "bypassFee",
   "bypassXp",
@@ -528,6 +545,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "moraleModifiers",
   "moraleTier",
   "moraleTierIndex",
+  "mostWoundedFielded",
   "moveBudget",
   "nightEndGate",
   "nightlyFatigue",

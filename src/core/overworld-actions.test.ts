@@ -394,10 +394,15 @@ describe("the standalone-verb cost registry — the D61 invariant is total (#112
   // breakCamp fires (not player verbs). A new helper joins this list explicitly.
   const NON_VERBS = new Set([
     // economy-actions — pure reads / predicates
-    "merchantPrice", "sellPrice", "bribeCost", "bribeChance",
+    "merchantPrice", "sellPrice", "bribeCost", "bribeChance", "buyPriceFor",
     "hasBanker", "hasNoble", "hasThief", "declaredFaucetInfluence",
     // economy-actions — passive per-node-step faucets (fired by breakCamp, not chosen)
     "accrueDeclaredFaucets", "deftHandsSkim",
+    // economy-actions — the post-gate effect **cores** (R4/A): the mutation each verb runs,
+    // shared with the OVERWORLD_EFFECT_HANDLERS registry. Not verbs (no gate of their own).
+    "applyBuyEffect", "applySellEffect", "applyBorrowEffect", "applyEngageInterestEffect",
+    "applyGuardPurseEffect", "applyPatronizeEffect", "applyTriageEffect", "applyTriageFallbackEffect",
+    "mostWoundedFielded",
     // overworld-actions — the gate + cost grammar itself
     "checkOverworldCost", "validateOverworldCost", "resolveKnob", "knobDeclared",
     "hasPacing", "hasPrice", "overworldCostOf",

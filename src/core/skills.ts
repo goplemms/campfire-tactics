@@ -227,13 +227,90 @@ export interface ForageEffect {
   rollsPerLevel: number;
 }
 /**
+ * **Overworld**: sell one carried good into purse gold at the current node's market tier
+ * (the Merchant SELL verb, D61). Reads the good from `opts.materialId`; the market/price
+ * math + Savvy-Barter overlay live in the {@link "./economy-actions".applySellEffect} core
+ * the handler delegates to. No static payload — the good + market are runtime.
+ */
+export interface SellEffect {
+  kind: "sell";
+}
+/**
+ * **Overworld**: advance gold to the purse as auto-repaid **debt** (the Banker BORROW verb,
+ * D30). Reads the sum from `opts.amount`; the earn + debt bookkeeping lives in the
+ * {@link "./economy-actions".applyBorrowEffect} core.
+ */
+export interface BorrowEffect {
+  kind: "borrow";
+}
+/**
+ * **Overworld**: engage flat purse **interest** per node-step (the Banker INVEST verb, D30) —
+ * sets `run.overworld.interestPerStep`. Delegates to {@link "./economy-actions".applyEngageInterestEffect}.
+ */
+export interface EngageInterestEffect {
+  kind: "engageInterest";
+}
+/**
+ * **Overworld**: buy **theft protection** — a [0,1) skim reduction (the Banker GUARD verb, D30).
+ * Delegates to {@link "./economy-actions".applyGuardPurseEffect} (the level is read from the
+ * economy tuning, not this record).
+ */
+export interface GuardPurseEffect {
+  kind: "guardPurse";
+}
+/**
+ * **Overworld**: court patrons — spend purse gold for **Influence** (the Noble PATRONIZE verb,
+ * D62). The gold price rides the gate; the Influence yield is credited by
+ * {@link "./economy-actions".applyPatronizeEffect}.
+ */
+export interface PatronizeEffect {
+  kind: "patronize";
+}
+/**
+ * **Overworld / camp**: mend the party's **most-wounded** ally (D40/D73). Two paths, one kind:
+ * - **full-strength** (the Medic's SkillDef): `fallback` omitted — heal `base` + the caster's
+ *   Triage-passive scaling on missing HP, fuelled by the gated **fatigue** price (today's numbers).
+ * - **universal fallback** (`fallback: true`, {@link "./jobs-data/support".UNIVERSAL_OVERWORLD_SKILLS}):
+ *   no Medic needed — heal **one rest-chunk**, funded by **Rest Points at half a normal rest's
+ *   efficiency** (the skill's `overworldCost.rp` provider is 2× `rpPerChunk`). The named,
+ *   tunable behavior change (a Medic-less party heals slower at camp).
+ */
+export interface TriageEffect {
+  kind: "triage";
+  /** Full-strength (Medic) path: flat HP floor before the Triage-passive scaling on missing HP. */
+  base: number;
+  /** When true this is the universal RP-funded fallback (one chunk, half efficiency); omit for the Medic path. */
+  fallback?: boolean;
+}
+/**
+ * **Overworld**: buy one supply into caravan **storage** at the node's market tier (the universal
+ * BUY verb, D61 — {@link "./jobs-data/support".UNIVERSAL_OVERWORLD_SKILLS}). Reads the good from
+ * `opts.materialId` + the tier from `opts.tier`; delegates to {@link "./economy-actions".applyBuyEffect}.
+ */
+export interface BuyEffect {
+  kind: "buy";
+}
+/**
  * **Overworld / camp economy** effects (D72) — resolved by the exhaustive
  * {@link "./overworld-actions".OVERWORLD_EFFECT_HANDLERS} registry (the overworld twin of
  * {@link BattleEffect}'s, the way {@link CampEffect} resolves in {@link "./camp"}). The
- * generic *mechanisms* the non-combat triad needs (plus migrated Survey); a class's actual
- * verbs (Find Trade / Savvy Barter / Cook Stew) wire them onto a job in the content pass.
+ * generic *mechanisms* the non-combat triad needs (Survey/Find Trade/Savvy Barter/Cook Stew/
+ * Forage), plus the migrated **economy verbs** (buy/sell · borrow/interest/guard · patronize ·
+ * triage) — each wired onto its owning job (or the universal home) as a {@link SkillDef} (R4/A).
  */
-export type OverworldActionEffect = OpenMarketEffect | PrimeDealEffect | ProvisionMealEffect | SurveyNodeEffect | ForageEffect;
+export type OverworldActionEffect =
+  | OpenMarketEffect
+  | PrimeDealEffect
+  | ProvisionMealEffect
+  | SurveyNodeEffect
+  | ForageEffect
+  | SellEffect
+  | BorrowEffect
+  | EngageInterestEffect
+  | GuardPurseEffect
+  | PatronizeEffect
+  | TriageEffect
+  | BuyEffect;
 
 /**
  * The declarative effect a skill applies when it resolves — **partitioned by the
@@ -336,6 +413,13 @@ export function skillContexts(skill: SkillDef): UsableContext[] {
     case "provisionMeal":
     case "survey":
     case "forage":
+    case "sell":
+    case "borrow":
+    case "engageInterest":
+    case "guardPurse":
+    case "patronize":
+    case "triage":
+    case "buy":
       // Camp/overworld economy + recon mechanisms (D72/D73) — surfaced on the between-nodes beat.
       return ["overworld"];
     case "med-heal":

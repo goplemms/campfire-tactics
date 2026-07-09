@@ -372,7 +372,7 @@ export class CampPanel {
    * and coloured by kind — so a row answers "what does this cost and who does it" at a glance, the
    * way the state tiles answer "what is this figure". Hover still drives the richer EFFECT PREVIEW.
    */
-  renderActionCard(x: number, y: number, w: number, h: number, a: CampAction, packed = false): void {
+  renderActionCard(x: number, y: number, w: number, h: number, a: CampAction): void {
     const objects = this.ctx.campObjects();
     const enabled = a.enabled;
     const bg = this.s.add.rectangle(x, y, w, h, COLOR.surfaceRaised, enabled ? 1 : 0.5).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.border).setOrigin(0, 0.5).setDepth(10);
@@ -387,7 +387,7 @@ export class CampPanel {
       fitText(actor, ACTOR_COL_W);
       objects.push(actor);
     }
-    this.renderCostChips(x + w - 12, y, a.costs, enabled, packed);
+    this.renderCostChips(x + w - 12, y, a.costs, enabled);
     if (enabled) {
       bg.setInteractive({ useHandCursor: true });
       bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, a.onClick);
@@ -406,7 +406,7 @@ export class CampPanel {
    * icons line up, and so on (the number, not the icon, varies). Scan a column to see which actions
    * cost that resource. Absent components leave their slot blank; an all-blank cost reads "free".
    */
-  private renderCostChips(rightX: number, y: number, costs: ActionCost | undefined, enabled: boolean, packed = false): void {
+  private renderCostChips(rightX: number, y: number, costs: ActionCost | undefined, enabled: boolean): void {
     const objects = this.ctx.campObjects();
     const present = COST_COMPONENTS.filter((c) => costs?.[c.key] != null);
     const chipText = (c: (typeof COST_COMPONENTS)[number]) => {
@@ -419,15 +419,6 @@ export class CampPanel {
     if (present.length === 0) {
       // "free" sits where the first (gold) column would start, so it reads in line with the icons.
       objects.push(this.s.add.text(areaLeft, y, "free", { color: enabled ? INK.muted : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
-      return;
-    }
-    if (packed) {
-      // Packed: chips hug the right edge (each row's costs clump together, no fixed columns).
-      const gap = 12;
-      const texts = present.map((c) => this.s.add.text(0, y, chipText(c), { color: enabled ? c.ink : INK.disabled, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0, 0.5).setDepth(11));
-      const widths = texts.map((t) => Math.ceil(t.width));
-      let cx = rightX - (widths.reduce((s, w) => s + w, 0) + gap * (texts.length - 1));
-      texts.forEach((t, i) => { t.x = cx; cx += widths[i] + gap; objects.push(t); });
       return;
     }
     COST_COMPONENTS.forEach((c, i) => {

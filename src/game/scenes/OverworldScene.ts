@@ -188,7 +188,6 @@ export class OverworldScene extends Phaser.Scene {
   private marketQty: Record<string, number> = {};
 
   private titleText!: Phaser.GameObjects.Text;
-  private campText!: Phaser.GameObjects.Text;
   private hintPanel!: HintPanel;
   /** The shared camp-beat chrome (D58) — readout tiles + effect preview, drawers, action cards,
    *  camp buttons, nav tabs. The prep + react beats are two thin configurations of it. */
@@ -228,7 +227,6 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     this.titleText = this.add.text(this.scale.width / 2, 16, "", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(10);
-    this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
     this.hintPanel = new HintPanel(this);
     // The panel + map view are built once and persist across create() calls (a return from a
     // BattleScene re-runs create on the same scene instance) — matching the old instance-field
@@ -250,7 +248,6 @@ export class OverworldScene extends Phaser.Scene {
       renderReadouts: (layer) => this.panel.renderMapReadouts(40, layer),
     });
 
-    this.refreshReadoutLine();
 
     // Terminal screens take over the map.
     if (this.loop.isOver()) return this.runEnd();
@@ -319,10 +316,9 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- Map drawing ----------------------------------------------------------
 
-  /** Draw the overworld board via {@link MapView}: set the map title + hide the camp line, then
-   *  hand off to the view. `interactive: false` is the read-only Route-map review (Tent Map page). */
+  /** Draw the overworld board via {@link MapView}: set the map title, then hand off to the view.
+   *  `interactive: false` is the read-only Route-map review (Tent Map page). */
   private drawMap(interactive = true): void {
-    this.campText.setVisible(false);
     this.titleText.setText(`Overworld — Night ${this.run.night + 1} · choose your next move`);
     this.mapView.draw(interactive);
   }
@@ -414,7 +410,6 @@ export class OverworldScene extends Phaser.Scene {
   /** Apply a tailored early-event choice: a bypass short-circuits to the react camp; otherwise fight on. */
   private onEarlyChoice(node: MapNode, def: EventDef, choice: EventChoice): void {
     const out: EventOutcome = def.choose!(this.run, node, choice.id);
-    this.refreshReadoutLine();
     clearLayer(this.overlay);
     if (out.bypass) {
       const res = this.loop.bypassEncounter();
@@ -451,7 +446,6 @@ export class OverworldScene extends Phaser.Scene {
   private renderCamp(): void {
     const node = this.campNode!;
     this.clearCamp();
-    this.refreshReadoutLine();
 
     const isCombat = node.kind === "combat";
     const kindLabel = isCombat
@@ -474,9 +468,6 @@ export class OverworldScene extends Phaser.Scene {
     const readoutCardW = 200;
     const readoutX = cx + panelW / 2 - 30 - readoutCardW;
 
-    // The live figures move off the static top line into a right-side state panel
-    // (below) — hide the header line so the caravan's state reads in one place.
-    this.campText.setVisible(false);
 
     // The "last night's rest" recap band (ember) — what the arrival rest restored (D80).
     const recapBottom = this.renderPrepRecap(colX, top, panelW);
@@ -955,7 +946,6 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     // Panel pages (Party / Stores / Ledger): a near-full-screen page, nav pinned upper-left.
-    this.campText.setVisible(false);
     const panelTop = 60;
     const panelBottom = this.scale.height - 16;
     this.overlay.push(
@@ -1151,9 +1141,9 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /** Delegate to the camp panel — kept on the scene as the screenshot harness's entry
-   *  point (`s.renderActionCard(...)`, with the `packed` variant) into the action-card chrome. */
-  renderActionCard(x: number, y: number, w: number, h: number, a: CampAction, packed = false): void {
-    this.panel.renderActionCard(x, y, w, h, a, packed);
+   *  point (`s.renderActionCard(...)`) into the action-card chrome. */
+  renderActionCard(x: number, y: number, w: number, h: number, a: CampAction): void {
+    this.panel.renderActionCard(x, y, w, h, a);
   }
 
   /** Delegate to the camp panel — the screenshot harness's entry point (`s.showActionPreview(...)`)
@@ -1163,6 +1153,10 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private clearCamp(): void {
+    // Drop any transient hover-tip whose button we're about to destroy (#137): a hovered camp/nav
+    // button rebuilt out from under the pointer never fires its pointer-out, so the tip would stick.
+    // clearCamp is the single teardown all camp beats + renderTent route through, so this covers both.
+    this.hintPanel.clearTip();
     // Stop any in-flight readout pulses (+ drop the preview geometry) before their tiles are
     // destroyed below — the panel owns that state; the shared layers are cleared here.
     this.panel.clearReadouts();
@@ -1214,7 +1208,6 @@ export class OverworldScene extends Phaser.Scene {
   // Patron's Welcome — a standing-gated boon (D62): auto-resolve the feast + report it.
   private playPatronEvent(): void {
     const res = this.loop.eventNode(); // auto-resolves the boon + records the night
-    this.refreshReadoutLine();
     const o = res.outcome;
     const lines: string[] = [o.summary];
     if (o.moraleDelta) lines.push(`Spirits lift (+${o.moraleDelta} morale).`);
@@ -1226,14 +1219,12 @@ export class OverworldScene extends Phaser.Scene {
   /** Leave the event, record the node-step, and route to the Survey beat/terminal (D46). */
   private finishEvent(netGold: number): void {
     this.loop.recordEventNight(netGold);
-    this.refreshReadoutLine();
     this.afterNode();
   }
 
   // Thief — no choice; resolve the skim (auto path) and report it (D30).
   private playThiefEvent(): void {
     const res = this.loop.eventNode(); // auto-resolves the skim + records the night
-    this.refreshReadoutLine();
     const stolen = res.outcome.stolen ?? 0;
     const lines: string[] = [];
     if (stolen > 0) {
@@ -1303,7 +1294,6 @@ export class OverworldScene extends Phaser.Scene {
   private onEventChoice(choice: EventChoice): void {
     const def = this.loop.eventDef();
     const out: EventOutcome = this.loop.chooseEvent(choice.id);
-    this.refreshReadoutLine();
 
     if (def.kind === "shop" && choice.id.startsWith("buy:")) {
       // Stay in the market: track spend, report, re-render for the next buy.
@@ -1318,7 +1308,6 @@ export class OverworldScene extends Phaser.Scene {
     const lines = [out.summary, "", `Purse now ${this.run.camp.gold}g.`];
     if (out.recruited) lines.push(`${out.recruited.name} now rides with the caravan.`);
     this.loop.recordEventNight(out.goldDelta);
-    this.refreshReadoutLine();
     const good = out.goldDelta >= 0 && out.moraleDelta >= 0;
     this.showOverlay(def.name, lines.join("\n"), good, 520, 200, () => this.afterNode());
   }
@@ -1329,7 +1318,6 @@ export class OverworldScene extends Phaser.Scene {
     // A rest node elapses a night and pays a night's rations — show the spend first.
     this.showLedgerTransition("Before resting for the night…", () => {
       const res = this.loop.restNode();
-      this.refreshReadoutLine();
       this.showRestScreen(res);
     });
   }
@@ -1365,9 +1353,6 @@ export class OverworldScene extends Phaser.Scene {
     this.clearCamp();
     clearLayer(this.overlay);
     this.campNode = currentNode(this.run);
-    this.refreshReadoutLine();
-    // The live figures move to the right-side state panel on this beat — hide the line.
-    this.campText.setVisible(false);
 
     // The REACT camp (D80): the post-encounter planning beat — read the road ahead, scout, bank
     // loot — ending in **Set Out**. Its identity is gold (intel/route), paired against the prep
@@ -1474,7 +1459,6 @@ export class OverworldScene extends Phaser.Scene {
     // In-place rest is a node-step that pays a night's rations — show the spend first.
     this.showLedgerTransition("Before resting for the night…", () => {
       const res: InPlaceRestResult = this.loop.inPlaceRest();
-      this.refreshReadoutLine();
       if (res.applied) {
         const who = res.healed.length === 1 ? "1 fighter" : `${res.healed.length} fighters`;
         this.setHint(`Rested in place (night ${res.streak} here): −${res.goldSpent}g rations, +${res.hpHealed} HP across ${who}, +${res.rpAdded} RP. A node-step passed.`);
@@ -1553,7 +1537,6 @@ export class OverworldScene extends Phaser.Scene {
           detail: `Drop one ${mat?.name ?? id}. Whole stacks free a slot; a partial stack frees one only when it empties. Lowest-value gear is the usual cut.`,
           onPick: () => {
             removeItem(inv, id, 1);
-            this.refreshReadoutLine();
             this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap
           },
         };
@@ -1614,7 +1597,6 @@ export class OverworldScene extends Phaser.Scene {
   private toggleSkip(id: UpkeepLine["id"], rerender: () => void = () => this.renderTent()): void {
     toggleUpkeepSkip(this.run, id); // core owns the rule (no more render-side type-assertion write)
     const nowSkipped = this.run.camp.skippedUpkeep.includes(id);
-    this.refreshReadoutLine();
     this.setHint(nowSkipped ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
     rerender();
   }
@@ -1622,6 +1604,7 @@ export class OverworldScene extends Phaser.Scene {
   // --- Terminal screens ------------------------------------------------------
 
   private runComplete(): void {
+    this.drawTerminalReadout();
     const won = this.run.history.filter((h) => h.winner === "player").length;
     const toHall = !!this.guild;
     const lines = [
@@ -1638,6 +1621,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private runEnd(): void {
+    this.drawTerminalReadout();
     const won = this.run.history.filter((h) => h.winner === "player").length;
     const last = this.run.history[this.run.history.length - 1];
     const toHall = !!this.guild;
@@ -1676,14 +1660,11 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- UI helpers ------------------------------------------------------------
 
-  // Renamed from the misleading `refreshCampText` (#138): it refreshes the always-on camp
-  // readout line, not battle situation text (BattleScene's like-named method → refreshSituationCard).
-  private refreshReadoutLine(): void {
-    // The always-on line is the four decision-relevant groups only (D58): Purse,
-    // Morale, Storage/Kits, RP/Upkeep. The Banker's purse-state + Influence moved
-    // into the camp's Advanced panel / ledger, where they're actionable. The format
-    // is owned by core (campReadoutLine) so the battle + overworld HUDs can't drift.
-    this.campText.setText(campReadoutLine(this.run));
+  /** The terminal screens' readout line (D58) — the four decision-relevant groups (Purse, Morale,
+   *  Storage/Kits, RP/Upkeep), formatted by core `campReadoutLine`. Replaces the old always-on
+   *  `campText` field, which every beat hid and only the terminals showed by accident of ordering (#137). */
+  private drawTerminalReadout(): void {
+    this.add.text(this.scale.width / 2, 40, campReadoutLine(this.run), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
   }
 
   private setHint(text: string): void {

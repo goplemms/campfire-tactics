@@ -91,6 +91,7 @@ import {
 } from "../../core";
 import { fitText, clearLayer, isScreenshotMode } from "../ui";
 import { Button } from "../button";
+import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
 import { HintPanel } from "../hint-panel";
 import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
 
@@ -348,12 +349,14 @@ export class OverworldScene extends Phaser.Scene {
     ];
     const body = intro + "\n\n" + bullets.map((b) => `•  ${b}`).join("\n");
     const h = 264;
-    const left = cx - w / 2 + padX;
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.success).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 24, "The Long Road Home — an Expedition", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(left, cy - h / 2 + 52, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, align: "left", lineSpacing: 5, wordWrap: { width: w - 2 * padX } }).setOrigin(0, 0).setDepth(21),
-    );
+    showModal(this, this.overlay, {
+      title: "The Long Road Home — an Expedition",
+      tone: "good",
+      w,
+      h,
+      cy,
+      body: { text: body, offset: 52, originX: 0, padX, originY: 0, color: INK.secondary, font: FONT.label, lineSpacing: 5 },
+    });
     this.overlay.push(
       this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
         clearLayer(this.overlay);
@@ -771,7 +774,7 @@ export class OverworldScene extends Phaser.Scene {
   private playEarlyEvent(node: MapNode, def: EventDef): void {
     const choices = def.choices?.(this.run, node) ?? [];
     if (choices.length > 0) {
-      this.renderEarlyChoicePanel(node, def, choices);
+      this.renderChoicePanel(`On the road — ${def.name}`, def.teaser, choices, (c) => this.onEarlyChoice(node, def, c), 380);
       return;
     }
     const outcome = resolveEarlyEvent(this.run, node, def);
@@ -786,30 +789,43 @@ export class OverworldScene extends Phaser.Scene {
    * keep HP + EXP, forgo loot) and returns to the react camp; any other choice proceeds to the prep
    * camp and the normal fight.
    */
-  private renderEarlyChoicePanel(node: MapNode, def: EventDef, choices: EventChoice[]): void {
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2 - 20;
+  /**
+   * The shared event-choice modal (#133) — folds the early-event and event-node panels
+   * (once ~90% line-identical) into one. A titled info card with a `${body}\nPurse Ng`
+   * subhead and one button per choice; `onPick` fires for the taken (available) option.
+   * `extraRow` appends a trailing button (a shop's explicit Leave). Always backdropped.
+   */
+  private renderChoicePanel(
+    title: string,
+    body: string,
+    choices: EventChoice[],
+    onPick: (choice: EventChoice) => void,
+    btnW: number,
+    extraRow?: { label: string; onPick: () => void },
+  ): void {
     const w = 560;
-    const h = 130 + choices.length * 40;
-
+    const rows = choices.length + (extraRow ? 1 : 0);
+    const h = 130 + rows * 40;
     clearLayer(this.overlay);
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.info).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 24, `On the road — ${def.name}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy - h / 2 + 58, `${def.teaser}\nPurse ${this.run.camp.gold}g`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(21),
-    );
-
-    let y = cy - h / 2 + 110;
-    for (const choice of choices) {
-      const enabled = choice.available;
-      const fill = enabled ? COLOR.btnFill : COLOR.surfaceRaised;
-      const stroke = enabled ? COLOR.info : COLOR.border;
-      const btn = this.makeTextButton(cx, y, 380, 30, choice.label, fill, stroke, () => {
-        if (enabled) this.onEarlyChoice(node, def, choice);
-      });
-      if (choice.detail) btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(choice.detail!));
-      this.overlay.push(btn);
-      y += 40;
+    const handle = showModal(this, this.overlay, {
+      title,
+      tone: "info",
+      w,
+      h,
+      cy: this.scale.height / 2 - 20,
+      body: { text: `${body}\nPurse ${this.run.camp.gold}g`, offset: 58, color: INK.muted },
+    });
+    const endOffset = renderChoiceStack(this.overlay, handle, {
+      choices: choices.map((c) => ({ label: c.label, enabled: c.available, detail: c.detail, onPick: () => onPick(c) })),
+      startOffset: 110,
+      step: 40,
+      btnW,
+      btnH: 30,
+      make: this.makeTextButton.bind(this),
+      onHint: (t) => this.setHint(t),
+    });
+    if (extraRow) {
+      this.overlay.push(this.makeTextButton(handle.cx, handle.top + endOffset, btnW, 30, extraRow.label, COLOR.successDeep, COLOR.success, extraRow.onPick));
     }
   }
 
@@ -1793,9 +1809,8 @@ export class OverworldScene extends Phaser.Scene {
     const left = cx - w / 2;
     const top = cy - h / 2;
 
-    const backdrop = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(22).setInteractive();
+    installBackdrop(this, this.overlay, 22);
     this.overlay.push(
-      backdrop,
       this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
       this.add.text(left + 24, top + 24, "Market", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
       this.add.text(left + 122, top + 26, `· ${tier === "none" ? "no market" : `${tier} market`}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
@@ -2069,41 +2084,18 @@ export class OverworldScene extends Phaser.Scene {
    */
   private renderEventChoicePanel(title: string, body: string): void {
     const def = this.loop.eventDef();
-    const choices = this.loop.eventChoices();
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2 - 20;
-    const w = 560;
-    const h = 130 + (choices.length + (def.kind === "shop" ? 1 : 0)) * 40;
-
-    clearLayer(this.overlay);
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.info).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 24, title, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy - h / 2 + 58, `${body}\nPurse ${this.run.camp.gold}g`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(21),
-    );
-
-    let y = cy - h / 2 + 110;
-    for (const choice of choices) {
-      const enabled = choice.available;
-      const fill = enabled ? COLOR.btnFill : COLOR.surfaceRaised;
-      const stroke = enabled ? COLOR.info : COLOR.border;
-      const btn = this.makeTextButton(cx, y, 360, 30, choice.label, fill, stroke, () => {
-        if (!enabled) return;
-        this.onEventChoice(choice);
-      });
-      if (choice.detail) btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(choice.detail!));
-      this.overlay.push(btn);
-      y += 40;
-    }
-
     // A shop is a multi-buy surface — add an explicit Leave that records the step.
-    if (def.kind === "shop") {
-      const leave = this.makeTextButton(cx, y, 360, 30, "Leave the market", COLOR.successDeep, COLOR.success, () => {
-        clearLayer(this.overlay);
-        this.finishEvent(-this.spentAtShop);
-      });
-      this.overlay.push(leave.bg, leave.label);
-    }
+    const extraRow =
+      def.kind === "shop"
+        ? {
+            label: "Leave the market",
+            onPick: () => {
+              clearLayer(this.overlay);
+              this.finishEvent(-this.spentAtShop);
+            },
+          }
+        : undefined;
+    this.renderChoicePanel(title, body, this.loop.eventChoices(), (c) => this.onEventChoice(c), 360, extraRow);
   }
 
   /** Apply a chosen event option, then re-render (shop) or continue (terminal). */
@@ -2324,39 +2316,55 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     clearLayer(this.overlay);
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2 - 10;
     const carried = Object.keys(inv.counts)
       .filter((id) => inv.counts[id] > 0)
       .sort((a, b) => (getMaterial(a)?.name ?? a).localeCompare(getMaterial(b)?.name ?? b));
     const w = 560;
     const h = 140 + carried.length * 38;
 
-    // Full-screen backdrop (dims the camp + swallows clicks behind) — same as the Market and
-    // ledger-transition modals; without it the camp bled through around the box (D75 gate).
-    this.overlay.push(this.add.rectangle(cx, this.scale.height / 2, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(23).setInteractive());
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.danger).setDepth(24),
-      this.add.text(cx, cy - h / 2 + 24, "Storage overflowing — let something go", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
-      this.add.text(cx, cy - h / 2 + 54, `Storage ${slotsUsed(inv)}/${inv.storageCap} — ${over} slot${over === 1 ? "" : "s"} over the cap. Discard until it fits to break camp.`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(25),
-    );
-
-    let y = cy - h / 2 + 96;
-    for (const id of carried) {
-      const mat = getMaterial(id);
-      const count = countOf(inv, id);
-      const slots = mat ? slotsFor(mat, count) : count; // the row's current slot footprint (stacks pack)
-      const val = mat?.saleValue ? ` · ${mat.saleValue}g ea` : "";
-      const btn = this.makeTextButton(cx, y, 400, 30, `Discard 1 — ${mat?.name ?? id} ×${count} · Space: ${slots}${val}`, COLOR.surfaceRaised, COLOR.danger, () => {
-        removeItem(inv, id, 1);
-        this.refreshCampText();
-        this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap
-      }).setDepth(26);
-      // Stacked goods (a half-stack of herbs) share a slot — dropping one may not free space until the stack empties.
-      btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(`Drop one ${mat?.name ?? id}. Whole stacks free a slot; a partial stack frees one only when it empties. Lowest-value gear is the usual cut.`));
-      this.overlay.push(btn);
-      y += 38;
-    }
+    // The modal always installs the input-swallowing backdrop; without it the camp bled
+    // through around the box (D75 gate).
+    const handle = showModal(this, this.overlay, {
+      title: "Storage overflowing — let something go",
+      tone: "bad",
+      w,
+      h,
+      cy: this.scale.height / 2 - 10,
+      boxAlpha: 0.97,
+      depth: 24,
+      body: {
+        text: `Storage ${slotsUsed(inv)}/${inv.storageCap} — ${over} slot${over === 1 ? "" : "s"} over the cap. Discard until it fits to break camp.`,
+        offset: 54,
+        lineSpacing: 0,
+      },
+    });
+    renderChoiceStack(this.overlay, handle, {
+      choices: carried.map((id) => {
+        const mat = getMaterial(id);
+        const count = countOf(inv, id);
+        const slots = mat ? slotsFor(mat, count) : count; // the row's current slot footprint (stacks pack)
+        const val = mat?.saleValue ? ` · ${mat.saleValue}g ea` : "";
+        return {
+          label: `Discard 1 — ${mat?.name ?? id} ×${count} · Space: ${slots}${val}`,
+          fill: COLOR.surfaceRaised,
+          stroke: COLOR.danger,
+          // Stacked goods (a half-stack of herbs) share a slot — dropping one may not free space until the stack empties.
+          detail: `Drop one ${mat?.name ?? id}. Whole stacks free a slot; a partial stack frees one only when it empties. Lowest-value gear is the usual cut.`,
+          onPick: () => {
+            removeItem(inv, id, 1);
+            this.refreshCampText();
+            this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap
+          },
+        };
+      }),
+      startOffset: 96,
+      step: 38,
+      btnW: 400,
+      btnH: 30,
+      buttonDepth: 26,
+      make: this.makeTextButton.bind(this),
+      onHint: (t) => this.setHint(t),
+    });
   }
 
   /** The soft, intent-aware night-end gate (D45) → the map (overflow already cleared). */
@@ -2365,17 +2373,21 @@ export class OverworldScene extends Phaser.Scene {
     if (!gate.warn) return this.toMap();
     // Hard-stop with a forced look only when warranted; never a per-night chore.
     clearLayer(this.overlay);
-    const cx = this.scale.width / 2;
     const cy = this.scale.height / 2 - 10;
     const w = 560;
     const h = 150 + gate.reasons.length * 18;
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.danger).setDepth(24),
-      this.add.text(cx, cy - h / 2 + 24, "Before you set out…", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
-      this.add.text(cx, cy - h / 2 + 56, gate.reasons.map((r) => `• ${r}`).join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "left", lineSpacing: 5, wordWrap: { width: w - 60 } }).setOrigin(0.5, 0).setDepth(25),
-    );
-    const stay = this.makeTextButton(cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showSurvey()).setDepth(26);
-    const go = this.makeTextButton(cx + 110, cy + h / 2 - 22, 180, 30, "Set out anyway", COLOR.danger, COLOR.danger, () => this.toMap()).setDepth(26);
+    const handle = showModal(this, this.overlay, {
+      title: "Before you set out…",
+      tone: "bad",
+      w,
+      h,
+      cy,
+      boxAlpha: 0.97,
+      depth: 24,
+      body: { text: gate.reasons.map((r) => `• ${r}`).join("\n"), offset: 56, originY: 0, textAlign: "left", lineSpacing: 5 },
+    });
+    const stay = this.makeTextButton(handle.cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showSurvey()).setDepth(26);
+    const go = this.makeTextButton(handle.cx + 110, cy + h / 2 - 22, 180, 30, "Set out anyway", COLOR.danger, COLOR.danger, () => this.toMap()).setDepth(26);
     this.overlay.push(stay, go);
   }
 
@@ -2589,9 +2601,8 @@ export class OverworldScene extends Phaser.Scene {
     const top = cy - h / 2;
 
     // Full-screen backdrop (dims + swallows clicks behind) + the framed sheet.
-    const backdrop = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(22).setInteractive();
+    installBackdrop(this, this.overlay, 22);
     this.overlay.push(
-      backdrop,
       this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
       this.add.text(left + 24, top + 22, title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
       this.add.text(left + w - 24, top + 22, "The night's tab — what camp spends before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
@@ -2617,19 +2628,25 @@ export class OverworldScene extends Phaser.Scene {
 
   private showOverlay(title: string, body: string, good: boolean, w = 480, h = 200, onContinue?: () => void): void {
     clearLayer(this.overlay);
-    const cx = this.scale.width / 2;
     const cy = this.scale.height / 2 - 20;
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.94).setStrokeStyle(2, good ? COLOR.success : COLOR.danger).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 26, title, { color: good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy + 6, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 48 } }).setOrigin(0.5).setDepth(21),
-    );
+    const handle = showModal(this, this.overlay, {
+      title,
+      tone: good ? "good" : "bad",
+      w,
+      h,
+      cy,
+      boxAlpha: 0.94,
+      titleOffset: 26,
+      // The body sits centred in the tall box (cy + 6), not tucked under the title.
+      body: { text: body, offset: h / 2 + 6, wrapInset: 48 },
+    });
     if (onContinue) {
-      const btn = this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
-        clearLayer(this.overlay);
-        onContinue();
-      });
-      this.overlay.push(btn);
+      this.overlay.push(
+        this.makeTextButton(handle.cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
+          clearLayer(this.overlay);
+          onContinue();
+        }),
+      );
     }
   }
 

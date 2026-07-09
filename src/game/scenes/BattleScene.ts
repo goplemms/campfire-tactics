@@ -105,6 +105,7 @@ import {
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
 import { Button } from "../button";
+import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
@@ -1962,7 +1963,6 @@ export class BattleScene extends Phaser.Scene {
       clearLayer(this.legend);
       return;
     }
-    const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
     const w = 540;
     const h = 360;
@@ -1997,11 +1997,17 @@ export class BattleScene extends Phaser.Scene {
       "  caught in the open or the net is captured (the alarm begins the battle); if the",
       "  net reaches your safe core, the battle just starts — nobody is taken.",
     ].join("\n");
-    this.legend.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.btnStroke).setDepth(30),
-      this.add.text(cx, cy - h / 2 + 20, "Legend & Keys  (L to close)", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(31),
-      this.add.text(cx - w / 2 + 22, cy - h / 2 + 44, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption, lineSpacing: 3 }).setOrigin(0, 0).setDepth(31),
-    );
+    showModal(this, this.legend, {
+      title: "Legend & Keys  (L to close)",
+      tone: "neutral",
+      w,
+      h,
+      cy,
+      depth: 30,
+      titleOffset: 20,
+      titleSize: FONT.body,
+      body: { text: body, offset: 44, originX: 0, padX: 22, originY: 0, color: INK.secondary, font: FONT.caption, lineSpacing: 3, noWrap: true },
+    });
   }
 
   private onPointerDown(pointer: Phaser.Input.Pointer): void {

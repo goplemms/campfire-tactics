@@ -1,7 +1,8 @@
 # Build prompt — R4: the verb substrate proper — one grammar, one projection
 
-> **Status:** DRAFT — awaiting owner design review (unlike R1–R3, this milestone has real
-> design content; do not dispatch until the five sub-decisions below are ratified).
+> **Status:** ready to dispatch — the five sub-decisions and the four open questions were
+> **ratified by the owner 2026-07-09** (see "Ratified answers" at the bottom).
+> Ships as **three batch PRs** (grammar → migration → projection+riders).
 > **Campaign context:** milestone R4 of
 > [`refactor-campaign-plan.md`](refactor-campaign-plan.md). Consumes issues
 > **#112 (steps 2–4), #113, #114, #123, #149** (+ **#153** as the optional content rider).
@@ -104,12 +105,17 @@ preference — three batches ≈ R1-sized PRs each; say which at dispatch); comm
 repo-configured; on landing tick #152 + the campaign plan; R5 (render decomposition)
 follows, now easier because OverworldScene's verb wiring is a projection.
 
-## Open questions for the owner (the design review)
+## Ratified answers (owner, 2026-07-09)
 
-1. **Triage's owner:** stay universal, or become the Medic's overworld verb (with a
-   universal fallback at reduced effect)? (A affects kit identity for the triad pass.)
-2. **Universal buy precedent:** comfortable making "job-ungated by design" an explicit
-   `UNIVERSAL_OVERWORLD_SKILLS` home (mirroring combat's `UNIVERSAL_SKILLS`)?
-3. **PR shape:** three batch PRs (recommended — each R1-sized, independently revertible)
-   or one R4 PR?
-4. **The thief rider (#153):** in R4's batch 3, or its own tiny content PR after?
+1. **Triage: Medic-owned, universal fallback.** The full-strength triage becomes the
+   Medic's overworld SkillDef (today's numbers); a reduced-effect universal fallback lives
+   in `UNIVERSAL_OVERWORLD_SKILLS`. **Illustrative default for the fallback:** RP converts
+   at half efficiency (2× `rpPerChunk`), same cost menu — a **named behavior change**
+   (Medic-less parties heal slower at camp): pin it, flag the number as tunable, and note
+   it in the decision record beside D9's `rpPerChunk` dial. Add to the blast-radius list.
+2. **`UNIVERSAL_OVERWORLD_SKILLS`: yes** — buy + the triage fallback live there; the
+   projection folds it in exactly as `availableSkills` folds combat's `UNIVERSAL_SKILLS`.
+3. **Three batch PRs** — grammar → migration → projection+riders, each independently
+   CI'd, reviewed, revertible; tick the campaign plan per batch landing.
+4. **The thief rider (#153) rides batch 3**, sequenced last, droppable if the batch runs
+   long.

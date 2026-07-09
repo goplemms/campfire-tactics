@@ -29,6 +29,8 @@
  * Pure logic: no Phaser, no DOM.
  */
 
+import { bandFor } from "./num";
+
 /** Fatigue tuning — the deep-end consequence thresholds (D73), all data (D4). */
 export const FATIGUE = {
   /** A fresh character's fatigue — the default a {@link "./units".Unit} starts at (Tier 0). */
@@ -67,17 +69,21 @@ export const FATIGUE_TIER_FLOORS: readonly number[] = [0, 4, 7, 9, 10, 11, 12];
 export type FatigueTier = "Rested" | "Worn" | "Weary" | "Exhausted";
 
 /**
+ * {@link FATIGUE_TIER_FLOORS} as the shared `min`-floor band shape, highest-first —
+ * the table {@link "./num".bandFor} scans (each entry carries its tier index).
+ */
+const FATIGUE_BANDS: readonly { min: number; tier: number }[] = FATIGUE_TIER_FLOORS
+  .map((min, tier) => ({ min, tier }))
+  .reverse();
+
+/**
  * The **numeric tier index** of a raw fatigue value (D80) — the highest band whose floor it
- * meets. Tier 0 is the fresh/Rested band; each step up is a narrowing band. This is the spine of
- * both the recovery gate (Tier 0 ⇒ big heal) and the one-tier-per-night step-down.
+ * meets ({@link "./num".bandFor} over {@link FATIGUE_TIER_FLOORS}). Tier 0 is the fresh/Rested
+ * band; each step up is a narrowing band. This is the spine of both the recovery gate
+ * (Tier 0 ⇒ big heal) and the one-tier-per-night step-down.
  */
 export function fatigueTierIndex(level: number): number {
-  let idx = 0;
-  for (let i = 0; i < FATIGUE_TIER_FLOORS.length; i++) {
-    if (level >= FATIGUE_TIER_FLOORS[i]) idx = i;
-    else break;
-  }
-  return idx;
+  return bandFor(level, FATIGUE_BANDS, FATIGUE_BANDS[FATIGUE_BANDS.length - 1]).tier;
 }
 
 /**

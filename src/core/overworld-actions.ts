@@ -30,7 +30,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { healUnit, primaryJobOf, type Unit } from "./units";
+import { fieldedUnits, healUnit, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
 import { skillContexts } from "./skills";
@@ -41,7 +41,7 @@ import { decayCounters, bumpCounter, nonNegInt } from "./num";
 import { earn, spend } from "./purse-journal";
 import { spendInfluence } from "./economy";
 import { reachableFrom, marketOpenedFlag } from "./overworld";
-import { satisfyUpkeepLine } from "./upkeep";
+import { satisfyUpkeepLine, accrueRp, spendRp } from "./upkeep";
 import { applyCampSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp, jobLevelOf } from "./leveling";
 import { streamFor } from "./rng";
@@ -53,9 +53,10 @@ import { grantItem } from "./inventory";
  * run at gate time. The provider is how Cook Stew prices itself at *the night's Food
  * value* (`(run) => computeUpkeep(run.party).total`) rather than a static figure —
  * a single, generic seam that keeps the two-axis menu (no new typed cost-kind per
- * dynamic price). **Must be a pure function of run state that is stable across the
- * action** (it is resolved at the check and again at the commit, after the effect):
- * key it off composition the effect doesn't move (party size), not the purse it spends.
+ * dynamic price). Must be a **pure** function of run state. It is resolved **once, at
+ * check time** (#126): the passing check captures the resolved prices in its commit
+ * closure, so an effect that moves party composition mid-verb can no longer drift the
+ * committed spend away from the price the check gated on (the old re-resolution trap).
  */
 export type CostKnob = number | ((run: RunState) => number);
 
@@ -98,7 +99,7 @@ export interface OverworldCost {
   /**
    * Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider.
    * **Reserved (no verb prices in it yet):** the gate fully checks + spends it ({@link
-   * checkOverworldCost}/{@link commitOverworldCost}), kept for the planned **Influence revamp** —
+   * checkOverworldCost}'s commit closure), kept for the planned **Influence revamp** —
    * the intended home for routing Bribe's spend through the shared gate (it currently spends
    * Influence directly via `spendInfluence`, off-gate). Declared-but-unused **on purpose**, not dead.
    */
@@ -358,21 +359,42 @@ export interface ActionOpts {
   targetNodeId?: string;
 }
 
-/** A two-axis cost check verdict — affordable (with the fatigue to spend), or why not. */
-export type OverworldCostCheck = { ok: true; fatigueSpend: number } | { ok: false; reason: string };
+/** The per-cast prices a passing check resolved — **captured at check time** (#126). */
+export interface OverworldPrices {
+  /** Fatigue to spend on the acting unit (base only — no surcharge, D73; 0 with no actor). */
+  fatigue: number;
+  /** Gold to spend from the purse (a provider knob, already resolved). */
+  gold: number;
+  /** Influence to spend (already resolved). */
+  influence: number;
+  /** Rest Points to spend (already resolved). */
+  rp: number;
+}
+
+/**
+ * A two-axis cost check verdict — affordable (with the captured {@link OverworldPrices}
+ * and the `commit` closure that spends exactly them), or why not.
+ */
+export type OverworldCostCheck =
+  | { ok: true; prices: OverworldPrices; commit(): void }
+  | { ok: false; reason: string };
 
 /**
  * The **single limiter gate** (D61): check an action's two-axis {@link OverworldCost}
  * against the run — pacing (cooldown / per-node cap) and price (fatigue headroom /
- * gold / influence / rp). A pure check that spends nothing; it returns the fatigue to
- * spend on commit so the over-extension surcharge is computed once. `id` keys the
- * pacing ledgers (cooldown + per-node uses); `label` names the action in refusals.
- * `unit` is the acting character — **required only when the cost has `fatigue`** (an
- * economy verb with no actor, e.g. Patronize, may omit it).
+ * gold / influence / rp). A pure check that spends nothing; a passing check carries
+ * its **commit closure** (#126) — call `check.commit()` once the effect applied to
+ * spend the costs and arm the pacing. The prices are **resolved once, at check time**,
+ * and the closure spends exactly those figures: an effect that moves party composition
+ * between check and commit can no longer drift a provider-priced spend away from what
+ * the check gated on (the old re-resolution trap is dead by construction).
+ *
+ * `id` keys the pacing ledgers (cooldown + per-node uses); `label` names the action in
+ * refusals. `unit` is the acting character — **required only when the cost has
+ * `fatigue`** (an economy verb with no actor, e.g. Patronize, may omit it).
  *
  * Camp jobs, overworld abilities, and economy verbs all route through this one gate —
- * the D61 fold. Pair a passing check with {@link commitOverworldCost} once the effect
- * applies.
+ * the D61 fold.
  */
 export function checkOverworldCost(run: RunState, id: string, cost: OverworldCost, label: string, unit?: Unit): OverworldCostCheck {
   const eco = run.overworld;
@@ -391,7 +413,7 @@ export function checkOverworldCost(run: RunState, id: string, cost: OverworldCos
   // Exhausted Slow). A fatigue price still needs an actor to spend it on (an actorless economy
   // verb declares no fatigue).
   const fatigueSpend = unit ? (cost.fatigue ?? 0) : 0;
-  // Price — gold (the run purse). The knob may be a provider (D72) — resolve it now.
+  // Price — gold (the run purse). The knob may be a provider (D72) — resolve it now, once.
   const goldCost = resolveKnob(cost.gold, run);
   if (goldCost > 0 && run.camp.gold < goldCost) {
     return { ok: false, reason: `Not enough gold for ${label} (${goldCost}g).` };
@@ -406,28 +428,22 @@ export function checkOverworldCost(run: RunState, id: string, cost: OverworldCos
   if (rpCost > 0 && run.rp < rpCost) {
     return { ok: false, reason: `Not enough Rest Points for ${label} (${rpCost}).` };
   }
-  return { ok: true, fatigueSpend };
-}
-
-/**
- * Spend a checked action's costs and arm its pacing (D61) — the commit half of the
- * gate, called only after {@link checkOverworldCost} passed and the effect applied.
- * Spends the (already-surcharged) fatigue, gold, influence, and rp; arms the cooldown
- * and bumps the per-node use count keyed by `id`.
- */
-export function commitOverworldCost(run: RunState, id: string, cost: OverworldCost, fatigueSpend: number, unit?: Unit): void {
-  const eco = run.overworld;
-  if (fatigueSpend > 0 && unit) unit.fatigue = spendFatigue(unit.fatigue, fatigueSpend);
-  // Re-resolve the price knobs (D72) — a static knob is unchanged; a provider is pure
-  // and stable across the action, so this matches what {@link checkOverworldCost} gated on.
-  const goldCost = resolveKnob(cost.gold, run);
-  const influenceCost = resolveKnob(cost.influence, run);
-  const rpCost = resolveKnob(cost.rp, run);
-  if (goldCost > 0) spend(run.camp, goldCost, "action", id, { nodeId: run.mapNodeId, night: run.night });
-  if (influenceCost > 0) spendInfluence(eco, influenceCost);
-  if (rpCost > 0) run.rp -= rpCost;
-  if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;
-  if (cost.usesPerNode !== undefined) bumpCounter(eco.campUses, id);
+  const prices: OverworldPrices = { fatigue: fatigueSpend, gold: goldCost, influence: influenceCost, rp: rpCost };
+  return {
+    ok: true,
+    prices,
+    // The commit half of the gate (D61/#126), called only after the effect applied:
+    // spend the **captured** prices (never re-resolved — the effect may have moved the
+    // run since the check), arm the cooldown, and bump the per-node use count.
+    commit(): void {
+      if (prices.fatigue > 0 && unit) unit.fatigue = spendFatigue(unit.fatigue, prices.fatigue);
+      if (prices.gold > 0) spend(run.camp, prices.gold, "action", id, { nodeId: run.mapNodeId, night: run.night });
+      if (prices.influence > 0) spendInfluence(eco, prices.influence);
+      if (prices.rp > 0) spendRp(run, prices.rp);
+      if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;
+      if (cost.usesPerNode !== undefined) bumpCounter(eco.campUses, id);
+    },
+  };
 }
 
 /**
@@ -460,7 +476,7 @@ export interface CampSkillResult extends OverworldActionResult {
  * 3. The **effect**, by partition: the exhaustive {@link OVERWORLD_EFFECT_HANDLERS} registry
  *    (openMarket / primeDeal / provisionMeal / survey), or the camp resolver for a `morale`
  *    {@link "./skills".CampEffect} (Cook Stew).
- * 4. {@link commitOverworldCost} + use-XP ({@link grantAbilityUseXp}, D53).
+ * 4. The check's commit closure (`check.commit()`, #126) + use-XP ({@link grantAbilityUseXp}, D53).
  *
  * Never throws on a refusal — returns the {@link CampSkillResult} the render reads.
  */
@@ -480,21 +496,20 @@ export function useOverworldSkill(run: RunState, unit: Unit, skill: SkillDef, op
   if (isOverworldActionEffect(effect)) {
     const applied = applyOverworldEffect(effect, { run, unit, opts });
     if (!applied.ok) return { applied: false, reason: applied.reason };
-    commitOverworldCost(run, skill.id, cost, check.fatigueSpend, unit);
+    check.commit();
     grantAbilityUseXp(unit);
-    const goldSpent = resolveKnob(cost.gold, run);
-    return { applied: true, detail: applied.detail, fatigueSpent: check.fatigueSpend, goldSpent: goldSpent > 0 ? goldSpent : undefined };
+    return { applied: true, detail: applied.detail, fatigueSpent: check.prices.fatigue, goldSpent: check.prices.gold > 0 ? check.prices.gold : undefined };
   }
   // The camp partition (Cook Stew's `morale`) — resolved by the camp interpreter.
   if (effect.kind === "morale") {
     const camp = applyCampSkill(skill, run.camp);
-    commitOverworldCost(run, skill.id, cost, check.fatigueSpend, unit);
+    check.commit();
     const levels = grantAbilityUseXp(unit);
     const parts: string[] = [];
     if (camp.morale) parts.push(`+${camp.morale} morale`);
     if (camp.bankedHeal) parts.push(`banked +${camp.bankedHeal} HP/unit`);
     if (levels > 0) parts.push(`${unit.name} reached L${unit.level}!`);
-    return { applied: true, outcome: { ...camp, levels }, detail: `${skill.name}: ${parts.join(", ")}.`, fatigueSpent: check.fatigueSpend };
+    return { applied: true, outcome: { ...camp, levels }, detail: `${skill.name}: ${parts.join(", ")}.`, fatigueSpent: check.prices.fatigue };
   }
   // A non-overworld effect routed here by mistake (a battle/deploy kind) — refuse cleanly.
   return { applied: false, reason: `${skill.name} is not an overworld action.` };
@@ -525,8 +540,11 @@ export const TRIAGE = {
 
 /**
  * Triage's two-axis cost (D61) — the **demanding** fatigue price the shared gate validates +
- * spends. Hoisted to a named export so the D61 guard test can assert it stays paced-or-priced:
- * Triage is a **standalone** verb, outside the `JobDef.skills` load-time validator.
+ * spends. Triage is a **standalone** verb, outside the `JobDef.skills` load-time validator,
+ * so this object is its row in the {@link "./economy-actions".VERB_COSTS} registry (#112) —
+ * validated at that module's load. Defined here (its home) rather than in the registry
+ * literal because importing the registry back would cycle economy-actions ↔ overworld-actions;
+ * the registry entry is this same object, so there is still exactly one source of truth.
  */
 export const TRIAGE_COST: OverworldCost = { fatigue: TRIAGE.fatigue };
 
@@ -566,9 +584,9 @@ export function triage(run: RunState, healer: Unit): TriageResult {
   if (!isHealer(healer)) {
     return { applied: false, reason: `${healer.name} can't triage — only a healer can.` };
   }
-  // Triage treats the worst first: the most-wounded living, uncaptured ally.
-  const wounded = run.party
-    .filter((u) => u.alive && !u.captured && u.hp < u.maxHp)
+  // Triage treats the worst first: the most-wounded fielded ally.
+  const wounded = fieldedUnits(run.party)
+    .filter((u) => u.hp < u.maxHp)
     .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
   if (!wounded) return { applied: false, reason: "No wounded fighter to triage." };
 
@@ -581,12 +599,12 @@ export function triage(run: RunState, healer: Unit): TriageResult {
   const triageVal = getJob(primaryJobOf(healer))?.passives?.[PASSIVE.triage] ?? 0;
   const amount = TRIAGE.base + Math.floor(triageVal * (wounded.maxHp - wounded.hp));
   const healed = healUnit(wounded, amount);
-  commitOverworldCost(run, "triage", cost, check.fatigueSpend, healer);
+  check.commit();
   return {
     applied: true,
     healed,
     targetId: wounded.id,
-    fatigueSpent: check.fatigueSpend,
+    fatigueSpent: check.prices.fatigue,
     detail: `Triaged ${wounded.name}: +${healed} HP (${healer.name} worn out).`,
   };
 }
@@ -633,7 +651,7 @@ const OVERWORLD_EFFECT_HANDLERS: {
   provisionMeal: (effect, { run }) => {
     // Cook-Stew mechanism: bank RP (D9) and satisfy the Food line (D15/D45) — the day's
     // food becomes recovery with no double-charge (payUpkeep skips the satisfied line).
-    run.rp += effect.rp;
+    accrueRp(run, effect.rp);
     satisfyUpkeepLine(run.camp, "food");
     return { ok: true, detail: `Cooked: +${effect.rp} Rest Points banked, the night's food covered.` };
   },

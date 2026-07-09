@@ -1767,9 +1767,9 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private bankerInterest(): void {
-    const perStep = bankerEngageInterest(this.run);
+    const res = bankerEngageInterest(this.run);
     this.renderCamp();
-    this.setHint(perStep > 0 ? `Banker: purse interest engaged — +${perStep}g per node-step (purse only).` : "No purse to earn interest on.");
+    this.setHint(res.applied ? `Banker: purse interest engaged — +${res.perStep}g per node-step (purse only).` : `Can't: ${res.reason}`);
   }
 
   private bankerBorrow40(): void {

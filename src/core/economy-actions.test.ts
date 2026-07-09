@@ -183,7 +183,9 @@ describe("economy-actions — Merchant SELL (goods -> gold, market-gated) (D61)"
 describe("economy-actions — Banker TIME-SHIFT + SECURE (purse only) (D30/D34)", () => {
   it("engaged interest accrues on the node-step tick (purse, never treasury)", () => {
     const run = newRun("banker-interest", 100);
-    const perStep = bankerEngageInterest(run);
+    const res = bankerEngageInterest(run);
+    expect(res.applied).toBe(true);
+    const perStep = res.perStep!;
     expect(perStep).toBeGreaterThan(0);
     expect(run.overworld.interestPerStep).toBe(perStep);
 
@@ -231,8 +233,8 @@ describe("economy-actions — Banker TIME-SHIFT + SECURE (purse only) (D30/D34)"
     const run = createRun("banker-none", { party: [commoner("nb")], difficultyId: "normal", gold: 200, storageCap: 8 });
     expect(hasBanker(run.party)).toBe(false);
 
-    // Invest: a no-op (returns 0, nothing engaged) despite a non-empty purse.
-    expect(bankerEngageInterest(run)).toBe(0);
+    // Invest: refuses (nothing engaged) despite a non-empty purse.
+    expect(bankerEngageInterest(run).applied).toBe(false);
     expect(run.overworld.interestPerStep).toBe(0);
     // Borrow: refuses, advancing no gold and no debt.
     const borrow = bankerBorrow(run, 40);
@@ -248,7 +250,7 @@ describe("economy-actions — Banker TIME-SHIFT + SECURE (purse only) (D30/D34)"
     // Field a Banker → the same verbs now work.
     run.party.push(banker());
     expect(hasBanker(run.party)).toBe(true);
-    expect(bankerEngageInterest(run)).toBeGreaterThan(0);
+    expect(bankerEngageInterest(run).applied).toBe(true);
     expect(bankerBorrow(run, 40).applied).toBe(true);
     expect(bankerProtect(run).applied).toBe(true);
   });

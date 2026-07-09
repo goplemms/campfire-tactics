@@ -23,7 +23,7 @@
  */
 
 import { Rng, type RngState } from "./rng";
-import { createUnit, healUnit, type Unit } from "./units";
+import { createUnit, fieldedUnits, healUnit, type Unit } from "./units";
 import { createInventory, autoTrim, type Inventory } from "./inventory";
 import { createCamp, type Camp } from "./camp";
 import { getDifficulty, type DifficultyPolicy, type RescueQuest } from "./mortality";
@@ -352,9 +352,9 @@ export function currentEncounter(run: RunState): EncounterSource {
   return runEncounter(run, currentNode(run));
 }
 
-/** Roster units that are alive and not captured (incl. camp-only crew). */
+/** Roster units that are alive and not captured (incl. camp-only crew) — {@link fieldedUnits}. */
 export function activeRoster(run: RunState): Unit[] {
-  return run.party.filter((u) => u.alive && !u.captured);
+  return fieldedUnits(run.party);
 }
 
 /**

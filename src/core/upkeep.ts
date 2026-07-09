@@ -19,7 +19,8 @@
  */
 
 import { healUnit, primaryJobOf, type Unit } from "./units";
-import type { Camp } from "./camp";
+import { nudgeMorale, type Camp } from "./camp";
+import type { RunState } from "./run";
 import { getJob } from "./jobs";
 import { restCostMultiplier } from "./fatigue";
 import type { DifficultyPolicy } from "./mortality";
@@ -168,7 +169,7 @@ export function payUpkeep(
       if (line.id === "repairs") gearWorn = true;
     }
   }
-  camp.morale += moraleDelta;
+  nudgeMorale(camp, moraleDelta);
   // Worn gear compounds as a debt the premium rest node clears (D45/D47).
   if (gearWorn) camp.gearWear += 1;
   // Satisfied lines are a **single-night** provision — consumed once billing reconciles,
@@ -215,6 +216,26 @@ export const RECOVERY = {
 } as const;
 
 // --- Rest-Point recovery (D9) -----------------------------------------------
+
+/**
+ * Bank Rest Points into the run pool (D9) — **the one write-up funnel for `run.rp`**
+ * (the #112 rider's scalar chokepoint). A plain, unclamped credit, exactly the bare
+ * `run.rp +=` every site used; the funnel exists so future provenance/balance work
+ * (journals, caps) has a single seam, not so behavior changes here.
+ */
+export function accrueRp(run: RunState, amount: number): void {
+  run.rp += amount;
+}
+
+/**
+ * Spend Rest Points from the run pool (D9) — **the one write-down funnel for `run.rp`**
+ * (the #112 rider's twin of {@link accrueRp}). Unclamped, exactly the bare `run.rp -=`
+ * it replaces: affordability is the caller's gate (the cost gate / restHeal's chunk
+ * math never overspends the pool).
+ */
+export function spendRp(run: RunState, amount: number): void {
+  run.rp -= amount;
+}
 
 /** Fraction of max HP one healing chunk restores (default 1/8, D9). */
 export const CHUNK_FRACTION = 1 / 8;

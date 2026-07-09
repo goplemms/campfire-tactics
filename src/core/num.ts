@@ -58,6 +58,25 @@ export function bandFor<T extends { min: number }>(x: number, bands: readonly T[
 }
 
 /**
+ * The **ordinal rank** of a value in an ordered low→high band list (−1 if absent) —
+ * the `ORDER.indexOf(v)` idiom behind every tier compare (market tiers, Influence
+ * standing). Pairs with {@link clampUp}; the companion of {@link bandFor} for
+ * ladders whose values are the labels themselves rather than numeric floors.
+ */
+export function rankOf<T>(order: readonly T[], v: T): number {
+  return order.indexOf(v);
+}
+
+/**
+ * The **higher-ranked** of two values on an ordered low→high band list — the
+ * "raise the floor" op the tier ladders share (a Merchant flooring a market, an
+ * intel bump). Ties keep `a`. Both values are expected to be members of `order`.
+ */
+export function clampUp<T>(order: readonly T[], a: T, b: T): T {
+  return rankOf(order, a) >= rankOf(order, b) ? a : b;
+}
+
+/**
  * Exhaustiveness guard for discriminated-union dispatch: unreachable if every
  * variant is handled, so an unhandled one is a **compile error** here; if bad data
  * still reaches it at runtime, it throws rather than failing silently.

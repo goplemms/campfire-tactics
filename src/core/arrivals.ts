@@ -36,8 +36,8 @@ import { activeRoster, type RunState } from "./run";
 import { jobLevelOf } from "./leveling";
 import { primaryJobOf, type Unit } from "./units";
 import { slotsUsed, getMaterial } from "./inventory";
-import { fatigueTier } from "./fatigue";
-import { moraleTier } from "./camp";
+import { fatigueTierIndex } from "./fatigue";
+import { moraleTierIndex } from "./camp";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import type { AuthoredExpedition } from "./expedition";
 
@@ -145,27 +145,42 @@ const FATIGUE_REF = ROSTER_REF;
  */
 const RELICS_REF = 4;
 
-/** Morale-tier ordinals (D8 banding) → a 0..1 magnitude (Low worst, Inspired best). */
-const MORALE_ORDINAL: Record<string, number> = {
-  Low: 0,
-  Neutral: 1,
-  High: 2,
-  Inspired: 3,
-};
+/**
+ * The morale ordinal ceiling — Inspired, the top of {@link "./camp".moraleTierIndex}'s
+ * ladder. Divides the ordinal into a 0..1 magnitude (Low worst, Inspired best).
+ */
 const MORALE_REF = 3; // Inspired
 
-/** Fatigue-tier ordinals (D35 banding) → a 0..1 magnitude (Rested best, Exhausted worst). */
-const FATIGUE_ORDINAL: Record<string, number> = {
-  Rested: 0,
-  Worn: 1,
-  Weary: 2,
-  Exhausted: 3,
-};
+/**
+ * The fatigue ordinal ceiling for scoring — the **Exhausted** named band.
+ * {@link "./fatigue".fatigueTierIndex} keeps counting through the narrowing D80
+ * bands above it (4, 5, …), but every band ≥ 3 *reads* Exhausted, so the score
+ * clamps the index here (Rested best 0, Exhausted worst 1 after division).
+ */
 const FATIGUE_TIER_MAX = 3; // Exhausted
 
 /** Clamp a value to `[0, 1]` — the shared saturation the normalization leans on. */
 function unit01(x: number): number {
   return Math.max(0, Math.min(1, x));
+}
+
+/**
+ * Σ(character level + primary-job level) over a roster — the **levels fold** shared
+ * by {@link scoreArrival} (normalized against {@link LEVELS_REF}) and
+ * {@link arrivalDigest} (reported raw as `levelTotal`).
+ */
+function levelTotalOf(roster: readonly Unit[]): number {
+  return roster.reduce((acc, u: Unit) => acc + u.level + jobLevelOf(u, primaryJobOf(u)), 0);
+}
+
+/**
+ * Mean current-HP fraction (`hp/maxHp`) over a roster, 0 for an empty/wiped one —
+ * the **health fold** shared by {@link scoreArrival} (a 0..1 magnitude) and
+ * {@link arrivalDigest} (reported as a rounded percent).
+ */
+function avgHpFraction(roster: readonly Unit[]): number {
+  if (roster.length === 0) return 0;
+  return roster.reduce((acc, u) => acc + (u.maxHp > 0 ? u.hp / u.maxHp : 0), 0) / roster.length;
 }
 
 /** True if a carried material is a build-defining relic / unique (a `loot` or `partyGear` item, or an id tagged "relic"). */
@@ -192,7 +207,7 @@ function isRelicItem(id: string): boolean {
  * - **supplies** — {@link slotsUsed} / {@link SUPPLIES_REF}.
  * - **fatigue** — a **penalty**: summed per-unit fatigue-tier fraction / {@link FATIGUE_REF}
  *   (with the default *negative* `fatigue` weight this lowers the score; lower fatigue ⇒ higher score).
- * - **morale** — {@link moraleTier} ordinal / {@link MORALE_REF}.
+ * - **morale** — {@link "./camp".moraleTierIndex} ordinal / {@link MORALE_REF}.
  * - **relics** — (count of set `run.flags`) + (count of carried relic/unique materials), / {@link RELICS_REF}.
  *
  * Pure; reads the run, never mutates it. Deterministic: the same run yields the same score.
@@ -204,20 +219,10 @@ export function scoreArrival(
   const roster = activeRoster(run);
 
   // levels — character + primary-job level, summed over the active roster.
-  const levelSum = roster.reduce(
-    (acc, u: Unit) => acc + u.level + jobLevelOf(u, primaryJobOf(u)),
-    0,
-  );
-  const levelsMag = unit01(levelSum / LEVELS_REF);
+  const levelsMag = unit01(levelTotalOf(roster) / LEVELS_REF);
 
   // health — mean current-HP fraction (0 for an empty/wiped roster).
-  const healthMag =
-    roster.length === 0
-      ? 0
-      : unit01(
-          roster.reduce((acc, u) => acc + (u.maxHp > 0 ? u.hp / u.maxHp : 0), 0) /
-            roster.length,
-        );
+  const healthMag = unit01(avgHpFraction(roster));
 
   // roster — active roster size (recruits gained ⇒ stronger).
   const rosterMag = unit01(roster.length / ROSTER_REF);
@@ -230,13 +235,13 @@ export function scoreArrival(
 
   // fatigue — summed per-unit tier fraction (a penalty via a negative weight).
   const fatigueSum = roster.reduce(
-    (acc, u) => acc + FATIGUE_ORDINAL[fatigueTier(u.fatigue)] / FATIGUE_TIER_MAX,
+    (acc, u) => acc + Math.min(fatigueTierIndex(u.fatigue), FATIGUE_TIER_MAX) / FATIGUE_TIER_MAX,
     0,
   );
   const fatigueMag = unit01(fatigueSum / FATIGUE_REF);
 
   // morale — the camp morale tier.
-  const moraleMag = unit01(MORALE_ORDINAL[moraleTier(run.camp.morale)] / MORALE_REF);
+  const moraleMag = unit01(moraleTierIndex(run.camp.morale) / MORALE_REF);
 
   // relics/flags — set flags + carried relic/unique items (a build-progress proxy).
   const setFlags = Object.values(run.flags).filter(Boolean).length;
@@ -297,20 +302,9 @@ export interface ArrivalDigest {
  */
 export function arrivalDigest(run: RunState): ArrivalDigest {
   const roster = activeRoster(run);
-  const levelTotal = roster.reduce(
-    (acc, u: Unit) => acc + u.level + jobLevelOf(u, primaryJobOf(u)),
-    0,
-  );
-  const avgHpPct =
-    roster.length === 0
-      ? 0
-      : Math.round(
-          (roster.reduce((acc, u) => acc + (u.maxHp > 0 ? u.hp / u.maxHp : 0), 0) /
-            roster.length) *
-            100,
-        );
+  const avgHpPct = Math.round(avgHpFraction(roster) * 100);
   return {
-    levelTotal,
+    levelTotal: levelTotalOf(roster),
     avgHpPct,
     gold: run.camp.gold,
     rosterIds: roster.map((u) => u.id),

@@ -84,24 +84,26 @@ export interface IntelReport {
   notesTotal?: number;
 }
 
-/** Intelligence breakpoints → the free passive floor tier (D10 banding). */
-export const INTEL_BREAKPOINTS: readonly { minIntelligence: number; tier: IntelTier }[] = [
-  { minIntelligence: 9, tier: 3 },
-  { minIntelligence: 6, tier: 2 },
-  { minIntelligence: 3, tier: 1 },
-  { minIntelligence: 0, tier: 0 },
+/**
+ * Intelligence breakpoints → the free passive floor tier (D10 banding). Authored
+ * high-to-low on the shared `min`-floor shape so {@link "./num".bandFor} scans it
+ * directly (the R2 rename from the bespoke `minIntelligence` key, #125).
+ */
+export const INTEL_BREAKPOINTS: readonly { min: number; tier: IntelTier }[] = [
+  { min: 9, tier: 3 },
+  { min: 6, tier: 2 },
+  { min: 3, tier: 1 },
+  { min: 0, tier: 0 },
 ];
 
 /**
  * Lane 1 — the passive **Intelligence** floor (D10): the free baseline tier the
- * party reads, from its highest-Intelligence member.
+ * party reads, from its highest-Intelligence member. One {@link bandFor} scan of
+ * {@link INTEL_BREAKPOINTS}.
  */
 export function intelFloor(party: readonly Unit[]): IntelTier {
   const best = party.reduce((m, u) => Math.max(m, u.intelligence ?? 0), 0);
-  for (const bp of INTEL_BREAKPOINTS) {
-    if (best >= bp.minIntelligence) return bp.tier;
-  }
-  return 0;
+  return bandFor(best, INTEL_BREAKPOINTS, INTEL_BREAKPOINTS[INTEL_BREAKPOINTS.length - 1]).tier;
 }
 
 /** Clamp any number into a valid {@link IntelTier}. */

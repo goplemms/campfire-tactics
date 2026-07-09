@@ -22,7 +22,6 @@ import {
   cooldownRemaining,
   scoutedTier,
   MAX_TIER,
-  campSkillUsesLeft,
   fatigueTier,
   projectDossier,
   attentionCount,
@@ -30,8 +29,8 @@ import {
   projectManifest,
   getVessel,
   availableSkills,
-  triage,
-  isHealer,
+  // R4/B (#112) — the one overworld-action projection the camp verb surfaces render.
+  availableActions,
   combatRoster,
   // M10 — the gold economy verbs (D30/D34) + theft (D30)
   merchantBuy,
@@ -41,14 +40,9 @@ import {
   sellPrice,
   effectiveMarketTier,
   getMaterial,
-  bankerEngageInterest,
-  bankerBorrow,
-  bankerProtect,
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
-  patronize,
   primaryJobOf,
   influenceTier,
-  ECONOMY,
   // M11 — the data-driven event-node registry (D4/D23)
   eventForNode,
   storyForNode,
@@ -74,7 +68,9 @@ import {
   // D80 — early events (the arrival layer): a light on-the-road event before the main encounter
   earlyEventForNode,
   resolveEarlyEvent,
-  TRIAGE,
+  type ActionView,
+  type ActionCostReadout,
+  type ActionOpts,
   type EventDef,
   type RunState,
   type MapNode,
@@ -202,20 +198,26 @@ function isNodeAimedOverworld(s: SkillDef): boolean {
 }
 
 /**
- * BATCH-2 SEAM (R4/A, #112, flagged for batch 3): the economy verbs (buy/sell · borrow/
- * interest/guard · patronize · triage) are migrating onto `JobDef.skills` +
- * `UNIVERSAL_OVERWORLD_SKILLS`, so `availableSkills("overworld")` now surfaces them. Until the
- * projection rewiring lands (batch 3, increment 11) their camp UI stays **hardcoded** — the
- * Economy drawer, the Market overlay, and the Triage row below. This predicate keeps them out
- * of the auto-derived recovery/survey drawers so nothing double-renders; batch 3 deletes it
- * along with the hardcoded buttons.
+ * The camp/overworld effect kinds surfaced in the **Recovery** drawer (R4/B, #112) — the no-target
+ * recovery/provision verbs, derived from {@link "../../core".availableActions}. The **economy** verbs
+ * ({@link ECONOMY_DRAWER_ORDER}), the market trade (`buy`/`sell` — the Market overlay), the healer's
+ * Triage (its own deduped row), and the node-aimed Survey (the Intel screen) each render elsewhere;
+ * everything else non-node-aimed lands here (Cook Stew · Feast · Find Trade · Savvy Barter).
  */
-const ECONOMY_VERB_EFFECT_KINDS: ReadonlySet<string> = new Set([
-  "buy", "sell", "borrow", "engageInterest", "guardPurse", "patronize", "triage",
+const RECOVERY_DRAWER_KINDS: ReadonlySet<string> = new Set([
+  "provisionMeal", "morale", "openMarket", "primeDeal",
 ]);
-function isMigratingEconomyVerb(s: SkillDef): boolean {
-  return ECONOMY_VERB_EFFECT_KINDS.has(s.effect.kind);
-}
+
+/**
+ * The **Economy** drawer's verb order (R4/B, #112) — the Banker's purse-finance trio then the
+ * Noble's Patronize, a fixed sequence so the drawer reads the same down every party (the projection
+ * enumerates per fielded unit; this is the render's stable ordering). Deduped by kind, so one
+ * financier's verbs show once even if the party fields two.
+ */
+const ECONOMY_DRAWER_ORDER: readonly string[] = ["engageInterest", "borrow", "guardPurse", "patronize"];
+
+/** The Banker's Borrow amount surfaced by the camp button (a scene-side UI choice — the projection prices the once-per-node pacing, the amount is ours). */
+const BORROW_AMOUNT = 40;
 
 export class OverworldScene extends Phaser.Scene {
   private run!: RunState;
@@ -1015,37 +1017,128 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The **Recovery** actions on the camp beat: each meta camp skill (the Chef's Cook
-   * Stew — morale + a banked heal) and the healer's fatigue-fuelled Triage (distinct
-   * from the universal Rest). Job-gated verbs are simply absent when no member can
-   * perform them; each is tagged with the member who acts (and, for Triage, tires).
+   * The **Recovery** actions on the camp beat (R4/B, #112) — a **render of {@link
+   * "../../core".availableActions}**, no longer hand-wired: every fielded unit's no-target recovery
+   * verb ({@link RECOVERY_DRAWER_KINDS} — Cook Stew · Feast · Find Trade · Savvy Barter), tagged with
+   * the member who acts, plus the party's single Triage row ({@link triageRow}). The economy verbs,
+   * the market trade, and the node-aimed Survey surface on their own surfaces. Each row's gate verdict
+   * + cost readout come straight off the projection — the D80 layout stays, the wiring is the twin of
+   * combat's `availableSkills`.
    */
   private campRecoveryActions(): CampAction[] {
     const out: CampAction[] = [];
-    for (const u of this.run.party) {
-      // No-target overworld skills only (Cook Stew etc.); node-targeting Survey lives on the
-      // Intel/survey screen, not this immediate-action drawer (D72).
-      for (const skill of this.overworldCampSkills(u)) {
-        // Costless signature actions are per-node capped (D35) — disable when spent, and
-        // badge the label with the uses left so the limiter is legible.
-        const left = campSkillUsesLeft(this.run.overworld, skill);
-        const capped = Number.isFinite(left);
-        const usesTag = capped && (skill.overworldCost?.usesPerNode ?? 0) > 1 ? `  (${left} left)` : "";
-        const tip = capped
-          ? `${skill.name} — ${skill.description} (${left} use${left === 1 ? "" : "s"} left tonight; resets when you Set Out.)`
-          : `${skill.name} — ${skill.description}`;
-        out.push({ label: `${skill.name} · ${u.name}${usesTag}`, enabled: left > 0, onClick: () => this.useCampSkill(u, skill), tip, preview: skillEffectPreview(skill, this.run), name: skill.name, actor: u.name, costs: this.actionCost(skill) });
-      }
+    for (const view of availableActions(this.run)) {
+      if (!RECOVERY_DRAWER_KINDS.has(view.effectKind)) continue;
+      const row = this.actionRow(view);
+      if (row) out.push(row);
     }
-    const healer = this.triageActor();
-    if (healer) {
-      const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
-      const tip = someoneWounded
-        ? `${healer.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
-        : "No wounded fighter to triage.";
-      out.push({ label: `Triage · ${healer.name} (fatigue)`, enabled: someoneWounded, onClick: () => this.doTriage(healer), tip, preview: triageActionPreview(), name: "Triage", actor: healer.name, costs: { fatigue: TRIAGE.fatigue } });
-    }
+    const triage = this.triageRow();
+    if (triage) out.push(triage);
     return out;
+  }
+
+  /**
+   * The party's single **Triage** row (R4/B, #112) — the healer's full-strength fatigue heal when a
+   * healing class is aboard, else the universal RP-funded fallback (the ratified named change: a
+   * Medic-less party heals slower). Deduped from the projection's per-unit triage views (the Medic's
+   * `triage` preferred over the universal fallback). Greyed with no wounded fighter — a target
+   * condition the gate doesn't read, so the render layers it on. Absent only if no unit surfaces
+   * triage at all (never, since the fallback is universal).
+   */
+  private triageRow(): CampAction | undefined {
+    const views = availableActions(this.run).filter((v) => v.effectKind === "triage");
+    const view = views.find((v) => v.id === "triage") ?? views[0];
+    if (!view) return undefined;
+    const found = this.actionSkill(view);
+    if (!found) return undefined;
+    const { unit, skill } = found;
+    const full = skill.id === "triage"; // the Medic's full-strength Triage (vs the universal fallback)
+    const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
+    const tip = !someoneWounded
+      ? "No wounded fighter to triage."
+      : full
+        ? `${unit.name} (healer) spends fatigue to mend the most-wounded fighter — more the worse the wound. Pure stamina, no Rest Points; a worn-out healer must rest first.`
+        : skill.description;
+    return {
+      label: `${skill.name} · ${unit.name}`,
+      name: skill.name,
+      actor: unit.name,
+      enabled: someoneWounded && view.verdict.ok,
+      onClick: () => this.useCampSkill(unit, skill),
+      tip,
+      preview: full ? triageActionPreview() : skillEffectPreview(skill, this.run),
+      costs: this.viewCosts(view.cost),
+    };
+  }
+
+  /**
+   * Resolve the fielded unit + its overworld {@link SkillDef} behind a projection {@link ActionView}
+   * (keyed by `actorId` + `id`) — the render needs the live `SkillDef` for the tip/description and
+   * hover preview, and the `Unit` to dispatch through the one interpreter. `undefined` if the actor
+   * left the field or no longer surfaces the skill (stale view).
+   */
+  private actionSkill(view: ActionView): { unit: Unit; skill: SkillDef } | undefined {
+    const unit = this.run.party.find((u) => u.id === view.actorId);
+    if (!unit) return undefined;
+    const skill = availableSkills(unit, "overworld").find((s) => s.id === view.id);
+    return skill ? { unit, skill } : undefined;
+  }
+
+  /**
+   * Map a projection {@link ActionCostReadout} onto the render's cost-chip model ({@link ActionCost}
+   * — gold / fatigue / material / cooldown). The pacing axes (per-node uses) and the RP/Influence
+   * prices aren't chip components, so they're carried by the tip/preview, not the chip row (parity
+   * with the pre-projection `actionCost`).
+   */
+  private viewCosts(cost: ActionCostReadout): ActionCost {
+    return {
+      gold: cost.gold,
+      fatigue: cost.fatigue,
+      material: cost.material ? { id: cost.material.id ?? "", n: cost.material.count } : undefined,
+      cooldown: cost.cooldown,
+    };
+  }
+
+  /**
+   * The hover **effect preview** for a projection row — the finance/triage verbs keep their bespoke
+   * readouts (interest/debt/protection/influence/heal); everything else derives from the skill's
+   * declared cost + effect ({@link "../../core".skillEffectPreview}). Selection by effect kind is a
+   * presentation concern layered on the projection's list.
+   */
+  private actionPreview(view: ActionView, skill: SkillDef): ActionPreview {
+    switch (view.effectKind) {
+      case "engageInterest": return bankerInterestPreview(this.run);
+      case "borrow": return bankerBorrowPreview(BORROW_AMOUNT);
+      case "guardPurse": return bankerProtectPreview();
+      case "patronize": return patronizePreview();
+      default: return skillEffectPreview(skill, this.run);
+    }
+  }
+
+  /**
+   * Build a camp **action row** from a projection {@link ActionView} (R4/B, #112) — the shared mapper
+   * the Recovery + Economy drawers render through. Label/actor/cost come off the projection (gate
+   * verdict → enabled, why-refused → tip); the SkillDef supplies the description + preview. The
+   * Banker's **Borrow** is the one scene-side amount choice ({@link BORROW_AMOUNT}) — surfaced on the
+   * label and passed as the dispatch opt. Dispatched through the one interpreter ({@link useCampSkill}).
+   */
+  private actionRow(view: ActionView): CampAction | undefined {
+    const found = this.actionSkill(view);
+    if (!found) return undefined;
+    const { unit, skill } = found;
+    const borrow = view.effectKind === "borrow";
+    const name = borrow ? `${skill.name} ${BORROW_AMOUNT}g` : skill.name;
+    const opts: ActionOpts = borrow ? { amount: BORROW_AMOUNT } : {};
+    return {
+      label: `${name} · ${unit.name}`,
+      name,
+      actor: unit.name,
+      enabled: view.verdict.ok,
+      onClick: () => this.useCampSkill(unit, skill, opts),
+      tip: view.verdict.ok ? skill.description : view.verdict.reason,
+      preview: this.actionPreview(view, skill),
+      costs: this.viewCosts(view.cost),
+    };
   }
 
   /** Structured cost of an overworld skill — the component slots (gold / fatigue / cooldown). */
@@ -1061,41 +1154,37 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   /**
-   * The **Economy** drawer on the camp beat: the Banker's purse-finance verbs and the
-   * Noble's Patronize — each shown only when that specialist is aboard, tagged with who
-   * works it (single nesting, no sub-drawer). The everyday market trade (buy supplies /
-   * sell salvage) lives in the gated **Market** overlay, not here. Hidden entirely when
-   * the party fields no financier. Returns the `y` past it.
+   * The **Economy** drawer on the camp beat (R4/B, #112) — a **render of {@link
+   * "../../core".availableActions}**: the Banker's purse-finance verbs (Invest / Borrow / Guard) and
+   * the Noble's Patronize, in the fixed {@link ECONOMY_DRAWER_ORDER} and deduped by kind (one
+   * financier's verbs show once). Each is shown only when its class is fielded (the projection folds
+   * the job home), tagged with who works it; verdict → enabled, cost readout → the chips. The everyday
+   * market trade (buy supplies / sell salvage) lives in the gated **Market** overlay, not here. Hidden
+   * entirely when the party fields no financier. Returns the `y` past it.
    */
   private renderEconomyDrawer(colX: number, y: number, rowH: number): number {
-    const banker = this.jobActor("banker");
-    const noble = this.jobActor("noble");
-    if (!banker && !noble) return y;
-    const count = (banker ? 3 : 0) + (noble ? 1 : 0);
-    y = this.drawerHeader(colX, y, 360, "economy", "Economy", count, () => this.renderCamp());
+    const seen = new Set<string>();
+    const views = availableActions(this.run)
+      .filter((v) => ECONOMY_DRAWER_ORDER.includes(v.effectKind) && !seen.has(v.effectKind) && seen.add(v.effectKind))
+      .sort((a, b) => ECONOMY_DRAWER_ORDER.indexOf(a.effectKind) - ECONOMY_DRAWER_ORDER.indexOf(b.effectKind));
+    if (views.length === 0) return y;
+    y = this.drawerHeader(colX, y, 360, "economy", "Economy", views.length, () => this.renderCamp());
     if (!this.campDrawers.economy) return y;
     const childX = colX + 14;
     const childW = 346;
-    // The Banker's purse-finance verbs (D30) — directly under Economy (single nesting), tagged with
-    // the Banker who works them (the card grammar: verb · unit · cost components). Effects (interest,
-    // the borrow, protection) ride the hover EFFECT PREVIEW; the cost column carries the gold spend.
-    if (banker) {
-      this.renderActionCard(childX, y, childW, 26, { label: "Invest the Purse", name: "Invest the Purse", actor: banker.name, enabled: true, onClick: () => this.bankerInterest(), tip: "Banker: the carried purse accrues flat interest each node-step. Purse only — never the treasury.", preview: bankerInterestPreview(this.run), costs: {} });
-      y += rowH;
-      this.renderActionCard(childX, y, childW, 26, { label: "Borrow 40g", name: "Borrow 40g", actor: banker.name, enabled: true, onClick: () => this.bankerBorrow40(), tip: "Banker: overspend now; auto-repaid from incoming run gold.", preview: bankerBorrowPreview(40), costs: {} });
-      y += rowH;
-      const protCost = ECONOMY.banker.protectionCost;
-      this.renderActionCard(childX, y, childW, 26, { label: "Guard the Purse", name: "Guard the Purse", actor: banker.name, enabled: this.run.camp.gold >= protCost, onClick: () => this.bankerProtect(), tip: "Banker: blunt a thief's skim — battle thief and event node alike.", preview: bankerProtectPreview(), costs: { gold: protCost } });
+    // The financier verbs (D30/D62) — directly under Economy (single nesting), tagged with who works
+    // them (the card grammar: verb · unit · cost components). Effects (interest, the borrow, protection,
+    // patronage) ride the hover EFFECT PREVIEW; the cost column carries the gold spend, all off the
+    // projection's readout.
+    for (const view of views) {
+      const row = this.actionRow(view);
+      if (!row) continue;
+      this.renderActionCard(childX, y, childW, 26, row);
       y += rowH;
     }
-    // The Noble's Patronize (D62) — gold → Influence, once per node; tagged with the Noble.
-    if (noble) {
-      const patronCost = ECONOMY.noble.patronizeCost;
-      const patronTip = `Noble: court patrons — spend ${patronCost}g for +${ECONOMY.noble.patronizeYield} Influence (once per node). A Noble also earns Influence passively as you travel. Influence never pays Upkeep; it sways enemies mid-battle.`;
-      this.renderActionCard(childX, y, childW, 26, { label: "Patronize", name: "Patronize", actor: noble.name, enabled: this.run.camp.gold >= patronCost, onClick: () => this.patronize(), tip: patronTip, preview: patronizePreview(), costs: { gold: patronCost } });
-      y += rowH;
-    }
-    // The Banker's purse-state, surfaced in context (D58).
+    // The Banker's/Noble's purse-state, surfaced in context (D58). The Influence line shows whenever a
+    // Noble is aboard (standing accrues even before Patronize), or when any standing is banked.
+    const noble = this.jobActor("noble");
     const eco = this.run.overworld;
     const bank: string[] = [];
     if (eco.interestPerStep > 0) bank.push(`Interest +${eco.interestPerStep}g/step`);
@@ -1405,12 +1494,7 @@ export class OverworldScene extends Phaser.Scene {
    * the gate (class + capability + unlock) is the single projection — no hardcoded id.
    */
   private overworldNodeSkills(u: Unit): SkillDef[] {
-    return availableSkills(u, "overworld").filter((s) => isNodeAimedOverworld(s) && !isMigratingEconomyVerb(s));
-  }
-
-  /** A unit's **no-target** overworld camp skills (Cook Stew etc.) — the recovery drawer (D72). */
-  private overworldCampSkills(u: Unit): SkillDef[] {
-    return availableSkills(u, "overworld").filter((s) => !isNodeAimedOverworld(s) && !isMigratingEconomyVerb(s));
+    return availableSkills(u, "overworld").filter((s) => isNodeAimedOverworld(s));
   }
 
   /**
@@ -1627,10 +1711,15 @@ export class OverworldScene extends Phaser.Scene {
     return ledger;
   }
 
-  private useCampSkill(actor: Unit, skill: SkillDef): void {
-    // Gated by the per-node cap (D35): the signature action levels its owner now
-    // (D32/D53) but can't be spammed for unlimited gold/morale/XP.
-    const res = this.loop.useOverworldSkill(actor, skill);
+  /**
+   * Dispatch a camp/overworld verb through the **one interpreter** ({@link RunLoop.useOverworldSkill})
+   * — the shared click path for every Recovery + Economy row (R4/B, #112): the class/capability home,
+   * the two-axis cost gate, the effect, its commit + use-XP all live in core. `opts` carries the
+   * verb's extra inputs (the Banker Borrow's amount). Gated by the per-node cap (D35): a signature
+   * action levels its owner now (D32/D53) but can't be spammed for unlimited gold/morale/XP.
+   */
+  private useCampSkill(actor: Unit, skill: SkillDef, opts: ActionOpts = {}): void {
+    const res = this.loop.useOverworldSkill(actor, skill, opts);
     this.renderCamp();
     this.setHint(res.applied ? `${res.detail ?? "Done."}` : `Can't: ${res.reason ?? "refused."}`);
   }
@@ -1652,18 +1741,6 @@ export class OverworldScene extends Phaser.Scene {
     this.setHint(sold > 0 ? `Sold ${sold} valuables for ${total}g.${lvl}` : "Can't sell here.");
   }
 
-  /** An active healer (the Triage job gate) — a Medic-class member, or undefined if none. */
-  private triageActor(): Unit | undefined {
-    return this.activeUnits().find((u) => isHealer(u));
-  }
-
-  /** The healer spends fatigue (worn out) to mend the most-wounded fighter (the audit pass). */
-  private doTriage(healer: Unit): void {
-    const res = triage(this.run, healer);
-    this.renderCamp();
-    if (!res.applied) return this.setHint(`Can't triage: ${res.reason}`);
-    this.setHint(`${healer.name} triaged +${res.healed} HP — worn out (+${res.fatigueSpent} fatigue).`);
-  }
 
   // --- The Market overlay (D61): the gated supply shop ----------------------
 
@@ -1780,31 +1857,6 @@ export class OverworldScene extends Phaser.Scene {
 
     const m = projectManifest(this.run, this.caravanInfo());
     this.overlay.push(this.add.text(leftX, top + h - 22, `Purse ${m.purse}g     ·     Storage ${m.storageUsed}/${m.storageCap}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
-  }
-
-  private bankerInterest(): void {
-    const res = bankerEngageInterest(this.run);
-    this.renderCamp();
-    this.setHint(res.applied ? `Banker: purse interest engaged — +${res.perStep}g per node-step (purse only).` : `Can't: ${res.reason}`);
-  }
-
-  private bankerBorrow40(): void {
-    const res = bankerBorrow(this.run, 40);
-    this.renderCamp();
-    this.setHint(res.applied ? `Borrowed 40g (debt ${res.debt}g) — auto-repaid from incoming loot.` : `Can't: ${res.reason}`);
-  }
-
-  private bankerProtect(): void {
-    const res = bankerProtect(this.run);
-    this.renderCamp();
-    this.setHint(res.applied ? `Theft protection engaged (skims blunted ${Math.round((res.protection ?? 0) * 100)}%).` : `Can't: ${res.reason}`);
-  }
-
-  private patronize(): void {
-    const res = patronize(this.run);
-    this.renderCamp();
-    if (!res.applied) return this.setHint(`Can't: ${res.reason}`);
-    this.setHint(`Patronized: +${res.gained} Influence (now ${this.run.overworld.influence}, ${influenceTier(this.run.overworld.influence)}). Influence never pays Upkeep.`);
   }
 
   /** A camp button that greys out (non-interactive) when disabled, with a reason on hover. */

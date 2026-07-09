@@ -30,7 +30,7 @@ import type { RunState } from "./run";
 import { fieldedUnits, fieldsJob, primaryJobOf, type Unit } from "./units";
 import { getJob, type JobLookup } from "./jobs";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
-import { checkOverworldCost, isPrimed, consumeFlag, DEAL_PRIMED_FLAG, type OverworldCost, type ActionOutcome } from "./overworld-actions";
+import { checkOverworldCost, validateOverworldCost, isPrimed, consumeFlag, DEAL_PRIMED_FLAG, TRIAGE_COST, type OverworldCost, type ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
@@ -95,6 +95,17 @@ export function merchantPrice(tier: MarketTier): number {
   return ECONOMY.merchant.buyPrice[tier];
 }
 
+/**
+ * Merchant Buy's cost (D61): always **gold-priced**. The concrete per-cast price is
+ * computed per call (the caller's market tier × a primed Savvy Barter discount), so
+ * the registry entry declares the axis with a provider — the price a buy would gate
+ * on at the current node's effective market; {@link merchantBuy} overlays the exact
+ * per-cast price onto this entry before the gate.
+ */
+export const MERCHANT_BUY_COST: OverworldCost = {
+  gold: (run) => merchantPrice(effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld)),
+};
+
 /** What a Merchant buy produced. */
 export interface MerchantBuyResult extends ActionOutcome {
   /** Purse gold spent. */
@@ -122,7 +133,8 @@ export function merchantBuy(run: RunState, materialId: string, tier: MarketTier)
   // The purse price rides the **shared gate** as a gold knob (D61) — the same
   // check/spend path as Patronize and every overworld action, so "what paying
   // gold means" lives in one place ({@link checkOverworldCost}), not per verb.
-  const cost: OverworldCost = { gold: price };
+  // The registry row declares the axis; the exact per-cast price overlays it.
+  const cost: OverworldCost = { ...VERB_COSTS["merchant-buy"], gold: price };
   const check = checkOverworldCost(run, "merchant-buy", cost, `buy ${materialId}`);
   if (!check.ok) return { applied: false, reason: check.reason, price };
   if (!canAdd(run.inventory, materialId)) {
@@ -187,7 +199,7 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
   const price = primed ? Math.floor(base * ECONOMY.merchant.savvySellFactor) : base;
   // The shared gate (D61/#112): selfLimited — never refuses (the carried stock is the
   // limiter), but the verb rides the same check/commit rails as every gated verb.
-  const check = checkOverworldCost(run, "merchant-sell", MERCHANT_SELL_COST, `sell ${material.name}`);
+  const check = checkOverworldCost(run, "merchant-sell", VERB_COSTS["merchant-sell"], `sell ${material.name}`);
   if (!check.ok) return { applied: false, reason: check.reason, price };
   removeItem(run.inventory, materialId, 1);
   const { credited } = gainRunGold(run, price, "sale", `Sold ${material.name}`);
@@ -237,7 +249,7 @@ export interface BankerInterestResult extends ActionOutcome {
 export function bankerEngageInterest(run: RunState): BankerInterestResult {
   if (!hasBanker(run.party)) return { applied: false, reason: "No Banker in the party to engage interest." };
   // The shared two-axis gate (D61/#112): a toggle, once per node.
-  const check = checkOverworldCost(run, "banker-interest", BANKER_INTEREST_COST, "Engage Interest");
+  const check = checkOverworldCost(run, "banker-interest", VERB_COSTS["banker-interest"], "Engage Interest");
   if (!check.ok) return { applied: false, reason: check.reason };
   if (run.camp.gold <= 0) return { applied: false, reason: "No purse to earn interest on." };
   const perStep = Math.max(1, Math.ceil(run.camp.gold * ECONOMY.banker.interestRate));
@@ -274,7 +286,7 @@ export function bankerBorrow(run: RunState, amount: number): BankerBorrowResult 
   const borrowed = nonNegInt(amount);
   if (borrowed <= 0) return { applied: false, reason: "Nothing to borrow." };
   // The shared two-axis gate (D61/#112): one loan arrangement per node.
-  const check = checkOverworldCost(run, "banker-borrow", BANKER_BORROW_COST, "Borrow");
+  const check = checkOverworldCost(run, "banker-borrow", VERB_COSTS["banker-borrow"], "Borrow");
   if (!check.ok) return { applied: false, reason: check.reason };
   earn(run.camp, borrowed, "banker", "Banker loan", { nodeId: run.mapNodeId, night: run.night });
   run.overworld.debt += borrowed;
@@ -302,8 +314,7 @@ export const BANKER_PROTECT_COST: OverworldCost = { gold: ECONOMY.banker.protect
 export function bankerProtect(run: RunState): BankerProtectResult {
   if (!hasBanker(run.party)) return { applied: false, reason: "No Banker in the party to guard the purse." };
   // Gold-priced through the shared gate (D61) — same path as Patronize / the Merchant buy.
-  const cost = BANKER_PROTECT_COST;
-  const check = checkOverworldCost(run, "banker-protect", cost, "theft protection");
+  const check = checkOverworldCost(run, "banker-protect", VERB_COSTS["banker-protect"], "theft protection");
   if (!check.ok) return { applied: false, reason: check.reason };
   check.commit();
   run.overworld.protection = Math.max(run.overworld.protection, ECONOMY.banker.protectionLevel);
@@ -400,7 +411,7 @@ export function patronize(run: RunState): PatronizeResult {
   if (!hasNoble(run.party)) {
     return { applied: false, reason: "No Noble in the party to court patrons." };
   }
-  const check = checkOverworldCost(run, "patronize", PATRONIZE_COST, "Patronize");
+  const check = checkOverworldCost(run, "patronize", VERB_COSTS["patronize"], "Patronize");
   if (!check.ok) return { applied: false, reason: check.reason };
   const yield_ = ECONOMY.noble.patronizeYield;
   addInfluence(run.overworld, yield_);
@@ -451,6 +462,12 @@ export function bribeChance(tier: InfluenceTier): number {
  * for the fight; how it resolves *after* is the temp↔permanent vector (D33): a **generic**
  * is temporary, an **authored** one a permanent recruit. Refuses (spending nothing) only
  * when the run can't afford the cost. Spends the run's per-expedition standing, not the guild.
+ *
+ * **Deliberately off-gate (#112):** the bribe spends Influence directly via
+ * {@link "./economy".spendInfluence} (its price is computed per target from intel +
+ * standing), so it has no {@link VERB_COSTS} row — the noted **D112-step-2 (R4)
+ * migration target** onto the gate's reserved `influence` knob, not a silent exemption.
+ * The guard test in `overworld-actions.test.ts` carries the same note.
  */
 export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | "name">, preview?: NodePreview): BribeResult {
   // Job-gated like Patronize (D62): the bribe is the Noble's verb — without a Noble in
@@ -474,3 +491,37 @@ export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | 
     : `${enemy.name} turns coat for the rest of the battle.`;
   return { applied: true, cost, outcome, detail };
 }
+
+// --- The standalone-verb cost registry (D61/#112 step 1) ---------------------
+
+/**
+ * The **standalone-verb cost registry** — the two-axis invariant's second home,
+ * making it **total**. The load-time walk over `JOBS[*].skills`
+ * ({@link "./overworld-actions"}) covers every verb that lives on a job; every
+ * economy verb that is a **free function** (this module's, plus Triage) registers
+ * its {@link OverworldCost} here, and the walk below validates each at import —
+ * an unpaced, unpriced standalone verb **fails at module load**, exactly like a
+ * bad skill record. The hoisted per-verb consts ARE the entries (one source of
+ * truth — the verbs read their costs from these rows); the guard test in
+ * `overworld-actions.test.ts` asserts every exported verb resolver has a row, so
+ * a NEW standalone verb without a registration fails the suite by name.
+ *
+ * **Deliberately off-gate:** {@link bribeEnemy} spends Influence via
+ * {@link "./economy".spendInfluence} (a per-target computed price) — the noted
+ * D112-step-2 (R4) migration target onto the gate's reserved `influence` knob,
+ * not a silent exemption.
+ */
+export const VERB_COSTS: Readonly<Record<string, OverworldCost>> = {
+  "merchant-buy": MERCHANT_BUY_COST,
+  "merchant-sell": MERCHANT_SELL_COST,
+  "banker-interest": BANKER_INTEREST_COST,
+  "banker-borrow": BANKER_BORROW_COST,
+  "banker-protect": BANKER_PROTECT_COST,
+  patronize: PATRONIZE_COST,
+  triage: TRIAGE_COST,
+};
+
+// Enforce the D61 two-axis invariant over the standalone verbs at module load (#112)
+// — the twin of overworld-actions' JOBS[*].skills walk. With both homes validated at
+// import, "free and unlimited" is unrepresentable wherever a verb lives.
+for (const [id, cost] of Object.entries(VERB_COSTS)) validateOverworldCost(id, cost);

@@ -31,7 +31,7 @@ import {
   DEAL_PRIMED_FLAG,
   type OverworldCost,
 } from "./overworld-actions";
-import { PATRONIZE_COST, BANKER_PROTECT_COST, MERCHANT_SELL_COST, BANKER_BORROW_COST, BANKER_INTEREST_COST } from "./economy-actions";
+import { PATRONIZE_COST, BANKER_PROTECT_COST, MERCHANT_SELL_COST, BANKER_BORROW_COST, BANKER_INTEREST_COST, MERCHANT_BUY_COST, VERB_COSTS } from "./economy-actions";
 import { getJob, JOBS, SURVEY, FORAGE, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
 import { skillContexts } from "./skills";
@@ -347,29 +347,88 @@ describe("the two-axis limiter invariant (D61)", () => {
   });
 });
 
-describe("standalone overworld-verb costs satisfy the D61 invariant (guard)", () => {
-  // The load-time validator only runs over JobDef.skills. These verbs build their
-  // OverworldCost in standalone functions (Triage, the economy verbs), so they satisfy
-  // "no action unpaced AND unpriced" only by this guard. ADD EVERY NEW standalone verb's
-  // cost object here — a free-and-unlimited one (`{}`) fails the assertion.
-  const STANDALONE: Record<string, OverworldCost> = {
-    Triage: TRIAGE_COST,                   // priced: fatigue
-    Patronize: PATRONIZE_COST,             // paced: usesPerNode × priced: gold
-    "Banker Protect": BANKER_PROTECT_COST, // priced: gold
-    "Merchant Sell": MERCHANT_SELL_COST,   // selfLimited: bounded by the carried stock (#112)
-    "Banker Borrow": BANKER_BORROW_COST,   // paced: one loan arrangement per node (#112)
-    "Engage Interest": BANKER_INTEREST_COST, // paced: a toggle, re-armed per node (#112)
-  };
-  for (const [label, cost] of Object.entries(STANDALONE)) {
-    it(`${label} is paced or priced`, () => {
-      expect(() => validateOverworldCost(label, cost)).not.toThrow();
-    });
-  }
+describe("the standalone-verb cost registry — the D61 invariant is total (#112 step 1)", () => {
+  // The load-time validator in overworld-actions walks JOBS[*].skills; economy-actions'
+  // walks VERB_COSTS. Together the two homes make an ungated verb fail at import. This
+  // guard makes the registry itself total: every exported function of the two verb
+  // modules must be classified below — a NEW export that is none of these fails BY NAME
+  // until it is classified, and classifying it as a verb requires a VERB_COSTS row.
 
-  // The other standalone economy verbs satisfy the invariant by construction, not a static
-  // cost object: Merchant Buy is always gold-priced (refused at a `none` market); Bribe is
-  // Influence-priced (spent off-gate via spendInfluence). Give any of them a declared
-  // OverworldCost and it joins STANDALONE above.
+  it("every VERB_COSTS entry is paced or priced (the load-time walk's assertion)", () => {
+    expect(Object.keys(VERB_COSTS).length).toBeGreaterThan(0);
+    for (const [id, cost] of Object.entries(VERB_COSTS)) {
+      expect(() => validateOverworldCost(id, cost)).not.toThrow();
+    }
+  });
+
+  it("the hoisted per-verb consts ARE the registry entries (one source of truth)", () => {
+    expect(VERB_COSTS["triage"]).toBe(TRIAGE_COST);
+    expect(VERB_COSTS["patronize"]).toBe(PATRONIZE_COST);
+    expect(VERB_COSTS["banker-protect"]).toBe(BANKER_PROTECT_COST);
+    expect(VERB_COSTS["merchant-sell"]).toBe(MERCHANT_SELL_COST);
+    expect(VERB_COSTS["banker-borrow"]).toBe(BANKER_BORROW_COST);
+    expect(VERB_COSTS["banker-interest"]).toBe(BANKER_INTEREST_COST);
+    expect(VERB_COSTS["merchant-buy"]).toBe(MERCHANT_BUY_COST);
+  });
+
+  // Verb resolvers: exported function → its VERB_COSTS row. A new verb registers here
+  // AND in VERB_COSTS (the registry walk at module load validates its cost).
+  const VERB_RESOLVERS: Record<string, string> = {
+    merchantBuy: "merchant-buy",
+    merchantSell: "merchant-sell",
+    bankerEngageInterest: "banker-interest",
+    bankerBorrow: "banker-borrow",
+    bankerProtect: "banker-protect",
+    patronize: "patronize",
+    triage: "triage",
+  };
+
+  // Verbs whose cost gate lives elsewhere — each with the WHERE, never silently exempt.
+  const GATED_ELSEWHERE: Record<string, string> = {
+    useOverworldSkill: "its SkillDef's overworldCost — the JOBS[*].skills load-time walk",
+    useCampSkillAtNode: "alias of useOverworldSkill (same walk)",
+    bribeEnemy: "spends Influence off-gate via spendInfluence — the noted D112-step-2 (R4) migration target onto the gate's influence knob",
+  };
+
+  // Non-verb exports: pure reads, predicates, state plumbing, and the passive faucets
+  // breakCamp fires (not player verbs). A new helper joins this list explicitly.
+  const NON_VERBS = new Set([
+    // economy-actions — pure reads / predicates
+    "merchantPrice", "sellPrice", "bribeCost", "bribeChance",
+    "hasBanker", "hasNoble", "hasThief", "declaredFaucetInfluence",
+    // economy-actions — passive per-node-step faucets (fired by breakCamp, not chosen)
+    "accrueDeclaredFaucets", "deftHandsSkim",
+    // overworld-actions — the gate + cost grammar itself
+    "checkOverworldCost", "validateOverworldCost", "resolveKnob", "knobDeclared",
+    "hasPacing", "hasPrice", "overworldCostOf",
+    // overworld-actions — economy sub-state plumbing + reads
+    "createOverworldEconomy", "cloneOverworldEconomy", "tickCooldowns", "accruePurseInterest",
+    "cooldownRemaining", "campSkillUses", "campSkillUsesLeft", "scoutedTier",
+    "setNodeFlag", "hasNodeFlag", "primeFlag", "consumeFlag", "isPrimed",
+    // overworld-actions — effect interpreter + predicates
+    "applyOverworldEffect", "isOverworldActionEffect", "isHealer",
+  ]);
+
+  it("every exported verb resolver has a registered cost — a new ungated verb fails by name", async () => {
+    const economyModule = await import("./economy-actions");
+    const overworldModule = await import("./overworld-actions");
+    const exportedFns = (mod: Record<string, unknown>) =>
+      Object.keys(mod).filter((k) => typeof mod[k] === "function");
+    const names = [...exportedFns(economyModule), ...exportedFns(overworldModule)];
+    expect(names).toContain("merchantSell"); // sanity: the enumeration sees the verbs
+    for (const name of names) {
+      const classified = name in VERB_RESOLVERS || name in GATED_ELSEWHERE || NON_VERBS.has(name);
+      expect(
+        classified,
+        `unclassified export "${name}" — a verb resolver must register a VERB_COSTS row (D61/#112); ` +
+          `a verb gated elsewhere joins GATED_ELSEWHERE with the where; a helper joins NON_VERBS`,
+      ).toBe(true);
+    }
+    // And every claimed resolver actually resolves to a registered cost.
+    for (const [name, id] of Object.entries(VERB_RESOLVERS)) {
+      expect(VERB_COSTS[id], `verb "${name}" maps to unregistered cost id "${id}"`).toBeDefined();
+    }
+  });
 });
 
 describe("computed (provider) costs (D72)", () => {

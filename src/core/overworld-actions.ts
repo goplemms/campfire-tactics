@@ -540,8 +540,11 @@ export const TRIAGE = {
 
 /**
  * Triage's two-axis cost (D61) — the **demanding** fatigue price the shared gate validates +
- * spends. Hoisted to a named export so the D61 guard test can assert it stays paced-or-priced:
- * Triage is a **standalone** verb, outside the `JobDef.skills` load-time validator.
+ * spends. Triage is a **standalone** verb, outside the `JobDef.skills` load-time validator,
+ * so this object is its row in the {@link "./economy-actions".VERB_COSTS} registry (#112) —
+ * validated at that module's load. Defined here (its home) rather than in the registry
+ * literal because importing the registry back would cycle economy-actions ↔ overworld-actions;
+ * the registry entry is this same object, so there is still exactly one source of truth.
  */
 export const TRIAGE_COST: OverworldCost = { fatigue: TRIAGE.fatigue };
 

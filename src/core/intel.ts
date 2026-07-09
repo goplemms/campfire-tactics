@@ -7,11 +7,12 @@
  *   Tier 1 — **types** (what to pack) → Tier 2 — **numbers** (what to counter) →
  *   Tier 3 — **positions** (exactly how to deploy).
  *
- * Three complementary lanes climb the ladder:
- *   1. **Passive** — the **Intelligence** stat sets a free floor.
- *   2. **Scouting** — spend gold/a ration to buy a tier (risk lane omitted here).
- *   3. **Divination** — the **Seer** jumps a breakpoint (reagent) or, at master
- *      rank, reads free with a chance to jump multiple.
+ * Lanes that climb the ladder:
+ *   1. **Passive** — the **Intelligence** stat sets a free floor ({@link intelFloor}).
+ *   2. **Scouting** — spend a resource to raise the read (the live path is the Scout's
+ *      Survey overworld verb, which sets `scoutedTier`).
+ *
+ * Seer lane: designed, not built — D10 (divination via reagent/master rank).
  *
  * A **Tier-3** read grants **starting vision** of the enemy's deployment, bridging
  * to the in-battle fog-of-war seam (D18) — surfaced here as a flag the runloop
@@ -21,7 +22,6 @@
  */
 
 import type { Unit } from "./units";
-import type { Rng } from "./rng";
 import { bandFor } from "./num";
 import { getEnemyTemplate, type EncounterType } from "./generation";
 import { getNode, type NodeKind } from "./overworld";
@@ -128,26 +128,6 @@ export function intelDepthOf(def: EncounterSource): IntelTier {
  */
 export function effectiveIntelTier(rawTier: number, def: EncounterSource): IntelTier {
   return clampTier(Math.min(rawTier, intelDepthOf(def)));
-}
-
-/**
- * Lane 2 — **scouting**: spend a resource to raise the read one tier (D10). The
- * caller owns the gold/ration cost; this just bumps the tier.
- */
-export function scout(tier: IntelTier): IntelTier {
-  return clampTier(tier + 1);
-}
-
-/**
- * Lane 3 — **divination** via the Seer (D10). Low rank spends a reagent to jump
- * **one** breakpoint (reliable). Master rank reads **free** with a chance to jump
- * **multiple** breakpoints (a variable windfall). Returns the new tier; pulls its
- * jump from the run's deterministic `rng`.
- */
-export function seerDivine(tier: IntelTier, rng: Rng, masterRank = false): IntelTier {
-  if (!masterRank) return clampTier(tier + 1); // reagent: reliable +1
-  const jump = rng.chance(0.4) ? 2 : 1; // free, occasionally doubles
-  return clampTier(tier + jump);
 }
 
 /**

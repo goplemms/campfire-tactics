@@ -7,7 +7,7 @@
  * secondary abilities, the slot UI — is a later pass (see D32). What's here is
  * just enough to prove the rule headlessly:
  *
- * - **Combat XP** ({@link grantCombatXp}) — combat jobs level via combat, as today.
+ * - **Combat XP** ({@link grantXp}) — combat jobs level via combat, as today.
  * - **Deployed trickle** ({@link accrueDeployedXp}) — a passive trickle for the
  *   characters **deployed on an adventure** (a caravan's party). **Benched roster
  *   never accrues** — sitting in the guild hall is never free training.
@@ -114,11 +114,6 @@ export function grantXp(unit: Unit, amount: number): number {
   }
   if (gained > 0) applyCharacterBoons(unit);
   return gained;
-}
-
-/** Combat XP — the as-today path for combat jobs. Returns levels gained. */
-export function grantCombatXp(unit: Unit, amount: number): number {
-  return grantXp(unit, amount);
 }
 
 // --- Combat-event XP accumulator (D53) --------------------------------------
@@ -261,7 +256,7 @@ export function availableSkills(unit: Unit, context: UsableContext, lookup: JobL
  * Route combat XP (D39): the **character** level and the **primary** job earn at
  * full rate; **secondary** held jobs trickle at {@link LEVELING.secondaryRate}.
  * Returns levels gained on each axis. This is the routing the demo/run uses;
- * {@link grantCombatXp} stays the character-only path for back-compat.
+ * {@link grantXp} stays the character-only path.
  */
 export function routeCombatXp(
   unit: Unit,

@@ -1,12 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
-import { Rng, streamFor } from "./rng";
+import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { generateEncounter } from "./generation";
 import {
   intelFloor,
-  scout,
-  seerDivine,
   readEncounter,
   intelDeployBonus,
   clampTier,
@@ -68,18 +66,6 @@ describe("intel — lanes up the ladder (D10)", () => {
     expect(intelFloor([member("a", 1), member("seer", 9)])).toBe(3);
   });
 
-  it("Lane 2: scouting raises the read one tier (clamped at 3)", () => {
-    expect(scout(0)).toBe(1);
-    expect(scout(3)).toBe(3);
-  });
-
-  it("Lane 3: the Seer jumps a breakpoint (reagent +1; master may double)", () => {
-    expect(seerDivine(0, new Rng("s"))).toBe(1); // low rank, reliable +1
-    // A master read is free and may jump multiple — deterministic per stream.
-    const masterJumps = new Set<number>();
-    for (let i = 0; i < 30; i++) masterJumps.add(seerDivine(0, new Rng(`m${i}`), true));
-    expect([...masterJumps].some((t) => t >= 2)).toBe(true);
-  });
 });
 
 describe("intel — banded reveals (D10)", () => {

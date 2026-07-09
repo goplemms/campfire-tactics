@@ -182,7 +182,7 @@ export function createRun(seed: string | number, opts: CreateRunOptions): RunSta
     path: [map.startId],
     party: opts.party,
     inventory: createInventory(storageCap, opts.inventory ?? {}),
-    camp: createCamp({ gold: opts.gold ?? 0, storageCap, morale: opts.morale ?? 0 }),
+    camp: createCamp({ gold: opts.gold ?? 0, morale: opts.morale ?? 0 }),
     rp: 0,
     overworld: createOverworldEconomy(),
     night: 0,

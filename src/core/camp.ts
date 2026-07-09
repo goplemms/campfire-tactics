@@ -13,7 +13,6 @@
 import { healUnit, type Unit } from "./units";
 import type { EventBus } from "./events";
 import type { SkillDef } from "./skills";
-import { grantAbilityUseXp } from "./leveling";
 import { bandFor } from "./num";
 import { openingPurseLog, type PurseEntry } from "./purse-journal";
 
@@ -25,13 +24,6 @@ export interface Camp {
    * (D61 retired the Merchant's old gold-*mint* — it trades, it doesn't print.)
    */
   gold: number;
-  /**
-   * **Vestigial** (D61): the live storage cap is `run.inventory.storageCap`, set by
-   * the **caravan/vessel** ({@link "./caravan".Caravan.storageCap}) — not the camp,
-   * and no longer raised by the Merchant. Nothing reads this field; kept only so
-   * existing {@link createCamp} callers/snapshots don't break. Remove in a cleanup pass.
-   */
-  storageCap: number;
   /** Party morale, a banded value (D8); higher is better. */
   morale: number;
   /** HP the Cook has banked to heal each unit at the next battle's start. */
@@ -77,7 +69,6 @@ export function createCamp(init: Partial<Camp> = {}): Camp {
   const gold = init.gold ?? 0;
   return {
     gold,
-    storageCap: init.storageCap ?? 6,
     morale: init.morale ?? 0,
     pendingHeal: init.pendingHeal ?? 0,
     skippedUpkeep: init.skippedUpkeep ?? [],
@@ -153,20 +144,6 @@ export function applyCampSkill(skill: SkillDef, camp: Camp): CampOutcome {
       return { morale: effect.morale, bankedHeal: effect.partyHeal };
   }
   throw new Error(`applyCampSkill: "${effect.kind}" is not a camp effect`);
-}
-
-/**
- * Use a camp job skill **as its owner** (D32/D53): apply the effect *and* grant
- * the actor ability-use XP, so a job levels from its own signature work — the
- * Cook from cooking, the Merchant from trading. (Previously camp actions applied
- * their effect but granted no XP, so a non-combat job only levelled by overworld
- * scouting — its identity disconnected from its growth.) Returns the camp outcome
- * plus the character levels the use granted.
- */
-export function useCampJobSkill(unit: Unit, skill: SkillDef, camp: Camp): CampOutcome & { levels: number } {
-  const outcome = applyCampSkill(skill, camp);
-  const levels = grantAbilityUseXp(unit);
-  return { ...outcome, levels };
 }
 
 /**

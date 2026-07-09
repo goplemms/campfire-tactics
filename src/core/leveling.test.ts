@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import {
   LEVELING,
-  grantCombatXp,
   grantXp,
   accrueDeployedXp,
   grantAbilityUseXp,
@@ -32,9 +31,9 @@ describe("leveling — the D32 seam (deployed grows, benched doesn't)", () => {
 
   it("combat XP accumulates and increments level at the threshold", () => {
     const u = unit("u");
-    expect(grantCombatXp(u, LEVELING.xpPerLevel - 1)).toBe(0);
+    expect(grantXp(u, LEVELING.xpPerLevel - 1)).toBe(0);
     expect(u.level).toBe(1);
-    grantCombatXp(u, 1);
+    grantXp(u, 1);
     expect(u.level).toBe(2);
     expect(u.xp).toBe(0);
   });

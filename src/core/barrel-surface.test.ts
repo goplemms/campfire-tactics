@@ -19,6 +19,10 @@
  *
  * Recorded at increment 0 (2026-07-09): 615 names, sim digest byte-identical to
  * the reference in `r2-verb-gate.test.ts`'s header (1050 tests / 98 files green).
+ *
+ * Deltas:
+ *   - increment 1 (#128 part A): −5 dead aliases removed — `grantCombatXp`,
+ *     `scout`, `seerDivine`, `useCampJobSkill`, `useCampSkillAtNode` (→ 610).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -376,7 +380,6 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "getStory",
   "getVessel",
   "grantAbilityUseXp",
-  "grantCombatXp",
   "grantItem",
   "grantJobXp",
   "grantXp",
@@ -566,10 +569,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "samplePopulation",
   "satisfyUpkeepLine",
   "scoreArrival",
-  "scout",
   "scoutedTier",
   "screenToGrid",
-  "seerDivine",
   "sellPrice",
   "setCounter",
   "setNodeFlag",
@@ -633,8 +634,6 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "unitSkills",
   "unlockGear",
   "unlockedSkills",
-  "useCampJobSkill",
-  "useCampSkillAtNode",
   "useOverworldSkill",
   "validateExpedition",
   "validateOverworldCost",

@@ -3,7 +3,6 @@ import { createUnit, type Unit } from "./units";
 import { createRun, reachableNodes, breakCamp, type RunState } from "./run";
 import {
   useOverworldSkill,
-  useCampSkillAtNode,
   overworldCostOf,
   campSkillUses,
   campSkillUsesLeft,
@@ -269,13 +268,13 @@ describe("overworld-actions — the per-node camp-skill cap (D35)", () => {
     const moraleBefore = run.camp.morale;
 
     expect(campSkillUsesLeft(run.overworld, cook)).toBe(1);
-    const first = useCampSkillAtNode(run, a, cook);
+    const first = useOverworldSkill(run, a, cook);
     expect(first.applied).toBe(true);
     expect(run.camp.morale).toBe(moraleBefore + 1);
     expect(campSkillUses(run.overworld, cook.id)).toBe(1);
 
     // The second use this node is refused — the buff is spent, not doubled.
-    const second = useCampSkillAtNode(run, a, cook);
+    const second = useOverworldSkill(run, a, cook);
     expect(second.applied).toBe(false);
     expect(second.reason).toMatch(/spent for tonight/i);
     expect(run.camp.morale).toBe(moraleBefore + 1);
@@ -286,12 +285,12 @@ describe("overworld-actions — the per-node camp-skill cap (D35)", () => {
     const a = actor(run);
     const cook = cookSkill();
 
-    expect(useCampSkillAtNode(run, a, cook).applied).toBe(true);
-    expect(useCampSkillAtNode(run, a, cook).applied).toBe(false); // spent
+    expect(useOverworldSkill(run, a, cook).applied).toBe(true);
+    expect(useOverworldSkill(run, a, cook).applied).toBe(false); // spent
 
     breakCamp(run); // the node-step tick clears the per-node allowance
     expect(campSkillUses(run.overworld, cook.id)).toBe(0);
-    expect(useCampSkillAtNode(run, a, cook).applied).toBe(true); // fresh node, fresh use
+    expect(useOverworldSkill(run, a, cook).applied).toBe(true); // fresh node, fresh use
   });
 
   it("an uncapped camp skill (no usesPerNode) is gated by its own cost, not the node-cap", () => {
@@ -300,8 +299,8 @@ describe("overworld-actions — the per-node camp-skill cap (D35)", () => {
     // A hypothetical resource-paid action: no per-node cap → fires repeatedly.
     const uncapped: SkillDef = { ...cookSkill(), id: "cook-uncapped", usesPerNode: undefined };
     expect(campSkillUsesLeft(run.overworld, uncapped)).toBe(Infinity);
-    expect(useCampSkillAtNode(run, a, uncapped).applied).toBe(true);
-    expect(useCampSkillAtNode(run, a, uncapped).applied).toBe(true);
+    expect(useOverworldSkill(run, a, uncapped).applied).toBe(true);
+    expect(useOverworldSkill(run, a, uncapped).applied).toBe(true);
   });
 });
 
@@ -386,7 +385,6 @@ describe("the standalone-verb cost registry — the D61 invariant is total (#112
   // Verbs whose cost gate lives elsewhere — each with the WHERE, never silently exempt.
   const GATED_ELSEWHERE: Record<string, string> = {
     useOverworldSkill: "its SkillDef's overworldCost — the JOBS[*].skills load-time walk",
-    useCampSkillAtNode: "alias of useOverworldSkill (same walk)",
     bribeEnemy: "spends Influence off-gate via spendInfluence — the noted D112-step-2 (R4) migration target onto the gate's influence knob",
   };
 

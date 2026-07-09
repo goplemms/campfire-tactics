@@ -279,14 +279,6 @@ export class RunLoop {
     return useOverworldSkill(this.run, unit, skill, opts);
   }
 
-  /**
-   * Use a **camp job skill** at the current node (D35) — the signature non-combat action
-   * (Cook Stew). A thin alias of {@link useOverworldSkill} for the no-target call sites.
-   */
-  useCampSkill(unit: Unit, skill: SkillDef): CampSkillResult {
-    return useOverworldSkill(this.run, unit, skill);
-  }
-
   // --- Rest node (no battle, D23) -------------------------------------------
 
   /**

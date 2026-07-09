@@ -1614,7 +1614,7 @@ export class OverworldScene extends Phaser.Scene {
   private useCampSkill(actor: Unit, skill: SkillDef): void {
     // Gated by the per-node cap (D35): the signature action levels its owner now
     // (D32/D53) but can't be spammed for unlimited gold/morale/XP.
-    const res = this.loop.useCampSkill(actor, skill);
+    const res = this.loop.useOverworldSkill(actor, skill);
     this.renderCamp();
     this.setHint(res.applied ? `${res.detail ?? "Done."}` : `Can't: ${res.reason ?? "refused."}`);
   }

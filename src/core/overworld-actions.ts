@@ -515,14 +515,6 @@ export function useOverworldSkill(run: RunState, unit: Unit, skill: SkillDef, op
   return { applied: false, reason: `${skill.name} is not an overworld action.` };
 }
 
-/**
- * Back-compat alias for the camp-skill call sites (D72) — overworld camp skills now route
- * through the unified {@link useOverworldSkill}. (Cook Stew et al. take no `opts`.)
- */
-export function useCampSkillAtNode(run: RunState, unit: Unit, skill: SkillDef): CampSkillResult {
-  return useOverworldSkill(run, unit, skill);
-}
-
 // --- Triage — the healer's fatigue-fuelled camp heal (the audit pass) --------
 
 /** Triage tuning — the healer's between-nodes heal, all data. */

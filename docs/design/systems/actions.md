@@ -14,6 +14,12 @@ player do, on which surface, at what cost, and which class (if any) gates it.*
 > verbs are added or retuned — that's fine. Re-sync it when a design pass makes the
 > drift inconvenient; don't treat a stale row as a bug. Code is the source of truth;
 > the file/symbol in the **Code** column is where to confirm the current detail.
+>
+> **Now derivable.** Since the `availableActions(run)` projection landed (#112, R4 — it
+> folds every fielded unit's overworld skills through the cost gate into `ActionView`
+> rows), the **overworld/camp** slice of this catalogue could be **generated** from that
+> projection instead of hand-maintained; the combat slice reads `availableSkills(unit,
+> "combat")` the same way. Worth doing on the next re-sync rather than re-typing rows.
 
 > **Scope:** verbs that **change game state by player intent**. Deliberately **out of
 > scope**: pure UI/flow controls that carry no game decision — *Undo*, *Advance Clock*,
@@ -46,11 +52,15 @@ Every verb sits in exactly one of these gate categories — the spine of the aud
 The outer loop's **flow commands** — not owned by anyone, but they *are* player
 actions (route choice + the advance gates). They frame every other surface.
 
+Per **D80** the node lifecycle is a night/day loop with two camps — the **React**
+camp (the night after arrival) and the **Prep** camp — surfaced as the beats
+*"React — Night N"* / *"Prep — Night N"* in `OverworldScene`.
+
 | Verb | Gate | Effect | Code |
 |---|---|---|---|
-| **Make Camp** | Universal | Select a reachable node to settle on (the prep surface opens) | `OverworldScene` → `runloop.choose` / `run.chooseNode` |
-| **End the Night** | Universal | The commit gate — branches by node kind: *Begin Mission* (combat) · *Approach the Event* · *Rest* (D46) | `OverworldScene` → `runloop` (`startEncounter`/`eventNode`/`restNode`) |
-| **Break Camp** | Universal | Depart back to the map (the soft, intent-aware gate; ticks the node-step) | `OverworldScene.breakCampToMap` → `run.breakCamp` |
+| **Camp** (select a node) | Universal | Choose a reachable node to settle on (the React camp opens) | `OverworldScene` → `runloop.choose` / `run.chooseNode` |
+| **Begin** | Universal | The commit gate — start the node's payload (combat mission / event / rest) | `OverworldScene` (`OverworldScene.ts` ~`:889`) → `runloop` (`startEncounter`/`eventNode`/`restNode`) |
+| **Set Out** | Universal | Depart to the map (the soft, intent-aware gate; ticks the node-step) | `OverworldScene` (~`:2114`) → `run.breakCamp` |
 
 ## Combat actions (Battle phase)
 
@@ -73,10 +83,12 @@ The 2nd active unlocks at **job level 2** (D39). Cost beyond the Act is `charge`
 
 | Class | Skills |
 |---|---|
-| **Soldier** | Power Strike (heavy hit) · Hamstring (hit + Immobilize) · Second Wind (self-heal) |
+| **Soldier** | Debilitating Strike (hit + Exposed) · Turtle Formation *(L2, Guard adjacent allies)* — passive **Brother-in-arms** (D66) |
 | **Heavy Knight** | Cleave (90° arc) · Shove *(L2)* — passive **Tarpit** |
 | **Hunter** | Reposition (kite) · Mark Prey *(L2, channel)* — passive **Deadeye** |
-| **Scout** | Dash (reposition) · Expose *(L2, hit + Exposed)* — passive **solo-flank** |
+| **Scout** | Set Trap *(L1, deploy — 8 dmg + Exposed)* · Recon *(L2, +3-tile dart)* — passive **Quiet Footsteps** (D68/D74) |
+| **Assassin** *(Scout prestige)* | Hidden Passage (Stealth) · Surgical Precision *(L2, Exposed + Immobilized)* — passive **Subtle Blade** |
+| **Thief** *(Scout prestige)* | Hidden Passage (Stealth) — verbs: **Deft Hands** (node-gold skim) · **Expert Lockpick** (disarm capability) |
 | **Medic** | Heal (herb + rider, cooldown) · Mend *(L2, charged)* — passive **Triage** |
 | **Snare-Trapper** *(enemy)* | Snare (ranged Immobilize) |
 
@@ -88,10 +100,11 @@ Pre-battle placement; verbs lower through the same interpreter as combat (D63).
 
 | Verb | Gate | Owner | Effect | Code |
 |---|---|---|---|---|
-| **Set Trap** | **Class** | Survivalist | Place a 12-dmg trap | `jobs.ts` `SURVIVALIST` |
-| **Set Snare** | **Class** | Scout | Place an 8-dmg trap that also **Immobilizes** (sets up Deadeye) | `jobs.ts` `SCOUT_JOB` |
+| **Set Trap** *(Survivalist)* | **Class** | Survivalist | Place a 12-dmg trap | `jobs-data/support.ts` `SURVIVALIST_JOB` |
+| **Set Trap** *(Scout, L1)* | **Class** | Scout | Place an 8-dmg trap that also applies **Exposed(2)** (sets up the Hunter's Deadeye) — *not* Immobilize | `jobs-data/scout-line.ts` `SCOUT_JOB` |
 | **Dig In** | Universal | — | Hunker for a lower capture chance | `combat-actions.ts` |
 | **Deploy-move** | Universal | — | Reposition during deployment | `combat-actions.ts` |
+| **Escape** | Universal *(D84 posture: #153)* | — | Flee the field — remove the unit from the fight to the map edge | `combat-actions.ts` (`escape` variant) → `turn.ts` |
 | **Capture** *(enemy)* | — | — | The closing net binds an exposed unit | `combat-actions.ts` |
 
 ---
@@ -102,9 +115,11 @@ The between-battle surface (`OverworldScene` Survey screen + the camp panel).
 
 | Verb | Gate | Owner | Cost | Effect | Code |
 |---|---|---|---|---|---|
-| **Cook Stew** | **Class** | Cook | 1×/node | +1 morale, bank +8 HP/unit next battle | `jobs.ts` `COOK` → `camp.ts` |
+| **Cook Stew** | **Class** | Cook | the night's Food cost, 1×/node | Bank **+14 RP** (`provisionMeal`) **and** satisfy the Food upkeep line (no double-charge) — recovery, no morale (moved to Feast) | `jobs-data/support.ts` `COOK_STEW` → `overworld-actions.ts` |
+| **Feast** | **Class** | Cook | gold (20), 1×/node | A **larger morale lift** to rally before a hard fight (the Cook's morale verb, D71) | `jobs-data/support.ts` `FEAST` → `camp.ts` |
+| **Forage** | **Class** | Survivalist | fatigue (across-clearing) | Comb the surroundings for supplies — a guaranteed floor + weighted bonus rolls (more at higher job level), capped by storage | `jobs-data/support.ts` `FORAGE` |
 | **Rest** (in-place / node) | Universal | — | rations (gold) + RP | Small party heal (node = full recovery + fatigue wipe + debt clear) | `runloop.ts` `inPlaceRest`/`restNode` → `upkeep.ts` `restHeal` |
-| **Triage** | **Capability** (Triage passive) | Medic | the healer's **fatigue** (worn out) | Heal the most-wounded for *more* than Rest, scaling with the wound | `overworld-actions.ts` `triage` / `isHealer` |
+| **Triage** | **Capability** (Triage passive) / **Universal** fallback | Medic *(or any party, RP-funded)* | the healer's **fatigue** (Medic) *or* RP (fallback) | Heal the most-wounded for *more* than Rest, scaling with the wound | `overworld-actions.ts` `triage` / `isHealer` |
 | **Skip an Upkeep line** | Universal | — | — | Cross a Food/Repairs line off the Ledger to free its gold — a deliberate gamble (hunger / worn-gear debt) | `OverworldScene.toggleSkip` → `camp.skippedUpkeep` |
 
 > **Rest ≠ Triage** (a deliberate split): Rest is the *universal* RP/rations floor;
@@ -123,7 +138,10 @@ retired.
 
 | Verb | Gate | Owner | Cost | Effect | Code |
 |---|---|---|---|---|---|
-| **Survey** | **Class** (on the Scout job) | Scout | cooldown 2 + fatigue 1 | Raise a reachable node's intel preview by a tier | `jobs.ts` `SURVEY` → `useOverworldSkill` |
+| **Survey** | **Class** (on the Scout job, L2) | Scout | `cooldown 1 + fatigue 4` (`unlockLevel: 2`) | Raise a reachable node's intel preview by a tier | `jobs-data/scout-line.ts` `SURVEY` → `useOverworldSkill` |
+| **Find Trade** | **Class** (Merchant) | Merchant | 1×/node | Open an **impromptu `poor` market** on a `none` node (`openMarket`) | `jobs-data/support.ts` `FIND_TRADE` |
+| **Savvy Barter** | **Class** (Merchant) | Merchant | paced | Prime the **next deal**: a buy at 0.5× *or* a sale at 1.25× (`primeDeal`) | `jobs-data/support.ts` `SAVVY_BARTER` |
+| **Deft Hands** | **Class** (Thief) | Thief | — (passive faucet) | Skim **~25 gold at ≈50%** off a busy node the party leaves (never a rest) | `jobs-data/scout-line.ts` (Thief `JobFaucet`) |
 
 > *Naming note:* the **Survey** ability (id `survey`) is distinct from the **Scout
 > class** (jobId `scout`) — the Scout performs the Survey. (Was a name collision.)

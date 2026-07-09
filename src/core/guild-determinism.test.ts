@@ -3,7 +3,7 @@ import { createUnit, type Unit } from "./units";
 import { createGuild, dispatch, getQuest, type Guild } from "./guild";
 import { createCaravan, assignMember } from "./caravan";
 import { RunLoop } from "./runloop";
-import type { EncounterRecord } from "./run";
+import type { NightRecord } from "./run";
 
 function fighter(name: string): Unit {
   // Deterministic, fixed stat block so two guilds assemble identical caravans.
@@ -34,7 +34,7 @@ function makeGuild(seed: string): Guild {
 }
 
 /** Compare a run-history for replay equality (the route + per-node outcomes). */
-function digest(history: EncounterRecord[]): unknown {
+function digest(history: NightRecord[]): unknown {
   return history.map((h) => ({
     nodeId: h.nodeId,
     layer: h.layer,

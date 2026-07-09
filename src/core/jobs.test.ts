@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { JOBS, getJob, unitSkills, SKILLS, getSkill, type JobId } from "./jobs";
-import { SOLDIER } from "./jobs-data/combat";
+import { SOLDIER_JOB } from "./jobs-data/combat";
 import { UNIVERSAL_SKILLS, DEFEND } from "./jobs-data/support";
 import { createUnit, type Side, type Unit } from "./units";
 import type { SkillDef } from "./skills";
@@ -22,22 +22,22 @@ function soldier(id: string): Unit {
 
 describe("jobs (data-driven loading)", () => {
   it("loads the Soldier from the registry by id", () => {
-    expect(getJob("soldier")).toBe(SOLDIER);
+    expect(getJob("soldier")).toBe(SOLDIER_JOB);
     expect(JOBS["soldier"].name).toBe("Soldier");
     expect(getJob(undefined)).toBeUndefined();
     expect(getJob("nope")).toBeUndefined();
   });
 
   it("defines the Soldier's formation kit purely as data hooking the Battle phase", () => {
-    const ids = SOLDIER.skills.map((s) => s.id);
+    const ids = SOLDIER_JOB.skills.map((s) => s.id);
     expect(ids).toContain("debilitating-strike");
     expect(ids).toContain("turtle-formation");
-    for (const skill of SOLDIER.skills) {
+    for (const skill of SOLDIER_JOB.skills) {
       expect(skill.phase).toBe("battle");
       expect(["damage", "guard-allies"]).toContain(skill.effect.kind);
     }
     // Brother-in-arms is its passive identity anchor (D66).
-    expect(SOLDIER.passives?.brotherInArms).toBe(1);
+    expect(SOLDIER_JOB.passives?.brotherInArms).toBe(1);
   });
 
   it("reads a unit's skills back via its jobId, filtered by phase", () => {

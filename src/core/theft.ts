@@ -16,7 +16,7 @@
  *   on the overworld ({@link thiefEventSkim}).
  *
  * Both are **blunted by the Banker's theft protection**
- * ({@link "./overworld-actions".OverworldEconomy.protection}, a [0,1) fraction):
+ * ({@link "./overworld-actions".OverworldState.protection}, a [0,1) fraction):
  * the skim is reduced by that fraction.
  *
  * **Determinism (D22):** every skim is rolled from a seed label (`run.seed` + the
@@ -79,7 +79,7 @@ export function rollSkim(
  * Deduct a rolled skim from the run **purse** and return the live {@link
  * TheftAttempt}. `label` keys the deterministic roll (the battle's thief id, or a
  * node id); `protection` defaults to the Banker's engaged level
- * ({@link "./overworld-actions".OverworldEconomy.protection}). The gold is now
+ * ({@link "./overworld-actions".OverworldState.protection}). The gold is now
  * "held by the thief" — recover it ({@link recoverStolen}) or lose it
  * ({@link thiefEscapes}).
  */

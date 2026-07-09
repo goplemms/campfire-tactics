@@ -11,7 +11,7 @@
  */
 
 import { healUnit, type Unit } from "./units";
-import type { EventBus } from "./events";
+import type { EventBus } from "./event-bus";
 import type { SkillDef } from "./skills";
 import { bandFor } from "./num";
 import { openingPurseLog, type PurseEntry } from "./purse-journal";

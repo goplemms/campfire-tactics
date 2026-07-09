@@ -66,7 +66,7 @@ export const FORAGE: SkillDef = {
  * placeable trap (the first real field entity, D4): placed before battle, it
  * springs on an enemy in Combat. Forages supplies at a clearing (D73).
  */
-export const SURVIVALIST: JobDef = {
+export const SURVIVALIST_JOB: JobDef = {
   id: "survivalist",
   name: "Survivalist",
   description: "Field-craft specialist: lays traps before the fight, and forages supplies at a clearing.",
@@ -143,7 +143,7 @@ export const FEAST: SkillDef = {
  * - **Feast** (active) — a big morale lift before a hard fight.
  * Recovery is now **active** (cook to bank RP), so the passive `restPoints` is a small floor (D71).
  */
-export const COOK: JobDef = {
+export const COOK_JOB: JobDef = {
   id: "cook",
   name: "Cook",
   description: "Camp-support: keeps the party fed cheaply, cooks the day's food into recovery, and rallies morale.",
@@ -203,7 +203,7 @@ export const SAVVY_BARTER: SkillDef = {
  * Raw Buy/Sell stay **universal** (market-gated, not job-gated); the Merchant still levels from
  * brokering a sale ({@link "./economy-actions".merchantSell}). Still **noncombat** (camp verbs only).
  */
-export const MERCHANT: JobDef = {
+export const MERCHANT_JOB: JobDef = {
   id: "merchant",
   name: "Merchant",
   description: "Works the economy: appraises markets, drums up trade anywhere, and drives a hard bargain.",
@@ -222,7 +222,7 @@ export const MERCHANT: JobDef = {
  * gate that replaced the interim Intelligence-≥-3 proxy ("a Noble is present" is at
  * last a job, not a stat threshold). Hence **no combat/meta skill** here.
  */
-export const NOBLE: JobDef = {
+export const NOBLE_JOB: JobDef = {
   id: "noble",
   name: "Noble",
   description: "Works the standing economy: courts patrons for Influence and sways enemies with bribes.",
@@ -241,7 +241,7 @@ export const NOBLE: JobDef = {
  * {@link "./economy-actions"}; like the Merchant and Noble it carries no battle skill —
  * fielding a Banker is what {@link "./economy-actions".hasBanker} keys off to unlock them.
  */
-export const BANKER: JobDef = {
+export const BANKER_JOB: JobDef = {
   id: "banker",
   name: "Banker",
   description: "Works the purse economy: interest on the carried purse, loans against future loot, and theft protection.",

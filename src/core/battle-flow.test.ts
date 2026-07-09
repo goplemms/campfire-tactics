@@ -3,7 +3,7 @@ import { advanceOutcome, adjacentRevealedTrap, noActionsAvailable } from "./batt
 import { createUnit, type Unit, type Side } from "./units";
 import { TileGrid } from "./grid";
 import { EntityRegistry, makeConcealedTrap, type ConcealedTrap } from "./entities";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 
 function unit(id: string, side: Side, over: Partial<Parameters<typeof createUnit>[0]> = {}): Unit {
   return createUnit({

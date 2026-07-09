@@ -793,9 +793,9 @@ export class RunLoop {
       if (decided()) return battle.outcome().winner;
       const actor = battle.nextActor();
       if (!actor) break;
-      // The whole plan→execute→endTurn step lives in Battle.runEnemyTurn — drive it
+      // The whole plan→execute→endTurn step lives in Battle.runPolicyTurn — drive it
       // with the acting side's policy (the seam the sim swaps for A/B, D56).
-      battle.runEnemyTurn(actor, actor.side === "player" ? player : enemy);
+      battle.runPolicyTurn(actor, actor.side === "player" ? player : enemy);
     }
     return battle.outcome().winner;
   }

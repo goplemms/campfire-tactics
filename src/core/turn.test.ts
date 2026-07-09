@@ -118,10 +118,10 @@ describe("Battle orchestrator", () => {
       const actor = battle.nextActor();
       if (!actor) break;
       if (actor.side === "enemy") {
-        battle.runEnemyTurn(actor);
+        battle.runPolicyTurn(actor);
       } else {
         // Player AI for the test: same logic as the enemy, mirrored.
-        battle.runEnemyTurn(actor);
+        battle.runPolicyTurn(actor);
       }
     }
 
@@ -152,7 +152,7 @@ describe("Battle orchestrator", () => {
     while (!battle.outcome().over && guard++ < 500) {
       const actor = battle.nextActor();
       if (!actor) break;
-      battle.runEnemyTurn(actor);
+      battle.runPolicyTurn(actor);
     }
     expect(battle.outcome().over).toBe(true);
     expect(guard).toBeLessThan(500);
@@ -182,7 +182,7 @@ describe("Battle orchestrator", () => {
     while (!battle.outcome().over && guard++ < 200) {
       const actor = battle.nextActor();
       if (!actor) break;
-      battle.runEnemyTurn(actor, actor.side === "enemy" ? passive : PILOT_POLICY);
+      battle.runPolicyTurn(actor, actor.side === "enemy" ? passive : PILOT_POLICY);
     }
     expect(battle.outcome().winner).toBe("player");
     expect(foe.alive).toBe(false); // the pilot actually closed and killed the passive foe

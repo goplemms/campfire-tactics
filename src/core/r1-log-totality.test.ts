@@ -86,7 +86,7 @@ function playGolden(): { battle: Battle; inv: Inventory } {
     if (!actor) break;
     const n = (turnsTaken[actor.id] = (turnsTaken[actor.id] ?? 0) + 1);
     if (actor.side === "enemy") {
-      battle.runEnemyTurn(actor);
+      battle.runPolicyTurn(actor);
       continue;
     }
     switch (actor.id) {
@@ -240,7 +240,7 @@ describe("R1 #111 — the log is a serializable wire format (skill-by-id)", () =
       const actor = battle.nextActor();
       if (!actor) break;
       const n = (turnsTaken[actor.id] = (turnsTaken[actor.id] ?? 0) + 1);
-      if (actor.side === "enemy") battle.runEnemyTurn(actor);
+      if (actor.side === "enemy") battle.runPolicyTurn(actor);
       else if (actor.id === "medic" && n === 1) {
         battle.useHeal(actor, HEAL, unitIn(battle, "ally"), "salve", inv);
       } else if (actor.id === "ally" && n === 1) {

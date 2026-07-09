@@ -12,7 +12,7 @@
 
 import type { Unit, Side } from "./units";
 import type { GridCoord } from "./iso";
-import type { EventBus } from "./events";
+import type { EventBus } from "./event-bus";
 import { applyDamage } from "./combat";
 import { applyStatus, type StatusInstance } from "./status";
 

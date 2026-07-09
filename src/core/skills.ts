@@ -11,7 +11,7 @@
  */
 
 import { healUnit, type Unit } from "./units";
-import type { EventBus } from "./events";
+import type { EventBus } from "./event-bus";
 import type { StatusInstance } from "./status";
 import { resolveAttack, manhattan, PASSIVE } from "./combat";
 import { applyStatus, markPrey, cleanseOne, hastened } from "./status";

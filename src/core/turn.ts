@@ -5,7 +5,7 @@
  * {@link EventBus} announces moments (turn start/end, tile enter/leave, damage,
  * defeat), the {@link EntityRegistry} lets entities react, {@link combat}
  * resolves attacks, and {@link planEnemyTurn} runs the enemy. The render layer
- * calls `nextActor`, then `moveUnit` / `attack` / `endTurn` (or `runEnemyTurn`),
+ * calls `nextActor`, then `moveUnit` / `attack` / `endTurn` (or `runPolicyTurn`),
  * then checks `outcome` — it owns no rules.
  *
  * Pure logic: no Phaser, no DOM.
@@ -15,7 +15,7 @@ import { activeUnits, opposite, type Unit, type Side } from "./units";
 import type { GridCoord } from "./iso";
 import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 import { CTClock, type TurnSpend, onSkillCooldown, armSkillCooldown } from "./clock";
 import { EntityRegistry } from "./entities";
 import {
@@ -739,10 +739,11 @@ export class Battle {
   /**
    * Run a full AI turn for `unit`: plan via the given {@link BattlePolicy} (the
    * **pilot** policy by default, D56), execute it through the bus, and end the
-   * turn. Returns the plan for the render layer to animate. "Enemy" is historical —
-   * the same path drives either side headlessly (the sim passes a policy per side).
+   * turn. Returns the plan for the render layer to animate. Renamed from the
+   * historical `runEnemyTurn` (#128): the same path drives **either** side headlessly
+   * (the sim passes a policy per side), so it's a policy turn, not an enemy one.
    */
-  runEnemyTurn(unit: Unit, policy: BattlePolicy = PILOT_POLICY): AIPlan {
+  runPolicyTurn(unit: Unit, policy: BattlePolicy = PILOT_POLICY): AIPlan {
     // Turn-open standing-order transition (D84): the wary guard, provoked by a foe
     // pressing its POST, commits to its next order — sticky (no bait-and-retreat
     // reset). Shapes only future plans (logged as concrete actions), so replay

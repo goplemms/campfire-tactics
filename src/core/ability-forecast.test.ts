@@ -17,8 +17,8 @@ import { exposed, applyStatus, isDebuffed, markPrey } from "./status";
 import { createInventory } from "./inventory";
 import { placePlayerTrap } from "./traps";
 import { EntityRegistry } from "./entities";
-import { EventBus } from "./events";
-import { HEAVY_KNIGHT, HUNTER, MEDIC } from "./jobs-data/combat";
+import { EventBus } from "./event-bus";
+import { HEAVY_KNIGHT_JOB, HUNTER_JOB, MEDIC_JOB } from "./jobs-data/combat";
 
 function at(id: string, side: Side, col: number, row: number, o: Partial<Unit> = {}): Unit {
   return {
@@ -42,10 +42,10 @@ function clone(u: Unit): Unit {
   return JSON.parse(JSON.stringify(u)) as Unit;
 }
 
-const cleaveSkill = HEAVY_KNIGHT.skills.find((s) => s.id === "cleave")!;
-const shoveSkill = HEAVY_KNIGHT.skills.find((s) => s.id === "shove")!;
-const markSkill = HUNTER.skills.find((s) => s.id === "mark-prey")!;
-const healSkill = MEDIC.skills.find((s) => s.id === "heal")!;
+const cleaveSkill = HEAVY_KNIGHT_JOB.skills.find((s) => s.id === "cleave")!;
+const shoveSkill = HEAVY_KNIGHT_JOB.skills.find((s) => s.id === "shove")!;
+const markSkill = HUNTER_JOB.skills.find((s) => s.id === "mark-prey")!;
+const healSkill = MEDIC_JOB.skills.find((s) => s.id === "heal")!;
 
 const powerStrike: SkillDef = {
   id: "power-strike", name: "Power Strike", description: "", phase: "battle",

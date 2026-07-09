@@ -4,7 +4,7 @@
  * Split out of `turn.ts` (R3, #121): the {@link replay} driver that rebuilds a battle
  * by **re-running** its recorded {@link "./combat-actions".CombatAction} log, and the
  * {@link planActions} lowering ({@link "./ai".AIPlan} → actions) the AI turn shares with
- * it. `Battle` keeps `runEnemyTurn` (which calls {@link planActions}). Pure code motion:
+ * it. `Battle` keeps `runPolicyTurn` (which calls {@link planActions}). Pure code motion:
  * behaviour unchanged.
  *
  * Pure logic: no Phaser, no DOM.
@@ -20,7 +20,7 @@ import { Battle, type BattleOptions } from "./turn";
 /**
  * Lower an {@link AIPlan} (intent-as-data, D42) to the {@link CombatAction}s that
  * realize it — the *plan → actions* half of the AI/player convergence. Mirrors the
- * old `runEnemyTurn` ordering exactly: an optional move, then **either** a
+ * old `runPolicyTurn` ordering exactly: an optional move, then **either** a
  * turn-ending ability (the snare) **or** an optional attack followed by an explicit
  * `endTurn`. A skill commits the turn itself, so no `endTurn` follows it.
  */

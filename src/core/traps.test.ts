@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit, type Side } from "./units";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 import { EntityRegistry, makeConcealedTrap, makeTrap, isConcealedTrap } from "./entities";
 import { recoverMaterials } from "./resolution";
 import { createInventory, countOf, addItem } from "./inventory";

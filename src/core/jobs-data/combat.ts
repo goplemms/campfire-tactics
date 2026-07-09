@@ -27,7 +27,7 @@ import { exposed, swift, immobilized } from "../status";
  * - **Debilitating Strike** (active) — a heavier blow that leaves the foe Exposed.
  * - **Turtle Formation** (active, L2) — brace: Guard every adjacent ally for a turn.
  */
-export const SOLDIER: JobDef = {
+export const SOLDIER_JOB: JobDef = {
   id: "soldier",
   name: "Soldier",
   description: "Formation anchor: stronger in a line — hits harder beside allies, braces them, and breaks the foe's guard.",
@@ -78,7 +78,7 @@ export const KIT = {
 } as const;
 
 /** The **Heavy Knight** — space-control bruiser; the tarpit anchor (C via tempo). */
-export const HEAVY_KNIGHT: JobDef = {
+export const HEAVY_KNIGHT_JOB: JobDef = {
   id: "heavy-knight",
   name: "Heavy Knight",
   description: "Space-control bruiser: warps the geometry, taxes proximity.",
@@ -112,7 +112,7 @@ export const HEAVY_KNIGHT: JobDef = {
 };
 
 /** The **Hunter** — ranged prey-hunter; punishes the afflicted (Deadeye). */
-export const HUNTER: JobDef = {
+export const HUNTER_JOB: JobDef = {
   id: "hunter",
   name: "Hunter",
   description: "Ranged prey-hunter: keep spacing, lock prey, ramp it down.",
@@ -146,7 +146,7 @@ export const HUNTER: JobDef = {
 };
 
 /** The **Medic** — sustain backbone & clock-manager; its game is timing. */
-export const MEDIC: JobDef = {
+export const MEDIC_JOB: JobDef = {
   id: "medic",
   name: "Medic",
   description: "Sustain backbone: heal harder the more wounded, save with a charge.",
@@ -187,7 +187,7 @@ export const MEDIC: JobDef = {
  * Immobilizes a foe at range — giving the Medic's antidote-cleanse and the
  * Hunter's Deadeye something to act on in-slice.
  */
-export const SNARE_TRAPPER: JobDef = {
+export const SNARE_TRAPPER_JOB: JobDef = {
   id: "snare-trapper",
   name: "Snare-Trapper",
   description: "Bandit trapper: roots the unwary with thrown snares.",

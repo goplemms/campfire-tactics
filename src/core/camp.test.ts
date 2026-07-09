@@ -6,7 +6,7 @@ import {
   moraleTier,
 } from "./camp";
 import { LEVELING, grantAbilityUseXp } from "./leveling";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 import { getJob } from "./jobs";
 import { createUnit, type Side, type Unit } from "./units";
 import type { SkillDef } from "./skills";

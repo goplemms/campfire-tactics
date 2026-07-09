@@ -55,7 +55,7 @@ describe("the flee posture — bolt for the map edge (D84)", () => {
     battle.bus.on("unitEscaped", ({ unit }) => events.push(unit.id));
     battle.bus.on("unitDefeated", ({ unit }) => events.push(`defeated:${unit.id}`));
 
-    battle.runEnemyTurn(runner);
+    battle.runPolicyTurn(runner);
 
     expect(runner.escaped).toBe(true);
     expect(runner.alive).toBe(true); // gone, not dead
@@ -76,7 +76,7 @@ describe("the flee posture — bolt for the map edge (D84)", () => {
     battle.seed();
     const actor = battle.nextActor()!;
     expect(actor.id).toBe("r"); // the fast runner moves first
-    battle.runEnemyTurn(actor);
+    battle.runPolicyTurn(actor);
     expect(battle.units.find((u) => u.id === "r")!.escaped).toBe(true);
 
     const rebuilt = replay(grid, mk(), battle.log);
@@ -118,12 +118,12 @@ describe("transitions — events rewrite the order (D84)", () => {
     const foe = at("f", "player", 6, 2); // within the trigger range of the post
     const battle = new Battle(grid, [guard, foe]);
 
-    battle.runEnemyTurn(guard);
+    battle.runPolicyTurn(guard);
     expect(guard.standingOrder).toBe("charge");
 
     // The foe backs way off — no bait-and-retreat reset.
     foe.pos = { col: 0, row: 4 };
-    battle.runEnemyTurn(guard);
+    battle.runPolicyTurn(guard);
     expect(guard.standingOrder).toBe("charge");
   });
 
@@ -132,7 +132,7 @@ describe("transitions — events rewrite the order (D84)", () => {
     const guard = at("g", "enemy", 8, 2, { standingOrder: "hold-wary" });
     const foe = at("f", "player", 0, 2); // far beyond the trigger
     const battle = new Battle(grid, [guard, foe]);
-    battle.runEnemyTurn(guard);
+    battle.runPolicyTurn(guard);
     expect(guard.standingOrder).toBe("hold-wary");
     expect(guard.pos).toEqual({ col: 8, row: 2 }); // held the post
   });

@@ -7,7 +7,7 @@ import {
   isAdjacent,
   isFlanked,
 } from "./combat";
-import { EventBus } from "./events";
+import { EventBus } from "./event-bus";
 import { createUnit, type Side, type Unit } from "./units";
 
 function unit(id: string, side: Side, overrides: Partial<Unit> = {}): Unit {

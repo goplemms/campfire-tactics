@@ -36,7 +36,7 @@ function playOut(grid: TileGrid, units: Unit[], maxTurns = 500): Battle {
   while (!battle.outcome().over && guard++ < maxTurns) {
     const actor = battle.nextActor();
     if (!actor) break;
-    battle.runEnemyTurn(actor);
+    battle.runPolicyTurn(actor);
   }
   return battle;
 }
@@ -107,7 +107,7 @@ describe("Battle.apply — the single command interpreter", () => {
     enemy.ct = 100;
 
     const before = battle.log.length;
-    battle.runEnemyTurn(enemy);
+    battle.runPolicyTurn(enemy);
     const logged = battle.log.slice(before);
     // The enemy used its snare ability — the skill commits the turn itself, so the
     // turn ends with no trailing endTurn action (proving commitSkill doesn't re-log).

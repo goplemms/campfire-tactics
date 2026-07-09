@@ -15,7 +15,7 @@
 import { isActive, type Unit } from "./units";
 import type { GridCoord } from "./iso";
 import type { TileGrid } from "./grid";
-import type { EventBus } from "./events";
+import type { EventBus } from "./event-bus";
 import { resolveAttack, isAdjacent } from "./combat";
 import { applyStatus, guarded, GUARDED } from "./status";
 import type { SkillDef, SkillOutcome } from "./skills";

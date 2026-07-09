@@ -20,7 +20,7 @@ import { getJob, unitSkills, unitHasCapability, type JobLookup } from "./jobs";
 import { UNIVERSAL_SKILLS } from "./jobs-data/support";
 import type { SkillDef, Phase } from "./skills";
 import { skillContexts, type UsableContext } from "./skills";
-import type { EventBus } from "./events";
+import type { EventBus } from "./event-bus";
 
 /** Leveling tuning — all data, a numbers pass later (D32/D39). */
 export const LEVELING = {

@@ -53,6 +53,16 @@
  *     `MapNode.blockedWhen` access data through. The `securedWagon × medic-freed`
  *     rule is now authored data in `hollow-mill.ts`; the `flagSet` Predicate leaf +
  *     `blockedWhen` field are type-only (not runtime surface) (→ 616).
+ *   - increment 8 (#128 part B, renames): net 0 — the ten bare job constants
+ *     unify on the `*_JOB` convention: `SOLDIER`→`SOLDIER_JOB`,
+ *     `HEAVY_KNIGHT`→`HEAVY_KNIGHT_JOB`, `HUNTER`→`HUNTER_JOB`,
+ *     `MEDIC`→`MEDIC_JOB`, `SNARE_TRAPPER`→`SNARE_TRAPPER_JOB`,
+ *     `COOK`→`COOK_JOB`, `MERCHANT`→`MERCHANT_JOB`, `NOBLE`→`NOBLE_JOB`,
+ *     `BANKER`→`BANKER_JOB`, `SURVIVALIST`→`SURVIVALIST_JOB` (−10 +10). The other
+ *     renames are not runtime-surface: `events.ts`→`event-bus.ts` (module file;
+ *     `EventBus` etc. keep their names), `EncounterRecord`→`NightRecord` and
+ *     `OverworldEconomy`→`OverworldState` (types), `Battle.runEnemyTurn`→
+ *     `runPolicyTurn` (a method). Still 616.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -64,9 +74,9 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "AI",
   "ASSASSIN_JOB",
   "BANDIT_TEMPLATES",
-  "BANKER",
   "BANKER_BORROW_COST",
   "BANKER_INTEREST_COST",
+  "BANKER_JOB",
   "BANKER_PROTECT_COST",
   "BLOCKADE",
   "BROTHER",
@@ -79,7 +89,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "CLERIC_COST",
   "CLOCK_GUARD_MAX",
   "CLOCK_URGENT_NIGHTS",
-  "COOK",
+  "COOK_JOB",
   "COOK_KIT",
   "COOK_STEW",
   "CORE_INVARIANTS",
@@ -126,10 +136,10 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "GUARDED",
   "GUILD",
   "HASTENED",
-  "HEAVY_KNIGHT",
+  "HEAVY_KNIGHT_JOB",
   "HOLLOW_MILL_EVENTS",
   "HOLLOW_MILL_PARTY",
-  "HUNTER",
+  "HUNTER_JOB",
   "IMMOBILIZED",
   "INFLUENCE_BANDS",
   "INFLUENCE_ORDER",
@@ -144,10 +154,10 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MARKET_TIERS",
   "MATERIALS",
   "MAX_TIER",
-  "MEDIC",
+  "MEDIC_JOB",
   "MED_HEAL",
-  "MERCHANT",
   "MERCHANT_BUY_COST",
+  "MERCHANT_JOB",
   "MERCHANT_KIT",
   "MERCHANT_SELL_COST",
   "MIRA_MERCHANT",
@@ -155,7 +165,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MORTALITY",
   "MOVE_COST",
   "NEUTRAL_DANGER",
-  "NOBLE",
+  "NOBLE_JOB",
   "NODE_EVENTS",
   "ORTHO_OFFSETS",
   "PASSIVE",
@@ -185,8 +195,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "SELA_MEDIC",
   "SKILLS",
   "SLOWED",
-  "SNARE_TRAPPER",
-  "SOLDIER",
+  "SNARE_TRAPPER_JOB",
+  "SOLDIER_JOB",
   "SPOT",
   "STANDING_ORDERS",
   "STATUS_TUNING",
@@ -199,7 +209,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "STUB_FINALE",
   "SUBTLE_BLADE_BONUS",
   "SURVEY",
-  "SURVIVALIST",
+  "SURVIVALIST_JOB",
   "SWIFT",
   "THEFT",
   "THE_HOLLOW_MILL",

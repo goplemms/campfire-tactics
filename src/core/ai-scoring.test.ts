@@ -129,7 +129,7 @@ describe("bandit archetypes (D42/D44)", () => {
     const plan = planEnemyTurn(trapper, battle.units, grid);
     expect(plan.ability?.id).toBe("snare");
     expect(plan.target).toBe(player);
-    battle.runEnemyTurn(trapper);
+    battle.runPolicyTurn(trapper);
     expect(hasStatus(player, "immobilized")).toBe(true);
   });
 });

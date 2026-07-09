@@ -210,7 +210,7 @@ export const RECOVERY = {
   /**
    * Soft cap on **consecutive in-place-rest nights** at one node (D80) — `null` = **uncapped**
    * (the party may linger and heal indefinitely, bleeding upkeep). Set a number to refuse past it
-   * (a hook for pacing / streak-triggered events). Counted on `OverworldEconomy.restStreak`.
+   * (a hook for pacing / streak-triggered events). Counted on `OverworldState.restStreak`.
    */
   maxInPlaceStreak: null as number | null,
 } as const;

@@ -1,7 +1,7 @@
 /**
  * The overworld economy's per-run **state** (D35) — the sub-state + its accessors.
  *
- * Split out of `overworld-actions.ts` (R3, #129): the {@link OverworldEconomy}
+ * Split out of `overworld-actions.ts` (R3, #129): the {@link OverworldState}
  * record (cooldowns, scouted tiers, per-node camp-use counts + flags, the Banker's
  * purse sub-state, Influence, the rest streak), its clone, and the flags / cooldowns
  * / interest API. Pure state plumbing — no cost gate, no interpreter. Pure code
@@ -22,7 +22,7 @@ import { decayCounters } from "./num";
  * remaining; absent/0 ⇒ ready) and the per-node intel tier bumps Scout buys
  * (read back by {@link "./intel".previewNode}'s `extraTier`).
  */
-export interface OverworldEconomy {
+export interface OverworldState {
   /** Node-steps remaining on each ability's cooldown, keyed by ability id. */
   cooldowns: Record<string, number>;
   /** Extra intel tiers bought per node id (Scout), fed to `previewNode`. */
@@ -79,12 +79,12 @@ export interface OverworldEconomy {
 }
 
 /** A fresh, fully-ready economy (every ability off cooldown, nothing scouted, no flags set). */
-export function createOverworldEconomy(): OverworldEconomy {
+export function createOverworldEconomy(): OverworldState {
   return { cooldowns: {}, scouted: {}, campUses: {}, nodeFlags: {}, primedFlags: {}, interestPerStep: 0, debt: 0, protection: 0, influence: 0, restStreak: 0 };
 }
 
 /** A deep copy of the economy (for snapshots / round-trips). */
-export function cloneOverworldEconomy(eco: OverworldEconomy): OverworldEconomy {
+export function cloneOverworldEconomy(eco: OverworldState): OverworldState {
   return {
     cooldowns: { ...eco.cooldowns },
     scouted: { ...eco.scouted },
@@ -102,17 +102,17 @@ export function cloneOverworldEconomy(eco: OverworldEconomy): OverworldEconomy {
 // --- General ability-flag bag (D72) -----------------------------------------
 
 /** Set a **per-node** ability flag (cleared each node-step) — the Find-Trade "market opened here" shape. */
-export function setNodeFlag(eco: OverworldEconomy, flag: string): void {
+export function setNodeFlag(eco: OverworldState, flag: string): void {
   eco.nodeFlags[flag] = true;
 }
 
 /** True if a **per-node** ability flag is currently set (a non-consuming read). */
-export function hasNodeFlag(eco: OverworldEconomy, flag: string): boolean {
+export function hasNodeFlag(eco: OverworldState, flag: string): boolean {
   return eco.nodeFlags[flag] === true;
 }
 
 /** **Prime** a one-shot ability flag (persists across node-steps until consumed) — the Savvy-Barter shape. */
-export function primeFlag(eco: OverworldEconomy, flag: string): void {
+export function primeFlag(eco: OverworldState, flag: string): void {
   eco.primedFlags[flag] = true;
 }
 
@@ -121,7 +121,7 @@ export function primeFlag(eco: OverworldEconomy, flag: string): void {
  * prime, clearing it — the consume-on-next-use helper a follow-up action reads (the
  * Savvy-Barter "next deal" reading its primed discount). Returns false if never primed.
  */
-export function consumeFlag(eco: OverworldEconomy, flag: string): boolean {
+export function consumeFlag(eco: OverworldState, flag: string): boolean {
   if (eco.primedFlags[flag]) {
     delete eco.primedFlags[flag];
     return true;
@@ -130,17 +130,17 @@ export function consumeFlag(eco: OverworldEconomy, flag: string): boolean {
 }
 
 /** Peek at a one-shot primed flag **without consuming** it (for render surfacing). */
-export function isPrimed(eco: OverworldEconomy, flag: string): boolean {
+export function isPrimed(eco: OverworldState, flag: string): boolean {
   return eco.primedFlags[flag] === true;
 }
 
 /** Node-steps remaining on an ability's cooldown (0 = ready). */
-export function cooldownRemaining(eco: OverworldEconomy, abilityId: string): number {
+export function cooldownRemaining(eco: OverworldState, abilityId: string): number {
   return eco.cooldowns[abilityId] ?? 0;
 }
 
 /** Times a camp job skill has already been used at the current node (0 = unused). */
-export function campSkillUses(eco: OverworldEconomy, skillId: string): number {
+export function campSkillUses(eco: OverworldState, skillId: string): number {
   return eco.campUses[skillId] ?? 0;
 }
 
@@ -148,13 +148,13 @@ export function campSkillUses(eco: OverworldEconomy, skillId: string): number {
  * Uses **left** for a camp job skill at the current node. `usesPerNode` undefined ⇒
  * uncapped (the skill is gated by its own per-cast cost), reported as `Infinity`.
  */
-export function campSkillUsesLeft(eco: OverworldEconomy, skill: SkillDef): number {
+export function campSkillUsesLeft(eco: OverworldState, skill: SkillDef): number {
   if (skill.usesPerNode === undefined) return Infinity;
   return Math.max(0, skill.usesPerNode - campSkillUses(eco, skill.id));
 }
 
 /** The extra intel tier bought for a node so far (the Scout bump). */
-export function scoutedTier(eco: OverworldEconomy, nodeId: string): number {
+export function scoutedTier(eco: OverworldState, nodeId: string): number {
   return eco.scouted[nodeId] ?? 0;
 }
 
@@ -164,7 +164,7 @@ export function scoutedTier(eco: OverworldEconomy, nodeId: string): number {
  * with a fresh action allowance (D35). Called once per node played from
  * {@link "./run".breakCamp}, so both combat and rest nodes tick the spine.
  */
-export function tickCooldowns(eco: OverworldEconomy): void {
+export function tickCooldowns(eco: OverworldState): void {
   decayCounters(eco.cooldowns, 1);
   // Per-node allowance + per-node flags reset at the node boundary (D35/D72) — a new
   // camp, fresh uses, and any "opened here" mark cleared. (Primed one-shots persist.)
@@ -179,7 +179,7 @@ export function tickCooldowns(eco: OverworldEconomy): void {
  * **purse** faucet — it **never** touches the guild treasury (D34). Returns the
  * gold credited (0 when no Banker interest is engaged).
  */
-export function accruePurseInterest(eco: OverworldEconomy, camp: Camp): number {
+export function accruePurseInterest(eco: OverworldState, camp: Camp): number {
   if (eco.interestPerStep <= 0) return 0;
   earn(camp, eco.interestPerStep, "interest", "Banker interest");
   return eco.interestPerStep;

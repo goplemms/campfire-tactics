@@ -218,7 +218,7 @@ export function merchantSell(run: RunState, materialId: string): MerchantSellRes
 // --- Banker — TIME-SHIFT + SECURE (purse only, never the treasury) ----------
 
 /**
- * True if the party fields a **Banker** — the {@link "./jobs".BANKER} job (D30), the
+ * True if the party fields a **Banker** — the {@link "./jobs".BANKER_JOB} job (D30), the
  * financier whose verbs (Invest / Borrow / Guard the Purse) work the carried purse.
  * The third economy class's twin of {@link hasNoble} / {@link "./overworld".merchantFloor}:
  * a class in the party unlocks that class's economy. No Banker present ⇒ no purse-finance.
@@ -356,7 +356,7 @@ export function deftHandsSkim(run: RunState): number {
 }
 
 /**
- * True if the party fields a **Noble** — the {@link "./jobs".NOBLE} job (D62), the
+ * True if the party fields a **Noble** — the {@link "./jobs".NOBLE_JOB} job (D62), the
  * standing-bearer whose presence accrues Influence, works the Patronize verb, and
  * backs the mid-battle bribe ({@link bribeEnemy}). Mirrors {@link
  * "./overworld".merchantFloor}: a class in the party unlocks that class's economy.

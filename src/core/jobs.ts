@@ -21,9 +21,9 @@ import { primaryJobOf, type Unit, type UnitStats } from "./units";
 import type { Phase, SkillDef } from "./skills";
 import { PASSIVE } from "./combat";
 import type { PrestigeBranch } from "./grants";
-import { SOLDIER, HEAVY_KNIGHT, HUNTER, MEDIC, SNARE_TRAPPER } from "./jobs-data/combat";
+import { SOLDIER_JOB, HEAVY_KNIGHT_JOB, HUNTER_JOB, MEDIC_JOB, SNARE_TRAPPER_JOB } from "./jobs-data/combat";
 import { SCOUT_JOB, ASSASSIN_JOB, THIEF_JOB } from "./jobs-data/scout-line";
-import { SURVIVALIST, COOK, MERCHANT, NOBLE, BANKER, UNIVERSAL_SKILLS } from "./jobs-data/support";
+import { SURVIVALIST_JOB, COOK_JOB, MERCHANT_JOB, NOBLE_JOB, BANKER_JOB, UNIVERSAL_SKILLS } from "./jobs-data/support";
 
 /**
  * Per-stat growth weights (D39): a job level-up banks **+1 to every main stat**
@@ -110,23 +110,23 @@ export interface JobDef {
 
 /**
  * The job registry — the single source jobs are loaded from. Written with literal
- * keys (not `[SOLDIER.id]`) so the keys survive into the type and {@link JobId} can
+ * keys (not `[SOLDIER_JOB.id]`) so the keys survive into the type and {@link JobId} can
  * derive from them; `satisfies` still type-checks every value as a {@link JobDef}.
  */
 export const JOBS = {
-  soldier: SOLDIER,
-  survivalist: SURVIVALIST,
-  cook: COOK,
-  merchant: MERCHANT,
-  noble: NOBLE,
-  banker: BANKER,
-  "heavy-knight": HEAVY_KNIGHT,
-  hunter: HUNTER,
+  soldier: SOLDIER_JOB,
+  survivalist: SURVIVALIST_JOB,
+  cook: COOK_JOB,
+  merchant: MERCHANT_JOB,
+  noble: NOBLE_JOB,
+  banker: BANKER_JOB,
+  "heavy-knight": HEAVY_KNIGHT_JOB,
+  hunter: HUNTER_JOB,
   scout: SCOUT_JOB,
   assassin: ASSASSIN_JOB,
   thief: THIEF_JOB,
-  medic: MEDIC,
-  "snare-trapper": SNARE_TRAPPER,
+  medic: MEDIC_JOB,
+  "snare-trapper": SNARE_TRAPPER_JOB,
 } satisfies Record<string, JobDef>;
 
 /**

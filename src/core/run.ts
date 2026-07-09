@@ -47,7 +47,7 @@ import {
   cloneOverworldEconomy,
   tickCooldowns,
   accruePurseInterest,
-  type OverworldEconomy,
+  type OverworldState,
 } from "./overworld-state";
 import { accrueDeclaredFaucets, deftHandsSkim } from "./economy-actions";
 import { evalPredicateRun } from "./grants";
@@ -55,7 +55,7 @@ import { nightlyFatigue } from "./fatigue";
 import { RECOVERY } from "./upkeep";
 
 /** A recorded node outcome, for the run history / run-end screen. */
-export interface EncounterRecord {
+export interface NightRecord {
   /** The map node this record is for. */
   nodeId: string;
   /** The node's layer (its difficulty index for combat). */
@@ -130,12 +130,12 @@ export interface RunState {
    * cooldowns (the spine) + per-node bought intel tiers (Scout). Deterministic
    * run state — no live RNG (D22).
    */
-  overworld: OverworldEconomy;
+  overworld: OverworldState;
   /** Nights elapsed (the universal time unit, D9). */
   night: number;
   /** Difficulty id → the consequence policy the run consults (D9). */
   difficultyId: string;
-  history: EncounterRecord[];
+  history: NightRecord[];
   /**
    * Outstanding rescue follow-ups (D9/D21): a companion left captured-and-unrescued
    * becomes a {@link "./mortality".RescueQuest} here, so the abandonment is never
@@ -405,7 +405,7 @@ export function isRunComplete(run: RunState): boolean {
  * ({@link breakCamp}, fired from {@link chooseNode}), so one night's allowance is
  * timed across the whole node visit rather than at the event seam.
  */
-export function recordNight(run: RunState, record: Omit<EncounterRecord, "night">): boolean {
+export function recordNight(run: RunState, record: Omit<NightRecord, "night">): boolean {
   run.history.push({ ...record, night: run.night });
   run.night += 1;
   // D80 night-after-arrival: the free nightly rest (Fatigue step-down + chip heal) no longer fires
@@ -445,7 +445,7 @@ export interface RunSnapshot {
    * The overworld economy state (D35): cooldowns + scouted tiers. Captured so a
    * save round-trips the action economy, not just the route.
    */
-  overworld: OverworldEconomy;
+  overworld: OverworldState;
 }
 
 /** Capture a snapshot sufficient to reproduce the run's map, route and position. */

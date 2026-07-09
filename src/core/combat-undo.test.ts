@@ -202,7 +202,7 @@ describe("undo keeps the log canonical (cross-check against replay)", () => {
       const actor = battle.nextActor();
       if (!actor) break;
       if (actor.side === "enemy") {
-        battle.runEnemyTurn(actor);
+        battle.runPolicyTurn(actor);
         continue;
       }
       // A player turn that dithers: take the planned move + strike, take the strike

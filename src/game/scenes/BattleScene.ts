@@ -1873,7 +1873,7 @@ export class BattleScene extends Phaser.Scene {
         this.setHint(`${actor.name} lifted ${attempt.stolen}g off the purse! Cut it down before it escapes to recover the gold.`);
       }
     }
-    const plan = this.battle.runEnemyTurn(actor);
+    const plan = this.battle.runPolicyTurn(actor);
     this.animateMove(actor, plan.path, () => {
       if (plan.target) this.flashAttack(actor, plan.target);
       this.afterTurn();

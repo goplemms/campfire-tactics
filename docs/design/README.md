@@ -4,11 +4,10 @@ This folder is the **living vision** for the game's systems. It is intentionally
 separate from the build plan in [`scratchpad/foundations/`](../../scratchpad/foundations/),
 which tracks *milestones and status*; these docs track *what the game is*.
 
-> Architectural calls that back these docs are logged as decisions **D1–D73 (and
-> counting)** in
+> Architectural calls that back these docs are logged as decisions in
 > [`scratchpad/foundations/decisions.md`](../../scratchpad/foundations/decisions.md) —
-> always read to the latest entry (the latest is **D73**, the fatigue redesign). The
-> early range no longer bounds the log.
+> **always read to the latest entry** (the log is the running record and keeps growing;
+> no fixed range bounds it).
 
 ## Identity
 
@@ -129,7 +128,8 @@ reference them rather than re-explain:
 - **[Intel](systems/intel.md)** — banded pre-battle knowledge via three lanes
   (Intelligence stat / scouting / the Seer's divination) (decision D10).
 - **[Vision & fog of war](systems/vision.md)** — symmetric in-battle fog on a
-  Hidden→Pinged→Seen ladder; the in-battle twin of Intel (decision D18).
+  Hidden→Pinged→Seen ladder; the in-battle twin of Intel (decision D18). *Designed, not
+  built — only a sight-radius seam ships today (see vision.md); the ladder is deferred (#148).*
 - **[Telegraph & action forecast](systems/telegraph.md)** — preview-before-commit:
   an armed ability's footprint (arc/push/aura) + its forecasted outcome, via a
   forecast registry that mirrors the resolver (decision D64).
@@ -162,29 +162,33 @@ reference them rather than re-explain:
 > [`example-session.md`](example-session.md) — a living reference for sanity-checking
 > changes against. The sketch below is the short version.
 
-> **Meta.** The party has 8 storage slots (Merchant). The player buys 12 arrows,
-> 2 trap kits, and 1 fire-rune reagent, then has the Cook cook a hearty stew
-> (+morale, a small between-battle heal banked for the squad). Loadout locked.
+> **Meta.** The party loads its caravan storage: some arrows and two trap kits,
+> then has the Cook provision a hearty stew (banks Rest Points **and** covers the
+> night's Food upkeep). Loadout locked.
 >
-> **Deployment.** On the map, the trapper **Bram** (high Awareness) safely plants
-> both trap kits across the chokepoint. The scout **Vale** (high Speed) pushes her
-> luck to pre-place the fire rune *and* reposition — tipping into the overdraw
-> zone. The exposure meter shows 35%; the player gambles. Vale is **captured** by
-> enemy scouts: she starts the battle bound on the map, the side fields **−1**, and
-> the team's starting initiative seed drops (the enemy will act first).
+> **Deployment.** On the map — "earlier that day" — the Scout plants both trap kits
+> across the chokepoint. A **closing enemy net** advances turn by turn on the same CT
+> clock (D63); the player pushes one scout deep to pre-set a trap, but she lingers a
+> beat too long and the net closes: she is **captured**, left **bound on the map where
+> she stands**, and the side fields **−1** into the battle.
 >
 > **Combat.** On the CT clock, the enemy's early tempo is punished when their
-> vanguard walks the chokepoint — both of Bram's traps fire. Rook the soldier
-> cuts to **Vale's** captors and **frees her** (−1 becomes +1). Freed, Vale
-> manually detonates the pre-placed fire rune on the clustered enemies.
+> vanguard walks the chokepoint — both trap kits fire. A soldier cuts to the
+> captor and **frees the bound scout** (−1 becomes +1), who rejoins the CT order.
 >
 > **Resolution.** The party holds the ground, so one **unsprung** trap kit is
-> **recovered** to storage. Loot and gold roll in (Merchant), morale ticks up from
-> the rescue, and the run advances to the next Meta phase.
+> **recovered** to storage, captured allies come home, loot and gold roll in, and
+> the run advances to the next node.
 
 ## Status
 
-These docs describe the intended design; they will evolve. Nothing here is built
-yet beyond the M1–M2 walking skeleton — see
-[`scratchpad/foundations/PROGRESS.md`](../../scratchpad/foundations/PROGRESS.md)
-for what is actually implemented.
+These docs describe the intended design; they will evolve. A **playable vertical
+slice** now ships — *The Hollow Mill* demo runs end to end (overworld → deployment →
+battle → resolution), with the guild/caravan tier, the overworld action economy, the
+class slice, intel, and the economy all built. Some systems here remain **designed but
+not yet built** (the D18 vision ladder, Vancian magic, nests/runes, the consumables
+family, outcome-driven morale, desertion, upkeep grace nights); those carry a
+"designed, not built" marker in their own docs (adjudicated in #148). For what is
+actually implemented, read the decision log
+[`scratchpad/foundations/decisions.md`](../../scratchpad/foundations/decisions.md) (to
+the latest entry) and [`scratchpad/foundations/PROGRESS.md`](../../scratchpad/foundations/PROGRESS.md).

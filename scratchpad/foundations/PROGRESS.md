@@ -2,13 +2,11 @@
 
 Resume/survival file. If context is lost, this page alone should let work resume.
 
-> **Latest (2026-06-23).** The milestone table and blocks below **lag** the current state.
-> Source of truth is [`decisions.md`](decisions.md) — latest **D66** (Soldier per-class
-> pass). The next queued work is **D67** — deployment↔combat substrate unification + a
-> game-wide skill `usableContext` axis — full brief at
-> [`d67-substrate-unification-build.md`](d67-substrate-unification-build.md). Baseline:
-> `npm run test` = **645 passing**. When resuming, trust `decisions.md` + `git log` over
-> the older blocks below.
+> **Note.** The milestone table and blocks below **lag** the current state — they are kept
+> for history. Source of truth is [`decisions.md`](decisions.md): **always read to the latest
+> entry** (the log is the running record of every architectural call). For the current test
+> baseline, run `npm run test`. When resuming, trust `decisions.md` + `git log` over the older
+> blocks below.
 
 ## Status
 

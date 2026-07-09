@@ -37,7 +37,7 @@ JobDef { id, skills, baseline, growth, passives?, restPoints?, … }
   [`leveling.ts`](../../src/core/leveling.ts)).
 - **Identity** is the optional `passives` block, keyed by `PASSIVE`
   ([`combat.ts`](../../src/core/combat.ts)) and stamped on the bearer at battle
-  setup by `stampPassives`.
+  setup by `stampPassives` ([`jobs.ts`](../../src/core/jobs.ts)).
 - The **render layer** only needs a token-ring colour; it owns no class rules.
 
 ---

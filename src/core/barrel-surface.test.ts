@@ -29,6 +29,9 @@
  *     `HOLLOW_MILL_EVENTS` (the authored-record array registered via
  *     `registerEvent`). The moved story/early-event symbols keep the same barrel
  *     names, just new module homes (→ 613).
+ *   - increment 3 (#120, recovery extraction): +2 — `deepRest` and `inPlaceRest`
+ *     free functions in the new `recovery.ts` (the recovery economy lifted out of
+ *     `RunLoop`); `REST` moved from runloop.ts to recovery.ts, same barrel name (→ 615).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -321,6 +324,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "debuffs",
   "decayCounters",
   "declaredFaucetInfluence",
+  "deepRest",
   "deftHandsSkim",
   "degradedMods",
   "deployActions",
@@ -418,6 +422,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "inAttackRange",
   "inDangerZone",
   "inFlightCaravans",
+  "inPlaceRest",
   "inPlaceRestPreview",
   "inSafeZone",
   "incrementCounter",

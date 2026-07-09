@@ -44,7 +44,7 @@ export { MORTALITY } from "./mortality";
 
 // --- Camp economy: upkeep, recovery, rest ------------------------------------
 export { UPKEEP, RECOVERY, CHUNK_FRACTION, CLERIC_COST } from "./upkeep";
-export { REST } from "./runloop";
+export { REST } from "./recovery";
 export { ECONOMY } from "./economy-actions";
 export { THEFT } from "./theft";
 

@@ -38,7 +38,8 @@ delta tagged with a typed source, mutated only through one chokepoint.
   records why. `spend` does not itself gate affordability — callers still check
   first, exactly as before.
 - **`PurseSource`** — a typed union: `opening · loot · sale · toll · upkeep ·
-  cleric · theft · recovery · banker · interest · recruit · event · action`.
+  cleric · theft · recovery · banker · interest · deft-hands · recruit · event ·
+  action` (`deft-hands` = the Thief's Deft Hands node skim, D68).
 - **Report primitives** — `purseFromLog(camp)` and `purseTotalBySource(camp, src)`
   fold the log (the latter is the grouped-report seam).
 

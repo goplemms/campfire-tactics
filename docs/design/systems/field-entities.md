@@ -3,6 +3,13 @@
 > Referenced by: [Deployment](../02-deployment.md), [Combat](../03-combat.md),
 > [Resolution](../04-resolution.md). Decisions: **D4**, **D31** (the supply wagon).
 
+> **Build status.** **Built:** the trigger bus + entity **registry**, player **traps**,
+> **concealed enemy trap-fields**, and trap **spot / disarm / salvage** (incl. the D82
+> snare sweep). **Designed, not built (deferred, #148):** defensive **nests**, ritual
+> **runes** (part of Vancian magic, D17), the **snare capture-countdown** (snares
+> Immobilize + damage only today), the **D31 supply wagon**, and the **D16 entity-combo
+> chaining** (provisional). Each of those sections below carries a marker.
+
 ## Description
 
 Traps, defensive nests, and ritual runes look like three features but are **one
@@ -29,14 +36,15 @@ adding a new placeable is adding **data**, not a new system.
 
 ### Trigger policies (the three faces)
 
-- **One-shot on condition** → **Trap.** Listens for `onUnitEnterTile`; fires once
-  (damage / status), then is spent.
-- **Passive aura** → **Defensive nest.** No event needed; while a unit holds the
-  tile it grants cover / range / elevation. Really a **terrain modifier**.
-- **Pre-paid charge** → **Ritual rune.** A
-  [charged ability](action-economy.md) whose charge was paid in Deployment. Runes are
-  **Vancian castings** ([D17](magic.md)) — paid in **reagent cost** and subject to the
-  **deployment peril** (D11), freely placeable within those limits.
+- **One-shot on condition** → **Trap.** *(Built.)* Listens for `unitEnterTile`; fires
+  once (damage / status), then is spent.
+- **Passive aura** → **Defensive nest.** *(**Designed, not built** — no aura entity
+  exists, #148.)* No event needed; while a unit holds the tile it grants cover / range /
+  elevation. Really a **terrain modifier**.
+- **Pre-paid charge** → **Ritual rune.** *(**Designed, not built** — part of the deferred
+  Vancian magic family, D17/#148.)* A [charged ability](action-economy.md) whose charge was
+  paid in Deployment. Runes are **Vancian castings** ([D17](magic.md)) — paid in **reagent
+  cost** and subject to the **deployment peril**, freely placeable within those limits.
   - **Auto:** resolves when a condition is met (enemy enters AoE).
   - **Manual:** a unit spends its **Act** to detonate now.
 
@@ -53,20 +61,25 @@ This gives **Intel** and **Awareness** a *defensive* job, not only an offensive 
 - **Disarm / avoid** — once seen, a unit may spend an **Act** to **disarm** (the
   Survivalist's defensive mirror of trapping), or simply **route around** it.
 
-**Exemplar enemy entity — the Snare.** Triggers on enter-tile and applies
-**Immobilized** for X turns *plus* a **capture countdown** (banded). The countdown
-abstracts *enemy reinforcements reaching that spot* — it ticks on its own, no
-specific captor modeled. Free the unit (ally **Act** to cut loose, or destroy the
-snare) before it expires, or they are **captured** — the *same* captured state as a
-Deployment overreach (rescuable sub-objective, [D9](mortality-recovery.md) policy).
-This makes **capture a unified mechanic with two entry points**: pre-battle
+**Exemplar enemy entity — the Snare.** *(Built: the snare triggers on enter-tile and
+applies **Immobilized** + damage. **Designed, not built:** the **capture countdown**
+below — deferred, D12/#148; the per-unit counter shape is reserved but unused,
+`status.ts`.)* The designed snare would apply **Immobilized** for X turns *plus* a
+**capture countdown** (banded) that abstracts *enemy reinforcements reaching that spot* —
+ticking on its own, no specific captor modeled. Free the unit (ally **Act** to cut loose,
+or destroy the snare) before it expires, or they are **captured** — the *same* captured
+state as a Deployment overreach (rescuable sub-objective, [D9](mortality-recovery.md)
+policy). This makes **capture a unified mechanic with two entry points**: pre-battle
 overreach and in-combat helplessness.
 
-> Implementation note: the snare shows the bus needs to carry **status effects**
-> (Immobilized) and tick a **per-unit capture meter** on `onTurnStart` — both cheap
-> to account for when M3 builds the bus.
+> Implementation note: the built snare already carries **status effects** (Immobilized);
+> the **per-unit capture meter** (ticked on `turnStart`) is the reserved, still-unbuilt half.
 
 ### The supply wagon — a defendable asset (D31)
+
+> **Designed, not built (D31/#148).** No supply-wagon entity, defend-the-wagon objective,
+> or wagon-seeking thief archetype exists in code — the theft vector today is the
+> overworld thief/event-node skim (D30). The section below is design intent.
 
 The caravan's supplies appear on the battlefield as a **field entity**: a
 **supply wagon** (the [overworld camp](overworld.md) made physical) with `position`
@@ -94,21 +107,27 @@ than a vague escort. The non-combat **support units** that fielded with the cara
 
 ### The trigger bus (the architectural hook)
 
-Combat is built around an **event/trigger bus**. The loop announces moments and
-**listeners react**:
+Combat is built around an **event/trigger bus** (`event-bus.ts`). The loop announces
+moments and **listeners react**. The event names carry **no `on` prefix** (that was
+doc-only drift); the real set has also grown well past the original four:
 
-- `onTurnStart` / `onTurnEnd`
-- `onUnitEnterTile` / `onUnitLeaveTile`
-- `onUnitDamaged` / `onUnitDefeated`
-- `onChargeResolved`
+- `turnStart` / `turnEnd`
+- `unitEnterTile` / `unitLeaveTile`
+- `unitDamaged` / `unitHealed` / `unitDefeated`
+- `chargeResolved` / `chargeFizzled`
+- `unitRescued` / `unitSwayed` / `unitEscaped` / `orderChanged` / `trapSprung` /
+  `battleBegan` / `frontTurn` (the newer events, `event-bus.ts:20-72`)
 
-Field entities are just listeners. So are many other things later (opportunity
-attacks, nest auras, Cook buffs applied at battle start). **M3 builds this bus
-before any field entity exists** — that's the cheap insurance that stops traps and
-runes from becoming bolt-ons. Today the bus may have zero or one listener; the
-shape is what matters.
+Field entities are just listeners — and the bus is **wired and load-bearing today**:
+the entity **registry**, player traps, concealed enemy trap-fields, and Cook buffs
+applied at battle start all ride it. (The original "M3 builds this before any entity
+exists / today the bus may have zero or one listener" note is stale — that insurance
+paid off and the bus is fully in use.)
 
 ### Chaining — entity combos (D16, provisional)
+
+> **Designed, not built (D16/#148).** Entity-combo chaining is provisional design — no
+> chain-scheduling exists in code today. Intent below.
 
 Entities don't *merge*; they **chain through the bus**. When one fires, it inspects
 its **own tile and 4-adjacent neighbors** (matching the grid's 4-connectivity) for
@@ -126,7 +145,7 @@ erupts a few ticks later — combos with real timing texture, and **zero new sys
 call so far; expect to **revisit it** once the bus and clock are real code.
 
 **Forced entry also fires entities (D19).** A unit **pushed/pulled** onto an entity's
-tile triggers it via the same `onUnitEnterTile` event — so shoving an enemy into a
+tile triggers it via the same `unitEnterTile` event — so shoving an enemy into a
 trap/net/snare is the unit-driven version of chaining.
 
 ### Lifecycle across phases
@@ -139,10 +158,13 @@ Deployment: build entity from a provisioned material, place it, register listene
 
 ## Pseudo-example
 
+> *(Illustrative — the **Trap** beat is live; the **Nest**, **Rune**, and the Snare's
+> **capture-countdown** beats depict the designed-not-built entities above, #148.)*
+>
 > **Trap (one-shot on condition).** Bram builds a `trap kit` into a field entity on
-> the canyon-mouth tile: `trigger = onUnitEnterTile (enemy)`, `effect = 20 dmg`,
+> the canyon-mouth tile: `trigger = unitEnterTile (enemy)`, `effect = 20 dmg`,
 > `state = armed`. In Combat the enemy Vanguard enters that tile → the bus emits
-> `onUnitEnterTile` → the trap's listener matches → 20 dmg, `state = sprung`.
+> `unitEnterTile` → the trap's listener matches → 20 dmg, `state = sprung`.
 >
 > **Nest (passive aura).** A Builder raises a nest on a ledge: `trigger = passive`,
 > `effect = +2 range, +1 defense while occupied`. No event — when Vale stands on
@@ -163,8 +185,9 @@ Deployment: build entity from a provisioned material, place it, register listene
 
 ## Open questions / future scope
 
-- Entity combos are **resolved** (D16, provisional): no merging — they **chain** via
-  the bus, scheduling reactions onto the CT clock with a `speed` (instant→timer).
-  Flagged for revisit at implementation.
-- The first real implementation lands the **bus + registry** in M3 and the first
-  data-defined entity (the Survivalist trap) in M4–M5.
+- Entity combos are **designed but not built** (D16, provisional, #148): no merging —
+  they would **chain** via the bus, scheduling reactions onto the CT clock with a
+  `speed` (instant→timer). Flagged for revisit if/when implemented.
+- The **bus + registry** and the first data-defined entity (the trap) **shipped**
+  (M3–M5); the still-unbuilt placeables are the nest, rune, supply wagon, and the snare
+  capture-countdown (see the build-status banner up top).

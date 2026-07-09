@@ -5,16 +5,22 @@
 > (the per-effect taxonomy), [Vision](vision.md) (telegraphs are gated by what you
 > perceive), [Action economy](action-economy.md). Decision: **D64**.
 
+> **Status: built.** The telegraph is **wired** — arming an ability paints its footprint
+> and a live forecast box via the `FORECAST_HANDLERS` registry (`ability-forecast.ts`,
+> rendered in `combat-view.ts` / `BattleScene.ts`). The "goes dark when a skill is armed"
+> framing below is the **original gap this system closed**, kept for context; it is no
+> longer the current state.
+
 ## Description
 
 Before a player commits an action they should be able to **see what it will do** —
 where it reaches, who it hits, and the forecasted outcome (damage, status, push,
-heal). Today the board answers some of this (a lit path to the hovered tile, a
-strike badge on foes you can hit in place, enemy-intent threat links) but goes
-**dark the moment a skill is armed**: the preview collapses to "these tiles are
-legal targets" and shows nothing about the *effect*. A Heavy Knight player arming
-**Cleave** never sees the arc; arming **Shove** never sees the push direction or the
-"into a trap" payoff; the **tarpit** aura is never drawn at all.
+heal). The gap this system closed: the board once answered some of this (a lit path to
+the hovered tile, a strike badge on foes you can hit in place, enemy-intent threat
+links) but went **dark the moment a skill was armed** — the preview collapsed to "these
+tiles are legal targets" and showed nothing about the *effect*. A Heavy Knight player
+arming **Cleave** saw no arc; arming **Shove** saw no push direction or "into a trap"
+payoff; the **tarpit** aura was never drawn. The telegraph fixes all of that.
 
 The **Telegraph** is the visual preview layer that closes this gap, and **Forecast**
 is the numeric prediction behind it. The rule:
@@ -47,16 +53,19 @@ partition is *by which interpreter owns the kind* ([combat-actions](combat-actio
 
 - `BattleEffect` — `damage · heal · status · channel · triage-heal · cleanse` (resolved
   unit-vs-unit by the exhaustive `BATTLE_EFFECT_HANDLERS`).
-- `FieldEffect` — `forced-move · cleave · med-heal` (need the grid/roster/stash; resolved
-  by `Battle` methods, **not** `resolveSkill`).
+- `FieldEffect` — `forced-move · cleave · med-heal · guard-allies` (need the grid/roster/stash;
+  resolved by `Battle` methods, **not** `resolveSkill`).
 - `CampEffect` — `morale` (resolved by `applyCampSkill`).
 - `DeploymentEffect` — `placeTrap` (realized when the field is built).
+- `OverworldActionEffect` — `openMarket · primeDeal · provisionMeal · survey · forage · sell ·
+  borrow · engageInterest · guardPurse · patronize · triage · buy` (resolved by
+  `OVERWORLD_EFFECT_HANDLERS` — the between-nodes verbs).
 
-**The forecast registry must mirror the full `SkillEffect` union — all four partitions —
-not just `BATTLE_EFFECT_HANDLERS`.** This is a correction the per-job audit forced: three
-of the five signature jobs act through a *non-battle* partition (Survivalist `placeTrap`,
-Cook `morale`, the Heavy Knight's own `cleave`/`forced-move`). A registry keyed only on
-`BattleEffect` would silently omit them.
+**The forecast registry must mirror the full `SkillEffect` union — all *five* partitions —
+not just `BATTLE_EFFECT_HANDLERS`.** This is a correction the per-job audit forced: several
+of the signature jobs act through a *non-battle* partition (Survivalist `placeTrap`, Cook
+`morale`, the Heavy Knight's own `cleave`/`forced-move`/`guard-allies`, the economy triad's
+overworld verbs). A registry keyed only on `BattleEffect` would silently omit them.
 
 So the keystone is a `FORECAST_HANDLERS` map whose key set is the **same exhaustive union**
 `SkillEffect["kind"]`. Adding *any* effect kind — in any partition — fails the build until
@@ -66,7 +75,7 @@ palette](../../../src/game/roles.ts) type already gives us).
 
 ```
 SkillEffect["kind"] ──┬── resolvers (mutate):  BATTLE_EFFECT_HANDLERS · Battle methods
-   (all 4 partitions)  │                         · applyCampSkill · trap layer
+   (all 5 partitions)  │            · applyCampSkill · trap layer · OVERWORLD_EFFECT_HANDLERS
                        └── FORECAST_HANDLERS (predict, read-only)
                            exhaustive over the SAME union
 ```
@@ -113,7 +122,7 @@ model must cover:
 | Footprint | Where it comes from | Telegraph |
 |---|---|---|
 | **single tile** (`damage`/`heal`/`status`/`channel`/`cleanse`) | the aimed unit's tile | outline + forecast badge |
-| **arc** (`cleave`) | direction = caster→aim, depth = `reach`, masked by walls | wash over arc tiles + a badge per foe caught |
+| **arc** (`cleave`) | direction = caster→aim, depth = `reach`; **not wall-masked** — `cleaveArc` deliberately sweeps adjacent tiles regardless of walls (a melee arc, not a projectile — owner-ratified, `ability-forecast.ts`) | wash over arc tiles + a badge per foe caught |
 | **push + landing** (`forced-move`) | target tile **and** where it lands | push arrow; landing flagged if blocker/trap (the combo) |
 | **placement tile** (`placeTrap`, target `camp`) | a *tile* target, not a unit — chosen in **Deployment** | the claimed tile + the trap's deferred payload (dmg, +rider) |
 | **mutable reach** (self-buff, e.g. Swift) | the move budget *after* the buff resolves | the reach wash **grows** to the buffed budget |

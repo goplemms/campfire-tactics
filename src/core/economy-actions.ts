@@ -391,24 +391,31 @@ export function hasThief(party: readonly Unit[]): boolean {
   return fieldsJob(party, "thief");
 }
 
-/** Deft Hands tuning (D68) — the per-node skim chance + take. Tunable; modest vs the scarce economy. */
+/** Deft Hands tuning (D68) — the per-node skim chance + take. Tunable; modest vs the scarce economy. The Thief's {@link "./jobs".JobFaucet} `goldSkim` declaration mirrors these (a parity test pins it). */
 export const DEFT_HANDS = { chance: 0.5, gold: 25 } as const;
 
 /**
- * **Deft Hands** (D68) — the Thief's passive node skim: leaving a busy node (a **combat**
- * or **event** node — never a quiet rest), the thief has a seeded {@link DEFT_HANDS.chance}
- * to pocket {@link DEFT_HANDS.gold} into the purse. Deterministic per node-step
- * (`streamFor(seed, "deft:<node>:<night>")`) — no live RNG. A no-op (0) with no Thief
- * present, on a rest node, or on a missed roll. Fired by {@link "./run".breakCamp}.
+ * **Deft Hands** (D68/#114) — the Thief's passive node skim, now resolved off the **declared
+ * {@link "./jobs".JobFaucet} `goldSkim`** (no longer a hardcoded `DEFT_HANDS` read): the first
+ * fielded member whose job declares a `goldSkim` faucet skims a busy node — leaving a **combat** or
+ * **event** node (never a quiet rest), a seeded `chance` to pocket `amount` gold into the purse.
+ * Deterministic per node-step (`streamFor(seed, Labels.deft(node, night))` — the label moved here
+ * **unchanged**, so the sim is byte-identical), fired **once** per step by the {@link
+ * accrueDeclaredFaucets} walk (not per declarer). A no-op (0) with no declarer, on an off-kind node,
+ * or on a missed roll. `lookup` injectable for fixtures.
  */
-export function deftHandsSkim(run: RunState): number {
-  if (!hasThief(run.party)) return 0;
-  const kind = getNode(run.map, run.mapNodeId).kind;
-  if (kind !== "combat" && kind !== "event") return 0;
-  const rng = streamFor(run.seed, Labels.deft(run.mapNodeId, run.night));
-  if (!rng.chance(DEFT_HANDS.chance)) return 0;
-  earn(run.camp, DEFT_HANDS.gold, "deft-hands", "Deft Hands skim", { nodeId: run.mapNodeId, night: run.night });
-  return DEFT_HANDS.gold;
+export function deftHandsSkim(run: RunState, lookup: JobLookup = getJob): number {
+  for (const u of fieldedUnits(run.party)) {
+    const skim = lookup(primaryJobOf(u))?.faucet?.goldSkim;
+    if (!skim) continue;
+    const kind = getNode(run.map, run.mapNodeId).kind;
+    if (skim.nodeKinds && !skim.nodeKinds.includes(kind)) return 0;
+    const rng = streamFor(run.seed, Labels.deft(run.mapNodeId, run.night));
+    if (!rng.chance(skim.chance)) return 0;
+    earn(run.camp, skim.amount, "deft-hands", "Deft Hands skim", { nodeId: run.mapNodeId, night: run.night });
+    return skim.amount;
+  }
+  return 0;
 }
 
 /**
@@ -445,6 +452,10 @@ export function declaredFaucetInfluence(party: readonly Unit[], lookup: JobLooku
 export function accrueDeclaredFaucets(run: RunState, lookup: JobLookup = getJob): number {
   const gain = declaredFaucetInfluence(run.party, lookup);
   if (gain > 0) addInfluence(run.overworld, gain);
+  // The gold skim (#114): the Thief's Deft Hands, now a declared `goldSkim` faucet resolved in the
+  // same walk rather than a separate hardcoded breakCamp step. Influence first, then gold — the
+  // pre-#114 order — so the seeded draw lands at the same point and the digest is byte-identical.
+  deftHandsSkim(run, lookup);
   return gain;
 }
 

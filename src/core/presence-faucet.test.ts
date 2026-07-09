@@ -78,12 +78,15 @@ describe("card-surfacing hook + production dormancy (D72)", () => {
     expect(jobPresenceSummary(getJob("soldier")!)).toEqual([]); // a plain combat job: nothing to surface
   });
 
-  it("the kit pass declares the economy classes' presence/faucet (D70/D71)", () => {
-    // Noble → Renown (Influence faucet); Merchant → Appraisal (market presence).
+  it("the kit pass declares the economy classes' presence/faucet (D70/D71/#114)", () => {
+    // Noble → Renown (Influence faucet); Thief → Deft Hands (goldSkim faucet, #114);
+    // Merchant → Appraisal (market presence).
     expect(JOBS.noble.faucet?.influencePerStep).toBe(1);
+    expect(JOBS.thief.faucet?.goldSkim).toBeDefined();
     expect(JOBS.merchant.presence?.marketTierBonus).toBe(1);
+    const faucetJobs = new Set(["noble", "thief"]); // the two per-step faucet declarers
     for (const [id, job] of Object.entries(JOBS)) {
-      if (id !== "noble") expect(job.faucet).toBeUndefined();
+      if (!faucetJobs.has(id)) expect(job.faucet).toBeUndefined();
       if (id !== "merchant") expect(job.presence).toBeUndefined();
     }
   });

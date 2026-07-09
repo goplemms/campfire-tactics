@@ -45,12 +45,21 @@ export interface JobPresence {
 }
 
 /**
- * A **per-step faucet** (D72) — what a fielded member accrues each node-step by presence
- * (the Noble's **Renown** Influence trickle). Read by the breakCamp accruals as data.
+ * A **per-step accrual record** (D72/#114) — what a fielded member accrues each node-step by
+ * presence, declared as data and resolved by the one {@link "./economy-actions".accrueDeclaredFaucets}
+ * walk from {@link "./run".breakCamp}. The generalization of the Noble's Renown into the shared home
+ * for every passive per-step faucet (the Thief's Deft Hands skim is the second declarer).
  */
 export interface JobFaucet {
-  /** Influence accrued per node-step by a fielded member's presence (Renown). */
+  /** Influence accrued per node-step by a fielded member's presence (the Noble's Renown, D71). */
   influencePerStep?: number;
+  /**
+   * A **seeded gold skim** off a node the party leaves (the Thief's Deft Hands, D68/#114): a `chance`
+   * to pocket `amount` gold into the purse, gated to the given `nodeKinds` (a busy node — combat /
+   * event — never a quiet rest). Deterministic per node-step (the run seed + `Labels.deft`), fired
+   * once per step by the faucet walk. Omitting `nodeKinds` skims at any node.
+   */
+  goldSkim?: { chance: number; amount: number; nodeKinds?: readonly string[] };
 }
 
 /** A job definition — a named, described set of skills. */

@@ -12,7 +12,9 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import { createRun, type RunState } from "./run";
-import { COOK_STEW, FEAST, FIND_TRADE, SAVVY_BARTER, FORAGE, SURVEY, type JobId } from "./jobs";
+import { type JobId } from "./jobs";
+import { SURVEY } from "./jobs-data/scout-line";
+import { COOK_STEW, FEAST, FIND_TRADE, SAVVY_BARTER, FORAGE } from "./jobs-data/support";
 import {
   skillEffectPreview,
   triageActionPreview,

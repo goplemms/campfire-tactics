@@ -11,7 +11,7 @@ import {
   applyJobLevelGains,
 } from "./leveling";
 import { computeDamage } from "./combat";
-import { HEAVY_KNIGHT } from "./jobs";
+import { HEAVY_KNIGHT } from "./jobs-data/combat";
 
 function knight(id = "k"): Unit {
   return createUnit({

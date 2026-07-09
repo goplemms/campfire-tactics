@@ -2,14 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   getJob,
   stampPassives,
-  HEAVY_KNIGHT,
-  HUNTER,
-  SCOUT_JOB,
-  MEDIC,
-  DEFEND,
   JOBS,
   type JobId,
 } from "./jobs";
+import { HEAVY_KNIGHT, HUNTER, MEDIC } from "./jobs-data/combat";
+import { SCOUT_JOB } from "./jobs-data/scout-line";
+import { DEFEND } from "./jobs-data/support";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import { Battle } from "./turn";
@@ -18,7 +16,7 @@ import { hasStatus, applyStatus, immobilized, GUARDED, SLOWED } from "./status";
 import { computeFlankBonus, PASSIVE } from "./combat";
 import { makeTrap } from "./entities";
 import { createInventory, addItem, countOf } from "./inventory";
-import { MEDIC as _MEDIC } from "./jobs";
+import { MEDIC as _MEDIC } from "./jobs-data/combat";
 
 function at(id: string, side: Side, col: number, row: number, jobId?: JobId, o: Partial<Unit> = {}): Unit {
   const u = {

@@ -31,7 +31,9 @@ import {
   cloneOverworldEconomy,
 } from "./overworld-state";
 import { triage, isHealer, TRIAGE, TRIAGE_COST, PATRONIZE_COST, BANKER_PROTECT_COST, MERCHANT_SELL_COST, BANKER_BORROW_COST, BANKER_INTEREST_COST, MERCHANT_BUY_COST, VERB_COSTS } from "./economy-actions";
-import { getJob, JOBS, SURVEY, FORAGE, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
+import { getJob, JOBS, unitHasCapability, CAPABILITY_PREDICATES, type JobDef, type JobLookup } from "./jobs";
+import { SURVEY } from "./jobs-data/scout-line";
+import { FORAGE } from "./jobs-data/support";
 import { PASSIVE } from "./combat";
 import { skillContexts } from "./skills";
 import { availableSkills } from "./leveling";

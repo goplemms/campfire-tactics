@@ -30,7 +30,8 @@ import { Battle, replay, type BattleOptions } from "./turn";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import { createInventory, countOf, type Inventory } from "./inventory";
-import { JOBS, DEFEND } from "./jobs";
+import { JOBS } from "./jobs";
+import { DEFEND } from "./jobs-data/support";
 import type { CombatAction } from "./combat-actions";
 
 const HEAL = JOBS.medic.skills[0]; // the Medic's herb-fuelled Heal (med-heal)

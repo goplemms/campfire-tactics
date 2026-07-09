@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { JOBS, getJob, unitSkills, SOLDIER, SKILLS, getSkill, UNIVERSAL_SKILLS, DEFEND, type JobId } from "./jobs";
+import { JOBS, getJob, unitSkills, SKILLS, getSkill, type JobId } from "./jobs";
+import { SOLDIER } from "./jobs-data/combat";
+import { UNIVERSAL_SKILLS, DEFEND } from "./jobs-data/support";
 import { createUnit, type Side, type Unit } from "./units";
 import type { SkillDef } from "./skills";
 

@@ -6,7 +6,7 @@ import { isPrimed } from "./overworld-state";
 import { availableSkills } from "./leveling";
 import { effectiveMarketTier, type MapNode } from "./overworld";
 import { merchantBuy, merchantSell, sellPrice, merchantPrice, ECONOMY } from "./economy-actions";
-import { FIND_TRADE, SAVVY_BARTER } from "./jobs";
+import { FIND_TRADE, SAVVY_BARTER } from "./jobs-data/support";
 import { addItem, getMaterial } from "./inventory";
 
 // D70 — the Merchant kit (the first non-combat verb-kit), consuming the D72 substrate:

@@ -20,7 +20,7 @@ import type { MapNode } from "./overworld";
 import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
-import { SCOUT_PRESTIGE_FLOOR } from "./jobs";
+import { SCOUT_PRESTIGE_FLOOR } from "./jobs-data/scout-line";
 import { grantItem } from "./inventory";
 import { earn, spend } from "./purse-journal";
 import { nudgeMorale } from "./camp";

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, remember, type Unit } from "./units";
-import { stampPassives, THIEF_JOB, SCOUT_PRESTIGE_FLOOR, getJob } from "./jobs";
+import { stampPassives, getJob } from "./jobs";
+import { THIEF_JOB, SCOUT_PRESTIGE_FLOOR } from "./jobs-data/scout-line";
 import { canDisarm } from "./traps";
 import { PASSIVE } from "./combat";
 import { prestige, prestigeOptions, eligiblePrestiges } from "./grants";

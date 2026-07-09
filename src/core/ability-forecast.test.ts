@@ -18,7 +18,7 @@ import { createInventory } from "./inventory";
 import { placePlayerTrap } from "./traps";
 import { EntityRegistry } from "./entities";
 import { EventBus } from "./events";
-import { HEAVY_KNIGHT, HUNTER, MEDIC } from "./jobs";
+import { HEAVY_KNIGHT, HUNTER, MEDIC } from "./jobs-data/combat";
 
 function at(id: string, side: Side, col: number, row: number, o: Partial<Unit> = {}): Unit {
   return {

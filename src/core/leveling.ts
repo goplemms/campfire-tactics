@@ -16,7 +16,8 @@
  */
 
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
-import { getJob, unitSkills, unitHasCapability, UNIVERSAL_SKILLS, type JobLookup } from "./jobs";
+import { getJob, unitSkills, unitHasCapability, type JobLookup } from "./jobs";
+import { UNIVERSAL_SKILLS } from "./jobs-data/support";
 import type { SkillDef, Phase } from "./skills";
 import { skillContexts, type UsableContext } from "./skills";
 import type { EventBus } from "./events";

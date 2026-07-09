@@ -28,7 +28,7 @@ export { FLANK } from "./combat";
 export { STATUS_TUNING, CHANNEL_TUNING } from "./status";
 export { TURN_THRESHOLD, ACT_COST, MOVE_COST, CHARGE_THRESHOLD } from "./clock";
 export { MED_HEAL } from "./skills";
-export { KIT } from "./jobs";
+export { KIT } from "./jobs-data/combat";
 export { SPOT } from "./traps";
 
 // --- AI ----------------------------------------------------------------------

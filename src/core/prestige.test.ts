@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, primaryJobOf, type Unit, type UnitSpec } from "./units";
-import { getJob, stampPassives, unitSkills, SOLDIER, type JobDef, type JobId, type JobLookup } from "./jobs";
+import { getJob, stampPassives, unitSkills, type JobDef, type JobId, type JobLookup } from "./jobs";
+import { SOLDIER } from "./jobs-data/combat";
 import { jobLevelOf } from "./leveling";
 import { prestige, eligibleGrants, applyGrant, type Grant, type PredicateCtx } from "./grants";
 import { rpPerNight, computeUpkeep, UPKEEP } from "./upkeep";

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
-import { stampPassives, SCOUT_JOB } from "./jobs";
+import { stampPassives } from "./jobs";
+import { SCOUT_JOB } from "./jobs-data/scout-line";
 import { applyStatus, swift, EXPOSED } from "./status";
 import { captureEvasionFactor, QUIET_FOOTSTEPS_CAPTURE_FACTOR, DASH_CAPTURE_FACTOR } from "./deployment";
 

@@ -3,7 +3,8 @@ import { Battle } from "./turn";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import { computeDamage, BROTHER } from "./combat";
-import { stampPassives, SOLDIER } from "./jobs";
+import { stampPassives } from "./jobs";
+import { SOLDIER } from "./jobs-data/combat";
 import { resolveSkill } from "./skills";
 import { hasStatus, statusAmount, GUARDED, EXPOSED } from "./status";
 

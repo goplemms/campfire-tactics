@@ -5,7 +5,7 @@ import { RunLoop } from "./runloop";
 import { REST } from "./recovery";
 import { getNode } from "./overworld";
 import { cooldownRemaining } from "./overworld-state";
-import { SURVEY } from "./jobs";
+import { SURVEY } from "./jobs-data/scout-line";
 import { computeUpkeep, RECOVERY } from "./upkeep";
 import { FATIGUE, FATIGUE_TIER_FLOORS } from "./fatigue";
 import { bypassXp } from "./early-events";

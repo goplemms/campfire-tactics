@@ -11,7 +11,8 @@
 import { describe, it, expect } from "vitest";
 import { skillContexts, type SkillDef, type SkillEffect, type UsableContext } from "./skills";
 import { availableSkills, unlockedSkills } from "./leveling";
-import { DEFEND, JOBS, type JobId } from "./jobs";
+import { JOBS, type JobId } from "./jobs";
+import { DEFEND } from "./jobs-data/support";
 import { createUnit, type Unit } from "./units";
 
 function mk(over: Partial<SkillDef> & { effect: SkillEffect }): SkillDef {

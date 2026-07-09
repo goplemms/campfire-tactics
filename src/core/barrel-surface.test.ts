@@ -36,6 +36,11 @@
  *     `overworld-state.ts`, the cost grammar + gate + validator to `overworld-cost.ts`,
  *     and `triage`/`TRIAGE`/`TRIAGE_COST`/`isHealer` to `economy-actions.ts` beside the
  *     other economy verbs; every symbol keeps its barrel name at its new home (615).
+ *   - increment 5 (#130, jobs split): net 0 — the combat roster moved to
+ *     `jobs-data/combat.ts`, the Scout prestige line to `jobs-data/scout-line.ts`,
+ *     and the support/economy classes + universal skills to `jobs-data/support.ts`;
+ *     `jobs.ts` keeps the engine (`JOBS`/`SKILLS`/capabilities). Every symbol keeps
+ *     its barrel name at its new home (615).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";

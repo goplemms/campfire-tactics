@@ -21,7 +21,7 @@ import { RunLoop } from "./runloop";
 import { useOverworldSkill } from "./overworld-actions";
 import { cooldownRemaining } from "./overworld-state";
 import { RECOVERY } from "./upkeep";
-import { SURVEY } from "./jobs";
+import { SURVEY } from "./jobs-data/scout-line";
 
 /** A small fightable roster (Soldiers so they have battle skills too). */
 function roster(): Unit[] {

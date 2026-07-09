@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, remember, type Side, type Unit } from "./units";
-import { stampPassives, ASSASSIN_JOB, SUBTLE_BLADE_BONUS, SCOUT_PRESTIGE_FLOOR } from "./jobs";
+import { stampPassives } from "./jobs";
+import { ASSASSIN_JOB, SUBTLE_BLADE_BONUS, SCOUT_PRESTIGE_FLOOR } from "./jobs-data/scout-line";
 import { computeDamage, PASSIVE } from "./combat";
 import { resolveSkill } from "./skills";
 import { hasStatus, EXPOSED, IMMOBILIZED } from "./status";

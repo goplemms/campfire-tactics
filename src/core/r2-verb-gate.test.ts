@@ -11,14 +11,12 @@
  * - (b) `bankerBorrow` / `bankerEngageInterest` succeed **back-to-back with no
  *   refusal** — neither routes through the D61 cost gate (no pacing, no price;
  *   Borrow is an unbounded gold advance). **Flips at increment 7.**
- * - (c) The **CostKnob re-resolution trap** (`overworld-actions.ts`'s documented
- *   check→commit drift bomb): `commitOverworldCost` re-resolves gold knobs **after**
- *   the effect, so an effect that moves party composition mid-verb commits a price
- *   different from the one checked. No shipped effect moves composition today (the
- *   registered overworld effects are openMarket / primeDeal / provisionMeal / survey
- *   / forage — none touch the roster), so the witness assembles the check→commit
- *   sandwich exactly as the six production call sites do, around a fixture effect
- *   that does. **Flips/retires at increment 5** (prices captured at check time).
+ * - (c) The **CostKnob re-resolution trap** (the old check→commit drift bomb):
+ *   `commitOverworldCost` used to re-resolve gold knobs **after** the effect, so an
+ *   effect that moved party composition mid-verb committed a price different from
+ *   the one checked. **Flipped at increment 5** (#126): the check now captures its
+ *   resolved prices in a commit closure, so the committed spend equals the checked
+ *   price by construction — even around a fixture effect that moves composition.
  *
  * Sim digest reference (`npm run sim` at the R1-landed baseline, 2026-07-08 —
  * 1044 tests / 97 files green):
@@ -41,7 +39,6 @@ import type { MapNode } from "./overworld";
 import { bankerBorrow, bankerEngageInterest } from "./economy-actions";
 import {
   checkOverworldCost,
-  commitOverworldCost,
   resolveKnob,
   type OverworldCost,
 } from "./overworld-actions";
@@ -122,41 +119,41 @@ describe("R2 witness (b) — bankerBorrow / bankerEngageInterest are ungated tod
   });
 });
 
-// --- Witness (c): the CostKnob re-resolution trap (flips at increment 5) -----
+// --- Witness (c): the CostKnob re-resolution trap (FLIPPED at increment 5) ---
 
-describe("R2 witness (c) — commit re-resolves a gold CostKnob AFTER the effect", () => {
-  it("an effect that moves party composition mid-verb commits a different price than was checked", () => {
+describe("R2 witness (c) — the commit closure spends the price captured at check time (#126)", () => {
+  it("an effect that moves party composition mid-verb still commits exactly the checked price", () => {
     const PRICE_PER_FIELDED = 10;
     const party = [member("Rook", "soldier"), member("Vale", "scout"), member("Bram", "hunter")];
     const run = newRun("r2-w-c", party, 100);
 
-    // A gated fixture verb priced per fielded member — the CostKnob-provider shape
-    // overworld-actions.ts:~53-58 documents as the trap ("key it off composition the
-    // effect doesn't move"). This fixture deliberately violates that contract to pin
-    // what happens when the first composition-moving effect meets the gate.
+    // A gated fixture verb priced per fielded member — the CostKnob-provider shape the
+    // old commit path re-resolved AFTER the effect (the documented drift bomb). This
+    // fixture deliberately moves composition mid-verb to prove the trap is dead.
     const cost: OverworldCost = {
       gold: (r) => PRICE_PER_FIELDED * r.party.filter((u) => u.alive && !u.captured).length,
     };
 
-    // The hand-assembled check→commit sandwich, exactly as the six production call
-    // sites (useOverworldSkill ×2, triage, merchantBuy, bankerProtect, patronize) do it.
+    // The check→commit sandwich, exactly as the six production call sites
+    // (useOverworldSkill ×2, triage, merchantBuy, bankerProtect, patronize) do it.
     const checkedPrice = resolveKnob(cost.gold, run);
     expect(checkedPrice).toBe(30); // 3 fielded members at check time
     const check = checkOverworldCost(run, "r2-fixture-verb", cost, "Fixture Verb");
     expect(check.ok).toBe(true);
+    if (!check.ok) return;
+    expect(check.prices.gold).toBe(30); // the price is captured with the passing check
 
     // The effect applies between check and commit — and captures a member.
     run.party[2].captured = true;
 
     const before = run.camp.gold;
-    if (check.ok) commitOverworldCost(run, "r2-fixture-verb", cost, check.fatigueSpend);
+    check.commit();
     const committedPrice = before - run.camp.gold;
 
-    // TODAY: the commit re-resolves the knob against the post-effect run — the purse
-    // is charged 20g (2 fielded), NOT the 30g the check gated on. This is the drift
-    // bomb increment 5 defuses (prices captured at check time); when it lands, the
-    // committed price becomes 30 and this pin is flipped/retired with it.
-    expect(committedPrice).toBe(20);
-    expect(committedPrice).not.toBe(checkedPrice);
+    // FIXED (increment 5, #126): the commit closure spends the captured 30g — NOT the
+    // 20g a post-effect re-resolution would have charged. The committed spend equals
+    // the checked price by construction.
+    expect(committedPrice).toBe(30);
+    expect(committedPrice).toBe(checkedPrice);
   });
 });

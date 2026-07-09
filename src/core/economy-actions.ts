@@ -30,7 +30,7 @@ import type { RunState } from "./run";
 import { fieldedUnits, fieldsJob, primaryJobOf, type Unit } from "./units";
 import { getJob, type JobLookup } from "./jobs";
 import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
-import { checkOverworldCost, commitOverworldCost, isPrimed, consumeFlag, DEAL_PRIMED_FLAG, type OverworldCost, type ActionOutcome } from "./overworld-actions";
+import { checkOverworldCost, isPrimed, consumeFlag, DEAL_PRIMED_FLAG, type OverworldCost, type ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
@@ -128,7 +128,7 @@ export function merchantBuy(run: RunState, materialId: string, tier: MarketTier)
   if (!canAdd(run.inventory, materialId)) {
     return { applied: false, reason: `No storage room for ${materialId}.`, price };
   }
-  commitOverworldCost(run, "merchant-buy", cost, check.fatigueSpend);
+  check.commit();
   addItem(run.inventory, materialId);
   if (primed) consumeFlag(run.overworld, DEAL_PRIMED_FLAG); // cash the bargain only on success
   return { applied: true, detail: `Bought ${materialId} for ${price}g${primed ? " (savvy barter)" : ""} (${tier} market).`, spent: price, price };
@@ -257,7 +257,7 @@ export function bankerProtect(run: RunState): BankerProtectResult {
   const cost = BANKER_PROTECT_COST;
   const check = checkOverworldCost(run, "banker-protect", cost, "theft protection");
   if (!check.ok) return { applied: false, reason: check.reason };
-  commitOverworldCost(run, "banker-protect", cost, check.fatigueSpend);
+  check.commit();
   run.overworld.protection = Math.max(run.overworld.protection, ECONOMY.banker.protectionLevel);
   return { applied: true, spent: ECONOMY.banker.protectionCost, protection: run.overworld.protection, detail: `Theft protection engaged.` };
 }
@@ -356,7 +356,7 @@ export function patronize(run: RunState): PatronizeResult {
   if (!check.ok) return { applied: false, reason: check.reason };
   const yield_ = ECONOMY.noble.patronizeYield;
   addInfluence(run.overworld, yield_);
-  commitOverworldCost(run, "patronize", PATRONIZE_COST, check.fatigueSpend);
+  check.commit();
   return {
     applied: true,
     spent: ECONOMY.noble.patronizeCost,

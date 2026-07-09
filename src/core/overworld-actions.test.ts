@@ -21,7 +21,6 @@ import {
   resolveKnob,
   knobDeclared,
   checkOverworldCost,
-  commitOverworldCost,
   setNodeFlag,
   hasNodeFlag,
   primeFlag,
@@ -405,7 +404,10 @@ describe("computed (provider) costs (D72)", () => {
     const before = run.camp.gold;
     const check = checkOverworldCost(run, "stew-fixture", cost, "Cook Stew");
     expect(check.ok).toBe(true);
-    if (check.ok) commitOverworldCost(run, "stew-fixture", cost, check.fatigueSpend);
+    if (check.ok) {
+      expect(check.prices.gold).toBe(foodValue); // the check captured the resolved price (#126)
+      check.commit();
+    }
     expect(run.camp.gold).toBe(before - foodValue); // the dynamic price was billed, not a static guess
   });
 });

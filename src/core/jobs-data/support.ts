@@ -80,6 +80,7 @@ export const SURVIVALIST_JOB: JobDef = {
       target: "camp",
       range: 0,
       spend: "act",
+      cost: { material: { id: "trap-kit", count: 1 } }, // consumes a carried kit (#113 material price)
       effect: { kind: "placeTrap", damage: 12 },
     },
     FORAGE,

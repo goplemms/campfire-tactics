@@ -25,6 +25,7 @@
 
 import type { GridCoord } from "./iso";
 import type { SkillOutcome, PlaceTrapEffect } from "./skills";
+import type { MaterialCost } from "./cost";
 import type { TurnSpend } from "./clock";
 import type { RecoverableEntity } from "./entities";
 
@@ -87,8 +88,12 @@ export type CombatAction =
   // marked by `beginBattle`, so they no longer need a "deploy kind" to be drained.
   /** Hunker for a reduced capture chance when the net's turn comes (D63). */
   | { kind: "digIn"; unit: UnitId }
-  /** Lay a player trap on `pos`, consuming one kit from the shared stash (D11/D63). */
-  | { kind: "placeTrap"; unit: UnitId; pos: GridCoord; effect: PlaceTrapEffect; id: string }
+  /**
+   * Lay a player trap on `pos`, consuming its declared **material price** from the shared stash
+   * (D11/D63; #113 — the kit spend rides the commit half of `apply`, so undo refunds it via the
+   * checkpoint's stash snapshot). `material` is the kit price declared on the Set-Trap SkillDef.
+   */
+  | { kind: "placeTrap"; unit: UnitId; pos: GridCoord; effect: PlaceTrapEffect; id: string; material?: MaterialCost }
   /** Bind a unit captured by the closing net (D7/D63) — the deploy "enemy turn" outcome. */
   | { kind: "capture"; unit: UnitId }
   /**

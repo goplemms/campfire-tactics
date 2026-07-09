@@ -15,6 +15,8 @@ import { activeUnits, opposite, type Unit, type Side } from "./units";
 import type { GridCoord } from "./iso";
 import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
+import { removeItem } from "./inventory";
+import type { MaterialCost } from "./cost";
 import { EventBus } from "./event-bus";
 import { CTClock, type TurnSpend, onSkillCooldown, armSkillCooldown } from "./clock";
 import { EntityRegistry } from "./entities";
@@ -312,6 +314,18 @@ export class Battle {
     return captureCheckpoint(this.units, this._log.length, this.drawCount, this.clock, this.entities, this.stash);
   }
 
+  /**
+   * Spend a skill's declared **material price** from the wired stash (#113) — the commit-half
+   * consumption for Set Trap (a fixed `trap-kit`) and the Medic's Heal (the `chosenId` herb).
+   * A no-op with no price / no stash / no resolvable id. Runs inside {@link apply} (after the
+   * pre-action checkpoint), so undo refunds it via the checkpoint's stash snapshot.
+   */
+  private consumeMaterial(price: MaterialCost | undefined, chosenId?: string): void {
+    if (!price || !this.stash) return;
+    const id = price.id ?? chosenId;
+    if (id !== undefined) removeItem(this.stash, id, price.count);
+  }
+
   /** Roll all mutable state (and the log) back to a checkpoint — the undo primitive. */
   private restoreCheckpoint(cp: BattleCheckpoint): void {
     this.drawCount = cp.drawCount;
@@ -439,6 +453,9 @@ export class Battle {
         const actor = this.unit(action.unit);
         const res = placePlayerTrap(this.stash, this.entities, actor, action.pos, action.effect, action.id);
         if (!res.ok) return { ok: false, reason: res.reason ?? "Can't place a trap here." };
+        // Consume the declared material price in the commit half (#113): the kit spend rides the
+        // apply path (after placement succeeded), so undo/replay ride the checkpoint's stash snapshot.
+        this.consumeMaterial(action.material);
         this._log.push(action);
         return { ok: true, trap: res.trap, levels: res.levels };
       }
@@ -481,6 +498,10 @@ export class Battle {
         if (!this.stash) return { ok: false, reason: "No herb stash wired for the heal." };
         const outcome = resolveMedHeal(caster, target, action.herbId, this.stash, this.bus);
         if (outcome.healed === undefined) return { ok: false, reason: `${action.herbId} isn't carried` };
+        // Consume the declared material price in the commit half (#113): the herb chosen at cast
+        // time (`herbId`), the count from the skill's declared price. The resolver no longer spends
+        // it, so undo/replay ride the checkpoint's stash snapshot (the D87 golden pin proves it).
+        this.consumeMaterial(skill.cost?.material, action.herbId);
         // Same turn economy as before the move into apply: arm the cooldown, and end
         // the turn per `commitTurn` (default true; `false` is the D60 free-move flow).
         this.commitSkill(caster, skill, action.commitTurn ?? true);
@@ -719,9 +740,10 @@ export class Battle {
    * Lay a player trap on `pos`, consuming one kit from the wired stash (D11/D63).
    * On success returns the registered entity + any character levels gained; on a
    * refusal (no kit, tile taken, or no stash wired) returns the reason for the hint.
+   * `material` is the declared kit price (#113) — consumed in the commit half of {@link apply}.
    */
-  placeTrap(unit: Unit, pos: GridCoord, effect: PlaceTrapEffect, id: string): { ok: true; trap?: RecoverableEntity; levels: number } | { ok: false; reason: string } {
-    const r = this.apply({ kind: "placeTrap", unit: unit.id, pos, effect, id });
+  placeTrap(unit: Unit, pos: GridCoord, effect: PlaceTrapEffect, id: string, material?: MaterialCost): { ok: true; trap?: RecoverableEntity; levels: number } | { ok: false; reason: string } {
+    const r = this.apply({ kind: "placeTrap", unit: unit.id, pos, effect, id, material });
     return r.ok ? { ok: true, trap: r.trap, levels: r.levels ?? 0 } : { ok: false, reason: r.reason };
   }
 

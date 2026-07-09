@@ -122,7 +122,7 @@ describe("Battle undo — turn-scoped take-back on the action log (Phase 2)", ()
     const battle = new Battle(grid, [medic, ally]);
     medic.ct = 100;
     const inv = createInventory(8, { salve: 1 });
-    const heal: SkillDef = { id: "heal", name: "Heal", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200 }, effect: { kind: "med-heal" } };
+    const heal: SkillDef = { id: "heal", name: "Heal", description: "", phase: "battle", target: "ally", range: 1, spend: "act", cost: { cooldown: 200, material: { count: 1 } }, effect: { kind: "med-heal" } };
     battle.beginUndo();
 
     const before = snap(battle);

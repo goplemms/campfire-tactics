@@ -15,7 +15,7 @@ import type { EventBus } from "./event-bus";
 import type { StatusInstance } from "./status";
 import { resolveAttack, manhattan, PASSIVE } from "./combat";
 import { applyStatus, markPrey, cleanseOne, hastened } from "./status";
-import { countOf, removeItem, type Inventory } from "./inventory";
+import { countOf, type Inventory } from "./inventory";
 import { abilityScaleBonus } from "./leveling";
 import { assertNever } from "./num";
 import type { CapabilityId } from "./jobs";
@@ -248,10 +248,10 @@ export type SkillEffect = BattleEffect | FieldEffect | CampEffect | DeploymentEf
  * Optional ability cost beyond the Act (D37) — the **CT-clock view** of the one {@link Cost}
  * grammar (#113). The combat economy is **time**: `charge` commits now and resolves later on
  * the clock; `cooldown` is a sparing re-arm on instant utility. A skill with neither is the
- * instant floor. (Field docs live on {@link Cost}; a material price joins this view in
- * increment 3.)
+ * instant floor. Also carries the CT view's **material price** (#113) — a carried item a cast
+ * consumes (the Medic Heal's herb, Set Trap's kit). Field docs live on {@link Cost}.
  */
-export type SkillCost = Pick<Cost, "charge" | "cooldown">;
+export type SkillCost = Pick<Cost, "charge" | "cooldown" | "material">;
 
 /** A skill definition — pure data authored in a job file. */
 export interface SkillDef {
@@ -426,9 +426,12 @@ export function medHealAmount(
  * from the shared stash and heal `target`, with a **rider keyed by the herb**:
  * salve → bigger heal; stimulant → Hastened; antidote → cleanse a debuff. Base
  * heal scales with the Medic's Triage passive (more wounded → more healing).
- * Returns an empty outcome (no heal) if the herb isn't carried. The heal figure +
- * rider come from the pure {@link medHealAmount} predict-core (D64) — this
- * resolver only *applies* them (consume herb, heal, apply the rider).
+ * Returns an empty outcome (no heal) if the herb isn't carried — the availability gate. The
+ * heal figure + rider come from the pure {@link medHealAmount} predict-core (D64); this resolver
+ * only *applies* them (heal + rider). The herb **consumption** moved commit-side (#113): the
+ * apply path ({@link "./turn".Battle.apply}) spends the declared material price after the heal
+ * lands, so undo/replay ride the checkpoint's stash snapshot — the resolver no longer mutates
+ * the stash (`inv` is now read-only, the availability check alone).
  */
 export function resolveMedHeal(
   medic: Unit,
@@ -438,7 +441,6 @@ export function resolveMedHeal(
   bus?: EventBus,
 ): SkillOutcome {
   if (countOf(inv, herbId) < 1) return {};
-  removeItem(inv, herbId, 1);
 
   const { amount, rider } = medHealAmount(medic, target, herbId);
   const out: SkillOutcome = applyHeal(medic, target, amount, bus);

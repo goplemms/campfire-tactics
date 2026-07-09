@@ -13,8 +13,10 @@ import {
   slotsFor,
   getMaterial,
   saleValueOf,
+  canAffordMaterial,
   MATERIALS,
 } from "./inventory";
+import { JOBS } from "./jobs";
 
 describe("inventory (slotted stacks, party-wide — D14)", () => {
   it("computes slots from slotCost and stackSize", () => {
@@ -133,5 +135,30 @@ describe("inventory overflow substrate — grants land, then discard (D75)", () 
     const inv = createInventory(4, { "trap-kit": 2 });
     expect(autoTrim(inv)).toEqual([]);
     expect(countOf(inv, "trap-kit")).toBe(2);
+  });
+});
+
+describe("canAffordMaterial — the material-price availability projection (#113)", () => {
+  // The greyed-out "0 herbs / 0 kits" state derives from the skill's DECLARED cost, not a
+  // hardcoded id in the render — this is the core projection the scene consumes (batch 3).
+  const setTrap = JOBS.survivalist.skills.find((s) => s.id === "set-trap")!; // fixed price: trap-kit ×1
+  const medHeal = JOBS.medic.skills.find((s) => s.id === "heal")!; // runtime-chosen price: 1 herb
+
+  it("no declared material price ⇒ always affordable on this axis", () => {
+    expect(canAffordMaterial(undefined, createInventory(6))).toBe(true);
+  });
+
+  it("a FIXED price (Set Trap's kit) greys out at 0 kits, derived from the declared cost", () => {
+    expect(setTrap.cost?.material).toEqual({ id: "trap-kit", count: 1 });
+    expect(canAffordMaterial(setTrap.cost?.material, createInventory(6, { "trap-kit": 1 }))).toBe(true);
+    expect(canAffordMaterial(setTrap.cost?.material, createInventory(6))).toBe(false); // 0 kits → greyed
+  });
+
+  it("a RUNTIME-CHOSEN price (the Medic's herb) greys out per chosen herb from the declared count", () => {
+    expect(medHeal.cost?.material).toEqual({ count: 1 });
+    const stash = createInventory(6, { salve: 1 }); // salve carried, antidote not
+    expect(canAffordMaterial(medHeal.cost?.material, stash, "salve")).toBe(true);
+    expect(canAffordMaterial(medHeal.cost?.material, stash, "antidote")).toBe(false); // 0 antidotes → greyed
+    expect(canAffordMaterial(medHeal.cost?.material, stash)).toBe(false); // nothing chosen → not affordable
   });
 });

@@ -45,7 +45,7 @@ const MENDER: SkillDef = {
 };
 
 /** The Medic's herb-stash heal — a board skill in both phases now (W8). */
-const MED_HEAL: SkillDef = { id: "heal", name: "Heal", description: "", phase: "battle", target: "ally", range: 2, spend: "act", effect: { kind: "med-heal" } };
+const MED_HEAL: SkillDef = { id: "heal", name: "Heal", description: "", phase: "battle", target: "ally", range: 2, spend: "act", cost: { material: { count: 1 } }, effect: { kind: "med-heal" } };
 
 function pawn(id: string, col: number, side: Side = "player"): Unit {
   return createUnit({ id, side, pos: { col, row: 0 }, awareness: 2, speed: 10, maxHp: 20, attack: 5, defense: 1, moveRange: 3, sightRadius: 4 });

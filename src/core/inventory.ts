@@ -12,6 +12,7 @@
  */
 
 import type { StatDelta } from "./units";
+import type { MaterialCost } from "./cost";
 
 /** A material definition — pure data. */
 export interface MaterialDef {
@@ -191,6 +192,21 @@ export function slotsFree(inv: Inventory): number {
 /** How many of a material are carried. */
 export function countOf(inv: Inventory, materialId: string): number {
   return inv.counts[materialId] ?? 0;
+}
+
+/**
+ * True if a skill's declared **material price** (#113) can be paid from `inv` — the core
+ * availability projection behind a greyed-out "0 herbs / 0 kits" button (the render reads this
+ * as data, never re-deriving the item id). No material price ⇒ always affordable on this axis.
+ * `chosenId` supplies the material for a **runtime-chosen** price (the Medic's herb: the price
+ * declares only the count, the caster picks salve/stimulant/antidote); a **fixed** price (the
+ * trap kit) ignores it. A runtime-chosen price with nothing chosen is not affordable.
+ */
+export function canAffordMaterial(price: MaterialCost | undefined, inv: Inventory, chosenId?: string): boolean {
+  if (!price) return true;
+  const id = price.id ?? chosenId;
+  if (id === undefined) return false;
+  return countOf(inv, id) >= price.count;
 }
 
 /** True if adding `n` of a material would still fit under the storage cap. */

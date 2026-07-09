@@ -20,8 +20,8 @@ describe("Cost — the clock-domain tag (#113)", () => {
 });
 
 describe("SkillCost — the CT view of the one grammar", () => {
-  it("is exactly the CT-pacing slice of Cost (charge + cooldown)", () => {
-    expectTypeOf<SkillCost>().toEqualTypeOf<Pick<Cost, "charge" | "cooldown">>();
+  it("is exactly the CT-pacing slice of Cost (charge + cooldown + material)", () => {
+    expectTypeOf<SkillCost>().toEqualTypeOf<Pick<Cost, "charge" | "cooldown" | "material">>();
   });
 
   it("every SkillCost is assignable to the one Cost grammar", () => {

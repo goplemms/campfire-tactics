@@ -164,7 +164,9 @@ export const MEDIC_JOB: JobDef = {
       range: 1,
       spend: "act",
       unlockLevel: 1,
-      cost: { cooldown: KIT.healCooldown },
+      // The herb is chosen at cast time (salve/stimulant/antidote), so the price declares only
+      // the count — the runtime herbId supplies the id (#113 material price).
+      cost: { cooldown: KIT.healCooldown, material: { count: 1 } },
       effect: { kind: "med-heal" },
     },
     {

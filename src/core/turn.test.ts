@@ -273,9 +273,9 @@ describe("Battle — deployment verbs (D63)", () => {
     const stash = createInventory(6, { "trap-kit": 2 });
     battle.setStash(stash);
 
-    const res = battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0");
+    const res = battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0", { id: "trap-kit", count: 1 });
     expect(res.ok && res.trap).toBeTruthy();
-    expect(countOf(stash, "trap-kit")).toBe(1); // one kit spent
+    expect(countOf(stash, "trap-kit")).toBe(1); // one kit spent (commit-side, #113)
     expect(battle.entities.all().some((e) => e.id === "ptrap-0")).toBe(true);
     expect(battle.log[battle.log.length - 1]).toMatchObject({ kind: "placeTrap", unit: "t", id: "ptrap-0" });
   });
@@ -287,7 +287,7 @@ describe("Battle — deployment verbs (D63)", () => {
     const stash = createInventory(6, { "trap-kit": 1 });
     battle.setStash(stash);
     battle.beginUndo();
-    battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0");
+    battle.placeTrap(trapper, { col: 0, row: 0 }, trapEffect, "ptrap-0", { id: "trap-kit", count: 1 });
     expect(countOf(stash, "trap-kit")).toBe(0);
     battle.undo();
     expect(countOf(stash, "trap-kit")).toBe(1); // kit refunded

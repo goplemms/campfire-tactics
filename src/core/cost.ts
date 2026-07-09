@@ -29,11 +29,26 @@ import type { CostKnob } from "./overworld-cost";
 export type ClockDomain = "ct" | "node-steps";
 
 /**
+ * A **carried material** consumed per cast (#113 material price) — the trap kit a Set Trap
+ * spends, the herb the Medic's Heal burns. `count` is how many; `id` names the material when
+ * it is fixed on the skill (the trap kit), and is **omitted** when the specific item is chosen
+ * at cast time (the Medic picks salve/stimulant/antidote — the runtime herbId supplies it).
+ * The declared price is read as **data** by the availability projection ({@link
+ * "./inventory".canAffordMaterial} — grey out at 0 carried) and consumed in the commit half of
+ * the apply path (never the resolver, #113).
+ */
+export interface MaterialCost {
+  /** The material id, when fixed on the skill; omitted when the caster chooses it at cast time. */
+  id?: string;
+  /** How many are consumed per cast. */
+  count: number;
+}
+
+/**
  * The **price map** (axis B) of the one cost grammar (#113) — the per-cast resources an
  * action spends, shared across surfaces. Every field is optional; an action may be
  * pure-pacing (no price). A {@link "./overworld-cost".CostKnob} provider prices dynamically
- * (Cook Stew at *the night's food value*), resolved once at check time (#126). Materials join
- * this map in increment 3 (`material: { id, count }` — the trap kit, the Medic's herb).
+ * (Cook Stew at *the night's food value*), resolved once at check time (#126).
  */
 export interface CostPrice {
   /** Fatigue spent on the acting character — the loose over-extension guardrail (D35/D73). */
@@ -53,6 +68,12 @@ export interface CostPrice {
    * healing). Declared-but-unused on purpose.
    */
   rp?: CostKnob;
+  /**
+   * A **carried material** consumed per cast (#113): the trap kit (Set Trap) and the Medic's
+   * herb (Heal) declare it here and consume it in the commit half of the apply path — the
+   * resolver-side `removeItem` is gone (the undo checkpoint's stash snapshot covers refunds).
+   */
+  material?: MaterialCost;
 }
 
 /**

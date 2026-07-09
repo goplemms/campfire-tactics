@@ -85,6 +85,7 @@ export const SCOUT_JOB: JobDef = {
       target: "camp",
       range: 0,
       spend: "act",
+      cost: { material: { id: "trap-kit", count: 1 } }, // consumes a carried kit (#113 material price)
       effect: { kind: "placeTrap", damage: 8, status: exposed(2) },
     },
     // The Scout's L2 growth (D74), split by context: Recon darts in battle/deployment,

@@ -80,6 +80,7 @@ import {
   canDisarm,
   type ConcealedTrap,
   type PlaceTrapEffect,
+  type MaterialCost,
   bribeEnemy,
   bribeCost,
   bribeChance,
@@ -916,7 +917,7 @@ export class BattleScene extends Phaser.Scene {
    */
   private onDeploySkillButton(actor: Unit, skill: SkillDef): void {
     if (this.busy || this.deployActor !== actor || actor.captured || this.deployActed) return;
-    if (skill.effect.kind === "placeTrap") return this.placeTrap(skill.effect);
+    if (skill.effect.kind === "placeTrap") return this.placeTrap(skill.effect, skill.cost?.material);
     if (skill.id === "dig-in") return this.digIn();
     if (skill.effect.kind === "med-heal") return this.openHerbMenu(actor, skill, "deployment"); // the Medic pre-heals (D67 W8)
     if (skill.target === "self") return this.castDeploySkill(actor, skill, actor);
@@ -1295,14 +1296,15 @@ export class BattleScene extends Phaser.Scene {
     this.boardObjects.push(dropNetCage(this, x, y - this.view.halfH()));
   }
 
-  private placeTrap(effect: PlaceTrapEffect): void {
+  private placeTrap(effect: PlaceTrapEffect, material?: MaterialCost): void {
     const actor = this.deployActor;
     if (!actor || actor.captured || this.busy) return;
     // The rules (kit cost, tile clear, entity registration, use-XP) run through the
     // one interpreter now (D63: Battle.placeTrap → the logged, undoable placeTrap
-    // action); the scene keeps only the board marker, keyed by entity id.
+    // action); the scene keeps only the board marker, keyed by entity id. The kit price
+    // (#113) is declared on the SkillDef and consumed commit-side by apply.
     const id = `ptrap-${this.trapSeq++}`;
-    const res = this.battle.placeTrap(actor, actor.pos, effect, id);
+    const res = this.battle.placeTrap(actor, actor.pos, effect, id, material);
     if (!res.ok) {
       this.setHint(res.reason ?? "Can't place a trap here.");
       return;

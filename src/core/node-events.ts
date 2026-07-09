@@ -49,6 +49,8 @@ import { recruitClassify, type RecruitOutcome } from "./recruitment";
 import { thiefEventSkim } from "./theft";
 import { earn, spend } from "./purse-journal";
 import { rankOf } from "./num";
+import { nudgeMorale } from "./camp";
+import { accrueRp } from "./upkeep";
 
 /**
  * An event kind (M11; **toll** added M13/D48). New kinds are new records on
@@ -514,7 +516,7 @@ export function applyStoryChoice(run: RunState, node: MapNode, story: StorySpec,
     out.goldDelta = applied;
   }
   if (spec.moraleDelta) {
-    run.camp.morale += spec.moraleDelta;
+    nudgeMorale(run.camp, spec.moraleDelta);
     out.moraleDelta = spec.moraleDelta;
   }
   if (spec.fatigueDelta) {
@@ -705,7 +707,7 @@ export const EVENTS: readonly EventDef[] = [
     minInfluence: "favored", // only a well-regarded caravan is feasted (D62)
     autoResolve(run, _node) {
       const out = emptyOutcome("patron", "A patron feasts the company — spirits lift, and a parting gift is pressed into your hands.");
-      run.camp.morale += PATRON.morale;
+      nudgeMorale(run.camp, PATRON.morale);
       out.moraleDelta = PATRON.morale;
       grantItem(run.inventory, PATRON.gift); // the gift always lands (D75)
       out.materials = [PATRON.gift];
@@ -809,7 +811,7 @@ export function applyProvisionChoice(run: RunState, choiceId: string): EventOutc
   out.materials = TRAVELER_GIFT.map(([id]) => id);
   if (choiceId === "cook-stew") {
     // The first Cook verb (E3): bank a little RP + ease the food line, and still take the gifts.
-    run.rp += 2;
+    accrueRp(run, 2);
     out.summary =
       "Pip cooks a hot stew for the road and the traveler both — spirits and rations hold (RP banked). The parting gifts, trap kits and old iron, ride on, packs be damned.";
     return out;

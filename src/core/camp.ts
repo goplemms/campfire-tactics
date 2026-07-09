@@ -87,6 +87,16 @@ export function createCamp(init: Partial<Camp> = {}): Camp {
   };
 }
 
+/**
+ * Nudge party morale by a delta (D8) — **the one write funnel for `camp.morale`**
+ * (the #112 rider's scalar chokepoint). A plain, unclamped `+=`, exactly what every
+ * mutation site did (morale is unbounded raw; {@link moraleTier} bands it on read) —
+ * the funnel exists so future provenance/clamping work has a single seam.
+ */
+export function nudgeMorale(camp: Camp, delta: number): void {
+  camp.morale += delta;
+}
+
 /** Morale tiers (D8 banding): a legible label for the current morale value. */
 export type MoraleTier = "Low" | "Neutral" | "High" | "Inspired";
 
@@ -138,7 +148,7 @@ export function applyCampSkill(skill: SkillDef, camp: Camp): CampOutcome {
   const effect = skill.effect;
   switch (effect.kind) {
     case "morale":
-      camp.morale += effect.morale;
+      nudgeMorale(camp, effect.morale);
       camp.pendingHeal += effect.partyHeal;
       return { morale: effect.morale, bankedHeal: effect.partyHeal };
   }

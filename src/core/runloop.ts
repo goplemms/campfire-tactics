@@ -46,14 +46,13 @@ import {
 import type { MapNode } from "./overworld";
 import { influenceTier } from "./economy";
 import { moraleModifiers } from "./morale";
-import { moraleTier } from "./camp";
-import { applyCampToParty } from "./camp";
+import { moraleTier, nudgeMorale, applyCampToParty } from "./camp";
 import { freeCaptive } from "./deployment";
 import { isConcealedTrap, type ConcealedTrap } from "./entities";
 import { recoverMaterials } from "./resolution";
 import { grantItem } from "./inventory";
 import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
-import { rpPerNight, payUpkeep, restHeal, computeUpkeep, RECOVERY, type UpkeepResult } from "./upkeep";
+import { rpPerNight, payUpkeep, restHeal, computeUpkeep, accrueRp, spendRp, RECOVERY, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, effectiveIntelTier, MAX_TIER, TRAP_INTEL, type IntelReport } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
 import { restoreFatigue, nightlyFatigue, isFatigueTier0 } from "./fatigue";
@@ -304,7 +303,7 @@ export class RunLoop {
     // doesn't add to it (D47).
     const upkeep = payUpkeep(this.run.camp, this.run.party, { skip: [] });
     const rpAdded = rpPerNight(this.run.party) + REST.chunks * policy.rpPerChunk;
-    this.run.rp += rpAdded;
+    accrueRp(this.run, rpAdded);
 
     // D80: the big heal is gated on **Tier 0 at rest-time** — snapshot eligibility *before* the
     // Deep Rest wipes fatigue (else the wipe would make everyone trivially eligible). One check
@@ -335,7 +334,7 @@ export class RunLoop {
       if (bigHealEligible.has(u.id) && this.run.rp >= policy.rpPerChunk) {
         const res = restHeal(u, this.run.rp, policy);
         if (res.rpSpent > 0) {
-          this.run.rp -= res.rpSpent;
+          spendRp(this.run, res.rpSpent);
           healed.push({ unitId: u.id, hp: res.hpHealed });
           continue;
         }
@@ -345,7 +344,7 @@ export class RunLoop {
       if (hp > 0) chipHealed.push({ unitId: u.id, hp });
     }
 
-    this.run.camp.morale += REST.moraleGain;
+    nudgeMorale(this.run.camp, REST.moraleGain);
 
     // Premium tier (D47): clear accumulated Upkeep debt (hunger / worn gear from
     // voluntary underfunding) in one swipe — what in-place rest does *not* do.
@@ -409,7 +408,7 @@ export class RunLoop {
 
     const upkeep = payUpkeep(this.run.camp, this.run.party, { skip: [] });
     const rpAdded = rpPerNight(this.run.party);
-    this.run.rp += rpAdded;
+    accrueRp(this.run, rpAdded);
 
     const healed: { unitId: string; hp: number }[] = [];
     let hpHealed = 0;
@@ -432,7 +431,7 @@ export class RunLoop {
       if (this.run.rp < policy.rpPerChunk) break;
       const res = restHeal(u, this.run.rp, policy);
       if (res.rpSpent > 0) {
-        this.run.rp -= res.rpSpent;
+        spendRp(this.run, res.rpSpent);
         credit(u.id, res.hpHealed);
       }
     }
@@ -518,7 +517,7 @@ export class RunLoop {
   camp(): CampResult {
     const upkeep = payUpkeep(this.run.camp, this.run.party);
     const rpAdded = rpPerNight(this.run.party);
-    this.run.rp += rpAdded;
+    accrueRp(this.run, rpAdded);
     const lost = tickDyingClocks(this.run.party);
     const dyingLost = lost.map((u) => u.id);
     for (const u of lost) removeFromRoster(this.run, u);

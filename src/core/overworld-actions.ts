@@ -41,7 +41,7 @@ import { decayCounters, bumpCounter, nonNegInt } from "./num";
 import { earn, spend } from "./purse-journal";
 import { spendInfluence } from "./economy";
 import { reachableFrom, marketOpenedFlag } from "./overworld";
-import { satisfyUpkeepLine } from "./upkeep";
+import { satisfyUpkeepLine, accrueRp, spendRp } from "./upkeep";
 import { applyCampSkill, type Camp, type CampOutcome } from "./camp";
 import { grantAbilityUseXp, jobLevelOf } from "./leveling";
 import { streamFor } from "./rng";
@@ -439,7 +439,7 @@ export function checkOverworldCost(run: RunState, id: string, cost: OverworldCos
       if (prices.fatigue > 0 && unit) unit.fatigue = spendFatigue(unit.fatigue, prices.fatigue);
       if (prices.gold > 0) spend(run.camp, prices.gold, "action", id, { nodeId: run.mapNodeId, night: run.night });
       if (prices.influence > 0) spendInfluence(eco, prices.influence);
-      if (prices.rp > 0) run.rp -= prices.rp;
+      if (prices.rp > 0) spendRp(run, prices.rp);
       if ((cost.cooldown ?? 0) > 0) eco.cooldowns[id] = cost.cooldown!;
       if (cost.usesPerNode !== undefined) bumpCounter(eco.campUses, id);
     },
@@ -651,7 +651,7 @@ const OVERWORLD_EFFECT_HANDLERS: {
   provisionMeal: (effect, { run }) => {
     // Cook-Stew mechanism: bank RP (D9) and satisfy the Food line (D15/D45) — the day's
     // food becomes recovery with no double-charge (payUpkeep skips the satisfied line).
-    run.rp += effect.rp;
+    accrueRp(run, effect.rp);
     satisfyUpkeepLine(run.camp, "food");
     return { ok: true, detail: `Cooked: +${effect.rp} Rest Points banked, the night's food covered.` };
   },

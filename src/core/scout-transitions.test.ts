@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createUnit, recalls, type Unit } from "./units";
 import { createRun } from "./run";
 import type { MapNode } from "./overworld";
-import { PRESTIGE_OFFERS, storyChoices, applyStoryChoice } from "./node-events";
+import { PRESTIGE_OFFERS, storyChoices, applyStoryChoice } from "./stories";
 import { SCOUT_PRESTIGE_FLOOR } from "./jobs";
 
 const NODE: MapNode = { id: "n-event", layer: 1, index: 0, kind: "event", edges: [] } as MapNode;

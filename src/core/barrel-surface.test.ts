@@ -23,6 +23,12 @@
  * Deltas:
  *   - increment 1 (#128 part A): −5 dead aliases removed — `grantCombatXp`,
  *     `scout`, `seerDivine`, `useCampJobSkill`, `useCampSkillAtNode` (→ 610).
+ *   - increment 2 (#119, node-events split): +3 — `emptyOutcome` and
+ *     `INFLUENCE_ORDER` exported from node-events for the new sibling modules
+ *     (`stories.ts`, `early-events.ts`, `hollow-mill-events.ts`), and
+ *     `HOLLOW_MILL_EVENTS` (the authored-record array registered via
+ *     `registerEvent`). The moved story/early-event symbols keep the same barrel
+ *     names, just new module homes (→ 613).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -97,10 +103,12 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "GUILD",
   "HASTENED",
   "HEAVY_KNIGHT",
+  "HOLLOW_MILL_EVENTS",
   "HOLLOW_MILL_PARTY",
   "HUNTER",
   "IMMOBILIZED",
   "INFLUENCE_BANDS",
+  "INFLUENCE_ORDER",
   "INTEL_BREAKPOINTS",
   "JOBS",
   "KIT",
@@ -330,6 +338,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "effectiveSpeed",
   "eligibleGrants",
   "eligiblePrestiges",
+  "emptyOutcome",
   "encounterOutcome",
   "enemyCount",
   "enumerateCompletions",

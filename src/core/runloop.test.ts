@@ -7,7 +7,7 @@ import { cooldownRemaining } from "./overworld-actions";
 import { SURVEY } from "./jobs";
 import { computeUpkeep, RECOVERY } from "./upkeep";
 import { FATIGUE, FATIGUE_TIER_FLOORS } from "./fatigue";
-import { bypassXp } from "./node-events";
+import { bypassXp } from "./early-events";
 import { isConcealedTrap } from "./entities";
 import { traverseRoute } from "./expedition-sim";
 import { THE_HOLLOW_MILL } from "./hollow-mill";

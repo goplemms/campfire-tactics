@@ -22,7 +22,7 @@ import { isConcealedTrap } from "./entities";
 import { createRun, createRunFromExpedition } from "./run";
 import { THE_HOLLOW_MILL } from "./hollow-mill";
 import { getNode } from "./overworld";
-import { earlyEventForNode } from "./node-events";
+import { earlyEventForNode } from "./early-events";
 
 const AMBUSH: AuthoredEncounter = {
   id: "amb",

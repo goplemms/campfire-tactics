@@ -3,7 +3,7 @@ import { createUnit, recalls, type Unit, type UnitSpec } from "./units";
 import { createRun } from "./run";
 import type { MapNode } from "./overworld";
 import type { JobId } from "./jobs";
-import { applyStoryChoice, storyChoices, type StorySpec } from "./node-events";
+import { applyStoryChoice, storyChoices, type StorySpec } from "./stories";
 
 const BASE = "fix-base" as JobId;
 const ELITE = "fix-elite" as JobId;

@@ -72,11 +72,11 @@ import {
   resolveEvent,
   eventChoices,
   chooseEventOption,
-  bypassXp,
   type EventDef,
   type EventOutcome,
   type EventChoice,
 } from "./node-events";
+import { bypassXp } from "./early-events";
 
 /**
  * How the party engaged the **concealed enemy traps** an encounter staged (D12/D54)
@@ -672,11 +672,11 @@ export class RunLoop {
 
   /**
    * **Bypass** the current node's encounter (D80) — the paid short-circuit of a tailored bypass
-   * event. No fight: each combatant keeps a flat {@link "./node-events".bypassXp} (below a won
+   * event. No fight: each combatant keeps a flat {@link "./early-events".bypassXp} (below a won
    * fight, so bypassing is never strictly better), the **loot is forgone** (`goldEarned: 0`), and
    * the night is recorded as a player resolution so the run advances. The passage fee was already
    * spent by the event's `choose` handler; this is the run-flow half. Never offered on the final
-   * node (guarded in {@link "./node-events".tailoredEarlyEventFor}), so it can't end the run.
+   * node (guarded in {@link "./early-events".tailoredEarlyEventFor}), so it can't end the run.
    */
   bypassEncounter(): BypassResult {
     const node = currentNode(this.run);

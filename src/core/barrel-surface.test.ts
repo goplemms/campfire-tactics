@@ -63,6 +63,10 @@
  *     `EventBus` etc. keep their names), `EncounterRecord`→`NightRecord` and
  *     `OverworldEconomy`→`OverworldState` (types), `Battle.runEnemyTurn`→
  *     `runPolicyTurn` (a method). Still 616.
+ *   - increment 9 (#128 part C, stranded helpers): net 0 — `describeUnit` (was in
+ *     `node-events.ts`) and `jobPresenceSummary` (was in `jobs.ts`) move to
+ *     `dossier.ts` beside the other read-only projections; both keep their barrel
+ *     names at the new home (616).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";

@@ -220,21 +220,6 @@ export function unitHasCapability(unit: Unit, cap: CapabilityId, lookup: JobLook
 }
 
 /**
- * Human-readable lines describing a job's **presence / faucet** declarations (D72) — the
- * **card-surfacing hook**: a class's standing-by-presence read as data, so the render can
- * show "Markets +1 tier while fielded" / "+1 Influence per step" without a bespoke string
- * per class. Empty for a job that declares neither (every job today, until the kit pass).
- */
-export function jobPresenceSummary(job: JobDef): string[] {
-  const out: string[] = [];
-  const lift = job.presence?.marketTierBonus ?? 0;
-  if (lift > 0) out.push(`Markets read +${lift} tier while fielded`);
-  const inf = job.faucet?.influencePerStep ?? 0;
-  if (inf > 0) out.push(`+${inf} Influence per node-step`);
-  return out;
-}
-
-/**
  * Stamp a unit's job passives (D40) onto `unit.passives` so combat resolution
  * reads them (the Scout's solo-flank, the Hunter's Deadeye, the Medic's Triage,
  * the Heavy Knight's tarpit). Idempotent; call at battle setup.

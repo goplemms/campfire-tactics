@@ -6,7 +6,7 @@ import { jobLevelOf } from "./leveling";
 import { prestige, eligibleGrants, applyGrant, type Grant, type PredicateCtx } from "./grants";
 import { rpPerNight, computeUpkeep, UPKEEP } from "./upkeep";
 import { marketTierBonus } from "./overworld";
-import { describeUnit } from "./node-events";
+import { describeUnit } from "./dossier";
 import type { SkillDef } from "./skills";
 import type { RunState } from "./run";
 

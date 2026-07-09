@@ -35,7 +35,8 @@
 
 import type { RunState } from "./run";
 import type { MapNode } from "./overworld";
-import { primaryJobOf, type Unit } from "./units";
+import { type Unit } from "./units";
+import { describeUnit } from "./dossier";
 import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { MATERIALS, grantItem, canAdd } from "./inventory";
@@ -556,16 +557,6 @@ export function chooseEventOption(run: RunState, node: MapNode, choiceId: string
 /** True if storage has room for one more of a material (reuses the cap, D6). */
 function canStoreMore(run: RunState, materialId: string): boolean {
   return canAdd(run.inventory, materialId);
-}
-
-/**
- * A one-line stat blurb for an offered/featured body. Names the unit's **effective**
- * class via {@link primaryJobOf} (D65) — a prestiged unit reads as its evolved job,
- * not its frozen `jobId`. Exported so that standardization is asserted directly
- * (`prestige.test.ts`) rather than only covered by the read-swap.
- */
-export function describeUnit(u: Unit): string {
-  return `${primaryJobOf(u) ?? "fighter"} · HP ${u.maxHp} · ATK ${u.attack} · SPD ${u.speed}`;
 }
 
 // --- Authored-event registration (R3, #119) ---------------------------------

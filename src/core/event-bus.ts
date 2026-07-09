@@ -35,6 +35,13 @@ export interface BattleEvents {
    */
   unitRescued: { unit: Unit; by?: Unit };
   /**
+   * An enemy was **swayed to the player's side** mid-combat (D30/D62 bribe) — the Noble's
+   * turn-coat. `unit` is the defector (now `side: "player"`), `by` the briber. The render
+   * reacts by re-tinting the token to the ally palette (a listener, like `unitRescued`),
+   * rather than the call site flipping `side` behind the type system.
+   */
+  unitSwayed: { unit: Unit; by?: Unit };
+  /**
    * A fleeing unit reached a map edge and **left the field** (D84) — gone, not
    * dead (no defeat event, no kill credit). The render removes its token + logs
    * the exit; the win check reads the vacancy through {@link "./units".isActive}.

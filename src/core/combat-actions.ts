@@ -74,6 +74,15 @@ export type CombatAction =
    */
   | { kind: "rescue"; target: UnitId; unit?: UnitId }
   /**
+   * A **sway** (D30/D62 bribe): `target` — an enemy the Noble turned — flips to the player's
+   * side for the rest of the fight, announcing `unitSwayed`. `unit` is the briber (named on the
+   * bus event). Logged (mirrors `rescue`) so the defection rides the state graph replay
+   * reconstructs and undo crosses — the render used to flip `side` with a type-cast, invisible
+   * to both. The Influence spend + the sway roll stay overworld economy ({@link
+   * "./economy-actions".bribeEnemy}); this is only the on-board side flip.
+   */
+  | { kind: "sway"; target: UnitId; unit?: UnitId }
+  /**
    * The Medic's herb-fuelled **Heal** (D40): consume `herbId` from the battle's wired
    * stash and heal `target` with the herb's rider (salve/stimulant/antidote). Logged
    * (R1 #111) so the herb spend + heal replay and undo refunds the herb (the

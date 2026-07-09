@@ -65,10 +65,8 @@ import {
   thiefEscapes,
   previewNode,
   scoutedTier,
-  // D10 — the intel deploy edge: scouted ground deploys safer
-  intelFloor,
-  effectiveIntelTier,
-  intelDeployBonus,
+  // D8/D10 — the deploy edge: morale folded with the intel bundle (core-owned math)
+  deployModifiers,
   // D84 — standing-order behaviors: the stance telegraph + transition narration
   STANDING_ORDERS,
   orderOf,
@@ -87,10 +85,10 @@ import {
   bribeChance,
   influenceTier,
   recruitToRoster,
+  medicalHerbs,
   type RunState,
   type RunLoop,
   type IntelReport,
-  type IntelTier,
   type DeployFront,
   type DeploySource,
   type Rng,
@@ -98,13 +96,13 @@ import {
   aimInRange,
   type GridCoord,
   type Unit,
-  type Side,
   type SkillDef,
   type TheftAttempt,
   type AbilityForecast,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
-import { Button } from "../button";
+import { Button, probeWidth } from "../button";
+import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
@@ -475,7 +473,7 @@ export class BattleScene extends Phaser.Scene {
     // Intel read (D10), then straight into Deployment.
     this.intel = this.loop.intel();
     this.cardView = "intel"; // a fresh node opens in deployment — lead the situation card with intel
-    this.refreshCampText();
+    this.refreshSituationCard();
     const upkeepNote =
       camp.upkeep.underfunded.length > 0
         ? `Underfunded ${camp.upkeep.underfunded.join(" + ")} — morale took a hit.`
@@ -560,6 +558,12 @@ export class BattleScene extends Phaser.Scene {
       this.tintCaptured(unit, false);
       this.flashHeal(unit);
       this.view.logRescue(unit, by);
+    });
+    // The Noble's bribe (D30/D62): a swayed enemy turns coat — re-tint its token to the ally
+    // palette here (a listener, like unitRescued), rather than the call site flipping `side`.
+    this.battle.bus.on("unitSwayed", ({ unit }) => {
+      const view = this.view.views.get(unit.id);
+      view?.body.setFillStyle(COLOR.ally).setStrokeStyle(2, COLOR.allyEdge);
     });
     // Deploy → battle transition (D67): when the alarm trips (or the player commits), the
     // bus announces combat, and the render tears down the staging visuals — lift the D12
@@ -799,23 +803,13 @@ export class BattleScene extends Phaser.Scene {
     return moraleModifiers(moraleTier(this.run.camp.morale));
   }
 
-  /** The node's effective intel tier (passive floor + scouting), depth-capped (D86), for the deploy edge (D10). */
-  private intelTier(): IntelTier {
-    return effectiveIntelTier(intelFloor(this.run.party) + scoutedTier(this.run.overworld, this.run.mapNodeId), currentEncounter(this.run));
-  }
-
   /**
-   * Deploy modifiers = morale (D8) folded with the intel edge (D10): scouted
-   * ground widens the safe depth and lowers exposure, on top of the morale bundle.
+   * Deploy modifiers = morale (D8) folded with the intel edge (D10). The additive/
+   * multiplicative fold now lives in core {@link deployModifiers} (tested); this is the
+   * scene's pass-through, reading the run's current encounter.
    */
   private deployMods() {
-    const m = this.moraleMods();
-    const intel = intelDeployBonus(this.intelTier());
-    return {
-      ...m,
-      safeDepthBonus: m.safeDepthBonus + intel.safeDepthBonus,
-      exposureMultiplier: m.exposureMultiplier * intel.exposureMultiplier,
-    };
+    return deployModifiers(this.run, currentEncounter(this.run));
   }
 
   private selectDeployActor(unit: Unit | null): void {
@@ -948,7 +942,7 @@ export class BattleScene extends Phaser.Scene {
    * Medic pre-heals a wounded unit exactly as the combat Medic heals mid-fight.
    */
   private openHerbMenu(actor: Unit, skill: SkillDef, ctx: BoardCtx): void {
-    const herbs = ["salve", "stimulant", "antidote"].filter((h) => countOf(this.run.inventory, h) > 0);
+    const herbs = medicalHerbs().filter((h) => countOf(this.run.inventory, h) > 0);
     if (herbs.length === 0) return void this.setHint("No herbs carried — provision some at camp.");
     this.layoutActionMenu(
       herbs.map((h) => ({
@@ -1314,7 +1308,7 @@ export class BattleScene extends Phaser.Scene {
     const marker = this.add.text(x, y - this.view.halfH(), ICON.trapMine.glyph, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.8);
     this.boardObjects.push(marker);
     this.playerTrapMarkers.set(id, marker);
-    this.refreshCampText();
+    this.refreshSituationCard();
     this.deployActed = true;
     actor.dugIn = false; // placing a trap is an act — breaks the hunker (the "on action" trigger)
     this.refreshDeployButtons();
@@ -1335,7 +1329,7 @@ export class BattleScene extends Phaser.Scene {
     this.battle.beginBattle();
     this.titleText.setText("Battle");
     this.cardView = "camp"; // foes are on the board now — default the situation card back to Camp
-    this.refreshCampText();
+    this.refreshSituationCard();
     this.drawRail(false); // swap the deploy rail (player + net) for the full combat roster
     this.legendStrip.setItems(BATTLE_LEGEND);
     this.clearActionButtons();
@@ -1358,7 +1352,7 @@ export class BattleScene extends Phaser.Scene {
 
     // beginBattle: Chef heal + morale-warmed initiative seed (D8).
     const healed = this.loop.beginBattle();
-    this.refreshCampText();
+    this.refreshSituationCard();
     if (healed > 0) for (const u of this.battle.units) if (u.side === "player" && u.alive) this.flashHeal(u);
 
     // Trap-field (D12): an opening party scan from the deploy line reveals the
@@ -1708,7 +1702,7 @@ export class BattleScene extends Phaser.Scene {
     const res = disarmTrap(this.battle.entities, trapId, actor, this.run.inventory);
     if (!res.ok) return this.setHint(`Can't disarm: ${res.reason}`);
     this.redrawTrapMarkers();
-    this.refreshCampText();
+    this.refreshSituationCard();
     const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
     const hint = res.harvested
       ? `${actor.name} disarms the trap and pockets a ${res.harvested}.${tail}`
@@ -1729,11 +1723,11 @@ export class BattleScene extends Phaser.Scene {
       if (!m) {
         const { x, y } = this.tileToWorld(t.pos);
         // Glyphs come from the icon registry (D59) — all verified to render in the UI font.
-        m = this.add.text(x, y - this.view.halfH(), ICON.trapArmed.glyph, { color: "#e06b6b", fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.85);
+        m = this.add.text(x, y - this.view.halfH(), ICON.trapArmed.glyph, { color: ICON.trapArmed.color, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(0.85);
         this.boardObjects.push(m);
         this.trapMarkers.set(t.id, m);
       }
-      m.setText(t.sprung ? ICON.trapSprung.glyph : ICON.trapArmed.glyph).setColor(t.sprung ? INK.disabled : "#e06b6b");
+      m.setText(t.sprung ? ICON.trapSprung.glyph : ICON.trapArmed.glyph).setColor(t.sprung ? INK.disabled : ICON.trapArmed.color);
     }
     // Drop markers for disarmed traps (no longer registered).
     for (const [id, m] of this.trapMarkers) {
@@ -1792,12 +1786,11 @@ export class BattleScene extends Phaser.Scene {
     this.bribeArmed = false;
     // Couldn't afford it (nothing spent) — leave the turn intact so the player can act.
     if (!res.applied && !res.failed) return this.setHint(`Can't bribe: ${res.reason}`);
-    // On success, flip the enemy to the player's side for the rest of the fight. A failed
-    // sway (res.failed) still spent the Influence and the Act — the moment passed.
+    // On success, flip the enemy to the player's side for the rest of the fight — the logged
+    // core `sway` verb (undo/replay see it), which emits `unitSwayed` so the token re-tints on
+    // the bus (below). A failed sway (res.failed) still spent the Influence and the Act.
     if (res.applied) {
-      (foe as unknown as { side: Side }).side = "player";
-      const view = this.view.views.get(foe.id);
-      view?.body.setFillStyle(COLOR.ally).setStrokeStyle(2, COLOR.allyEdge);
+      this.battle.bribe(foe, actor);
       if (res.outcome?.permanent) this.pendingRecruits.push(foe);
     }
     this.busy = true;
@@ -1872,7 +1865,7 @@ export class BattleScene extends Phaser.Scene {
       if (attempt.stolen > 0) {
         this.theftAttempts.set(actor.id, attempt);
         this.goldStolen += attempt.stolen;
-        this.refreshCampText();
+        this.refreshSituationCard();
         this.setHint(`${actor.name} lifted ${attempt.stolen}g off the purse! Cut it down before it escapes to recover the gold.`);
       }
     }
@@ -1891,7 +1884,7 @@ export class BattleScene extends Phaser.Scene {
       if (thief && !thief.alive) {
         const back = recoverStolen(this.run, attempt);
         this.goldRecovered += back;
-        this.refreshCampText();
+        this.refreshSituationCard();
         this.setHint(`Recovered ${back}g from the slain thief.`);
       }
     }
@@ -1962,7 +1955,6 @@ export class BattleScene extends Phaser.Scene {
       clearLayer(this.legend);
       return;
     }
-    const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
     const w = 540;
     const h = 360;
@@ -1997,11 +1989,17 @@ export class BattleScene extends Phaser.Scene {
       "  caught in the open or the net is captured (the alarm begins the battle); if the",
       "  net reaches your safe core, the battle just starts — nobody is taken.",
     ].join("\n");
-    this.legend.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.btnStroke).setDepth(30),
-      this.add.text(cx, cy - h / 2 + 20, "Legend & Keys  (L to close)", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(31),
-      this.add.text(cx - w / 2 + 22, cy - h / 2 + 44, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.caption, lineSpacing: 3 }).setOrigin(0, 0).setDepth(31),
-    );
+    showModal(this, this.legend, {
+      title: "Legend & Keys  (L to close)",
+      tone: "neutral",
+      w,
+      h,
+      cy,
+      depth: 30,
+      titleOffset: 20,
+      titleSize: FONT.body,
+      body: { text: body, offset: 44, originX: 0, padX: 22, originY: 0, color: INK.secondary, font: FONT.caption, lineSpacing: 3, noWrap: true },
+    });
   }
 
   private onPointerDown(pointer: Phaser.Input.Pointer): void {
@@ -2254,7 +2252,7 @@ export class BattleScene extends Phaser.Scene {
     }
     if (ctx === "deployment") {
       this.syncPlayerTrapMarkers(); // drop the board marker for any undone trap (kit refunded in core)
-      this.refreshCampText();
+      this.refreshSituationCard();
       this.highlightTile(actor.pos);
       this.refreshDeployButtons();
       this.refreshDeployStatus();
@@ -2326,8 +2324,8 @@ export class BattleScene extends Phaser.Scene {
       for (const u of this.battle.units) if (u.side === "player" && u.captured) freeCaptive(u);
     }
 
-    this.refreshCampText();
-    this.refreshHp();
+    this.refreshSituationCard();
+    this.refreshUnits();
     this.refreshObjectives();
     // Re-tint any freed allies (roster + the just-freed board captives) — skip the dead so a
     // freed-then-downed captive keeps its death visual instead of recoloring to a live ally.
@@ -2527,13 +2525,13 @@ export class BattleScene extends Phaser.Scene {
     this.view.placeView(unit);
   }
 
-  private refreshHp(): void {
+  private refreshUnits(): void {
     this.view.refreshUnits();
   }
 
   private refreshHud(): void {
     this.drawRail(false);
-    this.refreshHp();
+    this.refreshUnits();
     this.refreshObjectives();
     this.refreshFocusCard();
   }
@@ -2604,19 +2602,17 @@ export class BattleScene extends Phaser.Scene {
     const rows = objs.map((o) => {
       const status = o.status();
       const prog = o.progress();
-      if (status === "met") return { marker: ICON.check.glyph, color: INK.success, label: o.spec.label };
-      if (status === "failed") return { marker: "✗", color: INK.danger, label: o.spec.label };
+      if (status === "met") return { marker: ICON.check.glyph, color: ICON.check.color, label: o.spec.label };
+      if (status === "failed") return { marker: ICON.failed.glyph, color: ICON.failed.color, label: o.spec.label };
       const pct = prog !== undefined ? `  ${Math.round(prog * 100)}%` : "";
-      return { marker: "○", color: INK.muted, label: o.spec.label + pct };
+      return { marker: ICON.open.glyph, color: ICON.open.color, label: o.spec.label + pct };
     });
 
     // Far-left, directly under the top-left phase/turn line (x matches the title's 12px inset) —
     // a left-column "mission" stack above the focus card.
     const padX = 10, padY = 7, rowPitch = 18, markerGap = 8, top = 28, left = 12;
     // Measure the widest label (off-screen) to size the box to its content, like the action box.
-    const probes = rows.map((r) => this.add.text(0, 0, r.label, { fontFamily: FONT.family, fontSize: FONT.label }).setVisible(false));
-    const labelW = Math.max(40, ...probes.map((t) => t.width));
-    probes.forEach((t) => t.destroy());
+    const labelW = Math.max(40, ...rows.map((r) => probeWidth(this, r.label, FONT.label)));
     const markerW = 10;
     const boxW = padX * 2 + markerW + markerGap + labelW;
     const boxH = padY * 2 + 16 + (rows.length - 1) * rowPitch;
@@ -2648,15 +2644,16 @@ export class BattleScene extends Phaser.Scene {
         this.setHint(`Ambush revealed — ${u.name} springs from cover!`);
       }
     }
-    if (revealed) this.refreshHp(); // refreshUnits re-reads hidden → un-fades the token
+    if (revealed) this.refreshUnits(); // refreshUnits re-reads hidden → un-fades the token
   }
 
   /**
    * The top-right **situation card** — renders whichever view the Camp/Intel toggle has active,
    * then re-tints the tabs. Called wherever camp economy *or* intel might have changed; cheap to
-   * re-render either side. (The name stays `refreshCampText` for its many call sites.)
+   * re-render either side. (Renamed from `refreshCampText` (#138): it renders the Camp **or**
+   * Intel card, not just camp text.)
    */
-  private refreshCampText(): void {
+  private refreshSituationCard(): void {
     if (this.cardView === "intel") this.renderIntelCard();
     else this.renderCampCard();
     this.updateCardTabs();
@@ -2722,7 +2719,7 @@ export class BattleScene extends Phaser.Scene {
   private setCardView(view: "camp" | "intel"): void {
     if (this.cardView === view) return;
     this.cardView = view;
-    this.refreshCampText();
+    this.refreshSituationCard();
   }
 
   /** Restyle the tab chips by the active view — active = lighter fill + bright text + gold bar. */

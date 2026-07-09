@@ -83,9 +83,9 @@ const STEPS = [
   {
     name: "03-intel-survey",
     eval: wrap(`
-      s.showSurvey();
+      s.showReactCamp();
       s.campDrawers = { intel: true };
-      s.showSurvey();
+      s.showReactCamp();
     `),
   },
   // A synthetic demo of the cost-component columns with VARIED costs (the real drawers only carry

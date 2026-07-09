@@ -162,7 +162,12 @@ export interface UnitSpec extends UnitStats {
  */
 export interface Unit extends UnitStats {
   readonly id: string;
-  readonly side: Side;
+  /**
+   * The faction a unit fights for. Fixed for its whole life **except** the D30/D62 **sway**
+   * (a bribed enemy turning coat): that logged `sway` action flips it, and undo restores it
+   * from the checkpoint — so `side` is undoable state, not `readonly` identity.
+   */
+  side: Side;
   readonly name: string;
   /** Attack reach in tiles (D40); always set on a live unit (1 = melee). */
   attackRange: number;

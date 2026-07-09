@@ -2,7 +2,8 @@ import Phaser from "phaser";
 import { GuildScene } from "./scenes/GuildScene";
 import { OverworldScene } from "./scenes/OverworldScene";
 import { BattleScene } from "./scenes/BattleScene";
-import { BattleBootScene, OverworldBootScene, ExpeditionBootScene, HollowMillBootScene, JumpBootScene, DebugBootScene } from "./debug-battle";
+import { ExpeditionBootScene, HollowMillBootScene } from "./boot/demos";
+import { BattleBootScene, OverworldBootScene, JumpBootScene, DebugBootScene } from "./boot/debug";
 import { COLOR } from "./theme";
 
 // Standalone **Hollow Mill** mode (M14/D44/D52): `#demo` boots the authored

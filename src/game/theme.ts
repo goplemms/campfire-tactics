@@ -30,6 +30,9 @@ export const FONT = {
   label: "12px",
   /** Default body text — the common case. */
   body: "13px",
+  /** A prominent **figure** — one step above body, for a value that reads as the number
+   *  without towering (the readout-tile values, D58). */
+  figure: "14px",
   /** Emphasized map markers / minor headings. */
   heading: "16px",
   /** Per-scene titles. */
@@ -164,6 +167,20 @@ export const INK = {
   danger: "#f0a0a0",
   /** Cleanse / status-clear. */
   cyan: "#9fe0e0",
+
+  // Combat **heat ramp** — floating damage numbers + forecast lethal tags climb this
+  // from `danger` (cool) toward `crit` (hot); the dark outlines keep a hot glyph legible
+  // over any tile. (Consolidated from six hand-tuned literals in combat-view.)
+  /** Lethal-strike tags + a foe you can kill from here. */
+  hot: "#ff7a3a",
+  /** Mid damage number (the ramp's middle band). */
+  heat: "#ff9a4a",
+  /** High / crit damage number (the ramp's top). */
+  crit: "#ff6a2a",
+  /** Dark outline behind a heat glyph (float tags). */
+  outline: "#1a0d05",
+  /** Deep outline behind a crit pop. */
+  critOutline: "#3a0f04",
 } as const;
 
 /**

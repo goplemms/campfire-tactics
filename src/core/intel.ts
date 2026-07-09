@@ -30,6 +30,9 @@ import { earlyEventForNode } from "./early-events";
 import { influenceTier } from "./economy";
 import { runEncounter, type RunState } from "./run";
 import { isAuthoredEncounter, type EncounterSource } from "./staging";
+import { moraleModifiers, type MoraleModifiers } from "./morale";
+import { moraleTier } from "./camp";
+import { scoutedTier } from "./overworld-state";
 
 /** Banded intel tier (D10). 0 = nothing known. */
 export type IntelTier = 0 | 1 | 2 | 3;
@@ -190,6 +193,26 @@ export function intelDeployBonus(tier: IntelTier): { safeDepthBonus: number; exp
   return {
     safeDepthBonus: tier >= 3 ? 2 : tier >= 2 ? 1 : 0,
     exposureMultiplier: tier >= 3 ? 0.75 : tier >= 2 ? 0.85 : tier >= 1 ? 0.95 : 1,
+  };
+}
+
+/**
+ * The **deploy modifiers** for an encounter (D8/D10): the morale bundle
+ * ({@link moraleModifiers}) with the intel edge folded in — scouted ground **adds**
+ * safe-deploy depth and **multiplies** capture exposure down. The additive-vs-
+ * multiplicative stacking was composed render-side (BattleScene.deployMods), invisible
+ * to core tests; owning it here puts the balance math under vitest. The scene keeps a
+ * one-line pass-through. `encounter` is the run's current {@link EncounterSource}
+ * (passed in so callers reuse their own read, e.g. `currentEncounter(run)`).
+ */
+export function deployModifiers(run: RunState, encounter: EncounterSource): MoraleModifiers {
+  const m = moraleModifiers(moraleTier(run.camp.morale));
+  const tier = effectiveIntelTier(intelFloor(run.party) + scoutedTier(run.overworld, run.mapNodeId), encounter);
+  const intel = intelDeployBonus(tier);
+  return {
+    ...m,
+    safeDepthBonus: m.safeDepthBonus + intel.safeDepthBonus,
+    exposureMultiplier: m.exposureMultiplier * intel.exposureMultiplier,
   };
 }
 

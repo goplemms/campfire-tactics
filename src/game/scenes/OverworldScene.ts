@@ -39,6 +39,8 @@ import {
   merchantPrice,
   sellPrice,
   effectiveMarketTier,
+  marketReadyAt,
+  marketStock,
   getMaterial,
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
   primaryJobOf,
@@ -53,6 +55,7 @@ import {
   buildLedger,
   nightEndGate,
   computeUpkeep,
+  toggleUpkeepSkip,
   type PreviewChange,
   type PreviewStat,
   skillEffectPreview,
@@ -80,6 +83,7 @@ import {
   type EventOutcome,
   type EventChoice,
   type EventKind,
+  type NodeKind,
   type Unit,
   type SkillDef,
   type Guild,
@@ -90,7 +94,8 @@ import {
   type EquipSlot,
 } from "../../core";
 import { fitText, clearLayer, isScreenshotMode } from "../ui";
-import { Button } from "../button";
+import { Button, probeWidth } from "../button";
+import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
 import { HintPanel } from "../hint-panel";
 import { ICON, legendLine, placeIcon, type IconKey } from "../icons";
 
@@ -107,7 +112,6 @@ export interface RunHandoff {
 }
 
 /** Buyable Market stock (D61) — trap kits first (the headline), then the Medic's herbs. */
-const MARKET_STOCK = ["trap-kit", "salve", "stimulant", "antidote"];
 
 /** The hover-preview projection (a list of {@link PreviewChange}) lives in core; the scene
  *  only lays it out. `ReadoutStat`/`ActionPreview` alias the core names for local use. */
@@ -231,6 +235,9 @@ export class OverworldScene extends Phaser.Scene {
   private nodePos = new Map<string, { x: number; y: number }>();
   private nodeObjects: Phaser.GameObjects.GameObject[] = [];
   private overlay: Phaser.GameObjects.GameObject[] = [];
+  /** The current resting hint — a button's hover-hint restores to this on pointer-out
+   *  (the `idle` sink, mirroring BattleScene.lastHint). */
+  private restingHint = "";
 
   // The unified overworld camp (D35): objects + the node currently camped at.
   private campObjects: Phaser.GameObjects.GameObject[] = [];
@@ -310,7 +317,7 @@ export class OverworldScene extends Phaser.Scene {
     this.campText = this.add.text(this.scale.width / 2, 40, "", { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0.5).setDepth(10);
     this.hintPanel = new HintPanel(this);
 
-    this.refreshCampText();
+    this.refreshReadoutLine();
 
     // Terminal screens take over the map.
     if (this.loop.isOver()) return this.runEnd();
@@ -319,7 +326,7 @@ export class OverworldScene extends Phaser.Scene {
     // Returning from a resolved node (e.g. back from a combat BattleScene) lands on
     // the **Survey** beat (D46) — the now-informed post-event planning surface —
     // before the map. A fresh run sits at the un-played start node → straight to map.
-    if (this.justResolvedCurrentNode()) return this.showSurvey();
+    if (this.justResolvedCurrentNode()) return this.showReactCamp();
 
     // The Expedition demo (M13) opens with a one-time orientation card.
     if (this.demoIntro) {
@@ -348,12 +355,14 @@ export class OverworldScene extends Phaser.Scene {
     ];
     const body = intro + "\n\n" + bullets.map((b) => `•  ${b}`).join("\n");
     const h = 264;
-    const left = cx - w / 2 + padX;
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.success).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 24, "The Long Road Home — an Expedition", { color: INK.success, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(left, cy - h / 2 + 52, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label, align: "left", lineSpacing: 5, wordWrap: { width: w - 2 * padX } }).setOrigin(0, 0).setDepth(21),
-    );
+    showModal(this, this.overlay, {
+      title: "The Long Road Home — an Expedition",
+      tone: "good",
+      w,
+      h,
+      cy,
+      body: { text: body, offset: 52, originX: 0, padX, originY: 0, color: INK.secondary, font: FONT.label, lineSpacing: 5 },
+    });
     this.overlay.push(
       this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
         clearLayer(this.overlay);
@@ -372,7 +381,7 @@ export class OverworldScene extends Phaser.Scene {
   private afterNode(): void {
     if (this.loop.isOver()) return this.runEnd();
     if (this.loop.isComplete()) return this.runComplete();
-    this.showSurvey();
+    this.showReactCamp();
   }
 
   // --- Map drawing ----------------------------------------------------------
@@ -598,14 +607,27 @@ export class OverworldScene extends Phaser.Scene {
     );
   }
 
+  /**
+   * The **node-kind presentation table** — one total record (word + header ink) per
+   * {@link NodeKind}, replacing the three partial per-kind tables that had drifted
+   * (nodeKindWord, nodeKindInk, and the local `word()` in reachableTargetLabels). Read by
+   * the intel card, the reachable-target labels, and the forecast summary. The last-layer
+   * "Final" override stays a caller concern (it's a layer fact, not a kind).
+   */
+  private static readonly NODE_KIND_VISUALS: Record<NodeKind, { word: string; ink: string }> = {
+    combat: { word: "Combat", ink: INK.danger },
+    rest: { word: "Clearing", ink: INK.success },
+    event: { word: "Event", ink: INK.gold },
+  };
+
   /** A player-facing kind word + its ink for the intel card header. */
   private nodeKindWord(node: MapNode): string {
     if (node.layer === this.run.map.layers - 1) return "Final";
-    return node.kind === "combat" ? "Combat" : node.kind === "rest" ? "Clearing" : "Event";
+    return OverworldScene.NODE_KIND_VISUALS[node.kind].word;
   }
   private nodeKindInk(node: MapNode): string {
     if (node.layer === this.run.map.layers - 1) return INK.gold;
-    return node.kind === "rest" ? INK.success : node.kind === "event" ? INK.gold : INK.danger;
+    return OverworldScene.NODE_KIND_VISUALS[node.kind].ink;
   }
 
   /**
@@ -722,7 +744,7 @@ export class OverworldScene extends Phaser.Scene {
    * label get a trailing "#2" so each row still points at a distinct node.
    */
   private reachableTargetLabels(nodes: { id: string; kind: MapNode["kind"]; layer: number }[]): Record<string, string> {
-    const word = (k: MapNode["kind"]) => (k === "combat" ? "Combat" : k === "rest" ? "Clearing" : "Event");
+    const word = (k: MapNode["kind"]) => OverworldScene.NODE_KIND_VISUALS[k].word;
     const base = (n: { kind: MapNode["kind"]; layer: number }) => `${word(n.kind)} (L${n.layer})`;
     const counts: Record<string, number> = {};
     for (const n of nodes) counts[base(n)] = (counts[base(n)] ?? 0) + 1;
@@ -771,7 +793,7 @@ export class OverworldScene extends Phaser.Scene {
   private playEarlyEvent(node: MapNode, def: EventDef): void {
     const choices = def.choices?.(this.run, node) ?? [];
     if (choices.length > 0) {
-      this.renderEarlyChoicePanel(node, def, choices);
+      this.renderChoicePanel(`On the road — ${def.name}`, def.teaser, choices, (c) => this.onEarlyChoice(node, def, c), 380);
       return;
     }
     const outcome = resolveEarlyEvent(this.run, node, def);
@@ -786,37 +808,50 @@ export class OverworldScene extends Phaser.Scene {
    * keep HP + EXP, forgo loot) and returns to the react camp; any other choice proceeds to the prep
    * camp and the normal fight.
    */
-  private renderEarlyChoicePanel(node: MapNode, def: EventDef, choices: EventChoice[]): void {
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2 - 20;
+  /**
+   * The shared event-choice modal (#133) — folds the early-event and event-node panels
+   * (once ~90% line-identical) into one. A titled info card with a `${body}\nPurse Ng`
+   * subhead and one button per choice; `onPick` fires for the taken (available) option.
+   * `extraRow` appends a trailing button (a shop's explicit Leave). Always backdropped.
+   */
+  private renderChoicePanel(
+    title: string,
+    body: string,
+    choices: EventChoice[],
+    onPick: (choice: EventChoice) => void,
+    btnW: number,
+    extraRow?: { label: string; onPick: () => void },
+  ): void {
     const w = 560;
-    const h = 130 + choices.length * 40;
-
+    const rows = choices.length + (extraRow ? 1 : 0);
+    const h = 130 + rows * 40;
     clearLayer(this.overlay);
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.info).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 24, `On the road — ${def.name}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy - h / 2 + 58, `${def.teaser}\nPurse ${this.run.camp.gold}g`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(21),
-    );
-
-    let y = cy - h / 2 + 110;
-    for (const choice of choices) {
-      const enabled = choice.available;
-      const fill = enabled ? COLOR.btnFill : COLOR.surfaceRaised;
-      const stroke = enabled ? COLOR.info : COLOR.border;
-      const btn = this.makeTextButton(cx, y, 380, 30, choice.label, fill, stroke, () => {
-        if (enabled) this.onEarlyChoice(node, def, choice);
-      });
-      if (choice.detail) btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(choice.detail!));
-      this.overlay.push(btn);
-      y += 40;
+    const handle = showModal(this, this.overlay, {
+      title,
+      tone: "info",
+      w,
+      h,
+      cy: this.scale.height / 2 - 20,
+      body: { text: `${body}\nPurse ${this.run.camp.gold}g`, offset: 58, color: INK.muted },
+    });
+    const endOffset = renderChoiceStack(this.overlay, handle, {
+      choices: choices.map((c) => ({ label: c.label, enabled: c.available, detail: c.detail, onPick: () => onPick(c) })),
+      startOffset: 110,
+      step: 40,
+      btnW,
+      btnH: 30,
+      make: this.makeTextButton.bind(this),
+      onHint: (t) => this.setHint(t),
+    });
+    if (extraRow) {
+      this.overlay.push(this.makeTextButton(handle.cx, handle.top + endOffset, btnW, 30, extraRow.label, COLOR.successDeep, COLOR.success, extraRow.onPick));
     }
   }
 
   /** Apply a tailored early-event choice: a bypass short-circuits to the react camp; otherwise fight on. */
   private onEarlyChoice(node: MapNode, def: EventDef, choice: EventChoice): void {
     const out: EventOutcome = def.choose!(this.run, node, choice.id);
-    this.refreshCampText();
+    this.refreshReadoutLine();
     clearLayer(this.overlay);
     if (out.bypass) {
       const res = this.loop.bypassEncounter();
@@ -853,7 +888,7 @@ export class OverworldScene extends Phaser.Scene {
   private renderCamp(): void {
     const node = this.campNode!;
     this.clearCamp();
-    this.refreshCampText();
+    this.refreshReadoutLine();
 
     const isCombat = node.kind === "combat";
     const kindLabel = isCombat
@@ -981,6 +1016,11 @@ export class OverworldScene extends Phaser.Scene {
   /** One areas-nav button — a left-anchored tab with an active (gold) highlight, a hover
    *  hint, drawn onto the given `layer` so the nav can live on the camp or the page. */
   private navButton(x: number, y: number, w: number, h: number, text: string, active: boolean, onClick: () => void, description: string, layer: Phaser.GameObjects.GameObject[]): void {
+    // Deliberately NOT a Button (#134): a nav tab draws its rect at depth 25 and its label
+    // at depth 26 — straddling overlapping ledger-transition content (depth 25) that bleeds
+    // through under the tab but behind the label. A Button is a single-depth Container, so it
+    // can't put the rect below and the label above the same sibling; kept hand-rolled to hold
+    // that exact layering (the survey nav persists under the night-end ledger sheet).
     const bg = this.add.rectangle(x, y, w, h, active ? COLOR.btnFill : COLOR.surfaceAlt).setStrokeStyle(1, active ? COLOR.gold : COLOR.borderSoft).setOrigin(0, 0.5).setDepth(25).setInteractive({ useHandCursor: true });
     const label = this.add.text(x + 10, y, text, { color: active ? INK.gold : INK.bright, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(26);
     fitText(label, w - 16);
@@ -997,10 +1037,7 @@ export class OverworldScene extends Phaser.Scene {
 
   /** Width for a compact toolbar button sized to fit its label (measured + side padding). */
   private measureButtonWidth(label: string): number {
-    const probe = this.add.text(0, 0, label, { fontFamily: FONT.family, fontSize: FONT.label }).setVisible(false);
-    const w = Math.ceil(probe.width) + 24;
-    probe.destroy();
-    return w;
+    return Math.ceil(probeWidth(this, label, FONT.label)) + 24;
   }
 
   /**
@@ -1291,7 +1328,7 @@ export class OverworldScene extends Phaser.Scene {
       const label = this.add.text(x + 12, cy, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(11);
       // 14px (one above the 13px body label) — the value stays the figure without towering
       // over its label the way the old 16px heading did. Deliberately between body/heading.
-      const value = this.add.text(x + cardW - 12, cy, t.value, { color: ink, fontFamily: FONT.family, fontSize: "14px" }).setOrigin(1, 0.5).setDepth(11);
+      const value = this.add.text(x + cardW - 12, cy, t.value, { color: ink, fontFamily: FONT.family, fontSize: FONT.figure }).setOrigin(1, 0.5).setDepth(11);
       this.campObjects.push(rect, label, value);
       // Pulse a tile the instant its figure changes from the previous paint (an action's
       // effect landing) — but not on the first paint of a camp (`fresh`), which isn't a move.
@@ -1332,7 +1369,7 @@ export class OverworldScene extends Phaser.Scene {
       const cx = x + tileW / 2;
       const rect = this.add.rectangle(x, top, tileW, cardH, COLOR.surfaceRaised).setStrokeStyle(1, COLOR.borderSoft).setOrigin(0, 0).setDepth(6);
       const label = this.add.text(cx, top + 12, t.label.toUpperCase(), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.caption }).setOrigin(0.5).setDepth(7);
-      const value = this.add.text(cx, top + 28, t.value, { color: this.tileInk(t), fontFamily: FONT.family, fontSize: "14px" }).setOrigin(0.5).setDepth(7);
+      const value = this.add.text(cx, top + 28, t.value, { color: this.tileInk(t), fontFamily: FONT.family, fontSize: FONT.figure }).setOrigin(0.5).setDepth(7);
       fitText(label, tileW - 10);
       fitText(value, tileW - 10);
       this.nodeObjects.push(rect, label, value);
@@ -1677,8 +1714,7 @@ export class OverworldScene extends Phaser.Scene {
    */
   private drawLedgerSheet(b: Phaser.Geom.Rectangle, opts: { rerender: () => void; interactive?: boolean }): Ledger {
     const node = this.campNode ?? currentNode(this.run);
-    const merchantReady = node.kind === "rest" && this.run.party.some((u) => u.alive && u.jobId === "merchant") && cooldownRemaining(this.run.overworld, "market") === 0;
-    const ledger: Ledger = buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: merchantReady });
+    const ledger: Ledger = buildLedger(this.run, { influence: this.run.overworld.influence, marketReady: marketReadyAt(this.run, node) });
     const pad = 22;
     const leftX = b.left + pad;
     const rightX = b.right - pad;
@@ -1793,9 +1829,8 @@ export class OverworldScene extends Phaser.Scene {
     const left = cx - w / 2;
     const top = cy - h / 2;
 
-    const backdrop = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(22).setInteractive();
+    installBackdrop(this, this.overlay, 22);
     this.overlay.push(
-      backdrop,
       this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
       this.add.text(left + 24, top + 24, "Market", { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
       this.add.text(left + 122, top + 26, `· ${tier === "none" ? "no market" : `${tier} market`}`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body }).setOrigin(0, 0.5).setDepth(25),
@@ -1816,7 +1851,7 @@ export class OverworldScene extends Phaser.Scene {
     let y = top + 64;
     this.overlay.push(this.add.text(leftX, y, `Buy  ·  ${price}g each`, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
     y += 28;
-    for (const id of MARKET_STOCK) {
+    for (const id of marketStock()) {
       const mat = getMaterial(id);
       if (!mat) continue;
       const owned = countOf(this.run.inventory, id);
@@ -1859,24 +1894,33 @@ export class OverworldScene extends Phaser.Scene {
     this.overlay.push(this.add.text(leftX, top + h - 22, `Purse ${m.purse}g     ·     Storage ${m.storageUsed}/${m.storageCap}`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(25));
   }
 
-  /** A camp button that greys out (non-interactive) when disabled, with a reason on hover. */
+  /** A camp button that greys out (non-interactive) when disabled, with a reason on hover.
+   *  A thin {@link Button} (left-anchored row): left edge at x, label inset 8 (pad/2). */
   private campButton(x: number, y: number, w: number, h: number, text: string, enabled: boolean, onClick: () => void, description: string, preview?: ActionPreview): void {
-    const fill = enabled ? COLOR.surfaceAlt : COLOR.surfaceRaised;
-    const bg = this.add.rectangle(x, y, w, h, fill).setStrokeStyle(1, enabled ? COLOR.borderSoft : COLOR.surfaceAlt).setOrigin(0, 0.5).setDepth(10);
-    const label = this.add.text(x + 8, y, text, { color: enabled ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11);
-    fitText(label, w - 16);
-    if (enabled) {
-      bg.setInteractive({ useHandCursor: true });
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, onClick);
-    }
-    bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hintPanel.setText(description));
-    // Preview the action's effect on the readout panel while hovered (even when greyed —
-    // seeing *what it would do* explains the grey), snapping back to the resting prompt out.
-    if (preview) {
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showActionPreview(preview));
-      bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showActionPreview(null));
-    }
-    this.campObjects.push(bg, label);
+    const btn = new Button(this, x + w / 2, y, {
+      text,
+      w,
+      h,
+      fill: enabled ? COLOR.surfaceAlt : COLOR.surfaceRaised,
+      stroke: enabled ? COLOR.borderSoft : COLOR.surfaceAlt,
+      strokeWidth: 1,
+      color: enabled ? INK.bright : INK.disabled,
+      fontSize: FONT.label,
+      pad: 16,
+      align: "left",
+      hover: false, // camp rows carry their state fill; they never brighten-highlighted on hover
+      enabled,
+      onClick,
+      // The hint + (even when greyed) effect preview drive off the shared hover hooks;
+      // seeing *what it would do* explains the grey, snapping back to the resting prompt out.
+      onHover: () => {
+        this.hintPanel.setText(description);
+        if (preview) this.showActionPreview(preview);
+      },
+      onOut: preview ? () => this.showActionPreview(null) : undefined,
+    });
+    this.add.existing(btn).setDepth(11);
+    this.campObjects.push(btn);
   }
 
   /**
@@ -2008,7 +2052,7 @@ export class OverworldScene extends Phaser.Scene {
   // Patron's Welcome — a standing-gated boon (D62): auto-resolve the feast + report it.
   private playPatronEvent(): void {
     const res = this.loop.eventNode(); // auto-resolves the boon + records the night
-    this.refreshCampText();
+    this.refreshReadoutLine();
     const o = res.outcome;
     const lines: string[] = [o.summary];
     if (o.moraleDelta) lines.push(`Spirits lift (+${o.moraleDelta} morale).`);
@@ -2020,14 +2064,14 @@ export class OverworldScene extends Phaser.Scene {
   /** Leave the event, record the node-step, and route to the Survey beat/terminal (D46). */
   private finishEvent(netGold: number): void {
     this.loop.recordEventNight(netGold);
-    this.refreshCampText();
+    this.refreshReadoutLine();
     this.afterNode();
   }
 
   // Thief — no choice; resolve the skim (auto path) and report it (D30).
   private playThiefEvent(): void {
     const res = this.loop.eventNode(); // auto-resolves the skim + records the night
-    this.refreshCampText();
+    this.refreshReadoutLine();
     const stolen = res.outcome.stolen ?? 0;
     const lines: string[] = [];
     if (stolen > 0) {
@@ -2069,48 +2113,25 @@ export class OverworldScene extends Phaser.Scene {
    */
   private renderEventChoicePanel(title: string, body: string): void {
     const def = this.loop.eventDef();
-    const choices = this.loop.eventChoices();
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2 - 20;
-    const w = 560;
-    const h = 130 + (choices.length + (def.kind === "shop" ? 1 : 0)) * 40;
-
-    clearLayer(this.overlay);
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.96).setStrokeStyle(2, COLOR.info).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 24, title, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy - h / 2 + 58, `${body}\nPurse ${this.run.camp.gold}g`, { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(21),
-    );
-
-    let y = cy - h / 2 + 110;
-    for (const choice of choices) {
-      const enabled = choice.available;
-      const fill = enabled ? COLOR.btnFill : COLOR.surfaceRaised;
-      const stroke = enabled ? COLOR.info : COLOR.border;
-      const btn = this.makeTextButton(cx, y, 360, 30, choice.label, fill, stroke, () => {
-        if (!enabled) return;
-        this.onEventChoice(choice);
-      });
-      if (choice.detail) btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(choice.detail!));
-      this.overlay.push(btn);
-      y += 40;
-    }
-
     // A shop is a multi-buy surface — add an explicit Leave that records the step.
-    if (def.kind === "shop") {
-      const leave = this.makeTextButton(cx, y, 360, 30, "Leave the market", COLOR.successDeep, COLOR.success, () => {
-        clearLayer(this.overlay);
-        this.finishEvent(-this.spentAtShop);
-      });
-      this.overlay.push(leave.bg, leave.label);
-    }
+    const extraRow =
+      def.kind === "shop"
+        ? {
+            label: "Leave the market",
+            onPick: () => {
+              clearLayer(this.overlay);
+              this.finishEvent(-this.spentAtShop);
+            },
+          }
+        : undefined;
+    this.renderChoicePanel(title, body, this.loop.eventChoices(), (c) => this.onEventChoice(c), 360, extraRow);
   }
 
   /** Apply a chosen event option, then re-render (shop) or continue (terminal). */
   private onEventChoice(choice: EventChoice): void {
     const def = this.loop.eventDef();
     const out: EventOutcome = this.loop.chooseEvent(choice.id);
-    this.refreshCampText();
+    this.refreshReadoutLine();
 
     if (def.kind === "shop" && choice.id.startsWith("buy:")) {
       // Stay in the market: track spend, report, re-render for the next buy.
@@ -2125,7 +2146,7 @@ export class OverworldScene extends Phaser.Scene {
     const lines = [out.summary, "", `Purse now ${this.run.camp.gold}g.`];
     if (out.recruited) lines.push(`${out.recruited.name} now rides with the caravan.`);
     this.loop.recordEventNight(out.goldDelta);
-    this.refreshCampText();
+    this.refreshReadoutLine();
     const good = out.goldDelta >= 0 && out.moraleDelta >= 0;
     this.showOverlay(def.name, lines.join("\n"), good, 520, 200, () => this.afterNode());
   }
@@ -2136,7 +2157,7 @@ export class OverworldScene extends Phaser.Scene {
     // A rest node elapses a night and pays a night's rations — show the spend first.
     this.showLedgerTransition("Before resting for the night…", () => {
       const res = this.loop.restNode();
-      this.refreshCampText();
+      this.refreshReadoutLine();
       this.showRestScreen(res);
     });
   }
@@ -2167,12 +2188,12 @@ export class OverworldScene extends Phaser.Scene {
    * **Set Out** (the soft gate back to the map) or rest in place first (D47, repeatable). The
    * gold route-forecast band up top is this beat's identity, against the prep beat's ember recap.
    */
-  private showSurvey(): void {
+  private showReactCamp(): void {
     this.clearMap();
     this.clearCamp();
     clearLayer(this.overlay);
     this.campNode = currentNode(this.run);
-    this.refreshCampText();
+    this.refreshReadoutLine();
     // The live figures move to the right-side state panel on this beat — hide the line.
     this.campText.setVisible(false);
 
@@ -2202,7 +2223,7 @@ export class OverworldScene extends Phaser.Scene {
     const readoutX = cx + panelW / 2 - 30 - readoutCardW;
 
     // Areas nav across the top of the action area (frees the width below for drawers).
-    const areasBottom = this.renderAreaNav("camp", () => this.showSurvey(), this.campObjects, colX, colTop);
+    const areasBottom = this.renderAreaNav("camp", () => this.showReactCamp(), this.campObjects, colX, colTop);
     let y = areasBottom + 20;
 
     // Live state readouts, stacked on the right of the action drawers.
@@ -2220,10 +2241,10 @@ export class OverworldScene extends Phaser.Scene {
       for (const target of reach) {
         const refusal = this.refusal(survey, surveyor);
         const label = targetLabels[target.id];
-        intel.push({ label: `${survey.name} → ${label} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showSurvey(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${label}`, actor: surveyor.name, costs: this.actionCost(survey) });
+        intel.push({ label: `${survey.name} → ${label} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showReactCamp(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${label}`, actor: surveyor.name, costs: this.actionCost(survey) });
       }
     }
-    y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showSurvey());
+    y = this.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showReactCamp());
 
     // The captain's running to-do sits below the actions.
     this.renderCaptainsJournal(colX, y + 12, panelW - 60);
@@ -2234,7 +2255,7 @@ export class OverworldScene extends Phaser.Scene {
     const rest = this.inPlaceRestReadout();
     const footY = panelBottom - 30;
     this.campButton(cx - 250, footY, 240, 34, `Rest in place — ${rest.label}`, rest.enabled, () => this.doInPlaceRest(), rest.detail, inPlaceRestPreview(this.run));
-    const setOutBtn = this.makeTextButton(cx + 130, footY, 240, 34, "Set Out →", COLOR.successDeep, COLOR.success, () => this.breakCampToMap());
+    const setOutBtn = this.makeTextButton(cx + 130, footY, 240, 34, "Set Out →", COLOR.successDeep, COLOR.success, () => this.setOutToMap());
     this.campObjects.push(setOutBtn);
 
     this.campObjects.push(
@@ -2281,13 +2302,13 @@ export class OverworldScene extends Phaser.Scene {
     // In-place rest is a node-step that pays a night's rations — show the spend first.
     this.showLedgerTransition("Before resting for the night…", () => {
       const res: InPlaceRestResult = this.loop.inPlaceRest();
-      this.refreshCampText();
+      this.refreshReadoutLine();
       if (res.applied) {
         const who = res.healed.length === 1 ? "1 fighter" : `${res.healed.length} fighters`;
         this.setHint(`Rested in place (night ${res.streak} here): −${res.goldSpent}g rations, +${res.hpHealed} HP across ${who}, +${res.rpAdded} RP. A node-step passed.`);
       } else this.setHint(`Can't rest: ${res.reason}`);
       if (this.loop.isOver()) return this.runEnd();
-      this.showSurvey();
+      this.showReactCamp();
     });
   }
 
@@ -2297,10 +2318,10 @@ export class OverworldScene extends Phaser.Scene {
    * stash can leave a node over capacity; the player must choose what to let go
    * before they march. Within cap, this falls straight through to the soft gate.
    */
-  private breakCampToMap(): void {
+  private setOutToMap(): void {
     // The night elapses at departure (D46) — show the ledger first so the spend is
     // seen (and Upkeep still crossable) before the soft gate and the march.
-    const toGate = () => this.showLedgerTransition("Before resting for the night…", () => this.breakCampGate(), true);
+    const toGate = () => this.showLedgerTransition("Before resting for the night…", () => this.setOutGate(), true);
     if (slotsOver(this.run.inventory) > 0) {
       this.showDiscardMenu(toGate);
       return;
@@ -2324,58 +2345,78 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     clearLayer(this.overlay);
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height / 2 - 10;
     const carried = Object.keys(inv.counts)
       .filter((id) => inv.counts[id] > 0)
       .sort((a, b) => (getMaterial(a)?.name ?? a).localeCompare(getMaterial(b)?.name ?? b));
     const w = 560;
     const h = 140 + carried.length * 38;
 
-    // Full-screen backdrop (dims the camp + swallows clicks behind) — same as the Market and
-    // ledger-transition modals; without it the camp bled through around the box (D75 gate).
-    this.overlay.push(this.add.rectangle(cx, this.scale.height / 2, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(23).setInteractive());
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.danger).setDepth(24),
-      this.add.text(cx, cy - h / 2 + 24, "Storage overflowing — let something go", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
-      this.add.text(cx, cy - h / 2 + 54, `Storage ${slotsUsed(inv)}/${inv.storageCap} — ${over} slot${over === 1 ? "" : "s"} over the cap. Discard until it fits to break camp.`, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", wordWrap: { width: w - 60 } }).setOrigin(0.5).setDepth(25),
-    );
-
-    let y = cy - h / 2 + 96;
-    for (const id of carried) {
-      const mat = getMaterial(id);
-      const count = countOf(inv, id);
-      const slots = mat ? slotsFor(mat, count) : count; // the row's current slot footprint (stacks pack)
-      const val = mat?.saleValue ? ` · ${mat.saleValue}g ea` : "";
-      const btn = this.makeTextButton(cx, y, 400, 30, `Discard 1 — ${mat?.name ?? id} ×${count} · Space: ${slots}${val}`, COLOR.surfaceRaised, COLOR.danger, () => {
-        removeItem(inv, id, 1);
-        this.refreshCampText();
-        this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap
-      }).setDepth(26);
-      // Stacked goods (a half-stack of herbs) share a slot — dropping one may not free space until the stack empties.
-      btn.bg.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.setHint(`Drop one ${mat?.name ?? id}. Whole stacks free a slot; a partial stack frees one only when it empties. Lowest-value gear is the usual cut.`));
-      this.overlay.push(btn);
-      y += 38;
-    }
+    // The modal always installs the input-swallowing backdrop; without it the camp bled
+    // through around the box (D75 gate).
+    const handle = showModal(this, this.overlay, {
+      title: "Storage overflowing — let something go",
+      tone: "bad",
+      w,
+      h,
+      cy: this.scale.height / 2 - 10,
+      boxAlpha: 0.97,
+      depth: 24,
+      body: {
+        text: `Storage ${slotsUsed(inv)}/${inv.storageCap} — ${over} slot${over === 1 ? "" : "s"} over the cap. Discard until it fits to break camp.`,
+        offset: 54,
+        lineSpacing: 0,
+      },
+    });
+    renderChoiceStack(this.overlay, handle, {
+      choices: carried.map((id) => {
+        const mat = getMaterial(id);
+        const count = countOf(inv, id);
+        const slots = mat ? slotsFor(mat, count) : count; // the row's current slot footprint (stacks pack)
+        const val = mat?.saleValue ? ` · ${mat.saleValue}g ea` : "";
+        return {
+          label: `Discard 1 — ${mat?.name ?? id} ×${count} · Space: ${slots}${val}`,
+          fill: COLOR.surfaceRaised,
+          stroke: COLOR.danger,
+          // Stacked goods (a half-stack of herbs) share a slot — dropping one may not free space until the stack empties.
+          detail: `Drop one ${mat?.name ?? id}. Whole stacks free a slot; a partial stack frees one only when it empties. Lowest-value gear is the usual cut.`,
+          onPick: () => {
+            removeItem(inv, id, 1);
+            this.refreshReadoutLine();
+            this.showDiscardMenu(onDone); // re-render; auto-closes once back within cap
+          },
+        };
+      }),
+      startOffset: 96,
+      step: 38,
+      btnW: 400,
+      btnH: 30,
+      buttonDepth: 26,
+      make: this.makeTextButton.bind(this),
+      onHint: (t) => this.setHint(t),
+    });
   }
 
   /** The soft, intent-aware night-end gate (D45) → the map (overflow already cleared). */
-  private breakCampGate(): void {
+  private setOutGate(): void {
     const gate = nightEndGate(this.run);
     if (!gate.warn) return this.toMap();
     // Hard-stop with a forced look only when warranted; never a per-night chore.
     clearLayer(this.overlay);
-    const cx = this.scale.width / 2;
     const cy = this.scale.height / 2 - 10;
     const w = 560;
     const h = 150 + gate.reasons.length * 18;
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, COLOR.danger).setDepth(24),
-      this.add.text(cx, cy - h / 2 + 24, "Before you set out…", { color: INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(25),
-      this.add.text(cx, cy - h / 2 + 56, gate.reasons.map((r) => `• ${r}`).join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "left", lineSpacing: 5, wordWrap: { width: w - 60 } }).setOrigin(0.5, 0).setDepth(25),
-    );
-    const stay = this.makeTextButton(cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showSurvey()).setDepth(26);
-    const go = this.makeTextButton(cx + 110, cy + h / 2 - 22, 180, 30, "Set out anyway", COLOR.danger, COLOR.danger, () => this.toMap()).setDepth(26);
+    const handle = showModal(this, this.overlay, {
+      title: "Before you set out…",
+      tone: "bad",
+      w,
+      h,
+      cy,
+      boxAlpha: 0.97,
+      depth: 24,
+      body: { text: gate.reasons.map((r) => `• ${r}`).join("\n"), offset: 56, originY: 0, textAlign: "left", lineSpacing: 5 },
+    });
+    const stay = this.makeTextButton(handle.cx - 110, cy + h / 2 - 22, 180, 30, "Stay in camp", COLOR.surfaceRaised, COLOR.border, () => this.showReactCamp()).setDepth(26);
+    const go = this.makeTextButton(handle.cx + 110, cy + h / 2 - 22, 180, 30, "Set out anyway", COLOR.danger, COLOR.danger, () => this.toMap()).setDepth(26);
     this.overlay.push(stay, go);
   }
 
@@ -2494,12 +2535,10 @@ export class OverworldScene extends Phaser.Scene {
   /** Toggle a voluntary Upkeep skip (D45) — crosses the line off / restores it. The
    *  owning surface (Tent or night-end transition) supplies its own `rerender`. */
   private toggleSkip(id: UpkeepLine["id"], rerender: () => void = () => this.renderTent()): void {
-    const set = new Set(this.run.camp.skippedUpkeep);
-    if (set.has(id)) set.delete(id);
-    else set.add(id);
-    this.run.camp.skippedUpkeep = [...set] as ("food" | "repairs")[];
-    this.refreshCampText();
-    this.setHint(set.has(id) ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
+    toggleUpkeepSkip(this.run, id); // core owns the rule (no more render-side type-assertion write)
+    const nowSkipped = this.run.camp.skippedUpkeep.includes(id);
+    this.refreshReadoutLine();
+    this.setHint(nowSkipped ? `Crossed ${id} off the ledger — its gold is freed (you'll take the consequence; the gate won't nag).` : `${id} funded again.`);
     rerender();
   }
 
@@ -2560,7 +2599,9 @@ export class OverworldScene extends Phaser.Scene {
 
   // --- UI helpers ------------------------------------------------------------
 
-  private refreshCampText(): void {
+  // Renamed from the misleading `refreshCampText` (#138): it refreshes the always-on camp
+  // readout line, not battle situation text (BattleScene's like-named method → refreshSituationCard).
+  private refreshReadoutLine(): void {
     // The always-on line is the four decision-relevant groups only (D58): Purse,
     // Morale, Storage/Kits, RP/Upkeep. The Banker's purse-state + Influence moved
     // into the camp's Advanced panel / ledger, where they're actionable. The format
@@ -2569,6 +2610,7 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   private setHint(text: string): void {
+    this.restingHint = text;
     this.hintPanel.setResting(text);
   }
 
@@ -2589,9 +2631,8 @@ export class OverworldScene extends Phaser.Scene {
     const top = cy - h / 2;
 
     // Full-screen backdrop (dims + swallows clicks behind) + the framed sheet.
-    const backdrop = this.add.rectangle(cx, cy, this.scale.width, this.scale.height, COLOR.black, 0.55).setDepth(22).setInteractive();
+    installBackdrop(this, this.overlay, 22);
     this.overlay.push(
-      backdrop,
       this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
       this.add.text(left + 24, top + 22, title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
       this.add.text(left + w - 24, top + 22, "The night's tab — what camp spends before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
@@ -2617,24 +2658,40 @@ export class OverworldScene extends Phaser.Scene {
 
   private showOverlay(title: string, body: string, good: boolean, w = 480, h = 200, onContinue?: () => void): void {
     clearLayer(this.overlay);
-    const cx = this.scale.width / 2;
     const cy = this.scale.height / 2 - 20;
-    this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.94).setStrokeStyle(2, good ? COLOR.success : COLOR.danger).setDepth(20),
-      this.add.text(cx, cy - h / 2 + 26, title, { color: good ? INK.success : INK.danger, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0.5).setDepth(21),
-      this.add.text(cx, cy + 6, body, { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4, wordWrap: { width: w - 48 } }).setOrigin(0.5).setDepth(21),
-    );
+    const handle = showModal(this, this.overlay, {
+      title,
+      tone: good ? "good" : "bad",
+      w,
+      h,
+      cy,
+      boxAlpha: 0.94,
+      titleOffset: 26,
+      // The body sits centred in the tall box (cy + 6), not tucked under the title.
+      body: { text: body, offset: h / 2 + 6, wrapInset: 48 },
+    });
     if (onContinue) {
-      const btn = this.makeTextButton(cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
-        clearLayer(this.overlay);
-        onContinue();
-      });
-      this.overlay.push(btn);
+      this.overlay.push(
+        this.makeTextButton(handle.cx, cy + h / 2 - 20, 160, 30, "Continue", COLOR.successDeep, COLOR.success, () => {
+          clearLayer(this.overlay);
+          onContinue();
+        }),
+      );
     }
   }
 
-  private makeTextButton(x: number, y: number, w: number, h: number, text: string, fill: number, stroke: number, onClick: () => void): Button {
-    const btn = new Button(this, x, y, { text, w, h, fill, stroke, onClick });
+  private makeTextButton(x: number, y: number, w: number, h: number, text: string, fill: number, stroke: number, onClick: () => void, description?: string): Button {
+    const btn = new Button(this, x, y, {
+      text,
+      w,
+      h,
+      fill,
+      stroke,
+      onClick,
+      // The same hover-hint wiring BattleScene's wrapper has (#134): show `description`
+      // on hover, restore the resting hint on out. Omitted (no sink) when no description.
+      hint: description !== undefined ? { bar: this.hintPanel, description, idle: () => this.restingHint } : undefined,
+    });
     this.add.existing(btn).setDepth(22);
     return btn;
   }

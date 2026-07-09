@@ -163,6 +163,23 @@ export function getMaterial(id: string): MaterialDef | undefined {
   return MATERIALS[id];
 }
 
+/**
+ * The **medical herbs** (D40) — the ids of every {@link MATERIALS} entry flagged
+ * `medical`, in registry order. The Medic's Heal fuel *and* the Market restock list
+ * derive from this, so a new herb added to core shows up in the Medic menu and the
+ * Market automatically (the render layer used to hardcode `["salve","stimulant","antidote"]`
+ * in two places — a silent drift the moment core grows a herb).
+ */
+export function medicalHerbs(): string[] {
+  return Object.values(MATERIALS).filter((m) => m.medical).map((m) => m.id);
+}
+
+/** The **Market buy stock** (D30/D34): trap kits plus the {@link medicalHerbs} — the
+ *  render layer's `MARKET_STOCK` string array, owned by core so it can't fall behind. */
+export function marketStock(): string[] {
+  return ["trap-kit", ...medicalHerbs()];
+}
+
 /** A fresh inventory with the given storage cap. */
 export function createInventory(storageCap = 6, counts: Record<string, number> = {}): Inventory {
   return { storageCap, counts: { ...counts } };

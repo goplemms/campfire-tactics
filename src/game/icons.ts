@@ -52,7 +52,10 @@ export const ICON = {
   charging: { glyph: "◷", label: "charging" },
   lethal: { glyph: "†", label: "lethal" },
   flank: { glyph: "‡", label: "flanked" },
-  trapArmed: { glyph: "▲", label: "trap (armed)", color: INK.danger },
+  // The spotted enemy trap reads as a threat — foe red (COLOR.foe as a CSS string). The
+  // registry color IS what the board renders now (was INK.danger here but overridden at the
+  // call site — registry drift, #138).
+  trapArmed: { glyph: "▲", label: "trap (armed)", color: "#e06b6b" },
   trapSprung: { glyph: "✕", label: "trap (sprung)", color: INK.disabled },
   trapMine: { glyph: "✸", label: "your trap", color: INK.ember },
   // Deploy influence sources (D63): the party's warm safe core, and the closing net's origin.
@@ -64,6 +67,9 @@ export const ICON = {
   collapse: { glyph: "▾", label: "collapse" },
   check: { glyph: "✓", label: "done", color: INK.success },
   warn: { glyph: "!", label: "in progress", color: INK.ember },
+  // Objectives check-list markers (#137): a failed objective, and one still open.
+  failed: { glyph: "✗", label: "failed", color: INK.danger },
+  open: { glyph: "○", label: "in progress", color: INK.muted },
 
   // --- Resolution / after-action report ---
   spoils: { glyph: "¤", label: "spoils", color: INK.gold },

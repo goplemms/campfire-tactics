@@ -89,6 +89,20 @@ export function computeUpkeep(party: readonly Unit[]): UpkeepBill {
   return { lines, total: lines.reduce((s, l) => s + l.cost, 0) };
 }
 
+/**
+ * Toggle a **voluntary Upkeep skip** (D45) — cross an Upkeep line off (free its gold,
+ * take the consequence) or restore it. Flips `lineId`'s membership in
+ * `run.camp.skippedUpkeep`. The rule the OverworldScene's ledger used to mutate
+ * render-side (building a Set and writing the array back through a type assertion);
+ * owning it here keeps `skippedUpkeep`'s shape enforced by the type system, not a cast.
+ */
+export function toggleUpkeepSkip(run: RunState, lineId: UpkeepLine["id"]): void {
+  const set = new Set(run.camp.skippedUpkeep);
+  if (set.has(lineId)) set.delete(lineId);
+  else set.add(lineId);
+  run.camp.skippedUpkeep = [...set];
+}
+
 /** The result of paying (or underfunding) Upkeep. */
 export interface UpkeepResult {
   paid: number;

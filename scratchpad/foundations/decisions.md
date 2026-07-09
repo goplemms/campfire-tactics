@@ -3316,6 +3316,57 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D88 — The D61 invariant is total: every overworld verb is paced or priced, by construction (refactor R2)
+
+- **Status:** Decided + built (2026-07-09) · milestone **R2** of the refactor campaign
+  ([`refactor-campaign-plan.md`](refactor-campaign-plan.md); issues #112 step 1, #125, #126) ·
+  extends **D61** (the no-unpaced-unpriced-action invariant) to its whole surface
+- **Context:** D61's load-time validator walked only `JOBS[*].skills`; standalone economy verbs
+  relied on an opt-in hoisted-cost convention that three never opted into — `merchantSell` (informal
+  "self-limiting" justification), and `bankerBorrow`/`bankerEngageInterest` (**no pacing, no price**;
+  Borrow an unbounded gold advance). The check→commit sandwich was hand-assembled at six sites with
+  a documented re-resolution trap (commit re-priced gold knobs *after* the effect). And the "party
+  fields a live X" predicate was copy-pasted per class — with the Cook's copy missing `!captured`.
+- **Decision (five commitments):**
+  1. **One gate, closure-shaped.** `checkOverworldCost` returns `{ ok, prices, commit() }` with
+     every price captured **at check time**; `commit()` spends exactly those figures. The
+     standalone `commitOverworldCost` is gone; the re-resolution trap is dead (pinned by a witness
+     whose effect captures a member between check and commit).
+  2. **The three stragglers are gated.** `merchantSell` declares `{ selfLimited: true }` (the
+     informal justification becomes data); `bankerBorrow` and `bankerEngageInterest` get
+     `{ usesPerNode: 1 }` — **illustrative, structure-proving defaults** (a debt-ceiling knob is
+     the plausible future price axis if Borrow needs real teeth; a numbers pass, not this record).
+  3. **The invariant is enforced at both homes.** A `VERB_COSTS` registry (verb id →
+     `OverworldCost`) is validated at module load exactly like the JOBS walk, and a guard test
+     classifies **every exported function** of the economy modules (registry row /
+     gated-elsewhere-with-where / non-verb) — a new exported verb without a registered cost
+     **fails by name**. `bribeEnemy` stays on `spendInfluence` as the explicitly-noted R4
+     migration target (the `OverworldCost.influence` knob is reserved for it).
+  4. **One spelling for the fielded-job predicate.** `fieldedUnits`/`fieldsJob` in `units.ts`;
+     every per-class copy migrated. Tier ladders ride the shared primitives (`bandFor`,
+     `rankOf`/`clampUp` — the string-keyed ordinal tables in `arrivals.ts` die).
+  5. **Scalars get chokepoints.** `accrueRp`/`spendRp` (upkeep.ts) and `nudgeMorale` (camp.ts)
+     are the only spellings of RP/morale mutation — the provenance seam for future balance
+     reporting, without building journals (per the substrate audit's verdict).
+- **Blast radius (named, intended):** (a) **a captured Cook no longer offers to cook the stew**
+  (the missing `!captured` was a bug; no sim seed reaches it — digest byte-identical); (b) the
+  Banker verbs now **refuse on re-use within a node** (`usesPerNode: 1`) — the invariant working,
+  numbers tunable; (c) `bankerEngageInterest` returns a standard `ActionOutcome` shape so refusals
+  carry reasons — an **empty-purse engage now refuses without burning the node's use** (was: a
+  silent zero-rate engage). Everything else byte-identical (sim digest pinned end-to-end).
+- **Reuses / consistent with:** **D61** (extended, not reshaped), **D72** (the one-home direction;
+  R4/A3 moves these verbs onto `JobDef.skills` next), **D87** (the guards this build leaned on),
+  **D34/D30** (Banker semantics untouched beyond pacing).
+- **Spec:** `src/core/overworld-actions.ts` (the closure gate, validator), `src/core/economy-actions.ts`
+  (`VERB_COSTS`, the gated verbs, `BankerInterestResult`), `src/core/units.ts` (`fieldedUnits`/
+  `fieldsJob`), `src/core/camp.ts` (`moraleTierIndex`/`nudgeMorale`), `src/core/upkeep.ts`
+  (`accrueRp`/`spendRp`), `src/core/num.ts` (`rankOf`/`clampUp`), `src/core/arrivals.ts`,
+  `src/core/intel.ts` (`min` key), `src/core/r2-verb-gate.test.ts` (witnesses + the export guard),
+  `OverworldScene.bankerInterest` (the one render touch, mechanical).
+- **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

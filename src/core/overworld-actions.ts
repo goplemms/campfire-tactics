@@ -22,20 +22,21 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { primaryJobOf, type Unit } from "./units";
+import { fieldedUnits, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
-import { unitHasCapability } from "./jobs";
+import type { MaterialCost } from "./cost";
+import { unitHasCapability, getJob, type JobLookup } from "./jobs";
 import { bumpCounter, nonNegInt } from "./num";
 import { reachableFrom, marketOpenedFlag, getNode, effectiveMarketTier } from "./overworld";
 import { satisfyUpkeepLine, accrueRp } from "./upkeep";
 import { applyCampSkill, type CampOutcome } from "./camp";
-import { grantAbilityUseXp, jobLevelOf } from "./leveling";
+import { availableSkills, grantAbilityUseXp, jobLevelOf } from "./leveling";
 import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { grantItem } from "./inventory";
-import { overworldCostOf, checkOverworldCost } from "./overworld-cost";
-import { setNodeFlag, primeFlag, campSkillUses, isPrimed } from "./overworld-state";
+import { overworldCostOf, checkOverworldCost, resolveKnob, type OverworldCost } from "./overworld-cost";
+import { setNodeFlag, primeFlag, campSkillUses, cooldownRemaining, isPrimed } from "./overworld-state";
 // The economy-verb effect **cores** (R4/A) — the post-gate mutations each economy verb also
 // runs. The handlers below delegate to these so the projection (batch 3) and the legacy verbs
 // share one body per mechanism (no behaviour drift). One-directional at runtime: economy-actions
@@ -89,6 +90,127 @@ export interface ActionOpts {
   tier?: import("./overworld").MarketTier;
   /** Borrow (R4/A): the sum to advance to the purse. */
   amount?: number;
+}
+
+// --- The projection: availableActions (R4/B, #112 step 3) -------------------
+
+/**
+ * A verb's **gate verdict** in the {@link availableActions} projection — affordable, or the
+ * why-refused reason. The run-tier twin of a combat skill's usability: derived from the same
+ * {@link "./overworld-cost".checkOverworldCost} closure the interpreter runs, but **without
+ * committing** (nothing is spent to enumerate).
+ */
+export type ActionVerdict = { ok: true } | { ok: false; reason: string };
+
+/**
+ * The **cost readout** for one action (R4/B, #112) — the resolved figures a surface reports for
+ * each axis of the one {@link "./overworld-cost".OverworldCost} grammar: pacing (cooldown left /
+ * per-node cap + uses left) and the per-cast **prices** with every provider knob already resolved
+ * against the run (Cook Stew's food-valued gold, the Triage fallback's RP). Every field is
+ * optional — an axis the action doesn't declare is simply absent. This is what a render greys/labels
+ * a button from, and what the sim meta-policy reads to price a legal move.
+ */
+export interface ActionCostReadout {
+  /** Fatigue spent on the acting unit per cast (base only, D73). */
+  fatigue?: number;
+  /** Gold spent from the purse per cast (a provider knob, already resolved). */
+  gold?: number;
+  /** Influence spent per cast (already resolved). */
+  influence?: number;
+  /** Rest Points spent per cast (already resolved). */
+  rp?: number;
+  /** A carried material consumed per cast (#113). */
+  material?: MaterialCost;
+  /** Node-steps of cooldown remaining (omitted when ready). */
+  cooldown?: number;
+  /** The declared per-node use cap, when the action is per-node paced. */
+  usesPerNode?: number;
+  /** Uses left at the current node, when per-node paced. */
+  usesLeft?: number;
+  /** True when the action is bounded by a finite consumable rather than a knob (Merchant Sell). */
+  selfLimited?: boolean;
+}
+
+/**
+ * One **available action** at the current node (R4/B, #112) — the run-tier twin of a surfaced
+ * combat skill: a verb some fielded unit's overworld skill set offers, with its `verdict` (the
+ * gate's ok / why-refused) and a `cost` readout, both derived — never hand-wired. Shaped for two
+ * consumers: the {@link "../../game/scenes/OverworldScene"} camp UI (a render of this projection,
+ * increment 11) **and** the sim meta-policy's legal-move enumeration (D56/D57).
+ */
+export interface ActionView {
+  /** The owning {@link SkillDef}'s id — keys the pacing ledgers + the interpreter dispatch. */
+  id: string;
+  /** The verb's display name. */
+  label: string;
+  /** The fielded unit surfacing (and, for a fatigue-priced verb, performing) it. */
+  actorId?: string;
+  /** The verb's effect kind (the interpreter partition — buy/sell/triage/survey/…). */
+  effectKind: SkillEffect["kind"];
+  /** The gate verdict — offered, or why refused (the check closure, uncommitted). */
+  verdict: ActionVerdict;
+  /** The resolved per-axis cost readout. */
+  cost: ActionCostReadout;
+}
+
+/**
+ * The **resolved cost readout** for an action's {@link "./overworld-cost".OverworldCost} at the
+ * run's current node (R4/B) — providers resolved, cooldown + per-node uses read from the ledgers.
+ * The projection's cost half, split out so a surface can also read a single action's cost directly.
+ */
+export function readActionCost(run: RunState, id: string, cost: OverworldCost): ActionCostReadout {
+  const out: ActionCostReadout = {};
+  const fatigue = cost.fatigue ?? 0;
+  if (fatigue > 0) out.fatigue = fatigue;
+  const gold = resolveKnob(cost.gold, run);
+  if (gold > 0) out.gold = gold;
+  const influence = resolveKnob(cost.influence, run);
+  if (influence > 0) out.influence = influence;
+  const rp = resolveKnob(cost.rp, run);
+  if (rp > 0) out.rp = rp;
+  if (cost.material) out.material = cost.material;
+  const cd = cooldownRemaining(run.overworld, id);
+  if (cd > 0) out.cooldown = cd;
+  if (cost.usesPerNode !== undefined) {
+    out.usesPerNode = cost.usesPerNode;
+    out.usesLeft = Math.max(0, cost.usesPerNode - campSkillUses(run.overworld, id));
+  }
+  if (cost.selfLimited) out.selfLimited = true;
+  return out;
+}
+
+/**
+ * **`availableActions(run)`** (R4/B, #112 step 3) — the run-tier twin of {@link
+ * "./leveling".availableSkills}: every overworld verb usable at the current node, each with its
+ * gate verdict and cost readout, **derived** from core state (no hand-wired per-verb blocks). For
+ * every **fielded** party member ({@link "./units".fieldedUnits}) it folds that unit's overworld
+ * skill set — its job skills plus the {@link "./jobs-data/support".UNIVERSAL_OVERWORLD_SKILLS}
+ * home (Buy / the Triage fallback), exactly as `availableSkills` folds combat's universals — and
+ * runs each through the shared {@link "./overworld-cost".checkOverworldCost} gate **without
+ * committing** to read the verdict. `lookup` is injectable for fixtures.
+ *
+ * The **one projection** every camp verb surface renders (the D80 layout stays; the wiring becomes
+ * this) and the sim meta-policy's legal-move enumeration reads (D56/D57). A universal verb surfaces
+ * once per fielded unit (as `availableSkills` reports it per unit); a surface that wants a single
+ * Buy row dedupes on `id` at render time.
+ */
+export function availableActions(run: RunState, lookup: JobLookup = getJob): ActionView[] {
+  const out: ActionView[] = [];
+  for (const unit of fieldedUnits(run.party)) {
+    for (const skill of availableSkills(unit, "overworld", lookup)) {
+      const cost = overworldCostOf(skill);
+      const check = checkOverworldCost(run, skill.id, cost, skill.name, unit);
+      out.push({
+        id: skill.id,
+        label: skill.name,
+        actorId: unit.id,
+        effectKind: skill.effect.kind,
+        verdict: check.ok ? { ok: true } : { ok: false, reason: check.reason },
+        cost: readActionCost(run, skill.id, cost),
+      });
+    }
+  }
+  return out;
 }
 
 // --- The interpreter --------------------------------------------------------

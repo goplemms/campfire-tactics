@@ -38,6 +38,7 @@ import type { JobId } from "./jobs";
 import { availableSkills } from "./leveling";
 import { unitSkills } from "./jobs";
 import { overworldCostOf, checkOverworldCost } from "./overworld-cost";
+import { availableActions } from "./overworld-actions";
 import { noActionsAvailable } from "./battle-flow";
 import { TileGrid } from "./grid";
 import { EntityRegistry } from "./entities";
@@ -116,6 +117,50 @@ describe("R4 increment 0(a) — the camp-verb board (batch-3 parity reference)",
         gold: 40,
       });
     expect(campVerbBoard(mk())).toEqual(campVerbBoard(mk()));
+  });
+});
+
+describe("R4 increment 10 — availableActions(run) is the board's PARITY twin (#112 step 3)", () => {
+  /** Reconstruct the increment-0 board lines from the availableActions projection alone. */
+  function boardFromProjection(run: RunState): string[] {
+    const nameOf = new Map(run.party.map((u) => [u.id, u.name]));
+    return availableActions(run).map((a) => {
+      const who = a.actorId ? nameOf.get(a.actorId) : undefined;
+      const verdict = a.verdict.ok ? "offered" : `refused — ${a.verdict.reason}`;
+      return `${who} · ${a.label}: ${verdict}`;
+    });
+  }
+
+  it("availableActions folds the same offered/refused set the hand-wired board reports", () => {
+    const run = createRun("r4-camp-board", {
+      party: [
+        jobUnit("Wynn", "cook"),
+        jobUnit("Pia", "merchant"),
+        jobUnit("Vale", "survivalist"),
+        jobUnit("Rook", "soldier"),
+      ],
+      gold: 40,
+    });
+    // Byte-for-byte the same board the increment-0(a) reference pins — the projection is derived,
+    // not hand-wired, so the two must agree at the same seed/beat.
+    expect(boardFromProjection(run)).toEqual(campVerbBoard(run));
+  });
+
+  it("each ActionView carries the surfacing actor, the effect kind, and a resolved cost readout", () => {
+    const run = createRun("r4-camp-board", { party: [jobUnit("Wynn", "cook")], gold: 40 });
+    const views = availableActions(run);
+    // Every view is attributed to the fielded unit that surfaced it (universals included).
+    expect(views.every((v) => v.actorId === run.party[0].id)).toBe(true);
+    // Cook Stew (a per-node-capped, food-priced signature) reports its pacing + resolved price.
+    const stew = views.find((v) => v.label === "Cook Stew")!;
+    expect(stew.effectKind).toBe("provisionMeal");
+    expect(stew.cost.usesPerNode).toBeGreaterThan(0);
+    expect(stew.cost.usesLeft).toBe(stew.cost.usesPerNode);
+    // The universal Triage fallback prices in Rest Points (a resolved provider knob) and, at a
+    // fresh RP-poor camp, refuses with the shared gate's reason.
+    const triage = views.find((v) => v.label === "Triage (Fallback)")!;
+    expect(triage.cost.rp).toBeGreaterThan(0);
+    expect(triage.verdict.ok).toBe(false);
   });
 });
 

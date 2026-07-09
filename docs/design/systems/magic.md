@@ -5,6 +5,16 @@
 > (runes), [logistics](logistics.md) (scrolls/consumables),
 > [Pre-deployment](../01-pre-deployment.md) (allocation). Decision: **D17**.
 
+> ## ⚠️ Designed, not built (D17 / #148)
+>
+> **This entire system is unimplemented.** There is **no** casting, scribing, scroll,
+> charge, or rune mechanic anywhere in `src/core` (only a `"rune-reagent"` description
+> string in `manifest.ts` and `entities.ts`'s "no real traps/nests/runes yet" note);
+> `OverworldCost` carries no `charge`/vancian knob. D17 stands as **intent** and nothing
+> supersedes it — the owner ruling is **defer with this banner** (#148), not descope. The
+> **consumables family** (D20 — scrolls/reagents/special arrows, recovery keywords) is
+> deferred with it (see [logistics](logistics.md)). Everything below is design, not code.
+
 ## Description
 
 **All magic is Vancian** — spells are a *limited, expended resource*, never at-will.

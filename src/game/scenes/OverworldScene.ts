@@ -1390,7 +1390,11 @@ export class OverworldScene extends Phaser.Scene {
       for (const target of reach) {
         const refusal = this.refusal(survey, surveyor);
         const label = targetLabels[target.id];
-        intel.push({ label: `${survey.name} → ${label} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showReactCamp(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: `${survey.name} → ${label}`, actor: surveyor.name, costs: this.actionCost(survey) });
+        // Button name is the survey *target* (the disambiguator between rows); the "Survey →"
+        // verb is redundant with the "Intel" drawer header + the actor column, and the terse
+        // form keeps the longest target ("Clearing (L4)") inside the fixed name column instead
+        // of overflowing it. The full verb form still reads in the hover tip (`label`).
+        intel.push({ label: `${survey.name} → ${label} · ${surveyor.name} (${this.costReadout(survey, surveyor)})`, enabled: !refusal, onClick: () => { this.loop.useOverworldSkill(surveyor, survey, { targetNodeId: target.id }); this.showReactCamp(); }, tip: refusal ?? survey.description, preview: skillEffectPreview(survey, this.run), name: label, actor: surveyor.name, costs: this.actionCost(survey) });
       }
     }
     y = this.panel.renderDrawer("intel", "Intel", colX, y, rowH, intel, () => this.showReactCamp());

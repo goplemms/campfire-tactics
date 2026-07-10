@@ -37,10 +37,13 @@ const exists = (p) => access(p).then(() => true, () => false);
 // shared with the harness/e2e — imported from ./harness.mjs (single source of truth).
 
 // Advance a battle a few turns (clearing the busy *animation* lock so the clock keeps
-// moving) to fill the clock + show the objective gauge mid-fight. Stop the moment a player
-// turn opens (`waitingFor`) or the fight decides (`over`) — do NOT clear `over`, since that
-// would defeat `finishBattle`'s re-entry guard and double-call `resolve()` on a torn-down battle.
-const advance = (n) => bs(`if(s.phase==="deployment")s.onPrimary();for(let i=0;i<${n}&&!s.waitingFor&&!s.over;i++){s.busy=false;s.onAdvance();}`);
+// moving) to fill the clock + show the objective gauge mid-fight. From deployment, cross
+// into the fight first via startBattle — NOT onPrimary, which in the deploy phase only
+// steps the *closing net*; marching the net here walks it to a capture → a spurious Defeat
+// where the victory beat should be (#F5). Stop the moment a player turn opens (`waitingFor`)
+// or the fight decides (`over`) — do NOT clear `over`, since that would defeat
+// `finishBattle`'s re-entry guard and double-call `resolve()` on a torn-down battle.
+const advance = (n) => bs(`if(s.phase==="deployment")s.startBattle();for(let i=0;i<${n}&&!s.waitingFor&&!s.over;i++){s.busy=false;s.onAdvance();}`);
 // Force a clean win and finish: every enemy down ⇒ the field clears (gate met too).
 const forceWin = bs(`if(s.over||!s.battle)return;for(const u of s.battle.units)if(u.side==="enemy")u.alive=false;s.busy=false;s.waitingFor=null;s.finishBattle();`);
 

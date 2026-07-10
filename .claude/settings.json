@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "memento": {
+      "source": { "source": "github", "repo": "goplemms/memento" }
+    }
+  },
+  "enabledPlugins": [
+    { "marketplace": "memento", "plugin": "memento" }
+  ]
+}

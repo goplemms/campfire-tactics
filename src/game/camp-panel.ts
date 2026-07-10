@@ -82,12 +82,14 @@ const COST_COMPONENTS: readonly { key: keyof ActionCost; glyph: string; ink: str
   { key: "cooldown", glyph: "◷", ink: INK.muted, name: "cooldown (nights)" },
 ];
 
-/** Width of one fixed cost-component column (prototype) — sized to hold an "icon NN" chip. */
-const COST_SLOT_W = 40;
+/** Width of one fixed cost-component column (prototype) — sized to hold an "icon NN" chip.
+ *  Trimmed from 40 to reclaim width for the actor lane (cost values are 1–2 digits, ~28px). */
+const COST_SLOT_W = 34;
 /** The fixed **verb** column width, so the actor lane starts at the same x down every row. */
 const NAME_COL_W = 116;
-/** The fixed **actor** column width (its lane, before the cost components). */
-const ACTOR_COL_W = 44;
+/** The fixed **actor** column width (its lane, before the cost components). Wide enough for the
+ *  longest specialist name ("Sterling") so it no longer scales down into the cost column. */
+const ACTOR_COL_W = 52;
 
 /** Host wiring: run data + the shared object layers (live getters) + the hint sink. */
 export interface CampPanelContext {

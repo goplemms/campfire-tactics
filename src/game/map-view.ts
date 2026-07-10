@@ -418,9 +418,10 @@ export class MapView {
 
     // The surface, sized to the stacked content (min height keeps short cards tidy).
     const h = Math.max(72, y - top + 10);
-    // A tall card (road line + rumors) must never run off the canvas: lift the whole
-    // stack so the bottom edge stays on-screen — the card grows UPWARD past its dock.
-    const lift = Math.max(0, top + h - (s.scale.height - 12));
+    // A tall card (road line + rumors) must never run off the canvas *or over the map
+    // legend* (drawn at height−30): lift the whole stack so its bottom stays clear of the
+    // legend row — the card grows UPWARD past its dock.
+    const lift = Math.max(0, top + h - (s.scale.height - 40));
     if (lift > 0) for (const o of this.intelObjects) (o as unknown as { y: number }).y -= lift;
     this.intelObjects.push(s.add.rectangle(cx, top - lift + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9));
   }

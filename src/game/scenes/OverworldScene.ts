@@ -77,7 +77,7 @@ import {
   type JournalConcern,
   type EquipSlot,
 } from "../../core";
-import { clearLayer } from "../ui";
+import { clearLayer, fitText } from "../ui";
 import { Button, probeWidth } from "../button";
 import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
 import { drawLedgerSheet } from "../ledger-sheet";
@@ -1676,6 +1676,10 @@ export class OverworldScene extends Phaser.Scene {
    * sheet is read-only. **Continue** runs `onContinue` — the deferred night action.
    */
   private showLedgerTransition(title: string, onContinue: () => void, interactive = false): void {
+    // This gate is a full-screen sheet that replaces the camp view — tear the camp chrome
+    // (tabs / readouts) down first, or the tab bar bleeds over the sheet (#F6). onContinue
+    // re-renders the camp or leaves to the map, as the caller intends.
+    this.clearCamp();
     clearLayer(this.overlay);
     const cx = this.scale.width / 2;
     const cy = this.scale.height / 2;
@@ -1686,10 +1690,15 @@ export class OverworldScene extends Phaser.Scene {
 
     // Full-screen backdrop (dims + swallows clicks behind) + the framed sheet.
     installBackdrop(this, this.overlay, 22);
+    const titleText = this.add.text(left + 24, top + 22, title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25);
+    // The subtitle right-aligns on the title's baseline; clamp it to the gap left of the
+    // title so a long title can't overprint it (the two used to collide, #F6).
+    const subtitle = this.add.text(left + w - 24, top + 22, "The night's tab before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25);
+    fitText(subtitle, left + w - 24 - (titleText.x + titleText.width) - 16);
     this.overlay.push(
       this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
-      this.add.text(left + 24, top + 22, title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(left + w - 24, top + 22, "The night's tab — what camp spends before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+      titleText,
+      subtitle,
     );
     const rule = this.add.graphics().setDepth(24);
     rule.lineStyle(1, COLOR.borderSoft, 0.9);

@@ -73,7 +73,11 @@ const STEPS = BOOT === "battle"
       // The economy classes (D62/D30): field the real Noble + Banker from the roster (the
       // job-gate that replaced the old Int>=3 proxy), give some standing + gold, and expand
       // the Advanced panel → its verbs, each tagged with the specialist who works them.
-      { name: "06d-influence-patronize", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);for(const jid of ['noble','banker']){const m=(s.guild?s.guild.roster:[]).find(u=>u.jobId===jid);if(m&&!s.run.party.includes(m))s.run.party.push(m);}s.run.camp.gold=120;s.run.overworld.influence=16;s.renderCamp();`) },
+      // enterCamp may raise an early-road event over the (not-yet-drawn) camp; in real play the
+      // player dismisses it before the camp renders. The shot force-renders the camp to show the
+      // Economy drawer, so clear that transient overlay first — otherwise the event modal and the
+      // camp stack (a capture-only artifact, not a live overlap).
+      { name: "06d-influence-patronize", eval: wrap(`s.enterCamp(s.loop.reachable()[0]);for(const jid of ['noble','banker']){const m=(s.guild?s.guild.roster:[]).find(u=>u.jobId===jid);if(m&&!s.run.party.includes(m))s.run.party.push(m);}s.run.camp.gold=120;s.run.overworld.influence=16;${clearOverlay}s.renderCamp();`) },
       { name: "07-break-camp-gate", eval: wrap(`s.run.camp.gold=0;s.run.overworld.debt=30;s.setOutToMap();`) },
     ];
 

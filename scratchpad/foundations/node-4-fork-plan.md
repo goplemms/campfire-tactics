@@ -1,5 +1,10 @@
 # Node 4 — the L4 fork: plan (DRAFT, post-adversarial)
 
+> **⚠️ SUPERSEDED (2026-07-11) by [`hollow-mill-backhalf-arc-plan.md`](hollow-mill-backhalf-arc-plan.md).**
+> A second adversarial pass + design conversation escalated this from "fix the L4 fork" to a
+> back-half **prison-assault arc** with a richer deployment phase. Kept for history; the
+> findings here fed the arc plan.
+
 > **Status: PLAN DRAFT — not approved, no build.** Output of the Node-4 discussion→plan
 > step. Supersedes the initial four-mechanic sketch, which an adversarial design pass
 > (four independent lenses: teaching, balance, architecture, narrative) found teaches the

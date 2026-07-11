@@ -9,6 +9,7 @@ The labelled arrows are the **transition verbs** — the exact buttons that move
 scales (`Dispatch`, `Begin`, `Set Out`).
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontSize':'18px','fontFamily':'ui-sans-serif, system-ui, sans-serif'},'flowchart':{'nodeSpacing':45,'rankSpacing':60,'padding':16}}}%%
 flowchart TB
   subgraph GUILD["🏰 GUILD — persistent home · survives every run"]
     HOME["Roster · Treasury · Armory · Quest Board · Stable of Caravans"]
@@ -38,22 +39,22 @@ flowchart TB
   MAP -. "arrive · Prep Camp → Begin →" .-> META
   RES -. "React Camp · Set Out ↺" .-> MAP
 
-  %% ── shared scale palette (see atlas README) ──
-  classDef guild fill:#6D28D9,color:#fff,stroke:#4C1D95,stroke-width:1px
-  classDef run fill:#1D4ED8,color:#fff,stroke:#1E3A8A,stroke-width:1px
-  classDef mission fill:#B45309,color:#fff,stroke:#78350F,stroke-width:1px
-  classDef combat fill:#B91C1C,color:#fff,stroke:#7F1D1D,stroke-width:1px
+  %% ── shared scale palette (see atlas README): solid frames, white content boxes ──
+  classDef guildLeaf fill:#ffffff,color:#3B0764,stroke:#6D28D9,stroke-width:2px
+  classDef runLeaf fill:#ffffff,color:#1E3A8A,stroke:#1D4ED8,stroke-width:2px
+  classDef missionLeaf fill:#ffffff,color:#7C2D12,stroke:#C2410C,stroke-width:2px
+  classDef combatLeaf fill:#ffffff,color:#7F1D1D,stroke:#DC2626,stroke-width:2px
 
-  class HOME guild
-  class MAP run
-  class META,DEPLOY,RES mission
-  class CT combat
+  class HOME guildLeaf
+  class MAP runLeaf
+  class META,DEPLOY,RES missionLeaf
+  class CT combatLeaf
 
-  style GUILD fill:#EDE9FE,stroke:#6D28D9
-  style RUN fill:#DBEAFE,stroke:#1D4ED8
-  style NODE fill:#CCFBF1,stroke:#0F766E
-  style MISSION fill:#FEF3C7,stroke:#B45309
-  style COMBAT fill:#FEE2E2,stroke:#B91C1C
+  style GUILD fill:#7C3AED,color:#ffffff,stroke:#4C1D95,stroke-width:4px
+  style RUN fill:#2563EB,color:#ffffff,stroke:#1E3A8A,stroke-width:4px
+  style NODE fill:#0D9488,color:#ffffff,stroke:#134E4A,stroke-width:4px
+  style MISSION fill:#EA580C,color:#ffffff,stroke:#9A3412,stroke-width:4px
+  style COMBAT fill:#DC2626,color:#ffffff,stroke:#7F1D1D,stroke-width:4px
 ```
 
 ## What this shows (and what it defers)

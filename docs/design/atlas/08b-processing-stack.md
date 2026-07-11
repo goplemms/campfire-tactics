@@ -7,6 +7,7 @@ DOM** — is what keeps the bottom two layers headlessly testable and portable i
 platform shell (Tauri, Capacitor, …).
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontSize':'18px','fontFamily':'ui-sans-serif, system-ui, sans-serif'},'flowchart':{'nodeSpacing':50,'rankSpacing':70,'padding':16}}}%%
 flowchart TB
   subgraph UI["① UI / SCENE — Phaser · input · orchestration"]
     BS["BattleScene.ts<br/>reads input, owns the scene, wires the frame together"]
@@ -35,22 +36,15 @@ flowchart TB
   VIEW -.-> BARRIER
   LOGIC -.-> BARRIER
 
-  classDef ui fill:#E2E8F0,color:#0F172A,stroke:#475569,stroke-width:1px
-  classDef view fill:#BFDBFE,color:#0F172A,stroke:#1D4ED8,stroke-width:1px
-  classDef logic fill:#BBF7D0,color:#052E16,stroke:#15803D,stroke-width:1px
-  classDef atom fill:#E2E8F0,color:#0F172A,stroke:#64748B,stroke-width:1px
-  classDef barrier fill:#FEE2E2,color:#7F1D1D,stroke:#B91C1C,stroke-width:1px,stroke-dasharray:4 3
+  %% white content boxes; solid shelves carry the layer colour
+  classDef leaf fill:#ffffff,color:#0f172a,stroke:#334155,stroke-width:2px
+  class BS,CV,BF,PRIM leaf
 
-  class BS ui
-  class CV view
-  class BF logic
-  class PRIM atom
-  class BARRIER barrier
-
-  style UI fill:#F1F5F9,stroke:#475569
-  style VIEW fill:#EFF6FF,stroke:#1D4ED8
-  style LOGIC fill:#F0FDF4,stroke:#15803D
-  style ATOM fill:#F8FAFC,stroke:#64748B
+  style UI fill:#64748B,color:#ffffff,stroke:#334155,stroke-width:4px
+  style VIEW fill:#2563EB,color:#ffffff,stroke:#1E3A8A,stroke-width:4px
+  style LOGIC fill:#16A34A,color:#ffffff,stroke:#166534,stroke-width:4px
+  style ATOM fill:#475569,color:#ffffff,stroke:#1E293B,stroke-width:4px
+  style BARRIER fill:#DC2626,color:#ffffff,stroke:#7F1D1D,stroke-width:3px
 ```
 
 ## Reading the stack

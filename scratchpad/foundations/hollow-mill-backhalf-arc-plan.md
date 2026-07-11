@@ -1,178 +1,146 @@
 # Hollow Mill — the back-half arc: campaign plan (DRAFT)
 
 > **Status: DESIGN DRAFT — not approved, no build.** The north-star for redesigning the
-> Hollow Mill's back half (L4 → finale) into a **prison-assault arc** with a **richer
-> deployment phase**. Output of the Node-4 discussion, which escalated (correctly) from
-> "fix one fork" to "redesign the layer." Shaped by **two adversarial passes** (recorded
-> below). Supersedes [`node-4-fork-plan.md`](node-4-fork-plan.md). Once the open questions
-> (§Open design questions) close, the settled calls graduate to a **`decisions.md` entry
-> (next id: D90)** + updates to [`expedition-hollow-mill.md`](../../docs/design/expedition-hollow-mill.md),
-> and the waves (§Waves) become the umbrella issue + child issues. Numbers are
-> **illustrative tunables**, not final.
+> Hollow Mill's back half into a **prison-assault arc** whose signature payoff is a **deeper
+> deployment phase** (infiltration via the **Thief**). Supersedes
+> [`node-4-fork-plan.md`](node-4-fork-plan.md). Settled calls graduate to a
+> **`decisions.md` entry (next id: D90)** + updates to
+> [`expedition-hollow-mill.md`](../../docs/design/expedition-hollow-mill.md); the waves become
+> the umbrella issue + child issues. Numbers are **illustrative tunables**, not final.
+>
+> **Scope reset (owner ruling 2026-07-11).** Everything **past node 3 is open design** — the
+> shipped `node 4+` topology/content (`rest4a`, `wagon4b`, `market`, `securedWagon`, `den`,
+> `finale`) is **obsolete**: we may keep pieces, but we may just as easily replace it wholesale.
+> The demo is also expected to be **longer** than today's 7-node slice, which gives room for
+> natural leveling. So this plan designs a **fresh back-half topology**, not a patch.
 >
 > **Review cadence (working rule).** No decision is finalized until it clears an **adversarial
-> red-team pass**. The flow: *settle a decision (or a batch) → red-team it → finalize into the
-> doc (or revise)*. Decisions are batched before a pass for efficiency. A question marked
-> **PROVISIONAL** is tentatively settled but has **not** yet cleared the red-team; only a
-> **CLEARED** question is safe to graduate.
+> red-team pass**: *settle (or batch) → red-team → finalize/revise*. **PROVISIONAL** = tentatively
+> settled, not yet red-teamed; **CLEARED** = survived the red-team (with any constraints folded
+> in) and safe to graduate.
 
 ## North star
 
-The Hollow Mill's back half becomes one coherent **prison-assault arc**: the wagons on the
-road lead to a **prison facility the party assaults at the finale** (today an undesigned
-stub). The arc is a **vertical slice that represents the whole game** — fun, interesting,
-and honest about what the game is — **not a tutorial**. It leans into two things the game
-wants to be known for:
+The back half becomes one coherent **prison-assault arc**: the road leads to a **prison
+facility the party assaults at the finale** (today an undesigned stub). It's a **vertical slice
+that represents the whole game** — fun, interesting, honest — **not a tutorial**. Two headline
+pillars:
 
-1. **Meaningful, replayable routing** — routes diverge on **breadth vs depth** and **frontal
-   vs infiltration**, are **co-viable** (no dominant line), and are **worth re-running** to
-   see the other path. Missable content is a *feature* (the replay engine), not a trap.
-2. **A deeper deployment phase** — deployment becomes more than "place two units / reveal
-   fog." An eligible party can **infiltrate the structure early** (deploy *inside*); a party
-   without the tools runs a **frontal assault** (the honest default). This is the slice
-   showcasing a **pillar the game is actively deepening**, not a bespoke detour.
+1. **Meaningful, replayable routing.** Routes diverge (**sustain vs. infiltration**); missable
+   content is the *replay engine*, not a trap. Routes need not be balanced — only *worth taking*.
+2. **A deeper deployment phase — the game's signature mechanic.** The **Thief** prestige unlocks
+   **infiltration** (lockpick a structure, act before the fight). The demo exists to *headline
+   this*. A party without it runs the honest **frontal assault**. Deploying the Thief spotlight
+   is deliberate — depth-via-one-class here is a **feature** (showcase the unique system), not the
+   accidental narrowing Pass 2 warned about.
 
-## Why (the two adversarial passes)
+## Adversarial history (three passes)
 
-- **Pass 1 (the L4 fork).** Found the shipped fork is a **dominated non-choice** (forecasted
-  first-healer + winnable-raw fight + a richer catch-up ⇒ the "risky" road is never taken;
-  teaches the *inverse* of risk/reward). → we escalated to a layer redesign.
-- **Pass 2 (this arc).** Found the first arc sketch **misrepresented the game** (over-indexed
-  on the Scout prestige fork + stealth), **buried feels-bad** (unvaluable exclusivity, a
-  Medic-deletion death-spiral, AI-ally agency theft, a genre-switch finale), was **dominated
-  four ways**, and was **~8 systems in a "node-4" costume**. The reorientation below keeps the
-  fun/representative *spirit* while resolving those — chiefly: **structures-with-sections +
-  involved deployment ARE the game** (so the facility is representative), and the demo is
-  **built to be replayed** (so exclusivity drives replay). The surviving hard constraint is
-  **co-viability** (see the design rules) — replay only pays off if no route dominates.
+- **Pass 1 (the L4 fork).** The shipped fork is a **dominated non-choice** → escalate to a layer redesign.
+- **Pass 2 (the arc).** The first sketch **misrepresented the game**, buried feels-bad, was over-scoped
+  → reoriented around replay + the deployment pillar + reuse.
+- **Pass 3 (the Q1/Q2/Q3 batch) + re-review.** Found real, code-grounded holes; the **scope-reset +
+  longer-demo** context above **dissolved the topology/length-dependent ones** (fake-fork via
+  reconvergence, 4A combat-starvation), leaving a short list of **durable constraints** (below) that
+  now act as design guardrails.
 
-## Design rules (non-negotiable — these make replay work)
+## Design rules
 
-1. **No dead routes + real choices (balance relaxed for the demo — owner ruling 2026-07-11).**
-   Routes need **not** be evenly balanced: the slice is *replay-oriented* (players sampling the
-   game's feel), so players "optimizing out" a choice is **not** a concern here. The only bar:
-   **no route may feel not-worth-taking**, and the fork must stay a **genuine either/or**
-   (mutually exclusive rewards) or it isn't a choice at all. The former "decoupling" rules are
-   now **levers, not hard parity** — attach/move the finale-weakening consequence and place the
-   prestige arms to keep every route *appealing* and the choice *real*, not to force symmetry.
-   The **finale's two win-conditions** (frontal vs infiltration) stay, because *distinct
-   fantasies* are what make each route worth replaying.
-2. **Consequences must be *felt*, not scouted.** A route's downstream payoff (e.g. "the wagon
-   fell, the garrison is thin") is **shown at the moment of payoff** (empty posts, freed
-   prisoners at the gate, a rumor line) — never delivered only through a tier-3 intel read the
-   player may never buy.
-3. **Stay in the tactical idiom.** The finale — frontal *or* infiltration — is played in the
-   game's CT-clock tactics, not a bespoke stealth minigame. Infiltration changes the *board
-   state you deploy into*, not the verb set.
-4. **Reuse before invent.** Freed prisoners are **player-controlled captives** (`captives`
-   seam, the L1 Pip shape) — **not** an AI-ally control mode (cut: redundant + a tuning sink).
-   Cross-node consequence is a **flag-keyed rumor**, not a new intel-disclosure category.
-5. **Represent honestly.** The slice must not *lie about the game* — especially progression
-   pacing (see the prestige-floor question) and the game's shape (procedural, guild-framed,
-   broad-roster). Open question: how much guild/economy to bookend so the outer scales show.
+1. **No dead routes + real choices (balance relaxed).** Routes need **not** be evenly balanced;
+   the only bar is **no route feels not-worth-taking**, and the fork stays a **genuine either/or**.
+   Levers (consequence placement, where prestige sits) keep routes *appealing* and the choice
+   *real*, not symmetric.
+2. **Consequences must be *felt*, not scouted** — shown at the payoff (empty posts, a rumor line),
+   never only behind a tier-3 intel read.
+3. **Stay in the tactical idiom.** The finale is CT-clock tactics, not a bespoke stealth minigame.
+4. **Reuse before invent.** Freed prisoners are **player-controlled captives** (the L1 Pip seam),
+   not an AI-ally mode. Cross-node consequence is a **flag-keyed rumor**, not new intel plumbing.
+5. **Represent honestly.** Don't lie about progression pacing or the game's shape. (The Thief
+   spotlight is an *honest* headline of the signature mechanic — see north-star 2.)
 
-## The arc, node by node (proposed)
+## Durable constraints (Pass-3 keepers — guardrails for the new topology)
 
-- **L4 — the fork (breadth vs depth).**
-  - **4B "The Prison Wagon" (hard combat):** rescue **Sela the Medic** on the board (BREADTH —
-    a new party member; the captive set-piece is welcome). Tense, winnable raw.
-  - **4A "the training clearing" (rest + a D80 arrival event) — the DEPTH road (Q1 = B):** a
-    **mentor** runs a **dual-purpose training event** that (1) **telegraphs prestige** — tells
-    the player *something big is coming* and **surfaces the Assassin path + its level-5 gate**
-    (the requirement is made visible, not hidden); (2) **arms** the prestige (`assassin-mentor`);
-    and (3) grants Vale a **level bump toward L5**, so the transformation lands **within the
-    run** when she earns the rest through combat — fired via **D69's appear-when-eligible**
-    offer. "Both event and clearing": you **recover** *and* set your scout on the Assassin arc.
-    Honest about pacing (floor stays 5; she still earns it), and a distinct replay fantasy.
-  - The **Medic catch-up (`securedWagon`) is deleted** — skipping the Medic is a real,
-    run-shaping consequence (lean on Cook + consumables). *(Revisit under design-rule 5: does
-    deleting the healer under-represent the combat pillar? — open question.)*
-- **The prestige arms (route identity — the fork must stay a real either/or).** The **Assassin**
-  arc is *armed* at 4A (above); the **Thief** (infiltration/lockpick) is offered on a
-  **different, non-reconverging arm** — a Scout prestiges **once**, so a route must not be able
-  to grab *both* prestiges (nor a prestige *and* everything else for free — the choice has to
-  cost something, or it isn't a choice).
+- **C1 — `free-captives` must be an *extraction* objective**, not a cell-open flag-flip (freeing is a
+  one-tile flag flip today → a trivial garrison-skip). Escort freed prisoners to an exit under
+  pressure. *(The mechanics live in the parked deployment deep-dive — see below.)*
+- **C2 — OR-victory needs an "any-of" objective group + a `withDefaultGoal` fix.** `encounterOutcome`
+  is AND-only and auto-injects a *required* `eliminate-all`; a free-captives finale would otherwise
+  be forced to also clear the garrison. Bounded, reusable substrate.
+- **C3 — Training grants scout *job-XP*** (dedicated drilling → proficiency), **not a conjured
+  "level."** Needs a small `StoryOutcomeSpec` XP field; keeps the "you level by fighting/training"
+  model honest. The **longer demo** must place enough combat that the Thief prestige fires **in a
+  playable fight**, not at post-finale resolution.
+- **C4 — Infiltration is gated on the Thief (deliberate).** The Thief prestige *is* the key to the
+  deployment-phase depth; a non-Thief party runs the frontal finale (rule 1 — a fine, worth-taking
+  default). "Not route-locked" is **dropped** as a goal — the split is the point.
+- **C5 — "Deploy-inside" is a net-new sub-mode**, not concealment reuse (the deploy danger model runs
+  home-edge-outward). Whether infiltration is true interior-deploy or a cheaper **pre-breached board
+  reusing the existing net-as-alarm** is decided in the parked deep-dive.
+
+## The arc, node by node (proposed — topology to be designed)
+
+- **The fork — sustain vs. infiltration (a real either/or).**
+  - **The Prison Wagon (combat):** rescue **Sela the Medic** on the board (**breadth / sustain** —
+    a usable mid-expedition recruit; the captive set-piece is welcome). No Medic catch-up downstream —
+    skipping her is a real, run-shaping consequence.
+  - **The training road (combat/clearing):** a **mentor** runs a **dual-purpose training event** that
+    (1) **telegraphs** the Thief prestige and **surfaces its L5 gate** (visible, not hidden), (2)
+    **arms** it, and (3) grants scout **job-XP** toward L5 (C3). Vale reaches L5 through the back
+    half's fights and **becomes a Thief** → **Expert Lockpick** → the **infiltration** approach to the
+    finale. The distinct fantasy: *build toward the signature deployment mechanic.*
+  - **Either/or:** the healer (frontal-finale sustain) **vs.** the Thief (the infiltration finale).
+    Mutually exclusive, both worth taking, different fantasies. The **garrison-weakening consequence**
+    (crush the Wagon → thinner finale) stays causally on the **Wagon road** (rule 2); the training
+    road stands on its own Thief payoff (it does **not** get the wagon consequence teleported onto it).
 - **The finale — assault the prison facility** (retires the stub). **Objective: liberate the
-  prison.** Ends on a **dual OR-victory** (the multi-objective showcase, Q3 — PROVISIONAL,
-  pending adversarial):
-  - **`eliminate-all`** (the usual condition — defeat / drive off the garrison), **OR**
-  - **`free-captives`** (all held prisoners freed) — a **new objective kind** that reuses the
-    `captives`/`freeCaptive` freed-state; meeting *either* ends the node as a win.
-  - The two routes fall out of this naturally, **not route-locked** (either party can trip
-    either condition; freed prisoners are **player-controlled** captives, the L1 Pip shape):
-    - **Frontal assault (default / any party):** deploy at the gate against a **fortified**
-      garrison (reuse the `fortified` type); fight through — typically wins by `eliminate-all`.
-      The honest, representative-of-core-combat climax.
-    - **Infiltration (thief/lockpick party):** during **deployment**, breach a section and
-      **deploy *inside*** past the gate, garrison unalerted (reuse concealment + the deploy
-      danger gradient); reach the cells and free the captives under an **alarm/detection
-      clock** — typically wins by `free-captives`. Botched (detected) → converts to a fight,
-      now inside and outnumbered (so *harder* than frontal, not easier). **Stays in the
-      tactical idiom** (rule 3) — the alarm is a status/meter, not a new verb set.
-  - **Co-viability (rule 1):** frontal = reliable/brute, guaranteed-available, benefits from
-    the garrison-weakening consequence; infiltration = high-skill/high-variance, demands the
-    thief investment paid upstream, punished by detection. Neither dominates. **Tuning note
-    (for the balance pass):** `free-captives` must not be a trivial instant-win — detection
-    pressure + cell placement/escort are the knobs that keep infiltration skillful.
-  - **Consequence seam:** crushing the Prison Wagon thins the garrison — surfaced **visibly**
-    (empty posts / a rumor), per rule 2. Placement is now a **lever** (rule 1 relaxed): the
-    Medic is anchored at **4B**, so where the consequence sits is tuned to keep **4A worth
-    taking** (hinges on Q1 — the prestige payoff).
+  prison**, ending on a **dual OR-victory**: `eliminate-all` **OR** a new `free-captives` kind (C2).
+  - **Frontal (any party):** deploy at the gate vs. a **fortified** garrison; win by `eliminate-all`.
+    The representative-of-core-combat climax. **Buildable now.**
+  - **Infiltration (Thief party):** the Thief's lockpick opens the assault to a deployment-phase
+    approach; win by **extracting** the captives (C1). **Mechanics parked** (see deep-dive).
+  - **Prestige = Thief only.** Assassin is **dropped** from the demo (it doesn't serve the
+    deployment-phase headline).
 
-## Waves (the campaign → the future umbrella issue + children)
+## Parked deep-dives (own discussions, not now — owner ruling 2026-07-11)
 
-Each wave ships independently; the arc **degrades gracefully** if a later piece slips.
-Tags: **reuse** · **net-new** · **D69** (queued-roadmap) · **design/test**.
+- **The deployment-phase expansion.** Extraction (C1), deploy-inside vs. pre-breached board (C5), and
+  the alarm/detection model together imply a **larger rework of the deployment phase**. That's the
+  game's signature system and deserves its **own in-depth discussion** — deferred (not on the critical
+  path for a while). Until then, the infiltration finale's *mechanics* are undesigned; the **frontal
+  finale is the buildable spine**.
+- **Guild / economy bookend** (old Q4) — how much of the outer scales to show; scope vs. representativeness.
+- **Medic-deletion representativeness** (old Q5) — the demo's in-run sustain read (Pip the Cook covers between-battle healing).
+
+## Decision status
+
+- **Q1 — the depth road → Thief prestige — CLEARED-with-constraints (2026-07-11).** Training arms the
+  **Thief** (not Assassin) + grants job-XP (C3); fires in-run in the longer demo. Was the combat-starvation
+  fail; resolved by the scope-reset (fresh topology) + longer demo + job-XP framing.
+- **Q2 — the reward map — CLEARED (2026-07-11).** Medic recruitable on the Wagon road; balance relaxed
+  (rule 1); the fork is sustain-vs-infiltration, a real either/or by construction (one prestige, exclusive).
+- **Q3 — the finale — CLEARED-in-principle (2026-07-11).** Dual OR-victory; frontal (buildable) + infiltration
+  (Thief-gated) approaches. The **infiltration/extraction mechanics are parked** to the deployment deep-dive;
+  the frontal finale + the any-of objectives substrate (C2) are the buildable core.
+
+## Waves (buildable-now core vs. parked)
 
 | # | Work item | Wave | Tag |
 |---|---|---|---|
-| 0 | **Arc design doc** — this doc, closed out: node map, co-viability proof, the finale's two win-conditions | 0 | design |
-| 1a | **Objectives: alternate/OR-victory + `free-captives` kind** — generalizes the D50 model; reusable substrate (feeds the finale) | 1 | net-new |
-| 1 | Author the **L7 prison-facility finale** (retire the stub) — dual OR-victory, fortified garrison, prisoners as captives | 1 | net-new (needs 1a) |
-| 2 | Freed prisoners as **player-controlled captives** on the finale board | 1 | reuse |
-| 3 | **Consequence made visible** — the thinned garrison shows + a flag-keyed rumor line | 1 | reuse |
-| 4 | **Deployment infiltration** — structure sections + deploy-*inside* for eligible parties; frontal default | 2 | net-new |
-| 5 | **Lockpick / door field-entity** — the Thief's `lockpick` opens the breach | 2 | D69 |
-| 6 | **Prestige route-seeding** — the 4A mentor training-event (arm + level-bump + surface the L5 gate) + the Thief teacher; prestige fires via D69 appear-when-eligible once the level is earned | 3 | D69 |
-| 7 | **Co-viability balance pass** — the three decouplings + topology rework (`securedWagon`, relic placement) | 3 | balance |
-| 8 | **Sim route coverage** — force the hard arm + each finale win-condition; pin win-rates | 4 | test |
-| 9 | *(optional)* **Guild / economy bookend** — dispatch/return + one economy decision, so the meta scales show | 4 | representativeness |
+| 0 | **Node 4+ topology design** — the fresh longer-demo map: node placements, the fork, fights that feed Vale to L5, where the finale sits | 0 | design (next) |
+| 1a | **Objectives: any-of victory group + `free-captives` kind + `withDefaultGoal` fix** (C2) — reusable substrate | 1 | net-new |
+| 1 | Author the **prison-facility finale — frontal spine** (retire the stub): fortified garrison, `eliminate-all`, captives on the board | 1 | net-new (needs 1a) |
+| 2 | Freed prisoners as **player-controlled captives** (the L1 seam) | 1 | reuse |
+| 3 | **Consequence made visible** — thinned garrison + a flag-keyed rumor (the Wagon-crush payoff) | 1 | reuse |
+| 4 | **Thief route-seeding** — the training-event mentor (arm + job-XP + surface the L5 gate); the Thief prestige fires via D69 appear-when-eligible | 2 | D69 |
+| 5 | **Sim route coverage** — force each route + finale win-condition; pin win-rates + the L5-in-run timing | 2 | test |
+| — | **Infiltration finale + lockpick door + extraction (C1/C5)** | *parked* | awaits the **deployment-phase deep-dive** |
+| — | **Guild/economy bookend** | *parked* | own discussion |
 
-## Cut / deferred (with reasons)
-- **AI-controlled ally prisoners** — cut. Redundant with the player-controlled `captives`
-  seam, and a research-grade tuning sink (rule 4).
-- **Cross-node "consequence-as-intel" as a new disclosure category** — cut. A flag-keyed
-  rumor delivers the feel for near-zero machinery (rule 2/4).
-- **Flag-*scaling* the finale** — deferred until the finale exists and is proven fun (build
-  it once, first).
-- **Full D69 job-capability card surfacing** — orthogonal; its own effort.
-
-## Open design questions (must close before the waves are issued)
-- **Q3 — the finale's win-conditions — PROVISIONAL (2026-07-11), pending adversarial.**
-  Objective = *liberate the prison*; dual **OR-victory** (`eliminate-all` OR a new
-  `free-captives` kind); frontal vs infiltration fall out of it, not route-locked. Adds work
-  item **1a** (the objectives-model extension). See §The arc. *Batched into the next red-team
-  with Q2.*
-- **Q1 — prestige timing — PROVISIONAL (2026-07-11), pending adversarial (= Option B, refined).**
-  The 4A mentor **arms** the Assassin prestige, **bumps Vale toward L5**, and **telegraphs the
-  path + its L5 gate**; the prestige **fires later in the run** when she earns L5 (D69
-  appear-when-eligible). Honest pacing, in-run payoff, distinct fantasy. **Risk to stress:** does
-  she actually reach L5 by ~the finale on the 4A route's available fights (XP tuning)? — else the
-  payoff never lands and 4A is a **dead route**. Batched with Q2/Q3.
-- **Q2 — the reward map — PROVISIONAL (2026-07-11), pending adversarial.** The **Medic stays
-  recruitable at 4B (Prison Wagon)** — a usable, impactful mid-expedition recruit (owner
-  ruling). Balance relaxed (rule 1): 4B may be the *richer* route so long as **4A (the prestige
-  road) still feels worth taking**. Two sub-parts, both **tied to Q1**: (2a) consequence
-  placement (keep on the wagon for the narrative, or move onto 4A's road to bolster it); (2b)
-  whether 4A's prestige delivers enough to be worth taking. *4A viability is the thing to
-  protect.* Batched into the next red-team **with Q1 and Q3**.
-- **Q3 — the two finale win-conditions**, concretely: what makes frontal and infiltration
-  *different puzzles*, each with a distinct victory check (rule 1/3).
-- **Q4 — how much guild/economy to bookend** so the slice doesn't hide the outer scales
-  (rule 5) — vs. keeping scope tight.
-- **Q5 — the Medic-deletion representativeness check** — does removing the healer on one arm
-  under-show the combat pillar? Is there a non-healer sustain read that keeps it honest?
+## Cut (with reasons)
+- **Assassin prestige** — dropped; doesn't serve the deployment-phase headline (Thief does).
+- **AI-controlled ally prisoners** — reuse the player-controlled `captives` seam (rule 4).
+- **Cross-node "consequence-as-intel" category** — a flag-keyed rumor delivers it (rule 2/4).
 
 ## Guards every PR must keep green
-`tsc` · `vitest run` · `npm run build` · e2e · `npm run sim` (digest re-pinned where routing /
-rewards / the forced-route policy move) · `core/` free of Phaser/DOM and `Math.random`.
+`tsc` · `vitest run` · `npm run build` · e2e · `npm run sim` (digest re-pinned where routing/rewards
+move) · `core/` free of Phaser/DOM and `Math.random`.

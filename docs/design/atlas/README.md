@@ -53,7 +53,7 @@ Legend: ✅ drafted · ⬜ planned
 - ✅ [`08c · Gameplay layers`](08c-gameplay-layers.md) — CT clock · trigger bus · actions · field entities · statuses · vision / telegraph.
 
 ### Cross-cutting
-- ⬜ `09 · Jobs × Phases` — which job's signature act fires in which phase.
+- ✅ [`09 · Jobs × Phases`](09-jobs-x-phases.md) — which job's signature act fires on which surface.
 
 ## Adding a diagram
 

@@ -37,11 +37,11 @@ Legend: ✅ drafted · ⬜ planned
 - ✅ [`d · Prestige`](04-prestige.md) — replace-in-place, chains, and the Scout fork worked example.
 
 **Batch 3B — the reference & connectors**
-- ⬜ `c · The job roster` — the full catalog (kit · surface · build status).
-- ⬜ `e · The grant seam` — `grant := {when: predicate, then: effect}` + the predicate kinds.
-- ⬜ `f · Acquisition & attachment` — diegetic jobs, per-unit memory, agency levels.
-- ⬜ `g · Leveling & XP routing` — char-level→slots vs job-level→prestige; XP sources.
-- ⬜ [`09 · Jobs × Phases`](../README.md) — the cross-cutting matrix (lives at the atlas root).
+- ✅ [`c · The job roster`](03-roster.md) — the full catalog (kit · surface · build status).
+- ✅ [`e · The grant seam`](05-grant-seam.md) — `grant := {when: predicate, then: effect}` + the predicate kinds.
+- ✅ [`f · Acquisition & attachment`](06-acquisition.md) — diegetic jobs, per-unit memory, agency levels.
+- ✅ [`g · Leveling & XP routing`](07-leveling.md) — char-level→slots vs job-level→prestige; XP sources.
+- ✅ [`09 · Jobs × Phases`](../09-jobs-x-phases.md) — the cross-cutting matrix (lives at the atlas root).
 
 > Maps to: [systems/jobs.md](../../systems/jobs.md) (the framework, D65) and the job data in
 > [`src/core/jobs-data/`](../../../../src/core/jobs-data/).

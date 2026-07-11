@@ -1,0 +1,50 @@
+# 04g · Leveling & XP routing
+
+Two levels, feeding the [two axes](01-axes.md). **Character level** governs how *wide* a unit can
+go; **job level** (one per held job) governs how *deep* a single path can go. They're fed by
+different XP, and the routing is what keeps the axes honest.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontSize':'16px','fontFamily':'ui-sans-serif, system-ui, sans-serif'},'flowchart':{'nodeSpacing':34,'rankSpacing':50,'padding':16}}}%%
+flowchart TB
+  COMBATXP["combat XP<br/>(a combat job earns it by fighting)"]:::src
+  USEXP["secondary use-XP<br/>(a borrowed ability levels by USE — slower)"]:::src
+  NCXP["non-combat growth<br/>passive trickle WHILE DEPLOYED + a bump per successful use<br/>BENCHED = no growth"]:::src
+
+  CHARLVL["CHARACTER LEVEL<br/>→ unlocks Loadout Slots"]:::char
+  JOBLVL["JOB LEVEL — one per held job<br/>→ permanent stat gains · unlockLevel abilities · the Prestige floor"]:::job
+
+  BREADTH["BREADTH — hold &amp; mix more jobs"]:::breadth
+  DEPTH["DEPTH — prestige one job deep"]:::depth
+
+  COMBATXP --> CHARLVL
+  COMBATXP --> JOBLVL
+  USEXP --> JOBLVL
+  NCXP --> JOBLVL
+  CHARLVL --> BREADTH
+  JOBLVL --> DEPTH
+
+  classDef src fill:#EEF2FF,color:#3730A3,stroke:#6366F1,stroke-width:2px
+  classDef char fill:#0891B2,color:#ffffff,stroke:#155E75,stroke-width:3px
+  classDef job fill:#BE185D,color:#ffffff,stroke:#831843,stroke-width:3px
+  classDef breadth fill:#ffffff,color:#155E75,stroke:#0891B2,stroke-width:2px
+  classDef depth fill:#ffffff,color:#9D174D,stroke:#BE185D,stroke-width:2px
+```
+
+## Reading it
+
+- **Character level → loadout slots → breadth.** More slots = room to hold and mix more jobs'
+  abilities. This is the *width* dial; it never deepens any single kit.
+- **Job level → prestige → depth.** Each held job tracks its **own** level with **permanent stat
+  gains** and `unlockLevel`-gated abilities, and reaching a job-level **floor** opens its
+  [Prestige](04-prestige.md). This is the *depth* dial; it never widens breadth.
+- **XP routes by how you play.** A **combat** job levels by fighting; a **borrowed/secondary**
+  ability levels by *use* (slower, since the primary is mostly active); a **non-combat** job levels
+  by a passive trickle **while deployed** plus a bump per successful use. **Benched = no growth** —
+  sitting in the guild is never free training, so fielding a support unit is a real commitment.
+- **Prestige carries the job level** with it (the successor keeps the grind — see
+  [`d · Prestige`](04-prestige.md)); acquiring a *new* job starts it at job-level 1.
+
+> Maps to: [systems/guild.md → Classes, secondary jobs & leveling](../../systems/guild.md) and
+> [systems/jobs.md](../../systems/jobs.md). The ability-borrowing *projection* into slots is the
+> one piece still "a later pass" (`leveling.ts`).

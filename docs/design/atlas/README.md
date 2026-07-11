@@ -65,3 +65,27 @@ into existing ones. To add one:
 3. Keep it **one shape per diagram** — don't mix a taxonomy and a flow on one canvas;
    split instead.
 4. Link back to the system doc it maps, and add a row to **Contents** above.
+
+## Keeping it current (a standard workflow step)
+
+The atlas is a **derived** artifact — it goes stale *silently* when the systems it maps
+change. So it carries a maintenance convention:
+
+> **After a major set of feature changes lands, review and update the atlas.**
+
+This is a standard step, not an afterthought. When a change alters a system an atlas page
+maps, update that page in the same landing (or the very next). To find what's affected, use
+each page's **"Maps to:"** footer link — it names the source-of-truth doc/system the page
+tracks, so "did this change touch an atlas source?" is a quick check.
+
+- **Trigger:** any landing that changes a mapped system — a new node/job/phase, a renamed
+  keyword, a changed rule (CT, economy, prestige), a new economy class, etc.
+- **Scope check:** skim `src/core/**`, `docs/design/**`, and the decision log against the
+  Contents list above; a page whose source moved is a candidate for an update.
+- **Automated backstop:** a weekly **"Atlas freshness review"** Routine (a scheduled
+  phone-home) sweeps `main` and reports which pages look stale — it *reports only*, so the
+  human decision to update stays in the loop. The routine is a safety net, **not** a
+  substitute for updating the atlas as part of the landing itself.
+
+> This convention was crystallized via the memento **land** reflection ritual — the atlas is
+> only worth keeping if it's kept honest.

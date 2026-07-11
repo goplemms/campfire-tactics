@@ -76,14 +76,22 @@ wants to be known for:
 - **L4 — the fork (breadth vs depth).**
   - **4B "The Prison Wagon" (hard combat):** rescue **Sela the Medic** on the board (BREADTH —
     a new party member; the captive set-piece is welcome). Tense, winnable raw.
-  - **4A "the training clearing" (rest + a D80 arrival event):** a **teacher** advances an
-    existing unit (DEPTH). "Both event and clearing" — you recover *and* get the offer.
+  - **4A "the training clearing" (rest + a D80 arrival event) — the DEPTH road (Q1 = B):** a
+    **mentor** runs a **dual-purpose training event** that (1) **telegraphs prestige** — tells
+    the player *something big is coming* and **surfaces the Assassin path + its level-5 gate**
+    (the requirement is made visible, not hidden); (2) **arms** the prestige (`assassin-mentor`);
+    and (3) grants Vale a **level bump toward L5**, so the transformation lands **within the
+    run** when she earns the rest through combat — fired via **D69's appear-when-eligible**
+    offer. "Both event and clearing": you **recover** *and* set your scout on the Assassin arc.
+    Honest about pacing (floor stays 5; she still earns it), and a distinct replay fantasy.
   - The **Medic catch-up (`securedWagon`) is deleted** — skipping the Medic is a real,
     run-shaping consequence (lean on Cook + consumables). *(Revisit under design-rule 5: does
     deleting the healer under-represent the combat pillar? — open question.)*
-- **The prestige arms (route identity, non-reconverging per rule 1).** Assassin (lethality)
-  on one arm, Thief (infiltration/lockpick) on the other; a Scout prestiges **once**, so the
-  arms must not reconverge before the trigger.
+- **The prestige arms (route identity — the fork must stay a real either/or).** The **Assassin**
+  arc is *armed* at 4A (above); the **Thief** (infiltration/lockpick) is offered on a
+  **different, non-reconverging arm** — a Scout prestiges **once**, so a route must not be able
+  to grab *both* prestiges (nor a prestige *and* everything else for free — the choice has to
+  cost something, or it isn't a choice).
 - **The finale — assault the prison facility** (retires the stub). **Objective: liberate the
   prison.** Ends on a **dual OR-victory** (the multi-objective showcase, Q3 — PROVISIONAL,
   pending adversarial):
@@ -125,7 +133,7 @@ Tags: **reuse** · **net-new** · **D69** (queued-roadmap) · **design/test**.
 | 3 | **Consequence made visible** — the thinned garrison shows + a flag-keyed rumor line | 1 | reuse |
 | 4 | **Deployment infiltration** — structure sections + deploy-*inside* for eligible parties; frontal default | 2 | net-new |
 | 5 | **Lockpick / door field-entity** — the Thief's `lockpick` opens the breach | 2 | D69 |
-| 6 | **Prestige route-seeding** — Assassin/Thief teachers as appear-when-eligible offers + the demo-scoped level override | 3 | D69 |
+| 6 | **Prestige route-seeding** — the 4A mentor training-event (arm + level-bump + surface the L5 gate) + the Thief teacher; prestige fires via D69 appear-when-eligible once the level is earned | 3 | D69 |
 | 7 | **Co-viability balance pass** — the three decouplings + topology rework (`securedWagon`, relic placement) | 3 | balance |
 | 8 | **Sim route coverage** — force the hard arm + each finale win-condition; pin win-rates | 4 | test |
 | 9 | *(optional)* **Guild / economy bookend** — dispatch/return + one economy decision, so the meta scales show | 4 | representativeness |
@@ -145,11 +153,12 @@ Tags: **reuse** · **net-new** · **D69** (queued-roadmap) · **design/test**.
   `free-captives` kind); frontal vs infiltration fall out of it, not route-locked. Adds work
   item **1a** (the objectives-model extension). See §The arc. *Batched into the next red-team
   with Q2.*
-- **Q1 — the prestige-floor timing.** `SCOUT_PRESTIGE_FLOOR = 5` + a two-beat story chain
-  (`traveled-with-stranger → assassin-mentor`) means the Scout **can't legally prestige at
-  L4**. Options: (a) demo-scoped floor override + a doc note that campaign pacing differs;
-  (b) prestige as a *taste/preview* only in the slice (show Recon/Survey depth), real prestige
-  in the full game; (c) restructure so the teacher lands later, after the level is earned.
+- **Q1 — prestige timing — PROVISIONAL (2026-07-11), pending adversarial (= Option B, refined).**
+  The 4A mentor **arms** the Assassin prestige, **bumps Vale toward L5**, and **telegraphs the
+  path + its L5 gate**; the prestige **fires later in the run** when she earns L5 (D69
+  appear-when-eligible). Honest pacing, in-run payoff, distinct fantasy. **Risk to stress:** does
+  she actually reach L5 by ~the finale on the 4A route's available fights (XP tuning)? — else the
+  payoff never lands and 4A is a **dead route**. Batched with Q2/Q3.
 - **Q2 — the reward map — PROVISIONAL (2026-07-11), pending adversarial.** The **Medic stays
   recruitable at 4B (Prison Wagon)** — a usable, impactful mid-expedition recruit (owner
   ruling). Balance relaxed (rule 1): 4B may be the *richer* route so long as **4A (the prestige

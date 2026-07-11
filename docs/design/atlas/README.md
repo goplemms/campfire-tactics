@@ -37,13 +37,13 @@ Legend: ✅ drafted · ⬜ planned
 - ✅ [`00 · The nesting`](00-nesting.md) — the "you-are-here" containment map that sets the colors.
 
 ### Structure
-- ⬜ `01 · Guild / home tier` — Roster · Treasury · Armory · Quest Board · Stable of Caravans → Dispatch.
-- ⬜ `02 · Overworld` — the layered node DAG; Intel reveals, Fog hides; start → final.
-- ⬜ `03 · Node kinds` — `combat | rest | event` + the event sub-types.
+- ✅ [`01 · Guild / home tier`](01-guild.md) — Roster · Treasury · Armory · Quest Board · Stable of Caravans → Dispatch.
+- ✅ [`02 · Overworld`](02-overworld.md) — the layered node DAG; Intel reveals, Fog hides; start → final.
+- ✅ [`03 · Node kinds`](03-node-kinds.md) — `combat | rest | event` + the event sub-types.
 - ⬜ `04 · Jobs & prestige` — combat vs. support jobs, prestige chains, roster tiers, breadth × depth.
 
 ### Sequences
-- ⬜ `05 · Node / travel lifecycle` — Prep Camp → Begin → Encounter → React Camp → Set Out.
+- ✅ [`05 · Node / travel lifecycle`](05-node-lifecycle.md) — React Camp → Set Out → Road → Prep Camp → Begin.
 - ⬜ `06 · Mission phase pipeline` — Meta → Deployment → Combat → Resolution → loop.
 - ⬜ `07 · Combat turn order` — the CT clock: Advance Clock vs. End Turn; Move + Act; Instant vs. Charged.
 

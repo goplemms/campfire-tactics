@@ -44,13 +44,13 @@ Legend: ✅ drafted · ⬜ planned
 
 ### Sequences
 - ✅ [`05 · Node / travel lifecycle`](05-node-lifecycle.md) — React Camp → Set Out → Road → Prep Camp → Begin.
-- ⬜ `06 · Mission phase pipeline` — Meta → Deployment → Combat → Resolution → loop.
-- ⬜ `07 · Combat turn order` — the CT clock: Advance Clock vs. End Turn; Move + Act; Instant vs. Charged.
+- ✅ [`06 · Mission phase pipeline`](06-mission-pipeline.md) — Meta → Deployment → Combat → Resolution → loop.
+- ✅ [`07 · Combat turn order`](07-turn-order.md) — the CT clock: Advance Clock vs. End Turn; Move + Act; Instant vs. Charged.
 
 ### Combat layers
-- ⬜ `08a · Architecture split` — pure `core/` under the Phaser `game/` layer.
+- ✅ [`08a · Architecture split`](08a-architecture-split.md) — pure `core/` under the Phaser `game/` layer.
 - ✅ [`08b · Processing stack`](08b-processing-stack.md) — Scene → View → logical core → atomic primitives.
-- ⬜ `08c · Gameplay layers` — CT clock → actions → field entities / trigger bus → statuses → vision / telegraph.
+- ✅ [`08c · Gameplay layers`](08c-gameplay-layers.md) — CT clock · trigger bus · actions · field entities · statuses · vision / telegraph.
 
 ### Cross-cutting
 - ⬜ `09 · Jobs × Phases` — which job's signature act fires in which phase.

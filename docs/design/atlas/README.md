@@ -40,7 +40,7 @@ Legend: ✅ drafted · ⬜ planned
 - ✅ [`01 · Guild / home tier`](01-guild.md) — Roster · Treasury · Armory · Quest Board · Stable of Caravans → Dispatch.
 - ✅ [`02 · Overworld`](02-overworld.md) — the layered node DAG; Intel reveals, Fog hides; start → final.
 - ✅ [`03 · Node kinds`](03-node-kinds.md) — `combat | rest | event` + the event sub-types.
-- ⬜ `04 · Jobs & prestige` — combat vs. support jobs, prestige chains, roster tiers, breadth × depth.
+- 🔶 [`04 · Jobs & prestige`](jobs/README.md) — its own **mini-atlas** (breadth × depth, kit anatomy, prestige, the grant seam, acquisition, leveling). Framework pages drafted; reference pages planned.
 
 ### Sequences
 - ✅ [`05 · Node / travel lifecycle`](05-node-lifecycle.md) — React Camp → Set Out → Road → Prep Camp → Begin.

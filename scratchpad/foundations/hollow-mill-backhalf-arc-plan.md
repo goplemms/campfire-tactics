@@ -112,10 +112,15 @@ fortified fight **plus an inert (indeed downgrading) Thief prestige**. Correctio
   Dual OR-victory; frontal buildable; infiltration via the lean taste; full mechanics parked.
 
 ## Next (design discussions, not build)
-- **PROPOSED (pending adversarial): work backwards — design the prison-facility finale first**, then
-  derive the beats the run must hit (the fork, the L5 fights, the taste). Under adversarial review now.
-- Then: **the lean infiltration taste** (the critical-path differentiator) and **the Wave-0 topology**
-  (enforcing C8 + the L5 pacing). Issue-minting comes *after* something is genuinely buildable.
+- **Work-backwards / finale-first — REVIEWED: needs-reframing (2026-07-11).** Adversarial verdict:
+  the finale's *shape* is already given (Q3) — sketch it as the *target* only; but the first thing to
+  **prove** is the **lean infiltration taste** (the riskiest unknown, C6), not the finale, and the
+  run's beats derive from **C3/C7/C8**, not from working backwards. Designing a full finale first
+  would build on parked mechanics (a JIT violation) + create lock-in.
+- **Next session → [`backhalf-taste-kickoff.md`](backhalf-taste-kickoff.md):** design the **lean
+  infiltration taste** on already-shipped deploy substrate (the critical path). Then the Wave-0
+  topology (C3/C8), then the finale at its use site (C2). **Issue-minting only once something is
+  genuinely buildable.**
 
 ## Guards every PR must keep green
 `tsc` · `vitest run` · `npm run build` · e2e · `npm run sim` (digest re-pinned where routing/rewards

@@ -78,15 +78,30 @@ wants to be known for:
 - **The prestige arms (route identity, non-reconverging per rule 1).** Assassin (lethality)
   on one arm, Thief (infiltration/lockpick) on the other; a Scout prestiges **once**, so the
   arms must not reconverge before the trigger.
-- **The finale — assault the prison facility** (retires the stub). **Two win-conditions:**
-  - **Frontal assault (default / no infiltration tools):** deploy at the gate; a straight
-    tactical fight; the honest baseline every party can run.
-  - **Infiltration (thief/lockpick party):** during **deployment**, breach a section and
-    **deploy inside** — open a side door, free **player-controlled prisoners**, start on
-    better ground. A *different puzzle*, not an easier version of the same one.
-  - **Consequence seam:** crushing the Prison Wagon (4B) thins the garrison — surfaced
-    **visibly** (empty posts / a rumor), per rule 2, and placed **off the Medic node** per
-    rule 1 *(open: exactly where the consequence attaches)*.
+- **The finale — assault the prison facility** (retires the stub). **Objective: liberate the
+  prison.** Ends on a **dual OR-victory** (the multi-objective showcase, Q3 — CLOSED):
+  - **`eliminate-all`** (the usual condition — defeat / drive off the garrison), **OR**
+  - **`free-captives`** (all held prisoners freed) — a **new objective kind** that reuses the
+    `captives`/`freeCaptive` freed-state; meeting *either* ends the node as a win.
+  - The two routes fall out of this naturally, **not route-locked** (either party can trip
+    either condition; freed prisoners are **player-controlled** captives, the L1 Pip shape):
+    - **Frontal assault (default / any party):** deploy at the gate against a **fortified**
+      garrison (reuse the `fortified` type); fight through — typically wins by `eliminate-all`.
+      The honest, representative-of-core-combat climax.
+    - **Infiltration (thief/lockpick party):** during **deployment**, breach a section and
+      **deploy *inside*** past the gate, garrison unalerted (reuse concealment + the deploy
+      danger gradient); reach the cells and free the captives under an **alarm/detection
+      clock** — typically wins by `free-captives`. Botched (detected) → converts to a fight,
+      now inside and outnumbered (so *harder* than frontal, not easier). **Stays in the
+      tactical idiom** (rule 3) — the alarm is a status/meter, not a new verb set.
+  - **Co-viability (rule 1):** frontal = reliable/brute, guaranteed-available, benefits from
+    the garrison-weakening consequence; infiltration = high-skill/high-variance, demands the
+    thief investment paid upstream, punished by detection. Neither dominates. **Tuning note
+    (for the balance pass):** `free-captives` must not be a trivial instant-win — detection
+    pressure + cell placement/escort are the knobs that keep infiltration skillful.
+  - **Consequence seam:** crushing the Prison Wagon thins the garrison — surfaced **visibly**
+    (empty posts / a rumor), per rule 2, and placed **off the Medic node** per rule 1
+    *(open: exactly where the consequence + the Medic attach — Q2, next)*.
 
 ## Waves (the campaign → the future umbrella issue + children)
 
@@ -96,7 +111,8 @@ Tags: **reuse** · **net-new** · **D69** (queued-roadmap) · **design/test**.
 | # | Work item | Wave | Tag |
 |---|---|---|---|
 | 0 | **Arc design doc** — this doc, closed out: node map, co-viability proof, the finale's two win-conditions | 0 | design |
-| 1 | Author the **L7 prison-facility finale** (retire the stub) | 1 | net-new |
+| 1a | **Objectives: alternate/OR-victory + `free-captives` kind** — generalizes the D50 model; reusable substrate (feeds the finale) | 1 | net-new |
+| 1 | Author the **L7 prison-facility finale** (retire the stub) — dual OR-victory, fortified garrison, prisoners as captives | 1 | net-new (needs 1a) |
 | 2 | Freed prisoners as **player-controlled captives** on the finale board | 1 | reuse |
 | 3 | **Consequence made visible** — the thinned garrison shows + a flag-keyed rumor line | 1 | reuse |
 | 4 | **Deployment infiltration** — structure sections + deploy-*inside* for eligible parties; frontal default | 2 | net-new |
@@ -116,6 +132,10 @@ Tags: **reuse** · **net-new** · **D69** (queued-roadmap) · **design/test**.
 - **Full D69 job-capability card surfacing** — orthogonal; its own effort.
 
 ## Open design questions (must close before the waves are issued)
+- **Q3 — the finale's win-conditions — CLOSED (2026-07-11).** Objective = *liberate the
+  prison*; dual **OR-victory** (`eliminate-all` OR a new `free-captives` kind); frontal vs
+  infiltration fall out of it, not route-locked. Adds work item **1a** (the objectives-model
+  extension). See §The arc.
 - **Q1 — the prestige-floor timing.** `SCOUT_PRESTIGE_FLOOR = 5` + a two-beat story chain
   (`traveled-with-stranger → assassin-mentor`) means the Scout **can't legally prestige at
   L4**. Options: (a) demo-scoped floor override + a doc note that campaign pacing differs;

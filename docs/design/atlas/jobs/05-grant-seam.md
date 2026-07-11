@@ -29,6 +29,35 @@ flowchart LR
   classDef comp fill:#ffffff,color:#3730A3,stroke:#6366F1,stroke-width:2px
 ```
 
+## A worked example — the built Scout → Assassin fork
+
+The same shape, filled in with a **real grant** (`scout-line.ts`):
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontSize':'16px','fontFamily':'ui-sans-serif, system-ui, sans-serif'},'flowchart':{'nodeSpacing':32,'rankSpacing':50,'padding':16}}}%%
+flowchart LR
+  SCOUT["Scout · Job Level ≥ 5<br/>(you ground the job)"]:::cond
+  MENTOR["walked the road with the traveler<br/>→ remembers('assassin-mentor')"]:::cond
+  WHEN["when: all( jobLevel(scout) ≥ 5 , remembers('assassin-mentor') )"]:::pred
+  THEN["then: prestige  scout → assassin"]:::depth
+  ASSN["ASSASSIN — evolved in place"]:::result
+
+  SCOUT --> WHEN
+  MENTOR --> WHEN
+  WHEN -->|"both true → offered at a camp event"| THEN
+  THEN --> ASSN
+
+  classDef cond fill:#EEF2FF,color:#3730A3,stroke:#6366F1,stroke-width:2px
+  classDef pred fill:#4F46E5,color:#ffffff,stroke:#3730A3,stroke-width:3px
+  classDef depth fill:#BE185D,color:#ffffff,stroke:#831843,stroke-width:3px
+  classDef result fill:#ffffff,color:#9D174D,stroke:#BE185D,stroke-width:2px
+```
+
+> Read it: *IF the unit has Scout at level 5+ **and** remembers the assassin-mentor beat, **THEN**
+> it may prestige Scout → Assassin.* The **Thief** sibling is the **identical shape with a different
+> flag** (`thieves-guild-invite`) — same seam, swapped predicate, which is exactly why the two forks
+> read as related.
+
 ## The predicate kinds
 
 Leaves read the **unit** or the **run/context**; `all` / `any` compose them.

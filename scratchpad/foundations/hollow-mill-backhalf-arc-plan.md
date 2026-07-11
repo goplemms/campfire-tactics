@@ -48,15 +48,15 @@ wants to be known for:
 
 ## Design rules (non-negotiable — these make replay work)
 
-1. **Co-viability > exclusivity.** Exclusive routes are fine *only if* none strictly
-   dominates; a dominant line collapses replay back to one path. The three decouplings pass 2
-   demanded are load-bearing:
-   - the **finale-weakening consequence must not sit on the Medic node** (else that arm banks
-     sustain *and* an easier finale);
-   - the **two prestige teachers (Assassin / Thief) must sit on non-reconverging arms** (else a
-     route grabs a prestige *and* the Medic for free — fake exclusivity);
-   - the **finale must be two real win-conditions** (frontal vs infiltration), not one fight
-     approached twice (else infiltration strictly dominates "hit harder").
+1. **No dead routes + real choices (balance relaxed for the demo — owner ruling 2026-07-11).**
+   Routes need **not** be evenly balanced: the slice is *replay-oriented* (players sampling the
+   game's feel), so players "optimizing out" a choice is **not** a concern here. The only bar:
+   **no route may feel not-worth-taking**, and the fork must stay a **genuine either/or**
+   (mutually exclusive rewards) or it isn't a choice at all. The former "decoupling" rules are
+   now **levers, not hard parity** — attach/move the finale-weakening consequence and place the
+   prestige arms to keep every route *appealing* and the choice *real*, not to force symmetry.
+   The **finale's two win-conditions** (frontal vs infiltration) stay, because *distinct
+   fantasies* are what make each route worth replaying.
 2. **Consequences must be *felt*, not scouted.** A route's downstream payoff (e.g. "the wagon
    fell, the garrison is thin") is **shown at the moment of payoff** (empty posts, freed
    prisoners at the gate, a rumor line) — never delivered only through a tier-3 intel read the
@@ -107,8 +107,9 @@ wants to be known for:
     (for the balance pass):** `free-captives` must not be a trivial instant-win — detection
     pressure + cell placement/escort are the knobs that keep infiltration skillful.
   - **Consequence seam:** crushing the Prison Wagon thins the garrison — surfaced **visibly**
-    (empty posts / a rumor), per rule 2, and placed **off the Medic node** per rule 1
-    *(open: exactly where the consequence + the Medic attach — Q2, next)*.
+    (empty posts / a rumor), per rule 2. Placement is now a **lever** (rule 1 relaxed): the
+    Medic is anchored at **4B**, so where the consequence sits is tuned to keep **4A worth
+    taking** (hinges on Q1 — the prestige payoff).
 
 ## Waves (the campaign → the future umbrella issue + children)
 
@@ -149,7 +150,13 @@ Tags: **reuse** · **net-new** · **D69** (queued-roadmap) · **design/test**.
   L4**. Options: (a) demo-scoped floor override + a doc note that campaign pacing differs;
   (b) prestige as a *taste/preview* only in the slice (show Recon/Survey depth), real prestige
   in the full game; (c) restructure so the teacher lands later, after the level is earned.
-- **Q2 — where the finale-weakening consequence attaches** (must be off the Medic node, rule 1).
+- **Q2 — the reward map — PROVISIONAL (2026-07-11), pending adversarial.** The **Medic stays
+  recruitable at 4B (Prison Wagon)** — a usable, impactful mid-expedition recruit (owner
+  ruling). Balance relaxed (rule 1): 4B may be the *richer* route so long as **4A (the prestige
+  road) still feels worth taking**. Two sub-parts, both **tied to Q1**: (2a) consequence
+  placement (keep on the wagon for the narrative, or move onto 4A's road to bolster it); (2b)
+  whether 4A's prestige delivers enough to be worth taking. *4A viability is the thing to
+  protect.* Batched into the next red-team **with Q1 and Q3**.
 - **Q3 — the two finale win-conditions**, concretely: what makes frontal and infiltration
   *different puzzles*, each with a distinct victory check (rule 1/3).
 - **Q4 — how much guild/economy to bookend** so the slice doesn't hide the outer scales

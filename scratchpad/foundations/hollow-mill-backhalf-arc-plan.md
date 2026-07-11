@@ -9,6 +9,12 @@
 > (next id: D90)** + updates to [`expedition-hollow-mill.md`](../../docs/design/expedition-hollow-mill.md),
 > and the waves (§Waves) become the umbrella issue + child issues. Numbers are
 > **illustrative tunables**, not final.
+>
+> **Review cadence (working rule).** No decision is finalized until it clears an **adversarial
+> red-team pass**. The flow: *settle a decision (or a batch) → red-team it → finalize into the
+> doc (or revise)*. Decisions are batched before a pass for efficiency. A question marked
+> **PROVISIONAL** is tentatively settled but has **not** yet cleared the red-team; only a
+> **CLEARED** question is safe to graduate.
 
 ## North star
 
@@ -79,7 +85,8 @@ wants to be known for:
   on one arm, Thief (infiltration/lockpick) on the other; a Scout prestiges **once**, so the
   arms must not reconverge before the trigger.
 - **The finale — assault the prison facility** (retires the stub). **Objective: liberate the
-  prison.** Ends on a **dual OR-victory** (the multi-objective showcase, Q3 — CLOSED):
+  prison.** Ends on a **dual OR-victory** (the multi-objective showcase, Q3 — PROVISIONAL,
+  pending adversarial):
   - **`eliminate-all`** (the usual condition — defeat / drive off the garrison), **OR**
   - **`free-captives`** (all held prisoners freed) — a **new objective kind** that reuses the
     `captives`/`freeCaptive` freed-state; meeting *either* ends the node as a win.
@@ -132,10 +139,11 @@ Tags: **reuse** · **net-new** · **D69** (queued-roadmap) · **design/test**.
 - **Full D69 job-capability card surfacing** — orthogonal; its own effort.
 
 ## Open design questions (must close before the waves are issued)
-- **Q3 — the finale's win-conditions — CLOSED (2026-07-11).** Objective = *liberate the
-  prison*; dual **OR-victory** (`eliminate-all` OR a new `free-captives` kind); frontal vs
-  infiltration fall out of it, not route-locked. Adds work item **1a** (the objectives-model
-  extension). See §The arc.
+- **Q3 — the finale's win-conditions — PROVISIONAL (2026-07-11), pending adversarial.**
+  Objective = *liberate the prison*; dual **OR-victory** (`eliminate-all` OR a new
+  `free-captives` kind); frontal vs infiltration fall out of it, not route-locked. Adds work
+  item **1a** (the objectives-model extension). See §The arc. *Batched into the next red-team
+  with Q2.*
 - **Q1 — the prestige-floor timing.** `SCOUT_PRESTIGE_FLOOR = 5` + a two-beat story chain
   (`traveled-with-stranger → assassin-mentor`) means the Scout **can't legally prestige at
   L4**. Options: (a) demo-scoped floor override + a doc note that campaign pacing differs;

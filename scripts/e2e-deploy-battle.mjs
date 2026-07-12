@@ -141,6 +141,44 @@ async function main() {
         s.view.clearLog();
       `);
 
+      // --- Stage: a CUFFED captive needs the Thief's lockpick (D90) ------------
+      // The infiltration taste. Mark the bound Pip **cuffed** (release: lockpick): a lock
+      // glyph (⚿) appears over him, and — the demo party has no Thief — the rescue gate
+      // REFUSES a non-lockpick rescuer, so the cell holds (proven visually + mechanically).
+      // Then grant a unit the Thief job and the Pick Lock springs it → freed, glyph gone.
+      const cuffed = await g.bsEval(`
+        const pip = s.battle.units.find(u => u.id === "pip");
+        if (!pip) return null;
+        pip.release = { kind: "lockpick" };
+        s.markCuffedCaptives();
+        const marker = s.captiveMarkers[0];
+        const soldier = s.battle.units.find(u => u.side === "player" && !u.captured); // no lockpick
+        s.battle.rescue(pip, soldier);         // refused (unlogged no-op) — the cell holds
+        return { glyphCount: s.captiveMarkers.length, glyph: marker ? marker.text : "", refused: !!pip.captured };
+      `);
+      console.log("• a cuffed captive needs the Thief's lockpick (D90)");
+      check("a cuffed captive shows the lock glyph (⚿)", cuffed && cuffed.glyphCount === 1 && cuffed.glyph === "⚿");
+      check("the rescue gate refuses a non-lockpick rescuer — the cell holds", cuffed && cuffed.refused === true);
+      await shot("captive-cuffed");
+
+      const picked = await g.bsEval(`
+        const pip = s.battle.units.find(u => u.id === "pip");
+        const vale = s.battle.units.find(u => u.id === "vale");
+        const origJob = vale.primaryJob;
+        vale.primaryJob = "thief";             // grant Expert Lockpick
+        s.battle.rescue(pip, vale);            // the Thief picks the cell → unitRescued
+        const out = { freed: !pip.captured, glyphGone: s.captiveMarkers.length === 0 };
+        // Restore for the downstream stages: an ordinary bound Pip, Vale's job, a clean log.
+        vale.primaryJob = origJob;
+        pip.release = { kind: "reach" };
+        pip.captured = true; pip.ct = 0; s.tintCaptured(pip, true);
+        s.markCuffedCaptives();
+        s.view.clearLog();
+        return out;
+      `);
+      check("a lockpick unit (Thief) picks the cell — the captive is freed", picked && picked.freed === true);
+      check("the freed captive drops its lock glyph", picked && picked.glyphGone === true);
+
       // --- Stage: combat FX fire in deployment too (feel parity) --------------
       // Deployment ↔ combat parity: a unit that takes an HP hit during *deployment* (a
       // sprung concealed trap) must float its damage and write the combat log, exactly as

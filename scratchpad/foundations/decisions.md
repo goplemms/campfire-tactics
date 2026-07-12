@@ -3462,10 +3462,64 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D90 — The lean infiltration taste: lockpick-frees-a-captive on shipped rails (the Thief's first deploy payoff)
+
+- **Status:** Decided + **build started** (2026-07-12). PR-1 shipped — the rescue-gate substrate.
+  Realizes the back-half arc plan's **taste-first reframe**; consumes D52/D54/D67/D68.
+- **Context (why this first):** the arc's signature is a **deeper deployment phase** via the Thief's
+  **infiltration**. But `THIEF_JOB` clears the Scout's Quiet Footsteps (**C6**) — so the Thief is a
+  *live deploy downgrade* until a payoff exists. The taste is therefore the **critical path**: the
+  leanest visible, carried-into-combat Thief payoff, on **already-shipped** deploy substrate — the
+  full extraction / interior-deploy / alarm rework stays a **parked** deep-dive.
+- **Decision — "Pick the Cell".** A Thief spends a deploy act to **lockpick a *cuffed* captive free**;
+  it stands up as a controllable body deep in enemy ground, fights the battle, and is recruited on the
+  win. Built on the shipped **captives seam** (`buildAuthoredCaptives` / `freeCaptive` / recruit-on-win,
+  D52) + **one** new pure-core gate:
+  - **`ReleaseRequirement`** (`units.ts`) — an extensible union `{ kind:"reach" } | { kind:"lockpick" }`.
+    `reach` is the default (absent ⇒ the L1 Cook, **byte-identical**); `lockpick` demands the rescuer
+    hold the **Expert Lockpick capability** (`unitHasCapability`, capability-not-jobId, D54/D72). A
+    `key`-carrying variant is **reserved** for its first content (JIT — not built).
+  - **`canRelease(captive, by)`** (`deployment.ts`) — the pure gate. The logged `rescue` action
+    (`turn.ts`) refuses a locked captive as an **unlogged no-op** (mirrors a refused `useHeal`), so
+    replay/undo never see a rejected free. `release` is construction-set + battle-constant (classified
+    un-snapshotted in the drift tripwire).
+- **Captured stays a boolean — deliberately decoupled from the status track (see Roadmap).** The
+  adversarial pass ruled the taste needs *none* of the status-model work; captured-as-status is at most
+  an optional epilogue there, never a dependency of this.
+- **Parked (do not build — the tripwires):** escort-to-exit **extraction** (C1), OR-victory / **any-of**
+  (C2), **interior-deploy** (C5), alarm. Win stays `eliminate-all`; the freed captive is a **bonus body**,
+  not a win condition. The moment any of those is wanted, it belongs in the deployment deep-dive.
+- **Build:** **PR-1 (this)** — the `release` field (`units`/`authored`) + `canRelease` + the `turn.ts`
+  gate + `captive-release.test.ts`; guards green (tsc · **1106** unit · build · sim · e2e **73**). **Next:**
+  **PR-2** a standalone taste-encounter fixture (Thief frees at deploy → carried in → recruited; a
+  non-Thief party runs the frontal fight, **C4**), **PR-3** render (lock glyph · a "Pick Lock" deploy
+  verb · the stand-up FX, reusing the `02-captive-bound`/`03-captive-freed` shot pattern).
+- **Reuses:** **D52** (captives seam), **D54/D72** (capability gate), **D67** (deploy casts commit+carry),
+  **D68** (Thief `lockpick`). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided
 > records yet — each is authored as a full `## D##` entry when its build starts.
+
+- **Status-model generalization (parked parallel track — design-drafted + red-teamed 2026-07-12).**
+  Make statuses a robust, cross-phase system: a `StatusInstance` gains a **cadence** (turn/night/node/
+  never) + two shapes — `timed` (today's countdown) and `scaled` (a **magnitude** banded into named
+  tiers via the existing `bandFor`, accruing on apply, decaying per tick; effects key off the tier).
+  Motivation: statuses usable in **deployment + overworld**, and banded-accumulating conditions
+  (tiered poison, exhaustion). The **four red-team revisions** are canon for this track: **(1)** it does
+  **not** gate the taste (D90 ships on the boolean; captured→status is an optional epilogue). **(2)**
+  **Concrete-first** — build poison hand-rolled via `bandFor`; extract the general `scaled` shape only
+  when a *second* scaled consumer appears (YAGNI). **(3)** **Fatigue: coexist, likely don't migrate** —
+  its "decay" is bespoke (tier-floor-step-per-night · Deep-Rest-wipe · resolve-time gate · raw story
+  deltas across ~10 systems); forcing it into the model fakes generality. **(4)** **Sequence by replay
+  cost** — combat/deploy-cadence decay is replay-safe *for free* (reconstructed in the `tickStatuses`
+  turn-open path, like `duration`, + golden re-pins); **overworld/night cadence needs new
+  `snapshotRun` serialization** (it doesn't persist `statuses` today); captured→status is replay-safe
+  but a ~30-site `u.captured`→`hasStatus` migration + snapshot-shape edit. Mint the epic + children when
+  it goes active.
 
 - **D69 — Scout-fork follow-ons** (surface `PRESTIGE_OFFERS` in live runs + camp-accept UI;
   the Expert Lockpick chest/door entity + lock-gated events; the combat convince-an-assassin

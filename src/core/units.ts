@@ -125,6 +125,12 @@ export interface UnitSpec extends UnitStats {
    */
   authored?: boolean;
   /**
+   * How a bound captive may be **freed** (D52/D69) — the rescue-gate requirement
+   * ({@link ReleaseRequirement}). Defaults to absent ⇒ `reach` (any adjacent ally). An
+   * authored cuffed captive sets `{ kind: "lockpick" }` for the Thief-only "pick the cell".
+   */
+  release?: ReleaseRequirement;
+  /**
    * **Thief archetype** flag (D30 theft vector); defaults to false. A thief enemy
    * skims the run **purse** mid-battle and tries to flee off-map with it — killed
    * before it escapes drops the loot, escaped keeps it ({@link "./theft"}).
@@ -160,6 +166,18 @@ export interface UnitSpec extends UnitStats {
  * current `pos`, `hp`, the `ct` gauge, `alive` flag, applied `statuses`, and a
  * generic `counters` bag (the capture-meter shape, D12).
  */
+/**
+ * How a **bound captive** may be freed (D52/D69) — the requirement the rescue Act
+ * enforces, generalizing the L1 "reach + Free" into a small **extensible union** so
+ * authored content can gate a captive behind a capability (and, later, an item):
+ *  - `reach` — the default (absent ⇒ this): any adjacent ally frees it (the Cook).
+ *  - `lockpick` — the rescuer must hold the Expert Lockpick capability (the Thief) — the
+ *    "pick the cell" infiltration taste, the first Thief-exclusive deploy payoff.
+ * Extend the union (e.g. a `key`-carrying variant) at the first content that needs it,
+ * not before. Evaluated by {@link "./deployment".canRelease}.
+ */
+export type ReleaseRequirement = { kind: "reach" } | { kind: "lockpick" };
+
 export interface Unit extends UnitStats {
   readonly id: string;
   /**
@@ -237,6 +255,13 @@ export interface Unit extends UnitStats {
    * initiative seed, but still "alive" — a rescuable sub-objective.
    */
   captured: boolean;
+  /**
+   * How this unit — while a bound {@link captured} captive — may be **freed** (D52/D69):
+   * the requirement the rescue Act enforces ({@link "./deployment".canRelease}). Absent ⇒
+   * `reach` (any adjacent ally frees it, the L1 Cook). Set at creation for an authored
+   * captive; the battle never mutates it (so it is not snapshotted for undo).
+   */
+  release?: ReleaseRequirement;
   /**
    * **Escaped off-map** (D84): a fleeing unit that reached a map edge and left.
    * Gone from the field — excluded from every active check ({@link isActive}),
@@ -316,6 +341,7 @@ export function createUnit(spec: UnitSpec): Unit {
     standingOrder: spec.standingOrder,
     post: spec.standingOrder ? { col: spec.pos.col, row: spec.pos.row } : undefined,
     role: spec.role,
+    release: spec.release,
     hidden: false,
     captured: false,
     escaped: false,

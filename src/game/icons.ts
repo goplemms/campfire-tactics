@@ -61,6 +61,8 @@ export const ICON = {
   // Deploy influence sources (D63): the party's warm safe core, and the closing net's origin.
   campfire: { glyph: "♨", label: "your camp", color: INK.gold },
   netSource: { glyph: "❖", label: "the net's source", color: INK.danger },
+  // A cuffed captive's shackle-lock (D90): only a lockpick (the Thief) frees it — the "Pick the Cell" taste.
+  locked: { glyph: "⚿", label: "cuffed — needs a lockpick", color: INK.ember },
 
   // --- UI affordances ---
   expand: { glyph: "▸", label: "expand" },

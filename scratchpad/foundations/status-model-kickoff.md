@@ -99,11 +99,6 @@ axis).
   session #117** (RunSnapshot is already partial by design). **Activates when** a cross-node
   condition (a lingering ailment, or exhaustion-as-status *if* rev 3 is ever revisited) wants one.
 
-- **Phase 4 (optional epilogue) — `captured`→status migration.**
-  Replay-safe but a ~30-site `u.captured`→`hasStatus` migration + snapshot-shape edit. Pure
-  unification; only worth it if the model has earned its keep and the migration pays for itself.
-  **Never a prerequisite** of anything (rev 1).
-
 ### The generalization is emergent, not a Phase 0 build
 
 There is **no "build the general status model" milestone.** The `cadence` enum and the general
@@ -112,6 +107,32 @@ second consumer on each axis forcing the extraction. If Phase 1's poison and Pha
 cross-phase status happen to both be `scaled`, the shape- and cadence-extractions may land together
 as a single refactor. That's fine — the plan optimizes for *not* abstracting ahead of evidence.
 
+## Parked — deliberately *not* on the ladder (owner-ruled 2026-07-12)
+
+Two things that felt like they belonged here but don't — recorded so they aren't rediscovered
+from scratch:
+
+- **`captured`→status is representation, not capability — revisit on an *indicator* pass, not a
+  freeing one.** The value it *does* carry is **information surfacing**: "Captured" showing up in
+  the same tracker/badge lane as Poisoned/Exhausted (owner: "makes a lot of sense in terms of
+  information surfacing"). What it does **not** buy is any freeing-mechanism flexibility (see
+  below). It's a ~30-site `u.captured`→`hasStatus` migration + snapshot-shape edit that is
+  **capability-neutral** and **never a prerequisite** (rev 1). And its end-condition is
+  **event-driven** (freed / battle won / roster-abandon / encounter-over), *not* a cadence tick —
+  the same "bespoke, resists the model" tell as fatigue (rev 3). So it's a `never`-cadence
+  representational refactor whose trigger is *"we're adding more status indicators and want capture
+  to surface uniformly,"* not this track's critical path.
+
+- **New freeing mechanisms (key, etc.) are a `ReleaseRequirement` concern — off this track
+  entirely.** "What it takes to free a captive" already lives in the extensible union
+  `ReleaseRequirement` (`units.ts:179`) evaluated by `canRelease` (`deployment.ts:53`) — shipped by
+  D90 as `{ kind:"reach" } | { kind:"lockpick" }`, with a `key` variant explicitly reserved
+  (`units.ts:176`). Adding one is a **two-edit** change (a union variant + a `switch` arm), gated by
+  the compiler, needing **no status system and no `captured` migration**. It belongs with the
+  content that wants it (Wave-0 / finale), not with the status-model epic. The *lock* axis
+  (`ReleaseRequirement`) and the *state* axis (`captured`) are independent; generalizing the latter
+  does not touch the former.
+
 ## Child issues (shape only — mint on activation, per Epic #171)
 
 Not created yet (design-only). Ready to mint when a phase activates:
@@ -119,9 +140,11 @@ Not created yet (design-only). Ready to mint when a phase activates:
 - **#171-a — Phase 1: tiered poison (`scaled`, combat, hand-rolled via `bandFor`).**
 - **#171-b — Phase 2: deploy-cadence status + deploy-side tick hook + goldens.**
 - **#171-c — Phase 3: overworld/night-cadence status + `snapshotRun` serialization (with #117).**
-- **#171-d — Phase 4 (optional): `captured`→status epilogue migration.**
 - **#171-x — the lazy extraction: general `scaled` shape / `cadence` field** — opened only when a
   *second* consumer on an axis exists (references whichever two phases forced it).
+
+*(`captured`→status is **not** a child of this epic — it's the parked, indicator-triggered
+representational refactor above; freeing mechanisms are a `ReleaseRequirement` content concern.)*
 
 ## Working rules & guards (every build PR, when phases activate)
 

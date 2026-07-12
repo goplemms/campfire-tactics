@@ -3528,6 +3528,22 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   default, not a scene change. **Build:** PR-1 core builder + registry + repoint the taste test (+
   `barrel-surface.test.ts`) + the kickoff brief; PR-2 the boot scene + `#scene` route/menu + an e2e
   smoke. Minted as a full `## D##` when PR-1 starts.
+  **Red-teamed 2026-07-12 — survived** (claims verified against code): `{ run, loop }`-into-`BattleScene`
+  with **no guild** already ships via `buildArrivalJump` (all `this.guild` reads guarded); `new RunLoop(run)`
+  alone boots the scene (`#battle`); `camp()` (create's first call) is safe on a fresh 0-gold run
+  (`payUpkeep` → underfunded; dying-clock/over checks no-op); the shots/e2e harness boots an arbitrary
+  hash via `withGame(fn, { hash })` (no scaffolding for `#scene`); the one-node start==final==combat map
+  passes `validateExpedition`. **Four revisions folded in:** **(R1)** `buildScenarioRun` runs
+  `validateExpedition` and **throws** on problems (an unknown `&party=` name throws too — no silent
+  default). **(R2)** config default **gold ≥ party upkeep**, else `payUpkeep` marks the party underfunded
+  every boot and pollutes the staged board with a spurious "morale took a hit" note. **(R3)** the
+  `scenarios/` registry is **pure data** — no `registerExpedition` at import; only `buildScenarioRun`
+  registers (lazily) — the actual guarantee the catalog + `sim` digest stay clean. **(R4)** the smoke is
+  scoped to *boots → renders the deploy board → shows the taste affordance*; **not** driven to resolution
+  (a one-node run resolves out to the overworld terminal — the parked "play in isolation" ask). **Bonus
+  (follow-up, not scope):** the e2e-deploy-battle's D90 stage currently reaches the cuffed captive by
+  hijacking live E1 via `bsEval` (`pip.release = { kind:"lockpick" }`) — once this lands, that stage can
+  boot `#scene=pick-the-cell` instead (the tool retiring its own motivating hack).
 
 - **Status-model generalization (parked parallel track — design-drafted + red-teamed 2026-07-12).**
   Make statuses a robust, cross-phase system: a `StatusInstance` gains a **cadence** (turn/night/node/

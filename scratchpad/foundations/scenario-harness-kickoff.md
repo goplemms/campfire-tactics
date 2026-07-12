@@ -79,15 +79,36 @@ harness pick from **one** list. `buildScenarioRun(config, party = config.default
   boots straight in on `#scene=<id>[&party=<name>]`; the routing + parse in `config.ts`; an e2e smoke
   booting `#scene=pick-the-cell` and asserting the board (and the lock glyph / bound captive) renders.
 
-## Red-team flags (pressure-test in build)
+## Red-team (2026-07-12 — survived; revisions folded in)
 
-1. **BattleScene's unaudited reads off a synthetic run** — the one real risk. Empty intel / 0 morale /
-   empty inventory *should* be safe; the **PR-2 e2e boot is the proof**, and any gap is fixed by a
-   **config default**, not a scene change.
-2. **Resolution is out of scope** — this stages/renders for screenshots; playing a one-node run to
-   win/loss (which hits `returnToOverworld` on a complete run) is a **later** ask, not this.
-3. **No `sim` digest move** — the taste encounter is a test fixture, not wired into any live map;
-   moving it to a registry does not touch routing/rewards. Re-run `sim` to confirm.
+**Verified against code (de-risked from "hope" to "proven"):**
+- `{ run, loop }`-into-`BattleScene` with **no guild** already ships via `buildArrivalJump`; every
+  `this.guild` read is guarded. `new RunLoop(run)` alone boots the scene (`#battle`).
+- `camp()` (create's first call) is safe on a fresh 0-gold run (`payUpkeep` → underfunded;
+  `tickDyingClocks`/`isRunOver` no-op with a living party).
+- The shots/e2e harness boots an arbitrary hash via `withGame(fn, { hash })` — **no scaffolding**
+  needed for a `#scene=` smoke.
+- The one-node `start==final==combat` map passes `validateExpedition`.
+
+**Revisions (build these in):**
+1. **R1 — fail-loud.** `buildScenarioRun` runs `validateExpedition` and **throws** on problems; an
+   unknown `&party=<name>` also throws (no silent default).
+2. **R2 — default gold.** Config default **gold ≥ party upkeep**, else `payUpkeep` marks the party
+   underfunded every boot and pollutes the staged board with a spurious "morale took a hit" note.
+3. **R3 — registry is pure data.** No `registerExpedition` at import; only `buildScenarioRun` registers
+   (lazily). This is the real guarantee the expedition catalog + `sim` digest stay clean.
+4. **R4 — scope the smoke.** *Boots → renders the deploy board → shows the taste affordance* only.
+   **Do not** drive to resolution — a one-node run resolves out to the overworld terminal (the parked
+   "play in isolation" ask).
+
+**Residual risk (honestly flagged):** the deep deploy/battle render path isn't line-traced; the
+synthetic run is thinner than E1's played-forward arrival, so a deep path *could* read an empty run
+field. Low probability, contained (fix = a config default), and the **PR-2 e2e boot is exactly that
+check**.
+
+**Bonus (follow-up, not scope):** the e2e-deploy-battle's D90 stage reaches the cuffed captive by
+hijacking live E1 via `bsEval` — once this lands it can boot `#scene=pick-the-cell` instead (the tool
+retiring its own motivating hack).
 
 ## Working rules
 

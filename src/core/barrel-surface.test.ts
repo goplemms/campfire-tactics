@@ -100,6 +100,15 @@
  *   - increment 9 (VERB_COSTS retires): −1 — the emptied `VERB_COSTS` registry is deleted along
  *     with its module-load walk; the D88 guard inverts to prove the absence of standalone verbs.
  *     (type-only, not runtime surface) (→ 616).
+ *
+ * Scenario-harness deltas (#170 — the visual scenario harness):
+ *   - increment 1 (buildScenarioRun + the registry): +7 — `buildScenarioRun` and
+ *     `DEFAULT_SCENARIO_GOLD` (`scenario.ts`, the synthetic-one-node-run builder), the
+ *     registry `SCENARIOS` / `getScenario` / `listScenarios` (`scenarios/index.ts`), and the
+ *     first entry's data `PICK_THE_CELL` / `PICK_THE_CELL_ENCOUNTER` (`scenarios/pick-the-cell.ts`,
+ *     the taste fixture promoted out of `taste-infiltration.test.ts`). `ScenarioConfig` is
+ *     type-only (not runtime surface). No registration at import (R3), so the sim digest is
+ *     unchanged.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -139,6 +148,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "DEFAULT_MAX_ROUTES",
   "DEFAULT_MAX_SAMPLES",
   "DEFAULT_POLICIES",
+  "DEFAULT_SCENARIO_GOLD",
   "DEFAULT_SCORE_WEIGHTS",
   "DEFAULT_SEED_SALTS",
   "DEFEND",
@@ -208,6 +218,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "ORTHO_OFFSETS",
   "PASSIVE",
   "PASSIVE_INFO",
+  "PICK_THE_CELL",
+  "PICK_THE_CELL_ENCOUNTER",
   "PILOT_POLICY",
   "PIP_COOK",
   "PRESTIGE_OFFERS",
@@ -226,6 +238,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "SAFE_BASE_RADIUS",
   "SAFE_POWER_PER_STEP",
   "SAVVY_BARTER",
+  "SCENARIOS",
   "SCOUT_JOB",
   "SCOUT_PRESTIGE_FLOOR",
   "SECURED_WAGON",
@@ -339,6 +352,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "buildEnemies",
   "buildGrid",
   "buildLedger",
+  "buildScenarioRun",
   "bumpCounter",
   "buyArmoryGear",
   "buyPriceFor",
@@ -477,6 +491,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "getMaterial",
   "getNode",
   "getQuest",
+  "getScenario",
   "getSkill",
   "getStory",
   "getVessel",
@@ -546,6 +561,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "jobLevelOf",
   "jobPresenceSummary",
   "knobDeclared",
+  "listScenarios",
   "loadPurse",
   "loadSupply",
   "lockGear",

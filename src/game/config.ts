@@ -3,7 +3,7 @@ import { GuildScene } from "./scenes/GuildScene";
 import { OverworldScene } from "./scenes/OverworldScene";
 import { BattleScene } from "./scenes/BattleScene";
 import { ExpeditionBootScene, HollowMillBootScene } from "./boot/demos";
-import { BattleBootScene, OverworldBootScene, JumpBootScene, DebugBootScene } from "./boot/debug";
+import { BattleBootScene, OverworldBootScene, JumpBootScene, DebugBootScene, ScenarioBootScene } from "./boot/debug";
 import { COLOR } from "./theme";
 
 // Standalone **Hollow Mill** mode (M14/D44/D52): `#demo` boots the authored
@@ -37,6 +37,11 @@ const isExpedition = base === "expedition";
 // DOM overlay (debug-menu.ts) — the clickable front-end over the jump tooling. The
 // menu mounts ONLY here, so it never appears on `#demo`/`#expedition`/the default.
 const isDebug = base === "debug";
+// `#scene` (dev-only, #170): the scenario harness — boot an ARBITRARY authored
+// encounter run-less. `#scene=<id>[?party=<name>]` stages straight into the
+// BattleScene (the visual twin of headless stageEncounter); bare `#scene` renders a
+// clickable picker of every registered scenario × party arm.
+const isScene = base === "scene" || base.startsWith("scene=");
 
 /** Phaser game configuration for the web build. */
 export const gameConfig: Phaser.Types.Core.GameConfig = {
@@ -47,6 +52,8 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   backgroundColor: COLOR.bg,
   scene: isDebug
     ? [DebugBootScene, GuildScene, OverworldScene, BattleScene]
+    : isScene
+    ? [ScenarioBootScene, GuildScene, OverworldScene, BattleScene]
     : isJump
     ? [JumpBootScene, GuildScene, OverworldScene, BattleScene]
     : isExpedition

@@ -47,7 +47,21 @@ async function main() {
         check("the prisoner is cuffed (release: lockpick)", st.prisonerCuffed === true);
         check("a cuffed captive shows the lock glyph on boot — no poking (⚿)", st.lockGlyphs === 1 && st.lockGlyph === "⚿");
         check("the default arm is the thief (has Expert Lockpick)", st.infilJob === "thief");
-        await g.screenshot(path.join(OUT, "01-pick-the-cell-thief.png"));
+        await g.screenshot(path.join(OUT, "01-pick-the-cell-thief.png")); // the cuffed cell, pre-pick
+
+        // The taste's payoff, on a GENUINELY cuffed captive + a GENUINE Thief (no live-node
+        // hijack — this is what #170 retired from e2e-deploy-battle): the Thief picks the
+        // cell at deploy → the captive is freed and the lock glyph drops.
+        const pick = await g.bsEval(`
+          const prisoner = s.battle.units.find(u => u.id === "prisoner");
+          const thief = s.battle.units.find(u => u.id === "infil"); // holds Expert Lockpick
+          s.battle.rescue(prisoner, thief);   // the Thief picks the cell → unitRescued
+          return { freed: !prisoner.captured, glyphGone: s.captiveMarkers.length === 0 };
+        `);
+        console.log("• the Thief picks the cell (D90 payoff, no hijack)");
+        check("the Thief picks the cell — the captive is freed", pick.freed === true);
+        check("the freed captive drops its lock glyph", pick.glyphGone === true);
+        await g.screenshot(path.join(OUT, "01b-pick-the-cell-freed.png"));
 
         // --- The party-arm switch re-boots the same board with the scout ---------
         await g.boot("#scene=pick-the-cell?party=scout");
@@ -57,6 +71,18 @@ async function main() {
         check("the scout arm boots a real board too", st.phase === "deployment" && st.players === 2 && st.enemies === 3);
         check("the infiltrator is now the scout (no lockpick)", st.infilJob === "scout");
         check("the captive stays cuffed regardless of party arm", st.prisonerBound === true && st.lockGlyphs === 1);
+        // The C4 refusal, on the real board: a non-lockpick rescuer is refused — an unlogged
+        // no-op that mutates nothing, so the cell holds and the scout party runs the frontal fight.
+        const refused = await g.bsEval(`
+          const prisoner = s.battle.units.find(u => u.id === "prisoner");
+          const scout = s.battle.units.find(u => u.id === "infil"); // no lockpick
+          const logBefore = s.battle.log.length;
+          s.battle.rescue(prisoner, scout);   // refused — unlogged no-op
+          return { stillCuffed: !!prisoner.captured, glyphs: s.captiveMarkers.length, unlogged: s.battle.log.length === logBefore };
+        `);
+        console.log("• the scout is refused the pick (C4)");
+        check("the rescue gate refuses a non-lockpick rescuer — the cell holds", refused.stillCuffed === true);
+        check("the refusal keeps the lock glyph and logs nothing", refused.glyphs === 1 && refused.unlogged === true);
         await g.screenshot(path.join(OUT, "02-pick-the-cell-scout.png"));
 
         // --- The bare-#scene picker renders without error ------------------------

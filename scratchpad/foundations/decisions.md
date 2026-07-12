@@ -3557,8 +3557,26 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   cost** — combat/deploy-cadence decay is replay-safe *for free* (reconstructed in the `tickStatuses`
   turn-open path, like `duration`, + golden re-pins); **overworld/night cadence needs new
   `snapshotRun` serialization** (it doesn't persist `statuses` today); captured→status is replay-safe
-  but a ~30-site `u.captured`→`hasStatus` migration + snapshot-shape edit. Mint the epic + children when
-  it goes active.
+  but a ~30-site `u.captured`→`hasStatus` migration + snapshot-shape edit.
+  **Kickoff graduated (2026-07-12) → design-only, use-site-gated** (owner ruling; no gameplay code
+  until a concrete use-site pulls a phase). Brief: [`status-model-kickoff.md`](status-model-kickoff.md);
+  Epic **#171**. The candidate is now a **risk-ordered, use-site-pulled ladder** (a menu, not a
+  schedule — the use-site triggers a phase; replay-cost is the risk label + tiebreaker):
+  **P1** tiered poison — `scaled`, combat, hand-rolled via `bandFor`, **replay-free**;
+  **P2** first deploy-cadence status — replay-safe but **not free** (a *sharpening* of rev 4:
+  `tickStatuses` runs **only** at the combat turn-open `turn.ts:560`; deploy **reads** statuses
+  (`deployment.ts:260`) but never ticks them, so P2 needs a **new deploy-side tick hook + goldens**);
+  **P3** first overworld/night-cadence status — the first that needs `snapshotRun` to serialize
+  `statuses`, **folded into the #117 save-model session** (RunSnapshot is already partial).
+  The **generalization is a lazy extraction** (no upfront framework): the `cadence` enum / general
+  `scaled` shape are factored out of the hand-rolled concretes **only when a second consumer of an
+  axis appears** (rev 2, on both the shape and cadence axes). **Off the ladder (owner-ruled):**
+  `captured`→status is a **capability-neutral** representational refactor whose real value is
+  **information surfacing** (Captured shown in the status tracker) — revisit on an **indicator pass**,
+  not a freeing one; its end-condition is **event-driven** (not a cadence), the fatigue tell (rev 3).
+  **New freeing mechanisms** (key/lockpick/…) are a **`ReleaseRequirement`** concern (`units.ts:179`,
+  `canRelease` `deployment.ts:53`) — a two-edit union extension, **no status work, off this track**.
+  Children mint **as phases activate** (Epic #171 policy); authored as a full `## D##` when a build starts.
 
 - **D69 — Scout-fork follow-ons** (surface `PRESTIGE_OFFERS` in live runs + camp-accept UI;
   the Expert Lockpick chest/door entity + lock-gated events; the combat convince-an-assassin

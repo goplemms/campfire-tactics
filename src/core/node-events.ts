@@ -49,7 +49,7 @@ import { thiefEventSkim } from "./theft";
 import { spend } from "./purse-journal";
 import { rankOf } from "./num";
 import { nudgeMorale } from "./camp";
-import { storyForNode, storyChoices, applyStoryChoice } from "./stories";
+import { storyForNode, storyChoices, applyStoryChoice, THIEVES_GUILD_CONTACT, THIEVES_GUILD_RITE, type StorySpec } from "./stories";
 import { HOLLOW_MILL_EVENTS } from "./hollow-mill-events";
 
 /**
@@ -131,6 +131,8 @@ export interface EventOutcome {
   prestiged?: { unitId: string; from: string; into: string };
   /** A **memory** flag written on a party unit (D65 linked-event chain), if any. */
   remembered?: string;
+  /** **Job-XP** granted to a party unit's job (D65 / arc-plan C3 training grant), if any. */
+  jobXp?: { job: string; amount: number; levelsGained: number };
   /**
    * D80 **encounter bypass**: this outcome **short-circuits the node's main encounter** — the day
    * resolves here (keep HP + EXP, forgo the loot) and the loop returns to camp with no fight. Set
@@ -459,6 +461,30 @@ function registerEvent(def: EventDef): void {
   EVENTS.push(def);
 }
 
+/**
+ * A **pinned** authored offer — the reuse counterpart to the seeded `story` event, for a
+ * hand-placed {@link StorySpec} (the D68 Scout→Thief mentor two-beat). `weight: 0` ⇒
+ * pinned-only via `MapNode.eventId`, never seeded. The offer→accept is **unit-targeted
+ * agency** (D65) that `autoResolve` can't express, so the headless/naive-bot default is a
+ * safe **decline** (the beat is a no-op for the sim — the live arm is proven scripted).
+ *
+ * The story is passed as a **thunk** read at call-time, not a captured value: `node-events`
+ * and `stories` form an import cycle, so at registration (module-load) the imported story
+ * binding may not be initialized yet — the thunk reads the live binding when the node runs.
+ */
+function pinnedStoryEvent(id: string, name: string, teaser: string, story: () => StorySpec): EventDef {
+  return {
+    id,
+    kind: "story",
+    name,
+    teaser,
+    weight: 0,
+    autoResolve: (run, node) => applyStoryChoice(run, node, story(), "decline"),
+    choices: (run, node) => storyChoices(run, node, story()),
+    choose: (run, node, choiceId) => applyStoryChoice(run, node, story(), choiceId),
+  };
+}
+
 /** Look up an event def by id (M11). */
 export function getEvent(id: string): EventDef {
   const def = EVENTS.find((e) => e.id === id);
@@ -565,3 +591,9 @@ function canStoreMore(run: RunState, materialId: string): boolean {
 // the core `EVENTS` records above — so the seeded pick's registry iteration order
 // is unchanged (the authored records are weight-0 and never enter the pool anyway).
 for (const def of HOLLOW_MILL_EVENTS) registerEvent(def);
+
+// The D68 Scout→Thief mentor two-beat (C7), surfaced as pinned offers — the arm's
+// `guild-contact`/`guild-rite` nodes bind these by `eventId`. weight-0, so they never
+// seed; the offer content lives in `PRESTIGE_OFFERS` (stories.ts).
+registerEvent(pinnedStoryEvent("guild-contact", "The Fence's Token", "A fence marks your Scout's quick hands and offers a way into the guild.", () => THIEVES_GUILD_CONTACT));
+registerEvent(pinnedStoryEvent("guild-rite", "The Guild's Rite", "The guild is ready to make good on its token — if your Scout has grown into the trade.", () => THIEVES_GUILD_RITE));

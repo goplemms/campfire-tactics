@@ -109,6 +109,15 @@
  *     the taste fixture promoted out of `taste-infiltration.test.ts`). `ScenarioConfig` is
  *     type-only (not runtime surface). No registration at import (R3), so the sim digest is
  *     unchanged.
+ *
+ * Wave-0 topology deltas (#168 — the back-half map):
+ *   - PR-1 (the Thief mentor two-beat, C7): +2 — `THIEVES_GUILD_CONTACT` / `THIEVES_GUILD_RITE`
+ *     (`stories.ts`): the shipped single `thieves-guild` offer (an inline `PRESTIGE_OFFERS`
+ *     member, never a named export) splits into the arm-early contact + fire-later rite, now
+ *     named so the pinned `guild-contact` / `guild-rite` surfacing events can bind them. The
+ *     new `StoryOutcomeSpec.jobXp` field + `pinnedStoryEvent` helper are type-only / module-
+ *     private (not runtime surface). No registration change to the seeded pool → sim digest
+ *     unchanged.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -268,6 +277,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "THE_HOLLOW_MILL",
   "THIEF_JOB",
   "THIEVES_DEN",
+  "THIEVES_GUILD_CONTACT",
+  "THIEVES_GUILD_RITE",
   "TILE_HEIGHT",
   "TILE_WIDTH",
   "TRAP_FIELD",

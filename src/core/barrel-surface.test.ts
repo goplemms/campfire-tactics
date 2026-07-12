@@ -356,6 +356,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "canAffordMaterial",
   "canDisarm",
   "canPlacePlayerTrap",
+  "canRelease",
   "canSee",
   "canSeeUnit",
   "captainsJournal",

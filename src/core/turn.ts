@@ -46,7 +46,7 @@ import {
   type UnitId,
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
-import { captureUnit, freeCaptive } from "./deployment";
+import { captureUnit, freeCaptive, canRelease } from "./deployment";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
@@ -486,8 +486,13 @@ export class Battle {
         // state graph (isActive, clock membership, the win check) — replay must
         // reconstruct it, and undo must be able to cross it.
         const captive = this.unit(action.target);
+        const by = action.unit ? this.unit(action.unit) : undefined;
+        // The captive's release gate (D52/D69): a lockpick-bound (cuffed) captive refuses a
+        // rescuer without the Expert Lockpick capability — a no-op that mutates nothing and
+        // isn't logged (mirrors a refused useHeal), so replay/undo never see a rejected free.
+        if (!canRelease(captive, by)) return { ok: false, reason: "This captive needs a lockpick to free." };
         freeCaptive(captive);
-        this.bus.emit("unitRescued", { unit: captive, by: action.unit ? this.unit(action.unit) : undefined });
+        this.bus.emit("unitRescued", { unit: captive, by });
         this._log.push(action);
         return { ok: true };
       }

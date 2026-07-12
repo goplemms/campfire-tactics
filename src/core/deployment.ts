@@ -15,7 +15,8 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { isActive, type Unit } from "./units";
+import { isActive, type Unit, type ReleaseRequirement } from "./units";
+import { unitHasCapability } from "./jobs";
 import type { Rng } from "./rng";
 import type { TileGrid } from "./grid";
 import type { GridCoord } from "./iso";
@@ -40,6 +41,23 @@ export function freeCaptive(unit: Unit): void {
 /** True if the unit is currently captured. */
 export function isCaptured(unit: Unit): boolean {
   return unit.captured;
+}
+
+/**
+ * Whether `by` may **free** the bound `captive` (D52/D69) — the rescue Act's gate over the
+ * captive's {@link ReleaseRequirement}. `reach` (the default when `release` is absent) frees
+ * for **any** rescuer, so the L1 Cook is unchanged; `lockpick` demands the rescuer hold the
+ * Expert Lockpick capability (the Thief) — the "pick the cell" taste. Pure + capability-gated
+ * (never a jobId, D54/D72), read by the logged `rescue` action so a refusal mutates nothing.
+ */
+export function canRelease(captive: Unit, by?: Unit): boolean {
+  const req: ReleaseRequirement = captive.release ?? { kind: "reach" };
+  switch (req.kind) {
+    case "reach":
+      return true;
+    case "lockpick":
+      return by !== undefined && unitHasCapability(by, "lockpick");
+  }
 }
 
 // --- D63: the closing-net deployment — two influence sources ----------------

@@ -18,7 +18,7 @@
  */
 
 import type { GridCoord } from "./iso";
-import type { Unit, UnitSpec } from "./units";
+import type { Unit, UnitSpec, ReleaseRequirement } from "./units";
 import { createUnit } from "./units";
 import { TileGrid } from "./grid";
 import { getEnemyTemplate, type EncounterReward } from "./generation";
@@ -74,6 +74,13 @@ export interface CaptivePlacement {
   spec: UnitSpec;
   /** The bound tile — at/adjacent to the captor's corner (the flank + rescue affordance). */
   pos: GridCoord;
+  /**
+   * How this captive may be **freed** (D52/D69) — the rescue-gate requirement
+   * ({@link "./units".ReleaseRequirement}). Absent ⇒ `reach` (any adjacent ally, the L1
+   * Cook). A **cuffed** captive sets `{ kind: "lockpick" }` so only a Thief can pick the
+   * cell — the first Thief-exclusive deploy payoff (the infiltration taste).
+   */
+  release?: ReleaseRequirement;
 }
 
 /**
@@ -184,7 +191,7 @@ export function buildAuthoredEnemies(enc: AuthoredEncounter): Unit[] {
  */
 export function buildAuthoredCaptives(enc: AuthoredEncounter): Unit[] {
   return (enc.captives ?? []).map((c) => {
-    const u = createUnit({ ...c.spec, side: "player", pos: c.pos, authored: true });
+    const u = createUnit({ ...c.spec, side: "player", pos: c.pos, authored: true, release: c.release });
     u.captured = true;
     return u;
   });

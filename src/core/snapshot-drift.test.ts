@@ -96,6 +96,8 @@ const UNIT_UNSNAPSHOTTED_KEYS = [
   "thief",
   "post",
   "role",
+  // A captive's rescue-gate requirement (D52/D69) — set at creation, battle never writes it.
+  "release",
   // Loadout — equip/unequip is an overworld verb; the gearStamp is applied at
   // staging and reverted between battles, never by a logged combat action.
   "equipment",

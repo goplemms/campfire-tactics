@@ -3499,51 +3499,49 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D91 — The visual scenario harness: boot an arbitrary encounter run-less (tooling)
+
+- **Status:** Decided + **built & shipped** (2026-07-12), issue #170 — three PRs on the design
+  branch. The tooling the D90 taste needed; consumes D50 (`stageEncounter`), D52
+  (`AuthoredExpedition`), D67 (the `{ run, loop }` BattleScene contract).
+- **Context (why):** to screenshot a board feature (the D90 cuffed captive) we hijacked the live E1
+  node and mutated it via `bsEval`. Every future board feature — a status, objective, ability, and the
+  whole status-model track — wants an **isolated scene from a config**, not a live-run hijack.
+- **Decision — a "synthetic one-node run" (reuse, not a scene refactor).** `BattleScene` consumes a
+  `{ run, loop }` and drives it through `RunLoop.startEncounter`, so rather than teach the scene a
+  run-less path we **synthesize the run** it already eats: a single-node `OverworldMap` (start == final
+  == a `combat` node, `authoredId:"scene"`) + a **lazily-registered** throwaway `AuthoredExpedition` →
+  `createRunFromExpedition` → `new RunLoop`. **The scene is unchanged.** Config is the single shared
+  truth — `{ id, name, encounter, parties: Record<name, UnitSpec[]>, defaultParty, seed?/gold?/… }`, a
+  **party matrix** so the headless test and the visual harness pick from one list ("one config drives
+  both").
+- **Red-team (survived).** Verified against code: no-guild `{ run, loop }` boots already ship via
+  `buildArrivalJump`; `new RunLoop(run)` alone boots the scene; `camp()` is safe on a fresh 0-gold run;
+  the shots/e2e harness boots an arbitrary hash via `withGame({ hash })`; the one-node map passes
+  `validateExpedition`. Four revisions are canon: **(R1)** `buildScenarioRun` `validateExpedition`s +
+  throws on an unknown party (fail-loud); **(R2)** default `gold ≥ party upkeep` (else every boot stages
+  an "underfunded → morale hit"); **(R3)** the `scenarios/` registry is **pure data** — only
+  `buildScenarioRun` registers (lazily), the guarantee the expedition catalog + `sim` digest stay clean;
+  **(R4)** the harness **stages/renders**, not resolves (play-to-win is the parked "in isolation" ask).
+- **Shipped (3 PRs):** **PR-1** core `buildScenarioRun` + `ScenarioConfig` + the pure-data `scenarios/`
+  registry (first entry `pick-the-cell`, promoted out of `taste-infiltration.test.ts` so one config
+  drives both) + `scenario.test.ts` (pins wiring + R1/R3) + barrel pin (+7, sim digest byte-unchanged).
+  **PR-2** `buildScenarioBattle(id, party?)` → `RunHandoff` + `ScenarioBootScene`
+  (`#scene=<id>[?party=<name>]` boots straight in; bare `#scene` is a clickable scenario × party-arm
+  picker) + the `#scene` route + `e2e-scenario.mjs` (the residual-risk proof: a synthetic run renders a
+  real deploy board, no page errors). **PR-3** retired the E1 hijack — the D90 taste now proves itself on
+  the genuinely-cuffed `#scene=pick-the-cell` (Thief picks / scout refused), the live-node mutation
+  deleted from `e2e-deploy-battle`. Guide: `docs/guides/adding-a-scenario.md`.
+- **Guards:** tsc · vitest (1117) · build · e2e (deploy 73 + scenario 17) · `sim` (digest unchanged).
+- **Reuses:** **D50** (`stageEncounter`), **D52** (`AuthoredExpedition`/captives), **D67** (the
+  `{ run, loop }` contract + deploy casts). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided
 > records yet — each is authored as a full `## D##` entry when its build starts.
-
-- **The visual scenario harness — boot an arbitrary encounter run-less (tooling — design-agreed 2026-07-12, issue #170).**
-  The visual twin of the headless `stageEncounter`: boot `BattleScene` onto an **arbitrary**
-  `AuthoredEncounter` + party from a config, for isolated, screenshottable scenes. Motivation: to
-  shoot the D90 cuffed captive we had to hijack the live E1 node via `bsEval`; every future board
-  feature (a status, objective, ability — and the whole status-model track above) wants a scene from
-  a config. **Approach — a "synthetic one-node run" (reuse, not a scene refactor).** `BattleScene` is
-  tightly coupled to `RunLoop` (its `create()` calls `loop.startEncounter()` and reads `run.*` widely),
-  so instead of decoupling the renderer we **synthesize the run** it already consumes: a single-node
-  `OverworldMap` (start == final == a `combat` node, `authoredId:"scene"`) + a **lazily-registered**
-  throwaway `AuthoredExpedition` → `createRunFromExpedition` → `new RunLoop`. The scene is **unchanged**.
-  Mirrors `buildDebugBattle` + the `combat-xp.test.ts` one-node-map pattern. **Config is the single
-  shared truth:** `{ id, name, encounter, parties: Record<name, UnitSpec[]>, defaultParty, seed?/gold?/
-  morale?/… }` — a **party matrix** (thief/scout) so the headless test and the visual harness pick from
-  one list ("one config drives both"). **Shape:** `buildScenarioRun(config, party?)` (pure, `src/core/
-  scenario.ts`) + a registry (`src/core/scenarios/`, first entry `pick-the-cell` promoted out of
-  `taste-infiltration.test.ts`); the game boot adds `buildScenarioBattle(id, party?)` → `RunHandoff`, a
-  **`#scene`** landing that lists registered scenarios (a `DebugBootScene`-style clickable menu) +
-  **`#scene=<id>[&party=<name>]`** to boot straight in. **Guardrails:** lazy registration keeps the
-  expedition catalog + `sim` digest clean; the harness stages/renders for screenshots (playing a
-  one-node run *to resolution* is a later ask, not this); the one real risk is `BattleScene`'s
-  unaudited reads off a synthetic run — the PR-2 e2e boot is the proof, and any gap is fixed by a config
-  default, not a scene change. **Build:** PR-1 core builder + registry + repoint the taste test (+
-  `barrel-surface.test.ts`) + the kickoff brief; PR-2 the boot scene + `#scene` route/menu + an e2e
-  smoke. Minted as a full `## D##` when PR-1 starts.
-  **Red-teamed 2026-07-12 — survived** (claims verified against code): `{ run, loop }`-into-`BattleScene`
-  with **no guild** already ships via `buildArrivalJump` (all `this.guild` reads guarded); `new RunLoop(run)`
-  alone boots the scene (`#battle`); `camp()` (create's first call) is safe on a fresh 0-gold run
-  (`payUpkeep` → underfunded; dying-clock/over checks no-op); the shots/e2e harness boots an arbitrary
-  hash via `withGame(fn, { hash })` (no scaffolding for `#scene`); the one-node start==final==combat map
-  passes `validateExpedition`. **Four revisions folded in:** **(R1)** `buildScenarioRun` runs
-  `validateExpedition` and **throws** on problems (an unknown `&party=` name throws too — no silent
-  default). **(R2)** config default **gold ≥ party upkeep**, else `payUpkeep` marks the party underfunded
-  every boot and pollutes the staged board with a spurious "morale took a hit" note. **(R3)** the
-  `scenarios/` registry is **pure data** — no `registerExpedition` at import; only `buildScenarioRun`
-  registers (lazily) — the actual guarantee the catalog + `sim` digest stay clean. **(R4)** the smoke is
-  scoped to *boots → renders the deploy board → shows the taste affordance*; **not** driven to resolution
-  (a one-node run resolves out to the overworld terminal — the parked "play in isolation" ask). **Bonus
-  (follow-up, not scope):** the e2e-deploy-battle's D90 stage currently reaches the cuffed captive by
-  hijacking live E1 via `bsEval` (`pip.release = { kind:"lockpick" }`) — once this lands, that stage can
-  boot `#scene=pick-the-cell` instead (the tool retiring its own motivating hack).
 
 - **Status-model generalization (parked parallel track — design-drafted + red-teamed 2026-07-12).**
   Make statuses a robust, cross-phase system: a `StatusInstance` gains a **cadence** (turn/night/node/

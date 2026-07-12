@@ -2,25 +2,33 @@
  * "The Hollow Mill" — the framework's first {@link AuthoredExpedition} (D44/D52),
  * **redesigned as a mechanics-teaching vertical slice** (the demo-expedition pass).
  *
- * The expedition is a layered DAG the player branches through. The slice runs from
- * **camp (L0) through the Layer-5 region** (Market hub + dug-in Wagon + Thieves' Den)
- * and reaches a **stub finale** so the run is completable. Layers 6–10 are NOT
- * designed and are NOT built here — the finale is a placeholder.
+ * The expedition is a layered DAG the player branches through. **Wave-0 topology (D#/#168):**
+ * the shared spine runs camp → Skirmish → Traveler's-gift → Snares → the **pre-fork Market**
+ * (the universal market mechanic introduced route-neutrally), then a **topology-exclusive fork**
+ * — a genuine either/or the map (not an assertion) enforces (arc-plan **C8**): the two arms
+ * share no nodes and reconverge **only** at the terminal finale, so committing to one makes the
+ * other unreachable. It reaches a **stub finale** so the run is completable (the dual-OR finale
+ * is #169).
  *
- * Topology (locked):
+ * Topology:
  * ```
- *   L0 Camp ─► L1 Skirmish+Cook ─► L2 Traveler's-gift (storage discard) ─► L3 Sapper's Snares
- *      ─► L4 FORK { 4A Rest (no Medic) | 4B Prison Wagon (frees Medic) }
- *      ─► L5 Market (hub — Merchant) ─► L6 { dug-in Wagon (Medic catch-up), Den (relic) }
- *      ─► L7 stub finale
- *   edges: 4A→Market, 4B→{Market, Den}, Market→{dug-in Wagon, Den}, {Wagon,Den}→finale
+ *   L0 Camp ─► L1 Skirmish+Cook ─► L2 Traveler's-gift ─► L3 Snares ─► L4 Market (Merchant + market)
+ *      ─► FORK
+ *         Sustain:       L5 Prison Wagon (frees the Medic) ─► L6 Rest ───────────────────┐
+ *         Infiltration:  L5 Guild-contact (C7 beat-1) ─► L6 Den (relic) ─► L7 Outer Yard  │
+ *                          ─► L8 Guild-rite (C7 beat-2 → Thief) ─► L9 Cuffed Cell (D90) ──┤
+ *      ─► L10 stub finale ◄──────────────────────────────────────────────────────────────┘
  * ```
+ * The **infiltration arm** carries the C3 job-XP fights (Den + Outer Yard tuned so guaranteed
+ * objective-XP clears the Scout to the prestige floor by the rite) and the D90 lockpick cell
+ * (the taste's first live home). The **sustain arm** frees Sela the Medic — no catch-up on the
+ * other arm (skipping her is a real consequence, C8).
  *
  * Cast: starting trio Edrin/**Soldier** (lord) · Rook/**Hunter** · Vale/**Scout**.
- * Recruits join via their nodes (NOT the bundle): Pip the **Cook** is an **on-board
- * captive** at node 1 — freed by the rescue mechanic mid-fight or by the win (D52
- * captive-recruit) · Sela the **Medic** (4B or the dug-in Wagon) and Mira the **Merchant**
- * (Market event) still join via authored post-win grants.
+ * Recruits join via their nodes (NOT the bundle): Pip the **Cook** is an **on-board captive** at
+ * node 1 (freed mid-fight or by the win, D52) · Sela the **Medic** (the Wagon, sustain arm) and
+ * Mira the **Merchant** (the pre-fork Market) join via authored post-win grants; the Cuffed Cell's
+ * bound prisoner joins on the win (D90/D52 recruit-on-win).
  *
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
@@ -29,7 +37,6 @@ import type { UnitSpec } from "./units";
 import { getJob, type JobId } from "./jobs";
 import type { AuthoredEncounter } from "./authored";
 import type { OverworldMap, MapNode } from "./overworld";
-import type { Predicate } from "./grants";
 import { registerExpedition, type AuthoredExpedition } from "./expedition";
 
 // --- The cast (D52) — trio on the field; recruits join via their nodes ------
@@ -203,16 +210,17 @@ export const PRISON_WAGON: AuthoredEncounter = {
 };
 
 /**
- * Node 6 (offshoot) — Prison Wagon, SECURED (the Medic catch-up, via the Market). A
- * second rescue attempt against **alert, dug-in captors** (higher Awareness) who have
- * **laid their own snares** — you must spot/avoid enemy traps (inverting node 3). Frees
- * Sela on the win. INACCESSIBLE once the Medic is already held (the party-state gate,
- * #127): authored on the map node as data — `blockedWhen: flagSet "medic-freed"` — and
- * read generically by {@link "./run".nodeAccessible} (no node id hardcoded in run.ts).
+ * L7 (infiltration arm) — **The Outer Yard**. The prison's mined, watched approach: an
+ * **alert garrison** that has **laid its own snares** (spot/avoid ENEMY traps — the node-3
+ * lesson inverted; the Thief's Expert Lockpick can disarm the spotted ones). The arm's
+ * **second C3 fight** — its guaranteed objective-XP, with the Den's, clears a fielded Scout
+ * to the prestige floor (L5) by the Guild's Rite that follows. Concealment 5–6 sits ABOVE
+ * the D83 careless-mark cap, so a distant read marks NOTHING — the dug-in garrison resists
+ * the scout's read, purely from the existing numbers (the intel-lane fixture, D83/D86).
  */
-export const SECURED_WAGON: AuthoredEncounter = {
-  id: "secured-wagon",
-  name: "The Prison Wagon, Secured",
+export const OUTER_YARD: AuthoredEncounter = {
+  id: "outer-yard",
+  name: "The Outer Yard",
   cols: 9,
   rows: 6,
   blocked: [{ col: 4, row: 0 }, { col: 4, row: 5 }],
@@ -220,29 +228,67 @@ export const SECURED_WAGON: AuthoredEncounter = {
     { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
   enemies: [
-    // Higher-Awareness captors — they resist the scout's free read (the pre-combat edge
-    // turned against you). A softened captain (the catch-up, not the finale) + a small
-    // alert detail; the laid snares below are the real teeth.
-    { templateId: "bandit-captain", pos: { col: 8, row: 2 }, id: "secured-captain", role: "captain", overrides: { maxHp: 34, attack: 10, defense: 3, awareness: 6 } },
+    // The garrison of the outer wall — a watch-sergeant (softened captain, not the finale
+    // brawler) + an alert detail. The laid snares below are the real teeth.
+    { templateId: "bandit-captain", pos: { col: 8, row: 2 }, id: "yard-sergeant", role: "captain", overrides: { maxHp: 34, attack: 10, defense: 3, awareness: 6 } },
     { templateId: "bandit-cutthroat", pos: { col: 7, row: 1 }, overrides: { awareness: 5 } },
     { templateId: "bandit-thug", pos: { col: 7, row: 4 }, overrides: { awareness: 4 } },
   ],
-  // The info lane (D83): the inversion telegraphed — these captors expect a second try.
+  // The info lane (D83): the mined approach telegraphed — the garrison expects company.
   rumors: [
-    "The wagon never moved on — it dug in. Watchfires burn in pairs there now.",
-    "Three captors hold it in alert shifts, and the ground on the approach has been worked over.",
+    "The outer yard bristles — watchfires burn in pairs, and the ground before the wall has been worked over.",
+    "A full watch holds the yard in alert shifts; the approach is seeded with something.",
     "No careless digging here — whoever laid these snares took their time. Nothing to mark from afar.",
   ],
-  // The captors laid their own snares — spot/avoid ENEMY traps (the node-3 lesson inverted).
-  // Concealment 5–6 sits ABOVE the D83 careless-mark cap: a tier-3 read marks NOTHING
-  // here — the dug-in captors resist the scout's read, purely from the existing numbers.
+  // The garrison laid its own snares — spot/avoid ENEMY traps (the node-3 lesson inverted).
+  // Concealment 5–6 is ABOVE the D83 careless-mark cap: a tier-3 read marks NOTHING here.
   traps: [
     { pos: { col: 2, row: 2 }, concealment: 5, damage: 16 },
     { pos: { col: 3, row: 3 }, concealment: 6, damage: 18 },
     { pos: { col: 2, row: 4 }, concealment: 5, damage: 16 },
   ],
-  reward: { gold: 140, materials: [{ id: "salve", count: 2 }], xp: 80 }, // slightly richer — it's harder
-  grants: { recruit: SELA_MEDIC, flag: "medic-freed" },
+  // reward.xp with the Den's clears the C3 pacing budget (see the pacing-guard test).
+  reward: { gold: 100, materials: [{ id: "salve", count: 1 }], xp: 100 },
+};
+
+/**
+ * The **Cuffed Cell**'s bound prisoner (D90 / D52) — a sturdy fellow-captive only a Thief's
+ * Expert Lockpick can free (`release: lockpick`). Deliberately a capable body deep in enemy
+ * ground: freed early by the Thief it's a real **mid-fight tempo** swing (the Thief's edge —
+ * the recruit-on-win itself is capability-blind, so a frontal party still gets the body on
+ * the win, D52). Placeholder identity — a JIT content detail.
+ */
+const CAPTIVE_PRISONER: UnitSpec = member("cell-prisoner", "Bound Prisoner", "soldier", {
+  standingOrder: "defend",
+});
+
+/**
+ * L9 (infiltration arm) — **The Cuffed Cell**. The lean infiltration taste's (**D90**) first
+ * **live home**: a **cuffed** prisoner behind the cell guard that only the Thief's Expert
+ * Lockpick can pick free at deploy — a body carried into the fight deep in enemy ground. The
+ * fresh Thief (prestiged at the Guild's Rite one node back) picks the cell; a non-Thief party
+ * runs it **frontally** (the pick is refused as an unlogged no-op, C4) and still recruits the
+ * prisoner on the win (recruit-on-win is capability-blind, D52). Win stays **eliminate-all** —
+ * the freed body is a **bonus**, not a win condition (no parked extraction / any-of, C1/C2).
+ */
+export const CUFFED_CELL: AuthoredEncounter = {
+  id: "cuffed-cell",
+  name: "The Cuffed Cell",
+  cols: 8,
+  rows: 6,
+  blocked: [{ col: 4, row: 2 }],
+  playerSpawns: [
+    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
+  ],
+  enemies: [
+    { templateId: "bandit-thug", pos: { col: 5, row: 2 } },
+    { templateId: "bandit-bowman", pos: { col: 6, row: 4 } },
+    { templateId: "bandit-cutthroat", pos: { col: 7, row: 0 } }, // the cell guard, in the corner
+  ],
+  // The cuffed prisoner (col 7,row 1), beside the corner guard — the pick + rescue affordance
+  // are the same corner. `release: lockpick` gates the mid-fight free to an Expert Lockpick.
+  captives: [{ spec: CAPTIVE_PRISONER, pos: { col: 7, row: 1 }, release: { kind: "lockpick" } }],
+  reward: { gold: 80, materials: [{ id: "salve", count: 1 }], xp: 70 },
 };
 
 /**
@@ -273,7 +319,11 @@ export const THIEVES_DEN: AuthoredEncounter = {
     { templateId: "bandit-cutthroat", pos: { col: 8, row: 2 } },
     { templateId: "bandit-thug", pos: { col: 8, row: 3 } },
   ],
-  reward: { gold: 90, materials: [{ id: "valuables", count: 1 }], xp: 70 },
+  // reward.xp bumped (70→110) for the C3 pacing budget: Den + Outer Yard's guaranteed
+  // objective-XP must clear a fielded Scout to the prestige floor (L5) by the Guild's Rite
+  // (see the pacing-guard in hollow-mill.test.ts). The uncontested objXp does the work; the
+  // combat kill/hit tally is only margin.
+  reward: { gold: 90, materials: [{ id: "valuables", count: 1 }], xp: 110 },
   // The build-defining relic (placeholder unique — effect TBD with the user).
   grants: { item: "relic-hollow-blade" },
 };
@@ -307,45 +357,49 @@ function node(
   layer: number,
   kind: MapNode["kind"],
   edges: string[],
-  opts: { authoredId?: string; eventId?: string; market?: MapNode["market"]; blockedWhen?: Predicate } = {},
+  opts: { authoredId?: string; eventId?: string; market?: MapNode["market"] } = {},
 ): MapNode {
-  return { id, layer, index: 0, kind, edges, authoredId: opts.authoredId, eventId: opts.eventId, market: opts.market, blockedWhen: opts.blockedWhen };
+  return { id, layer, index: 0, kind, edges, authoredId: opts.authoredId, eventId: opts.eventId, market: opts.market };
 }
 
 /**
- * Author the locked topology (see the file header). The Den is reachable from both 4B
- * and the Market; a strict layer-DAG requires in-edges from `layer-1` only, so the Den
- * lives in L6 and 4B reaches it **through** the Market normalization — except the spec
- * wants a **direct** `4B→Den`. Since 4B is L4 and the Market is L5, a direct `4B→Den`
- * (Den in L6) would skip a layer; `validateExpedition` allows cross-layer edges (it
- * only checks edge targets exist + reachability), so the direct edge is authored as a
- * skip-edge. See report — this is a deviation the strict-DAG note in the design flagged.
+ * Author the **Wave-0 topology** (see the file header). Past the shared pre-fork Market the map
+ * splits into two arms that share **no** node or edge and reconverge **only** at the terminal
+ * `finale` — so, with forward-only movement (`chooseNode` never backtracks), committing to one
+ * arm makes the other unreachable. That is **C8 exclusivity enforced by topology, not asserted**
+ * (a reachability test pins it). Arm lengths differ (rule 1 — routes need not be balanced, only
+ * worth taking): the shorter sustain arm reaches `finale` via a skip-edge, which
+ * `validateExpedition` allows (it checks edge targets + reachability, not strict `layer+1`).
  */
 function hollowMillMap(): OverworldMap {
   const nodes: Record<string, MapNode> = {
     start: node("start", 0, "rest", ["e1"]), // L0 — the provisioning camp
     e1: node("e1", 1, "combat", ["camp2"], { authoredId: E1_SKIRMISH.id }), // L1 — Skirmish + Cook rescue
-    camp2: node("camp2", 2, "event", ["snares"], { eventId: "provision-choice" }), // L2 — Camp on the Road (pick-one + Cook Stew)
-    snares: node("snares", 3, "combat", ["rest4a", "wagon4b"], { authoredId: TRAP_FIELD.id }), // L3 — the trap-field → the FORK
-    // L4 FORK
-    rest4a: node("rest4a", 4, "rest", ["market"]), // 4A — Rest (no Medic)
-    wagon4b: node("wagon4b", 4, "combat", ["market", "den"], { authoredId: PRISON_WAGON.id }), // 4B — Prison Wagon (frees Medic) → Market + Den
-    // L5 hub
-    market: node("market", 5, "event", ["securedWagon", "den"], { eventId: "merchant-town", market: "basic" }), // Market hub (Merchant)
-    // L6 offshoots
-    // Conditional access as data (#127): blocked once the Medic is freed (no duplicate rescue).
-    securedWagon: node("securedWagon", 6, "combat", ["finale"], { authoredId: SECURED_WAGON.id, blockedWhen: { kind: "flagSet", flag: "medic-freed" } }), // dug-in Wagon (Medic catch-up)
-    den: node("den", 6, "combat", ["finale"], { authoredId: THIEVES_DEN.id }), // Thieves' Den (relic)
-    // L7 stub finale
-    finale: node("finale", 7, "combat", [], { authoredId: STUB_FINALE.id }),
+    camp2: node("camp2", 2, "event", ["snares"], { eventId: "provision-choice" }), // L2 — Traveler's gift (storage discard)
+    snares: node("snares", 3, "combat", ["market"], { authoredId: TRAP_FIELD.id }), // L3 — the trap-field
+    // L4 — the pre-fork Market: introduces the universal market mechanic route-neutrally
+    // (both arms shop once; Mira recruits here), then the FORK. Infiltration is listed first so
+    // the naive-bot robustness net (sim) walks the headline arm and proves it completes.
+    market: node("market", 4, "event", ["guildContact", "wagon"], { eventId: "merchant-town", market: "basic" }),
+    // --- Sustain arm (Medic) — no infiltration content; no Medic catch-up on the other arm (C8) ---
+    wagon: node("wagon", 5, "combat", ["restCamp"], { authoredId: PRISON_WAGON.id }), // frees Sela the Medic
+    restCamp: node("restCamp", 6, "rest", ["finale"]), // a breather before the finale
+    // --- Infiltration arm (Thief) — the C7 mentor two-beat, the C3 fights, and the D90 cell ---
+    guildContact: node("guildContact", 5, "event", ["den"], { eventId: "guild-contact" }), // C7 beat-1 (arm early)
+    den: node("den", 6, "combat", ["outerYard"], { authoredId: THIEVES_DEN.id }), // C3 fight #1 (relic)
+    outerYard: node("outerYard", 7, "combat", ["guildRite"], { authoredId: OUTER_YARD.id }), // C3 fight #2
+    guildRite: node("guildRite", 8, "event", ["cuffedCell"], { eventId: "guild-rite" }), // C7 beat-2 (fire → Thief)
+    cuffedCell: node("cuffedCell", 9, "combat", ["finale"], { authoredId: CUFFED_CELL.id }), // D90 taste's live home
+    // L10 — the terminal stub finale (shared endpoint; the dual-OR approach is #169).
+    finale: node("finale", 10, "combat", [], { authoredId: STUB_FINALE.id }),
   };
   return {
     seed: "hollow-mill",
-    layers: 8,
+    layers: 11,
     nodes,
     startId: "start",
     finalIds: ["finale"],
-    order: ["start", "e1", "camp2", "snares", "rest4a", "wagon4b", "market", "securedWagon", "den", "finale"],
+    order: ["start", "e1", "camp2", "snares", "market", "wagon", "restCamp", "guildContact", "den", "outerYard", "guildRite", "cuffedCell", "finale"],
   };
 }
 
@@ -359,8 +413,9 @@ export const THE_HOLLOW_MILL: AuthoredExpedition = registerExpedition({
     [E1_SKIRMISH.id]: E1_SKIRMISH,
     [TRAP_FIELD.id]: TRAP_FIELD,
     [PRISON_WAGON.id]: PRISON_WAGON,
-    [SECURED_WAGON.id]: SECURED_WAGON,
     [THIEVES_DEN.id]: THIEVES_DEN,
+    [OUTER_YARD.id]: OUTER_YARD,
+    [CUFFED_CELL.id]: CUFFED_CELL,
     [STUB_FINALE.id]: STUB_FINALE,
   },
   bundle: {

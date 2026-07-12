@@ -59,8 +59,8 @@ describe("run simulator (D55) — robustness net + difficulty floor", () => {
   });
 
   it("reports the Hollow Mill trap-engagement baseline (the Node-3 lever readout)", () => {
-    // The naive bot's route always crosses the Sapper's Snares (L3, 5 traps) and —
-    // picking first-reachable — the Secured Wagon (L6A, 3 more): 8 staged.
+    // The naive bot's route crosses the Sapper's Snares (L3, 5 traps) and — picking
+    // first-reachable, the infiltration arm — the Outer Yard's mined approach (3 more): 8 staged.
     expect(hollowMill.summary.traps.staged).toBe(8);
     // The BASELINE TRUTH this pin makes loud: headless play can only *blunder into*
     // traps. The Awareness spot loop and the disarm verb live in the render layer

@@ -118,6 +118,9 @@
  *     new `StoryOutcomeSpec.jobXp` field + `pinnedStoryEvent` helper are type-only / module-
  *     private (not runtime surface). No registration change to the seeded pool → sim digest
  *     unchanged.
+ *   - PR-2 (the topology rewrite): +1 net — +`OUTER_YARD` / +`CUFFED_CELL` (the two new
+ *     infiltration-arm encounters in `hollow-mill.ts`), −`SECURED_WAGON` (the Medic catch-up,
+ *     deleted — no catch-up on the Thief arm, C8). `CAPTIVE_PRISONER` is module-private.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -150,6 +153,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "CORE_INVARIANTS",
   "CRITICAL_HP_FRACTION",
   "CTClock",
+  "CUFFED_CELL",
   "DASH_CAPTURE_FACTOR",
   "DEAL_PRIMED_FLAG",
   "DEFAULT_GOAL",
@@ -225,6 +229,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "NOBLE_PATRONIZE",
   "NODE_EVENTS",
   "ORTHO_OFFSETS",
+  "OUTER_YARD",
   "PASSIVE",
   "PASSIVE_INFO",
   "PICK_THE_CELL",
@@ -250,7 +255,6 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "SCENARIOS",
   "SCOUT_JOB",
   "SCOUT_PRESTIGE_FLOOR",
-  "SECURED_WAGON",
   "SELA_MEDIC",
   "SKILLS",
   "SLOWED",

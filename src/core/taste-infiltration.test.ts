@@ -1,16 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { stageEncounter, encounterOutcome } from "./staging";
 import { createUnit } from "./units";
-import type { JobId } from "./jobs";
-import type { AuthoredEncounter } from "./authored";
+import { PICK_THE_CELL } from "./scenarios";
 
 /**
  * The **lean infiltration taste** — "Pick the Cell", end-to-end and headless (D90).
  *
- * A standalone throwaway fixture (deliberately **not** wired into the live expedition — the
- * Wave-0 topology is a later pass): a **cuffed** captive (`release: lockpick`) behind a corner
- * guard, a modest garrison, a normal net board, win = `eliminate-all`. It proves the taste's
- * distinguishing claims on shipped rails:
+ * The board + parties are the shared {@link PICK_THE_CELL} scenario config (#170), so this
+ * headless test and the visual `#scene` harness are driven by **one** fixture: a **cuffed**
+ * captive (`release: lockpick`) behind a corner guard, a modest garrison, a normal net board,
+ * win = `eliminate-all`. It proves the taste's distinguishing claims on shipped rails:
  *  - a **Thief** frees the cuffed captive at deploy (the Expert Lockpick gate), and the freed
  *    body is **carried into combat** as a fielded fighter;
  *  - a **non-Thief** party is refused the pick, so it runs the **frontal** fight (C4) — and the
@@ -20,49 +19,11 @@ import type { AuthoredEncounter } from "./authored";
  * reads no `release`) already proven for the L1 Cook, so it is not re-driven here.
  */
 
-const STATS = { speed: 12, maxHp: 24, attack: 9, defense: 3, moveRange: 4, sightRadius: 5 };
+const TASTE_ENCOUNTER = PICK_THE_CELL.encounter;
 
-/** The taste encounter — a cuffed prisoner only a Thief can pick free. */
-const TASTE_ENCOUNTER: AuthoredEncounter = {
-  id: "taste-cell-block",
-  name: "The Cell Block (taste)",
-  cols: 8,
-  rows: 5,
-  blocked: [],
-  playerSpawns: [
-    { col: 0, row: 1 },
-    { col: 0, row: 2 },
-    { col: 0, row: 3 },
-  ],
-  enemies: [
-    { templateId: "bandit-thug", pos: { col: 5, row: 1 } },
-    { templateId: "bandit-bowman", pos: { col: 6, row: 3 } },
-    { templateId: "bandit-cutthroat", pos: { col: 7, row: 0 } }, // the cell guard, in the corner
-  ],
-  captives: [
-    {
-      spec: {
-        id: "prisoner",
-        name: "Bound Prisoner",
-        side: "player",
-        pos: { col: 7, row: 1 },
-        jobId: "soldier",
-        primaryJob: "soldier",
-        ...STATS,
-      },
-      pos: { col: 7, row: 1 }, // beside the corner guard — the pick + rescue affordance
-      release: { kind: "lockpick" }, // cuffed: only the Thief's Expert Lockpick frees it
-    },
-  ],
-  reward: { gold: 60, materials: [], xp: 60 },
-};
-
-/** A two-body party whose infiltrator carries `infilJob` (thief = has lockpick; scout = not). */
-function partyWith(infilJob: JobId) {
-  return [
-    createUnit({ id: "anchor", side: "player", pos: { col: 0, row: 0 }, jobId: "soldier", primaryJob: "soldier", ...STATS }),
-    createUnit({ id: "infil", side: "player", pos: { col: 0, row: 0 }, jobId: infilJob, primaryJob: infilJob, ...STATS }),
-  ];
+/** A two-body party whose infiltrator is the `thief` (has lockpick) or `scout` (not) arm. */
+function partyWith(arm: "thief" | "scout") {
+  return PICK_THE_CELL.parties[arm].map(createUnit);
 }
 
 describe("the lean infiltration taste — Pick the Cell (D90)", () => {

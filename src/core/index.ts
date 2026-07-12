@@ -78,6 +78,8 @@ export * from "./traps";
 export * from "./gear-condition";
 export * from "./equipment";
 export * from "./expedition";
+export * from "./scenario";
+export * from "./scenarios";
 export * from "./expedition-sim";
 export * from "./arrivals";
 export * from "./feasibility";

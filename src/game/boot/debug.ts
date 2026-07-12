@@ -15,6 +15,9 @@ import {
   pickRepresentatives,
   DEFAULT_POLICIES,
   getNode,
+  buildScenarioRun,
+  getScenario,
+  listScenarios,
   type MapNode,
   type PopulationOpts,
   type SampleDescriptor,
@@ -343,5 +346,120 @@ export class DebugBootScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     installDebugMenu(this.game);
+  }
+}
+
+// --- The scenario harness (#170) — boot an arbitrary encounter run-less ------
+
+/**
+ * Turn a scenario `id` (+ optional party arm) into a ready-to-hand {@link RunHandoff}
+ * by building the core {@link buildScenarioRun synthetic one-node run} and dropping the
+ * guild/caravan (a run-less boot has neither — every `BattleScene` guild read is guarded,
+ * the same shape {@link buildArrivalJump} already ships). Fail-loud on an unknown id.
+ */
+export function buildScenarioBattle(id: string, party?: string): RunHandoff {
+  const config = getScenario(id);
+  if (!config) {
+    throw new Error(
+      `buildScenarioBattle: no scenario "${id}" ` +
+        `(registered: ${listScenarios().map((s) => s.id).join(", ") || "none"})`,
+    );
+  }
+  const { run, loop } = buildScenarioRun(config, party);
+  return { run, loop };
+}
+
+/** Parsed `#scene` route params — no `id` ⇒ the picker menu; `id` ⇒ boot that scene. */
+export interface ScenarioParams {
+  id?: string;
+  party?: string;
+}
+
+/**
+ * Parse a `#scene` hash into {@link ScenarioParams}. Accepts `scene` (the menu),
+ * `scene=<id>` (boot the default party), and `scene=<id>?party=<name>` (a party arm).
+ * Returns `null` for a hash that isn't a `#scene` route.
+ */
+export function parseScenarioParams(hash: string): ScenarioParams | null {
+  const qIdx = hash.indexOf("?");
+  const base = qIdx === -1 ? hash : hash.slice(0, qIdx);
+  const query = qIdx === -1 ? "" : hash.slice(qIdx + 1);
+  if (base !== "scene" && !base.startsWith("scene=")) return null;
+  const id = base.startsWith("scene=") ? base.slice("scene=".length) || undefined : undefined;
+  const party = new URLSearchParams(query).get("party") ?? undefined;
+  return { id, party };
+}
+
+/**
+ * The boot scene for the scenario harness (`#scene`):
+ * - `#scene=<id>[?party=<name>]` hands straight off to the {@link "../scenes/BattleScene"}
+ *   with the {@link buildScenarioBattle synthetic run} — the visual twin of the headless
+ *   `stageEncounter`, for isolated screenshottable boards.
+ * - bare `#scene` renders a **clickable picker** of every registered scenario × party arm
+ *   (a `DebugBootScene`-style landing); clicking a row boots that scene.
+ *
+ * Re-reads `window.location.hash` (config already matched it; reading it here keeps the
+ * seam self-contained).
+ */
+export class ScenarioBootScene extends Phaser.Scene {
+  constructor() {
+    super("ScenarioBootScene");
+  }
+
+  create(): void {
+    const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    const parsed = parseScenarioParams(hash);
+    if (!parsed) throw new Error("ScenarioBootScene: not a `#scene` route");
+    if (parsed.id) {
+      this.scene.start("BattleScene", buildScenarioBattle(parsed.id, parsed.party));
+      return;
+    }
+    this.renderMenu();
+  }
+
+  /** The bare-`#scene` picker: one clickable row per scenario × party arm. */
+  private renderMenu(): void {
+    const { width, height } = this.scale;
+    this.add.rectangle(0, 0, width, height, COLOR.bg, 1).setOrigin(0, 0);
+    this.add
+      .text(width / 2, 44, "Scenario Harness — pick a scene", {
+        color: INK.bright,
+        fontFamily: FONT.family,
+        fontSize: FONT.title,
+      })
+      .setOrigin(0.5);
+
+    const scenarios = listScenarios();
+    if (scenarios.length === 0) {
+      this.add
+        .text(width / 2, height / 2, "(no scenarios registered)", {
+          color: INK.secondary,
+          fontFamily: FONT.family,
+          fontSize: FONT.body,
+        })
+        .setOrigin(0.5);
+      return;
+    }
+
+    let y = 100;
+    for (const config of scenarios) {
+      for (const partyName of Object.keys(config.parties)) {
+        const suffix = partyName === config.defaultParty ? " (default)" : "";
+        const row = this.add
+          .text(width / 2, y, `${config.name} — ${partyName}${suffix}`, {
+            color: INK.primary,
+            fontFamily: FONT.family,
+            fontSize: FONT.body,
+          })
+          .setOrigin(0.5)
+          .setInteractive({ useHandCursor: true });
+        row.on(Phaser.Input.Events.POINTER_OVER, () => row.setColor(INK.bright));
+        row.on(Phaser.Input.Events.POINTER_OUT, () => row.setColor(INK.primary));
+        row.on(Phaser.Input.Events.POINTER_DOWN, () =>
+          this.scene.start("BattleScene", buildScenarioBattle(config.id, partyName)),
+        );
+        y += 30;
+      }
+    }
   }
 }

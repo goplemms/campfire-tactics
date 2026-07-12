@@ -3504,6 +3504,31 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 > Forward pointer so a fresh session knows what comes next. These are **not** decided
 > records yet — each is authored as a full `## D##` entry when its build starts.
 
+- **The visual scenario harness — boot an arbitrary encounter run-less (tooling — design-agreed 2026-07-12, issue #170).**
+  The visual twin of the headless `stageEncounter`: boot `BattleScene` onto an **arbitrary**
+  `AuthoredEncounter` + party from a config, for isolated, screenshottable scenes. Motivation: to
+  shoot the D90 cuffed captive we had to hijack the live E1 node via `bsEval`; every future board
+  feature (a status, objective, ability — and the whole status-model track above) wants a scene from
+  a config. **Approach — a "synthetic one-node run" (reuse, not a scene refactor).** `BattleScene` is
+  tightly coupled to `RunLoop` (its `create()` calls `loop.startEncounter()` and reads `run.*` widely),
+  so instead of decoupling the renderer we **synthesize the run** it already consumes: a single-node
+  `OverworldMap` (start == final == a `combat` node, `authoredId:"scene"`) + a **lazily-registered**
+  throwaway `AuthoredExpedition` → `createRunFromExpedition` → `new RunLoop`. The scene is **unchanged**.
+  Mirrors `buildDebugBattle` + the `combat-xp.test.ts` one-node-map pattern. **Config is the single
+  shared truth:** `{ id, name, encounter, parties: Record<name, UnitSpec[]>, defaultParty, seed?/gold?/
+  morale?/… }` — a **party matrix** (thief/scout) so the headless test and the visual harness pick from
+  one list ("one config drives both"). **Shape:** `buildScenarioRun(config, party?)` (pure, `src/core/
+  scenario.ts`) + a registry (`src/core/scenarios/`, first entry `pick-the-cell` promoted out of
+  `taste-infiltration.test.ts`); the game boot adds `buildScenarioBattle(id, party?)` → `RunHandoff`, a
+  **`#scene`** landing that lists registered scenarios (a `DebugBootScene`-style clickable menu) +
+  **`#scene=<id>[&party=<name>]`** to boot straight in. **Guardrails:** lazy registration keeps the
+  expedition catalog + `sim` digest clean; the harness stages/renders for screenshots (playing a
+  one-node run *to resolution* is a later ask, not this); the one real risk is `BattleScene`'s
+  unaudited reads off a synthetic run — the PR-2 e2e boot is the proof, and any gap is fixed by a config
+  default, not a scene change. **Build:** PR-1 core builder + registry + repoint the taste test (+
+  `barrel-surface.test.ts`) + the kickoff brief; PR-2 the boot scene + `#scene` route/menu + an e2e
+  smoke. Minted as a full `## D##` when PR-1 starts.
+
 - **Status-model generalization (parked parallel track — design-drafted + red-teamed 2026-07-12).**
   Make statuses a robust, cross-phase system: a `StatusInstance` gains a **cadence** (turn/night/node/
   never) + two shapes — `timed` (today's countdown) and `scaled` (a **magnitude** banded into named

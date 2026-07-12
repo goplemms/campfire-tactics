@@ -3543,6 +3543,40 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 > Forward pointer so a fresh session knows what comes next. These are **not** decided
 > records yet — each is authored as a full `## D##` entry when its build starts.
 
+- **Wave-0 topology — the back-half map that makes the taste playable (design agreed +
+  adversarially red-teamed 2026-07-12; graduates to a full `## D##` when PR-1 commits).**
+  Issue **#168** (epic **#172**). Realizes arc-plan **C3/C4/C6/C7/C8**; consumes **D52/D68/D90**.
+  Rebuild the Hollow Mill past `snares` into two **topology-exclusive** arms (C8) that reconverge
+  **only** at the terminal `finale` — enforced, not asserted (forward-only `chooseNode`, verified
+  at `run.ts:312`/`overworld.ts:317`; `validateExpedition` permits disjoint arms + skip-edges):
+  - **Sustain arm:** `wagon` → frees **Sela the Medic**. No Medic catch-up downstream —
+    `SECURED_WAGON`/`medic-freed` **deleted** (skipping her is a real consequence, C8).
+  - **Infiltration arm:** `guild-contact` (**C7 beat-1** — low gate `scout≥1`, writes the
+    invite + a **modest** scout job-XP top-up via new `StoryOutcomeSpec.jobXp`, **no** prestige)
+    → `den` → `outer-yard` (**C3 fights** — tuned so *guaranteed* objective-XP alone clears
+    scout **L5**, the kill/hit tally only margin) → `guild-rite` (**C7 beat-2** — gate
+    `scout≥5 + invite` → fires Scout→**Thief**) → `cuffed-cell` (**D90's first live home** — a
+    `release:{kind:"lockpick"}` captive; the Thief's edge is the **mid-fight tempo** of freeing a
+    body deep in enemy ground, *not* an exclusive recruit — recruit-on-win is capability-blind).
+  - **Market moves *pre-fork*** (route-neutral) — a proper first introduction of the universal
+    market mechanic; both routes shop once, Mira recruits there.
+  - **Mentor two-beat mirrors the shipped Assassin pattern** (`travelling-companion`/`the-reveal`);
+    the Thief was the lone single-beat offer. Surfaced by **pinned bespoke `EventDef`s** via the
+    existing `eventId` pin path (`node-events.ts:502`) — **no** general appear-when-eligible
+    (stays parked). C4 note: a non-Thief may walk the arm and run `cuffed-cell` frontally — the
+    intended default; the *Thief payoff* is what's gated, not the arm.
+  - **Forces no parked system** (any-of/C2, extraction/C1, interior-deploy/C5, alarm) — the signal
+    it's correctly scoped; the dual-OR finale is **#169**. Honest tripwire: if the Thief's payoff
+    still reads thin in playtest (C6 — Quiet Footsteps is cleared on prestige), that's the **parked
+    deployment deep-dive** signalling, not a Wave-0 fix.
+  - **Guards:** a **C8 exclusivity reachability test** + a **pacing-guard test** (a fielded,
+    surviving Scout is ≥L5 at `guild-rite` on guaranteed objXp) + sim digest re-pin (routing/rewards
+    move). **Build:** PR-1 substrate (two-beat + `jobXp` + surfacing EventDefs; digest unchanged) ·
+    PR-2 topology (rewrite + the two tests + digest re-pin) · PR-3 a **scripted** live e2e
+    (the naive-bot autoResolve never targets a unit, so it never prestiges — the arm is proven
+    scripted). `StoryOutcomeSpec.jobXp` lands **only** on a unit-targeted choice (the D65 agency
+    contract).
+
 - **Status-model generalization (parked parallel track — design-drafted + red-teamed 2026-07-12).**
   Make statuses a robust, cross-phase system: a `StatusInstance` gains a **cadence** (turn/night/node/
   never) + two shapes — `timed` (today's countdown) and `scaled` (a **magnitude** banded into named

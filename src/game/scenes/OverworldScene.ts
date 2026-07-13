@@ -1245,9 +1245,13 @@ export class OverworldScene extends Phaser.Scene {
 
   // Story — an authored choice; each option a deterministic outcome (D23).
   private showStoryScreen(): void {
-    const node = this.campNode!;
-    const story = storyForNode(this.run.seed, node);
-    this.renderEventChoicePanel(this.loop.eventDef().name, story.prompt);
+    const def = this.loop.eventDef();
+    // The seeded random-pool node (id "story") supplies its flavour prompt via storyForNode;
+    // an **authored, pinned** story event (a guild offer, eventId-bound) supplies its own teaser,
+    // exactly like every other authored event (provision/town). Its choices come from the loop's
+    // eventChoices either way. (`campNode` is already cleared by commit(), so read currentNode.)
+    const body = def.id === "story" ? storyForNode(this.run.seed, currentNode(this.run)).prompt : def.teaser;
+    this.renderEventChoicePanel(def.name, body);
   }
 
   /**

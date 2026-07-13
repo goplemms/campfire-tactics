@@ -177,10 +177,12 @@ The guild is where character growth is managed.
   - **Combat jobs** level via combat XP (as today).
   - **Secondary** abilities level through **use** (slower — the primary is mostly
     active).
-  - **Non-combat jobs** level via a **passive trickle WHILE DEPLOYED on an adventure +
-    a bump per successful ability use**. **Benched = no growth**, so sitting in the
-    guild is never free training. ("Level the secondary by using it" and "the non-combat
-    use-bonus" are the same mechanism.)
+  - **The deployed road trickle** (a passive bump per node-step WHILE DEPLOYED) feeds
+    **character** level for *every* fielded unit — travel *broadens* — and **also the
+    primary job of a job that levels passively** (`JobDef.passiveXp`: the non-combat
+    trades). A **combatant earns its job level by fighting, not by walking** (D93).
+    **Benched = no growth**, so sitting in the guild is never free training. (The
+    per-successful-use bump remains the shared "use-leveling" hook.)
 
 ## Pseudo-example
 

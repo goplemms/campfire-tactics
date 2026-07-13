@@ -3592,6 +3592,55 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D93 — The road trickle feeds character (breadth); a job levels passively only if it opts in
+
+- **Status:** Decided + **built & green** (2026-07-13), on the `atlas-updates` branch. Owner design call
+  during an atlas freshness pass; refines the D32 leveling seam.
+- **Context (why now):** the atlas's 04g diagram routed the non-combat deployed trickle to the **job**
+  axis (mirroring `guild.md`'s stated intent), but the **code** has always fed the deployed/road trickle
+  to the **character** axis (`accrueDeployedXp → grantXp`, the D32 placeholder; the D92 `stories.ts:332`
+  comment states it outright) — a live intent-vs-code drift the freshness pass surfaced. Owner ruling:
+  **ratify character-routing as the real design** (travel = breadth), and give the job axis a *deliberate*,
+  per-job passive route rather than a blanket one.
+- **Decision — the deployed road trickle (a passive bump per node-step WHILE DEPLOYED) feeds:**
+  - **character** level for **every** fielded unit (breadth from travel — universal; **benched = no
+    growth**), as the code already did; **and**
+  - the bearer's **primary job**, but **only if that job sets `JobDef.passiveXp`** — the non-combat trades
+    (Survivalist · Cook · Merchant · Noble · Banker). A **combatant earns its job level by fighting, not by
+    walking.** Mirrors how combat XP already feeds both axes at once for the primary.
+- **Shape:** a new `JobDef.passiveXp?: boolean` capability flag (data, like `lockpick` — the D54 idiom),
+  read by `accrueDeployedXp` (`leveling.ts`); it grants the same node-step amount to the primary job via
+  `grantJobXp` when the flag is set. Scoped to the **primary** job and the **road trickle** only — the
+  per-successful-use bump stays the shared character-side use-leveling hook (unchanged). Routing *active
+  use* into the job (a Cook levels by cooking) is a **noted follow-up**, not built here.
+- **Guards:** tsc · build · vitest (**1123**, +1 leveling test: a `passiveXp` job levels on the road, a
+  combatant's job-level does not) · `sim` (digest unchanged) · e2e (deploy 73 + scenario 17 + arc 4).
+  Headless routing only — **no player-facing surface**, so no new visual guard. `core/` free of
+  Phaser/DOM/`Math.random`.
+- **Docs:** atlas `jobs/07-leveling.md` (diagram + Reading-it + Maps-to) and source `systems/guild.md`
+  synced to match.
+- **Reuses:** **D32** (the deployed-trickle seam), **D72** (`JobDef` data-driven capability idiom).
+  **Superseded by:** —
+
+---
+
+## D94 — Prestige diff-rules are rules of thumb, not hard stops
+
+- **Status:** Decided (2026-07-13), **docs-only**, on the `atlas-updates` branch. Owner framing call.
+- **Context:** the prestige "diff on the base kit" rules ("replace ≥1 element, keep the rest"; "the
+  element count stays flat") were written as firm constraints in both the atlas (04d) and
+  `systems/jobs.md` — they read as hard gates on authoring.
+- **Decision:** they are the **default discipline**, not hard constraints. The rules keep sibling forks
+  **coherent** (related-but-distinct) and the **slot budget honest** — so a fork departs from them only
+  with a *reason* (a capstone that genuinely earns an **add** over a swap, or a shifted count), not by
+  accident. The guideline serves the *feel*; it does **not gate** the authoring. Deliberate breaks are
+  allowed and noted where they happen.
+- **Scope:** framing only — no mechanic or seam change (the grant/predicate seam is untouched). Softened
+  the language in `atlas/jobs/04-prestige.md` + `systems/jobs.md`.
+- **Reuses:** **D65** (the prestige-branch seam). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

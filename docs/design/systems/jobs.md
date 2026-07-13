@@ -73,6 +73,10 @@ Prestige is **growing a job into a successor**, and it **replaces in place**:
   — a shared spine, a swapped edge — which is exactly why they read as *related but distinct*.
 - Because it's a diff, the **count stays flat**, so the *1–2 active + 1 passive* guideline
   survives prestige with no extra bookkeeping.
+- **These diff-rules are the default discipline, not hard constraints (D94).** "Replace ≥1,
+  keep the rest" and "the count stays flat" keep siblings coherent and the slot budget honest —
+  so depart from them only with a *reason* (a capstone that genuinely earns an **add** over a
+  swap, say), not by accident. The guideline serves the *feel*; it doesn't **gate** the authoring.
 
 **Chains are supported.** A prestige job is *itself* a job, and any job may carry a branch — so
 *tier-1 → tier-2 → tier-3* is **recursion on the same seam**, not a special case. How many job

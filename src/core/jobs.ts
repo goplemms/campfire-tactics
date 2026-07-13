@@ -117,6 +117,15 @@ export interface JobDef {
    * Read by {@link "./traps".canDisarm} — a capability, not a hard-coded jobId (D54).
    */
   lockpick?: boolean;
+  /**
+   * True for a job that **levels passively on the road** (D93): while a bearer is
+   * deployed, its **primary** job accrues the per-node-step deployed trickle as job-XP
+   * (a Cook/Merchant practises their trade as the caravan travels). Combatants leave it
+   * undefined — a combat job earns its **job** level by fighting, never from walking; the
+   * deployed trickle still feeds their **character** level (breadth) universally. Read by
+   * {@link "./leveling".accrueDeployedXp}.
+   */
+  passiveXp?: boolean;
 }
 
 /**

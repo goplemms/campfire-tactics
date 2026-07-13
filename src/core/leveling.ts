@@ -10,7 +10,8 @@
  * - **Combat XP** ({@link grantXp}) — combat jobs level via combat, as today.
  * - **Deployed trickle** ({@link accrueDeployedXp}) — a passive trickle for the
  *   characters **deployed on an adventure** (a caravan's party). **Benched roster
- *   never accrues** — sitting in the guild hall is never free training.
+ *   never accrues** — sitting in the guild hall is never free training. Feeds the
+ *   character axis universally; also the primary **job** for a `passiveXp` job (D93).
  *
  * Pure logic: no Phaser, no DOM, no `Math.random` (leveling is deterministic).
  */
@@ -169,18 +170,25 @@ export function commitCombatXp(
 /**
  * The deployed trickle (D32): every **deployed** character (a caravan's party)
  * accrues a passive bump per node-step on the road. **Benched roster is not passed
- * in**, so it never grows — the whole point of the rule. Returns the per-unit
- * levels gained, keyed by unit id.
+ * in**, so it never grows — the whole point of the rule. The bump always feeds the
+ * **character** axis (breadth from travel); it *also* feeds the bearer's **primary
+ * job** iff that job {@link "./jobs".JobDef.passiveXp | levels passively} (D93) — a
+ * non-combat job practises its trade on the road, a combatant does not earn job-XP
+ * from walking. Returns the per-unit **character** levels gained, keyed by unit id.
  */
 export function accrueDeployedXp(
   deployed: readonly Unit[],
   amount = LEVELING.deployedTrickle,
+  lookup: JobLookup = getJob,
 ): Record<string, number> {
   const gained: Record<string, number> = {};
   for (const u of deployed) {
     if (!u.alive) continue;
     const lv = grantXp(u, amount);
     if (lv > 0) gained[u.id] = lv;
+    // The job axis shares the road trickle only for a passive-leveling primary (D93).
+    const primary = primaryJobOf(u);
+    if (primary && lookup(primary)?.passiveXp) grantJobXp(u, primary, amount);
   }
   return gained;
 }

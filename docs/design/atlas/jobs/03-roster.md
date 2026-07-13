@@ -31,7 +31,7 @@ a reference sheet — a snapshot of the data, not the source of truth. When it d
 | Job | From | Anchor | Kit | Surface |
 |---|---|---|---|---|
 | **Assassin** | Scout | Subtle Blade (+8 vs full-HP) | Surgical Precision · Hidden Passage · *(keeps Recon)* | Combat |
-| **Thief** | Scout | — *(cleared — anchor is economic)* | Hidden Passage · Deft Hands (skim) · Expert Lockpick (disarm) | Combat + Overworld |
+| **Thief** | Scout | — *(cleared — anchor is economic)* | Hidden Passage · Deft Hands (skim) · Expert Lockpick (disarm · free cuffed captives) | Combat + Overworld |
 
 ## Universal verbs (every unit, no job needed)
 

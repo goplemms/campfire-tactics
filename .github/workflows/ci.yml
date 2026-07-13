@@ -1,7 +1,9 @@
 name: CI
 
-# Quality gate: type-check + unit suite on every PR (and main pushes), plus the
-# headless click-through E2E (scripts/e2e-deploy-battle.mjs) in a real browser.
+# Quality gate: type-check + unit suite + the run-sim on every PR (and main pushes),
+# plus the headless real-browser E2Es — the deploy→battle click-through, the #scene
+# harness, AND the overworld authored-event screens. The scene E2Es are load-bearing:
+# vitest/sim never render a Phaser scene, so a render-only freeze passes them.
 on:
   pull_request:
   push:
@@ -27,7 +29,8 @@ jobs:
       - run: npm ci
       - run: npm run build # tsc --noEmit && vite build
       - run: npm test # vitest run — the fast core suite
-      # The E2E drives the real BattleScene in headless Chrome. The GitHub
+      - run: npm run sim # the run-simulator digest (routing/reward regressions)
+      # The E2Es drive the real Phaser scenes in headless Chrome. The GitHub
       # ubuntu image ships Google Chrome with its libs; point the harness at it
       # (CHROME_BIN) instead of downloading chrome-for-testing.
       - name: Locate Chrome
@@ -37,6 +40,14 @@ jobs:
         run: npm run test:e2e
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      - name: E2E (#scene isolated-encounter harness)
+        run: npm run test:e2e:scenario
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      - name: E2E (overworld authored-event screens)
+        run: npm run test:e2e:arc
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
       # On a red E2E, keep the stage + failure screenshots so the break is
       # diagnosable from the run page without reproducing locally.
       - name: Upload E2E screenshots
@@ -44,5 +55,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-screenshots
-          path: screenshots/e2e-deploy-battle/
+          path: screenshots/
           if-no-files-found: ignore

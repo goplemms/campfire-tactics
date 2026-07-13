@@ -45,8 +45,16 @@ flowchart TB
 - **Non-combat prestige deepens *verbs*, not a battle kit** — replace-in-place applied to the
   economy verbs (Merchant/Cook/Noble forks are reserved).
 - **Earned, never auto-flipped.** Hitting the floor doesn't transform you — prestige is a **choice
-  at an event** (the Thieves' guild offer; the travelling-companion two-step for the Assassin). The
-  trigger is one predicate on the [grant seam](README.md).
+  at an event**, and both forks run the **same two-beat mentor sequence**: an *arm-early* beat under
+  a low gate that only writes a memory flag, then a *fire-later* beat gated on `floor + flag` that
+  actually prestiges in place. The Assassin **walks-then-reveals** (travelling-companion → the
+  reveal); the Thief **contacts-then-rites** (`guild-contact`, gate `scout ≥ 1`, writes the
+  `thieves-guild-invite` flag → `guild-rite`, gate `scout ≥ 5 + invite`, fires the prestige). Each
+  beat's predicate is one gate on the [grant seam](README.md).
 
-> Maps to: [systems/jobs.md → Prestige](../../systems/jobs.md) and
-> [`src/core/jobs-data/scout-line.ts`](../../../../src/core/jobs-data/scout-line.ts) (the built fork).
+> Maps to: [systems/jobs.md → Prestige](../../systems/jobs.md),
+> [`src/core/jobs-data/scout-line.ts`](../../../../src/core/jobs-data/scout-line.ts) (the built fork),
+> and the pinned mentor beats in
+> [`src/core/node-events.ts`](../../../../src/core/node-events.ts) (the `pinnedStoryEvent`
+> `guild-contact`/`guild-rite` registrations) over
+> [`src/core/stories.ts`](../../../../src/core/stories.ts) (`THIEVES_GUILD_CONTACT` / `THIEVES_GUILD_RITE`).

@@ -10,6 +10,7 @@ flowchart TB
   COMBATXP["combat XP<br/>(a combat job earns it by fighting)"]:::src
   USEXP["secondary use-XP<br/>(a borrowed ability levels by USE — slower)"]:::src
   NCXP["non-combat growth<br/>passive trickle WHILE DEPLOYED + a bump per successful use<br/>BENCHED = no growth"]:::src
+  STORYXP["story/event training grant<br/>(a targeted choice's StoryOutcomeSpec.jobXp — e.g. the guild-contact top-up)"]:::src
 
   CHARLVL["CHARACTER LEVEL<br/>→ unlocks Loadout Slots"]:::char
   JOBLVL["JOB LEVEL — one per held job<br/>→ permanent stat gains · unlockLevel abilities · the Prestige floor"]:::job
@@ -21,6 +22,7 @@ flowchart TB
   COMBATXP --> JOBLVL
   USEXP --> JOBLVL
   NCXP --> JOBLVL
+  STORYXP --> JOBLVL
   CHARLVL --> BREADTH
   JOBLVL --> DEPTH
 
@@ -42,6 +44,10 @@ flowchart TB
   ability levels by *use* (slower, since the primary is mostly active); a **non-combat** job levels
   by a passive trickle **while deployed** plus a bump per successful use. **Benched = no growth** —
   sitting in the guild is never free training, so fielding a support unit is a real commitment.
+- **A story/event choice can grant job-XP directly.** A targeted outcome's `StoryOutcomeSpec.jobXp`
+  (e.g. the `guild-contact` beat's modest scout top-up) calls the same `grantJobXp` — an **earned
+  top-up** for taking the offer, not a conjured level: it feeds normal XP into the routing and levels
+  only if it clears the next threshold.
 - **Prestige carries the job level** with it (the successor keeps the grind — see
   [`d · Prestige`](04-prestige.md)); acquiring a *new* job starts it at job-level 1.
 

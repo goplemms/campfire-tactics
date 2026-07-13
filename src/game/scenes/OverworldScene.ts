@@ -36,8 +36,6 @@ import {
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
   primaryJobOf,
   influenceTier,
-  // M11 — the data-driven event-node registry (D4/D23)
-  storyForNode,
   // M13 — the overworld economic layer (D45/D46/D47/D48)
   currentNode,
   projectForecast,
@@ -1246,11 +1244,13 @@ export class OverworldScene extends Phaser.Scene {
   // Story — an authored choice; each option a deterministic outcome (D23).
   private showStoryScreen(): void {
     const def = this.loop.eventDef();
-    // The seeded random-pool node (id "story") supplies its flavour prompt via storyForNode;
-    // an **authored, pinned** story event (a guild offer, eventId-bound) supplies its own teaser,
-    // exactly like every other authored event (provision/town). Its choices come from the loop's
-    // eventChoices either way. (`campNode` is already cleared by commit(), so read currentNode.)
-    const body = def.id === "story" ? storyForNode(this.run.seed, currentNode(this.run)).prompt : def.teaser;
+    // A story event surfaces its authored `StorySpec.prompt` via `EventDef.prompt` — set by
+    // both the seeded random-pool node ("story") and an **authored, pinned** offer (a guild
+    // beat, eventId-bound), so the guild's fence/rite reads its full flavour, not the short
+    // map teaser (#179). Falls back to the teaser if a def supplies no prompt. Its choices
+    // come from the loop's eventChoices either way. (`campNode` is already cleared by
+    // commit(), so read currentNode.)
+    const body = def.prompt?.(this.run, currentNode(this.run)) ?? def.teaser;
     this.renderEventChoicePanel(def.name, body);
   }
 

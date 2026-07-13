@@ -58,6 +58,20 @@ describe("grant seam — predicates (D65)", () => {
     expect(evalPredicate({ kind: "jobLevel", job: TIER1, min: 1 }, unit(), ctx())).toBe(true);
   });
 
+  it("holdsJob is 'is that class' — true only for a job actually held (#179)", () => {
+    // The gap it closes: an untrained job reads level 1, so `jobLevel … min: 1` matches
+    // a unit that has never held it — `holdsJob` reads `heldJobs` instead.
+    const scout = unit({ primaryJob: TIER1, heldJobs: [TIER1] });
+    const other = unit({ primaryJob: TIER2, heldJobs: [TIER2] });
+    expect(evalPredicate({ kind: "holdsJob", job: TIER1 }, scout, ctx())).toBe(true);
+    expect(evalPredicate({ kind: "holdsJob", job: TIER1 }, other, ctx())).toBe(false);
+    // …where the loose `jobLevel … min: 1` would have matched the non-holder.
+    expect(evalPredicate({ kind: "jobLevel", job: TIER1, min: 1 }, other, ctx())).toBe(true);
+    // A secondary held job counts (trained in it), and an untrained unit does not.
+    expect(evalPredicate({ kind: "holdsJob", job: TIER2 }, unit({ heldJobs: [TIER1, TIER2] }), ctx())).toBe(true);
+    expect(evalPredicate({ kind: "holdsJob", job: TIER1 }, unit(), ctx())).toBe(false);
+  });
+
   it("charLevel gates on the character level", () => {
     const u = unit({ level: 4 });
     expect(evalPredicate({ kind: "charLevel", min: 5 }, u, ctx())).toBe(false);

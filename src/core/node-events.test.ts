@@ -22,7 +22,7 @@ import {
   nodeFee,
   type EventKind,
 } from "./node-events";
-import { storyForNode, applyStoryChoice, STORIES, getStory } from "./stories";
+import { storyForNode, applyStoryChoice, STORIES, getStory, THIEVES_GUILD_CONTACT } from "./stories";
 import {
   EARLY_EVENT,
   earlyEventForNode,
@@ -338,6 +338,21 @@ describe("node-events — story applies a deterministic outcome (D23)", () => {
     const out = applyStoryChoice(run, NODE, shrine, "offer"); // -10g
     expect(run.camp.gold).toBeGreaterThanOrEqual(0);
     expect(out.goldDelta).toBe(-3); // capped at the purse
+  });
+});
+
+describe("node-events — story events surface the full authored prompt (#179)", () => {
+  it("the seeded story event's prompt resolves the drawn StorySpec's prompt", () => {
+    const seed = seedFor("story");
+    const body = getEvent("story").prompt!(newRun(seed), NODE);
+    expect(body).toBe(storyForNode(seed, NODE).prompt);
+  });
+
+  it("a pinned guild event surfaces its StorySpec prompt, not the short map teaser", () => {
+    const contact = getEvent("guild-contact");
+    const body = contact.prompt!(newRun("guild"), NODE);
+    expect(body).toBe(THIEVES_GUILD_CONTACT.prompt);
+    expect(body).not.toBe(contact.teaser); // the fix: full flavour, not the banded teaser
   });
 });
 

@@ -157,6 +157,13 @@ export interface EventDef {
   name: string;
   /** A banded teaser shown on the map before committing (D24). */
   teaser: string;
+  /**
+   * The full body text a story-kind event shows on its **choice screen** (#179) — the
+   * authored `StorySpec.prompt`, richer than the map {@link teaser}. Omitted ⇒ the render
+   * falls back to the teaser. Lives on the record so a pinned authored story surfaces its
+   * prompt the same way the seeded pool does, without a scene-side `id === "story"` branch.
+   */
+  prompt?(run: RunState, node: MapNode): string;
   /** Relative weight in the deterministic per-node pick. */
   weight: number;
   /**
@@ -388,6 +395,7 @@ export const EVENTS: EventDef[] = [
     kind: "story",
     name: "A Choice on the Road",
     teaser: "Something on the road asks a choice of the caravan.",
+    prompt: (run, node) => storyForNode(run.seed, node).prompt,
     weight: 2,
     standingBias: "boon",
     autoResolve(run, node) {
@@ -478,6 +486,7 @@ function pinnedStoryEvent(id: string, name: string, teaser: string, story: () =>
     kind: "story",
     name,
     teaser,
+    prompt: () => story().prompt,
     weight: 0,
     autoResolve: (run, node) => applyStoryChoice(run, node, story(), "decline"),
     choices: (run, node) => storyChoices(run, node, story()),

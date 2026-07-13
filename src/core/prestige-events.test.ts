@@ -3,7 +3,7 @@ import { createUnit, recalls, type Unit, type UnitSpec } from "./units";
 import { createRun } from "./run";
 import type { MapNode } from "./overworld";
 import type { JobId } from "./jobs";
-import { applyStoryChoice, storyChoices, type StorySpec } from "./stories";
+import { applyStoryChoice, storyChoices, THIEVES_GUILD_CONTACT, type StorySpec } from "./stories";
 
 const BASE = "fix-base" as JobId;
 const ELITE = "fix-elite" as JobId;
@@ -76,6 +76,30 @@ describe("node-event prestige offer → choice → accept (D65)", () => {
     const out = applyStoryChoice(run, NODE, OFFER, "accept");
     expect(out.prestiged).toBeUndefined();
     expect(run.party[0].primaryJob).toBe(BASE); // unchanged — agency preserved
+  });
+});
+
+describe("Thieves' Guild contact — the offer is Scout-only (#179)", () => {
+  // A real party: a Scout the fence marks, and a Merchant who shouldn't be offered a
+  // thief's token. The old `jobLevel scout >= 1` gate matched the Merchant too (an
+  // untrained job reads level 1); `holdsJob scout` is "is a Scout" and gates correctly.
+  function scout(id: string): Unit {
+    return createUnit({ id, side: "player", pos: { col: -1, row: -1 }, jobId: "scout" as JobId, speed: 10, maxHp: 24, attack: 8, defense: 2, moveRange: 4, sightRadius: 5 });
+  }
+  function merchant(id: string): Unit {
+    return createUnit({ id, side: "player", pos: { col: -1, row: -1 }, jobId: "merchant" as JobId, speed: 10, maxHp: 24, attack: 8, defense: 2, moveRange: 4, sightRadius: 5 });
+  }
+
+  it("offers the token to the Scout only, never a non-Scout party member", () => {
+    const run = runWith([scout("vale"), merchant("mira")]);
+    const ids = storyChoices(run, NODE, THIEVES_GUILD_CONTACT).map((c) => c.id);
+    expect(ids).toEqual(["take-token:vale", "decline"]);
+  });
+
+  it("a party with no Scout gets only the decline", () => {
+    const run = runWith([merchant("mira")]);
+    const ids = storyChoices(run, NODE, THIEVES_GUILD_CONTACT).map((c) => c.id);
+    expect(ids).toEqual(["decline"]);
   });
 });
 

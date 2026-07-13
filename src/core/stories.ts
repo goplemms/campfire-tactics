@@ -159,8 +159,9 @@ export const STORIES: readonly StorySpec[] = [
  */
 /**
  * **C7 beat-1 — the fence's contact** (D68). The *arm-early* half of the Thief mentor
- * two-beat, mirroring the Assassin's `travelling-companion`: a **low gate** (`scout ≥ 1`)
- * that writes the guild invite and grants a **modest scout job-XP** top-up (the earned
+ * two-beat, mirroring the Assassin's `travelling-companion`: a **class gate** (`holdsJob
+ * scout` — actual Scouts only, #179) that writes the guild invite and grants a **modest
+ * scout job-XP** top-up (the earned
  * training grant, C3) — but does **not** prestige. The trade is sealed later at the
  * {@link THIEVES_GUILD_RITE}, once the floor is earned on the road.
  */
@@ -173,7 +174,7 @@ export const THIEVES_GUILD_CONTACT: StorySpec = {
       id: "take-token",
       label: "Pocket the guild token",
       target: "unit",
-      when: { kind: "jobLevel", job: "scout", min: 1 },
+      when: { kind: "holdsJob", job: "scout" },
       outcome: {
         remember: "thieves-guild-invite",
         jobXp: { job: "scout", amount: 50 }, // illustrative tunable — a top-up, not a conjured level (C3)
@@ -226,7 +227,7 @@ export const PRESTIGE_OFFERS: readonly StorySpec[] = [
         id: "walk",
         label: "Share the road",
         target: "unit",
-        when: { kind: "jobLevel", job: "scout", min: 1 },
+        when: { kind: "holdsJob", job: "scout" },
         outcome: {
           remember: "traveled-with-stranger",
           summary: "Few words pass, but an understanding grows between your Scout and the stranger.",

@@ -22,6 +22,9 @@ function check(name, cond) {
 // on the overlay panel (so we assert what the player sees, not just what the loop computed).
 async function openEvent(node) {
   return withGame(async (g) => {
+    // Wait out the `#demo` boot handoff before navigating — the OverworldScene sets
+    // run/loop in init(), and jumpTo reads `s.run.mapNodeId` (CI flaked here otherwise).
+    await g.waitForScene("OverworldScene", ["run", "loop"]);
     await g.eval(jumpTo({ target: node, into: "overworld" }));
     await sleep(700);
     return g.eval(ov(`

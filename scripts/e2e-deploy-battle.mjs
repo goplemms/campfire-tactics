@@ -54,6 +54,10 @@ async function main() {
 
     try {
       // --- Stage: reach a combat node and open Deployment ---------------------
+      // Wait out the `#demo` boot handoff before navigating — navTo reads `s.run.mapNodeId`
+      // on the OverworldScene, which sets run/loop in init() (the same boot race the arc
+      // guard hit on CI).
+      await g.waitForScene("OverworldScene", ["run", "loop"]);
       await g.eval(navTo("e1"));
       await sleep(1300); // the BattleScene boots: stage encounter → enterDeploy → first turn
       await g.bsEval(`s.turnSpeed = 4;`); // speed up move tweens for a snappy, stable run

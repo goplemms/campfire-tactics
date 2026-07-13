@@ -159,6 +159,24 @@ export async function withGame(fn, opts = {}) {
       },
       eval: (body) => page.evaluate(body),
       bsEval: (body) => page.evaluate(bs(body)),
+      // Wait until a named scene exists AND every listed property is truthy on it.
+      // Guards the boot race: the <canvas> is present the instant Phaser starts, but a
+      // boot scene (HollowMillBootScene/ScenarioBootScene/…) may still be handing off to
+      // the real scene, which sets `.run`/`.loop` in init(). A navigation snippet
+      // (jumpTo/navTo) that reads `s.run.mapNodeId` before that handoff throws
+      // "Cannot read properties of undefined (reading 'mapNodeId')" — the intermittent
+      // CI freeze this replaces. Poll here first so navigation never races the boot.
+      async waitForScene(key, props = [], timeout = 15000) {
+        await page.waitForFunction(
+          (k, ps) => {
+            const s = window.game && window.game.scene && window.game.scene.getScene(k);
+            return !!s && ps.every((p) => !!s[p]);
+          },
+          { timeout, polling: 50 },
+          key,
+          props,
+        );
+      },
       async clickScene(x, y) {
         const box = await canvasBox();
         await page.mouse.click(box.x + x, box.y + y);

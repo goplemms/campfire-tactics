@@ -1,10 +1,10 @@
 # 04d · Prestige — the depth capstone
 
 **Prestige is growing a job into a successor, and it replaces in place.** It is *not* a new held
-job and *not* a level-up — the character and the slot stay the same, the kit changes. A branch is
-authored as a **diff on the base kit**: **replace ≥1 element, keep the rest**. Because it's a diff,
-the kit-element count stays flat, and sibling branches read as *related but distinct* — a shared
-spine, a swapped edge.
+job and *not* a level-up — the character and the slot stay the same, the kit changes. A branch is,
+**by default**, authored as a **diff on the base kit**: **replace ≥1 element, keep the rest** (a
+rule of thumb, not a hard stop — see below). Held to, the kit-element count stays flat, and sibling
+branches read as *related but distinct* — a shared spine, a swapped edge.
 
 The only *built* fork today is the Scout's — the worked example below.
 
@@ -34,8 +34,14 @@ flowchart TB
 
 - **Diff, not addition.** Assassin **replaces** two base elements and keeps one; Thief **clears** the
   passive and swaps in economic **verbs**. Both **add** the shared **Hidden Passage** spine — which
-  is why they feel like siblings. The base count (≈2 active + 1 passive) survives prestige with no
-  extra bookkeeping.
+  is why they feel like siblings. Held to the diff, the base count (≈2 active + 1 passive) survives
+  prestige with no extra bookkeeping.
+- **The diff-rules are rules of thumb, not hard stops** (D94). "Replace ≥1, keep the rest" and "the
+  element count stays flat" are the **default discipline** — they keep siblings coherent and the slot
+  budget honest, so a fork should have a *reason* to depart, not depart by accident. But a capstone
+  that genuinely earns it may **add rather than swap**, or shift the count; the guideline serves the
+  *feel* (related-but-distinct, budget-aware), it doesn't **gate** the authoring. Deliberate breaks
+  are allowed — and noted where they happen.
 - **In place, carrying the grind.** The successor occupies the **same slot** and **keeps its Job
   Level** — you don't restart. It evolves *the* job; it isn't a second job stacked on top (stacking
   was rejected — it would couple the two axes and blow the slot budget).

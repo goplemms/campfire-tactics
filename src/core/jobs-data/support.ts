@@ -74,6 +74,7 @@ export const SURVIVALIST_JOB: JobDef = {
   name: "Survivalist",
   description: "Field-craft specialist: lays traps before the fight, and forages supplies at a clearing.",
   restPoints: 1,
+  passiveXp: true, // a non-combat trade — levels on the road (D93)
   skills: [
     {
       id: "set-trap",
@@ -149,6 +150,7 @@ export const COOK_JOB: JobDef = {
   name: "Cook",
   description: "Camp-support: keeps the party fed cheaply, cooks the day's food into recovery, and rallies morale.",
   restPoints: 1, // a small floor — the Cook's recovery is now active (Cook Stew banks RP)
+  passiveXp: true, // a non-combat trade — levels on the road (D93)
   upkeep: { food: 1 }, // Field Kitchen — the Cook lowers the per-unit food cost (D15)
   skills: [COOK_STEW, FEAST],
 };
@@ -226,6 +228,7 @@ export const MERCHANT_JOB: JobDef = {
   name: "Merchant",
   description: "Works the economy: appraises markets, drums up trade anywhere, and drives a hard bargain.",
   presence: { marketTierBonus: 1 }, // Appraisal — lifts an existing market one tier
+  passiveXp: true, // a non-combat trade — levels on the road (D93)
   skills: [FIND_TRADE, SAVVY_BARTER, MERCHANT_SELL],
 };
 
@@ -264,6 +267,7 @@ export const NOBLE_JOB: JobDef = {
   id: "noble",
   name: "Noble",
   description: "Works the standing economy: courts patrons for Influence and sways enemies with bribes.",
+  passiveXp: true, // a non-combat trade — levels on the road (D93)
   // Renown (D71/D72): the Noble's presence accrues Influence each node-step — the standing
   // anchor as data, read by accrueDeclaredFaucets in breakCamp (mirrors ECONOMY.noble.incomePerStep = 1).
   faucet: { influencePerStep: 1 },
@@ -337,6 +341,7 @@ export const BANKER_JOB: JobDef = {
   id: "banker",
   name: "Banker",
   description: "Works the purse economy: interest on the carried purse, loans against future loot, and theft protection.",
+  passiveXp: true, // a non-combat trade — levels on the road (D93)
   skills: [BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD],
 };
 

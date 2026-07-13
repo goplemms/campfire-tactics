@@ -9,7 +9,7 @@ different XP, and the routing is what keeps the axes honest.
 flowchart TB
   COMBATXP["combat XP<br/>(a combat job earns it by fighting)"]:::src
   USEXP["secondary use-XP<br/>(a borrowed ability levels by USE — slower)"]:::src
-  NCXP["non-combat growth<br/>passive trickle WHILE DEPLOYED + a bump per successful use<br/>BENCHED = no growth"]:::src
+  NCXP["deployed road trickle<br/>a passive bump per node-step WHILE DEPLOYED<br/>(+ a non-combat ability-use bump) · BENCHED = no growth"]:::src
   STORYXP["story/event training grant<br/>(a targeted choice's StoryOutcomeSpec.jobXp — e.g. the guild-contact top-up)"]:::src
 
   CHARLVL["CHARACTER LEVEL<br/>→ unlocks Loadout Slots"]:::char
@@ -21,7 +21,8 @@ flowchart TB
   COMBATXP --> CHARLVL
   COMBATXP --> JOBLVL
   USEXP --> JOBLVL
-  NCXP --> JOBLVL
+  NCXP --> CHARLVL
+  NCXP -->|"the road trickle only — if the job levels passively"| JOBLVL
   STORYXP --> JOBLVL
   CHARLVL --> BREADTH
   JOBLVL --> DEPTH
@@ -41,9 +42,13 @@ flowchart TB
   gains** and `unlockLevel`-gated abilities, and reaching a job-level **floor** opens its
   [Prestige](04-prestige.md). This is the *depth* dial; it never widens breadth.
 - **XP routes by how you play.** A **combat** job levels by fighting; a **borrowed/secondary**
-  ability levels by *use* (slower, since the primary is mostly active); a **non-combat** job levels
-  by a passive trickle **while deployed** plus a bump per successful use. **Benched = no growth** —
-  sitting in the guild is never free training, so fielding a support unit is a real commitment.
+  ability levels by *use* (slower, since the primary is mostly active). The **deployed road trickle**
+  (a bump per node-step) feeds **character** level for *every* fielded unit — travelling *broadens*
+  you — and **also** the bearer's **primary job**, but only if that job **levels passively**
+  (`JobDef.passiveXp`, the non-combat trades: Survivalist · Cook · Merchant · Noble · Banker). A
+  **combatant never earns job-XP from walking** — it levels its job by fighting. **Benched = no
+  growth** — sitting in the guild is never free training, so fielding a support unit is a real
+  commitment.
 - **A story/event choice can grant job-XP directly.** A targeted outcome's `StoryOutcomeSpec.jobXp`
   (e.g. the `guild-contact` beat's modest scout top-up) calls the same `grantJobXp` — an **earned
   top-up** for taking the offer, not a conjured level: it feeds normal XP into the routing and levels
@@ -52,5 +57,7 @@ flowchart TB
   [`d · Prestige`](04-prestige.md)); acquiring a *new* job starts it at job-level 1.
 
 > Maps to: [systems/guild.md → Classes, secondary jobs & leveling](../../systems/guild.md) and
-> [systems/jobs.md](../../systems/jobs.md). The ability-borrowing *projection* into slots is the
-> one piece still "a later pass" (`leveling.ts`).
+> [systems/jobs.md](../../systems/jobs.md), over
+> [`src/core/leveling.ts`](../../../../src/core/leveling.ts) (`accrueDeployedXp` routes the road
+> trickle to the character axis + a `passiveXp` primary job, D93). The ability-borrowing
+> *projection* into slots is the one piece still "a later pass".

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
+import type { JobId } from "./jobs";
 import {
   LEVELING,
   grantXp,
@@ -7,12 +8,12 @@ import {
   grantAbilityUseXp,
 } from "./leveling";
 
-function unit(id: string): Unit {
+function unit(id: string, jobId: JobId = "soldier"): Unit {
   return createUnit({
     id,
     side: "player",
     pos: { col: -1, row: -1 },
-    jobId: "soldier",
+    jobId,
     speed: 10,
     maxHp: 24,
     attack: 8,
@@ -67,5 +68,19 @@ describe("leveling — the D32 seam (deployed grows, benched doesn't)", () => {
     u.alive = false;
     accrueDeployedXp([u]);
     expect(u.xp).toBe(0);
+  });
+
+  it("a passiveXp job levels on the road; a combat job's job-level does NOT (D93)", () => {
+    const cook = unit("cook", "cook"); // non-combat trade — levels passively
+    const soldier = unit("sol", "soldier"); // combatant — job levels by fighting only
+
+    accrueDeployedXp([cook, soldier]);
+
+    // Both gain the CHARACTER trickle (breadth from travel is universal)...
+    expect(cook.xp).toBe(LEVELING.deployedTrickle);
+    expect(soldier.xp).toBe(LEVELING.deployedTrickle);
+    // ...but only the passiveXp job's primary JOB accrues on the road.
+    expect(cook.jobLevels.cook?.xp).toBe(LEVELING.deployedTrickle);
+    expect(soldier.jobLevels.soldier).toBeUndefined();
   });
 });

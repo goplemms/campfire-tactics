@@ -30,7 +30,7 @@ export interface PredicateCtx {
 
 /**
  * A composable, **default-open** eligibility predicate (D65). Leaf kinds read the
- * unit (`jobLevel`/`charLevel`/`unitId`/`remembers`) or the run/context
+ * unit (`jobLevel`/`holdsJob`/`charLevel`/`unitId`/`remembers`) or the run/context
  * (`holdsItem`/`atNode`/`atNodeKind`/`flagSet`); `all`/`any` compose. An empty `all`
  * is trivially true — the default-open base (no gate ⇒ open). The run-scoped leaves
  * are also evaluable **without a unit** via {@link evalPredicateRun} (the #127
@@ -38,6 +38,7 @@ export interface PredicateCtx {
  */
 export type Predicate =
   | { kind: "jobLevel"; job: JobId; min: number }
+  | { kind: "holdsJob"; job: JobId }
   | { kind: "charLevel"; min: number }
   | { kind: "holdsItem"; item: string }
   | { kind: "atNode"; node: string }
@@ -50,15 +51,19 @@ export type Predicate =
 
 /**
  * Evaluate a {@link Predicate} for `unit` in `ctx` (D65) — pure, deterministic.
- * `jobLevel`/`charLevel` read the unit's levels; `holdsItem` reads `run.inventory`;
- * `atNode`/`atNodeKind` read the supplied `node` (falling back to `run.mapNodeId` /
- * the run's current node); `remembers` reads the unit's memory bag; `all`/`any`
- * compose.
+ * `jobLevel`/`charLevel` read the unit's levels; `holdsJob` asks whether the unit
+ * *is* that class (holds it in `heldJobs`) — the "is a Scout" gate that `jobLevel …
+ * min: 1` can't express (an untrained job reads level 1, so `min: 1` matches every
+ * unit — #179); `holdsItem` reads `run.inventory`; `atNode`/`atNodeKind` read the
+ * supplied `node` (falling back to `run.mapNodeId` / the run's current node);
+ * `remembers` reads the unit's memory bag; `all`/`any` compose.
  */
 export function evalPredicate(pred: Predicate, unit: Unit, ctx: PredicateCtx): boolean {
   switch (pred.kind) {
     case "jobLevel":
       return jobLevelOf(unit, pred.job) >= pred.min;
+    case "holdsJob":
+      return unit.heldJobs.includes(pred.job);
     case "charLevel":
       return unit.level >= pred.min;
     case "holdsItem":
@@ -91,8 +96,8 @@ export function evalPredicate(pred: Predicate, unit: Unit, ctx: PredicateCtx): b
  * (#127, the predicate-on-node access seam). Node access ({@link "./run".nodeAccessible})
  * has no acting unit, so only the run-scoped leaves (`flagSet` / `holdsItem` /
  * `atNode` / `atNodeKind`) and their `all`/`any` compositions are meaningful; a
- * unit-scoped leaf (`jobLevel` / `charLevel` / `unitId` / `remembers`) in a run-level
- * predicate is an authoring error and throws loudly (mirrors the D88 load-validator
+ * unit-scoped leaf (`jobLevel` / `holdsJob` / `charLevel` / `unitId` / `remembers`) in a
+ * run-level predicate is an authoring error and throws loudly (mirrors the D88 load-validator
  * ethos). Same leaf semantics as {@link evalPredicate}, minus the unit reads.
  */
 export function evalPredicateRun(pred: Predicate, ctx: PredicateCtx): boolean {
@@ -112,6 +117,7 @@ export function evalPredicateRun(pred: Predicate, ctx: PredicateCtx): boolean {
     case "any":
       return pred.of.some((p) => evalPredicateRun(p, ctx));
     case "jobLevel":
+    case "holdsJob":
     case "charLevel":
     case "unitId":
     case "remembers":

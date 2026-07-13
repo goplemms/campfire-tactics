@@ -21,6 +21,8 @@ import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { evalPredicate, applyGrantEffect, type Predicate, type GrantEffect } from "./grants";
 import { SCOUT_PRESTIGE_FLOOR } from "./jobs-data/scout-line";
+import { grantJobXp } from "./leveling";
+import type { JobId } from "./jobs";
 import { grantItem } from "./inventory";
 import { earn, spend } from "./purse-journal";
 import { nudgeMorale } from "./camp";
@@ -52,6 +54,13 @@ export interface StoryOutcomeSpec {
    * the choice itself (autoResolve, which targets no unit, never applies it).
    */
   grant?: GrantEffect;
+  /**
+   * Grant **job-XP** to the targeted unit's named job (D65; arc-plan C3) — the *earned*
+   * training grant: it advances the job axis `jobLevelOf` reads (via `grantJobXp`), a
+   * top-up toward a prestige floor, **not** a conjured level. Requires a unit-targeted
+   * choice (like `remember`/`grant`); `autoResolve` targets no unit and never applies it.
+   */
+  jobXp?: { job: JobId; amount: number };
   /** The result line shown after picking this option. */
   summary: string;
 }
@@ -148,26 +157,67 @@ export const STORIES: readonly StorySpec[] = [
  * them in a run** — a deliberate guild node, or an appear-only-when-eligible event — is a
  * curation follow-on.
  */
-export const PRESTIGE_OFFERS: readonly StorySpec[] = [
-  {
-    id: "thieves-guild",
-    prompt:
-      "In a back-alley tavern a fence marks your Scout's deft hands and slides a guild token across the table: \"We could use someone who moves unseen.\"",
-    choices: [
-      {
-        id: "join",
-        label: "Join the thieves' guild",
-        target: "unit",
-        when: { kind: "jobLevel", job: "scout", min: SCOUT_PRESTIGE_FLOOR },
-        outcome: {
-          remember: "thieves-guild-invite",
-          grant: { kind: "prestige", from: "scout", into: "thief" },
-          summary: "Your Scout takes the token — and the trade. They are a Thief now.",
-        },
+/**
+ * **C7 beat-1 — the fence's contact** (D68). The *arm-early* half of the Thief mentor
+ * two-beat, mirroring the Assassin's `travelling-companion`: a **low gate** (`scout ≥ 1`)
+ * that writes the guild invite and grants a **modest scout job-XP** top-up (the earned
+ * training grant, C3) — but does **not** prestige. The trade is sealed later at the
+ * {@link THIEVES_GUILD_RITE}, once the floor is earned on the road.
+ */
+export const THIEVES_GUILD_CONTACT: StorySpec = {
+  id: "thieves-guild-contact",
+  prompt:
+    "In a back-alley tavern a fence marks your Scout's deft hands and slides a guild token across the table: \"Learn our ways on the road — come find us when you're ready.\"",
+  choices: [
+    {
+      id: "take-token",
+      label: "Pocket the guild token",
+      target: "unit",
+      when: { kind: "jobLevel", job: "scout", min: 1 },
+      outcome: {
+        remember: "thieves-guild-invite",
+        jobXp: { job: "scout", amount: 50 }, // illustrative tunable — a top-up, not a conjured level (C3)
+        summary: "Your Scout pockets the token and drills the guild's tricks between fights — the trade will come when they're seasoned enough.",
       },
-      { id: "decline", label: "Leave the token on the table", outcome: { summary: "You walk out into the night." } },
-    ],
-  },
+    },
+    { id: "decline", label: "Leave the token on the table", outcome: { summary: "You walk out into the night." } },
+  ],
+};
+
+/**
+ * **C7 beat-2 — the guild's rite** (D68). The *fire-later* half: gated on the prestige
+ * **floor** (`scout ≥ 5`) **and** the invite from {@link THIEVES_GUILD_CONTACT}, it fires the
+ * Scout→Thief prestige in place. Reached under-floor, only the (gracious) decline shows —
+ * the door stays open — and the Wave-0 topology guarantees the floor is met by this beat.
+ */
+export const THIEVES_GUILD_RITE: StorySpec = {
+  id: "thieves-guild-rite",
+  prompt:
+    "The guild makes good on the token — a quiet initiation in a shuttered room, if your Scout has grown into the trade.",
+  choices: [
+    {
+      id: "initiate",
+      label: "Take the guild's trade",
+      target: "unit",
+      when: {
+        kind: "all",
+        of: [
+          { kind: "remembers", flag: "thieves-guild-invite" },
+          { kind: "jobLevel", job: "scout", min: SCOUT_PRESTIGE_FLOOR },
+        ],
+      },
+      outcome: {
+        grant: { kind: "prestige", from: "scout", into: "thief" },
+        summary: "Your Scout takes the guild's trade. They are a Thief now.",
+      },
+    },
+    { id: "decline", label: "Not yet — leave the door open", outcome: { summary: "The guild nods; the offer keeps until your Scout is ready." } },
+  ],
+};
+
+export const PRESTIGE_OFFERS: readonly StorySpec[] = [
+  THIEVES_GUILD_CONTACT,
+  THIEVES_GUILD_RITE,
   {
     id: "travelling-companion",
     prompt: "A quiet traveller falls into step with the caravan, sharing your Scout's watch through the long nights.",
@@ -276,6 +326,12 @@ export function applyStoryChoice(run: RunState, node: MapNode, story: StorySpec,
     if (res.kind === "prestige" && res.ok) {
       out.prestiged = { unitId: target.id, from: res.from, into: res.into };
     }
+  }
+  if (target && spec.jobXp) {
+    // The earned training grant (C3): routes to the JOB axis (grantJobXp), so it feeds the
+    // `jobLevel` prestige gate — unlike the road/rest trickle, which is character-XP only.
+    const levelsGained = grantJobXp(target, spec.jobXp.job, spec.jobXp.amount);
+    out.jobXp = { ...spec.jobXp, levelsGained };
   }
   return out;
 }

@@ -15,8 +15,10 @@ import { activeRoster, type RunState } from "./run";
 
 const EXP = THE_HOLLOW_MILL;
 
-/** A route to the Thieves' Den that frees the Medic (a recruit ⇒ a stronger arrival). */
-const DEN_VIA_WAGON = ["start", "e1", "camp2", "snares", "wagon4b", "den"];
+/** The sustain arm through the Wagon — frees Sela the Medic (a recruit ⇒ a stronger arrival). */
+const MEDIC_ROUTE = ["start", "e1", "camp2", "snares", "market", "wagon", "restCamp"];
+/** The infiltration arm to the Thieves' Den — the relic road, no Medic (C8 exclusivity). */
+const DEN_ROUTE = ["start", "e1", "camp2", "snares", "market", "guildContact", "den"];
 
 /** A deep, structured clone of a run so a test can mutate it without disturbing the source. */
 function cloneRun(run: RunState): RunState {
@@ -25,7 +27,7 @@ function cloneRun(run: RunState): RunState {
 
 describe("scoreArrival (Phase 3)", () => {
   it("exposes every weighted component in `parts`, summing to `total`", () => {
-    const { run } = traverseRoute(EXP, DEN_VIA_WAGON);
+    const { run } = traverseRoute(EXP, MEDIC_ROUTE);
     const score = scoreArrival(run);
     for (const key of Object.keys(DEFAULT_SCORE_WEIGHTS)) {
       expect(score.parts).toHaveProperty(key);
@@ -35,7 +37,7 @@ describe("scoreArrival (Phase 3)", () => {
   });
 
   it("fatigue is a PENALTY — more fatigue lowers the total", () => {
-    const { run } = traverseRoute(EXP, DEN_VIA_WAGON);
+    const { run } = traverseRoute(EXP, MEDIC_ROUTE);
     const base = scoreArrival(run);
 
     const tired = cloneRun(run);
@@ -49,7 +51,7 @@ describe("scoreArrival (Phase 3)", () => {
   });
 
   it("monotonicity — a stronger arrival scores higher", () => {
-    const { run } = traverseRoute(EXP, DEN_VIA_WAGON);
+    const { run } = traverseRoute(EXP, MEDIC_ROUTE);
     const weak = cloneRun(run);
     const strong = cloneRun(run);
 
@@ -68,25 +70,16 @@ describe("scoreArrival (Phase 3)", () => {
     expect(scoreArrival(strong).total).toBeGreaterThan(scoreArrival(weak).total);
   });
 
-  it("a deeper recruit route outscores the same target without the recruit", () => {
-    const withRecruit = traverseRoute(EXP, DEN_VIA_WAGON).run; // frees Sela
-    const withoutRecruit = traverseRoute(EXP, [
-      "start",
-      "e1",
-      "camp2",
-      "snares",
-      "rest4a",
-      "market",
-      "den",
-    ]).run; // no Medic
+  it("the sustain (recruit) route outscores the bare infiltration approach on build-progress", () => {
+    const withRecruit = traverseRoute(EXP, MEDIC_ROUTE).run; // frees Sela + sets medic-freed
+    const withoutRecruit = traverseRoute(EXP, DEN_ROUTE).run; // no Medic, no flag (C8)
 
     expect(withRecruit.party.some((u) => u.id === "sela")).toBe(true);
     expect(withoutRecruit.party.some((u) => u.id === "sela")).toBe(false);
-    // The recruit route picks up the wagon's build progress (the freed-Medic flag, its loot,
-    // and the levels/gold that ride along), so its build-progress components lead. It trades
-    // some party health for that — the no-recruit route detours through a rest node, so on the
-    // raw health axis (the heaviest weight) it leads, leaving the aggregate total a near-tie
-    // (the D80 nightly chip tips it by hundredths). The build-progress lead is the robust signal.
+    // The sustain route resolves the tough Wagon fight (a recruit, its loot, the freed-Medic
+    // flag, and the levels/gold that ride along) where the infiltration approach has only
+    // reached the guild-contact — so its build-progress components (flags/relics, levels, gold)
+    // lead. Both pass the shared pre-fork Market, so that recruit is symmetric.
     const a = scoreArrival(withRecruit);
     const b = scoreArrival(withoutRecruit);
     expect(a.parts.relics).toBeGreaterThan(b.parts.relics);
@@ -95,34 +88,34 @@ describe("scoreArrival (Phase 3)", () => {
   });
 
   it("determinism — the same run yields an identical score", () => {
-    const { run } = traverseRoute(EXP, DEN_VIA_WAGON);
+    const { run } = traverseRoute(EXP, MEDIC_ROUTE);
     expect(scoreArrival(run)).toEqual(scoreArrival(run));
     // A re-traversal (same args) also reproduces the score exactly.
-    const again = traverseRoute(EXP, DEN_VIA_WAGON).run;
+    const again = traverseRoute(EXP, MEDIC_ROUTE).run;
     expect(scoreArrival(again)).toEqual(scoreArrival(run));
   });
 
-  it("pins the canonical den-via-wagon score across the R2 ordinal refactor (#125)", () => {
-    // Recorded BEFORE the R2 increment-3 motion (string ordinal tables → the shared
-    // moraleTierIndex/fatigueTierIndex ladders; the levelTotal/avg-HP folds extracted).
-    // The refactor is pure motion, so the exact score — and the digest the same folds
-    // feed — must not move. If a *deliberate* scoring change lands later, repin.
-    const { run } = traverseRoute(EXP, DEN_VIA_WAGON);
+  it("pins the canonical sustain-route score (a scoring change must be deliberate + re-pinned)", () => {
+    // Re-pinned for the Wave-0 topology (#168): the canonical route is now the sustain arm
+    // (start → … → Market → Wagon → restCamp), which frees Sela the Medic. The scoring folds
+    // are unchanged; this freezes the exact score so any *unintended* scoring drift fails loudly.
+    // If a deliberate scoring change lands later, repin.
+    const { run } = traverseRoute(EXP, MEDIC_ROUTE);
     const score = scoreArrival(run);
-    expect(score.total).toBeCloseTo(68.84541062801932, 10);
-    expect(score.parts.levels).toBeCloseTo(13, 10);
-    expect(score.parts.health).toBeCloseTo(16.67874396135266, 10);
+    expect(score.total).toBeCloseTo(72.24264382960035, 10);
+    expect(score.parts.levels).toBeCloseTo(14.5, 10);
+    expect(score.parts.health).toBeCloseTo(16.075977162933686, 10);
     expect(score.parts.morale).toBeCloseTo(4, 10);
     expect(score.parts.fatigue).toBeCloseTo(0, 10);
     const digest = arrivalDigest(run);
-    expect(digest.levelTotal).toBe(26);
-    expect(digest.avgHpPct).toBe(67);
+    expect(digest.levelTotal).toBe(29);
+    expect(digest.avgHpPct).toBe(64);
   });
 });
 
 describe("arrivalDigest (Phase 5)", () => {
   it("has the expected shape — totals, percent HP, gold, roster ids, flags", () => {
-    const { run } = traverseRoute(EXP, DEN_VIA_WAGON); // frees the Medic → medic-freed flag
+    const { run } = traverseRoute(EXP, MEDIC_ROUTE); // frees the Medic → medic-freed flag
     const d = arrivalDigest(run);
 
     // Shape: every field present with the right primitive type.
@@ -146,7 +139,7 @@ describe("arrivalDigest (Phase 5)", () => {
   });
 
   it("monotonic-ish — a stronger/healthier/richer run reads higher across the fields", () => {
-    const { run } = traverseRoute(EXP, DEN_VIA_WAGON);
+    const { run } = traverseRoute(EXP, MEDIC_ROUTE);
     const base = arrivalDigest(run);
 
     const strong = cloneRun(run);
@@ -186,12 +179,6 @@ describe("samplePopulation (Phase 3)", () => {
         );
       });
 
-      it("produces a spread of scores across salts (combat variance moves the score)", () => {
-        const totals = pop.samples.map((s) => s.score.total);
-        const distinct = new Set(totals.map((t) => t.toFixed(6)));
-        expect(distinct.size).toBeGreaterThan(1);
-      });
-
       it("survived flags are booleans and at least some are true", () => {
         expect(pop.samples.every((s) => typeof s.survived === "boolean")).toBe(true);
         expect(pop.samples.some((s) => s.survived)).toBe(true);
@@ -213,6 +200,16 @@ describe("samplePopulation (Phase 3)", () => {
       });
     });
   }
+
+  it("route choice moves the score — the two exclusive arms yield distinct arrivals", () => {
+    // This vertical slice's fights are decisively winnable, so combat is deterministic across
+    // salts (a clean win banks the same HP every time) — the meaningful variation the sampler
+    // captures is ROUTE variation: the sustain and infiltration arms reach the finale in
+    // different states. (Salt still varies the RNG stream; it just doesn't move a decisive win.)
+    const pop = samplePopulation(EXP, "finale");
+    const distinct = new Set(pop.samples.map((s) => s.score.total.toFixed(6)));
+    expect(distinct.size).toBeGreaterThan(1);
+  });
 
   it("a descriptor re-materializes the same scored run via traverseRoute", () => {
     const pop = samplePopulation(EXP, "den");
@@ -243,14 +240,14 @@ describe("samplePopulation (Phase 3)", () => {
       expect(again.sampling).toEqual(capped.sampling);
     });
 
-    it("keeps full route × policy coverage when thinning the salts axis", () => {
-      // With 5 routes to the finale and maxSamples 4 < routes, the sample list is
-      // truncated; but the routes covered must be a prefix of the route enumeration
-      // (route-major order), never a hidden fraction misreported as complete.
+    it("keeps route-major coverage when truncating the sample grid", () => {
+      // The full grid is routes × salts (2 exclusive arms × 12 salts = 24); maxSamples 4 <
+      // that, so the sample list is truncated. Truncation is route-major, so the covered
+      // routes are a prefix of the enumeration — never a hidden fraction misreported as complete.
       const routes = enumeratePaths(EXP.map, "finale");
-      expect(routes.length).toBeGreaterThan(MAX); // precondition for this fixture
+      expect(routes.length * DEFAULT_SEED_SALTS.length).toBeGreaterThan(MAX); // grid exceeds the cap
       const coveredRoutes = new Set(capped.samples.map((s) => s.descriptor.route.join(">")));
-      expect(coveredRoutes.size).toBeLessThanOrEqual(MAX);
+      expect(coveredRoutes.size).toBeLessThanOrEqual(routes.length);
     });
   });
 

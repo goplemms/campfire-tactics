@@ -16,7 +16,7 @@ import {
   rewardBand,
 } from "./intel";
 import type { AuthoredEncounter } from "./authored";
-import { TRAP_FIELD, E1_SKIRMISH, SECURED_WAGON } from "./hollow-mill";
+import { TRAP_FIELD, E1_SKIRMISH, OUTER_YARD } from "./hollow-mill";
 import { stageEncounter } from "./staging";
 import { isConcealedTrap } from "./entities";
 import { createRun, createRunFromExpedition } from "./run";
@@ -218,8 +218,8 @@ describe("intel — the trap lane + info lane (D83)", () => {
     expect(readEncounter(E1_SKIRMISH, 0).traps).toBeUndefined();
   });
 
-  it("the dug-in captors resist the read — L6A's careful work marks NOTHING at tier 3", () => {
-    const t3 = readEncounter(SECURED_WAGON, 3);
+  it("the dug-in garrison resists the read — the Outer Yard's careful work marks NOTHING at tier 3", () => {
+    const t3 = readEncounter(OUTER_YARD, 3);
     expect(t3.traps).toEqual({ present: true, count: 3, marked: 0 });
   });
 

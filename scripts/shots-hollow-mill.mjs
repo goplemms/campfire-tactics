@@ -79,7 +79,7 @@ const STEPS = [
   // `advance` frames are skipped: the auto-advance render path trips a Phaser texture
   // bug in the headless harness (a screenshot-tooling rough edge, not a slice bug — see
   // the redesign report), so the demo captures the deploy board + the victory/recruit.
-  { name: "13-wagon-deploy", minMs: 1100, eval: navTo("wagon4b") },
+  { name: "13-wagon-deploy", minMs: 1100, eval: navTo("wagon") },
   { name: "14-wagon-victory", minMs: 900, eval: forceWin }, // win frees Sela the Medic
   { name: "15-after-wagon", minMs: 900, eval: bs(`s.returnToOverworld();`) },
 

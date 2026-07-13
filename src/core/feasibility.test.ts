@@ -8,9 +8,9 @@ import {
 } from "./feasibility";
 import type { OverworldMap, MapNode } from "./overworld";
 
-/** A known full completion route through the Hollow Mill (no Medic-gated hop). */
+/** A known full completion route through the Hollow Mill — the sustain arm to the finale. */
 const COMPLETION: string[] = [
-  "start", "e1", "camp2", "snares", "rest4a", "market", "den", "finale",
+  "start", "e1", "camp2", "snares", "market", "wagon", "restCamp", "finale",
 ];
 
 describe("playToTerminal — full-route play to a real terminal", () => {
@@ -24,11 +24,12 @@ describe("playToTerminal — full-route play to a real terminal", () => {
     expect(out.route).toEqual(COMPLETION);
   });
 
-  it("returns 'stuck' (never throws) for a runtime-gated hop", () => {
-    // wagon4b frees the Medic, which gates the securedWagon edge shut — this route can't
-    // actually be walked. playToTerminal catches the throw and reports it.
-    const gated = ["start", "e1", "camp2", "snares", "wagon4b", "market", "securedWagon", "finale"];
-    const out = playToTerminal(THE_HOLLOW_MILL, gated);
+  it("returns 'stuck' (never throws) for an impossible cross-arm hop (C8 exclusivity)", () => {
+    // The arms are exclusive: from the sustain arm's Wagon there is no edge into the
+    // infiltration arm's cell — so this route can't be walked. playToTerminal catches the
+    // throw and reports it, rather than crashing.
+    const crossArm = ["start", "e1", "camp2", "snares", "market", "wagon", "cuffedCell"];
+    const out = playToTerminal(THE_HOLLOW_MILL, crossArm);
     expect(out.terminal).toBe("stuck");
     expect(out.reason).toBeTruthy();
   });
@@ -63,8 +64,9 @@ describe("analyzeExpedition(THE_HOLLOW_MILL) — the valid slice is clean", () =
     expect(report.sampling.routesEnumerated).toBeGreaterThanOrEqual(report.completingRoutes.length);
     expect(report.sampling.nodesAnalyzed).toBeGreaterThan(0);
     expect(report.sampling.capped).toBe(false); // Hollow Mill is tiny
-    // The Medic-gated route is honestly counted, not crashed/silently dropped.
-    expect(report.sampling.inaccessibleRoutes).toBeGreaterThanOrEqual(1);
+    // No runtime-gated hops in Wave-0: exclusivity is enforced structurally (disjoint arms),
+    // not by a blockedWhen predicate, so every enumerated route is actually walkable.
+    expect(report.sampling.inaccessibleRoutes).toBe(0);
   });
 
   it("has NO error-severity violations for the valid slice", () => {
@@ -137,7 +139,8 @@ describe("analyzeExpedition — catches a broken expedition (negative test)", ()
   });
 
   it("is still completable via the routes that skip the Den", () => {
-    // The map still has rest4a/wagon4b → market → securedWagon → finale paths.
+    // The sustain arm (Market → Wagon → restCamp → finale) still completes, so the map is
+    // playable even with the Den (and its relic) stranded on the broken infiltration arm.
     expect(report.completable).toBe(true);
   });
 });

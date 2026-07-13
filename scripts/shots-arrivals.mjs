@@ -13,9 +13,10 @@ import { withGame, ROOT, sleep } from "./harness.mjs";
 
 const OUT_DIR = path.resolve(ROOT, process.env.SHOTS_OUT ?? "screenshots/arrivals");
 
-// The Hollow Mill combat nodes (src/core/hollow-mill.ts). `securedWagon` sits on a
-// Medic-gated route, so some of its arrivals may be inaccessible — skipped, not fatal.
-const NODES = ["e1", "snares", "wagon4b", "securedWagon", "den", "finale"];
+// The Hollow Mill combat nodes (src/core/hollow-mill.ts) — Wave-0 topology. `wagon` is on
+// the sustain arm; `den`/`outerYard`/`cuffedCell` on the (exclusive) infiltration arm, so
+// an arrival that can't be reached on its arm is skipped, not fatal.
+const NODES = ["e1", "snares", "wagon", "den", "outerYard", "cuffedCell", "finale"];
 const ARRIVALS = ["best", "average", "worst"];
 
 // Settle delay after a jump-boot — motion is already stilled via window.__SHOT__, so a

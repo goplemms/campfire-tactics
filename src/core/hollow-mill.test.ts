@@ -4,8 +4,9 @@ import {
   E1_SKIRMISH,
   TRAP_FIELD,
   PRISON_WAGON,
-  SECURED_WAGON,
   THIEVES_DEN,
+  OUTER_YARD,
+  CUFFED_CELL,
   STUB_FINALE,
 } from "./hollow-mill";
 import { stageEncounter } from "./staging";
@@ -13,7 +14,9 @@ import { isConcealedTrap } from "./entities";
 import { validateExpedition } from "./expedition";
 import { createRunFromExpedition } from "./run";
 import { RunLoop } from "./runloop";
-import { jobLevelOf } from "./leveling";
+import { jobLevelOf, LEVELING } from "./leveling";
+import { THIEVES_GUILD_CONTACT } from "./stories";
+import { SCOUT_PRESTIGE_FLOOR } from "./jobs-data/scout-line";
 import { intelFloor } from "./intel";
 import { createUnit } from "./units";
 import { freeCaptive } from "./deployment";
@@ -58,26 +61,73 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(validateExpedition(THE_HOLLOW_MILL)).toEqual([]);
   });
 
-  it("authors the locked topology (camp → L5 region → stub finale)", () => {
+  it("authors the Wave-0 topology (spine → pre-fork Market → two exclusive arms → finale)", () => {
     const m = THE_HOLLOW_MILL.map;
     expect(m.startId).toBe("start");
     expect(m.finalIds).toEqual(["finale"]);
-    // The fork + reconverge: 4A and 4B both reach the Market; the Market fans to the
-    // dug-in Wagon + Den; 4B also reaches the Den directly.
-    expect(m.nodes.snares.edges).toEqual(["rest4a", "wagon4b"]);
-    expect(m.nodes.rest4a.edges).toContain("market");
-    expect(m.nodes.wagon4b.edges).toEqual(expect.arrayContaining(["market", "den"]));
-    expect(m.nodes.market.edges).toEqual(expect.arrayContaining(["securedWagon", "den"]));
+    // Spine → the shared pre-fork Market → the FORK (a single either/or).
+    expect(m.nodes.snares.edges).toEqual(["market"]);
+    expect(m.nodes.market.edges).toEqual(["guildContact", "wagon"]);
+    // Sustain arm: wagon → restCamp → finale.
+    expect(m.nodes.wagon.edges).toEqual(["restCamp"]);
+    expect(m.nodes.restCamp.edges).toEqual(["finale"]);
+    // Infiltration arm: guildContact → den → outerYard → guildRite → cuffedCell → finale.
+    expect(m.nodes.guildContact.edges).toEqual(["den"]);
+    expect(m.nodes.den.edges).toEqual(["outerYard"]);
+    expect(m.nodes.outerYard.edges).toEqual(["guildRite"]);
+    expect(m.nodes.guildRite.edges).toEqual(["cuffedCell"]);
+    expect(m.nodes.cuffedCell.edges).toEqual(["finale"]);
     // Authored bindings resolve.
     expect(m.nodes.e1.authoredId).toBe(E1_SKIRMISH.id);
     expect(m.nodes.snares.authoredId).toBe(TRAP_FIELD.id);
-    expect(m.nodes.wagon4b.authoredId).toBe(PRISON_WAGON.id);
-    expect(m.nodes.securedWagon.authoredId).toBe(SECURED_WAGON.id);
+    expect(m.nodes.wagon.authoredId).toBe(PRISON_WAGON.id);
     expect(m.nodes.den.authoredId).toBe(THIEVES_DEN.id);
+    expect(m.nodes.outerYard.authoredId).toBe(OUTER_YARD.id);
+    expect(m.nodes.cuffedCell.authoredId).toBe(CUFFED_CELL.id);
     expect(m.nodes.finale.authoredId).toBe(STUB_FINALE.id);
-    // The two authored event nodes pin their beats.
+    // The pinned event nodes bind their beats (the pre-fork town + the mentor two-beat).
     expect(m.nodes.camp2.eventId).toBe("provision-choice");
     expect(m.nodes.market.eventId).toBe("merchant-town");
+    expect(m.nodes.guildContact.eventId).toBe("guild-contact");
+    expect(m.nodes.guildRite.eventId).toBe("guild-rite");
+  });
+
+  it("C8: the two arms are topology-exclusive — disjoint but for the terminal finale", () => {
+    const m = THE_HOLLOW_MILL.map;
+    // Forward (transitive) reachability — the only movement the run allows (chooseNode never
+    // backtracks), so this is what "exclusive by topology" means, not an asserted invariant.
+    const reach = (from: string): Set<string> => {
+      const seen = new Set<string>();
+      const stack = [...m.nodes[from].edges];
+      while (stack.length) {
+        const id = stack.pop()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        stack.push(...m.nodes[id].edges);
+      }
+      return seen;
+    };
+    const sustain = reach("wagon");
+    const infil = reach("guildContact");
+    // Neither arm can reach the other's nodes…
+    for (const id of ["guildContact", "den", "outerYard", "guildRite", "cuffedCell"]) expect(sustain.has(id)).toBe(false);
+    for (const id of ["wagon", "restCamp"]) expect(infil.has(id)).toBe(false);
+    // …and their only shared descendant is the terminal finale (no leak back).
+    expect([...sustain].filter((id) => infil.has(id))).toEqual(["finale"]);
+    expect(m.nodes.finale.edges).toEqual([]);
+  });
+
+  it("C3 pacing: guaranteed objective-XP clears a fielded Scout to the prestige floor by the Guild's Rite", () => {
+    // The infiltration arm's pre-rite combats award reward.xp uncontested to every survivor's
+    // primary job (routeCombatXp); the guild-contact grant tops it up. With ZERO combat kill/hit
+    // tally (the worst case), this floor alone must reach L5 — else the rite silently omits the
+    // prestige and the Thief route evaporates (the red-team's silent-dead-end). Vale starts L1.
+    const den = THE_HOLLOW_MILL.encounters["thieves-den"];
+    const guaranteedObjXp =
+      (E1_SKIRMISH.reward.xp ?? 0) + (TRAP_FIELD.reward.xp ?? 0) + (den.reward.xp ?? 0) + (OUTER_YARD.reward.xp ?? 0);
+    const contactGrant = THIEVES_GUILD_CONTACT.choices.find((c) => c.outcome.jobXp)!.outcome.jobXp!.amount;
+    const floorXp = (SCOUT_PRESTIGE_FLOOR - 1) * LEVELING.xpPerJobLevel; // L1 → L5
+    expect(guaranteedObjXp + contactGrant).toBeGreaterThanOrEqual(floorXp);
   });
 
   it("boots with the starting trio (recruits join via their nodes, not the bundle)", () => {
@@ -174,49 +224,28 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(TRAP_FIELD.enemies).toHaveLength(1);
   });
 
-  it("CLEAR via 4B: frees the Medic, sets the gate, and completes the run", () => {
+  it("CLEAR via the sustain arm: the Wagon frees the Medic (+ Merchant at the pre-fork Market)", () => {
     const loop = freshLoop();
-    // Route: e1 → camp2 → snares → wagon4b (4B) → den → finale (avoids securedWagon).
-    const route = ["e1", "camp2", "snares", "wagon4b", "den", "finale"];
+    // Route: e1 → camp2 → snares → market → wagon → restCamp → finale.
+    const route = ["e1", "camp2", "snares", "market", "wagon", "restCamp", "finale"];
     const visited = drive(loop, forceWin, (ids) => ids.find((id) => route.includes(id)) ?? ids[0]);
-    expect(visited).toContain("wagon4b");
-    expect(loop.run.party.some((u) => u.id === "sela")).toBe(true); // Medic freed at 4B
+    expect(visited).toContain("wagon");
+    expect(loop.run.party.some((u) => u.id === "sela")).toBe(true); // Medic freed at the Wagon
     expect(loop.run.flags["medic-freed"]).toBe(true);
-    expect(loop.run.inventory.counts["relic-hollow-blade"] ?? 0).toBeGreaterThan(0); // relic from the Den
+    expect(loop.run.party.some((u) => u.id === "mira")).toBe(true); // Merchant at the pre-fork Market
     expect(loop.isComplete()).toBe(true);
   });
 
-  it("CLEAR via 4A: Medic catch-up at the secured Wagon, then finale", () => {
+  it("CLEAR via the infiltration arm: relic at the Den + the cell prisoner joins, and NO Medic (C8)", () => {
     const loop = freshLoop();
-    // Route: e1 → camp2 → snares → rest4a (safe road) → market → securedWagon → finale.
-    const route = ["e1", "camp2", "snares", "rest4a", "market", "securedWagon", "finale"];
-    drive(loop, forceWin, (ids) => ids.find((id) => route.includes(id)) ?? ids[0]);
-    expect(loop.run.party.some((u) => u.id === "mira")).toBe(true); // Merchant at the Market
-    expect(loop.run.party.some((u) => u.id === "sela")).toBe(true); // Medic via the catch-up
+    // Route: e1 → camp2 → snares → market → guildContact → den → outerYard → guildRite → cuffedCell → finale.
+    const route = ["e1", "camp2", "snares", "market", "guildContact", "den", "outerYard", "guildRite", "cuffedCell", "finale"];
+    const visited = drive(loop, forceWin, (ids) => ids.find((id) => route.includes(id)) ?? ids[0]);
+    expect(visited).toContain("cuffedCell");
+    expect(loop.run.inventory.counts["relic-hollow-blade"] ?? 0).toBeGreaterThan(0); // relic from the Den
+    expect(loop.run.party.some((u) => u.id === "cell-prisoner")).toBe(true); // recruit-on-win (D52), even frontally
+    expect(loop.run.party.some((u) => u.id === "sela")).toBe(false); // no Medic catch-up on this arm (C8)
     expect(loop.isComplete()).toBe(true);
-  });
-
-  it("conditional access: the secured Wagon is gated off once the Medic is held", () => {
-    const run = createRunFromExpedition(THE_HOLLOW_MILL);
-    const loop = new RunLoop(run);
-    // Walk node-by-node to the Market via 4B (which frees the Medic), then STOP at the
-    // Market (don't drive past it) so we can inspect the offered edges from there.
-    for (const next of ["e1", "camp2", "snares", "wagon4b", "market"]) {
-      const node = loop.choose(next);
-      if (node.kind === "combat") {
-        loop.startEncounter();
-        loop.beginBattle();
-        forceWin(loop);
-        loop.resolve();
-      } else {
-        loop.playCurrentNode();
-      }
-    }
-    expect(run.flags["medic-freed"]).toBe(true);
-    // From the Market the dug-in Wagon must NOT be offered (Medic already held).
-    const reachable = loop.reachable().map((n) => n.id);
-    expect(reachable).not.toContain("securedWagon");
-    expect(reachable).toContain("den");
   });
 
   it("the iron-weapons pick grants party-gear that confers a blanket +attack edge (D78)", () => {

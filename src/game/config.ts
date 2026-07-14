@@ -4,6 +4,7 @@ import { OverworldScene } from "./scenes/OverworldScene";
 import { BattleScene } from "./scenes/BattleScene";
 import { ExpeditionBootScene, HollowMillBootScene } from "./boot/demos";
 import { BattleBootScene, OverworldBootScene, JumpBootScene, DebugBootScene, ScenarioBootScene } from "./boot/debug";
+import { ReproBootScene } from "./boot/repro";
 import { COLOR } from "./theme";
 
 // Standalone **Hollow Mill** mode (M14/D44/D52): `#demo` boots the authored
@@ -42,6 +43,9 @@ const isDebug = base === "debug";
 // BattleScene (the visual twin of headless stageEncounter); bare `#scene` renders a
 // clickable picker of every registered scenario × party arm.
 const isScene = base === "scene" || base.startsWith("scene=");
+// `#repro` (debug, D-repro): re-enter the last captured run state (localStorage) — the
+// same-browser twin of the debug menu's cross-machine Restore box (see repro-capture.ts).
+const isRepro = base === "repro";
 
 /** Phaser game configuration for the web build. */
 export const gameConfig: Phaser.Types.Core.GameConfig = {
@@ -50,7 +54,9 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   width: 800,
   height: 600,
   backgroundColor: COLOR.bg,
-  scene: isDebug
+  scene: isRepro
+    ? [ReproBootScene, GuildScene, OverworldScene, BattleScene]
+    : isDebug
     ? [DebugBootScene, GuildScene, OverworldScene, BattleScene]
     : isScene
     ? [ScenarioBootScene, GuildScene, OverworldScene, BattleScene]

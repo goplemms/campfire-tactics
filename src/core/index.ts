@@ -58,6 +58,7 @@ export * from "./journal";
 export * from "./manifest";
 export * from "./run";
 export * from "./runloop";
+export * from "./repro";
 export * from "./recovery";
 export * from "./playtest-log";
 export * from "./caravan";

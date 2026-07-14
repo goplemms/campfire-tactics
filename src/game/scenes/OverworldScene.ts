@@ -76,6 +76,7 @@ import {
   type EquipSlot,
 } from "../../core";
 import { clearLayer } from "../ui";
+import { captureRepro } from "../repro-capture";
 import { Button, probeWidth } from "../button";
 import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
 import { drawLedgerSheet } from "../ledger-sheet";
@@ -95,6 +96,12 @@ export interface RunHandoff {
   caravanId?: string;
   /** Show the one-time Expedition-demo intro overlay before the map (M13 demo). */
   demoIntro?: boolean;
+  /**
+   * Repro-restore only (debug): open the prep camp for this node id straight on boot, so a
+   * restored dump lands on the exact pre-Begin screen ({@link "../repro-capture".restoreAndBoot}).
+   * The run is already positioned there — this renders the camp without re-choosing/arriving.
+   */
+  reproCampNode?: string;
 }
 
 /** Buyable Market stock (D61) — trap kits first (the headline), then the Medic's herbs. */
@@ -155,6 +162,8 @@ export class OverworldScene extends Phaser.Scene {
   private caravanId?: string;
   /** One-shot Expedition-demo intro flag (cleared after it shows once). */
   private demoIntro = false;
+  /** Repro-restore only (debug): node id to open the prep camp for on boot (see RunHandoff). */
+  private reproCampNode?: string;
 
   /** The overworld map board + pinned intel card (D22/D24/D48/D80) — its own view module. */
   private mapView!: MapView;
@@ -210,6 +219,7 @@ export class OverworldScene extends Phaser.Scene {
     this.guild = data?.guild;
     this.caravanId = data?.caravanId;
     this.demoIntro = data?.demoIntro ?? false;
+    this.reproCampNode = data?.reproCampNode;
   }
 
   create(): void {
@@ -255,6 +265,21 @@ export class OverworldScene extends Phaser.Scene {
     // the **Survey** beat (D46) — the now-informed post-event planning surface —
     // before the map. A fresh run sits at the un-played start node → straight to map.
     if (this.justResolvedCurrentNode()) return this.showReactCamp();
+
+    // Repro-restore (debug): a restored dump lands straight on the captured node's prep camp
+    // (the pre-Begin screen) so a reported freeze reproduces on the first click. The run is
+    // already positioned at the node, so this renders the camp directly — no re-choose/arrival.
+    if (this.reproCampNode) {
+      const node = this.run.map.nodes[this.reproCampNode];
+      this.reproCampNode = undefined;
+      if (node) {
+        this.drawMap();
+        this.clearMap();
+        this.campNode = node;
+        this.renderCamp();
+        return;
+      }
+    }
 
     // The Expedition demo (M13) opens with a one-time orientation card.
     if (this.demoIntro) {
@@ -443,6 +468,9 @@ export class OverworldScene extends Phaser.Scene {
   /** (Re)draw the camp panel — called after every action so readouts stay live. */
   private renderCamp(): void {
     const node = this.campNode!;
+    // Repro capture (debug): snapshot the pre-Begin state — the exact surface a Begin freeze
+    // happens on — so it can be dumped (Shift+D) even after the render wedges.
+    captureRepro(this.run, { scene: "OverworldScene", phase: "prep-camp", node: node.id });
     this.clearCamp();
 
     const isCombat = node.kind === "combat";
@@ -1157,6 +1185,9 @@ export class OverworldScene extends Phaser.Scene {
   /** Leave the camp and play the node (D35): combat hands off; rest recovers here. */
   private commit(): void {
     const node = this.campNode!;
+    // Repro capture (debug): snapshot at the moment of the risky handoff (Begin), tagged with
+    // the node kind we're about to play — so a freeze in the transition is reproducible.
+    captureRepro(this.run, { scene: "OverworldScene", phase: `commit:${node.kind}`, node: node.id });
     this.clearCamp();
     this.campNode = undefined;
     if (node.kind === "combat") {

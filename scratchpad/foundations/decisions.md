@@ -3641,6 +3641,52 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D95 — Repro Dump: capture the live state directly, restore without replay (debug tooling)
+
+- **Status:** Decided + built (2026-07-13), green. Prompted by a player-reported `#demo` **freeze at
+  Begin** on the Night-3 `snares` prep camp that no headless/loop reproduction could hit.
+- **Context:** the freeze was interactive-state-dependent, and we had **no way to capture the exact
+  state** a player was in. `snapshotRun` (D-save seam) is **insufficient for this**: it stores only
+  `seed + route + econ` and rebuilds the rest by **replaying the route from the seed** — but replay
+  takes the *auto/naive* path (auto-resolved events, auto-battled combats), so it can't reproduce a
+  player's **interactive** choices (which recovery verbs, how a gift discard resolved, deploy
+  positions). A freeze usually lives in exactly that state, so replay-based repro is blind to it.
+- **Decision:** a **Repro Dump** captures the **full live mutable state directly** and restores it with
+  **no replay**. Pure core (`repro.ts`, headless-tested): `dumpRun` serializes the whole `RunState` as
+  plain data — the only non-plain fields handled (`rng` → its `RngState`; the map carried verbatim,
+  authored resolution still keys off `expeditionId`) — through an **Infinity-safe** JSON
+  replacer/reviver (a `StatusInstance.duration` of `Infinity` would otherwise round-trip to `null`).
+  `restoreRun` rehydrates it exactly. A **schema version** (`REPRO_DUMP_VERSION`) rejects a stale paste
+  loudly.
+- **Freeze-survival is the load-bearing property:** capture is **passive** — snapshotted into
+  `window.campfire` (+ `localStorage`) on **every scene transition** (prep-camp render, Begin/commit,
+  battle staging), *before* the click that freezes. An uncaught render exception leaves the canvas dead
+  but not the page, so the last-good capture is still readable. The dump affordance is a **raw-`window`
+  Shift+D** hotkey (+ `window.campfire.dump()`), not Phaser input a wedged scene can't service —
+  copies JSON to clipboard + logs it.
+- **Restore closes the loop:** `window.campfire.restore(json)` (cross-machine: a tester's dump → a dev's
+  console) and `#repro` (same-browser reload from `localStorage`) both rehydrate and land the
+  OverworldScene on the captured node's **prep camp** (the pre-Begin screen), via a small
+  `reproCampNode` handoff hook — so a reported freeze reproduces on the first click.
+- **On-screen surface:** an in-game **Save / Load** panel (a `💾` toggle parked bottom-right above the
+  Session-log button — a DOM overlay, so it survives scene transitions) exposes the same loop without
+  the console: **Export** the current run to a textarea + clipboard (or a `.json` file), **paste + Load**
+  a save to jump into it. The clickable twin of the hotkey/console API; available on every build (gate
+  behind a hash later if it should be dev-only).
+- **Scope / seams:** **RunState-fidelity** only. Mid-fight `Battle` state (live clock/bus) is **not**
+  serialized — a restore re-stages the node's encounter *deterministically* from the restored
+  RunState (enough for overworld/prep/Begin freezes, the reported class). A battle-internal
+  step-recorder is a possible later track.
+- **Guards:** `repro.test.ts` (round-trip fidelity incl. the Infinity hazard, decoupling, RNG
+  continuity, identical staging) + a **visual e2e** (`e2e-repro.mjs`, CI-wired): real-browser
+  capture → dump → restore lands on the prep camp with an interactively-set purse/HP intact, then
+  Begin still hands off. The barrel surface (`barrel-surface.test.ts`) absorbs the 5 new exports.
+- **Reuses:** `Rng.state()`/`fromState` (D-rng), the expedition catalog (D52), the jump tool's
+  "collapse the running stack, hand off through a live scene" boot sequence (D-debug). **Superseded
+  by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

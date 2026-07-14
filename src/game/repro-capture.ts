@@ -45,10 +45,21 @@ interface Capture {
   at: number;
 }
 
+/** A recorded uncaught error (the freeze's actual stack) — the whole point of the tool. */
+export interface ReproError {
+  message: string;
+  stack?: string;
+  /** "error" (a thrown exception) or "unhandledrejection" (a rejected promise). */
+  source: string;
+  at: number;
+}
+
 interface ReproGlobal {
   last?: Capture;
   history: Capture[];
-  /** Copy the last dump's JSON to the clipboard + log it; returns the JSON (or "" if none). */
+  /** The most recent uncaught error seen since load (folded into every export). */
+  lastError?: ReproError;
+  /** Copy the last dump's JSON (+ diagnostics) to the clipboard + log it; returns it (or ""). */
   dump: () => string;
   /** Restore a pasted dump JSON and boot into it. */
   restore: (json: string) => void;
@@ -60,6 +71,24 @@ function ns(): ReproGlobal {
   const w = window as ReproWindow;
   if (!w.campfire) w.campfire = { history: [], dump: () => "", restore: () => {} };
   return w.campfire;
+}
+
+/**
+ * Build the export payload: the restorable dump PLUS a `_repro` diagnostic block (where the
+ * capture was taken, the trail of recent transitions, and — crucially — the last uncaught
+ * **error message + stack**). The `_repro` key is additive; {@link parseDump} ignores it, so
+ * the string still restores. Infinity sentinels are already baked into `dumpJson` by
+ * {@link serializeDump}, so a plain re-stringify keeps them lossless.
+ */
+function buildExportJson(dump: ReproDump, context: ReproContext): string {
+  const g = ns();
+  const dumpObj = JSON.parse(serializeDump(dump));
+  dumpObj._repro = {
+    context,
+    trail: g.history.slice(-8).map((c) => ({ scene: c.context.scene, phase: c.context.phase, node: c.context.node })),
+    lastError: g.lastError,
+  };
+  return JSON.stringify(dumpObj);
 }
 
 /**
@@ -112,17 +141,29 @@ export function installReproDump(game: Phaser.Game): void {
       console.warn("[repro] nothing captured yet — play a step first");
       return "";
     }
-    const text = serializeDump(g.last.dump);
+    const text = buildExportJson(g.last.dump, g.last.context);
     copyToClipboard(text);
     console.log(
       `[repro] dump copied to clipboard (${text.length} chars) — ${g.last.context.scene}/${g.last.context.phase}` +
-        (g.last.context.node ? ` @ ${g.last.context.node}` : ""),
+        (g.last.context.node ? ` @ ${g.last.context.node}` : "") +
+        (g.lastError ? ` — ⚠ carries an error: ${g.lastError.message}` : ""),
     );
     console.log(text);
     return text;
   };
   g.restore = (json: string) => restoreAndBoot(game, json);
   (window as ReproWindow).campfireDump = g.dump;
+
+  // Record the actual uncaught error (message + stack) — the freeze's real cause, folded into
+  // every export. A scene-render exception surfaces here as `window.onerror`; a rejected async
+  // path as `unhandledrejection`. This is what turns "it froze" into a one-line diagnosis.
+  window.addEventListener("error", (e) => {
+    g.lastError = { message: String(e.message), stack: e.error?.stack, source: "error", at: Date.now() };
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    const r = e.reason;
+    g.lastError = { message: String(r?.message ?? r), stack: r?.stack, source: "unhandledrejection", at: Date.now() };
+  });
 
   // A raw window listener (capture phase) so it fires even if a scene's Phaser input is
   // wedged by the very exception we're trying to capture.
@@ -147,12 +188,16 @@ function liveRun(game: Phaser.Game): RunState | undefined {
   return undefined;
 }
 
-/** The freshest dump JSON to export: the live run if a scene owns one, else the last capture. */
+/**
+ * The dump JSON the Save/Load panel exports: the freshest live run if a scene owns one (else
+ * the last capture), always wrapped with the `_repro` diagnostics (context trail + the last
+ * uncaught error). So a panel Export taken after a freeze carries the stack too.
+ */
 function exportText(game: Phaser.Game): string {
   const run = liveRun(game);
-  if (run) return serializeDump(dumpRun(run));
+  if (run) return buildExportJson(dumpRun(run), { scene: "panel", phase: "export", node: run.mapNodeId });
   const g = ns();
-  return g.last ? serializeDump(g.last.dump) : "";
+  return g.last ? buildExportJson(g.last.dump, g.last.context) : "";
 }
 
 /**

@@ -114,6 +114,17 @@ async function main() {
     check("Load from the panel restores into the OverworldScene", loaded.active === true && loaded.node === "snares");
     check("Load applied the edited save (7777g), proving the import path", loaded.gold === 7777);
 
+    // --- Error capture: an uncaught error is folded into the export (the freeze's stack) -----
+    console.log("• uncaught-error capture");
+    await g.page.evaluate(() => {
+      window.dispatchEvent(new ErrorEvent("error", { message: "SYNTHETIC_FREEZE", error: new Error("SYNTHETIC_FREEZE") }));
+    });
+    const withErr = await g.eval(`window.campfire.dump()`);
+    const parsed = JSON.parse(withErr);
+    check("the export carries a _repro diagnostics block", parsed._repro && typeof parsed._repro === "object");
+    check("the _repro block folds in the last uncaught error message", parsed._repro.lastError && parsed._repro.lastError.message === "SYNTHETIC_FREEZE");
+    check("the _repro block records the capture-context trail", Array.isArray(parsed._repro.trail) && parsed._repro.trail.length > 0);
+
     console.log(`\n✓ repro-dump E2E: ${passed} assertions passed, no page errors`);
   });
 }

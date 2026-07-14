@@ -102,6 +102,15 @@ function that reaches the screen (mirror the matching `shots-*.mjs` walkthrough)
 `expect` predicate asserting it reached its intended state — key on robust scene state
 (`s.phase`, a component handle) where you can, else on text the screen must show. That
 `expect` is what turns a wrong-screen capture into a loud `coverage` error instead of a
-false "clean", exactly the "add its guard" discipline `CLAUDE.md` asks for. A few
-battle/camp sub-states the `shots-*.mjs` set also covers (the strike telegraph, the command
-action menu) aren't in the sweep yet — add them the same way if they start regressing.
+false "clean", exactly the "add its guard" discipline `CLAUDE.md` asks for.
+
+If the `expect` is text-based (`seesText`), the phrase must be UNIQUE to that screen — a
+loose regex passes on the wrong screen and the gate is worthless. Run `npm run
+audit:challenge` after adding one: it reaches every surface and proves each text gate is
+true on its own screen and false on all others (it fails loudly on any false-pass). Prefer
+an authored headline the screen owns (a title, a section heading) over a common word like
+"storage" or "road" that the HUD/other panels also render.
+
+A few battle/camp sub-states the `shots-*.mjs` set also covers (the strike telegraph, the
+command action menu) aren't in the sweep yet — add them the same way if they start
+regressing.

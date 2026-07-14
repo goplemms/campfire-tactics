@@ -102,17 +102,17 @@ const seesText = (re) => `(() => {
 // modal, an unopened event) is a loud `coverage` error, never a silent "geometry clean".
 // That guard is the whole point: a screenshot that lays out fine but shows the wrong
 // screen is exactly the hole a data-only test leaves open.
-const SURFACES = [
+export const SURFACES = [
   { name: "overworld-intro", minMs: 800, note: "the expedition orientation card over the fogged map",
-    expect: { desc: "the orientation card is open", eval: seesText("/expedition/i") } },
+    expect: { desc: "the orientation card is open", eval: seesText("/long road home/i") } },
   { name: "overworld-map", eval: ov(`for(const o of s.overlay)o.destroy();s.overlay=[];`), note: "the hand-built Hollow Mill map, overlay cleared",
     expect: { desc: "the map is showing (no overlay)", eval: ov(`return s.overlay.length===0;`) } },
   { name: "intel-card", minMs: 500, eval: ov(`s.showPreview(s.run.map.nodes["snares"]);`), note: "the pinned intel preview card on the map",
-    expect: { desc: "the intel preview card is open", eval: seesText("/rumors|hazards/i") } },
+    expect: { desc: "the intel preview card is open", eval: seesText("/rumors/i") } },
   { name: "camp", minMs: 500, eval: ov(`s.enterCamp(s.loop.reachable()[0]);`), note: "the make-camp screen (camp action row)",
     expect: { desc: "the camp screen is entered", eval: ov(`return !!s.campNode;`) } },
   { name: "ledger", minMs: 500, eval: ov(`s.openTent(()=>s.renderCamp(),"ledger");`), note: "the Captain's Tent ledger + forecast",
-    expect: { desc: "the ledger sheet is open", eval: seesText("/ledger|forecast/i") } },
+    expect: { desc: "the ledger sheet is open", eval: seesText("/forecasted balance/i") } },
   { name: "deploy", minMs: 1100, eval: navTo("e1"), note: "the E1 skirmish deployment board",
     expect: { desc: "the deployment board is up", eval: bs(`return s.phase==="deployment";`) } },
   { name: "battle", minMs: 700, drive: driveBattle, note: "mid-battle: action row, CT rail, combat log",
@@ -126,7 +126,7 @@ const SURFACES = [
     waitScene: ["OverworldScene", ["run", "loop"]],
     drive: driveEvent("guildContact"),
     note: "an authored overworld event screen (guild-contact)",
-    expect: { desc: "the authored event modal is open", eval: seesText("/tavern|token|guild/i") },
+    expect: { desc: "the authored event modal is open", eval: seesText("/back-alley tavern/i") },
   },
 
   // --- the wider sweep (D-scope: the remaining player-facing screens) -----------
@@ -158,7 +158,7 @@ const SURFACES = [
     waitScene: ["OverworldScene", ["run", "loop"]],
     note: "the stores/inventory tent — stash contents + caps",
     drive: (g) => g.eval(ov(`s.enterCamp(s.loop.reachable()[0]);s.run.inventory.storageCap=8;s.run.inventory.counts={"trap-kit":2,salve:3,antidote:1,"rune-reagent":1};s.run.camp.gold=180;s.openTent(()=>s.renderCamp(),"stores");`)),
-    expect: { desc: "the stores tent is open", eval: seesText("/salve|antidote|storage|stash/i") },
+    expect: { desc: "the stores tent is open", eval: seesText(String.raw`/\(free \d/i`) },
   },
   {
     name: "discard",
@@ -167,7 +167,7 @@ const SURFACES = [
     waitScene: ["OverworldScene", ["run", "loop"]],
     note: "the storage-overflow discard menu (D75)",
     drive: (g) => g.eval(ov(`s.enterCamp(s.loop.reachable()[0]);s.run.inventory.storageCap=4;s.run.inventory.counts={"trap-kit":2,"wild-herbs":5,salve:3,valuables:1,"relic-hollow-blade":1};s.setOutToMap();`)),
-    expect: { desc: "the discard menu is open", eval: seesText("/discard|drop|over.?stuff|storage/i") },
+    expect: { desc: "the discard menu is open", eval: seesText("/storage overflowing/i") },
   },
   {
     name: "traveler-gift",
@@ -176,7 +176,7 @@ const SURFACES = [
     waitScene: ["OverworldScene", ["run", "loop"]],
     note: "the Node-2 traveler-gift event panel (D79)",
     drive: (g) => g.eval(ov(`for(const o of s.overlay)o.destroy();s.overlay=[];s.run.mapNodeId="e1";s.run.path=["start","e1"];s.enterCamp(s.run.map.nodes["camp2"]);s.commit();`)),
-    expect: { desc: "the traveler-gift panel is open", eval: seesText("/gift|traveler|accept|road/i") },
+    expect: { desc: "the traveler-gift panel is open", eval: seesText("/a traveler on the road/i") },
   },
 ];
 
@@ -335,6 +335,23 @@ function lintScene(W, H, MIN_ALPHA) {
   return { findings, counts: { texts: texts.length, occludedText, hiddenText: liveHidden.length, deadControls: liveDead.length } };
 }
 
+/**
+ * Drive the live session to a surface's intended screen: (re)boot to its entry hash, wait
+ * for its scene, run its driver/eval, then settle. Throws on a drive failure. Shared by the
+ * audit and the expect-specificity challenge so both exercise the SAME driving.
+ */
+export async function reachSurface(g, s) {
+  if (s.boot !== undefined) {
+    // `!== undefined` (not truthiness): the guild hall boots to "" (no hash), which is
+    // falsy — a bare `if (s.boot)` would skip its reboot and capture the prior surface.
+    await g.boot(s.boot);
+    if (s.waitScene) await g.waitForScene(s.waitScene[0], s.waitScene[1]);
+  }
+  if (s.drive) await s.drive(g);
+  else if (s.eval) await g.eval(s.eval);
+  await sleep(s.minMs ?? 400);
+}
+
 async function main() {
   resolveChrome();
   await mkdir(OUT, { recursive: true });
@@ -349,21 +366,13 @@ async function main() {
       const idx = String(++seq).padStart(2, "0");
       const file = path.join(OUT, `${idx}-${s.name}.png`);
       try {
-        // `!== undefined` (not truthiness): the guild hall boots to "" (no hash), which is
-        // falsy — a bare `if (s.boot)` would skip its reboot and capture the prior surface.
-        if (s.boot !== undefined) {
-          await g.boot(s.boot);
-          if (s.waitScene) await g.waitForScene(s.waitScene[0], s.waitScene[1]);
-        }
-        if (s.drive) await s.drive(g);
-        else if (s.eval) await g.eval(s.eval);
+        await reachSurface(g, s);
       } catch (e) {
         report.surfaces.push({ name: s.name, screenshot: path.relative(ROOT, file), note: s.note, driveError: String(e).slice(0, 300), findings: [], pageProblems: [] });
         await g.screenshot(file).catch(() => {});
         console.error(`  ✗ ${s.name}: drive error — ${String(e).slice(0, 160)}`);
         continue;
       }
-      await sleep(s.minMs ?? 400);
       // Hide the DOM dev chrome (the collapsible tray + its corner chevron) so the capture
       // is pure game canvas — we audit the rendered UI, not the testing affordances.
       await g.eval(`document.querySelectorAll("#dev-tray,#dev-tray-toggle").forEach(e=>{e.style.display="none";});true`).catch(() => {});
@@ -418,4 +427,9 @@ async function main() {
   if (report.summary.errors > 0) process.exit(1);
 }
 
-main().catch((e) => { console.error(`\n${e.stack || e}`); process.exit(1); });
+// Run the audit only when invoked directly (`node scripts/visual-audit.mjs`), so the
+// challenge script can `import { SURFACES, reachSurface }` without kicking off a full run.
+import { pathToFileURL } from "node:url";
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main().catch((e) => { console.error(`\n${e.stack || e}`); process.exit(1); });
+}

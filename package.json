@@ -16,6 +16,7 @@
     "test:e2e:repro": "node scripts/e2e-repro.mjs",
     "test:e2e:second-battle": "node scripts/e2e-second-battle.mjs",
     "audit:visual": "node scripts/visual-audit.mjs",
+    "audit:challenge": "node scripts/visual-audit-challenge.mjs",
     "shots": "node scripts/shots-overworld.mjs",
     "shots:mill": "node scripts/shots-hollow-mill.mjs",
     "shots:dossier": "node scripts/shots-dossier.mjs",

@@ -3668,6 +3668,12 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   console) and `#repro` (same-browser reload from `localStorage`) both rehydrate and land the
   OverworldScene on the captured node's **prep camp** (the pre-Begin screen), via a small
   `reproCampNode` handoff hook — so a reported freeze reproduces on the first click.
+- **The uncaught error is captured too (the decisive bit):** `installReproDump` hooks `window`
+  `error` + `unhandledrejection`, recording the freeze's **message + stack** into `campfire.lastError`.
+  Every export folds a `_repro` diagnostics block — `{ context, trail (recent transitions), lastError }`
+  — onto the dump JSON (additive; `parseDump` ignores it, so the string still restores). A dump alone
+  can miss a freeze that depends on a specific in-scene interaction (the reported `snares` case restored
+  and played cleanly); the captured stack turns "it froze" into a one-line diagnosis.
 - **On-screen surface:** an in-game **Save / Load** panel (a `💾` toggle parked bottom-right above the
   Session-log button — a DOM overlay, so it survives scene transitions) exposes the same loop without
   the console: **Export** the current run to a textarea + clipboard (or a `.json` file), **paste + Load**

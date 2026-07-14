@@ -82,6 +82,38 @@ async function main() {
     const battle = await g.eval(`(() => { const b = window.game.scene.getScene("BattleScene"); return { active: !!b && b.scene.isActive(), phase: b && b.phase }; })()`);
     check("Begin from the restored camp hands off to a live BattleScene", battle.active === true);
 
+    // --- The on-screen Save / Load panel (the DOM twin of the console API) ------------------
+    console.log("• the in-game Save / Load panel");
+    const hasToggle = await g.page.$("#repro-save-toggle");
+    check("the 💾 Save / Load toggle is mounted", hasToggle !== null);
+    // Stamp a fresh sentinel on the live (now BattleScene) run so Export has a known marker.
+    await g.bsEval(`s.run.camp.gold = 5555;`);
+    // Open the panel + Export the current run (Export reads the live scene's run).
+    await g.page.click("#repro-save-toggle");
+    await sleep(100);
+    const panelShown = await g.page.$eval("#repro-save-panel", (el) => el.style.display === "flex");
+    check("clicking the toggle opens the panel", panelShown === true);
+    // Click the Export button (first button in the panel's top row).
+    await g.page.$$eval("#repro-save-panel button", (btns) => {
+      const b = btns.find((x) => x.textContent.includes("Export"));
+      if (b) b.click();
+    });
+    await sleep(150);
+    const exported = await g.page.$eval("#repro-save-panel textarea", (t) => t.value);
+    check("Export fills the box with the current save JSON", typeof exported === "string" && exported.length > 100);
+    check("the exported save carries the live state (the 5555g purse)", exported.includes("5555"));
+    // Import: edit the JSON to a new sentinel, paste it in, click Load, and confirm it took.
+    const edited = exported.replace("5555", "7777");
+    await g.page.$eval("#repro-save-panel textarea", (t, v) => { t.value = v; }, edited);
+    await g.page.$$eval("#repro-save-panel button", (btns) => {
+      const b = btns.find((x) => x.textContent.includes("Load"));
+      if (b) b.click();
+    });
+    await sleep(700);
+    const loaded = await g.eval(ov(`return { active: s.scene.isActive(), node: s.run.mapNodeId, gold: s.run.camp.gold };`));
+    check("Load from the panel restores into the OverworldScene", loaded.active === true && loaded.node === "snares");
+    check("Load applied the edited save (7777g), proving the import path", loaded.gold === 7777);
+
     console.log(`\n✓ repro-dump E2E: ${passed} assertions passed, no page errors`);
   });
 }

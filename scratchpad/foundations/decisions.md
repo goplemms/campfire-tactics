@@ -3668,6 +3668,11 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   console) and `#repro` (same-browser reload from `localStorage`) both rehydrate and land the
   OverworldScene on the captured node's **prep camp** (the pre-Begin screen), via a small
   `reproCampNode` handoff hook — so a reported freeze reproduces on the first click.
+- **On-screen surface:** an in-game **Save / Load** panel (a `💾` toggle parked bottom-right above the
+  Session-log button — a DOM overlay, so it survives scene transitions) exposes the same loop without
+  the console: **Export** the current run to a textarea + clipboard (or a `.json` file), **paste + Load**
+  a save to jump into it. The clickable twin of the hotkey/console API; available on every build (gate
+  behind a hash later if it should be dev-only).
 - **Scope / seams:** **RunState-fidelity** only. Mid-fight `Battle` state (live clock/bus) is **not**
   serialized — a restore re-stages the node's encounter *deterministically* from the restored
   RunState (enough for overworld/prep/Begin freezes, the reported class). A battle-internal

@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { gameConfig } from "./game/config";
 import { FONT } from "./game/theme";
-import { installReproDump } from "./game/repro-capture";
+import { installReproDump, installSavePanel } from "./game/repro-capture";
 import "./game/fonts.css";
 
 // The run-bar "Demo" button (M12/D44): set the #demo hash and reload so the game
@@ -62,6 +62,8 @@ async function boot(): Promise<void> {
   // Wire the Repro Dump affordance (Shift+D / window.campfire.dump()) so a freeze on any
   // build can be captured + replayed. Passive capture is hooked inside the scenes.
   installReproDump(game);
+  // The on-screen Save / Load panel (💾 top-right) — the clickable twin of the hotkey/console.
+  installSavePanel(game);
 }
 
 void boot();

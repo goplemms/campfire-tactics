@@ -56,8 +56,23 @@ jobs:
         run: npm run test:e2e:second-battle
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
-      # On a red E2E, keep the stage + failure screenshots so the break is
-      # diagnosable from the run page without reproducing locally.
+      # Visual audit: walk the 14 player-facing surfaces, capture each, and run the
+      # in-page geometric linter (text overlap / off-canvas / invisible / dead control)
+      # + the per-surface coverage gate. Fails on any error-severity finding — the class
+      # of visual bug (overlapping text, cramped margins, wrong screen) that renders fine
+      # yet passes vitest/sim. Slower than the click-throughs (several surfaces re-boot).
+      - name: Visual audit (14-surface geometric + coverage sweep)
+        run: npm run audit:visual
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      # Guard the guards: prove every text-based coverage gate is SPECIFIC (true only on
+      # its own screen), so a loose phrase can't let a wrong-screen capture read as clean.
+      - name: Visual-audit coverage-gate specificity
+        run: npm run audit:challenge
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      # On a red E2E / audit, keep the stage + failure + audit screenshots so the break
+      # is diagnosable from the run page without reproducing locally.
       - name: Upload E2E screenshots
         if: failure()
         uses: actions/upload-artifact@v4

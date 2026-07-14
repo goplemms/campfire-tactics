@@ -96,6 +96,7 @@ import { paintZones, drawSourceMarkers } from "../deploy-zones";
 import { TrapMarkerLayer } from "../trap-markers";
 import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
+import { captureRepro } from "../repro-capture";
 import { HintPanel } from "../hint-panel";
 import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
 import { MiniCard, type CardRow } from "../info-cards";
@@ -328,6 +329,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Repro capture (debug): the run state entering the battle — a restore re-stages this
+    // node's encounter deterministically (mid-fight battle state isn't serialized, D-repro).
+    captureRepro(this.run, { scene: "BattleScene", phase: "battle-staged", node: this.run.mapNodeId });
     this.view = new CombatView(this);
     // Enlarge the combat field for legibility (D-UX): bigger tiles + tokens (HP
     // bars, nameplates, status pips) so details stand out, especially in testing.

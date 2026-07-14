@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { gameConfig } from "./game/config";
 import { FONT } from "./game/theme";
+import { installReproDump } from "./game/repro-capture";
 import "./game/fonts.css";
 
 // The run-bar "Demo" button (M12/D44): set the #demo hash and reload so the game
@@ -58,6 +59,9 @@ async function boot(): Promise<void> {
   // can poll scene state for an animation-idle sync point. Harmless in
   // production — a single reference on window.
   (window as Window & { game?: Phaser.Game }).game = game;
+  // Wire the Repro Dump affordance (Shift+D / window.campfire.dump()) so a freeze on any
+  // build can be captured + replayed. Passive capture is hooked inside the scenes.
+  installReproDump(game);
 }
 
 void boot();

@@ -454,6 +454,13 @@ export class BattleScene extends Phaser.Scene {
     this.dangerZoneGfx = undefined;
     this.deployReachGfx?.destroy();
     this.deployReachGfx = undefined;
+    // The CT-rail chevron is created lazily (`if (!this.railChevron)` in layoutRailChevron) and
+    // cached in an instance field — but the field survives a scene shutdown while its Text is
+    // destroyed. On a SECOND battle (e.g. E1 → snares) the stale handle's `setText` hit a null
+    // texture and froze the deploy render. Reset it here (like the zone graphics) so each battle
+    // recreates it fresh. (logChevron is recreated unconditionally in create(), so it's immune.)
+    this.railChevron?.destroy();
+    this.railChevron = undefined;
     clearLayer(this.deployMarkers);
     clearLayer(this.captiveMarkers);
     this.highlight.clear();

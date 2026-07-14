@@ -3693,6 +3693,32 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D96 — The second-battle freeze: a GameObject cached across BattleScene re-entry goes stale
+
+- **Status:** Decided + fixed (2026-07-13), green. First bug **found via the D95 Repro Dump** — the
+  captured stack (`campfire.lastError`) pinpointed it after a RunState dump alone couldn't.
+- **Symptom:** the game froze entering the **second** combat of a run (the reported case: E1 → snares)
+  with `TypeError: … "drawImage", this.data is null` deep in Phaser's text render, up the stack
+  `layoutRailChevron → drawRail → refreshDeployStatus → … → enterDeploy → BattleScene.create`.
+- **Root cause:** `BattleScene` is a **reused singleton** — `scene.start` re-runs `init`+`create` on the
+  same instance, and Phaser **destroys the scene's GameObjects on shutdown while instance fields keep
+  their (now-dead) references**. The CT-rail chevron is created *lazily* (`if (!this.railChevron)`) and
+  cached in a field; on the second `create()` the guard saw the stale handle as truthy, skipped
+  re-creation, and called `setText` on a destroyed Text (null texture) → freeze. `rebuildBoard()`
+  already reset the sibling lazily-created fields (the zone graphics) to `undefined` for exactly this
+  reason — **`railChevron` was simply missed** from that reset. (`logChevron` is recreated
+  *unconditionally* in `create()`, so it was immune.)
+- **Fix:** reset `railChevron` (destroy + `undefined`) in `rebuildBoard()` alongside the zone graphics,
+  so each battle re-creates it fresh. One-line class fix, no behavior change.
+- **Why it hid:** every headless/visual guard played **one** battle per scene, so the stale-reuse path
+  never ran. The **`test:e2e:second-battle`** guard now plays two battles back-to-back (E1 → snares) and
+  asserts `assertNoProblems` on the second deploy — verified to fail without the fix, pass with it. The
+  general lesson: any GameObject cached in a `BattleScene` field with an `if (!this.x)` create-guard must
+  be reset in `rebuildBoard()`, or it goes stale on scene re-entry.
+- **Reuses:** the `rebuildBoard()` reset pattern (the zone graphics). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

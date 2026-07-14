@@ -90,8 +90,18 @@ findings back for a normal edit pass rather than editing from this agent.
 
 ## Extending coverage
 
-The audited surfaces are the `SURFACES` array in `scripts/visual-audit.mjs` (currently the
-core screens: overworld intro/map, intel card, camp, ledger, deploy, battle, resolution, an
-overworld event). When a new player-facing surface ships, add an entry there (a boot hash
-and/or a scene-eval that reaches the screen) the same way the existing ones drive it — that's
-how coverage grows, exactly as `CLAUDE.md` asks for new visual e2e guards.
+The audited surfaces are the `SURFACES` array in `scripts/visual-audit.mjs`. It currently
+sweeps 14 player-facing screens: overworld intro/map, intel card, camp, ledger, deploy,
+battle, resolution, an overworld event, the guild hall, the party dossier, the stores
+inventory, the storage-overflow discard menu, and the traveler-gift event panel. This is
+the fuller sweep — a bit slower (several surfaces re-boot to their own entry hash), so it's
+meant to be run deliberately (after UI work, before a release), not on every tiny change.
+
+When a new player-facing surface ships, add an entry: a `boot` hash and/or a `drive`
+function that reaches the screen (mirror the matching `shots-*.mjs` walkthrough), plus an
+`expect` predicate asserting it reached its intended state — key on robust scene state
+(`s.phase`, a component handle) where you can, else on text the screen must show. That
+`expect` is what turns a wrong-screen capture into a loud `coverage` error instead of a
+false "clean", exactly the "add its guard" discipline `CLAUDE.md` asks for. A few
+battle/camp sub-states the `shots-*.mjs` set also covers (the strike telegraph, the command
+action menu) aren't in the sweep yet — add them the same way if they start regressing.

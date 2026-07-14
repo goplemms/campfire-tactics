@@ -133,6 +133,16 @@ export function buildResolutionSummary(input: ResolutionInput): ResolutionReport
  */
 export function showResolutionReport(scene: Phaser.Scene, overlay: Phaser.GameObjects.GameObject[], r: ResolutionReport): void {
   clearLayer(overlay);
+  // A dimming backdrop behind the report (the D75 modal convention): the won/lost field
+  // recedes so the after-action card reads on its own, instead of board unit tokens
+  // ghosting through the slightly-translucent card (a visual-audit finding). Kept
+  // NON-interactive so the scene's primary action button ("Return to Map") — which is
+  // lifted above this in finishBattle — stays fully clickable beneath it.
+  overlay.push(
+    scene.add
+      .rectangle(scene.scale.width / 2, scene.scale.height / 2, scene.scale.width, scene.scale.height, COLOR.black, 0.5)
+      .setDepth(19),
+  );
   const w = 484;
   const padX = 26;
   const leftX = -w / 2 + padX;

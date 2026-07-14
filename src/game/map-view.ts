@@ -420,7 +420,10 @@ export class MapView {
     const h = Math.max(72, y - top + 10);
     // A tall card (road line + rumors) must never run off the canvas: lift the whole
     // stack so the bottom edge stays on-screen — the card grows UPWARD past its dock.
-    const lift = Math.max(0, top + h - (s.scale.height - 12));
+    // The clearance stops above the bottom map-legend strip (drawn at height−30), not
+    // just above the canvas edge: otherwise a lifted card's last rumor line lands on the
+    // legend (a real overlap the visual audit caught). Reserve the legend band + a gap.
+    const lift = Math.max(0, top + h - (s.scale.height - 44));
     if (lift > 0) for (const o of this.intelObjects) (o as unknown as { y: number }).y -= lift;
     this.intelObjects.push(s.add.rectangle(cx, top - lift + h / 2, w, h, COLOR.surface, 0.97).setStrokeStyle(1, COLOR.borderSoft).setDepth(9));
   }

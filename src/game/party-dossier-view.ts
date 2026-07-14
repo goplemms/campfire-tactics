@@ -328,33 +328,38 @@ export class PartyDossierView {
     const rowH = 18;
     const locked = a.lockedUntil !== undefined;
 
-    this.detail.push(
-      s.add
-        .text(this.px, y, `${glyph} ${a.name}`, {
-          color: locked ? INK.disabled : INK.secondary,
-          fontFamily: FONT.family,
-          fontSize: FONT.label,
-        })
-        .setOrigin(0, 0.5)
-        .setDepth(43),
-    );
-
+    // Right-aligned tag first, so its measured width caps the name's wrap below — a long
+    // active ("Debilitating Strike") must wrap, not run under its "Battle · Act" tag (a
+    // visual-audit finding). The row then grows to fit a wrapped name.
     const meta = locked ? `Lv ${a.lockedUntil}` : a.tag ?? "";
+    let tagW = 0;
     if (meta) {
-      this.detail.push(
-        s.add
-          .text(this.px + this.pw, y, meta, {
-            color: locked ? INK.ember : INK.muted,
-            fontFamily: FONT.family,
-            fontSize: FONT.caption,
-          })
-          .setOrigin(1, 0.5)
-          .setDepth(43),
-      );
+      const tag = s.add
+        .text(this.px + this.pw, y, meta, {
+          color: locked ? INK.ember : INK.muted,
+          fontFamily: FONT.family,
+          fontSize: FONT.caption,
+        })
+        .setOrigin(1, 0.5)
+        .setDepth(43);
+      this.detail.push(tag);
+      tagW = Math.ceil(tag.width);
     }
 
-    this.hoverZone(this.px, y - rowH / 2, this.pw, rowH, this.abilityTipText(a));
-    return y + rowH;
+    const name = s.add
+      .text(this.px, y, `${glyph} ${a.name}`, {
+        color: locked ? INK.disabled : INK.secondary,
+        fontFamily: FONT.family,
+        fontSize: FONT.label,
+        wordWrap: { width: Math.max(40, this.pw - tagW - 10) },
+      })
+      .setOrigin(0, 0.5)
+      .setDepth(43);
+    this.detail.push(name);
+
+    const grownH = Math.max(rowH, Math.ceil(name.height) + 2);
+    this.hoverZone(this.px, y - grownH / 2, this.pw, grownH, this.abilityTipText(a));
+    return y + grownH;
   }
 
   /** The multi-line text the tooltip shows for an ability. */

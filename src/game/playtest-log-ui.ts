@@ -8,6 +8,7 @@
  * the artifact a tester sends after a run. No game logic here; export only.
  */
 import { summarizePlaytest, type PlaytestLog } from "../core";
+import { getDevTray } from "./dev-tray";
 
 const BUTTON_ID = "playtest-log-btn";
 
@@ -56,11 +57,9 @@ export function installPlaytestLogUI(log: PlaytestLog): void {
     btn.id = BUTTON_ID;
     btn.textContent = "⬇ Session log";
     btn.title = "Download this playtest run's logistics telemetry (JSON) and print a lever summary to the console";
+    // Mounts inside the collapsible dev tray (with Save/Load), not fixed over the canvas —
+    // hidden behind the corner chevron by default so it never occludes the rendered HUD.
     Object.assign(btn.style, {
-      position: "fixed",
-      right: "12px",
-      bottom: "12px",
-      zIndex: "9999",
       padding: "6px 12px",
       background: "#2f6b46",
       color: "#eafff0",
@@ -69,7 +68,7 @@ export function installPlaytestLogUI(log: PlaytestLog): void {
       font: "12px monospace",
       cursor: "pointer",
     } as Partial<CSSStyleDeclaration>);
-    document.body.appendChild(btn);
+    (getDevTray() ?? document.body).appendChild(btn);
   }
 
   btn.onclick = () => {

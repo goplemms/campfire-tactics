@@ -128,6 +128,56 @@ const SURFACES = [
     note: "an authored overworld event screen (guild-contact)",
     expect: { desc: "the authored event modal is open", eval: seesText("/tavern|token|guild/i") },
   },
+
+  // --- the wider sweep (D-scope: the remaining player-facing screens) -----------
+  // Each re-boots to its own entry hash, so these run after the sequential #demo set
+  // above. Drivers mirror the matching shots-*.mjs walkthroughs (the known-good way to
+  // reach each surface); the `expect` keys on robust scene state where it can, else on
+  // text the screen must show.
+  {
+    name: "guild-hall",
+    boot: "",
+    minMs: 800,
+    waitScene: ["GuildScene", ["guild"]],
+    note: "the Wandering Guild hall — caravan assembly + roster (as booted)",
+    expect: { desc: "the guild hall is the active scene", eval: `window.game.scene.getScenes(true).some(x=>x.scene.key==="GuildScene")` },
+  },
+  {
+    name: "dossier",
+    boot: "#overworld",
+    minMs: 700,
+    waitScene: ["OverworldScene", ["run", "loop"]],
+    note: "the party dossier tent — a member's stats/arms/wounds",
+    drive: (g) => g.eval(ov(`s.enterCamp(s.loop.reachable()[0]);s.run.party.forEach((u,i)=>{u.hp=Math.max(1,Math.floor(u.maxHp*(0.4+0.1*i)));u.fatigue=3+i;});s.openTent(()=>s.renderCamp(),"party");if(s.tentDossier)s.tentDossier.select(1);`)),
+    expect: { desc: "the party dossier is open", eval: ov(`return !!s.tentDossier;`) },
+  },
+  {
+    name: "inventory",
+    boot: "#overworld",
+    minMs: 700,
+    waitScene: ["OverworldScene", ["run", "loop"]],
+    note: "the stores/inventory tent — stash contents + caps",
+    drive: (g) => g.eval(ov(`s.enterCamp(s.loop.reachable()[0]);s.run.inventory.storageCap=8;s.run.inventory.counts={"trap-kit":2,salve:3,antidote:1,"rune-reagent":1};s.run.camp.gold=180;s.openTent(()=>s.renderCamp(),"stores");`)),
+    expect: { desc: "the stores tent is open", eval: seesText("/salve|antidote|storage|stash/i") },
+  },
+  {
+    name: "discard",
+    boot: "#overworld",
+    minMs: 700,
+    waitScene: ["OverworldScene", ["run", "loop"]],
+    note: "the storage-overflow discard menu (D75)",
+    drive: (g) => g.eval(ov(`s.enterCamp(s.loop.reachable()[0]);s.run.inventory.storageCap=4;s.run.inventory.counts={"trap-kit":2,"wild-herbs":5,salve:3,valuables:1,"relic-hollow-blade":1};s.setOutToMap();`)),
+    expect: { desc: "the discard menu is open", eval: seesText("/discard|drop|over.?stuff|storage/i") },
+  },
+  {
+    name: "traveler-gift",
+    boot: "#demo",
+    minMs: 700,
+    waitScene: ["OverworldScene", ["run", "loop"]],
+    note: "the Node-2 traveler-gift event panel (D79)",
+    drive: (g) => g.eval(ov(`for(const o of s.overlay)o.destroy();s.overlay=[];s.run.mapNodeId="e1";s.run.path=["start","e1"];s.enterCamp(s.run.map.nodes["camp2"]);s.commit();`)),
+    expect: { desc: "the traveler-gift panel is open", eval: seesText("/gift|traveler|accept|road/i") },
+  },
 ];
 
 // --- the geometric linter (runs IN-PAGE over the live scene graph) -----------
@@ -152,22 +202,38 @@ function lintScene(W, H, MIN_ALPHA) {
     return { vis, alpha };
   };
 
+  // Effective z-layer for cross-object comparison: an object's OWN `.depth` is only its
+  // order WITHIN its parent, so a title at local depth 0 inside a depth-20 modal container
+  // must not read as "below" a depth-5 board token. Use the outermost (scene-level)
+  // ancestor's depth — the layer the whole subtree paints in.
+  const layerDepth = (o) => { let n = o; while (n.parentContainer) n = n.parentContainer; return n.depth ?? 0; };
+
   const texts = [];       // visible, non-empty Text objects (for overlap/off-canvas)
   const hiddenText = [];   // intended-visible text left functionally invisible
   const deadControls = []; // intended-visible interactive objects collapsed to nothing
   const occluders = [];    // opaque filled rects that hide whatever sits below them
+  const scrims = [];       // semi-opaque filled rects that DIM (recede) what sits below
 
   const walk = (list, sceneKey) => {
     for (const o of list) {
       // Recurse into containers first (their children aren't on the scene list).
       if (o.list && Array.isArray(o.list)) walk(o.list, sceneKey);
       const { vis, alpha } = effective(o);
-      // Opaque filled rectangles are occluders: a modal card box (boxAlpha 0.96) drawn
-      // over the map genuinely HIDES the map nodes/legend beneath it, so text under such
-      // a panel isn't a real visual collision. The 0.55 dim-backdrop stays below the
-      // threshold on purpose (it dims but doesn't hide). Depth-gated at compare time.
-      if (o.type === "Rectangle" && o.isFilled && vis && alpha * (o.fillAlpha ?? 1) >= 0.9) {
-        try { const rb = o.getBounds(); occluders.push({ x: rb.x, y: rb.y, w: rb.width, h: rb.height, depth: o.depth ?? 0 }); } catch { /* skip */ }
+      // Filled rectangles shade what's beneath them. An OPAQUE one (≥0.9) fully HIDES
+      // lower text (a modal card box over the map) → occluder. A SEMI-opaque one (≥0.35,
+      // e.g. a 0.5 modal dim-backdrop) doesn't hide but visually RECEDES lower text
+      // behind it → scrim: a token ghosting faintly under a dimmed title isn't a real
+      // collision. Both are depth-gated where they're used.
+      if (o.type === "Rectangle" && o.isFilled && vis) {
+        const shade = alpha * (o.fillAlpha ?? 1);
+        if (shade >= 0.35) {
+          try {
+            const rb = o.getBounds();
+            const rec = { x: rb.x, y: rb.y, w: rb.width, h: rb.height, depth: layerDepth(o) };
+            scrims.push(rec);
+            if (shade >= 0.9) occluders.push(rec);
+          } catch { /* skip */ }
+        }
       }
       const isText = o.type === "Text";
       const clickable = !!(o.input && o.input.enabled);
@@ -175,7 +241,7 @@ function lintScene(W, H, MIN_ALPHA) {
       let b;
       try { b = o.getBounds(); } catch { continue; }
       const box = { x: b.x, y: b.y, w: b.width, h: b.height };
-      const depth = o.depth ?? 0;
+      const depth = layerDepth(o);
       if (isText) {
         const label = (o.text || "").replace(/\s+/g, " ").trim();
         if (!label) continue; // whitespace-only text can't visually collide
@@ -196,10 +262,19 @@ function lintScene(W, H, MIN_ALPHA) {
   // (a panel on top). Such an object is invisible to the player, so it can't be part of
   // a real visual defect — drop it before finding overlaps / off-canvas / dead controls.
   const EPS = 1;
-  const occluded = (o) => occluders.some((r) =>
-    r.depth > o.depth &&
-    r.x <= o.box.x + EPS && r.y <= o.box.y + EPS &&
-    r.x + r.w >= o.box.x + o.box.w - EPS && r.y + r.h >= o.box.y + o.box.h - EPS);
+  const covers = (r, box) =>
+    r.x <= box.x + EPS && r.y <= box.y + EPS &&
+    r.x + r.w >= box.x + box.w - EPS && r.y + r.h >= box.y + box.h - EPS;
+  const occluded = (o) => occluders.some((r) => r.depth > o.depth && covers(r, o.box));
+  // Two overlapping labels are "scrimmed apart" when a dimming rect sits BETWEEN their
+  // depths and covers the lower one: the lower label reads as receded board behind a
+  // modal's dim-backdrop, not a collision with the label on top (e.g. a board token under
+  // the dimmed "Victory!" title). Only fires when a scrim genuinely separates the layers.
+  const scrimmedApart = (a, b) => {
+    const lo = a.depth <= b.depth ? a : b;
+    const hi = a.depth <= b.depth ? b : a;
+    return scrims.some((r) => r.depth > lo.depth && r.depth < hi.depth && covers(r, lo.box));
+  };
   const occludedText = texts.filter(occluded).length;
   const visibleTexts = texts.filter((t) => !occluded(t));
   texts.length = 0; texts.push(...visibleTexts);
@@ -230,6 +305,7 @@ function lintScene(W, H, MIN_ALPHA) {
   // meaningful area (≥35% of the smaller box, ≥3px each way). Almost always a bug.
   for (let i = 0; i < texts.length; i++) {
     for (let j = i + 1; j < texts.length; j++) {
+      if (scrimmedApart(texts[i], texts[j])) continue; // a dim-backdrop separates the layers
       const a = texts[i].box, b = texts[j].box;
       const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
       const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
@@ -273,7 +349,9 @@ async function main() {
       const idx = String(++seq).padStart(2, "0");
       const file = path.join(OUT, `${idx}-${s.name}.png`);
       try {
-        if (s.boot) {
+        // `!== undefined` (not truthiness): the guild hall boots to "" (no hash), which is
+        // falsy — a bare `if (s.boot)` would skip its reboot and capture the prior surface.
+        if (s.boot !== undefined) {
           await g.boot(s.boot);
           if (s.waitScene) await g.waitForScene(s.waitScene[0], s.waitScene[1]);
         }
@@ -286,6 +364,9 @@ async function main() {
         continue;
       }
       await sleep(s.minMs ?? 400);
+      // Hide the DOM dev chrome (the collapsible tray + its corner chevron) so the capture
+      // is pure game canvas — we audit the rendered UI, not the testing affordances.
+      await g.eval(`document.querySelectorAll("#dev-tray,#dev-tray-toggle").forEach(e=>{e.style.display="none";});true`).catch(() => {});
       await g.screenshot(file);
 
       const active = await g.eval(`window.game.scene.getScenes(true).map(sc => sc.scene.key)`);

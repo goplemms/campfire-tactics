@@ -88,6 +88,10 @@ async function main() {
     check("the 💾 Save / Load toggle is mounted", hasToggle !== null);
     // Stamp a fresh sentinel on the live (now BattleScene) run so Export has a known marker.
     await g.bsEval(`s.run.camp.gold = 5555;`);
+    // The Save/Load toggle lives in the collapsible dev tray, which is collapsed by default
+    // so it never occludes the game HUD — open the tray (its corner chevron) before clicking.
+    await g.page.click("#dev-tray-toggle");
+    await sleep(60);
     // Open the panel + Export the current run (Export reads the live scene's run).
     await g.page.click("#repro-save-toggle");
     await sleep(100);

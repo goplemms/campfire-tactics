@@ -22,6 +22,7 @@
 import type Phaser from "phaser";
 import { dumpRun, serializeDump, parseDump, restoreRun, RunLoop, type ReproDump, type RunState } from "../core";
 import type { RunHandoff } from "./scenes/OverworldScene";
+import { getDevTray } from "./dev-tray";
 
 /** Where the latest dump is stashed for the `#repro` same-browser re-entry. */
 export const REPRO_LS_KEY = "campfire:repro:last";
@@ -260,12 +261,12 @@ export function installSavePanel(game: Phaser.Game): void {
   if (typeof document === "undefined") return;
   if (document.getElementById(SAVE_TOGGLE_ID)) return;
 
-  // Parked bottom-right, stacked just above the "⬇ Session log" button (the two testing
-  // affordances group together) — clear of the run-bar (top) and the debug-jump menu (top-left).
+  // Mounts inside the collapsible dev tray (bottom-right), grouped with the "⬇ Session
+  // log" button — both hidden behind the corner chevron until a tester opens the tray, so
+  // neither occludes the rendered HUD by default.
   const toggle = panelButton("💾 Save / Load", "Export the current run as a repro dump, or import one to jump into it");
   toggle.id = SAVE_TOGGLE_ID;
-  style(toggle, { position: "fixed", right: "12px", bottom: "48px", zIndex: "10000" });
-  document.body.appendChild(toggle);
+  getDevTray()?.appendChild(toggle);
 
   const panel = document.createElement("div");
   panel.id = SAVE_PANEL_ID;

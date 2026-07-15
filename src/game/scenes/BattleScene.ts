@@ -2233,6 +2233,9 @@ export class BattleScene extends Phaser.Scene {
     // On any terminal (wipe / loss / run-complete) the overworld shows the end
     // screen; otherwise the player returns to the map to pick the next node.
     this.setPrimary(res.over ? (this.loop.isComplete() ? "See Results" : "Run Over") : "Return to Map");
+    // Lift the action button above the report's dimming backdrop (depth 19) so it reads
+    // crisp, not greyed — the one interactive element on the after-action screen.
+    this.primary.setDepth(21);
   }
 
   /** Gold carried off by any thief still standing at the bell (D13/D21). */
@@ -2476,7 +2479,11 @@ export class BattleScene extends Phaser.Scene {
       // player can see they may keep stepping before they End Turn.
       if (!actor.captured) rows.push({ label: "Move left", value: `${this.moveBudget}`, color: this.moveBudget > 0 ? INK.secondary : INK.muted });
       if (!actor.captured && protectedHere) {
-        rows.push({ label: "Capture risk", value: "safe in camp", color: INK.success });
+        // Short value: "safe in camp" was wide enough to collide with the "Capture risk"
+        // label in the narrow focus card (a visual-audit finding). "none" matches the
+        // capture-risk wording the forecast card already uses on protected ground, and
+        // the "Position: Safe" row above still carries the in-camp reason.
+        rows.push({ label: "Capture risk", value: "none", color: INK.success });
       } else if (!actor.captured && this.front && this.campfire) {
         // Hot decision: forecast each choice's capture risk (D48 route-forecast ethos),
         // so the card answers "what should this unit do *now*", not just "how bad is it".

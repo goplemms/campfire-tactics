@@ -23,7 +23,10 @@ You work in two layers, and both matter:
    it walks the live scene graph of each surface and flags the geometrically-decidable
    defects (text-on-text overlap, off-canvas/clipped labels, alpha≈0 "invisible" text,
    zero-size interactive controls), filtering out text that's occluded behind an opaque
-   panel. It also records any `pageerror` / `console.error` per surface.
+   panel or receded behind a dim modal backdrop (a scrim) — so a faint ghost under a modal
+   is intentionally *not* flagged; don't over-report it. It also asserts a per-surface
+   **coverage gate** (did the intended screen actually render?) and records any `pageerror`
+   / `console.error` per surface.
 2. **You** do the half a bounds-check can't: look at every screenshot and catch the fuzzy
    issues — low contrast, muddy/near-invisible elements, text crowding or spilling its
    panel, awkward or missing margins, misalignment, unwanted truncation/ellipsis, empty
@@ -41,11 +44,18 @@ You work in two layers, and both matter:
    The script exits non-zero when it finds error-severity issues — that's expected; it still
    writes the full report first, so keep going.
 
-2. **Read the structured findings**: `screenshots/visual-audit/report.json`. Note every
-   geometric finding (with its `box` coords + `scene`) and every `pageProblems` entry.
+2. **Read the structured findings**: `screenshots/visual-audit/report.json`. Each surface
+   carries `findings` (with `kind`, `severity`, `scene`, `detail`, `box`) and `pageProblems`.
+   The finding kinds are: `text-overlap`, `text-offcanvas`, `text-invisible`,
+   `control-zero-size`, and `coverage`. A **`coverage`** finding is special — it means the
+   surface did *not* reach its intended screen, so that screenshot shows the WRONG thing and
+   its geometry check is meaningless. Report the coverage failure (it's a real bug — a broken
+   driver or a regressed screen), and do NOT audit that screenshot's layout as if it were the
+   intended surface.
 
 3. **Look at every screenshot** in `screenshots/visual-audit/` (`NN-<surface>.png`). Read
-   each one and inspect it against the taxonomy below. Do NOT skim — open each image.
+   each one and inspect it against the taxonomy below. Do NOT skim — open each image. (Skip
+   the layout audit for any surface with a `coverage` finding — fix the driver/screen first.)
 
 4. **Cross-reference, don't just relay.** For each geometric finding, confirm it against the
    matching screenshot: is it a real, player-visible collision, or a false positive (e.g. an

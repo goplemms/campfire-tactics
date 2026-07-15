@@ -60,6 +60,6 @@ audit:challenge` to prove the new gate is specific. See `.claude/agents/game-vis
 - Needs Chrome; the script auto-discovers Chromium (or set `CHROME_BIN`).
 - The screenshots and `report.json` are gitignored — they're evidence for the run, not
   committed artifacts.
-- Before trusting a new coverage gate, challenge it (see the memento `challenge` skill /
-  the project's challenge agent): a green gate that would also pass on the wrong screen is
-  a silent hole.
+- Before trusting a new coverage gate, challenge it (run `npm run audit:challenge`, or use
+  the memento `challenge` skill for the general discipline): a green gate that would also
+  pass on the wrong screen is a silent hole.

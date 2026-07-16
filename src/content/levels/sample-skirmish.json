@@ -1,0 +1,13 @@
+{
+  "id": "sample-skirmish",
+  "name": "Sample Skirmish",
+  "cols": 8,
+  "rows": 6,
+  "blocked": [{ "col": 4, "row": 2 }, { "col": 4, "row": 3 }],
+  "playerSpawns": [{ "col": 0, "row": 1 }, { "col": 0, "row": 2 }, { "col": 0, "row": 3 }],
+  "enemies": [
+    { "templateId": "bandit-thug", "pos": { "col": 6, "row": 2 } },
+    { "templateId": "bandit-bowman", "pos": { "col": 7, "row": 4 } }
+  ],
+  "reward": { "gold": 50, "materials": [], "xp": 40 }
+}

@@ -3804,6 +3804,48 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D98 — The visual level editor + the JSON content pipeline
+
+- **Status:** Decided + **building in milestones** (2026-07-16). Owner-driven tooling call after the
+  D97 finale — authoring `AuthoredEncounter`s as TS objects means hand-computing every col/row. Two
+  parts: a **visual editor** (author faster) and a **file-based content pipeline** (a home for its
+  output). MVP-first (curious-builder): the smallest working slice, then grow.
+- **Context (why):** the finale was hand-authored coordinate-by-coordinate. A visual editor removes
+  that pain; but an editor is only useful if its output has somewhere to *go*. The pipeline is the
+  load-bearing enabler — build it first so every future editor brush just adds fields that flow through.
+- **Decision — Part 1: the content pipeline (the chosen "location the game pulls from").** Levels are
+  `.json` files (a **serialized `AuthoredEncounter`** — it's already pure data, no new format) under
+  `src/content/levels/`, **glob-loaded at build time** (`import.meta.glob`, eager) into a registry keyed
+  by `id`, **validated fail-loud** (`validateLevel`: shape + enemy-template resolution + objective kinds).
+  A dropped-in file is auto-discovered — **no registry edit**. Playable standalone via a new **`#level=<id>`**
+  route that wraps the level in a throwaway single-arm scenario and **reuses the D91 one-node-run boot**
+  (`buildScenarioRun`) — so it renders through the same `BattleScene` path as `#scene`; bare `#level` is a
+  picker. **No runtime fetch, no backend** — build-time + deterministic, which the `core/`-purity ethos
+  wants. The hard constraint that shaped this: a **browser editor can't write repo files**, so the loop is
+  always *editor exports `.json` → drop in `content/levels/` → commit → glob picks it up* (a dev-server
+  write-back could later remove the manual drop, in dev only). **Layering:** `content/` is Vite-aware
+  (uses `import.meta.glob`), so it sits **between** `core/` (pure) and `game/` — not in core.
+- **Decision — Part 2: the visual editor.** An **`#editor`** Phaser scene that **reuses `CombatView`**
+  (render) + **`worldToTile`** (click-pick) to paint a draft `AuthoredEncounter` by clicking tiles, with a
+  live DOM export panel (the D95 panel idiom). Built in milestones: **M1 (done)** — grid render, click a
+  tile to toggle a **blocked wall**, live JSON export + Copy. **M2** — the brush palette (spawns · enemies
+  by template · captives reach/lockpick · exit tiles · traps · erase) + adjustable grid + a **Download
+  `.json`** button that emits a folder-ready file. **M3** — objectives (extraction wired to placed exit
+  tiles) + a pasteable-literal export + **import** to edit existing levels + live validation. **M4** —
+  docs + guard sweep.
+- **Scoped (JIT):** **single standalone encounters** only — **not** the expedition **map/DAG** (slotting a
+  level into the Hollow Mill arc stays a deliberate wiring step / a future *map editor*, so the curated
+  finale can't be silently replaced by whatever JSON appears); DOM palette + Phaser board; JSON = raw
+  serialized `AuthoredEncounter`.
+- **Guards:** `content/levels.test` (glob loads/validates/plays the sample), **`test:e2e:editor`** (the
+  click→wall→export→toggle loop, no page errors), **`test:e2e:level`** (a glob level renders a real board +
+  the picker lists it). tsc · build · vitest (**1160**). `core/` untouched (all new code is `content/`/`game/`).
+- **Reuses:** **D91** (the scenario one-node-run boot + `#scene` harness), **D50/D52** (the
+  `AuthoredEncounter` shape + captives), **D95** (the DOM overlay-panel idiom), **D96** (the
+  cached-GameObject reset discipline, for the editor scene). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

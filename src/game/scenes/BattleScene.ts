@@ -98,7 +98,7 @@ import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { captureRepro } from "../repro-capture";
 import { HintPanel } from "../hint-panel";
-import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
+import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND, EXIT_LEGEND_ITEM } from "../legend-strip";
 import { MiniCard, type CardRow } from "../info-cards";
 import { dropNet as dropNetCage } from "../deploy-fx";
 import { ICON, placeIcon } from "../icons";
@@ -571,7 +571,7 @@ export class BattleScene extends Phaser.Scene {
     // now; startBattle lifts it. Refresh re-applies the veil after spawnUnits.
     this.view.concealEnemies = true;
     this.view.refreshUnits();
-    this.legendStrip.setItems(DEPLOY_LEGEND);
+    this.legendStrip.setItems(this.hasExtraction() ? [...DEPLOY_LEGEND, EXIT_LEGEND_ITEM] : DEPLOY_LEGEND);
     // Deployment's RNG draws from the one encounter seed the Battle now owns (D67), via its
     // label-keyed stream seam — the scene no longer reaches into run.seed for its rolls.
     // (battle seed == run.seed, so the streams are byte-identical to the prior wiring.)
@@ -1116,7 +1116,12 @@ export class BattleScene extends Phaser.Scene {
       this.boardObjects.push(this.exitZoneGfx);
     }
     this.exitZoneGfx.clear();
-    for (const t of ext.span) this.view.fillTile(this.exitZoneGfx, t, COLOR.gold, 0.2, COLOR.gold);
+    for (const t of ext.span) this.view.fillTile(this.exitZoneGfx, t, COLOR.exit, 0.22, COLOR.exit);
+  }
+
+  /** True when the staged encounter carries an extraction objective (the finale, D97). */
+  private hasExtraction(): boolean {
+    return !!this.loop.staged?.objectives.some((o) => o.spec.kind === "extraction");
   }
 
   /**
@@ -1264,7 +1269,7 @@ export class BattleScene extends Phaser.Scene {
     this.situationCard.resetView("camp"); // foes are on the board now — default the situation card back to Camp
     this.refreshSituationCard();
     this.drawRail(false); // swap the deploy rail (player + net) for the full combat roster
-    this.legendStrip.setItems(BATTLE_LEGEND);
+    this.legendStrip.setItems(this.hasExtraction() ? [...BATTLE_LEGEND, EXIT_LEGEND_ITEM] : BATTLE_LEGEND);
     this.clearActionButtons();
     this.theftAttempts.clear();
     this.goldStolen = 0;

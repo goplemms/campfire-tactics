@@ -78,6 +78,17 @@ export const DEPLOY_LEGEND: LegendItem[] = [
   { color: COLOR.danger, label: "The net — capture", alpha: LEGEND_ALPHA.wash },
 ];
 
+/**
+ * The extraction exit key (D97) — appended to the deploy/battle key only when the staged
+ * encounter carries an `extraction` objective (the finale), so the cool teal band on the
+ * board reads as "escort the freed prisoners here", not an unexplained wash.
+ */
+export const EXIT_LEGEND_ITEM: LegendItem = {
+  color: COLOR.exit,
+  label: "Escape — extract here",
+  alpha: LEGEND_ALPHA.wash,
+};
+
 /** The Battle key (D60): move budget, where a strike lands, the toggled threat zone. */
 export const BATTLE_LEGEND: LegendItem[] = [
   { color: COLOR.reach, label: "Move range", alpha: LEGEND_ALPHA.wash },

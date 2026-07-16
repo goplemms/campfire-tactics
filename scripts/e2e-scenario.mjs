@@ -102,6 +102,7 @@ async function main() {
             goals: objs.map(o => o.spec.kind).sort().join(","),
             exitZone: !!s.exitZoneGfx,
             exitSpan: ext ? (ext.spec.span || []).length : 0,
+            legendHasExit: s.legendStrip.list.some(o => typeof o.text === "string" && /extract here/i.test(o.text)),
             objectiveLabels: s.objectiveObjects.filter(o => typeof o.text === "string").map(o => o.text),
             infilJob: (() => { const u = s.battle.units.find(u => u.id === "infil"); return u ? u.primaryJob : null; })(),
           };
@@ -114,6 +115,7 @@ async function main() {
         check("both cells show a lock glyph on boot", fin.lockGlyphs === 2);
         check("the two OR'd goals are staged (eliminate-all + extraction)", fin.goals === "eliminate-all,extraction");
         check("the exit-span zone is painted", fin.exitZone === true && fin.exitSpan > 0);
+        check("the board key explains the exit band (legend entry, D97)", fin.legendHasExit === true);
         check("the extraction objective row renders in the check-list", fin.objectiveLabels.some((t) => /escort them to the exit/i.test(t)));
         check("the default arm is the infiltration thief", fin.infilJob === "thief");
         await g.screenshot(path.join(OUT, "04-prison-assault-deploy.png"));

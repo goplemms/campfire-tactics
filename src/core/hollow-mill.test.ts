@@ -352,4 +352,43 @@ describe("The Prison Assault finale (D97) — the dual-OR win", () => {
     const party = staged.battle.units.filter((u) => u.side === "player" && !u.captured);
     for (const p of prisoners) for (const by of party) expect(canRelease(p, by)).toBe(false);
   });
+
+  // --- Adversarial edge cases (the D97 /challenge pass) ----------------------
+
+  it("no prisoner starts on/near the exit — extraction can't be won before the fight (challenge F)", () => {
+    // The one non-structural risk the classifier has: extraction is polled from battle-start, so
+    // a prisoner authored ON the exit (freed in deploy) would instant-win with zero combat. The
+    // shipped finale is safe only by GEOMETRY (cells deep in enemy ground, exit at the home edge) —
+    // pin it so a future re-placement can't silently make the finale a walkover.
+    const ext = PRISON_ASSAULT.objectives!.find((o) => o.kind === "extraction")!;
+    const exitCols = new Set((ext.span ?? []).map((t) => t.col));
+    for (const c of PRISON_ASSAULT.captives ?? []) {
+      expect(exitCols.has(c.pos.col)).toBe(false);
+      expect(c.pos.col).toBeGreaterThan(4); // a real cross-board escort, not a step to freedom
+    }
+  });
+
+  it("party wiped with the cells still cuffed ⇒ WIPE (bound bodies don't keep the side alive, challenge A1c)", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    for (const u of staged.battle.units) if (u.side === "player" && u.role !== "prisoner") u.alive = false;
+    expect(encounterOutcome(staged)).toBe("wipe");
+  });
+
+  it("both prisoners downed never VACUOUSLY satisfies extraction (challenge A4)", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    prisoners.forEach((p) => { p.captured = false; p.alive = false; }); // freed then cut down
+    // A party member still stands + the garrison is up → the empty escort set must read PENDING,
+    // not a vacuous win (dead escortees stay in the tag set, so `every(alive)` fails).
+    expect(encounterOutcome(staged)).toBeUndefined();
+  });
+
+  it("a lone freed prisoner escorted out WINS even after the party falls (freed = party member, challenge A1a)", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    const exit = extractSpan(staged);
+    for (const u of staged.battle.units) if (u.side === "player" && u.role !== "prisoner") u.alive = false;
+    prisoners.forEach((p, i) => { freeCaptive(p); p.pos = { ...exit[i] }; }); // extracted anyway
+    expect(encounterOutcome(staged)).toBe("win"); // the extraction stands on its own
+  });
 });

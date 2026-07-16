@@ -3783,6 +3783,20 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 - **Guards:** tsc · vitest (**1153**) · build · `sim` (digest unchanged — the naive bot still completes
   the finale frontally, obj-fail 0) · e2e (deploy 73 + **scenario 33** + second-battle 6 + arc 9, no
   page errors) · audit:visual (0/14) · audit:challenge (7/7). `core/` free of Phaser/DOM/`Math.random`.
+- **Challenged (survived, 2026-07-16).** Ran the break-cases, not the happy path — all guarded now:
+  (1) **freed prisoners are walkable** — the scariest assumption (the tests *teleport* prisoners to
+  the exit): verified `standingOrder:"defend"` is inert (no registry posture; the scene auto-runs
+  **only** enemy turns), so a freed prisoner is player-controlled — the extraction path is real, not
+  just resolvable. (2) **No vacuous extraction** — downing every prisoner leaves it *pending*, never a
+  win (dead escortees stay in the tag set, so `every(alive)` fails). (3) **Wipe stays coherent** — a
+  bound cell doesn't keep the side alive (party-dead + cuffed = wipe), but a *freed* prisoner is a full
+  party member (staves off the wipe, can win by extraction alone — freed = recruited). (4) **The one
+  non-structural risk (F):** extraction is polled from battle-start, so a prisoner authored *on* the
+  exit could instant-win with zero combat — the shipped finale is safe only by **geometry** (cells at
+  col 8, exit at col 0). Pinned with a guard (`no prisoner starts on/near the exit`) so a re-placement
+  can't silently make it a walkover. (5) **Pre-existing footgun (not a D97 regression):** an
+  all-*optional* objective list instant-wins at turn 0 — `withDefaultGoal` suppresses the default when
+  any goal kind (even optional) is present; left as-is (the shipped goals are required) and noted.
 - **Forces no parked system** (full extraction/C1 · interior-deploy/C5 · alarm · any-of beyond the two
   goals) — the signal it's correctly scoped. **Reuses:** **D50** (objectives), **D52** (captives /
   recruit-on-win), **D90** (the lockpick cell), **D91** (the scenario harness), **D96** (the

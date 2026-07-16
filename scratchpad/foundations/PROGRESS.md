@@ -710,13 +710,20 @@ States: `todo` → `in-progress` → `testable` → `done`
 
 </details>
 
-- **Next step:** **M12 is done** (in-browser gate confirmed 2026-06-08 — the four-class
-  combat slice + *The Hollow Mill* demo quest play through end to end; accepted as a
-  solution-iteration checkpoint). On go-ahead, open the PR. The next iteration pass is open
-  (balance numbers / kits into the run flow / fog depth — see the M12 block above). Earlier:
-  **M11 done** (merged PR #12); the **M9/M10** hall-flow + economy gates remain pending
-  in-browser confirmation (code-complete/testable); the run-frame queue still holds the
-  **terminal-ending design** and the **save system + lord game-over** (D27).
+- **Frontier (post-M12):** the demo-expedition line is well past the M12 table above — read
+  `decisions.md` **to D97**. The Hollow Mill's back half is the Wave-0 arc: two topology-exclusive
+  arms (**sustain**/Medic · **infiltration**/Thief, D92) that now converge on a **real dual-OR
+  finale — The Prison Assault (D97/#169)**: win by **storming the garrison** (`eliminate-all`, any
+  party) **OR** by **extraction** (a Thief picks the cells + escorts the prisoners to the exit).
+  C2 (OR-victory) is built as the reusable `isGoalKind` split (goals OR'd, constraints AND'd) + a new
+  `extraction` objective kind; the `STUB_FINALE` is retired.
+- **Next step (D97 built & green, 2026-07-16 — on branch `claude/verify-memento-plugin-a7u52w`):**
+  all headless + browser guards pass — tsc · vitest **1153** · build · sim (digest unchanged) · e2e
+  (deploy 73 · **scenario 33** incl. the new `#scene=prison-assault` finale guard · second-battle 6 ·
+  arc 9) · audit:visual 0/14 · audit:challenge 7/7. On go-ahead, open the PR. **Candidate next
+  threads:** the arms can now be built toward this themed target (more sustain/infiltration nodes);
+  the parked **deployment deep-dive** (full extraction/interior-deploy/alarm, C1/C5) if the extraction
+  taste wants depth; the **status-model** ladder (#171); the **save-model** session (#117).
 - **Blockers:** none.
 
 <details><summary>Stale footer (M2-era notes, kept for history)</summary>

@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { buildScenarioRun, DEFAULT_SCENARIO_GOLD } from "./scenario";
-import { PICK_THE_CELL, getScenario, listScenarios } from "./scenarios";
+import { PICK_THE_CELL, PRISON_ASSAULT_SCENARIO, getScenario, listScenarios } from "./scenarios";
 import { getExpedition } from "./expedition";
+import { encounterOutcome } from "./staging";
 import { currentNode } from "./run";
 import { unitHasCapability } from "./jobs";
 
@@ -67,7 +68,47 @@ describe("the scenario harness — buildScenarioRun (#170)", () => {
 
   it("exposes the config through the registry lookups", () => {
     expect(getScenario("pick-the-cell")).toBe(PICK_THE_CELL);
+    expect(getScenario("prison-assault")).toBe(PRISON_ASSAULT_SCENARIO);
     expect(getScenario("missing")).toBeUndefined();
     expect(listScenarios()).toContain(PICK_THE_CELL);
+  });
+});
+
+describe("the prison-assault scenario — the dual-OR finale surface (D97)", () => {
+  it("stages two lockpick cells + the two OR'd goals", () => {
+    const { loop } = buildScenarioRun(PRISON_ASSAULT_SCENARIO);
+    const battle = loop.startEncounter();
+    const prisoners = battle.units.filter((u) => u.role === "prisoner");
+    expect(prisoners).toHaveLength(2);
+    expect(prisoners.every((p) => p.captured && p.release?.kind === "lockpick")).toBe(true);
+    expect(loop.staged!.objectives.map((o) => o.spec.kind).sort()).toEqual(["eliminate-all", "extraction"]);
+  });
+
+  it("extraction: the default (infiltration) arm frees the cells and walks them out to win", () => {
+    const { loop } = buildScenarioRun(PRISON_ASSAULT_SCENARIO);
+    loop.startEncounter();
+    loop.beginBattle();
+    const thief = loop.staged!.battle.units.find((u) => u.id === "infil")!;
+    expect(unitHasCapability(thief, "lockpick")).toBe(true);
+    const prisoners = loop.staged!.battle.units.filter((u) => u.role === "prisoner");
+    const exit = loop.staged!.objectives.find((o) => o.spec.kind === "extraction")!.spec.span!;
+    prisoners.forEach((p, i) => { loop.staged!.battle.rescue(p, thief); p.pos = { ...exit[i] }; });
+    // The garrison is untouched — extraction alone clears the finale (OR'd, D97).
+    expect(loop.staged!.battle.units.some((u) => u.side === "enemy" && u.alive)).toBe(true);
+    expect(encounterOutcome(loop.staged!)).toBe("win");
+  });
+
+  it("frontal arm: no lockpick — the cells hold, so it must storm the garrison (C4)", () => {
+    const { loop } = buildScenarioRun(PRISON_ASSAULT_SCENARIO, "frontal");
+    loop.startEncounter();
+    loop.beginBattle();
+    const infil = loop.staged!.battle.units.find((u) => u.id === "infil")!;
+    expect(unitHasCapability(infil, "lockpick")).toBe(false);
+    const prisoners = loop.staged!.battle.units.filter((u) => u.role === "prisoner");
+    for (const p of prisoners) loop.staged!.battle.rescue(p, infil); // refused no-op
+    expect(prisoners.every((p) => p.captured)).toBe(true);
+    // Only eliminate-all can win for this arm.
+    for (const u of loop.staged!.battle.units) if (u.side === "enemy") u.alive = false;
+    expect(encounterOutcome(loop.staged!)).toBe("win");
   });
 });

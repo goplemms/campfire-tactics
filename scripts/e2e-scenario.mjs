@@ -85,6 +85,82 @@ async function main() {
         check("the refusal keeps the lock glyph and logs nothing", refused.glyphs === 1 && refused.unlogged === true);
         await g.screenshot(path.join(OUT, "02-pick-the-cell-scout.png"));
 
+        // --- The dual-OR finale scenario (D97): the extraction render surface ----
+        await g.boot("#scene=prison-assault");
+        await sleep(1300);
+        const fin = await g.bsEval(`
+          const objs = s.loop.staged.objectives;
+          const ext = objs.find(o => o.spec.kind === "extraction");
+          const prisoners = s.battle.units.filter(u => u.role === "prisoner");
+          return {
+            phase: s.phase,
+            players: s.battle.units.filter(u => u.side === "player" && u.alive && !u.captured).length,
+            enemies: s.battle.units.filter(u => u.side === "enemy").length,
+            prisoners: prisoners.length,
+            cuffed: prisoners.filter(p => p.captured && p.release && p.release.kind === "lockpick").length,
+            lockGlyphs: s.captiveMarkers.length,
+            goals: objs.map(o => o.spec.kind).sort().join(","),
+            exitZone: !!s.exitZoneGfx,
+            exitSpan: ext ? (ext.spec.span || []).length : 0,
+            objectiveLabels: s.objectiveObjects.filter(o => typeof o.text === "string").map(o => o.text),
+            infilJob: (() => { const u = s.battle.units.find(u => u.id === "infil"); return u ? u.primaryJob : null; })(),
+          };
+        `);
+        console.log("• #scene=prison-assault boots the dual-OR finale board (D97)");
+        check("the finale renders a deployment board", fin.phase === "deployment");
+        check("the infiltration party is fielded (two bodies)", fin.players === 2);
+        check("the garrison is on the board (3 enemies)", fin.enemies === 3);
+        check("two cuffed cells are staged (lockpick)", fin.prisoners === 2 && fin.cuffed === 2);
+        check("both cells show a lock glyph on boot", fin.lockGlyphs === 2);
+        check("the two OR'd goals are staged (eliminate-all + extraction)", fin.goals === "eliminate-all,extraction");
+        check("the exit-span zone is painted", fin.exitZone === true && fin.exitSpan > 0);
+        check("the extraction objective row renders in the check-list", fin.objectiveLabels.some((t) => /escort them to the exit/i.test(t)));
+        check("the default arm is the infiltration thief", fin.infilJob === "thief");
+        await g.screenshot(path.join(OUT, "04-prison-assault-deploy.png"));
+
+        // The extraction payoff in the real scene: the Thief picks BOTH cells and the
+        // prisoners are walked to the exit → the extraction goal reads met — a win WITHOUT
+        // touching the garrison (the OR'd second win-path, D97). Then re-render the check-list.
+        const extract = await g.bsEval(`
+          const thief = s.battle.units.find(u => u.id === "infil");
+          const prisoners = s.battle.units.filter(u => u.role === "prisoner");
+          const ext = s.loop.staged.objectives.find(o => o.spec.kind === "extraction");
+          const exit = ext.spec.span;
+          prisoners.forEach((p, i) => { s.battle.rescue(p, thief); p.pos = { col: exit[i].col, row: exit[i].row }; });
+          s.refreshObjectives();
+          return {
+            freed: prisoners.every(p => !p.captured),
+            glyphsGone: s.captiveMarkers.length === 0,
+            extractionMet: ext.status() === "met",
+            garrisonUp: s.battle.units.some(u => u.side === "enemy" && u.alive),
+          };
+        `);
+        console.log("• the Thief extracts the prisoners (the extraction win-path, D97)");
+        check("the Thief picks both cells — the prisoners are freed", extract.freed === true);
+        check("the freed prisoners drop their lock glyphs", extract.glyphsGone === true);
+        check("escorting both to the exit marks the extraction goal met (✓)", extract.extractionMet === true);
+        check("…a win with the garrison still standing (OR'd)", extract.garrisonUp === true);
+        await g.screenshot(path.join(OUT, "04b-prison-assault-extracted.png"));
+
+        // The frontal arm (no lockpick): the cells hold — it must storm the garrison (C4).
+        await g.boot("#scene=prison-assault?party=frontal");
+        await sleep(1300);
+        const front = await g.bsEval(`
+          const prisoners = s.battle.units.filter(u => u.role === "prisoner");
+          const infil = s.battle.units.find(u => u.id === "infil");
+          return {
+            infilJob: infil ? infil.primaryJob : null,
+            cuffed: prisoners.filter(p => p.captured).length,
+            lockGlyphs: s.captiveMarkers.length,
+            exitZone: !!s.exitZoneGfx,
+          };
+        `);
+        console.log("• ?party=frontal boots the storm-the-garrison arm (C4)");
+        check("the frontal arm has no Thief (infil is a soldier)", front.infilJob === "soldier");
+        check("the cells hold for a Thief-less party (still cuffed, glyphs shown)", front.cuffed === 2 && front.lockGlyphs === 2);
+        check("the exit route still renders for the frontal arm", front.exitZone === true);
+        await g.screenshot(path.join(OUT, "04c-prison-assault-frontal.png"));
+
         // --- The bare-#scene picker renders without error ------------------------
         await g.boot("#scene");
         await sleep(500);

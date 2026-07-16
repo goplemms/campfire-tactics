@@ -9,8 +9,9 @@
  * enemy-representation difference (specs vs placements) and the player-placement
  * policy (explicit spawns vs the auto home edge) are hidden behind this function.
  *
- * {@link encounterOutcome} is the single graded classifier (D50/D51): `wipe →
- * any required objective failed → all required met = win`.
+ * {@link encounterOutcome} is the single graded classifier (D50/D51/D97): `wipe →
+ * any required *constraint* failed → (all required constraints met AND any required
+ * *goal* met) = win`. Goals are **OR'd** (any one wins), constraints AND'd (D97/C2).
  *
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
@@ -32,6 +33,7 @@ import {
 import {
   armObjectives,
   withDefaultGoal,
+  isGoalKind,
   type ArmedObjective,
 } from "./objectives";
 
@@ -186,11 +188,17 @@ export function stageEncounter(
 }
 
 /**
- * Grade a staged encounter (D50/D51). **Wipe** if no combat-capable player
- * remains; else **objective-failure** if any *required* objective failed; else
- * **win** once every *required* objective is met. Optional objectives never
- * downgrade a win. Returns `undefined` while the encounter is still undecided
- * (the failure poll calls this each checkpoint and finishes when it resolves).
+ * Grade a staged encounter (D50/D51/D97). **Wipe** if no combat-capable player
+ * remains; else **objective-failure** if any *required constraint* failed; else
+ * **win** once every required constraint is met **and any required *goal* is met**.
+ *
+ * Required objectives split into **goals** ({@link isGoalKind} — `eliminate-all` /
+ * `extraction`, the win-paths) and **constraints** (`closing-gate`, must-not-fail).
+ * Goals are **OR'd** — achieving any one wins (the finale's frontal-vs-extraction
+ * either/or, C2); constraints are AND'd. A goal never *fails* (an unmet goal is just
+ * pending), so an abandoned extraction leaves the frontal path open. Optional
+ * objectives never downgrade a win. Returns `undefined` while still undecided (the
+ * failure poll calls this each checkpoint and finishes when it resolves).
  */
 export function encounterOutcome(staged: StagedEncounter): EncounterResult | undefined {
   const playersStanding = staged.battle.units.some(
@@ -198,7 +206,12 @@ export function encounterOutcome(staged: StagedEncounter): EncounterResult | und
   );
   if (!playersStanding) return "wipe";
   const required = staged.objectives.filter((o) => o.spec.required);
-  if (required.some((o) => o.status() === "failed")) return "objective-failure";
-  if (required.every((o) => o.status() === "met")) return "win";
+  const goals = required.filter((o) => isGoalKind(o.spec.kind));
+  const constraints = required.filter((o) => !isGoalKind(o.spec.kind));
+  if (constraints.some((o) => o.status() === "failed")) return "objective-failure";
+  const constraintsMet = constraints.every((o) => o.status() === "met");
+  // No required goal (constraint-only encounter) ⇒ constraints alone decide (legacy shape).
+  const goalMet = goals.length === 0 || goals.some((o) => o.status() === "met");
+  if (constraintsMet && goalMet) return "win";
   return undefined;
 }

@@ -3719,6 +3719,77 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D97 — The dual-OR finale: goals are OR'd, the Prison Assault liberates by frontal OR extraction
+
+- **Status:** Decided + **built & green** (2026-07-16), issue **#169**. Realizes the arc plan's
+  **C2** (OR-victory) at its use site — the finale both Wave-0 arms (D92) converge on. Consumes
+  **D50** (the objective model), **D52** (captives / recruit-on-win), **D90** (the lockpick cell).
+- **Context (why now):** Wave-0 (D92) shipped two topology-exclusive arms — **sustain** (frees the
+  Medic) and **infiltration** (earns the Thief + the D90 lockpick taste) — that reconverged on a
+  **stub finale**. So the arms' divergent investment never actually *cashed out*: both dead-ended
+  into the same holdout fight. The finale is where the choice was designed to pay off differently,
+  and it needs the one mechanic the arc plan deferred "until its consumer exists": **C2**, an
+  OR-victory. `encounterOutcome` was **AND-only** (`required.every(met)`), so it supported exactly
+  one win-path.
+- **Decision — split required objectives into *goals* (OR'd) and *constraints* (AND'd).** The
+  objective model already separated a **goal** (`eliminate-all` — *met* = a win) from a
+  **constraint** (`closing-gate` — *failed* = a loss); only the classifier was single-path. C2 is
+  the small, reusable generalization: `encounterOutcome` now = `wipe → any required constraint
+  failed → (every required constraint met AND **any** required goal met) = win`. **Goals OR, constraints
+  AND.** A goal **never fails** (an unmet goal is just pending), so an abandoned rescue can't *lose*
+  the fight — the frontal path stays open. Single-goal encounters are byte-unchanged (the OR over one
+  goal is the old AND). `isGoalKind`/`GOAL_KINDS` name the split; `withDefaultGoal` now injects the
+  default elimination goal only when **no** goal kind is present (an extraction-only encounter is legal).
+- **The new goal kind — `extraction`** (D97). Met when **every** tagged escortee (a freed prisoner,
+  `escort: ObjectiveTag`) is **alive, uncaptured, and standing on an `exit` span**. It reuses the
+  exact primitives `closing-gate` already had — an `ObjectiveTag` (who) + a `span` of tiles (where) +
+  the `onSpan` reader — so no new movement machinery. `progress()` reports the freed-and-at-exit
+  fraction for the HUD. This is the honest **escort-to-exit** extraction the arc plan's **C1** demands
+  (not a cell-open flag-flip); the *full* extraction/interior-deploy/alarm rework stays the **parked
+  deployment deep-dive** — the finale uses the lean version on shipped rails (home-edge deploy, the
+  D52 captive + D90 lockpick + normal movement).
+- **The finale — The Prison Assault** (`hollow-mill.ts`, replaces `STUB_FINALE`). A fortified garrison
+  (the real brawler — the softened Wagon/Outer-Yard captains were warm-ups) **plus two cell prisoners**
+  (`role: "prisoner"`, `release: lockpick`) and an **exit span** (the home edge — the way in is the way
+  out). Two OR'd goals: **`eliminate-all`** (frontal, any party) and **`extraction`** (free the cells +
+  walk the prisoners to the exit — Thief-only, since only a Thief picks the locks, **C4**). Either wins;
+  a non-Thief party simply can't open the cells so extraction stays pending and it wins frontally. The
+  prisoners **recruit on the win either way** (recruit-on-win is capability-blind, D52) — the Thief's
+  edge is the *quieter route to the same liberation* (a win with the garrison left standing), not an
+  exclusive recruit. The eliminate-all goal is listed **explicitly** — with `extraction` now a goal,
+  the default is no longer injected, and a frontal party must have its win-path named.
+- **Render (`BattleScene`):** the objective check-list already rendered generically, so the extraction
+  row (label + freed/at-exit %) shows for free. The one new surface is the **exit-span tint** — a gold
+  "escape route" overlay (`drawExitZone`, painted in deploy and **kept through battle** since the escort
+  is mid-fight; the deploy safe/danger zones retire on `battleBegan`, this does not). `exitZoneGfx` is a
+  lazily-created cached field, so per **D96** it is **reset in `rebuildBoard()`** (destroy + `undefined`)
+  — the freeze-on-re-entry discipline, honored up front.
+- **Red-team outcomes folded in:** (1) a *failed goal* can no longer trigger objective-failure — that
+  path is constraint-only now; the staging truth-table test was corrected to the new semantics (a goal
+  never fails). (2) The **all-prisoners-must-survive-and-exit** reading was chosen over "extract whoever
+  you saved" — it avoids the degenerate where downing every prisoner makes extraction *vacuously* met,
+  and gives the escort real "keep them alive" tension; a lost prisoner leaves it *pending* (fall back to
+  frontal), never *failed*. (3) The finale is a **new player-facing surface** (the D92/#168 cautionary
+  tale) — so a **`#scene=prison-assault` scenario** (a pure-data mirror, D91, NOT an import of the live
+  finale, keeping the registry side-effect-free) + an **extended `e2e-scenario`** step both arms through
+  the real headless scene (exit-zone paints · both goal rows render · the Thief extracts to a garrison-
+  standing win · the frontal arm's cells hold, C4).
+- **Build (one pass, on `claude/verify-memento-plugin-a7u52w`):** core `objectives.ts` (the `extraction`
+  kind + `isGoalKind`/`GOAL_KINDS` + `withDefaultGoal`) & `staging.ts` (the OR/AND classifier);
+  `hollow-mill.ts` (`PRISON_ASSAULT` replaces the stub); `scenarios/prison-assault.ts` + registry;
+  `BattleScene.drawExitZone`. Tests: `objectives.test` (extraction arms/reads/pending/never-fails),
+  `staging.test` (the OR-victory truth table), `hollow-mill.test` + `wave0-arc.test` (both finale
+  win-paths, end-to-end extraction with a real prestiged Thief), `scenario.test`, barrel surface.
+- **Guards:** tsc · vitest (**1153**) · build · `sim` (digest unchanged — the naive bot still completes
+  the finale frontally, obj-fail 0) · e2e (deploy 73 + **scenario 33** + second-battle 6 + arc 9, no
+  page errors) · audit:visual (0/14) · audit:challenge (7/7). `core/` free of Phaser/DOM/`Math.random`.
+- **Forces no parked system** (full extraction/C1 · interior-deploy/C5 · alarm · any-of beyond the two
+  goals) — the signal it's correctly scoped. **Reuses:** **D50** (objectives), **D52** (captives /
+  recruit-on-win), **D90** (the lockpick cell), **D91** (the scenario harness), **D96** (the
+  `rebuildBoard` reset discipline). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

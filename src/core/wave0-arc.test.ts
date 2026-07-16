@@ -20,7 +20,7 @@ import { createRunFromExpedition } from "./run";
 import { RunLoop } from "./runloop";
 import { jobLevelOf } from "./leveling";
 import { recalls } from "./units";
-import { canRelease } from "./deployment";
+import { canRelease, freeCaptive } from "./deployment";
 import { SCOUT_PRESTIGE_FLOOR } from "./jobs-data/scout-line";
 
 function freshLoop(): RunLoop {
@@ -116,5 +116,46 @@ describe("Wave-0 infiltration arm — the Thief path fires end to end (#168)", (
     for (const u of loop.staged!.battle.units) if (u.side === "enemy") u.alive = false;
     loop.resolve();
     expect(loop.run.party.some((u) => u.id === "cell-prisoner")).toBe(true);
+  });
+
+  it("the extraction finale (D97): the in-run Thief picks the cells and walks the prisoners out — a win with the garrison still standing", () => {
+    const loop = freshLoop();
+
+    // Drive the whole infiltration arm to the prestiged Thief (as above), then win the cell.
+    winCombat(loop, "e1");
+    playEvent(loop, "camp2");
+    winCombat(loop, "snares");
+    playEvent(loop, "market");
+    playEvent(loop, "guildContact", "take-token:vale");
+    winCombat(loop, "den");
+    winCombat(loop, "outerYard");
+    loop.choose("guildRite");
+    loop.chooseEvent("initiate:vale");
+    loop.recordEventNight();
+    expect(vale(loop).primaryJob).toBe("thief");
+    winCombat(loop, "cuffedCell");
+
+    // The finale: the dual-OR (#169). Take the EXTRACTION path — free the cells, escort out.
+    loop.choose("finale");
+    loop.startEncounter();
+    loop.beginBattle();
+    const prisoners = loop.staged!.battle.units.filter((u) => u.role === "prisoner");
+    expect(prisoners).toHaveLength(2);
+    // The capability was earned in this run: the Thief picks both cells; a non-Thief cannot.
+    expect(prisoners.every((p) => canRelease(p, vale(loop)))).toBe(true);
+    const edrin = loop.staged!.battle.units.find((u) => u.id === "edrin")!;
+    expect(prisoners.every((p) => canRelease(p, edrin))).toBe(false);
+
+    // Free them and escort to the exit span; leave the garrison entirely alone.
+    const exit = loop.staged!.objectives.find((o) => o.spec.kind === "extraction")!.spec.span!;
+    prisoners.forEach((p, i) => { freeCaptive(p); p.pos = { ...exit[i] }; });
+    expect(loop.staged!.battle.units.some((u) => u.side === "enemy" && u.alive)).toBe(true);
+
+    const res = loop.resolve();
+    expect(res.result).toBe("win"); // extraction cleared the finale without a kill
+    expect(loop.isComplete()).toBe(true);
+    // The liberated prisoners join on the win (recruit-on-win, D52).
+    expect(loop.run.party.some((u) => u.id === "prisoner-a")).toBe(true);
+    expect(loop.run.party.some((u) => u.id === "prisoner-b")).toBe(true);
   });
 });

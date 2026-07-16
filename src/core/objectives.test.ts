@@ -35,7 +35,24 @@ const CLOSING_GATE: ObjectiveSpec = {
   driver: { role: "sapper" },
 };
 
-describe("withDefaultGoal (D50)", () => {
+const EXIT = [{ col: 0, row: 5 }, { col: 1, row: 5 }];
+const EXTRACTION: ObjectiveSpec = {
+  id: "extract",
+  kind: "extraction",
+  required: true,
+  label: "Escort the prisoners to the exit",
+  span: EXIT,
+  escort: { role: "prisoner" },
+};
+
+/** A bound prisoner: player-side, role-tagged, captured until freed. */
+function prisoner(id: string, pos = { col: 6, row: 0 }): Unit {
+  const p = unit(id, "player", { role: "prisoner", pos });
+  p.captured = true;
+  return p;
+}
+
+describe("withDefaultGoal (D50/D97)", () => {
   it("injects the elimination goal when none is listed", () => {
     expect(withDefaultGoal()).toEqual([DEFAULT_GOAL]);
     expect(withDefaultGoal([CLOSING_GATE])).toEqual([DEFAULT_GOAL, CLOSING_GATE]);
@@ -44,6 +61,73 @@ describe("withDefaultGoal (D50)", () => {
   it("leaves an explicit goal untouched", () => {
     const goal: ObjectiveSpec = { id: "g", kind: "eliminate-all", required: true, label: "win" };
     expect(withDefaultGoal([goal])).toEqual([goal]);
+  });
+
+  it("treats extraction as an explicit goal — no default elimination injected (D97)", () => {
+    // An extraction-only encounter wins solely by getting the prisoners out.
+    expect(withDefaultGoal([EXTRACTION])).toEqual([EXTRACTION]);
+    // …but a closing-gate + extraction still has its goal, so still no injection.
+    expect(withDefaultGoal([CLOSING_GATE, EXTRACTION])).toEqual([CLOSING_GATE, EXTRACTION]);
+  });
+});
+
+describe("extraction (D97)", () => {
+  it("met only once every freed prisoner stands on an exit tile", () => {
+    const p1 = prisoner("p1");
+    const hero = unit("hero", "player", { pos: { col: 0, row: 0 } });
+    const foe = unit("foe", "enemy", { pos: { col: 6, row: 2 } });
+    const units = [hero, p1, foe];
+    const clock = new CTClock(units);
+    const [obj] = armObjectives(clock, units, [EXTRACTION]);
+
+    expect(obj.status()).toBe("pending"); // still cuffed
+    p1.captured = false; // the Thief picks the lock
+    expect(obj.status()).toBe("pending"); // freed, but not yet at the exit
+    p1.pos = { col: 0, row: 5 }; // escorted onto an exit tile
+    expect(obj.status()).toBe("met");
+  });
+
+  it("stays pending (never fails) if a prisoner is lost — the frontal path stays open", () => {
+    const p1 = prisoner("p1");
+    const p2 = prisoner("p2", { col: 7, row: 0 });
+    const units = [unit("hero", "player"), p1, p2, unit("foe", "enemy", { pos: { col: 6, row: 2 } })];
+    const clock = new CTClock(units);
+    const [obj] = armObjectives(clock, units, [EXTRACTION]);
+
+    // p1 freed and out, but p2 is downed — extraction can't complete, yet never "failed".
+    p1.captured = false; p1.pos = { col: 0, row: 5 };
+    p2.alive = false;
+    expect(obj.status()).toBe("pending");
+  });
+
+  it("a still-captured prisoner sitting on an exit tile does NOT count", () => {
+    const p1 = prisoner("p1", { col: 0, row: 5 }); // bound, but happens to be on the exit
+    const units = [unit("hero", "player"), p1];
+    const clock = new CTClock(units);
+    const [obj] = armObjectives(clock, units, [EXTRACTION]);
+    expect(obj.status()).toBe("pending"); // captured ⇒ not extracted
+  });
+
+  it("progress reports the fraction of prisoners freed-and-at-the-exit", () => {
+    const p1 = prisoner("p1");
+    const p2 = prisoner("p2", { col: 7, row: 0 });
+    const units = [unit("hero", "player"), p1, p2];
+    const clock = new CTClock(units);
+    const [obj] = armObjectives(clock, units, [EXTRACTION]);
+    expect(obj.progress()).toBe(0);
+    p1.captured = false; p1.pos = { col: 0, row: 5 };
+    expect(obj.progress()).toBe(0.5);
+    p2.captured = false; p2.pos = { col: 1, row: 5 };
+    expect(obj.progress()).toBe(1);
+    expect(obj.status()).toBe("met");
+  });
+
+  it("pending with no tagged escortees (nothing to extract)", () => {
+    const units = [unit("hero", "player"), unit("foe", "enemy", { pos: { col: 6, row: 2 } })];
+    const clock = new CTClock(units);
+    const [obj] = armObjectives(clock, units, [EXTRACTION]);
+    expect(obj.status()).toBe("pending");
+    expect(obj.progress()).toBeUndefined();
   });
 });
 

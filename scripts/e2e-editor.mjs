@@ -41,10 +41,28 @@ const STATE = `(() => {
     expExtractLabel: (exp?.objectives ?? []).find((o) => o.kind === "extraction")?.label ?? null,
     expReward: exp?.reward?.gold ?? null,
     importBox: !!document.querySelector('textarea[data-role="import"]'),
+    wardenEditedHp: (exp?.enemies ?? []).find((e) => e.id === "the-warden-2")?.overrides?.maxHp ?? null,
     expSpawns: exp?.playerSpawns?.length ?? null,
     expEnemies: exp?.enemies?.length ?? null,
     valid: /✓ valid/.test(validText),
   };
+})()`;
+
+// Select the warden through the inspector and edit its id + maxHp (M-B — the new panel surface).
+const EDIT = `(() => {
+  const sc = window.game.scene.getScene("EditorScene");
+  sc.brush = "select";
+  const warden = sc.draft.enemies.find((e) => e.id === "the-warden");
+  sc.selection = { kind: "enemy", ref: warden };
+  sc.renderInspector();
+  const insp = document.querySelector('[data-role="inspector"]');
+  const idInput = insp.querySelector("input");
+  idInput.value = "the-warden-2";
+  idInput.dispatchEvent(new Event("input"));
+  const hp = document.querySelector('input[data-stat="maxHp"]');
+  hp.value = "99";
+  hp.dispatchEvent(new Event("change"));
+  return { statInputs: document.querySelectorAll("input[data-stat]").length };
 })()`;
 
 // Paste the-rescue's JSON into the import box and click Import.
@@ -64,7 +82,7 @@ async function main() {
         let st = await g.eval(STATE);
         console.log("• #editor boots with the brush palette");
         check("the editor scene is active", st.active === true);
-        check("the brush palette is present (7 brushes)", st.brushButtons === 7);
+        check("the brush palette is present (8 brushes incl. select)", st.brushButtons === 8);
         check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));
 
@@ -114,6 +132,16 @@ async function main() {
         check("import carried the warden's role tag", st3.wardenRole === "captain");
         check("the imported finale validates", st3.valid === true);
         await g.screenshot(path.join(OUT, "03-imported.png"));
+
+        // Inspector: select the warden, rename it + bump its maxHp (the M-B panel surface — freeze-catch).
+        const ed = await g.eval(EDIT);
+        await sleep(150);
+        const st4 = await g.eval(STATE);
+        console.log("• select-brush → inspector edits an entity's identity + stats (no freeze)");
+        check("the inspector rendered the 7-field stat grid", ed.statInputs === 7);
+        check("the id rename + maxHp override flow to the export", st4.wardenEditedHp === 99);
+        check("the level still validates after the edit", st4.valid === true);
+        await g.screenshot(path.join(OUT, "04-inspected.png"));
 
         assertNoProblems(g.problems);
       } catch (err) {

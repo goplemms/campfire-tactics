@@ -2,9 +2,16 @@ import Phaser from "phaser";
 import { CombatView } from "../combat-view";
 import { COLOR, FONT, INK } from "../theme";
 import { clearLayer } from "../ui";
-import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, type GridCoord, type AuthoredEncounter } from "../../core";
+import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, type GridCoord, type AuthoredEncounter, type JobId } from "../../core";
 import { validateLevel } from "../../content/levels";
-import { blankDraft, draftToEncounter, encounterToDraft, type Brush, type EditorDraft } from "../editor-draft";
+import {
+  blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec,
+  effectiveEnemyStat, setEnemyStat, setSpecStat, STAT_FIELDS,
+  type Brush, type EditorDraft, type DraftEnemy, type DraftCaptive, type StatField,
+} from "../editor-draft";
+
+/** Every registered job id — derived from the core {@link JOBS} registry (no hand-copy, D98). */
+const JOB_IDS = Object.keys(JOBS);
 
 /**
  * The **visual level editor** (D98) — `#editor`.
@@ -41,10 +48,14 @@ export class EditorScene extends Phaser.Scene {
   private enemyTemplate = ENEMY_IDS[0];
   private captiveRelease: "reach" | "lockpick" = "lockpick";
 
+  /** The entity under edit in the inspector (M-B). Stored by reference so it survives array reorders. */
+  private selection: { kind: "enemy"; ref: DraftEnemy } | { kind: "captive"; ref: DraftCaptive } | null = null;
+
   // DOM overlay (the D95 panel idiom).
   private panel?: HTMLDivElement;
   private exportPre?: HTMLPreElement;
   private validLine?: HTMLDivElement;
+  private inspectorEl?: HTMLDivElement;
   private brushButtons: HTMLButtonElement[] = [];
 
   constructor() {
@@ -108,12 +119,19 @@ export class EditorScene extends Phaser.Scene {
     if (!this.grid.inBounds(t)) return;
     this.paint(t);
     this.renderBoard();
+    this.renderInspector();
     this.updateExport();
   }
 
   private paint(t: GridCoord): void {
     const d = this.draft;
     switch (this.brush) {
+      case "select": {
+        const en = d.enemies.find((e) => same(e.pos, t));
+        const cap = d.captives.find((c) => same(c.pos, t));
+        this.selection = en ? { kind: "enemy", ref: en } : cap ? { kind: "captive", ref: cap } : null;
+        return;
+      }
       case "wall": return void this.toggleCoord(d.blocked, t);
       case "spawn": return void this.toggleCoord(d.playerSpawns, t);
       case "exit": return void this.toggleCoord(d.exit, t);
@@ -202,7 +220,7 @@ export class EditorScene extends Phaser.Scene {
     panel.appendChild(size);
 
     // Brush buttons.
-    const brushes: Brush[] = ["wall", "spawn", "enemy", "captive", "exit", "trap", "erase"];
+    const brushes: Brush[] = ["select", "wall", "spawn", "enemy", "captive", "exit", "trap", "erase"];
     const brushRow = document.createElement("div");
     brushRow.style.margin = "4px 0";
     for (const b of brushes) {
@@ -232,6 +250,13 @@ export class EditorScene extends Phaser.Scene {
     rel.onchange = () => (this.captiveRelease = rel.value as "reach" | "lockpick");
     tmplWrap.appendChild(rel);
     panel.appendChild(tmplWrap);
+
+    // Inspector (M-B) — bound to the select-brush selection.
+    const inspector = document.createElement("div");
+    inspector.dataset.role = "inspector";
+    Object.assign(inspector.style, { margin: "6px 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
+    panel.appendChild(inspector);
+    this.inspectorEl = inspector;
 
     const valid = document.createElement("div");
     valid.style.margin = "6px 0";
@@ -267,6 +292,7 @@ export class EditorScene extends Phaser.Scene {
     document.body.appendChild(panel);
     this.panel = panel;
     this.highlightBrush();
+    this.renderInspector();
     this.updateExport();
   }
 
@@ -290,9 +316,95 @@ export class EditorScene extends Phaser.Scene {
       return;
     }
     this.draft = next;
+    this.selection = null;
     this.renderBoard();
     this.unmountPanel();
     this.mountPanel();
+  }
+
+  // --- Inspector (M-B: edit a selected entity's identity + stats) ------------
+
+  /** Re-render the inspector for the current selection (or a placeholder). Clears a stale selection. */
+  private renderInspector(): void {
+    const host = this.inspectorEl;
+    if (!host) return;
+    const sel = this.selection;
+    if (sel) {
+      const list: unknown[] = sel.kind === "enemy" ? this.draft.enemies : this.draft.captives;
+      if (!list.includes(sel.ref)) this.selection = null;
+    }
+    host.innerHTML = "";
+    if (!this.selection) {
+      host.textContent = "· select-brush an entity to edit its identity + stats";
+      host.style.opacity = "0.55";
+      return;
+    }
+    host.style.opacity = "1";
+    if (this.selection.kind === "enemy") this.renderEnemyInspector(host, this.selection.ref);
+    else this.renderCaptiveInspector(host, this.selection.ref);
+  }
+
+  private renderEnemyInspector(host: HTMLDivElement, e: DraftEnemy): void {
+    host.appendChild(this.inspectorHeader(`enemy · ${e.templateId} @ (${e.pos.col},${e.pos.row})`));
+    host.appendChild(this.field("id", e.id ?? "", (v) => { const t = v.trim(); if (t) e.id = t; else delete e.id; this.afterInspect(); }));
+    host.appendChild(this.selectRow("role", ["", "captain", "sapper"], e.role ?? "", (v) => { if (v) e.role = v as "captain" | "sapper"; else delete e.role; this.afterInspect(); }));
+    host.appendChild(this.statGrid((f) => effectiveEnemyStat(e, f), (f, n) => { setEnemyStat(e, f, n); this.afterInspect(); }));
+  }
+
+  private renderCaptiveInspector(host: HTMLDivElement, c: DraftCaptive): void {
+    if (!c.spec) c.spec = newCaptiveSpec(c.pos); // materialize a spec for a painted (spec-less) captive
+    const spec = c.spec;
+    host.appendChild(this.inspectorHeader(`captive @ (${c.pos.col},${c.pos.row})`));
+    host.appendChild(this.field("id", spec.id, (v) => { const t = v.trim(); if (t) spec.id = t; this.afterInspect(); }));
+    host.appendChild(this.field("name", spec.name ?? "", (v) => { const t = v.trim(); if (t) spec.name = t; else delete spec.name; this.afterInspect(); }));
+    host.appendChild(this.selectRow("role", ["prisoner", "", "captain", "sapper"], spec.role ?? "", (v) => { if (v) spec.role = v; else delete spec.role; this.afterInspect(); }));
+    host.appendChild(this.selectRow("job", JOB_IDS, spec.jobId ?? "soldier", (v) => { spec.jobId = v as JobId; spec.primaryJob = v as JobId; this.afterInspect(); }));
+    host.appendChild(this.selectRow("release", ["lockpick", "reach"], c.release, (v) => { c.release = v as "reach" | "lockpick"; this.afterInspect(); }));
+    host.appendChild(this.statGrid((f) => (typeof spec[f] === "number" ? (spec[f] as number) : f === "attackRange" ? 1 : 0), (f, n) => { setSpecStat(spec, f, n); this.afterInspect(); }));
+  }
+
+  private inspectorHeader(text: string): HTMLDivElement {
+    const h = document.createElement("div");
+    h.textContent = text;
+    Object.assign(h.style, { margin: "2px 0 4px", fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    return h;
+  }
+
+  /** A labelled `<select>` row. */
+  private selectRow(label: string, options: string[], value: string, onChange: (v: string) => void): HTMLDivElement {
+    const wrap = document.createElement("div");
+    wrap.style.margin = "3px 0";
+    wrap.append(`${label} `);
+    const sel = document.createElement("select");
+    sel.dataset.field = label;
+    for (const o of options) { const opt = document.createElement("option"); opt.value = o; opt.textContent = o === "" ? "(none)" : o; sel.appendChild(opt); }
+    sel.value = value;
+    sel.onchange = () => onChange(sel.value);
+    wrap.appendChild(sel);
+    return wrap;
+  }
+
+  /** The 7-field combat stat grid (M-B), driven by the core-typed {@link STAT_FIELDS}. */
+  private statGrid(get: (f: StatField) => number, set: (f: StatField, v: number) => void): HTMLDivElement {
+    const wrap = document.createElement("div");
+    wrap.style.margin = "4px 0";
+    for (const f of STAT_FIELDS) {
+      const cell = document.createElement("span");
+      Object.assign(cell.style, { display: "inline-block", marginRight: "6px" } as CSSStyleDeclaration);
+      cell.append(`${f} `);
+      const inp = this.numInput(get(f), (n) => set(f, n));
+      inp.style.width = "44px";
+      inp.dataset.stat = f;
+      cell.appendChild(inp);
+      wrap.appendChild(cell);
+    }
+    return wrap;
+  }
+
+  /** After an inspector edit: refresh the board markers + the live export/validation (no re-render of the open form, to keep input focus). */
+  private afterInspect(): void {
+    this.renderBoard();
+    this.updateExport();
   }
 
   private field(label: string, value: string, onChange: (v: string) => void): HTMLDivElement {
@@ -335,6 +447,7 @@ export class EditorScene extends Phaser.Scene {
     this.panel = undefined;
     this.exportPre = undefined;
     this.validLine = undefined;
+    this.inspectorEl = undefined;
     this.brushButtons = [];
   }
 }

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { blankDraft, draftToEncounter, encounterToDraft, type EditorDraft } from "./editor-draft";
+import {
+  blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec,
+  enemyBaseStat, effectiveEnemyStat, setEnemyStat, setSpecStat,
+  type EditorDraft, type DraftEnemy,
+} from "./editor-draft";
 import { validateLevel, levelToScenario, listLevels, getLevel } from "../content/levels";
 import { buildScenarioRun, encounterOutcome, type AuthoredEncounter } from "../core";
 
@@ -100,5 +104,57 @@ describe("editor import round-trip (D98 editor M-A — lossless import)", () => 
     // sample-skirmish has no objectives/captives — only reward rides the bag.
     expect(draft._passthrough?.objectives).toBeUndefined();
     expect(draft._passthrough?.reward).toEqual({ gold: 50, materials: [], xp: 40 });
+  });
+});
+
+describe("editor inspector edits (D98 editor M-B — identity + stats)", () => {
+  const enemy = (): DraftEnemy => ({ templateId: "bandit-captain", pos: { col: 5, row: 2 } });
+
+  it("setEnemyStat diff-on-edit: a base-equal value stores no override; a differing value does", () => {
+    const e = enemy();
+    const base = enemyBaseStat("bandit-captain", "maxHp");
+    setEnemyStat(e, "maxHp", base); // equal to template base → no override
+    expect(e.overrides).toBeUndefined();
+    setEnemyStat(e, "maxHp", base + 10); // differs → stored
+    expect(e.overrides).toEqual({ maxHp: base + 10 });
+    expect(effectiveEnemyStat(e, "maxHp")).toBe(base + 10);
+    setEnemyStat(e, "maxHp", base); // back to base → override pruned away (stays tidy)
+    expect(e.overrides).toBeUndefined();
+  });
+
+  it("effectiveEnemyStat falls back to the template base when unset", () => {
+    const e = enemy();
+    expect(effectiveEnemyStat(e, "attack")).toBe(enemyBaseStat("bandit-captain", "attack"));
+    expect(effectiveEnemyStat(e, "attackRange")).toBe(enemyBaseStat("bandit-captain", "attackRange")); // 1 default
+  });
+
+  it("newCaptiveSpec is a role-prisoner unit with a positional (collision-resistant) id", () => {
+    const spec = newCaptiveSpec({ col: 3, row: 4 });
+    expect(spec.role).toBe("prisoner");
+    expect(spec.side).toBe("player");
+    expect(spec.id).toBe("prisoner-3-4");
+  });
+
+  it("editing an enemy override still round-trips (structural) and validates", () => {
+    const draft = encounterToDraft(getLevel("the-rescue")!);
+    const warden = draft.enemies.find((e) => e.id === "the-warden")!;
+    setEnemyStat(warden, "maxHp", enemyBaseStat("bandit-captain", "maxHp") + 20);
+    const enc = draftToEncounter(draft);
+    expect(validateLevel(enc)).toEqual([]);
+    // The edit is present, and re-importing it is idempotent (edit is now part of the level).
+    expect(enc.enemies.find((e) => e.id === "the-warden")?.overrides?.maxHp).toBe(enemyBaseStat("bandit-captain", "maxHp") + 20);
+    expect(draftToEncounter(encounterToDraft(enc))).toEqual(enc);
+  });
+
+  it("editing a captive's stats is a direct spec write that round-trips", () => {
+    const draft = encounterToDraft(getLevel("the-rescue")!);
+    const cap = draft.captives[0];
+    setSpecStat(cap.spec!, "maxHp", 40);
+    cap.spec!.name = "Mira the Smith";
+    const enc = draftToEncounter(draft);
+    expect(validateLevel(enc)).toEqual([]);
+    expect(enc.captives?.[0].spec.maxHp).toBe(40);
+    expect(enc.captives?.[0].spec.name).toBe("Mira the Smith");
+    expect(draftToEncounter(encounterToDraft(enc))).toEqual(enc);
   });
 });

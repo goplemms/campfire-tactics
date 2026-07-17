@@ -20,10 +20,19 @@
  * genuinely cannot carry (see {@link encounterToDraft}).
  */
 
-import type { GridCoord, UnitSpec, AuthoredEncounter, ObjectiveSpec, ObjectiveTag } from "../core";
+import type { GridCoord, UnitSpec, UnitStats, AuthoredEncounter, ObjectiveSpec, ObjectiveTag } from "../core";
+import { getEnemyTemplate } from "../core";
 
-/** A brush the editor paints with — what a tile click stamps. */
-export type Brush = "wall" | "spawn" | "enemy" | "captive" | "exit" | "trap" | "erase";
+/** A brush the editor paints with — what a tile click stamps. `select` opens the identity/stat inspector (M-B). */
+export type Brush = "select" | "wall" | "spawn" | "enemy" | "captive" | "exit" | "trap" | "erase";
+
+/**
+ * The combat stat fields the inspector edits — typed against {@link UnitStats} so a **rename or
+ * removal is a compile error** (the D98 no-drift discipline; a genuinely *new* stat is a deliberate
+ * one-line addition here). Shared by the enemy-override and captive-spec editors.
+ */
+export const STAT_FIELDS = ["speed", "maxHp", "attack", "defense", "moveRange", "sightRadius", "attackRange"] as const satisfies readonly (keyof UnitStats)[];
+export type StatField = (typeof STAT_FIELDS)[number];
 
 /** A placed enemy: a template id at a tile, plus authored extras carried through import (M-A). */
 export interface DraftEnemy {
@@ -92,6 +101,47 @@ const CAPTIVE_STATS = { speed: 10, maxHp: 22, attack: 6, defense: 2, moveRange: 
 /** A captive's authored unit spec — role `"prisoner"` so the extraction objective binds to it. */
 function captiveSpec(i: number, pos: GridCoord): UnitSpec {
   return { id: `prisoner-${i}`, name: "Prisoner", side: "player", pos, jobId: "soldier", primaryJob: "soldier", role: "prisoner", ...CAPTIVE_STATS };
+}
+
+/**
+ * A materialized captive spec for the **inspector** (M-B) — a spec-less painted captive gets one the
+ * moment it's selected for editing, keyed by tile so two fresh captives don't collide (the
+ * id-uniqueness guard flags a real clash live if the author later renames into one).
+ */
+export function newCaptiveSpec(pos: GridCoord): UnitSpec {
+  return { id: `prisoner-${pos.col}-${pos.row}`, name: "Prisoner", side: "player", pos, jobId: "soldier", primaryJob: "soldier", role: "prisoner", ...CAPTIVE_STATS };
+}
+
+/** A placed enemy's template base value for a stat (attackRange defaults to 1; a missing template ⇒ 0). */
+export function enemyBaseStat(templateId: string, field: StatField): number {
+  const t = getEnemyTemplate(templateId) as Record<string, unknown> | undefined;
+  const v = t?.[field];
+  return typeof v === "number" ? v : field === "attackRange" ? 1 : 0;
+}
+
+/** The effective stat on a placed enemy — an override if set, else the template base. */
+export function effectiveEnemyStat(enemy: DraftEnemy, field: StatField): number {
+  const o = enemy.overrides?.[field];
+  return typeof o === "number" ? o : enemyBaseStat(enemy.templateId, field);
+}
+
+/**
+ * Set an enemy stat via the **diff-on-edit** rule (M-B): store it in `overrides` only when it
+ * differs from the template base, else drop it — so an *edited* enemy stays tidy. An untouched
+ * (imported) `overrides` is preserved verbatim by never routing through here (M-A losslessness).
+ */
+export function setEnemyStat(enemy: DraftEnemy, field: StatField, value: number): void {
+  const base = enemyBaseStat(enemy.templateId, field);
+  const o: Partial<UnitSpec> = { ...(enemy.overrides ?? {}) };
+  if (value === base) delete o[field];
+  else o[field] = value;
+  if (Object.keys(o).length) enemy.overrides = o;
+  else delete enemy.overrides;
+}
+
+/** Set a captive spec's stat directly (a captive carries a full spec, so no template diff). */
+export function setSpecStat(spec: UnitSpec, field: StatField, value: number): void {
+  spec[field] = value;
 }
 
 const cp = (c: GridCoord): GridCoord => ({ col: c.col, row: c.row });

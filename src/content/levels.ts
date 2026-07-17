@@ -60,9 +60,25 @@ function extractionIssues(e: Partial<AuthoredEncounter>): string[] {
 }
 
 /**
+ * Duplicate **unit ids** collide objective-tag/unit lookup (both bind by id), so a level author
+ * editing ids (M-B) must not create two units with the same id. Only explicit ids are checked —
+ * an enemy with no `id` gets a unique positional default at build, so it can't clash.
+ */
+function idIssues(e: Partial<AuthoredEncounter>): string[] {
+  const ids: string[] = [];
+  for (const en of Array.isArray(e.enemies) ? e.enemies : []) if (typeof en?.id === "string") ids.push(en.id);
+  for (const c of Array.isArray(e.captives) ? e.captives : []) if (typeof c?.spec?.id === "string") ids.push(c.spec.id);
+  const seen = new Set<string>();
+  const dups = new Set<string>();
+  for (const id of ids) (seen.has(id) ? dups : seen).add(id);
+  return [...dups].map((id) => `duplicate unit id "${id}" — unit ids must be unique (objective tags and lookup bind by id)`);
+}
+
+/**
  * Structurally validate a parsed level file → the list of problems (empty = valid). A light
  * shape + reference check (enemy templates resolve, objective kinds are known) plus the D97/D99
- * walkover guard; the deep check is `stageEncounter` itself, exercised by the round-trip test.
+ * walkover guard and unit-id uniqueness; the deep check is `stageEncounter` itself, exercised by
+ * the round-trip test.
  */
 export function validateLevel(raw: unknown): string[] {
   const issues: string[] = [];
@@ -78,6 +94,7 @@ export function validateLevel(raw: unknown): string[] {
   if (e.objectives) for (const o of e.objectives) if (!KINDS.includes(o?.kind)) issues.push(`unknown objective kind "${o?.kind}"`);
   if (!e.reward) issues.push("missing reward");
   issues.push(...extractionIssues(e));
+  issues.push(...idIssues(e));
   return issues;
 }
 

@@ -161,3 +161,18 @@ describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
     expect(validateLevel(getLevel("prison-break")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
   });
 });
+
+describe("the unit-id uniqueness guard (D98 editor M-B)", () => {
+  it("flags two units sharing an explicit id (objective tags/lookup bind by id)", () => {
+    const level = getLevel("the-rescue")!;
+    // Force a clash: give the warden the same id as a captive.
+    const clash = { ...level, enemies: level.enemies.map((e, i) => (i === 0 ? { ...e, id: "captive-1" } : e)) };
+    expect(validateLevel(clash).some((i) => /duplicate unit id "captive-1"/.test(i))).toBe(true);
+  });
+
+  it("passes the shipped levels (their ids are already unique)", () => {
+    for (const id of ["the-rescue", "prison-break", "sample-skirmish"]) {
+      expect(validateLevel(getLevel(id)!).filter((i) => /duplicate unit id/.test(i))).toEqual([]);
+    }
+  });
+});

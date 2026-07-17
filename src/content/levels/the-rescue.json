@@ -1,0 +1,50 @@
+{
+  "id": "the-rescue",
+  "name": "The Rescue",
+  "cols": 11,
+  "rows": 6,
+  "blocked": [
+    { "col": 4, "row": 0 },
+    { "col": 4, "row": 1 },
+    { "col": 4, "row": 4 },
+    { "col": 4, "row": 5 },
+    { "col": 8, "row": 0 },
+    { "col": 8, "row": 5 }
+  ],
+  "playerSpawns": [
+    { "col": 0, "row": 1 },
+    { "col": 0, "row": 2 },
+    { "col": 0, "row": 3 },
+    { "col": 0, "row": 4 },
+    { "col": 1, "row": 2 }
+  ],
+  "enemies": [
+    { "templateId": "bandit-captain", "pos": { "col": 7, "row": 2 }, "id": "the-warden", "role": "captain" },
+    { "templateId": "bandit-cutthroat", "pos": { "col": 8, "row": 1 } },
+    { "templateId": "bandit-bowman", "pos": { "col": 8, "row": 4 } },
+    { "templateId": "bandit-thug", "pos": { "col": 6, "row": 3 } },
+    { "templateId": "bandit-thug", "pos": { "col": 7, "row": 4 } }
+  ],
+  "captives": [
+    {
+      "spec": { "id": "captive-1", "name": "Bound Captive I", "side": "player", "pos": { "col": 9, "row": 1 }, "jobId": "soldier", "primaryJob": "soldier", "role": "prisoner", "speed": 10, "maxHp": 22, "attack": 6, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
+      "pos": { "col": 9, "row": 1 },
+      "release": { "kind": "lockpick" }
+    },
+    {
+      "spec": { "id": "captive-2", "name": "Bound Captive II", "side": "player", "pos": { "col": 9, "row": 2 }, "jobId": "soldier", "primaryJob": "soldier", "role": "prisoner", "speed": 10, "maxHp": 22, "attack": 6, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
+      "pos": { "col": 9, "row": 2 },
+      "release": { "kind": "lockpick" }
+    },
+    {
+      "spec": { "id": "captive-3", "name": "Bound Captive III", "side": "player", "pos": { "col": 9, "row": 3 }, "jobId": "soldier", "primaryJob": "soldier", "role": "prisoner", "speed": 10, "maxHp": 22, "attack": 6, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
+      "pos": { "col": 9, "row": 3 },
+      "release": { "kind": "lockpick" }
+    }
+  ],
+  "objectives": [
+    { "id": "storm", "kind": "eliminate-all", "required": true, "label": "Clear the garrison — the captives are safe" },
+    { "id": "extract", "kind": "extraction", "required": true, "label": "Free the captives and escort them to the exit", "span": [{ "col": 0, "row": 0 }, { "col": 0, "row": 1 }, { "col": 0, "row": 2 }, { "col": 0, "row": 3 }, { "col": 0, "row": 4 }, { "col": 0, "row": 5 }], "escort": { "role": "prisoner" } }
+  ],
+  "reward": { "gold": 260, "materials": [], "xp": 120 }
+}

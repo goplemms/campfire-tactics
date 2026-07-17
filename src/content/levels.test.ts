@@ -53,6 +53,49 @@ describe("the JSON level content pipeline (D98)", () => {
     }
   });
 
+  it("the-rescue is a group dual-OR rescue: wins by clearing the garrison OR by extracting ALL THREE captives (D97/D98)", () => {
+    const level = getLevel("the-rescue")!;
+    expect(validateLevel(level)).toEqual([]);
+    expect(level.objectives?.map((o) => o.kind).sort()).toEqual(["eliminate-all", "extraction"]);
+    // The three placeholder captives are a role-"prisoner" group, cuffed, held far from the exit.
+    expect(level.captives?.map((c) => c.spec.id).sort()).toEqual(["captive-1", "captive-2", "captive-3"]);
+    for (const c of level.captives ?? []) {
+      expect(c.spec.role).toBe("prisoner");
+      expect(c.release).toEqual({ kind: "lockpick" });
+      expect(c.pos.col).toBeGreaterThanOrEqual(9); // deep in the prison, far from the col-0 exit (challenge-F geometry)
+    }
+
+    // (a) Frontal path: clear the garrison, captives left cuffed → win.
+    {
+      const { loop } = buildScenarioRun(levelToScenario(level));
+      loop.startEncounter();
+      loop.beginBattle();
+      for (const u of loop.staged!.battle.units) if (u.side === "enemy") u.alive = false;
+      expect(loop.staged!.battle.units.filter((u) => u.role === "prisoner").every((p) => p.captured)).toBe(true);
+      expect(encounterOutcome(loop.staged!)).toBe("win");
+    }
+    // (b) Extraction path: free ALL THREE + escort each to the exit, garrison left standing → win.
+    //     And with only TWO extracted it is NOT yet a win — the whole group must be out.
+    {
+      const { loop } = buildScenarioRun(levelToScenario(level));
+      loop.startEncounter();
+      loop.beginBattle();
+      const prisoners = loop.staged!.battle.units.filter((u) => u.role === "prisoner");
+      const exit = loop.staged!.objectives.find((o) => o.spec.kind === "extraction")!.spec.span!;
+      expect(prisoners).toHaveLength(3);
+      // Free + move only the first two onto the exit — the group is not fully out yet.
+      prisoners.slice(0, 2).forEach((p, i) => { p.captured = false; p.pos = { ...exit[i] }; });
+      expect(loop.staged!.battle.units.some((u) => u.side === "enemy" && u.alive)).toBe(true);
+      expect(encounterOutcome(loop.staged!)).not.toBe("win");
+      // Now free + extract the third — the whole group is out → win (garrison still standing).
+      const third = prisoners[2];
+      third.captured = false;
+      third.pos = { ...exit[2] };
+      expect(loop.staged!.battle.units.some((u) => u.side === "enemy" && u.alive)).toBe(true);
+      expect(encounterOutcome(loop.staged!)).toBe("win");
+    }
+  });
+
   it("validateLevel accepts EVERY core objective kind (no drift from the model, D98)", () => {
     // The pipeline derives its kind list from core's OBJECTIVE_KINDS, so a kind added to the
     // game is authorable immediately — none of these is rejected as "unknown objective kind".

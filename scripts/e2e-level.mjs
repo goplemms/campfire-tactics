@@ -50,6 +50,21 @@ async function main() {
         check("it carries the two OR'd goals", pb.goals === "eliminate-all,extraction");
         await g.screenshot(path.join(OUT, "03-prison-break.png"));
 
+        // The rescue finale — a group dual-OR: a garrison + 3 prisoners + the two OR'd goals.
+        await g.boot("#level=the-rescue");
+        await sleep(1300);
+        const tr = await g.bsEval(`return {
+          phase: s.phase,
+          enemies: s.battle.units.filter(u => u.side === "enemy").length,
+          prisoners: s.battle.units.filter(u => u.role === "prisoner").length,
+          goals: s.loop.staged.objectives.map(o => o.spec.kind).sort().join(","),
+        };`);
+        console.log("• #level=the-rescue boots the group rescue finale");
+        check("the-rescue renders a deployment board", tr.phase === "deployment");
+        check("its garrison + 3 prisoners are staged", tr.enemies === 5 && tr.prisoners === 3);
+        check("it carries the two OR'd goals", tr.goals === "eliminate-all,extraction");
+        await g.screenshot(path.join(OUT, "04-the-rescue.png"));
+
         // The bare #level picker lists the loaded content levels.
         await g.boot("#level");
         await sleep(500);

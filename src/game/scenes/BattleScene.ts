@@ -11,7 +11,6 @@ import {
   refreshAuras,
   isAdjacent,
   TileGrid,
-  TILE_HEIGHT,
   Battle,
   availableSkills,
   getJob,
@@ -153,8 +152,6 @@ export class BattleScene extends Phaser.Scene {
   /** The persistent tarpit-aura ring (Heavy Knight) — drawn in both Deployment and Battle (D64). */
   private auraGfx!: Phaser.GameObjects.Graphics;
   private boardObjects: Phaser.GameObjects.GameObject[] = [];
-  private originX = 0;
-  private originY = 0;
   /** Shared board geometry + grid/tile drawing (the converged combat presentation). */
   private view!: CombatView;
 
@@ -472,9 +469,9 @@ export class BattleScene extends Phaser.Scene {
     this.view.clearPreview(this.preview);
     this.threatGfx.clear();
 
-    this.originX = this.scale.width / 2;
-    this.originY = this.scale.height / 2 - (this.grid.rows * TILE_HEIGHT * BOARD_SCALE) / 2 + 4;
-    this.view.setOrigin(this.originX, this.originY);
+    // The shared board-centering (CombatView.centerOrigin) — the one formula, so a grid/tile
+    // metric change reaches the editor too (the view owns the resulting origin).
+    this.view.centerOrigin(this.grid.rows, this.scale.height, this.scale.width / 2);
 
     this.drawGrid();
     this.spawnUnits();

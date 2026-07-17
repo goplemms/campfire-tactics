@@ -165,6 +165,15 @@ export class CombatView {
     this.originY = y;
   }
 
+  /**
+   * Centre the board vertically in a viewport and anchor it at `centerX` — the **one**
+   * board-centering formula, shared so a grid/tile-metric change propagates to every surface
+   * that renders the grid (the battle *and* the editor), instead of each hand-copying it.
+   */
+  centerOrigin(rows: number, viewportH: number, centerX: number): void {
+    this.setOrigin(centerX, viewportH / 2 - (rows * TILE_HEIGHT * this.boardScale) / 2 + 4);
+  }
+
   /** Half a tile's width/height at the current board zoom (for scene-side geometry). */
   halfW(): number {
     return (TILE_WIDTH / 2) * this.boardScale;

@@ -3840,9 +3840,18 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   level into the Hollow Mill arc stays a deliberate wiring step / a future *map editor*, so the curated
   finale can't be silently replaced by whatever JSON appears); DOM palette + Phaser board; JSON = raw
   serialized `AuthoredEncounter`.
-- **Guards:** `content/levels.test` (glob loads/validates/plays the sample), **`test:e2e:editor`** (the
-  click→wall→export→toggle loop, no page errors), **`test:e2e:level`** (a glob level renders a real board +
-  the picker lists it). tsc · build · vitest (**1160**). `core/` untouched (all new code is `content/`/`game/`).
+- **No silent drift from the model (D98 hardening).** The editor must track the game's grid/encounter
+  model, not hand-copy it. Audited: the enemy roster (`ENEMY_IDS`) derives from the core templates, the
+  export is typed `AuthoredEncounter` (tsc breaks on any model change), the grid reuses `TileGrid` +
+  `CombatView`. Two hand-copies were removed: (1) the objective-kind list — `ObjectiveKind` is now
+  **derived from a canonical `OBJECTIVE_KINDS`** array in core, which `validateLevel` imports (a kind
+  added to the game is authorable immediately; a `levels.test` case pins it); (2) the board-centering
+  formula — extracted to **`CombatView.centerOrigin`**, shared by the battle and the editor, so a
+  grid/tile-metric change reaches both (byte-identical origin — deploy-battle e2e unchanged).
+- **Guards:** `content/levels.test` (glob loads/validates/plays + kind-list tracks core), `editor-draft.test`
+  (draft → valid/playable), **`test:e2e:editor`** (palette paints + export validates), **`test:e2e:level`**
+  (a glob level renders + the picker). tsc · build · vitest (**1164**). `core/` change is the single-source
+  `OBJECTIVE_KINDS` only; all editor code is `content/`/`game/`.
 - **Reuses:** **D91** (the scenario one-node-run boot + `#scene` harness), **D50/D52** (the
   `AuthoredEncounter` shape + captives), **D95** (the DOM overlay-panel idiom), **D96** (the
   cached-GameObject reset discipline, for the editor scene). **Superseded by:** —

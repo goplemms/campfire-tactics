@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { CombatView } from "../combat-view";
 import { COLOR, FONT, INK } from "../theme";
 import { clearLayer } from "../ui";
-import { TileGrid, TILE_HEIGHT, BANDIT_TEMPLATES, ENEMY_TEMPLATES, type GridCoord } from "../../core";
+import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, type GridCoord } from "../../core";
 import { validateLevel } from "../../content/levels";
 import { blankDraft, draftToEncounter, type Brush, type EditorDraft } from "../editor-draft";
 
@@ -74,10 +74,9 @@ export class EditorScene extends Phaser.Scene {
 
   private renderBoard(): void {
     this.grid = new TileGrid(this.draft.cols, this.draft.rows, this.draft.blocked);
-    // Centre the board in the area left of the panel.
-    const originX = (this.scale.width - PANEL_W) / 2;
-    const originY = this.scale.height / 2 - (this.draft.rows * TILE_HEIGHT * BOARD_SCALE) / 2 + 4;
-    this.view.setOrigin(originX, originY);
+    // The shared board-centering (CombatView.centerOrigin) — same formula as the battle, so a
+    // grid/tile change propagates here for free. Centre in the area left of the panel.
+    this.view.centerOrigin(this.draft.rows, this.scale.height, (this.scale.width - PANEL_W) / 2);
 
     this.gridGfx.clear();
     this.view.drawGrid(this.gridGfx, this.grid);

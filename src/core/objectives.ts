@@ -36,8 +36,16 @@ import { CTClock } from "./clock";
 import { isImmobilized } from "./status";
 import { applyDamage, battleOutcome } from "./combat";
 
-/** The objective kinds (D50; `extraction` added D97). */
-export type ObjectiveKind = "eliminate-all" | "closing-gate" | "extraction";
+/**
+ * The canonical objective kinds (D50; `extraction` added D97) — the **single source** the type
+ * *and* every runtime kind-check derive from. Add a kind here and it propagates to
+ * {@link ObjectiveKind} and to consumers like the content pipeline's `validateLevel` (which
+ * imports this list rather than hand-copying it, so the editor/pipeline can't drift, D98).
+ */
+export const OBJECTIVE_KINDS = ["eliminate-all", "closing-gate", "extraction"] as const;
+
+/** The objective kinds (D50; `extraction` added D97), derived from {@link OBJECTIVE_KINDS}. */
+export type ObjectiveKind = (typeof OBJECTIVE_KINDS)[number];
 
 /**
  * The **goal** kinds (D97/C2) — objectives that represent *winning*: achieving any one

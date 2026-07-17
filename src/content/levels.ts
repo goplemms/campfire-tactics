@@ -15,10 +15,10 @@
  */
 
 import type { UnitSpec, ScenarioConfig } from "../core";
-import { getEnemyTemplate, type AuthoredEncounter } from "../core";
+import { getEnemyTemplate, OBJECTIVE_KINDS, type AuthoredEncounter } from "../core";
 
-/** Kinds a level's objectives may declare (kept in sync with the core ObjectiveKind union). */
-const OBJECTIVE_KINDS = ["eliminate-all", "closing-gate", "extraction"];
+/** Objective kinds accepted in a level file — the core list (never hand-copied, so it can't drift). */
+const KINDS: readonly string[] = OBJECTIVE_KINDS;
 
 /**
  * Structurally validate a parsed level file → the list of problems (empty = valid). A light
@@ -36,7 +36,7 @@ export function validateLevel(raw: unknown): string[] {
   if (!Array.isArray(e.playerSpawns) || e.playerSpawns.length === 0) issues.push("needs at least one playerSpawn");
   if (!Array.isArray(e.enemies)) issues.push("enemies must be an array");
   else for (const en of e.enemies) if (!getEnemyTemplate(en?.templateId)) issues.push(`unknown enemy template "${en?.templateId}"`);
-  if (e.objectives) for (const o of e.objectives) if (!OBJECTIVE_KINDS.includes(o?.kind)) issues.push(`unknown objective kind "${o?.kind}"`);
+  if (e.objectives) for (const o of e.objectives) if (!KINDS.includes(o?.kind)) issues.push(`unknown objective kind "${o?.kind}"`);
   if (!e.reward) issues.push("missing reward");
   return issues;
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LEVELS, getLevel, listLevels, validateLevel, levelToScenario } from "./levels";
-import { buildScenarioRun, encounterOutcome } from "../core";
+import { buildScenarioRun, encounterOutcome, OBJECTIVE_KINDS } from "../core";
 
 /**
  * The JSON level content pipeline (D98) — proves a `.json` in `content/levels/` is
@@ -24,6 +24,15 @@ describe("the JSON level content pipeline (D98)", () => {
     expect(loop.staged!.battle.units.some((u) => u.side === "enemy")).toBe(true);
     for (const u of loop.staged!.battle.units) if (u.side === "enemy") u.alive = false;
     expect(encounterOutcome(loop.staged!)).toBe("win");
+  });
+
+  it("validateLevel accepts EVERY core objective kind (no drift from the model, D98)", () => {
+    // The pipeline derives its kind list from core's OBJECTIVE_KINDS, so a kind added to the
+    // game is authorable immediately — none of these is rejected as "unknown objective kind".
+    for (const kind of OBJECTIVE_KINDS) {
+      const issues = validateLevel({ ...getLevel("sample-skirmish")!, objectives: [{ id: "o", kind, required: true, label: "o" }] });
+      expect(issues.filter((i) => /unknown objective kind/.test(i))).toEqual([]);
+    }
   });
 
   it("validateLevel rejects malformed files fail-loud (bad shape + unknown template)", () => {

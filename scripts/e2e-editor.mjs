@@ -1,6 +1,6 @@
-// E2E: the visual level editor (D98) — boot `#editor`, click tiles for real, and
-// assert the render → click-pick → mutate → export loop works with no page errors.
-// This is the guard CLAUDE.md requires when a new scene surface is added.
+// E2E: the visual level editor (D98). Boots `#editor`, drives the brush palette + real
+// tile clicks, and asserts the paint → render → export loop produces a valid level with no
+// page errors. The guard CLAUDE.md requires when a new scene surface is added.
 //
 // Run:  npm run test:e2e:editor   (needs Chrome — see scripts/harness.mjs)
 
@@ -16,16 +16,26 @@ function check(name, cond) {
   console.log(`  ✓ ${name}`);
 }
 
+// Read the editor's draft counts + the live-export/validation state.
 const STATE = `(() => {
   const sc = window.game.scene.getScene("EditorScene");
+  const d = sc?.draft ?? {};
   const pre = document.querySelector("pre");
+  const exp = (() => { try { return JSON.parse(pre.textContent); } catch { return null; } })();
+  const validText = [...document.querySelectorAll("div")].map(n => n.textContent).find(t => /valid|⚠/.test(t)) || "";
   return {
     active: !!(sc && sc.scene.isActive("EditorScene")),
-    blocked: sc?.draft?.blocked?.length ?? null,
-    exportBlocked: (() => { try { return JSON.parse(pre.textContent).blocked.length; } catch { return null; } })(),
-    hasPanel: !!pre,
+    brushButtons: document.querySelectorAll("button[data-brush]").length,
+    walls: d.blocked?.length ?? null,
+    spawns: d.playerSpawns?.length ?? null,
+    enemies: d.enemies?.length ?? null,
+    exit: d.exit?.length ?? null,
+    expSpawns: exp?.playerSpawns?.length ?? null,
+    expEnemies: exp?.enemies?.length ?? null,
+    valid: /✓ valid/.test(validText),
   };
 })()`;
+const setBrush = (b) => `document.querySelector('button[data-brush="${b}"]').click()`;
 
 async function main() {
   await withGame(
@@ -33,26 +43,42 @@ async function main() {
       try {
         await sleep(900);
         let st = await g.eval(STATE);
-        console.log("• #editor boots the level editor");
+        console.log("• #editor boots with the brush palette");
         check("the editor scene is active", st.active === true);
-        check("the export panel is mounted", st.hasPanel === true);
-        check("the draft starts with no walls", st.blocked === 0);
+        check("the brush palette is present (7 brushes)", st.brushButtons === 7);
+        check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));
 
-        // Real clicks on the board — exercise onPointerDown → worldToTile → place wall.
-        const points = [[400, 300], [360, 285], [440, 320], [400, 260], [470, 300]];
-        for (const [x, y] of points) { await g.clickScene(x, y); await sleep(100); }
+        // Wall brush (default): real clicks place walls.
+        for (const [x, y] of [[200, 300], [250, 320]]) { await g.clickScene(x, y); await sleep(80); }
         st = await g.eval(STATE);
-        console.log("• clicking tiles paints walls into the draft");
-        check("real clicks placed walls (click-pick works)", st.blocked > 0);
-        check("the live export reflects the walls", st.exportBlocked === st.blocked);
-        await g.screenshot(path.join(OUT, "02-walls-placed.png"));
+        check("wall brush + clicks place walls (click-pick works)", st.walls === 2);
 
-        // Clicking the same tile again toggles the wall back off.
-        await g.clickScene(400, 300); await sleep(100);
+        // Spawn brush.
+        await g.eval(setBrush("spawn"));
+        for (const [x, y] of [[120, 280], [120, 320]]) { await g.clickScene(x, y); await sleep(80); }
+        // Enemy brush.
+        await g.eval(setBrush("enemy"));
+        for (const [x, y] of [[340, 300], [380, 320]]) { await g.clickScene(x, y); await sleep(80); }
+        // Exit brush.
+        await g.eval(setBrush("exit"));
+        for (const [x, y] of [[100, 260], [100, 300]]) { await g.clickScene(x, y); await sleep(80); }
+
+        st = await g.eval(STATE);
+        console.log("• the palette paints spawns / enemies / exit tiles");
+        check("spawns were placed", st.spawns === 2);
+        check("enemies were placed", st.enemies === 2);
+        check("exit tiles were placed", st.exit === 2);
+        check("the live export reflects spawns + enemies", st.expSpawns === 2 && st.expEnemies === 2);
+        check("the draft validates as a playable level", st.valid === true);
+        await g.screenshot(path.join(OUT, "02-painted.png"));
+
+        // Erase brush removes an entity at a clicked tile.
+        await g.eval(setBrush("erase"));
+        await g.clickScene(340, 300); await sleep(80);
         const st2 = await g.eval(STATE);
-        console.log("• clicking a wall again removes it (toggle)");
-        check("toggling a wall off decrements the draft", st2.blocked === st.blocked - 1);
+        console.log("• erase brush removes a placed entity");
+        check("erasing an enemy tile decrements the enemies", st2.enemies === 1);
 
         assertNoProblems(g.problems);
       } catch (err) {

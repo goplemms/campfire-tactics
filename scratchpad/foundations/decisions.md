@@ -3828,11 +3828,14 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 - **Decision — Part 2: the visual editor.** An **`#editor`** Phaser scene that **reuses `CombatView`**
   (render) + **`worldToTile`** (click-pick) to paint a draft `AuthoredEncounter` by clicking tiles, with a
   live DOM export panel (the D95 panel idiom). Built in milestones: **M1 (done)** — grid render, click a
-  tile to toggle a **blocked wall**, live JSON export + Copy. **M2** — the brush palette (spawns · enemies
-  by template · captives reach/lockpick · exit tiles · traps · erase) + adjustable grid + a **Download
-  `.json`** button that emits a folder-ready file. **M3** — objectives (extraction wired to placed exit
-  tiles) + a pasteable-literal export + **import** to edit existing levels + live validation. **M4** —
-  docs + guard sweep.
+  tile to toggle a **blocked wall**, live JSON export + Copy. **M2 (done)** — the brush palette (wall ·
+  spawn · enemy by template · captive reach/lockpick · exit · trap · erase) + adjustable grid + live
+  validation + a **Download `.json`** button emitting a folder-ready file. The draft→encounter
+  serialization is a **pure, unit-tested** module (`editor-draft.ts`) proving the editor emits
+  pipeline-valid, playable levels (incl. the D97 extraction shape when exit tiles + prisoners are placed).
+  **M3** — a pasteable-literal export + **import** to edit existing levels + richer objective authoring.
+  **M4** — docs + guard sweep. The full loop now runs: paint in `#editor` → Download `.json` → drop in
+  `content/levels/` → play at `#level=<id>`.
 - **Scoped (JIT):** **single standalone encounters** only — **not** the expedition **map/DAG** (slotting a
   level into the Hollow Mill arc stays a deliberate wiring step / a future *map editor*, so the curated
   finale can't be silently replaced by whatever JSON appears); DOM palette + Phaser board; JSON = raw

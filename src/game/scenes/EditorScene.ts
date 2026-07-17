@@ -2,9 +2,9 @@ import Phaser from "phaser";
 import { CombatView } from "../combat-view";
 import { COLOR, FONT, INK } from "../theme";
 import { clearLayer } from "../ui";
-import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, type GridCoord } from "../../core";
+import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, type GridCoord, type AuthoredEncounter } from "../../core";
 import { validateLevel } from "../../content/levels";
-import { blankDraft, draftToEncounter, type Brush, type EditorDraft } from "../editor-draft";
+import { blankDraft, draftToEncounter, encounterToDraft, type Brush, type EditorDraft } from "../editor-draft";
 
 /**
  * The **visual level editor** (D98) — `#editor`.
@@ -238,6 +238,19 @@ export class EditorScene extends Phaser.Scene {
     panel.appendChild(valid);
     this.validLine = valid;
 
+    // Import: paste a level's JSON and load it into the draft (the M-A round-trip inverse).
+    const imp = document.createElement("div");
+    imp.style.margin = "6px 0";
+    const impArea = document.createElement("textarea");
+    Object.assign(impArea.style, { width: "100%", height: "46px", font: "11px/1.3 ui-monospace, monospace", boxSizing: "border-box" } as CSSStyleDeclaration);
+    impArea.placeholder = "paste level JSON to import…";
+    impArea.dataset.role = "import";
+    const impBtn = document.createElement("button");
+    impBtn.textContent = "Import JSON"; impBtn.style.cursor = "pointer"; impBtn.dataset.role = "import-btn";
+    impBtn.onclick = () => this.importJson(impArea.value);
+    imp.append(impArea, impBtn);
+    panel.appendChild(imp);
+
     const btns = document.createElement("div");
     const copy = document.createElement("button"); copy.textContent = "Copy"; copy.style.cursor = "pointer";
     copy.onclick = () => navigator.clipboard?.writeText(this.exportJson());
@@ -255,6 +268,31 @@ export class EditorScene extends Phaser.Scene {
     this.panel = panel;
     this.highlightBrush();
     this.updateExport();
+  }
+
+  /**
+   * Import a pasted level JSON into the draft (M-A) — **fail-loud**: a parse/shape/walkover error
+   * shows in the validation line and the draft is left untouched. On success the panel is remounted
+   * so every field reflects the imported level.
+   */
+  private importJson(text: string): void {
+    let next: EditorDraft;
+    try {
+      const raw: unknown = JSON.parse(text);
+      const issues = validateLevel(raw);
+      if (issues.length) throw new Error(issues.join("; "));
+      next = encounterToDraft(raw as AuthoredEncounter);
+    } catch (err) {
+      if (this.validLine) {
+        this.validLine.textContent = `⚠ import failed: ${(err as Error).message}`;
+        this.validLine.style.color = "#f0a0a0";
+      }
+      return;
+    }
+    this.draft = next;
+    this.renderBoard();
+    this.unmountPanel();
+    this.mountPanel();
   }
 
   private field(label: string, value: string, onChange: (v: string) => void): HTMLDivElement {

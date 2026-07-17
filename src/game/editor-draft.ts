@@ -1,27 +1,68 @@
 /**
- * The level-editor draft model + serialization (D98 M2) — **pure, no Phaser**.
+ * The level-editor draft model + serialization (D98 M2, round-trip spine D98-editor M-A) —
+ * **pure, no Phaser**.
  *
  * The `#editor` scene mutates an {@link EditorDraft} by clicking tiles; this module turns that
- * draft into the {@link AuthoredEncounter} the content pipeline consumes ({@link draftToEncounter}).
- * Keeping it Phaser-free means the serialization is unit-tested directly against `validateLevel` +
- * `stageEncounter` — proving the editor emits **pipeline-valid, playable** levels.
+ * draft into the {@link AuthoredEncounter} the content pipeline consumes ({@link draftToEncounter})
+ * and back again ({@link encounterToDraft}, the **import** inverse). Keeping it Phaser-free means the
+ * serialization is unit-tested directly against `validateLevel` + `stageEncounter` — proving the
+ * editor emits **pipeline-valid, playable** levels, and that a load→edit→save cycle is **lossless**.
+ *
+ * ## Lossless import (M-A)
+ * {@link encounterToDraft} / {@link draftToEncounter} are an inverse pair: for any pipeline level
+ * `L`, `draftToEncounter(encounterToDraft(L))` is **structurally equal** to `L` (deep-equal — not
+ * byte-identical, since the editor's `JSON.stringify(_, null, 2)` formatter differs from a
+ * hand-formatted file). Fields the editor cannot yet *edit* still **round-trip**: per-entity extras
+ * (enemy `id`/`role`/`overrides`/`hidden`, a captive's full `spec`) ride on the draft entity, and
+ * top-level un-modeled scalars (`reward`, `objectives`, `rumors`, `intelDepth`, `grants`) ride in the
+ * {@link EditorDraft._passthrough} bag. Later milestones graduate a field group from the bag/carry into
+ * a real control without ever making import lossy. Import is **fail-loud** for the few shapes M-A
+ * genuinely cannot carry (see {@link encounterToDraft}).
  */
 
-import type { GridCoord, UnitSpec, AuthoredEncounter, ObjectiveSpec } from "../core";
+import type { GridCoord, UnitSpec, AuthoredEncounter, ObjectiveSpec, ObjectiveTag } from "../core";
 
 /** A brush the editor paints with — what a tile click stamps. */
 export type Brush = "wall" | "spawn" | "enemy" | "captive" | "exit" | "trap" | "erase";
 
-/** A placed enemy: a template id at a tile. */
+/** A placed enemy: a template id at a tile, plus authored extras carried through import (M-A). */
 export interface DraftEnemy {
   templateId: string;
   pos: GridCoord;
+  /** Explicit unit id (e.g. `the-warden`) — carried; editable in M-B. */
+  id?: string;
+  /** Objective role tag (a captain, a closing-gate sapper) — carried; editable in M-B. */
+  role?: "sapper" | "captain";
+  /** Stat overrides (a tougher captain) — carried; editable in M-B. */
+  overrides?: Partial<UnitSpec>;
+  /** An ambush body hidden until scouted — carried; editable in M-B. */
+  hidden?: boolean;
 }
 
-/** A placed captive: a tile + how it's freed (a lockpick captive is an extraction prisoner). */
+/**
+ * A placed captive: a tile + how it's freed (a lockpick captive is an extraction prisoner). An
+ * imported captive carries its full authored {@link UnitSpec} so identity/stats survive a round-trip;
+ * a freshly-painted captive has no `spec` and one is synthesized on export ({@link captiveSpec}).
+ */
 export interface DraftCaptive {
   pos: GridCoord;
   release: "reach" | "lockpick";
+  /** The authored unit spec (carried on import; editable in M-B). Absent ⇒ synthesized on export. */
+  spec?: UnitSpec;
+}
+
+/**
+ * Top-level {@link AuthoredEncounter} fields the editor does not yet paint but must **preserve**
+ * across a round-trip — the passthrough bag. Each is graduated into a real control by a later
+ * milestone (objectives + reward → M-C; rumors/intelDepth/grants → M-E), at which point it moves out
+ * of the bag. Until then it rides here untouched, so import is never lossy.
+ */
+export interface DraftPassthrough {
+  reward?: AuthoredEncounter["reward"];
+  objectives?: ObjectiveSpec[];
+  rumors?: AuthoredEncounter["rumors"];
+  intelDepth?: AuthoredEncounter["intelDepth"];
+  grants?: AuthoredEncounter["grants"];
 }
 
 /** The editor's mutable working state — a superset of what it can currently paint. */
@@ -37,6 +78,8 @@ export interface EditorDraft {
   /** Extraction exit tiles — a freed prisoner escorted here wins by extraction (D97). */
   exit: GridCoord[];
   traps: GridCoord[];
+  /** Un-editable-yet fields preserved verbatim across import (M-A). See {@link DraftPassthrough}. */
+  _passthrough?: DraftPassthrough;
 }
 
 /** A fresh blank draft at the given size. */
@@ -51,21 +94,84 @@ function captiveSpec(i: number, pos: GridCoord): UnitSpec {
   return { id: `prisoner-${i}`, name: "Prisoner", side: "player", pos, jobId: "soldier", primaryJob: "soldier", role: "prisoner", ...CAPTIVE_STATS };
 }
 
+const cp = (c: GridCoord): GridCoord => ({ col: c.col, row: c.row });
+
+/** The exit tiles implied by an encounter's extraction objective (render-only; serialization uses the objective). */
+function exitTilesOf(enc: AuthoredEncounter): GridCoord[] {
+  const extraction = enc.objectives?.find((o) => o.kind === "extraction");
+  return (extraction?.span ?? []).map(cp);
+}
+
 /**
- * Serialize a draft into the {@link AuthoredEncounter} the pipeline loads. Objectives are
- * **derived**: always the default elimination goal, plus — when the draft has both exit tiles
- * and prisoners — an OR'd `extraction` goal bound to the exit span (the D97 finale shape). Empty
+ * Import: turn a pipeline {@link AuthoredEncounter} into an editable {@link EditorDraft}, the inverse
+ * of {@link draftToEncounter}. Editable fields map onto the draft; per-entity extras ride on the draft
+ * entity; un-modeled top-level scalars ride in `_passthrough`. **Fail-loud** on the shapes M-A cannot
+ * carry losslessly (rather than silently dropping them):
+ * - a **trap with extras** (`id`/`damage`/`concealment`) — traps are positions-only until M-E;
+ * - a **captive release kind** the editor's `reach`/`lockpick` palette doesn't model.
+ */
+export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
+  for (const t of enc.traps ?? []) {
+    if (t.id !== undefined || t.damage !== undefined || t.concealment !== undefined)
+      throw new Error(`import: trap at (${t.pos.col},${t.pos.row}) has id/damage/concealment — trap params aren't editable yet (a later editor milestone). Refusing rather than dropping them.`);
+  }
+
+  const captives: DraftCaptive[] = (enc.captives ?? []).map((c) => {
+    const kind = c.release?.kind ?? "reach";
+    if (kind !== "reach" && kind !== "lockpick")
+      throw new Error(`import: captive "${c.spec.id}" has release kind "${kind}" — the editor models only reach/lockpick. Refusing rather than dropping it.`);
+    return { pos: cp(c.pos), release: kind, spec: c.spec };
+  });
+
+  const pt: DraftPassthrough = {};
+  if (enc.reward) pt.reward = enc.reward;
+  if (enc.objectives) pt.objectives = enc.objectives;
+  if (enc.rumors) pt.rumors = enc.rumors;
+  if (enc.intelDepth !== undefined) pt.intelDepth = enc.intelDepth;
+  if (enc.grants) pt.grants = enc.grants;
+
+  return {
+    id: enc.id,
+    name: enc.name,
+    cols: enc.cols,
+    rows: enc.rows,
+    blocked: enc.blocked.map(cp),
+    playerSpawns: enc.playerSpawns.map(cp),
+    enemies: enc.enemies.map((e) => ({
+      templateId: e.templateId,
+      pos: cp(e.pos),
+      ...(e.id !== undefined ? { id: e.id } : {}),
+      ...(e.role ? { role: e.role } : {}),
+      ...(e.overrides ? { overrides: e.overrides } : {}),
+      ...(e.hidden ? { hidden: e.hidden } : {}),
+    })),
+    captives,
+    exit: exitTilesOf(enc),
+    traps: (enc.traps ?? []).map((t) => cp(t.pos)),
+    ...(Object.keys(pt).length ? { _passthrough: pt } : {}),
+  };
+}
+
+/**
+ * Serialize a draft into the {@link AuthoredEncounter} the pipeline loads. Objectives + reward come
+ * from `_passthrough` when an imported level supplied them; otherwise objectives are **derived** —
+ * the default elimination goal plus, when the draft has both exit tiles and prisoners, an OR'd
+ * `extraction` goal bound to the exit span (the D97 finale shape). Per-entity extras (enemy id/role/…,
+ * a captive's carried spec) round-trip; a freshly-painted captive gets a synthesized spec. Empty
  * collections are omitted so the JSON stays tidy.
  */
 export function draftToEncounter(draft: EditorDraft): AuthoredEncounter {
-  const captives = draft.captives.map((c, i) => ({ spec: captiveSpec(i, c.pos), pos: c.pos, release: { kind: c.release } }));
+  const pt = draft._passthrough ?? {};
+  const captives = draft.captives.map((c, i) => ({ spec: c.spec ?? captiveSpec(i, c.pos), pos: c.pos, release: { kind: c.release } }));
+
   const hasExtraction = draft.exit.length > 0 && draft.captives.length > 0;
-  const objectives: ObjectiveSpec[] | undefined = hasExtraction
+  const derivedObjectives: ObjectiveSpec[] | undefined = hasExtraction
     ? [
         { id: "storm", kind: "eliminate-all", required: true, label: "Defeat the garrison" },
-        { id: "extract", kind: "extraction", required: true, label: "Escort the prisoners to the exit", span: [...draft.exit], escort: { role: "prisoner" } },
+        { id: "extract", kind: "extraction", required: true, label: "Escort the prisoners to the exit", span: [...draft.exit], escort: { role: "prisoner" } as ObjectiveTag },
       ]
     : undefined;
+  const objectives = pt.objectives ?? derivedObjectives;
 
   return {
     id: draft.id,
@@ -74,10 +180,20 @@ export function draftToEncounter(draft: EditorDraft): AuthoredEncounter {
     rows: draft.rows,
     blocked: [...draft.blocked],
     playerSpawns: [...draft.playerSpawns],
-    enemies: draft.enemies.map((e) => ({ templateId: e.templateId, pos: e.pos })),
+    enemies: draft.enemies.map((e) => ({
+      templateId: e.templateId,
+      pos: e.pos,
+      ...(e.id !== undefined ? { id: e.id } : {}),
+      ...(e.role ? { role: e.role } : {}),
+      ...(e.overrides ? { overrides: e.overrides } : {}),
+      ...(e.hidden ? { hidden: e.hidden } : {}),
+    })),
     ...(captives.length ? { captives } : {}),
     ...(draft.traps.length ? { traps: draft.traps.map((pos) => ({ pos })) } : {}),
+    ...(pt.rumors ? { rumors: pt.rumors } : {}),
+    ...(pt.intelDepth !== undefined ? { intelDepth: pt.intelDepth } : {}),
     ...(objectives ? { objectives } : {}),
-    reward: { gold: 50, materials: [], xp: 40 },
+    reward: pt.reward ?? { gold: 50, materials: [], xp: 40 },
+    ...(pt.grants ? { grants: pt.grants } : {}),
   };
 }

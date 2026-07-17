@@ -117,3 +117,47 @@ describe("the JSON level content pipeline (D98)", () => {
     ).toContain('unknown enemy template "nope"');
   });
 });
+
+describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
+  const CAPTIVE_STATS = { jobId: "soldier", primaryJob: "soldier", role: "prisoner", speed: 10, maxHp: 22, attack: 6, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 } as const;
+  const EXIT = [{ col: 0, row: 0 }, { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 0, row: 5 }];
+  function rescueLevel(captiveCol: number, escortTag: { role?: string; id?: string } = { role: "prisoner" }): unknown {
+    const pos = { col: captiveCol, row: 2 };
+    return {
+      id: "walkover-probe", name: "Walkover Probe", cols: 10, rows: 6, blocked: [],
+      playerSpawns: [{ col: 0, row: 1 }],
+      enemies: [{ templateId: "bandit-thug", pos: { col: 5, row: 2 } }],
+      captives: [{ spec: { id: "cap", name: "Cap", side: "player", pos, ...CAPTIVE_STATS }, pos, release: { kind: "lockpick" } }],
+      objectives: [
+        { id: "storm", kind: "eliminate-all", required: true, label: "clear" },
+        { id: "extract", kind: "extraction", required: true, label: "escort", span: EXIT, escort: escortTag },
+      ],
+      reward: { gold: 50, materials: [], xp: 40 },
+    };
+  }
+
+  it("flags a captive that starts within moveRange of the exit (the challenge-F footgun)", () => {
+    // col 3, moveRange 4 → 3 tiles from the col-0 span ≤ 4 → one move onto the exit wins.
+    expect(validateLevel(rescueLevel(3)).some((i) => /walkover/.test(i))).toBe(true);
+  });
+
+  it("passes a captive held far from the exit (the shipped finale geometry)", () => {
+    // col 9, moveRange 4 → 9 > 4 → a real escort across the board.
+    expect(validateLevel(rescueLevel(9)).some((i) => /walkover/.test(i))).toBe(false);
+  });
+
+  it("flags exactly moveRange away (≤, so a single move still reaches the span)", () => {
+    expect(validateLevel(rescueLevel(4)).some((i) => /walkover/.test(i))).toBe(true);
+    expect(validateLevel(rescueLevel(5)).some((i) => /walkover/.test(i))).toBe(false);
+  });
+
+  it("flags an extraction whose escort tag matches no captive — a dead win-path", () => {
+    const issues = validateLevel(rescueLevel(9, { role: "medic" }));
+    expect(issues.some((i) => /no captive matching its escort tag/.test(i))).toBe(true);
+  });
+
+  it("leaves the shipped finale levels clean (no false positives)", () => {
+    expect(validateLevel(getLevel("the-rescue")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
+    expect(validateLevel(getLevel("prison-break")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
+  });
+});

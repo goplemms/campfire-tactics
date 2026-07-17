@@ -5,7 +5,12 @@
 // Run:  npm run test:e2e:editor   (needs Chrome — see scripts/harness.mjs)
 
 import path from "node:path";
+import fs from "node:fs";
 import { withGame, sleep, assertNoProblems, ROOT } from "./harness.mjs";
+
+// The real shipped finale — imported through the editor's paste box to prove a load→edit→save
+// round-trip renders without a freeze (M-A). Read from disk, injected into the page.
+const RESCUE_JSON = fs.readFileSync(path.join(ROOT, "src", "content", "levels", "the-rescue.json"), "utf8");
 
 const OUT = path.join(ROOT, "screenshots", "e2e-editor");
 
@@ -30,10 +35,24 @@ const STATE = `(() => {
     spawns: d.playerSpawns?.length ?? null,
     enemies: d.enemies?.length ?? null,
     exit: d.exit?.length ?? null,
+    captives: d.captives?.length ?? null,
+    wardenRole: (d.enemies ?? []).find((e) => e.id === "the-warden")?.role ?? null,
+    expCaptiveIds: (exp?.captives ?? []).map((c) => c.spec?.id).join(","),
+    expExtractLabel: (exp?.objectives ?? []).find((o) => o.kind === "extraction")?.label ?? null,
+    expReward: exp?.reward?.gold ?? null,
+    importBox: !!document.querySelector('textarea[data-role="import"]'),
     expSpawns: exp?.playerSpawns?.length ?? null,
     expEnemies: exp?.enemies?.length ?? null,
     valid: /✓ valid/.test(validText),
   };
+})()`;
+
+// Paste the-rescue's JSON into the import box and click Import.
+const IMPORT = `(() => {
+  const ta = document.querySelector('textarea[data-role="import"]');
+  ta.value = ${JSON.stringify(RESCUE_JSON)};
+  document.querySelector('button[data-role="import-btn"]').click();
+  return true;
 })()`;
 const setBrush = (b) => `document.querySelector('button[data-brush="${b}"]').click()`;
 
@@ -79,6 +98,22 @@ async function main() {
         const st2 = await g.eval(STATE);
         console.log("• erase brush removes a placed entity");
         check("erasing an enemy tile decrements the enemies", st2.enemies === 1);
+        check("the import box is present", st2.importBox === true);
+
+        // Import the shipped finale through the paste box — the M-A round-trip inverse, in the real scene.
+        await g.eval(IMPORT);
+        await sleep(200);
+        const st3 = await g.eval(STATE);
+        console.log("• importing the-rescue.json loads it into the draft (no freeze)");
+        check("import loaded the-rescue's 5 enemies", st3.enemies === 5);
+        check("import loaded the-rescue's 3 captives", st3.captives === 3);
+        check("import loaded the 6-tile exit span", st3.exit === 6);
+        check("import carried the named captive ids (not clobbered)", st3.expCaptiveIds === "captive-1,captive-2,captive-3");
+        check("import carried the custom extraction label", st3.expExtractLabel === "Free the captives and escort them to the exit");
+        check("import carried the authored reward (260g, not the 50g default)", st3.expReward === 260);
+        check("import carried the warden's role tag", st3.wardenRole === "captain");
+        check("the imported finale validates", st3.valid === true);
+        await g.screenshot(path.join(OUT, "03-imported.png"));
 
         assertNoProblems(g.problems);
       } catch (err) {

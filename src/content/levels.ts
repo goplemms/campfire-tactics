@@ -14,16 +14,55 @@
  * CI-guarded content contract, surfaced early rather than as a mid-boot crash.
  */
 
-import type { UnitSpec, ScenarioConfig } from "../core";
+import type { UnitSpec, ScenarioConfig, ObjectiveTag, ObjectiveSpec } from "../core";
 import { getEnemyTemplate, OBJECTIVE_KINDS, type AuthoredEncounter } from "../core";
 
 /** Objective kinds accepted in a level file — the core list (never hand-copied, so it can't drift). */
 const KINDS: readonly string[] = OBJECTIVE_KINDS;
 
+/** Does a captive's authored spec match an objective's escort tag (by role or id)? */
+function escorteeMatches(spec: UnitSpec, tag?: ObjectiveTag): boolean {
+  if (!tag) return false;
+  if (tag.id !== undefined) return spec.id === tag.id;
+  if (tag.role !== undefined) return spec.role === tag.role;
+  return false;
+}
+
+/**
+ * The **walkover guard** (D97/D99): an extraction escortee authored on/near the exit trivializes the
+ * rescue (a freed prisoner one move from the span = an instant win with no combat — the D97
+ * challenge-F footgun). Release-agnostic (applies however the captive is freed) and distance-aware
+ * (min Manhattan distance from each escortee's start to any exit-span tile must exceed its
+ * `moveRange`). Also flags an extraction whose escort tag matches **no** captive — a silently dead
+ * win-path. Lives in shared `validateLevel` so it protects **every** level (hand- or editor-authored),
+ * not just the finale — the general form of the two file-specific test pins it supersedes.
+ */
+function extractionIssues(e: Partial<AuthoredEncounter>): string[] {
+  const issues: string[] = [];
+  const captives = Array.isArray(e.captives) ? e.captives : [];
+  for (const o of (e.objectives ?? []) as ObjectiveSpec[]) {
+    if (o?.kind !== "extraction") continue;
+    const span = Array.isArray(o.span) ? o.span : [];
+    if (!span.length) continue;
+    const escortees = captives.map((c) => c?.spec).filter((s): s is UnitSpec => !!s && escorteeMatches(s, o.escort));
+    if (!escortees.length) {
+      issues.push(`extraction objective "${o.id}" has no captive matching its escort tag — a dead win-path`);
+      continue;
+    }
+    for (const s of escortees) {
+      const move = s.moveRange ?? 0;
+      const nearest = Math.min(...span.map((t) => Math.abs(t.col - s.pos.col) + Math.abs(t.row - s.pos.row)));
+      if (nearest <= move)
+        issues.push(`escortee "${s.id}" starts ${nearest} tile(s) from the exit (≤ moveRange ${move}) — trivializes extraction (D97/D99 walkover)`);
+    }
+  }
+  return issues;
+}
+
 /**
  * Structurally validate a parsed level file → the list of problems (empty = valid). A light
- * shape + reference check (enemy templates resolve, objective kinds are known); the deep check
- * is `stageEncounter` itself, exercised by the round-trip test.
+ * shape + reference check (enemy templates resolve, objective kinds are known) plus the D97/D99
+ * walkover guard; the deep check is `stageEncounter` itself, exercised by the round-trip test.
  */
 export function validateLevel(raw: unknown): string[] {
   const issues: string[] = [];
@@ -38,6 +77,7 @@ export function validateLevel(raw: unknown): string[] {
   else for (const en of e.enemies) if (!getEnemyTemplate(en?.templateId)) issues.push(`unknown enemy template "${en?.templateId}"`);
   if (e.objectives) for (const o of e.objectives) if (!KINDS.includes(o?.kind)) issues.push(`unknown objective kind "${o?.kind}"`);
   if (!e.reward) issues.push("missing reward");
+  issues.push(...extractionIssues(e));
   return issues;
 }
 

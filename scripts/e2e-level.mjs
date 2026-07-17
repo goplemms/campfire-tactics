@@ -35,6 +35,21 @@ async function main() {
         check("the authored enemies are on the board", st.enemies === 2);
         await g.screenshot(path.join(OUT, "01-sample-skirmish.png"));
 
+        // A second content level — the dual-OR finale variant — renders too.
+        await g.boot("#level=prison-break");
+        await sleep(1300);
+        const pb = await g.bsEval(`return {
+          phase: s.phase,
+          enemies: s.battle.units.filter(u => u.side === "enemy").length,
+          prisoners: s.battle.units.filter(u => u.role === "prisoner").length,
+          goals: s.loop.staged.objectives.map(o => o.spec.kind).sort().join(","),
+        };`);
+        console.log("• #level=prison-break boots the dual-OR finale variant");
+        check("prison-break renders a deployment board", pb.phase === "deployment");
+        check("its garrison + prisoners are staged", pb.enemies === 5 && pb.prisoners === 2);
+        check("it carries the two OR'd goals", pb.goals === "eliminate-all,extraction");
+        await g.screenshot(path.join(OUT, "03-prison-break.png"));
+
         // The bare #level picker lists the loaded content levels.
         await g.boot("#level");
         await sleep(500);

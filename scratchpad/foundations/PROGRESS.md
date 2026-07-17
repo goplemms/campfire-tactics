@@ -717,13 +717,20 @@ States: `todo` → `in-progress` → `testable` → `done`
   party) **OR** by **extraction** (a Thief picks the cells + escorts the prisoners to the exit).
   C2 (OR-victory) is built as the reusable `isGoalKind` split (goals OR'd, constraints AND'd) + a new
   `extraction` objective kind; the `STUB_FINALE` is retired.
-- **Next step (D97 built & green, 2026-07-16 — on branch `claude/verify-memento-plugin-a7u52w`):**
-  all headless + browser guards pass — tsc · vitest **1153** · build · sim (digest unchanged) · e2e
-  (deploy 73 · **scenario 33** incl. the new `#scene=prison-assault` finale guard · second-battle 6 ·
-  arc 9) · audit:visual 0/14 · audit:challenge 7/7. On go-ahead, open the PR. **Candidate next
-  threads:** the arms can now be built toward this themed target (more sustain/infiltration nodes);
-  the parked **deployment deep-dive** (full extraction/interior-deploy/alarm, C1/C5) if the extraction
-  taste wants depth; the **status-model** ladder (#171); the **save-model** session (#117).
+- **Current frontier (2026-07-17 — branch `claude/verify-memento-plugin-a7u52w`):** two threads past D97.
+  **(1) Tooling — the level editor + content pipeline (D98):** `#editor` (paint a level, Download JSON) →
+  `content/levels/*.json` glob-loaded → `#level=<id>` plays it; a `level-author` agent + drift-free
+  single-sourcing. **(2) The finale as a RESCUE (D99, refines D97):** free a **group of captives**, dual-OR
+  kept (extraction = the heart, eliminate-all = also completes it). Built standalone as
+  `content/levels/the-rescue.json` (`#level=the-rescue`) — **not yet in the arc**; the live finale stays
+  D97's `PRISON_ASSAULT`. **Read [`finale-authoring-handoff.md`](finale-authoring-handoff.md) + D97–D99
+  before changing the finale.** Guards green: tsc · vitest **1166** · build · e2e (`test:e2e:level`,
+  `:editor`, + the D97 scenario/arc/second-battle suites).
+- **Deferred / next (see the handoff doc):** rename the placeholder captives into named characters; the
+  **flank / repositioning session** (the Intel deploy-side that makes extraction viable — red-teamed,
+  kept-not-replaced, C5-lite); the **map-creation expansion** (bigger/richer boards + more of the
+  `AuthoredEncounter` surface in the editor + import + maybe a map/topology editor — the owner's stated
+  next direction); then **promote The Rescue into the arc**. Older queue: status-model (#171), save-model (#117).
 - **Blockers:** none.
 
 <details><summary>Stale footer (M2-era notes, kept for history)</summary>

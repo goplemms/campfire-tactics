@@ -3858,6 +3858,48 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D99 — The finale is a RESCUE: keep extraction, defer the deploy-side flank (refines D97)
+
+- **Status:** Decided (design) + **building standalone** (2026-07-17). Owner reframe; survived a
+  `decision-adversary` red-team. Refines the D97 finale; the flank half is deferred to its own session.
+  Handoff: [`finale-authoring-handoff.md`](finale-authoring-handoff.md).
+- **Context (why):** D97 shipped the finale as a "storm **vs.** extract" dual-OR. The owner reframed the
+  *intent*: the mission is a **prison rescue** — free a **group of captives** (some are **named
+  characters**, seeds for later campaigns). Separately, the owner wanted the infiltration arm's payoff to
+  become a **deployment advantage** (come in from a different side with Intel), realizing the arc plan's
+  parked **C5 (deploy-inside)** — the game's signature phase.
+- **Decision — Part 1: the finale is a rescue, one intent / two means.** Keep the D97 **dual-OR** (C2),
+  but reframe both goals as the *same rescue*: **extraction** (escort the captive group out) is the
+  thematic **heart**; **eliminate-all** (clear the garrison) *also* completes the rescue (the captives are
+  safe). Extraction binds `escort: {role:"prisoner"}` to the **whole group** (all must be out). Prisoners
+  are D52 captives (recruit-on-win), named as placeholders to graduate into campaign characters later.
+- **Decision — Part 2: the infiltration payoff is a DEPLOY-SIDE that SERVES extraction — and it is
+  DEFERRED.** A red-team killed the tempting version ("*replace* extraction with a better deploy spot"):
+  that trades a **distinct victory** (win with the garrison standing) for a **cheaper identical victory**,
+  and strands C2's only live consumer. The **kept** design: extraction stays the distinct win, and the
+  Intel-gated flank *insert near the cells* is what finally makes escorting the group **viable** (fixing
+  the real flaw — the sim never takes extraction because the full-board escort is too slow). The flank is
+  built **on top**, in its own session, **not now**.
+  - **Load-bearing red-team caveat (F1) for that session:** the deploy net has a **single** home-edge
+    campfire, so a *meaningful* flank (deep in enemy ground) can't be a *safe* insert without a **second
+    protection source = the full parked C5**. The **lean** version is therefore a **binary-unlock alternate
+    spawn set** (Intel ⇒ you *may* deploy from the flank; its risk is natural net-exposure — **no** "safe
+    informed vs. risky blind" claim, which is the part that forces the deep-dive). Reuses the existing
+    `opts.playerSpawns` staging override + a runloop flag-check + a deploy-time choice + a new visual e2e.
+  - **Do NOT** make extraction easy by placing cells near the exit — that re-arms D97's challenge-F
+    walkover footgun. The flank (a *start* position), not the *cell* position, is the sanctioned fix.
+- **Built so far (standalone, arc untouched):** `content/levels/the-rescue.json` (`#level=the-rescue`) —
+  the group rescue, authored via the D98 pipeline by the `level-author` agent. Iterated standalone; the
+  live arc finale stays D97's `PRISON_ASSAULT` until **promotion** (an owner-directed step) once the flank
+  + the map-creation expansion (roadmap) settle.
+- **Guards:** `levels.test` proves both rescue win-paths (incl. *all three* captives must be extracted, not
+  two); `test:e2e:level` boots `#level=the-rescue`. tsc · vitest (**1166**) · build green. `core/` untouched.
+- **Reuses:** **D97** (the dual-OR extraction classifier + `extraction` kind), **D98** (the editor +
+  pipeline + `level-author` agent), **D52** (captives / recruit-on-win). **Parks:** the arc plan's **C5**
+  deployment deep-dive (now the deferred flank session). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

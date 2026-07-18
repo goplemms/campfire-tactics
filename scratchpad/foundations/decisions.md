@@ -4049,9 +4049,12 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   prisoner walks out; defeat the Captain → cells pop) — MANDATORY for the new player-facing surface (the
   D92 freeze cautionary tale); an **editor** gate brush + inspector `openBy` + JSON (graduate out of the
   passthrough bag). **Phase 3:** the **control-room seal** — a lever/enter trigger that *locks* a
-  guard-facing gate (the inverse of open), the owner's **destructible** door the guards batter down (the
-  `destructible` `openBy` member + enemy-AI-targets-the-gate), and whether "several turns" is a real
-  countdown (maps to a `closing-gate` objective) or just the emergent value of the sealed door (TBD w/ owner).
+  guard-facing gate (the inverse of open). The seal is a **destructible** door (the `destructible` `openBy`
+  member: the gate carries HP; enemy AI targets it and attacks until it breaks). This **is** the timer — the
+  owner's call (2026-07-18): "the delay would just be a result of enemy action to bust down the door" — so
+  the "several turns" is **emergent from the door's HP under attack**, **no** `closing-gate` countdown. One
+  primitive does the door + the timer + proves the `destructible` seam; the new work is a gate-as-attack-target
+  (units targeting a non-unit) + the enemy AI valuing it.
 - **Scoped (JIT):** first cut = **lockpick + keyholder** only. Seam-ready, not built: **lever** (a remote
   switch tile), **key** (a carried item), **destructible** (bash it down — needs units to target a non-unit,
   the one bigger lift). Each is a new `GateLock` member + a case, nothing structural.

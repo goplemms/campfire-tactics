@@ -133,5 +133,29 @@ export const MICRO_LEVER_SEAL: ScenarioConfig = {
   defaultParty: "solo",
 };
 
+// --- gate · remnant — a smashed door is a PERMANENT breach the lever can't re-seal (D106) ---
+const GATE_REMNANT_ENCOUNTER: AuthoredEncounter = {
+  id: "micro-gate-remnant",
+  name: "Micro · Smashed Door Remnant",
+  cols: 5,
+  rows: 3,
+  blocked: [{ col: 3, row: 0 }, { col: 3, row: 2 }], // wall column 3 except the door at (3,1)
+  playerSpawns: [{ col: 2, row: 1 }], // the breaker — adjacent to the door AND beside the lever at (2,0)
+  enemies: [{ templateId: "bandit-thug", pos: { col: 0, row: 1 } }], // a body on the far side → deploy net source
+  captives: [],
+  // A destructible seal wired to a lever. Once the breaker smashes it, the lever must NOT re-seal it.
+  gates: [{ id: "door", pos: { col: 3, row: 1 }, openBy: [{ kind: "destructible", hp: 15 }] }], // 15 ÷ attack 9 = two hits
+  levers: [{ id: "switch", pos: { col: 2, row: 0 }, targets: ["door"] }],
+  reward: { gold: 20, materials: [] },
+};
+
+export const MICRO_GATE_REMNANT: ScenarioConfig = {
+  id: "micro-gate-remnant",
+  name: "Micro · Smashed Door Remnant",
+  encounter: GATE_REMNANT_ENCOUNTER,
+  parties: { assault: [{ id: "breaker", side: "player", pos: { col: 0, row: 0 }, jobId: "soldier", primaryJob: "soldier", ...STATS }] },
+  defaultParty: "assault",
+};
+
 /** Every micro-interaction fixture, in gallery order — spread into the scenario registry. */
-export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER, MICRO_GATE_DESTRUCTIBLE, MICRO_GATE_ENEMY_BATTER, MICRO_LEVER_SEAL];
+export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER, MICRO_GATE_DESTRUCTIBLE, MICRO_GATE_ENEMY_BATTER, MICRO_LEVER_SEAL, MICRO_GATE_REMNANT];

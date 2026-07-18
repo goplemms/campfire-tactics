@@ -47,7 +47,7 @@ import {
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
 import { captureUnit, freeCaptive, canRelease } from "./deployment";
-import { applyGatesToGrid, openGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canPullLever, damageGate, gatesOpenedByDeath, type Gate, type Lever } from "./gates";
+import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canPullLever, damageGate, gatesOpenedByDeath, type Gate, type Lever } from "./gates";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
@@ -539,7 +539,9 @@ export class Battle {
         const broke = damageGate(gate, amount);
         this.bus.emit("gateDamaged", { gate, by: striker, amount });
         if (broke) {
-          openGateOnGrid(this.grid, gate);
+          // Destroyed, not merely opened (D106): the door is smashed to a permanent passable remnant —
+          // the lever can never re-seal it, so the guards' battering is a one-way breach.
+          destroyGateOnGrid(this.grid, gate);
           this.bus.emit("gateOpened", { gate, by: striker, cause: "destroyed" });
         }
         this._log.push(action);
@@ -556,6 +558,7 @@ export class Battle {
         for (const gid of lever.targets) {
           const gate = this.gates.find((g) => g.id === gid);
           if (!gate) continue;
+          if (gate.broken) continue; // a smashed door is a permanent breach — the lever can't toggle rubble (D106)
           if (gate.locked) {
             openGateOnGrid(this.grid, gate);
             this.bus.emit("gateOpened", { gate, by: puller, cause: "lever" });

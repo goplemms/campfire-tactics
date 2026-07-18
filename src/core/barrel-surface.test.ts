@@ -148,6 +148,10 @@
  *     (`scenarios/micro.ts`, the slam-a-door-shut fixture). `Lever` / `AuthoredLever` / the `pullLever`
  *     action / the `gateLocked` event / `Battle.pullLever` / the scene's Pull-Lever verb are type-only /
  *     methods (not runtime surface).
+ *   - gate destroyed / remnant (D106): +2 — `destroyGateOnGrid` (`gates.ts`, the smash-to-a-permanent-
+ *     passable-remnant terminal state — the lever can never re-seal it) + `MICRO_GATE_REMNANT`
+ *     (`scenarios/micro.ts`, the destroy-then-fail-to-reseal fixture). `Gate.broken` + the
+ *     `ICON.gateRemnant` glyph + the scene's remnant render are type-only / `game/` (not core surface).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -252,6 +256,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MICRO_GATE_ENEMY_BATTER",
   "MICRO_GATE_KEYHOLDER",
   "MICRO_GATE_LOCKPICK",
+  "MICRO_GATE_REMNANT",
   "MICRO_LEVER_SEAL",
   "MICRO_SCENARIOS",
   "MIRA_MERCHANT",
@@ -492,6 +497,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "deployForecast",
   "deployModifiers",
   "describeUnit",
+  "destroyGateOnGrid",
   "disarmTrap",
   "dispatch",
   "dispatchRefusal",

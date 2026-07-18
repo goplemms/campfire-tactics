@@ -1065,6 +1065,13 @@ export class BattleScene extends Phaser.Scene {
   private markGates(): void {
     clearLayer(this.gateMarkers);
     for (const g of this.battle.gates) {
+      // A smashed door (D106) leaves a passable remnant on its tile — a low, muted floor marker (not a
+      // block, and never the ▦ lock/HP readout). Rendered before the locked-only skip below.
+      if (g.broken) {
+        const { x, y } = this.tileToWorld(g.pos);
+        this.gateMarkers.push(placeIcon(this, x, y, "gateRemnant", { size: FONT.body }).setDepth(2));
+        continue;
+      }
       if (!g.locked) continue;
       const { x, y } = this.tileToWorld(g.pos);
       const top = y - this.view.halfH() * 0.9;

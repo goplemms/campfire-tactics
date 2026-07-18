@@ -67,6 +67,8 @@ export const ICON = {
   gate: { glyph: "▦", label: "locked gate — pick it or defeat its keyholder", color: INK.ember },
   // A pull-lever (D103): toggles its target gate(s) — the control-room seal.
   lever: { glyph: "⎇", label: "lever — pull to seal/open its gate", color: INK.cyan },
+  // A smashed door (D106): a destructible gate battered to 0 — a passable remnant, permanent (no reseal).
+  gateRemnant: { glyph: "▨", label: "smashed door — a passable remnant (permanently breached)", color: INK.disabled },
 
   // --- UI affordances ---
   expand: { glyph: "▸", label: "expand" },

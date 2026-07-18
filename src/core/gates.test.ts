@@ -3,7 +3,7 @@ import { TileGrid } from "./grid";
 import { createUnit } from "./units";
 import {
   makeGate, openGate, canLockpickGate, lockpickableGates, gatesOpenedByDeath,
-  applyGatesToGrid, openGateOnGrid, isBreakable, canAttackGate, damageGate, breakableGates,
+  applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, isBreakable, canAttackGate, damageGate, breakableGates,
   makeLever, lockGateOnGrid, canPullLever, pullableLevers,
 } from "./gates";
 
@@ -111,6 +111,31 @@ describe("gates (D103) — the prison-break substrate", () => {
     expect(door.locked).toBe(true);
     expect(grid.isWalkable(door.pos)).toBe(false); // tile re-blocked
     expect(door.hp).toBe(20); // a freshly-shut door is whole again
+  });
+
+  it("destroyed (D106): destroyGateOnGrid smashes a door to a permanent, passable remnant", () => {
+    const grid = new TileGrid(5, 5);
+    const door = makeGate("door", { col: 2, row: 2 }, [{ kind: "destructible", hp: 20 }]);
+    applyGatesToGrid(grid, [door]);
+    expect(grid.isWalkable(door.pos)).toBe(false); // locked, blocking
+    destroyGateOnGrid(grid, door);
+    expect(door.broken).toBe(true);
+    expect(door.locked).toBe(false);
+    expect(grid.isWalkable(door.pos)).toBe(true); // a passable remnant now
+    expect(isBreakable(door)).toBe(false); // can't re-batter rubble
+  });
+
+  it("destroyed (D106): a smashed door is a PERMANENT breach — the lever can never re-seal it", () => {
+    const grid = new TileGrid(5, 5);
+    const door = makeGate("door", { col: 2, row: 2 }, [{ kind: "destructible", hp: 20 }]);
+    applyGatesToGrid(grid, [door]);
+    destroyGateOnGrid(grid, door);
+    // lockGateOnGrid (the lever's re-seal) is a no-op on a broken door — the reseal exploit is closed.
+    lockGateOnGrid(grid, door);
+    expect(door.broken).toBe(true);
+    expect(door.locked).toBe(false); // still open
+    expect(grid.isWalkable(door.pos)).toBe(true); // still passable — no re-block, no HP restore
+    expect(door.hp).toBe(0);
   });
 
   it("lever: canPullLever / pullableLevers is a reach test (on the switch or a step away)", () => {

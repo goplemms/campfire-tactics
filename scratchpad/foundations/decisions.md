@@ -4182,7 +4182,44 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   silent-unrescuable-prisoner via empty `openBy` / an escaping keyholder) and the editor authoring
   footguns (`objectSeq` id collision on import, dangling lever targets after erase, empty-span
   extraction, no gate/lever `validateLevel` coverage). These gate the **finale promotion**, not these
-  three correctness bugs. **Superseded by:** —
+  three correctness bugs. **Superseded by:** D106 (the seal's infinite-reseal, F2a, is now closed).
+
+---
+
+## D106 — A smashed door is a permanent breach: the destroyed gate leaves a passable remnant
+
+- **Status:** Decided + built (2026-07-18). Owner design — "make [the door] a unit-style element entity:
+  when it is destroyed it leaves a remnant on the board you can move over, more just a marker. Only the
+  lever can toggle it, whereas destroying it will be permanently disabled." Directly closes the D105 F2a
+  **infinite-reseal** exploit as a *design* fix, not a tuning band-aid.
+- **The problem it solves (F2a):** `lockGateOnGrid` restored a destructible door to full HP on every
+  re-seal, so one unit posted at the lever could re-seal the door at full durability each time the guards
+  battered it to 0 — the "several turns" pressure the finale is built on evaporated into a permanent
+  free wall. The seal needed a *one-way* state: once broken, it stays broken.
+- **Decision — a third gate state, `broken`, distinct from intact-open.** A `destructible` gate now has a
+  lifecycle: **locked** (shut, blocks) → **open** (intact, `locked:false`, lever can re-seal) → **broken**
+  (smashed to 0 hp, `locked:false` + `broken:true`, a *passable remnant*, **never** re-sealable). The
+  break-loop calls the new `destroyGateOnGrid` (sets `broken`, unlocks, zeroes hp, unblocks the tile)
+  instead of `openGateOnGrid`; `lockGateOnGrid` and the `pullLever` toggle both **no-op on a broken gate**;
+  `isBreakable` excludes broken (can't re-batter rubble). So the guards' battering is a permanent breach
+  and the reseal is gone — while an *intact* door (opened by lockpick/keyholder/lever) stays fully
+  toggleable. The distinction is exactly the owner's "only the lever can toggle it [while intact]; destroying
+  it is permanent."
+- **Render (D92 rule — a new player-facing surface).** A broken gate draws a muted, low, **passable ▨
+  remnant** marker (`ICON.gateRemnant`) instead of the ▦ lock + HP readout — proven **in the real scene**
+  via a new `MICRO_GATE_REMNANT` fixture + `test:e2e:micro` block (smash it → ▨ remnant + walkable → pull
+  the lever → it stays a remnant, no re-seal, no freeze). The existing destructible + enemy-batter micro
+  assertions updated from "markers gone" to "▨ remnant present."
+- **Undo/replay:** the gate checkpoint now snapshots `broken` alongside `locked`/`hp`, so undoing the
+  killing blow restores the whole, sealing, un-broken door (covered in `gates-battle.test`).
+- **Scope kept lean (NOT a literal Unit):** the door stays a `Gate` record — it already behaves
+  entity-like (HP, attackable in range). "Unit-style" is the *feel* (it's destroyed and leaves a remnant),
+  captured by the `broken` state; no unit-list/targeting refactor. barrel: +`destroyGateOnGrid` +
+  `MICRO_GATE_REMNANT`.
+- **Remaining (not this change):** the *double-pull top-up* (opening then re-sealing a still-standing
+  damaged door restores its HP) is a lesser, **risky/costly** vector (it opens the door for a beat) and is
+  left as-is; the other D105 finale-timer items (x-ray-sight-gated batter, untuned HP-vs-garrison, the
+  hold-order that disables the loop, the lever-as-skeleton-key) are still open. **Superseded by:** —
 
 ---
 

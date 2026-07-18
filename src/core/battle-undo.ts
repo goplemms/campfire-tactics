@@ -63,11 +63,12 @@ export interface BattleCheckpoint {
   /** Shared-stash counts by value (D63) — so undoing a `placeTrap` refunds its kit. */
   stash?: Record<string, number>;
   /**
-   * Gate `locked` + `hp` state by id (D103) — so undoing a lockpick Act (or a kill that popped a
-   * keyholder cell, or a hit on a destructible door) re-locks the gate, restores its durability, *and*
-   * re-blocks its grid tile on restore. Absent when the encounter has no gates (zero cost, like `stash`).
+   * Gate `locked` + `hp` + `broken` state by id (D103/D106) — so undoing a lockpick Act (or a kill that
+   * popped a keyholder cell, a hit on a destructible door, or the blow that *smashed* one) re-locks the
+   * gate, restores its durability, clears the destroyed flag, *and* re-blocks its grid tile on restore.
+   * Absent when the encounter has no gates (zero cost, like `stash`).
    */
-  gates?: Map<string, { locked: boolean; hp?: number }>;
+  gates?: Map<string, { locked: boolean; hp?: number; broken?: boolean }>;
 }
 
 /** Capture a unit's undoable mutable state by value (tripwired, #115). */
@@ -131,7 +132,7 @@ export function captureCheckpoint(
     clock: clock.snapshot(),
     entities: entities.snapshot(),
     stash: stash ? { ...stash.counts } : undefined,
-    gates: gates && gates.length ? new Map(gates.map((g) => [g.id, { locked: g.locked, hp: g.hp }])) : undefined,
+    gates: gates && gates.length ? new Map(gates.map((g) => [g.id, { locked: g.locked, hp: g.hp, broken: g.broken }])) : undefined,
   };
 }
 
@@ -165,7 +166,8 @@ export function restoreCheckpoint(
       if (snap !== undefined) {
         g.locked = snap.locked;
         g.hp = snap.hp;
-        grid.setWalkable(g.pos, !snap.locked);
+        g.broken = snap.broken;
+        grid.setWalkable(g.pos, !snap.locked); // a broken gate had locked=false → stays passable
       }
     }
   }

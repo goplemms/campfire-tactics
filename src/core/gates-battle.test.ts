@@ -113,12 +113,60 @@ describe("gates in a staged battle (D103 Phase 2a)", () => {
     expect(door.hp).toBe(15);
     expect(battle.grid.isWalkable({ col: 2, row: 1 })).toBe(false);
 
-    // Two hits break it open.
+    // Two hits break it open — and (D106) it's smashed to a permanent remnant, not merely opened.
     battle.attackGate(door, s);
     battle.attackGate(door, s); // 6 → 0
     expect(door.hp).toBe(0);
     expect(door.locked).toBe(false);
+    expect(door.broken).toBe(true);
     expect(battle.grid.isWalkable({ col: 2, row: 1 })).toBe(true); // the way is clear
+  });
+
+  it("D106: a battered-down door is a PERMANENT breach — the lever can't re-seal it, and undo crosses the smash", () => {
+    const BREACH: AuthoredEncounter = {
+      id: "breach-test",
+      name: "Breach Test",
+      cols: 5,
+      rows: 3,
+      blocked: [{ col: 3, row: 0 }, { col: 3, row: 2 }], // wall col 3 except the door at (3,1)
+      playerSpawns: [{ col: 2, row: 1 }], // the breaker — adjacent to the door, beside the lever at (2,0)
+      enemies: [{ templateId: "bandit-thug", pos: { col: 4, row: 1 } }],
+      gates: [{ id: "door", pos: { col: 3, row: 1 }, openBy: [{ kind: "destructible", hp: 15 }] }],
+      levers: [{ id: "switch", pos: { col: 2, row: 0 }, targets: ["door"] }],
+      reward: { gold: 0, materials: [] },
+    };
+    const breaker = createUnit({ id: "breaker", side: "player", pos: { col: 0, row: 0 }, jobId: "soldier", primaryJob: "soldier", speed: 10, maxHp: 24, attack: 9, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 });
+    const { battle } = stageEncounter(BREACH, [breaker]);
+    const door = gate(battle, "door");
+    const lever = battle.levers[0];
+    const b = unit(battle.units, "breaker");
+
+    // Chip it to 6 (holds, still sealing, not broken).
+    battle.attackGate(door, b); // 15 → 6
+    expect(door.hp).toBe(6);
+    expect(door.broken).toBeFalsy();
+
+    // The killing blow smashes it to a permanent, passable remnant.
+    battle.beginUndo();
+    battle.attackGate(door, b); // 6 → 0
+    expect(door.broken).toBe(true);
+    expect(door.locked).toBe(false);
+    expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(true);
+
+    // Undo crosses the smash (the checkpoint restored `broken`): the door seals again, un-broken.
+    battle.undo();
+    expect(door.broken).toBeFalsy();
+    expect(door.locked).toBe(true);
+    expect(door.hp).toBe(6);
+    expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(false);
+
+    // Re-smash it — now the lever cannot re-seal the breach (the infinite-reseal exploit is closed).
+    battle.attackGate(door, b); // 6 → 0 again
+    expect(door.broken).toBe(true);
+    battle.pullLever(lever, b);
+    expect(door.broken).toBe(true);
+    expect(door.locked).toBe(false);
+    expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(true); // still a passable remnant
   });
 
   it("a lever pull slams an open door shut (control-room seal), toggles back, and undo crosses it", () => {

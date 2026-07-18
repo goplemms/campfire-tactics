@@ -54,6 +54,14 @@ export interface Gate {
   hp?: number;
   /** Starting durability (for the render's HP readout). */
   maxHp?: number;
+  /**
+   * **Destroyed** (D106): a gate battered to 0 hp is smashed **permanently** — it leaves a passable
+   * *remnant* (a marker, never a block) and can no longer be toggled. A lever can seal/unseal an
+   * *intact* door all day, but once the guards break it down the breach is permanent — the reseal is
+   * gone. Distinct from an *intact-open* gate (a lockpicked/keyholder/lever-opened door, `locked:false`
+   * but `broken` falsy), which the lever can still slam shut.
+   */
+  broken?: boolean;
 }
 
 /** Build a gate — locked by default (the interesting state; an authored gate starts shut). */
@@ -93,9 +101,9 @@ export function lockpickableGates(gates: readonly Gate[], by: Unit): Gate[] {
   return gates.filter((g) => canLockpickGate(g, by));
 }
 
-/** Whether `gate` can be broken by attacks — still locked, carries a `destructible` condition + durability. */
+/** Whether `gate` can be broken by attacks — still locked (never a smashed remnant), carries a `destructible` condition + durability. */
 export function isBreakable(gate: Gate): boolean {
-  return gate.locked && gate.hp !== undefined && gate.openBy.some((c) => c.kind === "destructible");
+  return gate.locked && !gate.broken && gate.hp !== undefined && gate.openBy.some((c) => c.kind === "destructible");
 }
 
 /** Whether `by` can attack `gate` right now — it's breakable and `by` is within its attack range (any unit; a door isn't lockpick-gated). */
@@ -146,11 +154,26 @@ export function openGateOnGrid(grid: TileGrid, gate: Gate): void {
 }
 
 /**
+ * **Destroy** a gate (D106) — the terminal state a `destructible` door reaches at 0 hp. Like
+ * {@link openGateOnGrid} it unlocks + unblocks the tile, but it also stamps `broken`: the door is a
+ * **permanent, passable remnant** now, never to be re-sealed. This is the call the break-loop uses
+ * (not `openGateOnGrid`), so a battered-down seal can't be slammed shut again by the lever — the
+ * guards' several turns of battering *count*.
+ */
+export function destroyGateOnGrid(grid: TileGrid, gate: Gate): void {
+  gate.broken = true;
+  gate.locked = false;
+  if (gate.hp !== undefined) gate.hp = 0; // a smashed door reads as spent, whatever brought it here
+  grid.setWalkable(gate.pos, true);
+}
+
+/**
  * **Re-seal** a gate — the inverse of {@link openGateOnGrid} (the control-room lever slamming a door
  * shut): lock it, re-block its tile, and restore a destructible door's durability (a freshly-shut door
  * is whole, so the guards must batter it anew).
  */
 export function lockGateOnGrid(grid: TileGrid, gate: Gate): void {
+  if (gate.broken) return; // a smashed door is a permanent breach — the reseal is gone (D106)
   gate.locked = true;
   grid.setWalkable(gate.pos, false);
   if (gate.maxHp !== undefined) gate.hp = gate.maxHp;

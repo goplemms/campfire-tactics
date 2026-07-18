@@ -76,12 +76,15 @@ const MICROS = [
         s.battle.attackGate(gate, breaker); // attack 9 → 15 - 9 = 6
         return { locked: gate.locked, hp: gate.hp, walkable: s.grid.isWalkable(gate.pos) };`);
       check("one hit chips it but the door holds (6 hp, still blocking)", hit1.locked === true && hit1.hp === 6 && hit1.walkable === false);
-      // Second hit: it breaks open (gateOpened cause=destroyed → grid redraw, markers clear, no freeze).
+      // Second hit: it smashes to a PERMANENT remnant (D106) — tile clears, the ▦/HP readout gives way to
+      // the passable ▨ remnant marker (gateOpened cause=destroyed → grid redraw + remark, no freeze).
       const hit2 = await g.bsEval(`
         const gate = s.battle.gates[0]; const breaker = s.battle.units.find(u => u.id === "breaker");
         s.battle.attackGate(gate, breaker); // 6 - 9 → 0, breaks
-        return { locked: gate.locked, hp: gate.hp, walkable: s.grid.isWalkable(gate.pos), markers: s.gateMarkers.length };`);
-      check("the second hit smashes it open — tile clears, markers gone (no freeze)", hit2.locked === false && hit2.hp === 0 && hit2.walkable === true && hit2.markers === 0);
+        return { locked: gate.locked, broken: gate.broken, hp: gate.hp, walkable: s.grid.isWalkable(gate.pos),
+                 markers: s.gateMarkers.length, glyph: s.gateMarkers.length ? (s.gateMarkers[0].text ?? null) : null };`);
+      check("the second hit smashes it to a passable remnant (▨, permanent, no freeze)",
+        hit2.locked === false && hit2.broken === true && hit2.hp === 0 && hit2.walkable === true && hit2.markers === 1 && hit2.glyph === "▨");
     },
   },
   {
@@ -97,12 +100,15 @@ const MICROS = [
         return { gateTarget: plan.gateTarget ? plan.gateTarget.id : null, hp: s.battle.gates[0].hp };`);
       check("the guard plans to batter the door (not idle against it)", t1.gateTarget === "door");
       check("the door takes a hit from the enemy — durability drops (no freeze)", t1.hp < 20);
-      // Keep battering across turns until the seal breaks.
+      // Keep battering across turns until the seal is smashed to a permanent remnant (D106).
       const broke = await g.bsEval(`
         const enemy = s.battle.units.find(u => u.side === "enemy");
         for (let i = 0; i < 6 && s.battle.gates[0].locked; i++) s.battle.runPolicyTurn(enemy);
-        return { locked: s.battle.gates[0].locked, markers: s.gateMarkers.length };`);
-      check("the guard batters it down over several turns — the seal breaks open (no freeze)", broke.locked === false && broke.markers === 0);
+        const gate = s.battle.gates[0];
+        return { locked: gate.locked, broken: gate.broken, markers: s.gateMarkers.length,
+                 glyph: s.gateMarkers.length ? (s.gateMarkers[0].text ?? null) : null };`);
+      check("the guard batters it down over several turns — the seal smashes to a remnant (▨, no freeze)",
+        broke.locked === false && broke.broken === true && broke.markers === 1 && broke.glyph === "▨");
     },
   },
   {
@@ -124,6 +130,32 @@ const MICROS = [
         return { locked: door.locked, walkable: s.grid.isWalkable(door.pos), hp: door.hp, gateMarkers: s.gateMarkers.length };`);
       check("pulling the lever slams the door shut — tile re-blocks, marker appears (no freeze)", after.locked === true && after.walkable === false && after.gateMarkers === 2);
       check("the sealed door is whole (full durability — ready for the guards to batter)", after.hp === 20);
+    },
+  },
+  {
+    id: "micro-gate-remnant",
+    title: "gate · remnant — a smashed door is a permanent breach the lever can't re-seal",
+    async run(g) {
+      const st = await g.bsEval(`
+        const door = s.battle.gates[0];
+        return { locked: door.locked, hp: door.hp, leverMarkers: s.leverMarkers.length };`);
+      check("the destructible seal renders locked (15 hp) with its lever", st.locked === true && st.hp === 15 && st.leverMarkers === 1);
+      // Smash it down: two hits from the adjacent breaker → a permanent passable remnant.
+      const smashed = await g.bsEval(`
+        const door = s.battle.gates[0]; const breaker = s.battle.units.find(u => u.id === "breaker");
+        s.battle.attackGate(door, breaker); s.battle.attackGate(door, breaker); // 15 → 6 → 0
+        return { broken: door.broken, walkable: s.grid.isWalkable(door.pos), markers: s.gateMarkers.length,
+                 glyph: s.gateMarkers.length ? (s.gateMarkers[0].text ?? null) : null };`);
+      check("the breaker smashes it to a passable remnant (▨, walkable)",
+        smashed.broken === true && smashed.walkable === true && smashed.markers === 1 && smashed.glyph === "▨");
+      // Pull the lever aimed at the smashed door: it must NOT re-seal — the breach is permanent (D106).
+      const pulled = await g.bsEval(`
+        const lever = s.battle.levers[0]; const breaker = s.battle.units.find(u => u.id === "breaker");
+        s.battle.pullLever(lever, breaker);
+        const door = s.battle.gates[0];
+        return { broken: door.broken, locked: door.locked, walkable: s.grid.isWalkable(door.pos), markers: s.gateMarkers.length };`);
+      check("the lever can't re-seal the smashed door — it stays a walkable remnant (no freeze)",
+        pulled.broken === true && pulled.locked === false && pulled.walkable === true && pulled.markers === 1);
     },
   },
 ];

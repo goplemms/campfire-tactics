@@ -31,6 +31,8 @@ const STATE = `(() => {
   return {
     active: !!(sc && sc.scene.isActive("EditorScene")),
     brushButtons: document.querySelectorAll("button[data-brush]").length,
+    tabs: document.querySelectorAll("button[data-tab]").length,
+    unitRows: document.querySelectorAll("[data-unit-row]").length,
     walls: d.blocked?.length ?? null,
     spawns: d.playerSpawns?.length ?? null,
     enemies: d.enemies?.length ?? null,
@@ -48,13 +50,14 @@ const STATE = `(() => {
   };
 })()`;
 
-// Select the warden through the inspector and edit its id + maxHp (M-B — the new panel surface).
+const clickTab = (t) => `document.querySelector('button[data-tab="${t}"]').click()`;
+
+// Select the warden by clicking its UNIT-LIST row (the occlusion fix — no board pixel-hunt), then
+// edit its id + maxHp through the inspector (M-B/M-UI — the new panel surfaces).
 const EDIT = `(() => {
-  const sc = window.game.scene.getScene("EditorScene");
-  sc.brush = "select";
-  const warden = sc.draft.enemies.find((e) => e.id === "the-warden");
-  sc.selection = { kind: "enemy", ref: warden };
-  sc.renderInspector();
+  const rows = [...document.querySelectorAll("[data-unit-row]")];
+  const wardenRow = rows.find((r) => (r.textContent || "").includes("the-warden"));
+  wardenRow.click();
   const insp = document.querySelector('[data-role="inspector"]');
   const idInput = insp.querySelector("input");
   idInput.value = "the-warden-2";
@@ -62,7 +65,7 @@ const EDIT = `(() => {
   const hp = document.querySelector('input[data-stat="maxHp"]');
   hp.value = "99";
   hp.dispatchEvent(new Event("change"));
-  return { statInputs: document.querySelectorAll("input[data-stat]").length };
+  return { statInputs: document.querySelectorAll("input[data-stat]").length, clickedRow: !!wardenRow };
 })()`;
 
 // Paste the-rescue's JSON into the import box and click Import.
@@ -83,6 +86,7 @@ async function main() {
         console.log("• #editor boots with the brush palette");
         check("the editor scene is active", st.active === true);
         check("the brush palette is present (8 brushes incl. select)", st.brushButtons === 8);
+        check("the drawer tab bar is present (4 tabs)", st.tabs === 4);
         check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));
 
@@ -133,11 +137,19 @@ async function main() {
         check("the imported finale validates", st3.valid === true);
         await g.screenshot(path.join(OUT, "03-imported.png"));
 
-        // Inspector: select the warden, rename it + bump its maxHp (the M-B panel surface — freeze-catch).
+        // Switch to the Units drawer — the list reaches every placed unit (occlusion fix).
+        await g.eval(clickTab("Units"));
+        await sleep(120);
+        const stU = await g.eval(STATE);
+        console.log("• the Units drawer lists every placed unit");
+        check("the unit list shows all 8 units (5 enemies + 3 captives)", stU.unitRows === 8);
+
+        // Inspector: select the warden via its list row, rename it + bump its maxHp (freeze-catch).
         const ed = await g.eval(EDIT);
         await sleep(150);
         const st4 = await g.eval(STATE);
-        console.log("• select-brush → inspector edits an entity's identity + stats (no freeze)");
+        console.log("• unit-list select → inspector edits an entity's identity + stats (no freeze)");
+        check("selection came from clicking the warden's list row", ed.clickedRow === true);
         check("the inspector rendered the 7-field stat grid", ed.statInputs === 7);
         check("the id rename + maxHp override flow to the export", st4.wardenEditedHp === 99);
         check("the level still validates after the edit", st4.valid === true);

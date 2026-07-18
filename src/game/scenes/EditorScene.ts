@@ -14,6 +14,15 @@ import {
 const JOB_IDS = Object.keys(JOBS);
 
 /**
+ * The panel drawers (D98 editor M-UI). Grouped by what you author, in genre-conventional terms:
+ * **Terrain** (tiles/walls), **Units** (attributed entities), **Events** (the conditional-logic
+ * layer — deploy/extraction markers now, objectives + future triggers later), **Scenario**
+ * (meta + JSON I/O). The ✓/⚠ status bar sits outside the drawers so the live guards never hide.
+ */
+const TAB_NAMES = ["Terrain", "Units", "Events", "Scenario"] as const;
+type TabName = (typeof TAB_NAMES)[number];
+
+/**
  * The **visual level editor** (D98) — `#editor`.
  *
  * A dev-only authoring surface that renders a draft {@link EditorDraft} with the same
@@ -56,7 +65,11 @@ export class EditorScene extends Phaser.Scene {
   private exportPre?: HTMLPreElement;
   private validLine?: HTMLDivElement;
   private inspectorEl?: HTMLDivElement;
+  private unitListEl?: HTMLDivElement;
   private brushButtons: HTMLButtonElement[] = [];
+  private tabButtons: HTMLButtonElement[] = [];
+  private drawers: Partial<Record<TabName, HTMLDivElement>> = {};
+  private activeTab: TabName = "Terrain";
 
   constructor() {
     super("EditorScene");
@@ -120,6 +133,7 @@ export class EditorScene extends Phaser.Scene {
     this.paint(t);
     this.renderBoard();
     this.renderInspector();
+    this.renderUnitList();
     this.updateExport();
   }
 
@@ -207,63 +221,147 @@ export class EditorScene extends Phaser.Scene {
       border: "1px solid #4a423a", borderRadius: "6px", padding: "10px", zIndex: "1000",
     } as CSSStyleDeclaration);
 
-    panel.appendChild(this.field("id", this.draft.id, (v) => { this.draft.id = v; this.updateExport(); }));
-    panel.appendChild(this.field("name", this.draft.name, (v) => { this.draft.name = v; this.updateExport(); }));
+    // Tab bar + the persistent cross-cutting Erase tool.
+    const tabBar = document.createElement("div");
+    tabBar.style.margin = "0 0 6px";
+    this.tabButtons = [];
+    for (const name of TAB_NAMES) {
+      const t = document.createElement("button");
+      t.textContent = name;
+      t.dataset.tab = name;
+      Object.assign(t.style, { margin: "1px", cursor: "pointer" } as CSSStyleDeclaration);
+      t.onclick = () => this.showTab(name);
+      this.tabButtons.push(t);
+      tabBar.appendChild(t);
+    }
+    tabBar.append(" ");
+    tabBar.appendChild(this.brushButton("erase")); // always reachable, whatever drawer is open
+    panel.appendChild(tabBar);
 
-    // Grid size.
+    // Drawers — one per tab, shown/hidden by showTab.
+    this.drawers = {};
+    for (const name of TAB_NAMES) {
+      const d = document.createElement("div");
+      d.dataset.drawer = name;
+      this.drawers[name] = d;
+      panel.appendChild(d);
+    }
+    this.buildTerrainDrawer(this.drawers.Terrain!);
+    this.buildUnitsDrawer(this.drawers.Units!);
+    this.buildEventsDrawer(this.drawers.Events!);
+    this.buildScenarioDrawer(this.drawers.Scenario!);
+
+    // Persistent ✓/⚠ status bar (outside the drawers, so live guards never hide).
+    const valid = document.createElement("div");
+    valid.style.margin = "8px 0 0";
+    panel.appendChild(valid);
+    this.validLine = valid;
+
+    document.body.appendChild(panel);
+    this.panel = panel;
+    this.showTab(this.activeTab);
+    this.highlightBrush();
+    this.renderUnitList();
+    this.renderInspector();
+    this.updateExport();
+  }
+
+  /** A brush toggle button (registered for highlight). */
+  private brushButton(b: Brush): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.textContent = b;
+    btn.dataset.brush = b;
+    Object.assign(btn.style, { margin: "2px", cursor: "pointer", textTransform: "capitalize" } as CSSStyleDeclaration);
+    btn.onclick = () => { this.brush = b; this.highlightBrush(); };
+    this.brushButtons.push(btn);
+    return btn;
+  }
+
+  /** Show one drawer, hide the rest, highlight the active tab. */
+  private showTab(name: TabName): void {
+    this.activeTab = name;
+    for (const key of TAB_NAMES) { const d = this.drawers[key]; if (d) d.style.display = key === name ? "" : "none"; }
+    for (const b of this.tabButtons) {
+      const active = b.dataset.tab === name;
+      b.style.background = active ? "#c8a24a" : "";
+      b.style.color = active ? "#1a1206" : "";
+      b.style.fontWeight = active ? "700" : "";
+    }
+  }
+
+  private hint(text: string): HTMLDivElement {
+    const h = document.createElement("div");
+    h.textContent = text;
+    Object.assign(h.style, { opacity: "0.55", margin: "2px 0 4px" } as CSSStyleDeclaration);
+    return h;
+  }
+
+  private buildTerrainDrawer(d: HTMLDivElement): void {
     const size = document.createElement("div");
-    size.style.margin = "6px 0";
+    size.style.margin = "4px 0";
     size.append("size ");
     size.appendChild(this.numInput(this.draft.cols, (n) => this.resize(n, this.draft.rows)));
     size.append(" × ");
     size.appendChild(this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n)));
-    panel.appendChild(size);
+    d.appendChild(size);
+    const row = document.createElement("div");
+    row.style.margin = "4px 0";
+    row.append(this.brushButton("wall"), this.brushButton("trap"));
+    d.appendChild(row);
+    d.appendChild(this.hint("walls block movement · traps are hazards (params in a later pass)"));
+  }
 
-    // Brush buttons.
-    const brushes: Brush[] = ["select", "wall", "spawn", "enemy", "captive", "exit", "trap", "erase"];
-    const brushRow = document.createElement("div");
-    brushRow.style.margin = "4px 0";
-    for (const b of brushes) {
-      const btn = document.createElement("button");
-      btn.textContent = b;
-      btn.dataset.brush = b;
-      Object.assign(btn.style, { margin: "2px", cursor: "pointer", textTransform: "capitalize" } as CSSStyleDeclaration);
-      btn.onclick = () => { this.brush = b; this.highlightBrush(); };
-      this.brushButtons.push(btn);
-      brushRow.appendChild(btn);
-    }
-    panel.appendChild(brushRow);
+  private buildEventsDrawer(d: HTMLDivElement): void {
+    const row = document.createElement("div");
+    row.style.margin = "4px 0";
+    row.append(this.brushButton("spawn"), this.brushButton("exit"));
+    d.appendChild(row);
+    d.appendChild(this.hint("deploy spawns · extraction exit · objectives + triggers coming next"));
+  }
 
-    // Contextual: enemy template + captive release.
-    const tmplWrap = document.createElement("div");
-    tmplWrap.style.margin = "4px 0";
-    tmplWrap.append("enemy ");
+  private buildUnitsDrawer(d: HTMLDivElement): void {
+    const row = document.createElement("div");
+    row.style.margin = "4px 0";
+    row.append(this.brushButton("select"), this.brushButton("enemy"), this.brushButton("captive"));
+    d.appendChild(row);
+
+    // Place-time defaults for the enemy/captive brushes.
+    const ctx = document.createElement("div");
+    ctx.style.margin = "4px 0";
+    ctx.append("enemy ");
     const tmpl = document.createElement("select");
     for (const id of ENEMY_IDS) { const o = document.createElement("option"); o.value = id; o.textContent = id; tmpl.appendChild(o); }
     tmpl.value = this.enemyTemplate;
     tmpl.onchange = () => (this.enemyTemplate = tmpl.value);
-    tmplWrap.appendChild(tmpl);
-    tmplWrap.append("  captive ");
+    ctx.appendChild(tmpl);
+    ctx.append("  captive ");
     const rel = document.createElement("select");
     for (const r of ["lockpick", "reach"]) { const o = document.createElement("option"); o.value = r; o.textContent = r; rel.appendChild(o); }
     rel.value = this.captiveRelease;
     rel.onchange = () => (this.captiveRelease = rel.value as "reach" | "lockpick");
-    tmplWrap.appendChild(rel);
-    panel.appendChild(tmplWrap);
+    ctx.appendChild(rel);
+    d.appendChild(ctx);
 
-    // Inspector (M-B) — bound to the select-brush selection.
+    // The unit list — click a row to select (reaches units occluded by the panel / off a wide board).
+    const list = document.createElement("div");
+    list.dataset.role = "unit-list";
+    Object.assign(list.style, { margin: "4px 0", maxHeight: "112px", overflow: "auto", border: "1px solid #3a332c", borderRadius: "4px" } as CSSStyleDeclaration);
+    d.appendChild(list);
+    this.unitListEl = list;
+
+    // The inspector (M-B).
     const inspector = document.createElement("div");
     inspector.dataset.role = "inspector";
-    Object.assign(inspector.style, { margin: "6px 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
-    panel.appendChild(inspector);
+    Object.assign(inspector.style, { margin: "6px 0 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
+    d.appendChild(inspector);
     this.inspectorEl = inspector;
+  }
 
-    const valid = document.createElement("div");
-    valid.style.margin = "6px 0";
-    panel.appendChild(valid);
-    this.validLine = valid;
+  private buildScenarioDrawer(d: HTMLDivElement): void {
+    d.appendChild(this.field("id", this.draft.id, (v) => { this.draft.id = v; this.updateExport(); }));
+    d.appendChild(this.field("name", this.draft.name, (v) => { this.draft.name = v; this.updateExport(); }));
 
-    // Import: paste a level's JSON and load it into the draft (the M-A round-trip inverse).
+    // Import (the M-A round-trip inverse).
     const imp = document.createElement("div");
     imp.style.margin = "6px 0";
     const impArea = document.createElement("textarea");
@@ -274,7 +372,7 @@ export class EditorScene extends Phaser.Scene {
     impBtn.textContent = "Import JSON"; impBtn.style.cursor = "pointer"; impBtn.dataset.role = "import-btn";
     impBtn.onclick = () => this.importJson(impArea.value);
     imp.append(impArea, impBtn);
-    panel.appendChild(imp);
+    d.appendChild(imp);
 
     const btns = document.createElement("div");
     const copy = document.createElement("button"); copy.textContent = "Copy"; copy.style.cursor = "pointer";
@@ -282,18 +380,40 @@ export class EditorScene extends Phaser.Scene {
     const dl = document.createElement("button"); dl.textContent = "Download .json"; dl.style.cursor = "pointer"; dl.style.marginLeft = "6px";
     dl.onclick = () => this.download();
     btns.append(copy, dl);
-    panel.appendChild(btns);
+    d.appendChild(btns);
 
     const pre = document.createElement("pre");
-    Object.assign(pre.style, { margin: "6px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word" } as CSSStyleDeclaration);
-    panel.appendChild(pre);
+    Object.assign(pre.style, { margin: "6px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "220px", overflow: "auto" } as CSSStyleDeclaration);
+    d.appendChild(pre);
     this.exportPre = pre;
+  }
 
-    document.body.appendChild(panel);
-    this.panel = panel;
-    this.highlightBrush();
-    this.renderInspector();
-    this.updateExport();
+  /** Render the Units-drawer list — a clickable row per placed enemy/captive (the occlusion fix). */
+  private renderUnitList(): void {
+    const host = this.unitListEl;
+    if (!host) return;
+    host.innerHTML = "";
+    const rows: { ref: DraftEnemy | DraftCaptive; kind: "enemy" | "captive"; label: string }[] = [
+      ...this.draft.enemies.map((e) => ({ ref: e, kind: "enemy" as const, label: `${e.templateId}${e.id ? ` · ${e.id}` : ""} (${e.pos.col},${e.pos.row})` })),
+      ...this.draft.captives.map((c) => ({ ref: c, kind: "captive" as const, label: `${c.spec?.name ?? c.spec?.id ?? "captive"} (${c.pos.col},${c.pos.row})` })),
+    ];
+    if (!rows.length) { host.textContent = "· no units placed — use the enemy/captive brush"; host.style.opacity = "0.55"; return; }
+    host.style.opacity = "1";
+    for (const { ref, kind, label } of rows) {
+      const r = document.createElement("div");
+      r.textContent = label;
+      r.dataset.unitRow = kind;
+      const selected = this.selection?.ref === ref;
+      // Tint by kind to match the board tokens (enemies red, captives purple), since the mono font
+      // has no reliable glyph for ⚔/⚿.
+      Object.assign(r.style, { padding: "2px 5px", cursor: "pointer", color: kind === "enemy" ? "#e6a5a5" : "#c3a6e0", background: selected ? "#4a3f2a" : "" } as CSSStyleDeclaration);
+      r.onclick = () => {
+        this.selection = kind === "enemy" ? { kind, ref: ref as DraftEnemy } : { kind, ref: ref as DraftCaptive };
+        this.renderInspector();
+        this.renderUnitList();
+      };
+      host.appendChild(r);
+    }
   }
 
   /**
@@ -401,9 +521,10 @@ export class EditorScene extends Phaser.Scene {
     return wrap;
   }
 
-  /** After an inspector edit: refresh the board markers + the live export/validation (no re-render of the open form, to keep input focus). */
+  /** After an inspector edit: refresh the board markers, the unit-list labels + the live export/validation (no re-render of the open form, to keep input focus). */
   private afterInspect(): void {
     this.renderBoard();
+    this.renderUnitList();
     this.updateExport();
   }
 
@@ -448,7 +569,10 @@ export class EditorScene extends Phaser.Scene {
     this.exportPre = undefined;
     this.validLine = undefined;
     this.inspectorEl = undefined;
+    this.unitListEl = undefined;
     this.brushButtons = [];
+    this.tabButtons = [];
+    this.drawers = {};
   }
 }
 

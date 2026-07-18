@@ -56,8 +56,8 @@ jobs:
         run: npm run test:e2e:second-battle
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
-      - name: E2E (interactable gates — lockpick + keyholder render)
-        run: npm run test:e2e:gates
+      - name: E2E (micro-interaction harness — per-mechanic render guards)
+        run: npm run test:e2e:micro
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
       # Visual audit: walk the 14 player-facing surfaces, capture each, and run the

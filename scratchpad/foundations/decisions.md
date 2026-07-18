@@ -4049,12 +4049,10 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   not a wall); the Thief's **Pick Cell** verb surfaces adjacent to a lockpickable gate in **both**
   deployment + combat (mirrors the D90 Pick-Lock verb via `canLockpickGate` + `commitFieldAct`); a
   `gateOpened` bus listener redraws the grid (the opened tile clears — `drawGrid` made self-destroying so
-  it's re-callable), drops the marker, and logs (a Thief's pick or the Warden's keys). Showcased by a new
-  `#scene=jailbreak` scenario (`scenarios/jailbreak.ts`: a lockpick+keyholder cell A + a keyholder-only
-  cell B + the Warden, prisoners now *plain `reach` captives behind the gate*). Guard: **`test:e2e:gates`**
-  (11 assertions — gates render locked + blocking + `▦`; Pick-Cell surfaces; lockpicking cell-a redraws
-  without a freeze; felling the Warden pops the keyholder cell) — the MANDATORY new-surface guard (the D92
-  freeze tale), wired into CI. tsc · build · vitest (**1196**) · sim byte-identical.
+  it's re-callable), drops the marker, and logs (a Thief's pick or the keyholder's keys). Guarded by the
+  new **micro-interaction harness (D104)**: two minimal `#scene` fixtures (`micro-gate-lockpick`,
+  `micro-gate-keyholder`) driven by **`test:e2e:micro`** — the MANDATORY new-surface guard (the D92 freeze
+  tale), wired into CI. tsc · build · vitest (**1196**) · sim byte-identical.
 - **Queued — Phase 2b editor brush:** an **editor** gate brush + inspector `openBy` + JSON (graduate gates
   out of the passthrough bag they currently round-trip through) so the prison is paintable. **Phase 3:** the
   **control-room seal** — a lever/enter trigger that *locks* a
@@ -4071,6 +4069,41 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   lockpick capability gate), **D50/D97** (`ObjectiveTag`/`matchesTag` for the keyholder), the `TileGrid`
   (extended with `setWalkable`). **Supersedes (in time):** the captive `lockpick`-release flag as the
   *cell* model — a cuffed captive becomes "a plain captive behind a lockpick gate." **Superseded by:** —
+
+---
+
+## D104 — The micro-interaction harness: a rendered microcosm per mechanic
+
+- **Status:** Decided + built (2026-07-18). Owner idea, standing up alongside the D103 gate render — "a
+  smaller microcosm version of our individual encounter visual tests," one per micro-interaction
+  (defeat→keys, a unit destroying a door, …).
+- **Context (the gap):** a mechanic had two coverage rungs with nothing between — **vitest microtests**
+  (fast, isolated, one behavior, but **never render** → can't catch a Phaser **freeze**/bad marker) and a
+  **full-encounter e2e** (renders, catches freezes, but heavyweight — boots Chrome + stages a whole
+  encounter to check one beat). The middle rung was missing: a *rendered* proof of one micro-behavior.
+- **Decision — a "mechanic storybook" on the existing `#scene` rail, not a new framework.** Three thin
+  pieces: **(1)** minimal single-mechanic **fixtures** — each a tiny `ScenarioConfig` (`scenarios/micro.ts`):
+  one actor + the one entity under test + a lone body so the deploy net has a danger source, ~15 lines.
+  **(2)** one **walker** (`scripts/e2e-micro.mjs`) that boots each fixture **in a single Chrome session**
+  via `g.boot` (the harness's cheap re-boot, not a browser per case), drives the one interaction via
+  `bsEval`, and asserts the **visible** effect (marker present/gone, verb surfaces, tile clears) + no page
+  error (the freeze catch). **(3)** the fixtures double as a **clickable gallery** — bare `#scene` already
+  lists them, so each interaction is walkable by hand in isolation. Adding a mechanic's render guard = one
+  fixture + a ~10-line walker block.
+- **Boundaries (what it is NOT):** it **complements**, not replaces — vitest keeps the **logic** depth, the
+  full-encounter e2es (`test:e2e`, `:scenario`) keep the **integrated flow**. A render freeze only surfaces
+  in real Phaser, so Chrome stays unavoidable; the single-session walker is the efficiency lever. Kept
+  lean deliberately so it earns its keep (the owner's "make sure it's a microcosm" intent).
+- **Built:** `MICRO_GATE_LOCKPICK` + `MICRO_GATE_KEYHOLDER` (the first two entries — the D103 gate render's
+  guard) via `test:e2e:micro` (6 assertions, 2 interactions, one browser session), wired into CI. The
+  transient `#scene=jailbreak` showcase + `test:e2e:gates` (added earlier this session only to host the
+  gate guard) were **retired** into this — no redundant scenario. barrel: −`JAILBREAK`/`JAILBREAK_ENCOUNTER`
+  +`MICRO_GATE_LOCKPICK`/`MICRO_GATE_KEYHOLDER`/`MICRO_SCENARIOS`.
+- **Next customers:** the D103 **destructible door** (Phase 3) lands as micro entry #3 (a unit attacking a
+  gate → it breaks); then `key`/`lever` gate opens, and existing beats (rescue, trap-spring, sway) can
+  migrate in as cheap entries over time.
+- **Reuses:** the **#170** `#scene` scenario harness (boot-any-encounter + the picker) + `harness.mjs`'s
+  `g.boot`/`bsEval`/`assertNoProblems`. **Superseded by:** —
 
 ---
 

@@ -11,17 +11,17 @@
 import type { ScenarioConfig } from "../scenario";
 import { PICK_THE_CELL } from "./pick-the-cell";
 import { PRISON_ASSAULT_SCENARIO } from "./prison-assault";
-import { JAILBREAK } from "./jailbreak";
+import { MICRO_SCENARIOS } from "./micro";
 
 export * from "./pick-the-cell";
 export * from "./prison-assault";
-export * from "./jailbreak";
+export * from "./micro";
 
-/** Every registered scenario, keyed by id. */
+/** Every registered scenario, keyed by id — the full-encounter demos plus the micro-interaction gallery. */
 export const SCENARIOS: Record<string, ScenarioConfig> = {
   [PICK_THE_CELL.id]: PICK_THE_CELL,
   [PRISON_ASSAULT_SCENARIO.id]: PRISON_ASSAULT_SCENARIO,
-  [JAILBREAK.id]: JAILBREAK,
+  ...Object.fromEntries(MICRO_SCENARIOS.map((s) => [s.id, s])),
 };
 
 /** Look up a scenario config by id (the `#scene=<id>` boot path). */

@@ -132,9 +132,10 @@
  *   - gate wiring (Phase 2a): +1 — `buildAuthoredGates` (`authored.ts`, inflate the authored
  *     `gates` field into live `Gate`s at staging). `AuthoredGate` + the `openGate` action + the
  *     `gateOpened` event + `Battle.gates`/`openGate` are type-only / methods (not runtime surface).
- *   - gate render (Phase 2b): +2 — `JAILBREAK` / `JAILBREAK_ENCOUNTER` (`scenarios/jailbreak.ts`, the
- *     `#scene=jailbreak` gate showcase registered in `SCENARIOS`). The `ICON.gate` glyph + the scene's
- *     Pick-Cell verb / markGates render are `game/` (not core surface).
+ *   - gate render (Phase 2b): +3 — `MICRO_GATE_LOCKPICK` / `MICRO_GATE_KEYHOLDER` / `MICRO_SCENARIOS`
+ *     (`scenarios/micro.ts`, the micro-interaction gallery registered in `SCENARIOS` — D104). The
+ *     `ICON.gate` glyph + the scene's Pick-Cell verb / markGates render are `game/` (not core surface).
+ *     (The transient `JAILBREAK` / `JAILBREAK_ENCOUNTER` showcase this replaced was never merged.)
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -219,8 +220,6 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "INFLUENCE_BANDS",
   "INFLUENCE_ORDER",
   "INTEL_BREAKPOINTS",
-  "JAILBREAK",
-  "JAILBREAK_ENCOUNTER",
   "JOBS",
   "KIT",
   "LEVELING",
@@ -237,6 +236,9 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MERCHANT_JOB",
   "MERCHANT_KIT",
   "MERCHANT_SELL",
+  "MICRO_GATE_KEYHOLDER",
+  "MICRO_GATE_LOCKPICK",
+  "MICRO_SCENARIOS",
   "MIRA_MERCHANT",
   "MORALE_TIERS",
   "MORTALITY",

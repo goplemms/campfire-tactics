@@ -170,7 +170,9 @@ export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
     const kind = c.release?.kind ?? "reach";
     if (kind !== "reach" && kind !== "lockpick")
       throw new Error(`import: captive "${c.spec.id}" has release kind "${kind}" — the editor models only reach/lockpick. Refusing rather than dropping it.`);
-    return { pos: cp(c.pos), release: kind, spec: c.spec };
+    // Clone the spec (the inspector edits it in place) so a draft never aliases the source
+    // encounter's objects — importing then editing must not mutate the input (or the shared registry).
+    return { pos: cp(c.pos), release: kind, spec: { ...c.spec, pos: cp(c.spec.pos) } };
   });
 
   const pt: DraftPassthrough = {};
@@ -192,7 +194,7 @@ export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
       pos: cp(e.pos),
       ...(e.id !== undefined ? { id: e.id } : {}),
       ...(e.role ? { role: e.role } : {}),
-      ...(e.overrides ? { overrides: e.overrides } : {}),
+      ...(e.overrides ? { overrides: { ...e.overrides } } : {}),
       ...(e.hidden ? { hidden: e.hidden } : {}),
     })),
     captives,

@@ -143,7 +143,9 @@ export class EditorScene extends Phaser.Scene {
       case "select": {
         const en = d.enemies.find((e) => same(e.pos, t));
         const cap = d.captives.find((c) => same(c.pos, t));
-        this.selection = en ? { kind: "enemy", ref: en } : cap ? { kind: "captive", ref: cap } : null;
+        if (en) this.selection = { kind: "enemy", ref: en };
+        else if (cap) this.selection = { kind: "captive", ref: this.materializeCaptive(cap) };
+        else this.selection = null;
         return;
       }
       case "wall": return void this.toggleCoord(d.blocked, t);
@@ -408,7 +410,7 @@ export class EditorScene extends Phaser.Scene {
       // has no reliable glyph for ⚔/⚿.
       Object.assign(r.style, { padding: "2px 5px", cursor: "pointer", color: kind === "enemy" ? "#e6a5a5" : "#c3a6e0", background: selected ? "#4a3f2a" : "" } as CSSStyleDeclaration);
       r.onclick = () => {
-        this.selection = kind === "enemy" ? { kind, ref: ref as DraftEnemy } : { kind, ref: ref as DraftCaptive };
+        this.selection = kind === "enemy" ? { kind, ref: ref as DraftEnemy } : { kind, ref: this.materializeCaptive(ref as DraftCaptive) };
         this.renderInspector();
         this.renderUnitList();
       };
@@ -471,9 +473,16 @@ export class EditorScene extends Phaser.Scene {
     host.appendChild(this.statGrid((f) => effectiveEnemyStat(e, f), (f, n) => { setEnemyStat(e, f, n); this.afterInspect(); }));
   }
 
+  /** Give a painted (spec-less) captive an editable spec — at selection time, not during render. */
+  private materializeCaptive(c: DraftCaptive): DraftCaptive {
+    if (!c.spec) c.spec = newCaptiveSpec(c.pos);
+    return c;
+  }
+
   private renderCaptiveInspector(host: HTMLDivElement, c: DraftCaptive): void {
-    if (!c.spec) c.spec = newCaptiveSpec(c.pos); // materialize a spec for a painted (spec-less) captive
     const spec = c.spec;
+    if (!spec) return; // materialized at selection; a spec-less captive never reaches here
+
     host.appendChild(this.inspectorHeader(`captive @ (${c.pos.col},${c.pos.row})`));
     host.appendChild(this.field("id", spec.id, (v) => { const t = v.trim(); if (t) spec.id = t; this.afterInspect(); }));
     host.appendChild(this.field("name", spec.name ?? "", (v) => { const t = v.trim(); if (t) spec.name = t; else delete spec.name; this.afterInspect(); }));
@@ -512,7 +521,7 @@ export class EditorScene extends Phaser.Scene {
       const cell = document.createElement("span");
       Object.assign(cell.style, { display: "inline-block", marginRight: "6px" } as CSSStyleDeclaration);
       cell.append(`${f} `);
-      const inp = this.numInput(get(f), (n) => set(f, n));
+      const inp = this.numInput(get(f), (n) => { if (Number.isFinite(n)) set(f, n); }); // ignore an emptied field (NaN)
       inp.style.width = "44px";
       inp.dataset.stat = f;
       cell.appendChild(inp);

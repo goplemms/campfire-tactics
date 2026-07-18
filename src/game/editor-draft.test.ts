@@ -156,5 +156,8 @@ describe("editor inspector edits (D98 editor M-B — identity + stats)", () => {
     expect(enc.captives?.[0].spec.maxHp).toBe(40);
     expect(enc.captives?.[0].spec.name).toBe("Mira the Smith");
     expect(draftToEncounter(encounterToDraft(enc))).toEqual(enc);
+    // The import must NOT alias the source — editing the draft left the registry level untouched.
+    expect(getLevel("the-rescue")!.captives![0].spec.name).toBe("Wren");
+    expect(getLevel("the-rescue")!.captives![0].spec.maxHp).toBe(20);
   });
 });

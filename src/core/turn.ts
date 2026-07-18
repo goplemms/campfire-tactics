@@ -47,7 +47,7 @@ import {
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
 import { captureUnit, freeCaptive, canRelease } from "./deployment";
-import { applyGatesToGrid, openGateOnGrid, canLockpickGate, canAttackGate, damageGate, gatesOpenedByDeath, type Gate } from "./gates";
+import { applyGatesToGrid, openGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canPullLever, damageGate, gatesOpenedByDeath, type Gate, type Lever } from "./gates";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
@@ -96,6 +96,8 @@ export interface BattleOptions {
    * a Thief opens the rest via the `openGate` Act. Empty/absent ⇒ no gate wiring (zero cost).
    */
   gates?: Gate[];
+  /** Interactable **levers** (D103) — pull-switches that toggle their target gates (the control-room seal). */
+  levers?: Lever[];
 }
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
@@ -109,8 +111,10 @@ export class Battle {
   readonly bus: EventBus;
   readonly clock: CTClock;
   readonly entities: EntityRegistry;
-  /** The encounter's interactable gates (D103) — locked tiles opened by lockpick / keyholder. */
+  /** The encounter's interactable gates (D103) — locked tiles opened by lockpick / keyholder / breaking. */
   readonly gates: Gate[];
+  /** The encounter's levers (D103) — pull-switches toggling their target gates (the control-room seal). */
+  readonly levers: Lever[];
 
   /**
    * Which board phase this battle is in (D67): `"deploy"` (pre-combat staging — the
@@ -185,6 +189,7 @@ export class Battle {
     // Gates (D103): block each locked gate's tile so it encloses/seals from turn one, and open any
     // keyholder-gated cells the instant their keyholder is defeated (the Captain drops the keys).
     this.gates = opts.gates ?? [];
+    this.levers = opts.levers ?? [];
     applyGatesToGrid(this.grid, this.gates);
     if (this.gates.length) this.bus.on("unitDefeated", ({ unit }) => this.openKeyholderGates(unit));
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
@@ -540,6 +545,28 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "pullLever": {
+        // The control-room seal (D103): toggle each target gate — an open door slams shut (unless a
+        // living body stands on it — never seal someone into a wall), a locked one reopens. A refused
+        // pull (out of reach) mutates nothing and isn't logged.
+        const lever = this.levers.find((l) => l.id === action.lever);
+        if (!lever) return { ok: false, reason: "No such lever." };
+        const puller = this.unit(action.unit);
+        if (!canPullLever(lever, puller)) return { ok: false, reason: "Move next to the lever to pull it." };
+        for (const gid of lever.targets) {
+          const gate = this.gates.find((g) => g.id === gid);
+          if (!gate) continue;
+          if (gate.locked) {
+            openGateOnGrid(this.grid, gate);
+            this.bus.emit("gateOpened", { gate, by: puller, cause: "lever" });
+          } else if (!this.units.some((u) => u.alive && !u.captured && u.pos.col === gate.pos.col && u.pos.row === gate.pos.row)) {
+            lockGateOnGrid(this.grid, gate);
+            this.bus.emit("gateLocked", { gate, by: puller });
+          }
+        }
+        this._log.push(action);
+        return { ok: true };
+      }
       case "sway": {
         // The Noble's BRIBE (D30/D62): a swayed enemy turns coat — flip its side to the
         // player and announce it (the token re-tints on the bus, like unitRescued). Logged
@@ -669,6 +696,16 @@ export class Battle {
    */
   attackGate(gate: Gate, by: Unit): void {
     this.apply({ kind: "attackGate", gate: gate.id, unit: by.id });
+  }
+
+  /**
+   * **Pull a lever** (D103) — the control-room seal. `by` (adjacent) toggles the locked state of the
+   * lever's target gates: an open door slams shut (sealing the guards out), a locked one reopens.
+   * Lowers to the logged `pullLever` action so the toggle rides the state graph (replay reconstructs,
+   * undo crosses — the gates are checkpointed). A refused pull (out of reach) mutates nothing.
+   */
+  pullLever(lever: Lever, by: Unit): void {
+    this.apply({ kind: "pullLever", lever: lever.id, unit: by.id });
   }
 
   /**

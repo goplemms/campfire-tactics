@@ -90,6 +90,14 @@ export type CombatAction =
    */
   | { kind: "attackGate"; gate: string; unit: UnitId }
   /**
+   * **Pull a lever** (D103): `unit` — adjacent to `lever` — toggles the locked state of the lever's
+   * target gates (the control-room seal slamming a door shut, sealing the guards out; or reopening it).
+   * Logged (mirrors `openGate`) so the toggle rides the state graph a replay reconstructs and undo
+   * crosses (each target gate's `locked`/`hp` + its grid tile are checkpointed). A gate whose tile a
+   * living unit occupies is **not** sealed (never trap a body in a wall). Refused (no-op) when out of reach.
+   */
+  | { kind: "pullLever"; lever: string; unit: UnitId }
+  /**
    * A **sway** (D30/D62 bribe): `target` — an enemy the Noble turned — flips to the player's
    * side for the rest of the fight, announcing `unitSwayed`. `unit` is the briber (named on the
    * bus event). Logged (mirrors `rescue`) so the defection rides the state graph replay

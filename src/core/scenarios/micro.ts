@@ -108,5 +108,30 @@ export const MICRO_GATE_ENEMY_BATTER: ScenarioConfig = {
   defaultParty: "solo",
 };
 
+// --- lever · seal — the infiltrator slams a door shut behind them (D103 Phase 3) ---
+const LEVER_SEAL_ENCOUNTER: AuthoredEncounter = {
+  id: "micro-lever-seal",
+  name: "Micro · Seal the Door",
+  cols: 5,
+  rows: 3,
+  blocked: [{ col: 3, row: 0 }, { col: 3, row: 2 }], // wall column 3 except the door at (3,1)
+  playerSpawns: [{ col: 2, row: 1 }], // the infiltrator — beside the lever, in the control room
+  enemies: [{ templateId: "bandit-thug", pos: { col: 0, row: 1 } }], // a guard on the far side
+  captives: [],
+  // The control-room door starts OPEN (the infiltrator walked through) and is destructible — once the
+  // lever seals it, the guard batters it (the full Phase-3 loop).
+  gates: [{ id: "door", pos: { col: 3, row: 1 }, locked: false, openBy: [{ kind: "destructible", hp: 20 }] }],
+  levers: [{ id: "switch", pos: { col: 2, row: 0 }, targets: ["door"] }], // beside the spawn
+  reward: { gold: 20, materials: [] },
+};
+
+export const MICRO_LEVER_SEAL: ScenarioConfig = {
+  id: "micro-lever-seal",
+  name: "Micro · Seal the Door",
+  encounter: LEVER_SEAL_ENCOUNTER,
+  parties: { solo: [{ id: "infil", side: "player", pos: { col: 0, row: 0 }, jobId: "thief", primaryJob: "thief", ...STATS }] },
+  defaultParty: "solo",
+};
+
 /** Every micro-interaction fixture, in gallery order — spread into the scenario registry. */
-export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER, MICRO_GATE_DESTRUCTIBLE, MICRO_GATE_ENEMY_BATTER];
+export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER, MICRO_GATE_DESTRUCTIBLE, MICRO_GATE_ENEMY_BATTER, MICRO_LEVER_SEAL];

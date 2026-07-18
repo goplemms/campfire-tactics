@@ -27,11 +27,12 @@ import {
   buildAuthoredEnemies,
   buildAuthoredCaptives,
   buildAuthoredGates,
+  buildAuthoredLevers,
   placeParty,
   type AuthoredEncounter,
   type EncounterResult,
 } from "./authored";
-import type { Gate } from "./gates";
+import type { Gate, Lever } from "./gates";
 import {
   armObjectives,
   withDefaultGoal,
@@ -150,9 +151,10 @@ export function stageEncounter(
   // by winning. Built **outside** `players` so the roster `resetForBattle` (which clears
   // `captured`) never touches them — a captive stays bound on entry. Authored sources only.
   let captives: Unit[] = [];
-  // Interactable gates (D103) — authored sources only. Handed to the Battle, which blocks each
-  // locked gate's tile and opens keyholder cells on the keyholder's death.
+  // Interactable gates + levers (D103) — authored sources only. Handed to the Battle, which blocks each
+  // locked gate's tile, opens keyholder cells on the keyholder's death, and toggles gates on a lever pull.
   let gates: Gate[] = [];
+  let levers: Lever[] = [];
   let objectiveSpecs;
 
   if (isAuthoredEncounter(source)) {
@@ -160,6 +162,7 @@ export function stageEncounter(
     enemies = buildAuthoredEnemies(source);
     captives = buildAuthoredCaptives(source);
     gates = buildAuthoredGates(source);
+    levers = buildAuthoredLevers(source);
     // Scouted-to-full intel blows the ambush: hidden bodies start visible (D10).
     if (opts.revealHidden) for (const e of enemies) e.hidden = false;
     placeParty(players, opts.playerSpawns ?? source.playerSpawns);
@@ -175,7 +178,7 @@ export function stageEncounter(
   // Captives ride between the roster and the enemies: player-side and bound, so they're off
   // the clock (the `isActive` participant predicate excludes captured), never an AI target
   // (`activeUnits` foe-lists skip them), and visible in deployment (only enemies are veiled).
-  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed, gates });
+  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed, gates, levers });
 
   // Pre-place the authored concealed enemy traps (the trap-field lever, D12): they
   // ride the same entity registry the player's Set Trap uses, so movement springs

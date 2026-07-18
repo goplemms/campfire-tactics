@@ -4,6 +4,7 @@ import { createUnit } from "./units";
 import {
   makeGate, openGate, canLockpickGate, lockpickableGates, gatesOpenedByDeath,
   applyGatesToGrid, openGateOnGrid, isBreakable, canAttackGate, damageGate, breakableGates,
+  makeLever, lockGateOnGrid, canPullLever, pullableLevers,
 } from "./gates";
 
 const STATS = { speed: 10, maxHp: 20, attack: 5, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 };
@@ -99,5 +100,25 @@ describe("gates (D103) — the prison-break substrate", () => {
     // A non-destructible gate is never breakable, even point-blank.
     const cell = makeGate("cell", { col: 2, row: 2 }, [{ kind: "lockpick" }]);
     expect(canAttackGate(cell, soldier({ col: 2, row: 1 }))).toBe(false);
+  });
+
+  it("lever: lockGateOnGrid re-seals + re-blocks a gate and restores a destructible door's durability", () => {
+    const grid = new TileGrid(5, 5);
+    const door = makeGate("door", { col: 2, row: 2 }, [{ kind: "destructible", hp: 20 }], false); // starts open
+    expect(grid.isWalkable(door.pos)).toBe(true);
+    damageGate(door, 8); // chipped to 12 while open (contrived) — sealing restores it
+    lockGateOnGrid(grid, door);
+    expect(door.locked).toBe(true);
+    expect(grid.isWalkable(door.pos)).toBe(false); // tile re-blocked
+    expect(door.hp).toBe(20); // a freshly-shut door is whole again
+  });
+
+  it("lever: canPullLever / pullableLevers is a reach test (on the switch or a step away)", () => {
+    const lever = makeLever("switch", { col: 2, row: 2 }, ["door"]);
+    expect(lever.targets).toEqual(["door"]);
+    expect(canPullLever(lever, soldier({ col: 2, row: 1 }))).toBe(true); // adjacent
+    expect(canPullLever(lever, soldier({ col: 2, row: 2 }))).toBe(true); // standing on it
+    expect(canPullLever(lever, soldier({ col: 4, row: 4 }))).toBe(false); // too far
+    expect(pullableLevers([lever], soldier({ col: 2, row: 1 })).map((l) => l.id)).toEqual(["switch"]);
   });
 });

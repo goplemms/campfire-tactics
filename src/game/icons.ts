@@ -65,6 +65,8 @@ export const ICON = {
   locked: { glyph: "⚿", label: "cuffed — needs a lockpick", color: INK.ember },
   // A locked interactable gate/cell (D103): blocks its tile until picked (a Thief) or its keyholder falls.
   gate: { glyph: "▦", label: "locked gate — pick it or defeat its keyholder", color: INK.ember },
+  // A pull-lever (D103): toggles its target gate(s) — the control-room seal.
+  lever: { glyph: "⎇", label: "lever — pull to seal/open its gate", color: INK.cyan },
 
   // --- UI affordances ---
   expand: { glyph: "▸", label: "expand" },

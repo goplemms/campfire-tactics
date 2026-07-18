@@ -120,4 +120,44 @@ describe("gates in a staged battle (D103 Phase 2a)", () => {
     expect(door.locked).toBe(false);
     expect(battle.grid.isWalkable({ col: 2, row: 1 })).toBe(true); // the way is clear
   });
+
+  it("a lever pull slams an open door shut (control-room seal), toggles back, and undo crosses it", () => {
+    const SEAL: AuthoredEncounter = {
+      id: "seal-test",
+      name: "Seal Test",
+      cols: 5,
+      rows: 3,
+      blocked: [],
+      playerSpawns: [{ col: 2, row: 1 }], // the infiltrator — beside the lever at (2,0)
+      enemies: [{ templateId: "bandit-thug", pos: { col: 4, row: 1 } }],
+      gates: [{ id: "door", pos: { col: 3, row: 1 }, locked: false, openBy: [{ kind: "destructible", hp: 20 }] }], // starts OPEN
+      levers: [{ id: "switch", pos: { col: 2, row: 0 }, targets: ["door"] }],
+      reward: { gold: 0, materials: [] },
+    };
+    const infil = createUnit({ id: "infil", side: "player", pos: { col: 0, row: 0 }, jobId: "thief", primaryJob: "thief", speed: 12, maxHp: 24, attack: 6, defense: 1, moveRange: 4, sightRadius: 5, attackRange: 1 });
+    const { battle } = stageEncounter(SEAL, [infil]);
+    const door = gate(battle, "door");
+    const lever = battle.levers[0];
+    const p = unit(battle.units, "infil");
+    expect(door.locked).toBe(false); // open on entry
+    expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(true);
+
+    // Pull the lever → the door slams shut + re-blocks.
+    battle.beginUndo();
+    battle.pullLever(lever, p);
+    expect(door.locked).toBe(true);
+    expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(false); // sealed
+    expect(door.hp).toBe(20); // whole
+
+    // Undo re-opens it (crosses the toggle via the gate checkpoint).
+    battle.undo();
+    expect(door.locked).toBe(false);
+    expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(true);
+
+    // Pull twice → seal, then reopen (toggle).
+    battle.pullLever(lever, p);
+    expect(door.locked).toBe(true);
+    battle.pullLever(lever, p);
+    expect(door.locked).toBe(false);
+  });
 });

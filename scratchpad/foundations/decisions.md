@@ -4007,9 +4007,9 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 - **Status:** Deciding + **building in phases** (2026-07-18). Owner-driven, from a concrete finale
   narrative (below). **Phase 1 (core) + Phase 2a (wiring) + Phase 2b render + the Phase 3 destructible
-  door (core + render + micro-guard) + the enemy AI battering it built.** Remaining: the **editor gate
-  brush** (2b's other half) and the control-room **lever/enter trigger** that locks a gate (the last seal
-  piece). Candidate for a `decision-adversary` red-team before wiring the full seal into the finale.
+  door + the enemy AI battering it + the control-room lever built** — the full seal loop plays. Remaining:
+  the **editor gate/lever brush** (2b's other half) so the prison is paintable; then **promote** the seal
+  into the finale. Candidate for a `decision-adversary` red-team before that promotion.
 - **Owner's finale flow (the design source):** an **infiltrator** reaches a **control room**, which
   **locks a door sealing the guards** on the far side; that buys the **assault team several turns** to
   **lockpick the cells** open — and the *easiest* open is to **defeat the Captain**, who holds the keys.
@@ -4076,15 +4076,23 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   door down over turns) + `ai.test` (batters when walled off · does NOT break a door it can walk around ·
   prefers a reachable foe). barrel +1. tsc · build · vitest (**1202**) · **sim digest byte-identical**
   (gateless content ⇒ no door-break path). This is the finale's "several turns" made real.
-- **Queued — Phase 2b editor brush:** an **editor** gate brush + inspector
-  `openBy` (incl. the `destructible` hp) + JSON (graduate gates out of the passthrough bag) so the prison
-  is paintable. **Phase 3 seal:** the **control-room** lever/enter trigger that *locks* a gate — a lever/enter trigger that *locks* a
-  guard-facing gate (the inverse of open). The seal is a **destructible** door (the `destructible` `openBy`
-  member: the gate carries HP; enemy AI targets it and attacks until it breaks). This **is** the timer — the
-  owner's call (2026-07-18): "the delay would just be a result of enemy action to bust down the door" — so
-  the "several turns" is **emergent from the door's HP under attack**, **no** `closing-gate` countdown. One
-  primitive does the door + the timer + proves the `destructible` seam; the new work is a gate-as-attack-target
-  (units targeting a non-unit) + the enemy AI valuing it.
+- **Control-room lever — built (Phase 3, completes the seal loop):** a `Lever` (`{id, pos, targets[]}`) —
+  a pull-switch that **toggles** its target gates from a distance (the remote-trigger `GateLock` shape).
+  `Battle.pullLever` + a logged `pullLever` action toggle each target: an open door **slams shut**
+  (`lockGateOnGrid` — re-block + restore durability, so a freshly-shut door is whole), a locked one
+  reopens; a gate whose tile a **living unit occupies is never sealed** (no trapping a body in a wall).
+  `AuthoredEncounter.levers` (+ `AuthoredLever` + `buildAuthoredLevers`) armed in staging; a `gateLocked`
+  event + the `lever` `gateOpened` cause drive the render (`⎇` `ICON.lever` marker, a **Pull Lever** verb,
+  the "slams shut" redraw). Undo crosses the toggle via the existing gate checkpoint (no new state). **The
+  full loop now plays:** the infiltrator pulls the lever → the destructible door seals → the AI guards
+  batter it down over turns. Guard: micro entry #5 `micro-lever-seal` + `gates.test`/`gates-battle.test`
+  (toggle, the occupancy guard, undo). barrel +6. tsc · build · vitest (**1205**) · e2e:micro (19 across 5)
+  · deploy-battle e2e · sim byte-identical. **The seal is the timer** (owner, 2026-07-18): "the delay would
+  just be a result of enemy action to bust down the door" — emergent from the door's HP under attack, **no**
+  `closing-gate` countdown.
+- **Queued — Phase 2b editor brush:** an **editor** gate brush + inspector `openBy` (incl. the
+  `destructible` hp) + a **lever** brush wiring `targets` + JSON (graduate gates/levers out of the
+  passthrough bag) so the prison is paintable. Then **promote** the seal into the finale.
 - **Scoped (JIT):** first cut = **lockpick + keyholder** only. Seam-ready, not built: **lever** (a remote
   switch tile), **key** (a carried item), **destructible** (bash it down — needs units to target a non-unit,
   the one bigger lift). Each is a new `GateLock` member + a case, nothing structural.

@@ -105,6 +105,27 @@ const MICROS = [
       check("the guard batters it down over several turns — the seal breaks open (no freeze)", broke.locked === false && broke.markers === 0);
     },
   },
+  {
+    id: "micro-lever-seal",
+    title: "lever · seal — the infiltrator slams a control-room door shut",
+    async run(g) {
+      const st = await g.bsEval(`
+        const door = s.battle.gates[0];
+        return { locked: door.locked, walkable: s.grid.isWalkable(door.pos), gateMarkers: s.gateMarkers.length,
+                 leverMarkers: s.leverMarkers.length, verbs: s.actionButtons.map(b => b.label && b.label.text).filter(Boolean) };`);
+      check("the door starts open (walkable, no gate marker)", st.locked === false && st.walkable === true && st.gateMarkers === 0);
+      check("the lever renders (⎇)", st.leverMarkers === 1);
+      check("the Pull Lever verb surfaces", st.verbs.includes("Pull Lever"));
+      // Pull the lever → the open door slams shut + re-blocks its tile (gateLocked → the scene redraws).
+      const after = await g.bsEval(`
+        const lever = s.battle.levers[0]; const infil = s.battle.units.find(u => u.id === "infil");
+        s.battle.pullLever(lever, infil);
+        const door = s.battle.gates[0];
+        return { locked: door.locked, walkable: s.grid.isWalkable(door.pos), hp: door.hp, gateMarkers: s.gateMarkers.length };`);
+      check("pulling the lever slams the door shut — tile re-blocks, marker appears (no freeze)", after.locked === true && after.walkable === false && after.gateMarkers === 2);
+      check("the sealed door is whole (full durability — ready for the guards to batter)", after.hp === 20);
+    },
+  },
 ];
 
 async function main() {

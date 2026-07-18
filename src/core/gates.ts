@@ -144,3 +144,41 @@ export function openGateOnGrid(grid: TileGrid, gate: Gate): void {
   openGate(gate);
   grid.setWalkable(gate.pos, true);
 }
+
+/**
+ * **Re-seal** a gate — the inverse of {@link openGateOnGrid} (the control-room lever slamming a door
+ * shut): lock it, re-block its tile, and restore a destructible door's durability (a freshly-shut door
+ * is whole, so the guards must batter it anew).
+ */
+export function lockGateOnGrid(grid: TileGrid, gate: Gate): void {
+  gate.locked = true;
+  grid.setWalkable(gate.pos, false);
+  if (gate.maxHp !== undefined) gate.hp = gate.maxHp;
+}
+
+/**
+ * A **lever** (D103) — a pull-switch that **toggles** the locked state of its `targets` gates (the
+ * control-room seal: pull it to slam an open door shut, sealing the guards out; pull again to reopen).
+ * The remote-trigger `GateLock` shape — a gate opens/closes from a *distance*, not by touching it.
+ */
+export interface Lever {
+  id: string;
+  pos: GridCoord;
+  /** Ids of the gates this lever toggles when pulled. */
+  targets: string[];
+}
+
+/** Build a lever wired to the gate ids it toggles. */
+export function makeLever(id: string, pos: GridCoord, targets: string[]): Lever {
+  return { id, pos: { col: pos.col, row: pos.row }, targets: [...targets] };
+}
+
+/** Whether `by` can pull `lever` right now — standing on it or an adjacent step away. */
+export function canPullLever(lever: Lever, by: Unit): boolean {
+  return manhattan(by.pos, lever.pos) <= 1;
+}
+
+/** Every lever `by` could pull this instant — for the scene's Pull-Lever affordance. */
+export function pullableLevers(levers: readonly Lever[], by: Unit): Lever[] {
+  return levers.filter((l) => canPullLever(l, by));
+}

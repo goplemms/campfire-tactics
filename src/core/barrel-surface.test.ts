@@ -143,6 +143,11 @@
  *   - gate AI target (Phase 3): +1 — `MICRO_GATE_ENEMY_BATTER` (`scenarios/micro.ts`, the walled-off-guard
  *     fixture). The `AIPlan.gateTarget` / `AIOptions.gates` / `AI.doorBreak` door-targeting seam is
  *     type-only / a weight (not runtime surface).
+ *   - gate lever (Phase 3): +6 — `makeLever` / `lockGateOnGrid` / `canPullLever` / `pullableLevers`
+ *     (`gates.ts`, the pull-switch seal) + `buildAuthoredLevers` (`authored.ts`) + `MICRO_LEVER_SEAL`
+ *     (`scenarios/micro.ts`, the slam-a-door-shut fixture). `Lever` / `AuthoredLever` / the `pullLever`
+ *     action / the `gateLocked` event / `Battle.pullLever` / the scene's Pull-Lever verb are type-only /
+ *     methods (not runtime surface).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -247,6 +252,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MICRO_GATE_ENEMY_BATTER",
   "MICRO_GATE_KEYHOLDER",
   "MICRO_GATE_LOCKPICK",
+  "MICRO_LEVER_SEAL",
   "MICRO_SCENARIOS",
   "MIRA_MERCHANT",
   "MORALE_TIERS",
@@ -399,6 +405,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "buildAuthoredEnemies",
   "buildAuthoredGates",
   "buildAuthoredGrid",
+  "buildAuthoredLevers",
   "buildEnemies",
   "buildGrid",
   "buildLedger",
@@ -422,6 +429,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "canDisarm",
   "canLockpickGate",
   "canPlacePlayerTrap",
+  "canPullLever",
   "canRelease",
   "canSee",
   "canSeeUnit",
@@ -621,11 +629,13 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "listScenarios",
   "loadPurse",
   "loadSupply",
+  "lockGateOnGrid",
   "lockGear",
   "lockpickableGates",
   "lootBandFor",
   "makeConcealedTrap",
   "makeGate",
+  "makeLever",
   "makeTrap",
   "manhattan",
   "markBonus",
@@ -690,6 +700,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "projectForecast",
   "projectManifest",
   "protectRadiusOn",
+  "pullableLevers",
   "purseFromLog",
   "purseTotalBySource",
   "rampMark",

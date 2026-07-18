@@ -25,7 +25,9 @@ import {
   canRelease,
   canLockpickGate,
   canAttackGate,
+  canPullLever,
   type Gate,
+  type Lever,
   // D63 — the closing net: two radial influence sources. The party's campfire
   // (safe ground, sized by presence) vs. the enemy source (danger, growing on the
   // deployment clock); the danger overrides the campfire, shrinking your territory.
@@ -237,6 +239,8 @@ export class BattleScene extends Phaser.Scene {
   private captiveMarkers: Phaser.GameObjects.GameObject[] = [];
   /** Lock/bar glyphs over each locked interactable gate (D103) — redrawn on gateOpened + board setup. */
   private gateMarkers: Phaser.GameObjects.GameObject[] = [];
+  /** Lever glyphs over each pull-switch (D103) — static, drawn at board setup. */
+  private leverMarkers: Phaser.GameObjects.GameObject[] = [];
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
@@ -471,6 +475,7 @@ export class BattleScene extends Phaser.Scene {
     clearLayer(this.deployMarkers);
     clearLayer(this.captiveMarkers);
     clearLayer(this.gateMarkers);
+    clearLayer(this.leverMarkers);
     this.highlight.clear();
     this.view.clearPreview(this.preview);
     this.threatGfx.clear();
@@ -546,8 +551,16 @@ export class BattleScene extends Phaser.Scene {
         ? "The keys drop — a cell springs open!"
         : cause === "destroyed"
           ? `${by?.name ?? "A blow"} smashes the door open!`
-          : `${by?.name ?? "The lockpick"} picks a cell open!`;
+          : cause === "lever"
+            ? `${by?.name ?? "The lever"} throws the lever — the gate grinds open!`
+            : `${by?.name ?? "The lockpick"} picks a cell open!`;
       this.view.logLine(msg, INK.gold);
+    });
+    // A lever slammed a gate shut (D103): the tile re-blocks, so redraw the grid + re-mark the gate.
+    this.battle.bus.on("gateLocked", ({ by }) => {
+      this.drawGrid();
+      this.markGates();
+      this.view.logLine(`${by?.name ?? "The lever"} throws the lever — the door slams shut!`, INK.gold);
     });
     // A destructible door took a hit but held (D103): refresh the HP readout + narrate the shudder.
     this.battle.bus.on("gateDamaged", ({ gate, by }) => {
@@ -624,6 +637,7 @@ export class BattleScene extends Phaser.Scene {
     drawSourceMarkers(this, this.view, this.deployMarkers, this.campfire, this.front);
     this.markCuffedCaptives(); // lock glyphs over any cuffed captives (D90)
     this.markGates(); // lock/bar glyphs over any locked interactable gates (D103)
+    this.markLevers(); // lever glyphs over any pull-switches (D103)
     // Trap-field (D12): enemy hazards are live across *both* phases, so the party's
     // opening Awareness scan happens here — at the deploy line, not at combat start.
     // Spotted traps draw now, so positioning is informed; the rest are sensed as units
@@ -969,6 +983,15 @@ export class BattleScene extends Phaser.Scene {
         onClick: () => this.doBreakGate(actor, breakable, ctx),
       });
     }
+    // Pull Lever — throw an adjacent control-room switch to seal/open its gate (D103 Phase 3).
+    const lever = this.battle.levers.find((l) => canPullLever(l, actor));
+    if (lever) {
+      specs.push({
+        text: "Pull Lever",
+        description: `Throw the switch — slam its door shut (seal the guards out) or grind it open (spends this unit's ${noun}).`,
+        onClick: () => this.doPullLever(actor, lever, ctx),
+      });
+    }
   }
 
   /**
@@ -999,6 +1022,21 @@ export class BattleScene extends Phaser.Scene {
     this.battle.attackGate(gate, actor);
     const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
     this.commitFieldAct(actor, ctx, `${actor.name} strikes the door!${tail}`);
+  }
+
+  /**
+   * Throw an adjacent lever as this unit's Act — the "Pull Lever" handler (D103). Toggles the lever's
+   * target gates; `gateLocked` / `gateOpened` (the bus listeners) own the grid redraw, the markers, and
+   * the log line.
+   */
+  private doPullLever(actor: Unit, lever: Lever, ctx: BoardCtx): void {
+    if (!this.canFieldAct(actor, ctx)) return;
+    if (!canPullLever(lever, actor)) {
+      return this.setHint(`Move ${actor.name} next to the lever to pull it.`);
+    }
+    this.battle.pullLever(lever, actor);
+    const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
+    this.commitFieldAct(actor, ctx, `${actor.name} throws the lever!${tail}`);
   }
 
   /**
@@ -1037,6 +1075,15 @@ export class BattleScene extends Phaser.Scene {
           this.add.text(x, top + 12, `${g.hp}/${g.maxHp}`, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.micro, fontStyle: WEIGHT.bold }).setOrigin(0.5).setDepth(5),
         );
       }
+    }
+  }
+
+  /** Draw a lever glyph over each pull-switch (D103) — a static layer (levers don't move; their gates do). */
+  private markLevers(): void {
+    clearLayer(this.leverMarkers);
+    for (const l of this.battle.levers) {
+      const { x, y } = this.tileToWorld(l.pos);
+      this.leverMarkers.push(placeIcon(this, x, y - this.view.halfH() * 0.9, "lever", { size: FONT.body }).setDepth(5));
     }
   }
 

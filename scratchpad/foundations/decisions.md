@@ -4247,7 +4247,62 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   `MICRO_GATE_RESEAL` fixture + `test:e2e:micro` block proves the **HP readout persists** in the real scene
   across the open→re-seal toggle (stays `11/20`, never a restored `20/20`). barrel: +`MICRO_GATE_RESEAL`.
 - **Remaining:** the other D105 finale-timer items (x-ray-sight-gated batter, untuned HP-vs-garrison, the
-  hold-order that disables the loop, the lever-as-skeleton-key). **Superseded by:** —
+  hold-order that disables the loop, the lever-as-skeleton-key) — reframed into a doctrine in D108.
+  **Superseded by:** —
+
+---
+
+## D108 — The prison-break guard doctrine + `in-combat` as the first tag-status (design, scope agreed)
+
+- **Status:** Designed, scope agreed (2026-07-18) — owner-directed design conversation. **Not yet built.**
+  One crux still owed before build: **what sets and clears `in-combat`** (see the open question). Recorded
+  now so the direction is durable (it lived only in the session transcript).
+- **Why:** the D105 red-team surfaced four *loose* finale-timer behaviors — door-break gated on x-ray sight,
+  untuned door-HP-vs-garrison, a `hold` order silently disabling battering, and a lever that skeleton-keys
+  any wired gate. The owner's insight: three of the four are **accidents of the enemy AI's targeting model**
+  (door-break was bolted onto the "see a foe → attack it" loop, so it inherited that loop's preconditions).
+  The fix isn't four patches — it's replacing the accident with an intentional **guard doctrine**.
+- **The doctrine — a sealed door is an alarm.** When the route to the control room is sealed, every guard on
+  the far side wants **through** it (something's clearly gone wrong), and *how* they open it depends on what
+  they carry:
+  - The **Warden** (see below) holds the key → walks to the door and **unlocks it** — a fast adjacent Act,
+    no HP grind. Re-opening the seal lets his guards back in (undoes the player's lever).
+  - **Keyless guards** → **batter it down** (the D106/D107 destructible-HP model, now a genuine timer).
+  - All of it is **suppressed while `in-combat`** — a unit trading blows doesn't peel off to answer the door.
+  This is a **spatial/objective drive** (walled off from the goal → converge on the door), **decoupled from
+  vision** (retires red-team #1) with `in-combat` as the single off-switch (retires #3, the hold footgun).
+  The lever stays a **general tool** — works from an infiltrator start *or* an assault start.
+- **The Warden = the route's major boss = the keyholder — one unit, the whole tension.** *Alive*, he walks
+  to the sealed door and re-opens it with his key (buys the garrison back in). *Dead*, his cells pop open
+  (the existing keyholder-death mechanic — the assault team's shortcut). Kill-him-fast vs he-undoes-your-seal.
+- **Keyholder becomes an *active, living* behavior (new).** Today `keyholder` is **only a death trigger**
+  (`gatesOpenedByDeath`). D108 adds a *living* keyholder who **reaches a gate and opens it as an action** —
+  a new AI drive, reusing the existing gate-interact Act shape. Deliberately **no item object**: "using the
+  key" == the keyholder-tagged unit reaches the door and opens it. (Same character keeps both behaviors.)
+- **`in-combat` = the first real tag-status — this is the concrete use-site that graduates Epic #171.** The
+  parked status-model track was left *design-only, use-site-gated*; this finale is the pull. Scope discipline:
+  introduce the status **vocabulary** with `in-combat` (self-contained), and **do NOT** migrate `captured`
+  in the same step — folding `captured`→status is the ~30-site migration rev-4 already flagged; it stays a
+  deliberate later step, not a prerequisite. (Owner's instinct "a tag-status is a better way to fold in
+  captured units" matches the track — validated, just sequenced apart.)
+- **Lever skeleton-key (#4) — separate, clean fix.** Add `{kind:"lever"}` to the gate `openBy` union (the
+  seam is already stubbed in `gates.ts`) so a lever only controls gates *authored to accept it* — lever
+  control becomes a gate property, not an unconstrained wire. Independent of the doctrine above.
+- **Scope principle — three behaviors, not three frameworks** (concrete-first / YAGNI, matching the status
+  track's use-site-pulled laddering):
+  1. **Guard door-doctrine** — the AI drive (converge → key-open or batter → gated by `in-combat`).
+  2. **`in-combat` as the first tag-status** — minimal status vocabulary + its set/clear rules.
+  3. **Keyholder-opens-door as a behavior** — reuse the gate-interact Act; **no** item object.
+- **Explicitly deferred (NOT built now):** a **transferable in-encounter item system** (a guard drops a key,
+  another picks it up and uses it) — confirmed we have **no board item-pickup today**; the nearest patterns
+  are the captive-rescue + gate-interact Acts (step adjacent → logged Act), which is the shape it'll take
+  **when a use-site pulls it**. Also still open: the untuned-HP tuning (#2) — candidate shape is
+  *breach-points-as-turns* (each batterer chips a fixed 1/turn, so break-time = HP ÷ batterers, "several
+  turns" authored directly); to be settled during the doctrine build.
+- **Open question (the crux to define before build):** the **set/clear rules for `in-combat`** — what marks
+  a unit in combat (attacked this turn? adjacent to a live foe? took damage recently?) and what clears it
+  (no adjacent foe for N turns?). This determines whether the doctrine feels *fair* — too sticky and guards
+  never answer the door; too loose and they abandon fights to babysit it. **Superseded by:** —
 
 ---
 

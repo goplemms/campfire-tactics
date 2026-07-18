@@ -23,6 +23,7 @@ import { createUnit } from "./units";
 import { TileGrid } from "./grid";
 import { getEnemyTemplate, type EncounterReward } from "./generation";
 import type { ObjectiveSpec } from "./objectives";
+import { makeGate, type Gate, type GateLock } from "./gates";
 import type { IntelTier } from "./intel"; // type-only (erased) — no runtime cycle
 
 /** A hand-placed enemy in an authored encounter. */
@@ -120,6 +121,12 @@ export interface AuthoredEncounter {
   /** Concealed enemy traps pre-placed on the field (spot to avoid, Survivalist to harvest). */
   traps?: AuthoredTrap[];
   /**
+   * Interactable **gates** (D103) — locked tiles that enclose (a cell's prisoner) or seal
+   * (a control-room door). A locked gate blocks its tile until an {@link "./gates".GateLock}
+   * condition opens it (a Thief lockpicks it, or the keyholder is defeated). See {@link AuthoredGate}.
+   */
+  gates?: AuthoredGate[];
+  /**
    * **Rumors** (D83) — the free-form info lane of the intel read, tier-banded like the
    * structured lanes: `rumors[i]` is revealed at intel tier `i+1` ("folk around here
    * say…" at tier 1 → sharper hearsay as the read deepens). Locked lines render as
@@ -195,6 +202,23 @@ export function buildAuthoredCaptives(enc: AuthoredEncounter): Unit[] {
     u.captured = true;
     return u;
   });
+}
+
+/**
+ * An authored **gate** placement (D103): a tile + how it opens ({@link GateLock} conditions).
+ * `locked` defaults **true** — an authored gate starts shut (the interesting state); set it `false`
+ * for a gate that begins open (e.g. a control-room door that a lever later *closes*).
+ */
+export interface AuthoredGate {
+  id: string;
+  pos: GridCoord;
+  openBy: GateLock[];
+  locked?: boolean;
+}
+
+/** Inflate an authored encounter's {@link AuthoredGate}s into live {@link Gate}s (locked by default). */
+export function buildAuthoredGates(enc: AuthoredEncounter): Gate[] {
+  return (enc.gates ?? []).map((g) => makeGate(g.id, g.pos, g.openBy, g.locked ?? true));
 }
 
 /** Place the party at the encounter's spawn tiles (extras stack on the last). */

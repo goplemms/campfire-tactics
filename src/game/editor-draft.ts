@@ -76,6 +76,8 @@ export interface DraftPassthrough {
   rumors?: AuthoredEncounter["rumors"];
   intelDepth?: AuthoredEncounter["intelDepth"];
   grants?: AuthoredEncounter["grants"];
+  /** Interactable gates (D103) — round-trip verbatim until the editor grows a gate brush (Phase 2b). */
+  gates?: AuthoredEncounter["gates"];
 }
 
 /** The editor's mutable working state — a superset of what it can currently paint. */
@@ -193,6 +195,7 @@ export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
   if (enc.rumors) pt.rumors = enc.rumors;
   if (enc.intelDepth !== undefined) pt.intelDepth = enc.intelDepth;
   if (enc.grants) pt.grants = enc.grants;
+  if (enc.gates) pt.gates = enc.gates;
 
   return {
     id: enc.id,
@@ -283,6 +286,7 @@ export function draftToEncounter(draft: EditorDraft): AuthoredEncounter {
     ...(draft.traps.length ? { traps: draft.traps.map((pos) => ({ pos })) } : {}),
     ...(pt.rumors ? { rumors: pt.rumors } : {}),
     ...(pt.intelDepth !== undefined ? { intelDepth: pt.intelDepth } : {}),
+    ...(pt.gates ? { gates: pt.gates } : {}),
     ...(objectives ? { objectives } : {}),
     reward: draft.reward ?? { gold: 50, materials: [], xp: 40 },
     ...(pt.grants ? { grants: pt.grants } : {}),

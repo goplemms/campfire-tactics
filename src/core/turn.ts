@@ -47,6 +47,7 @@ import {
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
 import { captureUnit, freeCaptive, canRelease } from "./deployment";
+import { applyGatesToGrid, openGateOnGrid, canLockpickGate, gatesOpenedByDeath, type Gate } from "./gates";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
@@ -89,6 +90,12 @@ export interface BattleOptions {
    * never registered; production always uses the default.
    */
   skills?: SkillLookup;
+  /**
+   * Interactable **gates** (D103) — locked tiles that enclose/seal. The Battle blocks each locked
+   * gate's tile on construction and opens matching cells automatically when a keyholder is defeated;
+   * a Thief opens the rest via the `openGate` Act. Empty/absent ⇒ no gate wiring (zero cost).
+   */
+  gates?: Gate[];
 }
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
@@ -102,6 +109,8 @@ export class Battle {
   readonly bus: EventBus;
   readonly clock: CTClock;
   readonly entities: EntityRegistry;
+  /** The encounter's interactable gates (D103) — locked tiles opened by lockpick / keyholder. */
+  readonly gates: Gate[];
 
   /**
    * Which board phase this battle is in (D67): `"deploy"` (pre-combat staging — the
@@ -173,6 +182,11 @@ export class Battle {
     this.rngSeed = opts.seed ?? 0;
     this.variance = opts.variance ?? 0;
     this.skillLookup = opts.skills ?? getSkill;
+    // Gates (D103): block each locked gate's tile so it encloses/seals from turn one, and open any
+    // keyholder-gated cells the instant their keyholder is defeated (the Captain drops the keys).
+    this.gates = opts.gates ?? [];
+    applyGatesToGrid(this.grid, this.gates);
+    if (this.gates.length) this.bus.on("unitDefeated", ({ unit }) => this.openKeyholderGates(unit));
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
     for (const u of units) {
       stampPassives(u);
@@ -311,7 +325,7 @@ export class Battle {
 
   /** Capture the battle's mutable state before an action (a turn-undo checkpoint). */
   private captureCheckpoint(): BattleCheckpoint {
-    return captureCheckpoint(this.units, this._log.length, this.drawCount, this.clock, this.entities, this.stash);
+    return captureCheckpoint(this.units, this._log.length, this.drawCount, this.clock, this.entities, this.stash, this.gates);
   }
 
   /**
@@ -332,7 +346,7 @@ export class Battle {
     this._log.length = cp.logLen; // drop the actions taken since the checkpoint
     // The unit / clock / entity / stash restore + tarpit-aura re-derive live in the
     // battle-undo primitive (over explicit inputs).
-    restoreCheckpoint(cp, this.units, this.clock, this.entities, this.stash);
+    restoreCheckpoint(cp, this.units, this.clock, this.entities, this.stash, this.grid, this.gates);
   }
 
   /**
@@ -496,6 +510,19 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "openGate": {
+        // The lockpick interact Act (D103): an adjacent Expert-Lockpick unit springs the gate,
+        // clearing its tile's block. A refused open (not adjacent/capable, or no lockpick condition)
+        // mutates nothing and isn't logged (mirrors a refused rescue), so replay/undo never see it.
+        const gate = this.gates.find((g) => g.id === action.gate);
+        if (!gate) return { ok: false, reason: "No such gate." };
+        const opener = this.unit(action.unit);
+        if (!canLockpickGate(gate, opener)) return { ok: false, reason: "Only an adjacent lockpick can open this gate." };
+        openGateOnGrid(this.grid, gate);
+        this.bus.emit("gateOpened", { gate, by: opener, cause: "lockpick" });
+        this._log.push(action);
+        return { ok: true };
+      }
       case "sway": {
         // The Noble's BRIBE (D30/D62): a swayed enemy turns coat — flip its side to the
         // player and announce it (the token re-tints on the bus, like unitRescued). Logged
@@ -605,6 +632,28 @@ export class Battle {
    */
   rescue(captive: Unit, by?: Unit): void {
     this.apply({ kind: "rescue", target: captive.id, unit: by?.id });
+  }
+
+  /**
+   * **Open a gate** by lockpicking (D103) — the interact Act. `by` (an adjacent Expert-Lockpick
+   * unit) springs `gate`, clearing its tile's block. Lowers to the logged `openGate` action so the
+   * open rides the state graph (replay reconstructs it, undo crosses it — the gate is checkpointed)
+   * and announces `gateOpened`. A refused open (not adjacent/capable) is a no-op that mutates nothing.
+   */
+  openGate(gate: Gate, by: Unit): void {
+    this.apply({ kind: "openGate", gate: gate.id, unit: by.id });
+  }
+
+  /**
+   * Open every locked keyholder cell the just-defeated `dead` unit was holding the keys to (D103) —
+   * wired to `unitDefeated` in the constructor, so a kill that fells the Captain pops the cells as a
+   * side effect of the killing action (replay re-fires it; undo re-locks via the checkpoint).
+   */
+  private openKeyholderGates(dead: Unit): void {
+    for (const g of gatesOpenedByDeath(this.gates, dead)) {
+      openGateOnGrid(this.grid, g);
+      this.bus.emit("gateOpened", { gate: g, cause: "keyholder" });
+    }
   }
 
   /**

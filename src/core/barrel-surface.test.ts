@@ -129,6 +129,9 @@
  *     module-private in `objectives.ts` so the keyholder lock reuses the one tag matcher). `Gate` /
  *     `GateLock` are type-only. `TileGrid.setWalkable` is a method, not a barrel export. No
  *     registration at import → sim digest unchanged.
+ *   - gate wiring (Phase 2a): +1 — `buildAuthoredGates` (`authored.ts`, inflate the authored
+ *     `gates` field into live `Gate`s at staging). `AuthoredGate` + the `openGate` action + the
+ *     `gateOpened` event + `Battle.gates`/`openGate` are type-only / methods (not runtime surface).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -377,6 +380,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "bribeEnemy",
   "buildAuthoredCaptives",
   "buildAuthoredEnemies",
+  "buildAuthoredGates",
   "buildAuthoredGrid",
   "buildEnemies",
   "buildGrid",

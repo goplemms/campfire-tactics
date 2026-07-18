@@ -26,10 +26,12 @@ import {
   buildAuthoredGrid,
   buildAuthoredEnemies,
   buildAuthoredCaptives,
+  buildAuthoredGates,
   placeParty,
   type AuthoredEncounter,
   type EncounterResult,
 } from "./authored";
+import type { Gate } from "./gates";
 import {
   armObjectives,
   withDefaultGoal,
@@ -148,12 +150,16 @@ export function stageEncounter(
   // by winning. Built **outside** `players` so the roster `resetForBattle` (which clears
   // `captured`) never touches them — a captive stays bound on entry. Authored sources only.
   let captives: Unit[] = [];
+  // Interactable gates (D103) — authored sources only. Handed to the Battle, which blocks each
+  // locked gate's tile and opens keyholder cells on the keyholder's death.
+  let gates: Gate[] = [];
   let objectiveSpecs;
 
   if (isAuthoredEncounter(source)) {
     grid = buildAuthoredGrid(source);
     enemies = buildAuthoredEnemies(source);
     captives = buildAuthoredCaptives(source);
+    gates = buildAuthoredGates(source);
     // Scouted-to-full intel blows the ambush: hidden bodies start visible (D10).
     if (opts.revealHidden) for (const e of enemies) e.hidden = false;
     placeParty(players, opts.playerSpawns ?? source.playerSpawns);
@@ -169,7 +175,7 @@ export function stageEncounter(
   // Captives ride between the roster and the enemies: player-side and bound, so they're off
   // the clock (the `isActive` participant predicate excludes captured), never an AI target
   // (`activeUnits` foe-lists skip them), and visible in deployment (only enemies are veiled).
-  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed });
+  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed, gates });
 
   // Pre-place the authored concealed enemy traps (the trap-field lever, D12): they
   // ride the same entity registry the player's Set Trap uses, so movement springs

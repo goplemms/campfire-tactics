@@ -4006,8 +4006,10 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 ## D103 — Interactable gates: the lock is the tile, opening it is data (prison-break substrate)
 
 - **Status:** Deciding + **building in phases** (2026-07-18). Owner-driven, from a concrete finale
-  narrative (below). **Phase 1 (pure core) built**; Phase 2 (wire + render + editor + visual e2e) and
-  Phase 3 (the control-room seal) are queued. Candidate for a `decision-adversary` red-team before Phase 3.
+  narrative (below). **Phase 1 (pure core) + Phase 2a (battle wiring, headless) built**; Phase 2b (render +
+  editor brush + visual e2e) and Phase 3 (the control-room seal — owner idea: a **destructible** door the
+  guards batter down, giving the enemy AI a target) are queued. Candidate for a `decision-adversary`
+  red-team before Phase 3.
 - **Owner's finale flow (the design source):** an **infiltrator** reaches a **control room**, which
   **locks a door sealing the guards** on the far side; that buys the **assault team several turns** to
   **lockpick the cells** open — and the *easiest* open is to **defeat the Captain**, who holds the keys.
@@ -4031,14 +4033,24 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   `openGateOnGrid` (open + unblock). No Phaser/DOM/`Math.random`. Guards: `gates.test` (locked blocks &
   open clears the tile; only an adjacent Thief picks; keyholder death opens every matching locked cell by
   role *or* id, and never a lockpick-only cell or an already-open one); barrel-surface +8 (documented).
-- **Queued — Phase 2 (make it playable):** arm gates in **staging** (an `AuthoredEncounter.gates` field +
-  `applyGatesToGrid` at assembly + a unit-death hook firing `openGateOnGrid` for keyholder matches); a
-  generalized **interact Act** on the `Battle` (adjacent + Act → open a lockpickable gate — the rescue Act
-  generalized); **render** (draw the barred gate + lock glyph, the open affordance, the open/keys-drop
-  feedback) + a **visual e2e** (locked gate blocks → Thief picks → prisoner walks out; defeat the Captain →
-  cells pop) — MANDATORY for the new player-facing surface (the D92 freeze cautionary tale); an **editor**
-  gate brush + inspector `openBy` + JSON round-trip. **Phase 3:** the **control-room seal** — a lever/enter
-  trigger that *locks* a guard-facing gate (the inverse of open), and whether "several turns" is a real
+- **Phase 2a — battle wiring (built, headless):** `AuthoredEncounter.gates` (+ `AuthoredGate` +
+  `buildAuthoredGates`) armed in **staging**; `Battle` gained `gates` — it `applyGatesToGrid` on
+  construction (locked tiles block) and wires a `unitDefeated` hook that `openGateOnGrid`s keyholder cells
+  (the Captain drops the keys); a logged **`openGate` action** + `Battle.openGate(gate, by)` (the interact
+  Act — the rescue Act generalized: adjacent + capable → open, refused = a no-op); a `gateOpened` event;
+  and **undo/replay correctness** — the checkpoint snapshots each gate's `locked` and re-blocks its tile on
+  restore (so undoing a lockpick, or a kill that popped a cell, re-locks it). Guards: `gates-battle.test`
+  (locked blocks; Thief opens the adjacent cell + `gateOpened` fires; a non-lockpick unit is refused;
+  defeating the Captain pops every keyholder cell; **undo re-locks**). tsc · build · vitest (**1196**) · sim
+  digest byte-identical (additive; no content uses gates yet). Gates ride the editor **passthrough** bag so
+  a level with gates round-trips losslessly until the brush lands.
+- **Queued — Phase 2b (make it visible/authorable):** **render** (draw the barred gate + lock glyph, the
+  open affordance, the open/keys-drop feedback) + a **visual e2e** (locked gate blocks → Thief picks →
+  prisoner walks out; defeat the Captain → cells pop) — MANDATORY for the new player-facing surface (the
+  D92 freeze cautionary tale); an **editor** gate brush + inspector `openBy` + JSON (graduate out of the
+  passthrough bag). **Phase 3:** the **control-room seal** — a lever/enter trigger that *locks* a
+  guard-facing gate (the inverse of open), the owner's **destructible** door the guards batter down (the
+  `destructible` `openBy` member + enemy-AI-targets-the-gate), and whether "several turns" is a real
   countdown (maps to a `closing-gate` objective) or just the emergent value of the sealed door (TBD w/ owner).
 - **Scoped (JIT):** first cut = **lockpick + keyholder** only. Seam-ready, not built: **lever** (a remote
   switch tile), **key** (a carried item), **destructible** (bash it down — needs units to target a non-unit,

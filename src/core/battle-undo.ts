@@ -18,6 +18,8 @@ import type { CTClock, ClockSnapshot } from "./clock";
 import type { EntityRegistry, EntitySnapshot } from "./entities";
 import type { StatusInstance } from "./status";
 import type { UnitId } from "./combat-actions";
+import type { Gate } from "./gates";
+import type { TileGrid } from "./grid";
 import type { GridCoord as Coord } from "./iso";
 
 /**
@@ -60,6 +62,12 @@ export interface BattleCheckpoint {
   entities: EntitySnapshot;
   /** Shared-stash counts by value (D63) — so undoing a `placeTrap` refunds its kit. */
   stash?: Record<string, number>;
+  /**
+   * Gate `locked` state by id (D103) — so undoing a lockpick Act (or a kill that popped a
+   * keyholder cell) re-locks the gate *and* re-blocks its grid tile on restore. Absent when the
+   * encounter has no gates (zero cost, like `stash`).
+   */
+  gates?: Map<string, boolean>;
 }
 
 /** Capture a unit's undoable mutable state by value (tripwired, #115). */
@@ -112,6 +120,7 @@ export function captureCheckpoint(
   clock: CTClock,
   entities: EntityRegistry,
   stash?: Inventory,
+  gates?: readonly Gate[],
 ): BattleCheckpoint {
   const snaps = new Map<UnitId, UnitSnapshot>();
   for (const u of units) snaps.set(u.id, snapshotUnit(u));
@@ -122,6 +131,7 @@ export function captureCheckpoint(
     clock: clock.snapshot(),
     entities: entities.snapshot(),
     stash: stash ? { ...stash.counts } : undefined,
+    gates: gates && gates.length ? new Map(gates.map((g) => [g.id, g.locked])) : undefined,
   };
 }
 
@@ -137,6 +147,8 @@ export function restoreCheckpoint(
   clock: CTClock,
   entities: EntityRegistry,
   stash?: Inventory,
+  grid?: TileGrid,
+  gates?: Gate[],
 ): void {
   for (const u of units) {
     const s = cp.units.get(u.id);
@@ -145,6 +157,17 @@ export function restoreCheckpoint(
   clock.restore(cp.clock);
   entities.restore(cp.entities);
   if (cp.stash && stash) stash.counts = { ...cp.stash };
+  // Gates: restore each `locked` from the snapshot, then re-derive walkability so a re-locked
+  // gate blocks its tile again (and an un-locked one clears). Only when both are wired.
+  if (cp.gates && gates && grid) {
+    for (const g of gates) {
+      const wasLocked = cp.gates.get(g.id);
+      if (wasLocked !== undefined) {
+        g.locked = wasLocked;
+        grid.setWalkable(g.pos, !wasLocked);
+      }
+    }
+  }
   // Positions reverted → re-derive the position-dependent tarpit aura (D40). The
   // restored statuses already match, so this is a confirming no-op in practice.
   refreshAuras(units);

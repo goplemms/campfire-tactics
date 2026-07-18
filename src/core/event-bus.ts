@@ -12,6 +12,7 @@
 
 import type { Unit } from "./units";
 import type { GridCoord } from "./iso";
+import type { Gate } from "./gates";
 
 /**
  * The typed event catalogue. Each key names an event; its value is the payload
@@ -59,6 +60,12 @@ export interface BattleEvents {
   chargeFizzled: { id: string };
   /** A placed trap/snare sprang on a unit (D4/D13) — the render updates its marker. */
   trapSprung: { id: string; tile: GridCoord; unit: Unit };
+  /**
+   * An interactable **gate opened** (D103) — a cell/door unlocked. `cause` distinguishes a
+   * Thief's lockpick Act (`by` = the picker) from the automatic keyholder open when a tagged
+   * unit was defeated (`by` undefined). The render lifts the bars, clears the lock glyph, logs it.
+   */
+  gateOpened: { gate: Gate; by?: Unit; cause: "lockpick" | "keyholder" };
   /**
    * The deployment phase ended and combat begins (D67 clock fold) — the transition
    * seam. The render reacts by tearing down the staging visuals (the D12 veil, the

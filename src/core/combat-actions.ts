@@ -74,6 +74,14 @@ export type CombatAction =
    */
   | { kind: "rescue"; target: UnitId; unit?: UnitId }
   /**
+   * **Open a gate** by lockpicking (D103): `unit` — an adjacent Expert-Lockpick holder (the
+   * Thief) — springs the locked `gate`, clearing its tile's block and announcing `gateOpened`.
+   * Logged (mirrors `rescue`) so the open rides the state graph a replay reconstructs and undo
+   * can cross (the gate's `locked` + its grid tile are checkpointed). Refused (no-op, unlogged)
+   * when the unit isn't adjacent/capable or the gate has no lockpick condition.
+   */
+  | { kind: "openGate"; gate: string; unit: UnitId }
+  /**
    * A **sway** (D30/D62 bribe): `target` — an enemy the Noble turned — flips to the player's
    * side for the rest of the fight, announcing `unitSwayed`. `unit` is the briber (named on the
    * bus event). Logged (mirrors `rescue`) so the defection rides the state graph replay

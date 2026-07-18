@@ -20,7 +20,7 @@
  * genuinely cannot carry (see {@link encounterToDraft}).
  */
 
-import type { GridCoord, UnitSpec, UnitStats, AuthoredEncounter, ObjectiveSpec, ObjectiveTag, EncounterReward } from "../core";
+import type { GridCoord, UnitSpec, UnitStats, AuthoredEncounter, ObjectiveSpec, ObjectiveTag, EncounterReward, AuthoredGate, AuthoredLever } from "../core";
 import { getEnemyTemplate } from "../core";
 
 /**
@@ -29,7 +29,7 @@ import { getEnemyTemplate } from "../core";
  * the far tile, and the run/box of walls lands in one gesture — the structural-authoring workhorses
  * (a prison's perimeter, corridors, and cell rings are wall shapes, not one-off tiles).
  */
-export type Brush = "select" | "wall" | "line" | "rect" | "spawn" | "enemy" | "captive" | "exit" | "trap" | "erase";
+export type Brush = "select" | "wall" | "line" | "rect" | "spawn" | "enemy" | "captive" | "exit" | "trap" | "gate" | "lever" | "erase";
 
 /**
  * The combat stat fields the inspector edits — typed against {@link UnitStats} so a **rename or
@@ -76,10 +76,6 @@ export interface DraftPassthrough {
   rumors?: AuthoredEncounter["rumors"];
   intelDepth?: AuthoredEncounter["intelDepth"];
   grants?: AuthoredEncounter["grants"];
-  /** Interactable gates (D103) — round-trip verbatim until the editor grows a gate brush (Phase 2b). */
-  gates?: AuthoredEncounter["gates"];
-  /** Control-room levers (D103) — round-trip verbatim until the editor grows a lever brush (Phase 2b). */
-  levers?: AuthoredEncounter["levers"];
 }
 
 /** The editor's mutable working state — a superset of what it can currently paint. */
@@ -105,13 +101,17 @@ export interface EditorDraft {
   objectives?: ObjectiveSpec[];
   /** Authored win reward (M-C, graduated). Absent ⇒ the tidy default (`{ gold: 50, xp: 40 }`). */
   reward?: EncounterReward;
+  /** Interactable gates (D103 · M-D2, graduated) — placed as objects; `openBy`/`locked` edited in the inspector. */
+  gates: AuthoredGate[];
+  /** Control-room levers (D103 · M-D2, graduated) — placed as objects; wired to their target gates in the inspector. */
+  levers: AuthoredLever[];
   /** Un-editable-yet fields preserved verbatim across import (M-A). See {@link DraftPassthrough}. */
   _passthrough?: DraftPassthrough;
 }
 
 /** A fresh blank draft at the given size. */
 export function blankDraft(cols = 9, rows = 6): EditorDraft {
-  return { id: "new-level", name: "New Level", cols, rows, blocked: [], playerSpawns: [], enemies: [], captives: [], exit: [], traps: [] };
+  return { id: "new-level", name: "New Level", cols, rows, blocked: [], playerSpawns: [], enemies: [], captives: [], exit: [], traps: [], gates: [], levers: [] };
 }
 
 const CAPTIVE_STATS = { speed: 10, maxHp: 22, attack: 6, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 };
@@ -197,8 +197,6 @@ export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
   if (enc.rumors) pt.rumors = enc.rumors;
   if (enc.intelDepth !== undefined) pt.intelDepth = enc.intelDepth;
   if (enc.grants) pt.grants = enc.grants;
-  if (enc.gates) pt.gates = enc.gates;
-  if (enc.levers) pt.levers = enc.levers;
 
   return {
     id: enc.id,
@@ -218,6 +216,9 @@ export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
     captives,
     exit: exitTilesOf(enc),
     traps: (enc.traps ?? []).map((t) => cp(t.pos)),
+    // Gates + levers are first-class now (M-D2) — cloned so editing never mutates the source encounter.
+    gates: (enc.gates ?? []).map(cloneGate),
+    levers: (enc.levers ?? []).map((l) => ({ id: l.id, pos: cp(l.pos), targets: [...l.targets] })),
     // Objectives + reward are first-class now (M-C) — cloned so the inspector never mutates the source.
     ...(enc.objectives ? { objectives: enc.objectives.map(cloneObjective) } : {}),
     ...(enc.reward ? { reward: { ...enc.reward, materials: enc.reward.materials.map((m) => ({ ...m })) } } : {}),
@@ -246,6 +247,16 @@ function cloneObjective(o: ObjectiveSpec): ObjectiveSpec {
     ...(o.span ? { span: o.span.map(cp) } : {}),
     ...(o.driver ? { driver: { ...o.driver } } : {}),
     ...(o.escort ? { escort: { ...o.escort } } : {}),
+  };
+}
+
+/** Deep-ish clone of a gate (pos + each openBy condition copied — keyholder tags too) so editing never touches the source. */
+export function cloneGate(g: AuthoredGate): AuthoredGate {
+  return {
+    id: g.id,
+    pos: cp(g.pos),
+    openBy: g.openBy.map((c) => (c.kind === "keyholder" ? { kind: "keyholder" as const, tag: { ...c.tag } } : { ...c })),
+    ...(g.locked !== undefined ? { locked: g.locked } : {}),
   };
 }
 
@@ -287,10 +298,10 @@ export function draftToEncounter(draft: EditorDraft): AuthoredEncounter {
     })),
     ...(captives.length ? { captives } : {}),
     ...(draft.traps.length ? { traps: draft.traps.map((pos) => ({ pos })) } : {}),
+    ...(draft.gates.length ? { gates: draft.gates.map(cloneGate) } : {}),
+    ...(draft.levers.length ? { levers: draft.levers.map((l) => ({ id: l.id, pos: { ...l.pos }, targets: [...l.targets] })) } : {}),
     ...(pt.rumors ? { rumors: pt.rumors } : {}),
     ...(pt.intelDepth !== undefined ? { intelDepth: pt.intelDepth } : {}),
-    ...(pt.gates ? { gates: pt.gates } : {}),
-    ...(pt.levers ? { levers: pt.levers } : {}),
     ...(objectives ? { objectives } : {}),
     reward: draft.reward ?? { gold: 50, materials: [], xp: 40 },
     ...(pt.grants ? { grants: pt.grants } : {}),

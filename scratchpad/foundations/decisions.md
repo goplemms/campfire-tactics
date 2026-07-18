@@ -4007,9 +4007,9 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 - **Status:** Deciding + **building in phases** (2026-07-18). Owner-driven, from a concrete finale
   narrative (below). **Phase 1 (core) + Phase 2a (wiring) + Phase 2b render + the Phase 3 destructible
-  door + the enemy AI battering it + the control-room lever built** — the full seal loop plays. Remaining:
-  the **editor gate/lever brush** (2b's other half) so the prison is paintable; then **promote** the seal
-  into the finale. Candidate for a `decision-adversary` red-team before that promotion.
+  door + the enemy AI battering it + the control-room lever + the editor gate/lever brushes built** — the
+  full seal loop plays *and* the prison is paintable. Remaining: **promote** the seal into the Hollow Mill
+  finale (an owner-directed step). Candidate for a `decision-adversary` red-team before that promotion.
 - **Owner's finale flow (the design source):** an **infiltrator** reaches a **control room**, which
   **locks a door sealing the guards** on the far side; that buys the **assault team several turns** to
   **lockpick the cells** open — and the *easiest* open is to **defeat the Captain**, who holds the keys.
@@ -4090,9 +4090,20 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   · deploy-battle e2e · sim byte-identical. **The seal is the timer** (owner, 2026-07-18): "the delay would
   just be a result of enemy action to bust down the door" — emergent from the door's HP under attack, **no**
   `closing-gate` countdown.
-- **Queued — Phase 2b editor brush:** an **editor** gate brush + inspector `openBy` (incl. the
-  `destructible` hp) + a **lever** brush wiring `targets` + JSON (graduate gates/levers out of the
-  passthrough bag) so the prison is paintable. Then **promote** the seal into the finale.
+- **Editor gate/lever brushes — built (Phase 2b, closes the editor↔JSON gap; owner-flagged categorization).**
+  The owner's insight: *"wall and placeable elements don't really seem the same"* — a painted **substrate**
+  vs. a **placed object** with its own properties. So a new **Objects** tab (gate · lever · trap — trap moved
+  here) sits beside **Terrain** (now walls/floor only), with **Select + Erase** promoted to persistent
+  cross-cutting tools. Gates + levers **graduated** to first-class `EditorDraft` fields (out of the M-A
+  passthrough bag). A gate lands as a default **lockpick cell**; the **persistent inspector** (moved out of
+  the Units drawer so it edits *any* selected object anywhere) sets a gate's `openBy` (lockpick / keyholder
+  + role / destructible + hp) + `locked`, and a lever's **target gates** (a checklist of placed gate ids).
+  Board markers: `▦`+`L/K/D` tag per gate, `⎇` per lever, gold ring on the selected object. Guard:
+  `test:e2e:editor` extended (place a gate → default lockpick; inspector adds destructible; place + wire a
+  lever → targets in the export; still validates) + `editor-draft.test` round-trip. Palette 12 brushes / 5
+  tabs. tsc · build · vitest (**1205**) · e2e:editor (46) · level e2e · sim byte-identical. **The prison is
+  now fully paintable** — walls, cells (lockpick/keyholder/destructible), the control-room lever, all in
+  `#editor` → Download JSON → play. **Then:** promote the seal into the finale.
 - **Scoped (JIT):** first cut = **lockpick + keyholder** only. Seam-ready, not built: **lever** (a remote
   switch tile), **key** (a carried item), **destructible** (bash it down — needs units to target a non-unit,
   the one bigger lift). Each is a new `GateLock` member + a case, nothing structural.

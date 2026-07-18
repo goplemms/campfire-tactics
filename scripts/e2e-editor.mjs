@@ -91,8 +91,8 @@ async function main() {
         let st = await g.eval(STATE);
         console.log("• #editor boots with the brush palette");
         check("the editor scene is active", st.active === true);
-        check("the brush palette is present (10 brushes incl. select + line/rect)", st.brushButtons === 10);
-        check("the drawer tab bar is present (4 tabs)", st.tabs === 4);
+        check("the brush palette is present (12 brushes incl. gate + lever)", st.brushButtons === 12);
+        check("the drawer tab bar is present (5 tabs incl. Objects)", st.tabs === 5);
         check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));
 
@@ -253,6 +253,50 @@ async function main() {
         check("editing the reward gold flows to the export", (await g.eval(`JSON.parse(document.querySelector("pre").textContent).reward.gold`)) === 500);
         check("the level still validates after objective + reward edits", (await g.eval(STATE)).valid === true);
         await g.screenshot(path.join(OUT, "07-objectives.png"));
+
+        // Objects (M-D2): gates + levers as placeable objects in the new Objects tab, edited via the
+        // persistent inspector — the last editor↔JSON gap, so the prison is fully paintable.
+        console.log("• objects: gate + lever authoring (M-D2)");
+        await g.eval(clickTab("Objects"));
+        await sleep(60);
+        const objExp = () => g.eval(`(() => {
+          const e = JSON.parse(document.querySelector("pre").textContent);
+          return { gates: (e.gates || []).length, levers: (e.levers || []).length,
+                   openBy: e.gates && e.gates[0] ? e.gates[0].openBy.map((c) => c.kind).sort() : [],
+                   targets: e.levers && e.levers[0] ? e.levers[0].targets : [] };
+        })()`);
+        // Place a gate (default lockpick cell) + a lever on empty tiles.
+        await g.eval(setBrush("gate"));
+        let gp = await tileScreen(1, 3); await g.clickScene(gp.x, gp.y); await sleep(60);
+        await g.eval(setBrush("lever"));
+        const lp = await tileScreen(1, 5); await g.clickScene(lp.x, lp.y); await sleep(60);
+        let oe = await objExp();
+        check("a gate lands as a default lockpick cell + a lever lands unwired", oe.gates === 1 && oe.levers === 1 && oe.openBy.join() === "lockpick" && oe.targets.length === 0);
+
+        // Select the gate → inspector; add a destructible condition (a batter-able door).
+        await g.eval(setBrush("select"));
+        gp = await tileScreen(1, 3); await g.clickScene(gp.x, gp.y); await sleep(120);
+        await g.eval(`(() => {
+          const insp = document.querySelector('[data-role="inspector"]');
+          const box = [...insp.querySelectorAll('input[type=checkbox]')].find((b) => (b.parentElement.textContent || "").includes("destructible"));
+          box.checked = true; box.dispatchEvent(new Event("change"));
+        })()`);
+        await sleep(120);
+        oe = await objExp();
+        check("the gate inspector adds a destructible condition (lockpick + destructible)", oe.openBy.join() === "destructible,lockpick");
+
+        // Select the lever → inspector; wire it to the gate.
+        await g.eval(setBrush("select"));
+        await g.clickScene(lp.x, lp.y); await sleep(120);
+        await g.eval(`(() => {
+          const insp = document.querySelector('[data-role="inspector"]');
+          insp.querySelector('input[type=checkbox]').click(); // the first gate in the target checklist
+        })()`);
+        await sleep(120);
+        oe = await objExp();
+        check("wiring the lever targets the gate in the export", oe.targets.length === 1);
+        check("the level still validates with gates + a lever placed", (await g.eval(STATE)).valid === true);
+        await g.screenshot(path.join(OUT, "08-objects.png"));
 
         assertNoProblems(g.problems);
       } catch (err) {

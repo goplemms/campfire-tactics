@@ -69,6 +69,15 @@ describe("withDefaultGoal (D50/D97)", () => {
     // …but a closing-gate + extraction still has its goal, so still no injection.
     expect(withDefaultGoal([CLOSING_GATE, EXTRACTION])).toEqual([CLOSING_GATE, EXTRACTION]);
   });
+
+  it("still injects the default when the only goal is OPTIONAL (C2 — no zero-required trivial win)", () => {
+    // An optional goal carries no win condition, so the default REQUIRED goal must still be
+    // added — otherwise the encounter has zero required objectives and wins vacuously on turn 1.
+    const optionalGoal: ObjectiveSpec = { id: "g", kind: "eliminate-all", required: false, label: "bonus" };
+    expect(withDefaultGoal([optionalGoal])).toEqual([DEFAULT_GOAL, optionalGoal]);
+    const optionalExtraction: ObjectiveSpec = { ...EXTRACTION, required: false };
+    expect(withDefaultGoal([optionalExtraction])).toEqual([DEFAULT_GOAL, optionalExtraction]);
+  });
 });
 
 describe("extraction (D97)", () => {

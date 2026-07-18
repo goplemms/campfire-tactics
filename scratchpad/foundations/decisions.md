@@ -4149,6 +4149,43 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D105 — Red-team pass on the D100–D104 work: three confirmed correctness fixes (C1/C2/C3)
+
+- **Status:** Decided + built (2026-07-18). Owner ask ("let's red team everything we work on in this
+  session") → two `decision-adversary` passes (gate mechanics + finale; editor + AI + harness) plus a
+  throwaway probe test that asserted *correct* behavior so a failure = a confirmed bug. Three fired.
+- **C1 — a gate opening on a wall tile dissolved the terrain.** `TileGrid` held a single `blocked`
+  layer, so `openGateOnGrid`'s `setWalkable(pos,true)` couldn't tell a permanent wall from a gate
+  block — opening a gate placed on (or reinforced by) a wall tile punched a permanent hole. **Fix:**
+  split the grid into an **immutable `wall` layer** (authored terrain) + a **runtime `blocked`
+  overlay** (the gate seam). `isWalkable` requires *both* clear, so `setWalkable(wallTile,true)` is
+  inert — the wall always wins. `setWalkable` only ever touches the overlay. (`grid.ts`; regression in
+  `grid.test.ts`.)
+- **C2 — an all-optional objective set was a turn-one trivial win.** `withDefaultGoal` skipped the
+  injected default whenever the list named *any* goal-kind — **even an optional one** — leaving zero
+  required objectives, which `encounterOutcome` scores as a vacuous win (a live enemy, instant
+  victory). **Fix:** inject the default unless the list names a **required** goal
+  (`isGoalKind(s.kind) && s.required`). An optional goal no longer suppresses it. Consistent with the
+  finale (both its OR'd goals are `required:true`). (`objectives.ts`; regressions in
+  `objectives.test.ts` + an end-to-end `stageEncounter` case in `staging.test.ts`.)
+- **C3 — the enemy AI battered an irrelevant destructible door.** The door-break relevance gate
+  proved "walled off from *every* seen foe" but never "breaking *this* door helps" — so a guard sealed
+  by **permanent terrain** with an unrelated/decorative door in range smashed it for turns. **Fix:**
+  filter `breakableDoors` to those whose *opening actually reveals a route* — probe each by momentarily
+  opening its overlay tile and re-pathing to a seen foe, restoring it either way. The finale's genuine
+  seal (the door *is* the sole wall) still batters; the decorative door is skipped. Conservative on
+  doors-in-series (never batters without provable progress). (`ai.ts`; regressions in `ai.test.ts` — a
+  bad case *and* a kept-good case.)
+- **Deferred (surfaced, not yet fixed — owner to prioritize):** the finale-promotion blockers (the
+  "several turns" seal isn't a robust timer — infinite reseal, x-ray-sight-gated batter, untuned HP,
+  hold-order silently disables it; the lever is an unconditional skeleton key bypassing `openBy`;
+  silent-unrescuable-prisoner via empty `openBy` / an escaping keyholder) and the editor authoring
+  footguns (`objectSeq` id collision on import, dangling lever targets after erase, empty-span
+  extraction, no gate/lever `validateLevel` coverage). These gate the **finale promotion**, not these
+  three correctness bugs. **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

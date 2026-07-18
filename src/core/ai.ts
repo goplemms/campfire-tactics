@@ -309,7 +309,22 @@ export function planEnemyTurn(
   // (even a long way round), the guard advances/fights normally and never wastes a turn on a door.
   const wallsOff =
     seen.length > 0 && !post && seen.every((f) => findPath(grid, unit.pos, f.pos) === null);
-  const breakableDoors = wallsOff ? (opts.gates ?? []).filter((g) => isBreakable(g)) : [];
+  // …and only doors whose *opening actually reveals a route to a foe* (C3): a breakable door that
+  // isn't the true blocker (a foe walled off by permanent terrain, an unrelated/decorative door)
+  // leads nowhere when broken, so battering it just wastes turns. Probe by momentarily opening the
+  // door's overlay tile and re-pathing; restore it either way. (Doors in series read as irrelevant
+  // until the last is the sole remaining wall — conservative: never batter without provable progress.)
+  const opensARoute = (g: Gate): boolean => {
+    grid.setWalkable(g.pos, true);
+    try {
+      return seen.some((f) => findPath(grid, unit.pos, f.pos) !== null);
+    } finally {
+      grid.setWalkable(g.pos, false);
+    }
+  };
+  const breakableDoors = wallsOff
+    ? (opts.gates ?? []).filter((g) => isBreakable(g) && opensARoute(g))
+    : [];
 
   let bestPlan: AIPlan = stay;
   let bestScore = -Infinity;

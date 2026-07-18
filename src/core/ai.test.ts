@@ -92,6 +92,34 @@ describe("planEnemyTurn", () => {
     expect(plan.gateTarget).toBeUndefined();
   });
 
+  it("C3: does NOT batter a destructible door that doesn't open a route to a foe", () => {
+    // Column 2 is a solid PERMANENT wall (rows 0-2) — the foe at col 4 is terrain-unreachable no
+    // matter what. The destructible door at (1,0) is in the guard's attack range but leads nowhere:
+    // breaking it doesn't reveal a path (the wall, not the door, is the blocker). The guard must not
+    // waste its turns on the irrelevant door.
+    const grid = new TileGrid(5, 3, [{ col: 2, row: 0 }, { col: 2, row: 1 }, { col: 2, row: 2 }]);
+    const door = makeGate("door", { col: 1, row: 0 }, [{ kind: "destructible", hp: 20 }]);
+    applyGatesToGrid(grid, [door]);
+    const enemy = at("e", "enemy", 1, 1);
+    const player = at("p", "player", 4, 1);
+    const plan = planEnemyTurn(enemy, [enemy, player], grid, { gates: [door] });
+    expect(plan.gateTarget).toBeUndefined();
+    // The probe restores the door's block — pathing still treats it (and the wall) as impassable.
+    expect(grid.isWalkable({ col: 1, row: 0 })).toBe(false);
+  });
+
+  it("still batters the door when it IS the sole blocker between the guard and a foe (C3 keeps the good case)", () => {
+    // Same shape, but now the destructible door at (2,0) is the only thing sealing the corridor —
+    // rows 1-2 of col 2 are permanent wall, row 0 is the door. Opening it reveals the route → batter.
+    const grid = new TileGrid(5, 3, [{ col: 2, row: 1 }, { col: 2, row: 2 }]);
+    const door = makeGate("door", { col: 2, row: 0 }, [{ kind: "destructible", hp: 20 }]);
+    applyGatesToGrid(grid, [door]);
+    const enemy = at("e", "enemy", 0, 0);
+    const player = at("p", "player", 4, 0);
+    const plan = planEnemyTurn(enemy, [enemy, player], grid, { gates: [door] });
+    expect(plan.gateTarget?.id).toBe("door");
+  });
+
   it("does not move while immobilized but still attacks an adjacent foe", () => {
     const grid = new TileGrid(8, 1);
     const enemy = at("e", "enemy", 0, 0);

@@ -217,6 +217,43 @@ async function main() {
         check("the level still validates after the shape tools", (await g.eval(STATE)).valid === true);
         await g.screenshot(path.join(OUT, "06-shapes.png"));
 
+        // Objectives editor + reward (M-C): the-rescue imported with 2 objectives — tune label/required,
+        // add one, set the reward — the gaps the visual editor couldn't reach before.
+        console.log("• objectives editor + reward controls (M-C)");
+        await g.eval(clickTab("Events"));
+        await sleep(80);
+        const objCount = () => g.eval(`document.querySelectorAll('[data-role="objective"]').length`);
+        const expObj = () => g.eval(`JSON.parse(document.querySelector("pre").textContent).objectives`);
+        check("the imported finale shows its 2 objectives as editable rows", (await objCount()) === 2);
+
+        // Edit the first objective's label + toggle its required flag off (the two fields we explained).
+        await g.eval(`(() => {
+          const row = document.querySelector('[data-role="objective"]');
+          const label = row.querySelector('input:not([type=checkbox])');
+          label.value = "Storm the Iron Gaol"; label.dispatchEvent(new Event("input"));
+          const req = row.querySelector('input[type=checkbox]');
+          req.checked = false; req.dispatchEvent(new Event("change"));
+        })()`);
+        await sleep(80);
+        const o0 = (await expObj())[0];
+        check("editing an objective label flows to the export", o0.label === "Storm the Iron Gaol");
+        check("toggling required off flows to the export (an optional objective)", o0.required === false);
+
+        // Add an objective → 3 rows, 3 in the export.
+        await g.eval(`document.querySelector('button[data-role="add-objective"]').click()`);
+        await sleep(80);
+        check("＋ add appends an objective row", (await objCount()) === 3);
+        check("the added objective reaches the export", (await expObj()).length === 3);
+
+        // Reward control (Scenario drawer).
+        await g.eval(clickTab("Scenario"));
+        await sleep(60);
+        await g.eval(`(() => { const el = document.querySelector('input[data-role="reward-gold"]'); el.value = "500"; el.dispatchEvent(new Event("change")); })()`);
+        await sleep(60);
+        check("editing the reward gold flows to the export", (await g.eval(`JSON.parse(document.querySelector("pre").textContent).reward.gold`)) === 500);
+        check("the level still validates after objective + reward edits", (await g.eval(STATE)).valid === true);
+        await g.screenshot(path.join(OUT, "07-objectives.png"));
+
         assertNoProblems(g.problems);
       } catch (err) {
         await g.screenshot(path.join(OUT, "zz-failure.png")).catch(() => {});

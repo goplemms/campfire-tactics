@@ -3,10 +3,10 @@ import { CombatView } from "../combat-view";
 import { BoardCamera } from "../board-camera";
 import { COLOR, FONT } from "../theme";
 import { clearLayer } from "../ui";
-import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, type GridCoord, type AuthoredEncounter, type JobId } from "../../core";
+import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward } from "../../core";
 import { validateLevel } from "../../content/levels";
 import {
-  blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec,
+  blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec, standardObjectives,
   effectiveEnemyStat, setEnemyStat, setSpecStat, STAT_FIELDS,
   type Brush, type EditorDraft, type DraftEnemy, type DraftCaptive, type StatField,
 } from "../editor-draft";
@@ -77,6 +77,7 @@ export class EditorScene extends Phaser.Scene {
   private coordEl?: HTMLDivElement; // live "tile (col,row)" readout under the cursor
   private inspectorEl?: HTMLDivElement;
   private unitListEl?: HTMLDivElement;
+  private objectivesEl?: HTMLDivElement; // the M-C objectives editor list
   private brushButtons: HTMLButtonElement[] = [];
   private tabButtons: HTMLButtonElement[] = [];
   private drawers: Partial<Record<TabName, HTMLDivElement>> = {};
@@ -150,6 +151,7 @@ export class EditorScene extends Phaser.Scene {
     this.renderBoard();
     this.renderInspector();
     this.renderUnitList();
+    this.renderObjectives(); // keep an extraction row's "span = N exit tiles" note fresh as exit is painted
     this.updateExport();
     this.drawShapePreview(); // reflect a just-set anchor before the next mouse move
     this.updateCoord();
@@ -428,7 +430,138 @@ export class EditorScene extends Phaser.Scene {
     row.style.margin = "4px 0";
     row.append(this.brushButton("spawn"), this.brushButton("exit"));
     d.appendChild(row);
-    d.appendChild(this.hint("deploy spawns · extraction exit · objectives + triggers coming next"));
+    d.appendChild(this.hint("deploy spawns · extraction exit tiles (the extraction span)"));
+
+    // Objectives editor (M-C) — win/lose conditions as data. label + required + kind-specific fields.
+    const objHead = document.createElement("div");
+    Object.assign(objHead.style, { margin: "8px 0 2px", fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    objHead.append("Objectives ");
+    const add = document.createElement("button");
+    add.textContent = "＋ add"; add.dataset.role = "add-objective"; add.style.cursor = "pointer";
+    add.onclick = () => this.addObjective();
+    const derive = document.createElement("button");
+    derive.textContent = "Derive from board"; derive.dataset.role = "derive-objectives"; derive.style.cursor = "pointer"; derive.style.marginLeft = "4px";
+    derive.onclick = () => { this.draft.objectives = standardObjectives(this.draft.exit, this.draft.captives.length > 0); this.afterObjectiveEdit(); };
+    objHead.append(add, derive);
+    d.appendChild(objHead);
+
+    const list = document.createElement("div");
+    list.dataset.role = "objective-list";
+    list.style.margin = "2px 0";
+    d.appendChild(list);
+    this.objectivesEl = list;
+
+    d.appendChild(this.hint("empty ⇒ auto (eliminate-all + extraction when exit+captives) · required off = an optional/bonus objective"));
+    this.renderObjectives();
+  }
+
+  /** Append a fresh eliminate-all objective and re-render the list. */
+  private addObjective(): void {
+    (this.draft.objectives ??= []).push({ id: this.uniqueObjectiveId(), kind: "eliminate-all", required: true, label: "New objective" });
+    this.afterObjectiveEdit();
+  }
+
+  /** A run-unique objective id (`obj-N`) for a freshly-added row. */
+  private uniqueObjectiveId(): string {
+    const used = new Set((this.draft.objectives ?? []).map((o) => o.id));
+    let n = 1;
+    while (used.has(`obj-${n}`)) n++;
+    return `obj-${n}`;
+  }
+
+  /** After a structural objective change (add/remove/kind/derive): rebuild the list + refresh the export. */
+  private afterObjectiveEdit(): void {
+    this.renderObjectives();
+    this.updateExport();
+  }
+
+  /** Render the objectives editor — one editable block per objective (or an auto-derive placeholder). */
+  private renderObjectives(): void {
+    const host = this.objectivesEl;
+    if (!host) return;
+    host.innerHTML = "";
+    const objs = this.draft.objectives ?? [];
+    if (!objs.length) {
+      host.textContent = "· auto-derived — paint exit + captives for the rescue pair, or ＋ add / Derive to author explicitly";
+      host.style.opacity = "0.55";
+      return;
+    }
+    host.style.opacity = "1";
+    objs.forEach((o, i) => host.appendChild(this.objectiveRow(o, i)));
+  }
+
+  /** One objective's editable block: kind · required · remove, its label, and the kind-specific fields. */
+  private objectiveRow(o: ObjectiveSpec, i: number): HTMLDivElement {
+    const box = document.createElement("div");
+    box.dataset.role = "objective";
+    Object.assign(box.style, { margin: "4px 0", padding: "5px", border: "1px solid #4a423a", borderRadius: "4px" } as CSSStyleDeclaration);
+
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "6px" } as CSSStyleDeclaration);
+    const kind = document.createElement("select");
+    kind.dataset.field = "kind";
+    for (const k of OBJECTIVE_KINDS) { const opt = document.createElement("option"); opt.value = k; opt.textContent = k; kind.appendChild(opt); }
+    kind.value = o.kind;
+    kind.onchange = () => this.changeObjectiveKind(i, kind.value as ObjectiveKind);
+    head.appendChild(kind);
+    // Required checkbox — the "gates win/lose vs. optional bonus" switch.
+    const reqLabel = document.createElement("label");
+    reqLabel.style.cursor = "pointer";
+    const req = document.createElement("input");
+    req.type = "checkbox"; req.checked = o.required; req.dataset.field = "required";
+    req.onchange = () => { o.required = req.checked; this.updateExport(); };
+    reqLabel.append(req, "required");
+    head.appendChild(reqLabel);
+    const rm = document.createElement("button");
+    rm.textContent = "✕"; rm.title = "remove objective"; rm.dataset.role = "remove-objective";
+    Object.assign(rm.style, { marginLeft: "auto", cursor: "pointer" } as CSSStyleDeclaration);
+    rm.onclick = () => {
+      this.draft.objectives!.splice(i, 1);
+      if (!this.draft.objectives!.length) delete this.draft.objectives;
+      this.afterObjectiveEdit();
+    };
+    head.appendChild(rm);
+    box.appendChild(head);
+
+    box.appendChild(this.field("label", o.label, (v) => { o.label = v; this.updateExport(); }));
+
+    if (o.kind === "closing-gate") {
+      // A timed gauge (fails the constraint at 100). driver = the unit whose death/immobilize stops it.
+      const cg = document.createElement("div");
+      cg.style.margin = "3px 0";
+      cg.append("speed ");
+      cg.appendChild(this.numInput(o.speed ?? 10, (n) => { if (Number.isFinite(n)) { o.speed = n; this.updateExport(); } }));
+      box.appendChild(cg);
+      box.appendChild(this.selectRow("driver", ["", "sapper", "captain"], o.driver?.role ?? "", (v) => { if (v) o.driver = { role: v }; else delete o.driver; this.updateExport(); }));
+      box.appendChild(this.hint("swept-tiles span isn't paintable yet — a pure timer for now"));
+    } else if (o.kind === "extraction") {
+      const ex = document.createElement("div");
+      ex.style.margin = "3px 0";
+      ex.append("escort role ");
+      const role = document.createElement("input");
+      role.value = o.escort?.role ?? "prisoner"; role.style.width = "90px"; role.dataset.field = "escort";
+      role.oninput = () => { o.escort = { role: role.value || "prisoner" }; this.updateExport(); };
+      ex.appendChild(role);
+      box.appendChild(ex);
+      box.appendChild(this.hint(`span = ${this.draft.exit.length} exit tile(s) — paint with the exit brush`));
+    }
+    return box;
+  }
+
+  /** The draft's reward, created at the tidy default the first time it's edited. */
+  private ensureReward(): EncounterReward {
+    if (!this.draft.reward) this.draft.reward = { gold: 50, materials: [], xp: 40 };
+    return this.draft.reward;
+  }
+
+  /** Replace an objective with a clean shape for its new kind (preserving id/label/required — no stale fields). */
+  private changeObjectiveKind(i: number, kind: ObjectiveKind): void {
+    const prev = this.draft.objectives![i];
+    const next: ObjectiveSpec = { id: prev.id, kind, required: prev.required, label: prev.label };
+    if (kind === "closing-gate") { next.speed = prev.speed ?? 10; if (prev.driver) next.driver = prev.driver; }
+    if (kind === "extraction") { next.escort = prev.escort ?? { role: "prisoner" }; next.span = [...this.draft.exit]; }
+    this.draft.objectives![i] = next;
+    this.afterObjectiveEdit();
   }
 
   private buildUnitsDrawer(d: HTMLDivElement): void {
@@ -472,6 +605,19 @@ export class EditorScene extends Phaser.Scene {
   private buildScenarioDrawer(d: HTMLDivElement): void {
     d.appendChild(this.field("id", this.draft.id, (v) => { this.draft.id = v; this.updateExport(); }));
     d.appendChild(this.field("name", this.draft.name, (v) => { this.draft.name = v; this.updateExport(); }));
+
+    // Win reward (M-C) — gold + xp. materials round-trip verbatim (no picker yet).
+    const reward = document.createElement("div");
+    reward.style.margin = "3px 0";
+    reward.append("reward — gold ");
+    const gold = this.numInput(this.draft.reward?.gold ?? 50, (n) => { if (Number.isFinite(n)) { this.ensureReward().gold = n; this.updateExport(); } });
+    gold.dataset.role = "reward-gold";
+    reward.appendChild(gold);
+    reward.append(" xp ");
+    const xp = this.numInput(this.draft.reward?.xp ?? 40, (n) => { if (Number.isFinite(n)) { this.ensureReward().xp = n; this.updateExport(); } });
+    xp.dataset.role = "reward-xp";
+    reward.appendChild(xp);
+    d.appendChild(reward);
 
     // Import (the M-A round-trip inverse).
     const imp = document.createElement("div");
@@ -691,6 +837,7 @@ export class EditorScene extends Phaser.Scene {
     this.coordEl = undefined;
     this.inspectorEl = undefined;
     this.unitListEl = undefined;
+    this.objectivesEl = undefined;
     this.brushButtons = [];
     this.tabButtons = [];
     this.drawers = {};

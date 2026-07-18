@@ -3965,6 +3965,44 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D102 — Editor M-C: objectives editor + reward controls graduate from passthrough
+
+- **Status:** Decided + built (2026-07-18). Closes the largest editor↔JSON gap for finale authoring —
+  the owner asked what the visual editor *couldn't* reach that hand-authoring can, and objectives + reward
+  were the biggest (both were **passthrough-only**: round-tripped on import, but no UI to create/edit).
+- **Context (why):** the finale *is* objectives — `eliminate-all` OR `extraction` (D97), and `closing-gate`
+  is the "escape before the alarm" tension a prison break wants. The editor only **auto-derived** the
+  standard rescue pair (fixed generic labels, `required: true`) and couldn't author or tune any of it; the
+  reward was a fixed `{gold:50,xp:40}`. `editor-draft.ts` already earmarked these as **M-C**.
+- **Decision — graduate `objectives` + `reward` to first-class draft fields.** They leave the
+  {@link DraftPassthrough} bag (which now holds only rumors/intelDepth/grants → M-E) and become real
+  `EditorDraft` fields with controls:
+  - **Objectives editor** (Events drawer): add/remove rows; per row a **kind** picker
+    (eliminate-all · closing-gate · extraction), a **label** text field, a **required** checkbox (the
+    win/lose-gating vs. optional-bonus switch), and kind-specific fields — closing-gate **speed** +
+    **driver** role; extraction **escort** role. A **"Derive from board"** button drops the standard pair
+    in so labels/required become tunable. A kind change rebuilds a **clean** objective (no stale fields).
+  - **Reward control** (Scenario drawer): **gold** + **xp** (materials round-trip verbatim — no picker yet).
+- **Decision — the exit brush stays the one source for an extraction span.** An extraction row's `span`
+  is **(re)bound to the painted exit tiles on export**, not authored per-objective — so there's a single
+  place to place the span and it can't drift from the board. `standardObjectives()` is the **one** derive
+  helper shared by the export path (empty list ⇒ derive) and the "Derive" button, so they can't diverge.
+  Empty `objectives` still auto-derives (a plain painted rescue "just works"); a non-empty list is verbatim.
+- **Scoped (JIT):** closing-gate's **swept-tiles span** isn't paintable yet (a new brush) → an
+  editor-made gate is a **pure timer** (`span ?? []` tolerates it); reward **materials** have no picker
+  (round-trip only); **grants / rumors / intelDepth** stay passthrough (→ M-E). Objective **ids** are
+  auto-generated (`obj-N`), not hand-edited.
+- **Guards:** `editor-draft.test` (authored objectives beat the derive — tuned label + optional `required`
+  + extraction span rebound to exit; graduation asserted); the M-A **round-trip** + the-rescue lossless
+  tests still deep-equal with the fields graduated. `test:e2e:editor` extended (imported finale shows its 2
+  objectives as rows; edit label + toggle required → export; ＋add; reward gold → export; still validates).
+  tsc · build · vitest (**1185**) · editor/level e2e green. `game/` + one `game/`-test only; **no core,
+  routing, or game-surface change** — the serialized shape is unchanged, so `staging`/`levels` are untouched.
+- **Reuses:** **D98** (editor + the passthrough-graduation plan it named), **D97/D50** (the objective model
+  + `OBJECTIVE_KINDS`), **D99** (the walkover guard still validates the authored span). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

@@ -20,7 +20,7 @@
  * genuinely cannot carry (see {@link encounterToDraft}).
  */
 
-import type { GridCoord, UnitSpec, UnitStats, AuthoredEncounter, ObjectiveSpec, ObjectiveTag } from "../core";
+import type { GridCoord, UnitSpec, UnitStats, AuthoredEncounter, ObjectiveSpec, ObjectiveTag, EncounterReward } from "../core";
 import { getEnemyTemplate } from "../core";
 
 /**
@@ -68,12 +68,11 @@ export interface DraftCaptive {
 /**
  * Top-level {@link AuthoredEncounter} fields the editor does not yet paint but must **preserve**
  * across a round-trip — the passthrough bag. Each is graduated into a real control by a later
- * milestone (objectives + reward → M-C; rumors/intelDepth/grants → M-E), at which point it moves out
- * of the bag. Until then it rides here untouched, so import is never lossy.
+ * milestone, at which point it moves out of the bag. **objectives + reward graduated (M-C)** — they
+ * are now first-class {@link EditorDraft} fields with real controls; only `rumors/intelDepth/grants`
+ * (→ M-E) still ride here untouched, so import stays lossless.
  */
 export interface DraftPassthrough {
-  reward?: AuthoredEncounter["reward"];
-  objectives?: ObjectiveSpec[];
   rumors?: AuthoredEncounter["rumors"];
   intelDepth?: AuthoredEncounter["intelDepth"];
   grants?: AuthoredEncounter["grants"];
@@ -92,6 +91,16 @@ export interface EditorDraft {
   /** Extraction exit tiles — a freed prisoner escorted here wins by extraction (D97). */
   exit: GridCoord[];
   traps: GridCoord[];
+  /**
+   * Authored objectives (M-C, graduated from the passthrough bag). **Empty ⇒ auto-derive** at export
+   * (the default elimination goal, plus the OR'd extraction pair when the board has exit tiles +
+   * captives) — so painting a rescue still "just works". A non-empty list is authored verbatim; an
+   * extraction row's `span` is (re)bound to the painted {@link exit} tiles on export, keeping the exit
+   * brush the single source for the span.
+   */
+  objectives?: ObjectiveSpec[];
+  /** Authored win reward (M-C, graduated). Absent ⇒ the tidy default (`{ gold: 50, xp: 40 }`). */
+  reward?: EncounterReward;
   /** Un-editable-yet fields preserved verbatim across import (M-A). See {@link DraftPassthrough}. */
   _passthrough?: DraftPassthrough;
 }
@@ -181,8 +190,6 @@ export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
   });
 
   const pt: DraftPassthrough = {};
-  if (enc.reward) pt.reward = enc.reward;
-  if (enc.objectives) pt.objectives = enc.objectives;
   if (enc.rumors) pt.rumors = enc.rumors;
   if (enc.intelDepth !== undefined) pt.intelDepth = enc.intelDepth;
   if (enc.grants) pt.grants = enc.grants;
@@ -205,30 +212,57 @@ export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
     captives,
     exit: exitTilesOf(enc),
     traps: (enc.traps ?? []).map((t) => cp(t.pos)),
+    // Objectives + reward are first-class now (M-C) — cloned so the inspector never mutates the source.
+    ...(enc.objectives ? { objectives: enc.objectives.map(cloneObjective) } : {}),
+    ...(enc.reward ? { reward: { ...enc.reward, materials: enc.reward.materials.map((m) => ({ ...m })) } } : {}),
     ...(Object.keys(pt).length ? { _passthrough: pt } : {}),
   };
 }
 
 /**
- * Serialize a draft into the {@link AuthoredEncounter} the pipeline loads. Objectives + reward come
- * from `_passthrough` when an imported level supplied them; otherwise objectives are **derived** —
- * the default elimination goal plus, when the draft has both exit tiles and prisoners, an OR'd
- * `extraction` goal bound to the exit span (the D97 finale shape). Per-entity extras (enemy id/role/…,
- * a captive's carried spec) round-trip; a freshly-painted captive gets a synthesized spec. Empty
- * collections are omitted so the JSON stays tidy.
+ * The **standard rescue objectives** (D97): the required `eliminate-all` goal, plus — when the board
+ * has exit tiles and captives — the OR'd `extraction` goal bound to the exit span. The single source
+ * for both the export-time derive (when `draft.objectives` is empty) and the editor's "derive from
+ * board" button (which drops the pair into the list so labels/`required` become tunable), so the two
+ * can't drift.
+ */
+export function standardObjectives(exit: GridCoord[], hasCaptives: boolean): ObjectiveSpec[] {
+  const objs: ObjectiveSpec[] = [{ id: "storm", kind: "eliminate-all", required: true, label: "Defeat the garrison" }];
+  if (exit.length > 0 && hasCaptives)
+    objs.push({ id: "extract", kind: "extraction", required: true, label: "Escort the prisoners to the exit", span: exit.map(cp), escort: { role: "prisoner" } as ObjectiveTag });
+  return objs;
+}
+
+/** Deep-ish clone of an objective (span coords + tags copied) so an edit never touches the source encounter. */
+function cloneObjective(o: ObjectiveSpec): ObjectiveSpec {
+  return {
+    ...o,
+    ...(o.span ? { span: o.span.map(cp) } : {}),
+    ...(o.driver ? { driver: { ...o.driver } } : {}),
+    ...(o.escort ? { escort: { ...o.escort } } : {}),
+  };
+}
+
+/**
+ * Serialize a draft into the {@link AuthoredEncounter} the pipeline loads. Objectives + reward are
+ * first-class draft fields now (M-C): when `draft.objectives` is **non-empty** it's authored verbatim
+ * (each `extraction` row's `span` re-bound to the painted exit tiles — the exit brush stays the one
+ * span source); when it's **empty** objectives are **derived** — the default elimination goal plus,
+ * with both exit tiles and prisoners, the OR'd `extraction` pair (the D97 finale shape). Per-entity
+ * extras round-trip; a freshly-painted captive gets a synthesized spec. Empty collections are omitted.
  */
 export function draftToEncounter(draft: EditorDraft): AuthoredEncounter {
   const pt = draft._passthrough ?? {};
   const captives = draft.captives.map((c, i) => ({ spec: c.spec ?? captiveSpec(i, c.pos), pos: c.pos, release: { kind: c.release } }));
 
   const hasExtraction = draft.exit.length > 0 && draft.captives.length > 0;
-  const derivedObjectives: ObjectiveSpec[] | undefined = hasExtraction
-    ? [
-        { id: "storm", kind: "eliminate-all", required: true, label: "Defeat the garrison" },
-        { id: "extract", kind: "extraction", required: true, label: "Escort the prisoners to the exit", span: [...draft.exit], escort: { role: "prisoner" } as ObjectiveTag },
-      ]
+  // Authored list wins; an extraction row's span is (re)bound to the painted exit tiles. Empty ⇒ the
+  // derived shape (the OR'd rescue pair when the board has an exit + captives, else none → staging
+  // injects the default elimination goal, keeping a plain combat level's JSON tidy).
+  const authored = draft.objectives?.length
+    ? draft.objectives.map((o) => (o.kind === "extraction" ? { ...o, span: [...draft.exit] } : { ...o }))
     : undefined;
-  const objectives = pt.objectives ?? derivedObjectives;
+  const objectives = authored ?? (hasExtraction ? standardObjectives(draft.exit, true) : undefined);
 
   return {
     id: draft.id,
@@ -250,7 +284,7 @@ export function draftToEncounter(draft: EditorDraft): AuthoredEncounter {
     ...(pt.rumors ? { rumors: pt.rumors } : {}),
     ...(pt.intelDepth !== undefined ? { intelDepth: pt.intelDepth } : {}),
     ...(objectives ? { objectives } : {}),
-    reward: pt.reward ?? { gold: 50, materials: [], xp: 40 },
+    reward: draft.reward ?? { gold: 50, materials: [], xp: 40 },
     ...(pt.grants ? { grants: pt.grants } : {}),
   };
 }

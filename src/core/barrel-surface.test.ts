@@ -140,6 +140,9 @@
  *     (`gates.ts`, the door-durability interpreters) + `MICRO_GATE_DESTRUCTIBLE` (`scenarios/micro.ts`, the
  *     batter-a-door fixture). The `attackGate` action + the `gateDamaged` event + `Gate.hp`/`maxHp` +
  *     `Battle.attackGate` + the scene's Break-Gate verb are type-only / methods (not runtime surface).
+ *   - gate AI target (Phase 3): +1 — `MICRO_GATE_ENEMY_BATTER` (`scenarios/micro.ts`, the walled-off-guard
+ *     fixture). The `AIPlan.gateTarget` / `AIOptions.gates` / `AI.doorBreak` door-targeting seam is
+ *     type-only / a weight (not runtime surface).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -241,6 +244,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MERCHANT_KIT",
   "MERCHANT_SELL",
   "MICRO_GATE_DESTRUCTIBLE",
+  "MICRO_GATE_ENEMY_BATTER",
   "MICRO_GATE_KEYHOLDER",
   "MICRO_GATE_LOCKPICK",
   "MICRO_SCENARIOS",

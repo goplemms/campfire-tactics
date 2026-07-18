@@ -4,6 +4,7 @@ import { TileGrid } from "./grid";
 import { isAdjacent } from "./combat";
 import { applyStatus, immobilized } from "./status";
 import { createUnit, type Side, type Unit } from "./units";
+import { makeGate, applyGatesToGrid } from "./gates";
 
 function at(id: string, side: Side, col: number, row: number, moveRange = 3): Unit {
   return createUnit({
@@ -51,6 +52,44 @@ describe("planEnemyTurn", () => {
     const plan = planEnemyTurn(enemy, [enemy, near, far], grid);
     expect(plan.target ?? near).toBe(near);
     expect(plan.destination).toEqual({ col: 6, row: 0 });
+  });
+
+  it("batters a destructible door when walled off from every foe (D103)", () => {
+    // A 1-row corridor: the enemy at col 0, the player at col 4, a locked destructible door at col 2
+    // sealing the only route. No terrain path exists → the guard closes on the door and breaks it.
+    const grid = new TileGrid(5, 1);
+    const door = makeGate("door", { col: 2, row: 0 }, [{ kind: "destructible", hp: 20 }]);
+    applyGatesToGrid(grid, [door]); // blocks (2,0)
+    const enemy = at("e", "enemy", 0, 0);
+    const player = at("p", "player", 4, 0);
+    const plan = planEnemyTurn(enemy, [enemy, player], grid, { gates: [door] });
+    expect(plan.gateTarget?.id).toBe("door"); // targets the seal, not a (blocked) foe
+    expect(plan.target).toBeNull();
+    expect(plan.destination).toEqual({ col: 1, row: 0 }); // moved adjacent to the door to hit it
+  });
+
+  it("does NOT break a door it can simply walk around (the condition isn't always true)", () => {
+    // The door at (2,1) blocks that tile, but rows 0 and 2 are open — a route around exists, so the
+    // guard advances toward the foe and ignores the door entirely.
+    const grid = new TileGrid(6, 3);
+    const door = makeGate("door", { col: 2, row: 1 }, [{ kind: "destructible", hp: 20 }]);
+    applyGatesToGrid(grid, [door]);
+    const enemy = at("e", "enemy", 0, 1);
+    const player = at("p", "player", 4, 1);
+    const plan = planEnemyTurn(enemy, [enemy, player], grid, { gates: [door] });
+    expect(plan.gateTarget).toBeUndefined(); // a path around exists → no door-break
+  });
+
+  it("prefers attacking a reachable foe over a door (foe > door > advance)", () => {
+    // The enemy is adjacent to both a foe and a destructible door; the foe wins (not walled off).
+    const grid = new TileGrid(5, 1);
+    const door = makeGate("door", { col: 0, row: 0 }, [{ kind: "destructible", hp: 20 }]);
+    applyGatesToGrid(grid, [door]);
+    const enemy = at("e", "enemy", 1, 0);
+    const player = at("p", "player", 2, 0);
+    const plan = planEnemyTurn(enemy, [enemy, player], grid, { gates: [door] });
+    expect(plan.target).toBe(player);
+    expect(plan.gateTarget).toBeUndefined();
   });
 
   it("does not move while immobilized but still attacks an adjacent foe", () => {

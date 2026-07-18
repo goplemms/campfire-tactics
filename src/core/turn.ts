@@ -889,6 +889,7 @@ export class Battle {
     }
     const plan = policy.plan(unit, this.units, this.grid, {
       isCharging: (u) => this.clock.isCharging(u),
+      gates: this.gates, // D103: a guard walled off by a locked destructible door batters it down
     });
     // Lower the plan to a CombatAction[] and run each through the one interpreter —
     // the AI path now shares the exact execution route with player input (D42/D56).

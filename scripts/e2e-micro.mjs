@@ -84,6 +84,27 @@ const MICROS = [
       check("the second hit smashes it open — tile clears, markers gone (no freeze)", hit2.locked === false && hit2.hp === 0 && hit2.walkable === true && hit2.markers === 0);
     },
   },
+  {
+    id: "micro-gate-enemy-batter",
+    title: "gate · enemy AI — a walled-off guard batters the door down",
+    async run(g) {
+      const st = await g.bsEval(`return { locked: s.battle.gates[0].locked, hp: s.battle.gates[0].hp, markers: s.gateMarkers.length };`);
+      check("the door renders locked with 20/20 durability", st.locked === true && st.hp === 20 && st.markers === 2);
+      // One enemy turn: walled off from the party (the door seals the only route) → it plans attackGate.
+      const t1 = await g.bsEval(`
+        const enemy = s.battle.units.find(u => u.side === "enemy");
+        const plan = s.battle.runPolicyTurn(enemy); // plan + apply (fires gateDamaged on the bus → the scene renders)
+        return { gateTarget: plan.gateTarget ? plan.gateTarget.id : null, hp: s.battle.gates[0].hp };`);
+      check("the guard plans to batter the door (not idle against it)", t1.gateTarget === "door");
+      check("the door takes a hit from the enemy — durability drops (no freeze)", t1.hp < 20);
+      // Keep battering across turns until the seal breaks.
+      const broke = await g.bsEval(`
+        const enemy = s.battle.units.find(u => u.side === "enemy");
+        for (let i = 0; i < 6 && s.battle.gates[0].locked; i++) s.battle.runPolicyTurn(enemy);
+        return { locked: s.battle.gates[0].locked, markers: s.gateMarkers.length };`);
+      check("the guard batters it down over several turns — the seal breaks open (no freeze)", broke.locked === false && broke.markers === 0);
+    },
+  },
 ];
 
 async function main() {

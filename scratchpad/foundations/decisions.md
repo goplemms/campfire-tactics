@@ -4007,10 +4007,9 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 - **Status:** Deciding + **building in phases** (2026-07-18). Owner-driven, from a concrete finale
   narrative (below). **Phase 1 (core) + Phase 2a (wiring) + Phase 2b render + the Phase 3 destructible
-  door (core + render + micro-guard) built.** Remaining: the **editor gate brush** (2b's other half),
-  the **enemy AI targeting a destructible door** (the guards *choosing* to batter the seal), and the
-  control-room **lever/enter trigger** that locks a gate. Candidate for a `decision-adversary` red-team
-  before wiring the full seal into the finale.
+  door (core + render + micro-guard) + the enemy AI battering it built.** Remaining: the **editor gate
+  brush** (2b's other half) and the control-room **lever/enter trigger** that locks a gate (the last seal
+  piece). Candidate for a `decision-adversary` red-team before wiring the full seal into the finale.
 - **Owner's finale flow (the design source):** an **infiltrator** reaches a **control room**, which
   **locks a door sealing the guards** on the far side; that buys the **assault team several turns** to
   **lockpick the cells** open — and the *easiest* open is to **defeat the Captain**, who holds the keys.
@@ -4065,9 +4064,19 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   attack, no `closing-gate` countdown. Guard: micro entry #3 `micro-gate-destructible` (`test:e2e:micro`:
   holds one hit → breaks the next, no freeze) + `gates.test`/`gates-battle.test` (chip/break/range + undo
   restores hp). barrel +5. tsc · build · vitest (**1199**) · sim byte-identical.
-- **Queued — the enemy AI targeting a door:** the guards *choosing* to batter a destructible seal (an
-  `ai.ts` scoring seam — a gate as a target) — the half of the owner's "the enemy focuses on that" the
-  mechanic is now ready for. **Queued — Phase 2b editor brush:** an **editor** gate brush + inspector
+- **Enemy AI targeting a door — built (Phase 3):** the guards *choose* to batter a destructible seal.
+  `planEnemyTurn` gains a **door-break tier** in its enumerate-score-pick: `AIPlan.gateTarget` +
+  `AIOptions.gates` (threaded from `Battle.runPolicyTurn`) + `AI.doorBreak` (500 — below any foe attack
+  `actionBase` 1000+, above pure advance). The user's *"the condition won't always be true"* is the crux:
+  door-break is offered **only when the unit is terrain-walled-off from *every* seen foe** (`findPath`
+  returns null — the locked door is the wall); if a route around exists the guard advances/fights and
+  never wastes a turn on a door. Priority is **foe > door > advance**; `planActions` lowers `gateTarget`
+  to the logged `attackGate`; the scene renders it via the same `gateDamaged`/`gateOpened` bus listeners
+  (no scene change). Guard: micro entry #4 `micro-gate-enemy-batter` (a walled-off guard batters a 20-hp
+  door down over turns) + `ai.test` (batters when walled off · does NOT break a door it can walk around ·
+  prefers a reachable foe). barrel +1. tsc · build · vitest (**1202**) · **sim digest byte-identical**
+  (gateless content ⇒ no door-break path). This is the finale's "several turns" made real.
+- **Queued — Phase 2b editor brush:** an **editor** gate brush + inspector
   `openBy` (incl. the `destructible` hp) + JSON (graduate gates out of the passthrough bag) so the prison
   is paintable. **Phase 3 seal:** the **control-room** lever/enter trigger that *locks* a gate — a lever/enter trigger that *locks* a
   guard-facing gate (the inverse of open). The seal is a **destructible** door (the `destructible` `openBy`

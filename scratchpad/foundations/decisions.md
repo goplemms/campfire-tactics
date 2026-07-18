@@ -4217,9 +4217,35 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   captured by the `broken` state; no unit-list/targeting refactor. barrel: +`destroyGateOnGrid` +
   `MICRO_GATE_REMNANT`.
 - **Remaining (not this change):** the *double-pull top-up* (opening then re-sealing a still-standing
-  damaged door restores its HP) is a lesser, **risky/costly** vector (it opens the door for a beat) and is
-  left as-is; the other D105 finale-timer items (x-ray-sight-gated batter, untuned HP-vs-garrison, the
-  hold-order that disables the loop, the lever-as-skeleton-key) are still open. **Superseded by:** —
+  damaged door restores its HP) is a lesser, **risky/costly** vector — **now closed by D107**; the other
+  D105 finale-timer items (x-ray-sight-gated batter, untuned HP-vs-garrison, the hold-order that disables
+  the loop, the lever-as-skeleton-key) are still open. **Superseded by:** D107 (the reseal HP-restore is gone).
+
+---
+
+## D107 — A lever re-seal no longer mends the door: battering persists across seals
+
+- **Status:** Decided + built (2026-07-18). Owner ruling — "I do not believe flipping the lever should
+  restore the health of the door." Closes the *double-pull top-up* vector D106 left open.
+- **The problem it solves:** `lockGateOnGrid` restored a destructible door to full HP on re-seal (a
+  hold-over from the D103 "a freshly-shut door is whole" framing). Combined with the lever's toggle, a
+  player could open→re-seal a still-standing damaged door to top its durability back up — a softer sibling
+  of the F2a exploit D106 killed. It also just modeled the wrong thing: slamming a battered door shut
+  doesn't repair the cracks.
+- **Decision — re-sealing keeps the accumulated damage.** `lockGateOnGrid` now only re-locks + re-blocks
+  the tile; it no longer touches `hp`. So the guards' battering **persists across re-seals**, and each
+  fresh seal buys strictly *less* time than the last — the pressure ratchets instead of resetting. (The
+  only place a destructible door's hp resets to `maxHp` was this line; nothing else restores it.)
+- **Interaction with D106:** a door still has its three states (locked → open → broken); D106 made
+  *destruction* permanent (the remnant), D107 makes *damage* sticky (no top-up on the intact door). Together
+  the "several turns" seal is now a genuine, monotonic timer — resealing delays the breach but never
+  rewinds it, and once it breaks it's gone.
+- **Tests:** the `lockGateOnGrid` unit test flipped from "restores durability" to "KEEPS its accumulated
+  damage" (and its old form was found to have passed for the wrong reason — it damaged an *open*,
+  non-breakable door, so the restore line masked a no-op); plus a battle-level `D107` case (batter → lever
+  open → lever re-seal keeps the damage → one more hit finishes it). No new exports.
+- **Remaining:** the other D105 finale-timer items (x-ray-sight-gated batter, untuned HP-vs-garrison, the
+  hold-order that disables the loop, the lever-as-skeleton-key). **Superseded by:** —
 
 ---
 

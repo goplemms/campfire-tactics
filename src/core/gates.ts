@@ -169,14 +169,14 @@ export function destroyGateOnGrid(grid: TileGrid, gate: Gate): void {
 
 /**
  * **Re-seal** a gate — the inverse of {@link openGateOnGrid} (the control-room lever slamming a door
- * shut): lock it, re-block its tile, and restore a destructible door's durability (a freshly-shut door
- * is whole, so the guards must batter it anew).
+ * shut): lock it and re-block its tile. A destructible door **keeps its accumulated damage** (D107):
+ * re-sealing does *not* mend it, so the guards' battering *persists* across re-seals and each fresh
+ * seal buys less time than the last. (Broken doors are permanent — see {@link destroyGateOnGrid}.)
  */
 export function lockGateOnGrid(grid: TileGrid, gate: Gate): void {
   if (gate.broken) return; // a smashed door is a permanent breach — the reseal is gone (D106)
   gate.locked = true;
   grid.setWalkable(gate.pos, false);
-  if (gate.maxHp !== undefined) gate.hp = gate.maxHp;
 }
 
 /**

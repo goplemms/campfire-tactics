@@ -169,6 +169,42 @@ describe("gates in a staged battle (D103 Phase 2a)", () => {
     expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(true); // still a passable remnant
   });
 
+  it("D107: a lever re-seal does NOT mend the door — battering persists across seals, so each seal buys less", () => {
+    const BREACH: AuthoredEncounter = {
+      id: "persist-test",
+      name: "Persist Test",
+      cols: 5,
+      rows: 3,
+      blocked: [{ col: 3, row: 0 }, { col: 3, row: 2 }], // wall col 3 except the door at (3,1)
+      playerSpawns: [{ col: 2, row: 1 }], // the breaker — adjacent to the door, beside the lever at (2,0)
+      enemies: [{ templateId: "bandit-thug", pos: { col: 4, row: 1 } }],
+      gates: [{ id: "door", pos: { col: 3, row: 1 }, openBy: [{ kind: "destructible", hp: 15 }] }],
+      levers: [{ id: "switch", pos: { col: 2, row: 0 }, targets: ["door"] }],
+      reward: { gold: 0, materials: [] },
+    };
+    const breaker = createUnit({ id: "breaker", side: "player", pos: { col: 0, row: 0 }, jobId: "soldier", primaryJob: "soldier", speed: 10, maxHp: 24, attack: 9, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 });
+    const { battle } = stageEncounter(BREACH, [breaker]);
+    const door = gate(battle, "door");
+    const lever = battle.levers[0];
+    const b = unit(battle.units, "breaker");
+
+    // Batter the locked door down to 6.
+    battle.attackGate(door, b); // 15 → 6
+    expect(door.hp).toBe(6);
+
+    // Pull the lever (door locked → it opens), then pull again (door open → it re-seals).
+    battle.pullLever(lever, b); // opens the damaged door
+    expect(door.locked).toBe(false);
+    expect(door.hp).toBe(6); // opening doesn't change durability
+    battle.pullLever(lever, b); // re-seals it
+    expect(door.locked).toBe(true);
+    expect(door.hp).toBe(6); // re-sealing KEEPS the damage — no free top-up (D107)
+
+    // One more hit now finishes it (6 → 0) — the seal bought less time the second round.
+    battle.attackGate(door, b);
+    expect(door.broken).toBe(true);
+  });
+
   it("a lever pull slams an open door shut (control-room seal), toggles back, and undo crosses it", () => {
     const SEAL: AuthoredEncounter = {
       id: "seal-test",
@@ -195,7 +231,7 @@ describe("gates in a staged battle (D103 Phase 2a)", () => {
     battle.pullLever(lever, p);
     expect(door.locked).toBe(true);
     expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(false); // sealed
-    expect(door.hp).toBe(20); // whole
+    expect(door.hp).toBe(20); // whole — it was never battered (sealing doesn't mend, D107)
 
     // Undo re-opens it (crosses the toggle via the gate checkpoint).
     battle.undo();

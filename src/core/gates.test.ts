@@ -102,15 +102,18 @@ describe("gates (D103) — the prison-break substrate", () => {
     expect(canAttackGate(cell, soldier({ col: 2, row: 1 }))).toBe(false);
   });
 
-  it("lever: lockGateOnGrid re-seals + re-blocks a gate and restores a destructible door's durability", () => {
+  it("lever: lockGateOnGrid re-seals + re-blocks a gate but KEEPS its accumulated damage (D107)", () => {
     const grid = new TileGrid(5, 5);
-    const door = makeGate("door", { col: 2, row: 2 }, [{ kind: "destructible", hp: 20 }], false); // starts open
+    const door = makeGate("door", { col: 2, row: 2 }, [{ kind: "destructible", hp: 20 }]); // starts locked
+    applyGatesToGrid(grid, [door]);
+    damageGate(door, 8); // locked + breakable → 20 → 12
+    expect(door.hp).toBe(12);
+    openGateOnGrid(grid, door); // the lever opens the damaged door
     expect(grid.isWalkable(door.pos)).toBe(true);
-    damageGate(door, 8); // chipped to 12 while open (contrived) — sealing restores it
-    lockGateOnGrid(grid, door);
+    lockGateOnGrid(grid, door); // …then re-seals it
     expect(door.locked).toBe(true);
     expect(grid.isWalkable(door.pos)).toBe(false); // tile re-blocked
-    expect(door.hp).toBe(20); // a freshly-shut door is whole again
+    expect(door.hp).toBe(12); // battering persists across re-seals — no free top-up
   });
 
   it("destroyed (D106): destroyGateOnGrid smashes a door to a permanent, passable remnant", () => {

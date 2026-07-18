@@ -27,17 +27,17 @@
   ],
   "captives": [
     {
-      "spec": { "id": "captive-1", "name": "Bound Captive I", "side": "player", "pos": { "col": 9, "row": 1 }, "jobId": "soldier", "primaryJob": "soldier", "role": "prisoner", "speed": 10, "maxHp": 22, "attack": 6, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
+      "spec": { "id": "wren", "name": "Wren", "side": "player", "pos": { "col": 9, "row": 1 }, "jobId": "medic", "primaryJob": "medic", "role": "prisoner", "speed": 11, "maxHp": 20, "attack": 5, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
       "pos": { "col": 9, "row": 1 },
       "release": { "kind": "lockpick" }
     },
     {
-      "spec": { "id": "captive-2", "name": "Bound Captive II", "side": "player", "pos": { "col": 9, "row": 2 }, "jobId": "soldier", "primaryJob": "soldier", "role": "prisoner", "speed": 10, "maxHp": 22, "attack": 6, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
+      "spec": { "id": "cass", "name": "Cass", "side": "player", "pos": { "col": 9, "row": 2 }, "jobId": "hunter", "primaryJob": "hunter", "role": "prisoner", "speed": 11, "maxHp": 20, "attack": 7, "defense": 1, "moveRange": 4, "sightRadius": 6, "attackRange": 3 },
       "pos": { "col": 9, "row": 2 },
       "release": { "kind": "lockpick" }
     },
     {
-      "spec": { "id": "captive-3", "name": "Bound Captive III", "side": "player", "pos": { "col": 9, "row": 3 }, "jobId": "soldier", "primaryJob": "soldier", "role": "prisoner", "speed": 10, "maxHp": 22, "attack": 6, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
+      "spec": { "id": "bram", "name": "Bram", "side": "player", "pos": { "col": 9, "row": 3 }, "jobId": "heavy-knight", "primaryJob": "heavy-knight", "role": "prisoner", "speed": 9, "maxHp": 30, "attack": 7, "defense": 4, "moveRange": 3, "sightRadius": 5, "attackRange": 1 },
       "pos": { "col": 9, "row": 3 },
       "release": { "kind": "lockpick" }
     }

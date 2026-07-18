@@ -57,8 +57,9 @@ describe("the JSON level content pipeline (D98)", () => {
     const level = getLevel("the-rescue")!;
     expect(validateLevel(level)).toEqual([]);
     expect(level.objectives?.map((o) => o.kind).sort()).toEqual(["eliminate-all", "extraction"]);
-    // The three placeholder captives are a role-"prisoner" group, cuffed, held far from the exit.
-    expect(level.captives?.map((c) => c.spec.id).sort()).toEqual(["captive-1", "captive-2", "captive-3"]);
+    // The three named captives are a role-"prisoner" group (distinct classes), cuffed, held far from the exit.
+    expect(level.captives?.map((c) => c.spec.id).sort()).toEqual(["bram", "cass", "wren"]);
+    expect(level.captives?.map((c) => c.spec.jobId).sort()).toEqual(["heavy-knight", "hunter", "medic"]);
     for (const c of level.captives ?? []) {
       expect(c.spec.role).toBe("prisoner");
       expect(c.release).toEqual({ kind: "lockpick" });
@@ -166,8 +167,8 @@ describe("the unit-id uniqueness guard (D98 editor M-B)", () => {
   it("flags two units sharing an explicit id (objective tags/lookup bind by id)", () => {
     const level = getLevel("the-rescue")!;
     // Force a clash: give the warden the same id as a captive.
-    const clash = { ...level, enemies: level.enemies.map((e, i) => (i === 0 ? { ...e, id: "captive-1" } : e)) };
-    expect(validateLevel(clash).some((i) => /duplicate unit id "captive-1"/.test(i))).toBe(true);
+    const clash = { ...level, enemies: level.enemies.map((e, i) => (i === 0 ? { ...e, id: "wren" } : e)) };
+    expect(validateLevel(clash).some((i) => /duplicate unit id "wren"/.test(i))).toBe(true);
   });
 
   it("passes the shipped levels (their ids are already unique)", () => {

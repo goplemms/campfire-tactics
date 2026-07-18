@@ -130,7 +130,7 @@ async function main() {
         check("import loaded the-rescue's 5 enemies", st3.enemies === 5);
         check("import loaded the-rescue's 3 captives", st3.captives === 3);
         check("import loaded the 6-tile exit span", st3.exit === 6);
-        check("import carried the named captive ids (not clobbered)", st3.expCaptiveIds === "captive-1,captive-2,captive-3");
+        check("import carried the named captive ids (not clobbered)", st3.expCaptiveIds === "wren,cass,bram");
         check("import carried the custom extraction label", st3.expExtractLabel === "Free the captives and escort them to the exit");
         check("import carried the authored reward (260g, not the 50g default)", st3.expReward === 260);
         check("import carried the warden's role tag", st3.wardenRole === "captain");

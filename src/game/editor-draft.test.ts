@@ -77,8 +77,8 @@ describe("editor import round-trip (D98 editor M-A — lossless import)", () => 
     const level = getLevel("the-rescue")!;
     const back = draftToEncounter(encounterToDraft(level));
     // The exact things a naive inverse would silently clobber (the data-loss footgun):
-    expect(back.captives?.map((c) => c.spec.id)).toEqual(["captive-1", "captive-2", "captive-3"]);
-    expect(back.captives?.map((c) => c.spec.name)).toEqual(["Bound Captive I", "Bound Captive II", "Bound Captive III"]);
+    expect(back.captives?.map((c) => c.spec.id)).toEqual(["wren", "cass", "bram"]);
+    expect(back.captives?.map((c) => c.spec.name)).toEqual(["Wren", "Cass", "Bram"]);
     expect(back.objectives?.find((o) => o.kind === "extraction")?.label).toBe("Free the captives and escort them to the exit");
     expect(back.enemies.find((e) => e.id === "the-warden")?.role).toBe("captain");
     expect(back.reward).toEqual({ gold: 260, materials: [], xp: 120 });

@@ -3900,6 +3900,40 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D100 — Board camera: grab-and-drag pan + wheel zoom (a bigger board than the viewport)
+
+- **Status:** Decided + built (2026-07-18). Owner-driven, first step of the D98 map-creation expansion:
+  authoring a **20×20** level in `#editor` overran the fixed 800×600 canvas — the far tiles were simply
+  unreachable and the whole board never fit on screen. Owner proposed drag-to-move, noting it "would be
+  naturally useful for the actual game as well."
+- **Context (why):** the isometric board is drawn through `CombatView` at a fixed origin + `boardScale`
+  on a `Scale.NONE` 800×600 canvas. A 20×20 diamond spans ~1580×790px — far past the ~480px-wide area
+  left of the editor panel — so most tiles fell off-canvas with no way to pan to them.
+- **Decision — pan/zoom the scene CAMERA, not the draw origin.** A reusable `game/board-camera.ts`
+  (`BoardCamera`) drives `cameras.main` scroll (grab-and-drag) + zoom (wheel, anchored on the cursor),
+  with a **click-vs-drag** discriminator: a press that moves past a threshold pans and **suppresses the
+  tap**, so a drag never also paints; a genuine tap dispatches through an `onTap` callback. Chosen over
+  moving `CombatView.originX/originY` because `pointer.worldX/worldY` already fold in camera scroll+zoom
+  — so `worldToTile` picking stays correct for **free**, with **no per-frame board redraw** (a 20×20 is
+  400 diamonds). A **Recenter** control resets to the default framing so you can never get lost.
+- **Editor integration:** the scene's only on-canvas chrome (the title line) **moved to the DOM panel
+  header**, so the whole Phaser scene is now board content and pans/zooms cleanly (no HUD drift). The
+  brush loop moved from a direct `POINTER_DOWN` bind to `BoardCamera`'s `onTap`.
+- **Reusable for the game (the owner's stated second motive):** `BoardCamera` is scene-agnostic — the
+  battle board can adopt the same control for a large field. **Caveat for that adopter (recorded now):**
+  camera scroll/zoom moves **everything** the camera renders, so a scene with on-canvas HUD (BattleScene
+  has lots) needs that HUD on a **second, fixed camera** first. The editor sidesteps it by keeping all
+  chrome in the DOM — the game wiring is a deliberate follow-up, not done here.
+- **Guards:** `test:e2e:editor` extended — a real press-move-release **drag scrolls the camera**, a drag
+  **does not paint** (click-vs-drag), **Recenter** resets scroll+zoom, and a tap **after** recenter still
+  paints (discrimination intact). Added a `harness.drag(x1,y1,x2,y2)` primitive (real pointer, stepped
+  move). tsc · build · vitest (**1184**) green; the 14-surface visual audit + other e2e are unaffected
+  (the change is `game/`-only and touches no core logic, routing, or game surface).
+- **Reuses:** **D98** (the `#editor` scene + `CombatView`/`worldToTile` click-pick + the DOM panel idiom).
+  **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

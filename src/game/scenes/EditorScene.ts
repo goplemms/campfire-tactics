@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { CombatView } from "../combat-view";
-import { COLOR, FONT, INK } from "../theme";
+import { BoardCamera } from "../board-camera";
+import { COLOR, FONT } from "../theme";
 import { clearLayer } from "../ui";
 import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, type GridCoord, type AuthoredEncounter, type JobId } from "../../core";
 import { validateLevel } from "../../content/levels";
@@ -47,6 +48,7 @@ const abbrev = (id: string) => (id.split("-").pop() || id).slice(0, 3);
 
 export class EditorScene extends Phaser.Scene {
   private view!: CombatView;
+  private boardCam!: BoardCamera;
   private gridGfx!: Phaser.GameObjects.Graphics;
   private overlayGfx!: Phaser.GameObjects.Graphics; // exit-tile tints
   private grid!: TileGrid;
@@ -82,13 +84,12 @@ export class EditorScene extends Phaser.Scene {
     this.gridGfx = this.add.graphics();
     this.overlayGfx = this.add.graphics().setDepth(0.5);
 
-    this.add
-      .text(12, 14, "Level Editor — pick a brush, click tiles", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body })
-      .setOrigin(0, 0.5)
-      .setDepth(10);
-
     this.renderBoard();
-    this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
+    // Grab-and-drag panning + wheel zoom so a big board (a 20×20 level) is reachable on the
+    // fixed 800×600 canvas; a genuine tap still paints via onTap (a drag only moves the camera).
+    // All the editor's chrome lives in the DOM panel, so the whole scene is board content and
+    // pans/zooms cleanly — the title line moved to the panel header.
+    this.boardCam = new BoardCamera(this, { onTap: (p) => this.onTap(p) });
     this.mountPanel();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unmountPanel());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.unmountPanel());
@@ -127,7 +128,8 @@ export class EditorScene extends Phaser.Scene {
 
   // --- Click → paint --------------------------------------------------------
 
-  private onPointerDown(pointer: Phaser.Input.Pointer): void {
+  /** A genuine tap (not a camera drag) — dispatched by {@link BoardCamera}. worldX/worldY fold in camera scroll+zoom. */
+  private onTap(pointer: Phaser.Input.Pointer): void {
     const t = this.view.worldToTile(pointer.worldX, pointer.worldY);
     if (!this.grid.inBounds(t)) return;
     this.paint(t);
@@ -223,7 +225,18 @@ export class EditorScene extends Phaser.Scene {
       border: "1px solid #4a423a", borderRadius: "6px", padding: "10px", zIndex: "1000",
     } as CSSStyleDeclaration);
 
-    // Tab bar + the persistent cross-cutting Erase tool.
+    // Panel header — the title (moved off the canvas so the scene pans/zooms cleanly) + the
+    // camera-control hint. The board is grab-and-drag pannable and wheel-zoomable; Recenter resets.
+    const header = document.createElement("div");
+    header.style.margin = "0 0 6px";
+    const title = document.createElement("div");
+    title.textContent = "Level Editor — pick a brush, click tiles";
+    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    header.appendChild(title);
+    header.appendChild(this.hint("drag to pan · scroll to zoom · Recenter resets the view"));
+    panel.appendChild(header);
+
+    // Tab bar + the persistent cross-cutting Erase tool and the view-reset control.
     const tabBar = document.createElement("div");
     tabBar.style.margin = "0 0 6px";
     this.tabButtons = [];
@@ -238,6 +251,12 @@ export class EditorScene extends Phaser.Scene {
     }
     tabBar.append(" ");
     tabBar.appendChild(this.brushButton("erase")); // always reachable, whatever drawer is open
+    const recenter = document.createElement("button");
+    recenter.textContent = "Recenter";
+    recenter.dataset.role = "recenter";
+    Object.assign(recenter.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
+    recenter.onclick = () => this.boardCam.recenter();
+    tabBar.appendChild(recenter);
     panel.appendChild(tabBar);
 
     // Drawers — one per tab, shown/hidden by showTab.

@@ -50,6 +50,12 @@ const STATE = `(() => {
   };
 })()`;
 
+// The board camera's live scroll/zoom — proves drag-pans / wheel-zooms / Recenter reset.
+const CAM = `(() => {
+  const c = window.game.scene.getScene("EditorScene").cameras.main;
+  return { sx: Math.round(c.scrollX), sy: Math.round(c.scrollY), zoom: +c.zoom.toFixed(3) };
+})()`;
+
 const clickTab = (t) => `document.querySelector('button[data-tab="${t}"]').click()`;
 
 // Select the warden by clicking its UNIT-LIST row (the occlusion fix — no board pixel-hunt), then
@@ -154,6 +160,31 @@ async function main() {
         check("the id rename + maxHp override flow to the export", st4.wardenEditedHp === 99);
         check("the level still validates after the edit", st4.valid === true);
         await g.screenshot(path.join(OUT, "04-inspected.png"));
+
+        // Camera controls (large-map fix): drag pans the board, a drag does NOT paint, and
+        // Recenter restores the default framing — so a 20×20 level is reachable on the fixed canvas.
+        console.log("• grab-and-drag pans the board (large-map reachability)");
+        const camBefore = await g.eval(CAM);
+        check("camera starts at the default framing", camBefore.sx === 0 && camBefore.sy === 0 && camBefore.zoom === 1);
+        const wallsBeforeDrag = (await g.eval(STATE)).walls;
+        await g.eval(setBrush("wall"));
+        await g.drag(430, 300, 250, 300); // drag left over the board
+        await sleep(120);
+        const camAfter = await g.eval(CAM);
+        const stDrag = await g.eval(STATE);
+        check("dragging scrolled the camera", Math.abs(camAfter.sx) > 30);
+        check("a drag did not paint a tile (click vs drag)", stDrag.walls === wallsBeforeDrag);
+        await g.screenshot(path.join(OUT, "05-panned.png"));
+
+        // Recenter resets scroll+zoom; after it a genuine tap still paints (discrimination intact).
+        await g.eval(`document.querySelector('button[data-role="recenter"]').click()`);
+        await sleep(80);
+        const camReset = await g.eval(CAM);
+        check("Recenter restored the default framing", camReset.sx === 0 && camReset.sy === 0 && camReset.zoom === 1);
+        await g.clickScene(448, 262); // a plain tap on the empty tile (5,0)
+        await sleep(100);
+        const stTap = await g.eval(STATE);
+        check("a tap after recenter still paints (walls incremented)", stTap.walls === wallsBeforeDrag + 1);
 
         assertNoProblems(g.problems);
       } catch (err) {

@@ -4003,6 +4003,53 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D103 — Interactable gates: the lock is the tile, opening it is data (prison-break substrate)
+
+- **Status:** Deciding + **building in phases** (2026-07-18). Owner-driven, from a concrete finale
+  narrative (below). **Phase 1 (pure core) built**; Phase 2 (wire + render + editor + visual e2e) and
+  Phase 3 (the control-room seal) are queued. Candidate for a `decision-adversary` red-team before Phase 3.
+- **Owner's finale flow (the design source):** an **infiltrator** reaches a **control room**, which
+  **locks a door sealing the guards** on the far side; that buys the **assault team several turns** to
+  **lockpick the cells** open — and the *easiest* open is to **defeat the Captain**, who holds the keys.
+- **Decision — the gate IS the lock (spatial), not a flag on the unit.** A **gate** occupies a tile and,
+  while `locked`, is **impassable** — it physically **encloses** a cell's prisoner (can't leave till it
+  opens) and **shuts out** the control room's guards. This replaces the old "the captive carries a
+  lockpick flag" model: the enclosure is real board geometry (pathing/reach read `TileGrid.isWalkable`),
+  wired via a new runtime `TileGrid.setWalkable` — a locked gate blocks its tile; opening clears it.
+- **Decision — how you open it is DATA (`openBy`), so freeing prisoners is extensible.** Each gate carries
+  an OR'd list of {@link GateLock} conditions interpreted in one place — **new ways to free a cell are new
+  records, not new branches** (the D4 field-entity ethos, same as skills/objectives/events). This is the
+  whole point the owner asked for: "additional mechanics besides lockpicking." Two conditions ship first
+  (deliberately *different shapes*, to prove the interpreter is genuinely extensible, not aspirational):
+  - **lockpick** — an *adjacent* Expert-Lockpick unit (the Thief) spends an Act. Reuses the exact
+    capability gate the captive rescue used (`unitHasCapability(by,"lockpick")`, never a jobId, D54/D72).
+  - **keyholder** — opens **automatically** when a unit matching a `tag` (role/id) is **defeated** — the
+    Captain drops the keys. Event-driven + tag-bound (reuses `matchesTag`, promoted from module-private).
+- **Phase 1 — pure core (built): `gates.ts`.** `Gate` (`locked` + `openBy`), `makeGate`/`openGate`;
+  the interpreters `canLockpickGate` (locked + has-lockpick-cond + adjacent + capable), `lockpickableGates`,
+  `gatesOpenedByDeath`; the grid interplay `applyGatesToGrid` (block locked tiles at assembly) +
+  `openGateOnGrid` (open + unblock). No Phaser/DOM/`Math.random`. Guards: `gates.test` (locked blocks &
+  open clears the tile; only an adjacent Thief picks; keyholder death opens every matching locked cell by
+  role *or* id, and never a lockpick-only cell or an already-open one); barrel-surface +8 (documented).
+- **Queued — Phase 2 (make it playable):** arm gates in **staging** (an `AuthoredEncounter.gates` field +
+  `applyGatesToGrid` at assembly + a unit-death hook firing `openGateOnGrid` for keyholder matches); a
+  generalized **interact Act** on the `Battle` (adjacent + Act → open a lockpickable gate — the rescue Act
+  generalized); **render** (draw the barred gate + lock glyph, the open affordance, the open/keys-drop
+  feedback) + a **visual e2e** (locked gate blocks → Thief picks → prisoner walks out; defeat the Captain →
+  cells pop) — MANDATORY for the new player-facing surface (the D92 freeze cautionary tale); an **editor**
+  gate brush + inspector `openBy` + JSON round-trip. **Phase 3:** the **control-room seal** — a lever/enter
+  trigger that *locks* a guard-facing gate (the inverse of open), and whether "several turns" is a real
+  countdown (maps to a `closing-gate` objective) or just the emergent value of the sealed door (TBD w/ owner).
+- **Scoped (JIT):** first cut = **lockpick + keyholder** only. Seam-ready, not built: **lever** (a remote
+  switch tile), **key** (a carried item), **destructible** (bash it down — needs units to target a non-unit,
+  the one bigger lift). Each is a new `GateLock` member + a case, nothing structural.
+- **Reuses:** **D4** (the field-entity/data-callback ethos), **D52/D69** (the captive rescue + the exact
+  lockpick capability gate), **D50/D97** (`ObjectiveTag`/`matchesTag` for the keyholder), the `TileGrid`
+  (extended with `setWalkable`). **Supersedes (in time):** the captive `lockpick`-release flag as the
+  *cell* model — a cuffed captive becomes "a plain captive behind a lockpick gate." **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

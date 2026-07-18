@@ -121,6 +121,14 @@
  *   - PR-2 (the topology rewrite): +1 net — +`OUTER_YARD` / +`CUFFED_CELL` (the two new
  *     infiltration-arm encounters in `hollow-mill.ts`), −`SECURED_WAGON` (the Medic catch-up,
  *     deleted — no catch-up on the Thief arm, C8). `CAPTIVE_PRISONER` is module-private.
+ *
+ * Interactable gates deltas (D103 — the prison-break substrate):
+ *   - gate core (Phase 1): +8 — `makeGate` / `openGate` / `openGateOnGrid` / `applyGatesToGrid` /
+ *     `canLockpickGate` / `lockpickableGates` / `gatesOpenedByDeath` (`gates.ts`, the locked-tile
+ *     enclosure + the lockpick/keyholder open interpreters), and `matchesTag` (promoted from
+ *     module-private in `objectives.ts` so the keyholder lock reuses the one tag matcher). `Gate` /
+ *     `GateLock` are type-only. `TileGrid.setWalkable` is a method, not a barrel export. No
+ *     registration at import → sim digest unchanged.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -326,6 +334,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "applyCharacterBoons",
   "applyDamage",
   "applyEngageInterestEffect",
+  "applyGatesToGrid",
   "applyGearCondition",
   "applyGrant",
   "applyGrantEffect",
@@ -389,6 +398,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "canAffordInfluence",
   "canAffordMaterial",
   "canDisarm",
+  "canLockpickGate",
   "canPlacePlayerTrap",
   "canRelease",
   "canSee",
@@ -498,6 +508,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "frontSpeed",
   "frontTurnStage",
   "gainRunGold",
+  "gatesOpenedByDeath",
   "gearDelta",
   "gearRefusal",
   "generateEncounter",
@@ -587,8 +598,10 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "loadPurse",
   "loadSupply",
   "lockGear",
+  "lockpickableGates",
   "lootBandFor",
   "makeConcealedTrap",
+  "makeGate",
   "makeTrap",
   "manhattan",
   "markBonus",
@@ -599,6 +612,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "marketReadyAt",
   "marketStock",
   "marketTierBonus",
+  "matchesTag",
   "medHealAmount",
   "medicalHerbs",
   "memberRefusal",
@@ -622,6 +636,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "nudgeMorale",
   "occupiedGrid",
   "onSkillCooldown",
+  "openGate",
+  "openGateOnGrid",
   "openingPurseLog",
   "opposite",
   "orderOf",

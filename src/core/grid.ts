@@ -51,6 +51,15 @@ export class TileGrid {
   }
 
   /**
+   * Set a tile's walkability at runtime (D103) — the seam a **gate** toggles: a locked gate blocks
+   * its tile, opening it clears the block. In-bounds only; a no-op off the grid. (Movement is
+   * derived from {@link isWalkable}, so pathing/reach pick the change up for free.)
+   */
+  setWalkable(coord: GridCoord, walkable: boolean): void {
+    if (this.inBounds(coord)) this.blocked[coord.row][coord.col] = !walkable;
+  }
+
+  /**
    * The 4-connected walkable neighbours of a tile (no diagonals — tactics
    * movement is orthogonal in M2). Returns them in a stable order so paths are
    * deterministic.

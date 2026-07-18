@@ -21,6 +21,7 @@ export * from "./clock";
 export * from "./combat";
 export * from "./combat-actions";
 export * from "./entities";
+export * from "./gates";
 export * from "./camp";
 export * from "./morale";
 export * from "./inventory";

@@ -133,8 +133,8 @@ export function withDefaultGoal(specs: readonly ObjectiveSpec[] = []): Objective
   return specs.some((s) => isGoalKind(s.kind)) ? [...specs] : [DEFAULT_GOAL, ...specs];
 }
 
-/** Match a unit against an objective tag (role or explicit id). */
-function matchesTag(u: Unit, tag?: ObjectiveTag): boolean {
+/** Match a unit against an objective tag (role or explicit id) — shared with the gate keyholder lock (D103). */
+export function matchesTag(u: Unit, tag?: ObjectiveTag): boolean {
   if (!tag) return false;
   if (tag.id !== undefined && u.id !== tag.id) return false;
   if (tag.role !== undefined && u.role !== tag.role) return false;

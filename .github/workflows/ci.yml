@@ -56,6 +56,10 @@ jobs:
         run: npm run test:e2e:second-battle
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      - name: E2E (interactable gates — lockpick + keyholder render)
+        run: npm run test:e2e:gates
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
       # Visual audit: walk the 14 player-facing surfaces, capture each, and run the
       # in-page geometric linter (text overlap / off-canvas / invisible / dead control)
       # + the per-surface coverage gate. Fails on any error-severity finding — the class

@@ -23,6 +23,8 @@ import {
   countOf,
   freeCaptive,
   canRelease,
+  canLockpickGate,
+  type Gate,
   // D63 — the closing net: two radial influence sources. The party's campfire
   // (safe ground, sized by presence) vs. the enemy source (danger, growing on the
   // deployment clock); the danger overrides the campfire, shrinking your territory.
@@ -232,6 +234,8 @@ export class BattleScene extends Phaser.Scene {
   private deployMarkers: Phaser.GameObjects.GameObject[] = [];
   /** Lock glyphs over cuffed captives (D90) — a state-driven layer, redrawn on rescue/boundary. */
   private captiveMarkers: Phaser.GameObjects.GameObject[] = [];
+  /** Lock/bar glyphs over each locked interactable gate (D103) — redrawn on gateOpened + board setup. */
+  private gateMarkers: Phaser.GameObjects.GameObject[] = [];
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
@@ -465,6 +469,7 @@ export class BattleScene extends Phaser.Scene {
     this.railChevron = undefined;
     clearLayer(this.deployMarkers);
     clearLayer(this.captiveMarkers);
+    clearLayer(this.gateMarkers);
     this.highlight.clear();
     this.view.clearPreview(this.preview);
     this.threatGfx.clear();
@@ -529,6 +534,14 @@ export class BattleScene extends Phaser.Scene {
       this.flashHeal(unit);
       this.view.logRescue(unit, by);
       this.markCuffedCaptives(); // a freed captive drops its lock glyph (D90)
+    });
+    // A gate opened (D103): the tile is now walkable, so redraw the grid to drop its obstacle block,
+    // remark the gates (the opened one loses its ▦), and narrate. Same reaction for a Thief's lockpick
+    // and the automatic keyholder pop (the Warden's keys) — only the log line differs by `cause`.
+    this.battle.bus.on("gateOpened", ({ by, cause }) => {
+      this.drawGrid();
+      this.markGates();
+      this.view.logLine(cause === "keyholder" ? "The keys drop — a cell springs open!" : `${by?.name ?? "The lockpick"} picks a cell open!`, INK.gold);
     });
     // The Noble's bribe (D30/D62): a swayed enemy turns coat — re-tint its token to the ally
     // palette here (a listener, like unitRescued), rather than the call site flipping `side`.
@@ -599,6 +612,7 @@ export class BattleScene extends Phaser.Scene {
     this.drawZones();
     drawSourceMarkers(this, this.view, this.deployMarkers, this.campfire, this.front);
     this.markCuffedCaptives(); // lock glyphs over any cuffed captives (D90)
+    this.markGates(); // lock/bar glyphs over any locked interactable gates (D103)
     // Trap-field (D12): enemy hazards are live across *both* phases, so the party's
     // opening Awareness scan happens here — at the deploy line, not at combat start.
     // Spotted traps draw now, so positioning is informed; the rest are sensed as units
@@ -838,6 +852,7 @@ export class BattleScene extends Phaser.Scene {
       }
       this.pushTrapVerbs(specs, actor, "deployment"); // Search / Disarm — the shared trap-field verbs
       this.pushRescueVerbs(specs, actor, "deployment"); // Pick Lock — free an adjacent cuffed captive (D90)
+      this.pushGateVerbs(specs, actor, "deployment"); // Pick Cell — lockpick an adjacent locked gate (D103)
     }
     // Start Battle is a turn-control (commit early at any point), so it sits in the control
     // box (a full-width row above the Undo/primary pair) — not among the unit's verbs.
@@ -918,6 +933,38 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
+   * Push the **Pick Cell** verb (D103) when this unit can lockpick an adjacent locked gate — the
+   * Thief's cell-open Act. Surfaced only when the core gate would pass ({@link canLockpickGate}:
+   * locked + a lockpick condition + adjacent + Expert Lockpick), so a non-lockpick unit never sees a
+   * dead button. Mirrors {@link pushRescueVerbs}; shared across deployment + combat.
+   */
+  private pushGateVerbs(specs: ActionSpec[], actor: Unit, ctx: BoardCtx): void {
+    const gate = this.battle.gates.find((g) => canLockpickGate(g, actor));
+    if (!gate) return;
+    const noun = ctx === "deployment" ? "act" : "action";
+    specs.push({
+      text: "Pick Cell",
+      description: `Pick the lock on the adjacent cell — the gate swings open (spends this unit's ${noun}).`,
+      onClick: () => this.doOpenGate(actor, gate, ctx),
+    });
+  }
+
+  /**
+   * Lockpick an adjacent gate as this unit's Act — the "Pick Cell" handler (D103), shared across both
+   * phases via {@link commitFieldAct}. The core {@link canLockpickGate} is the gate; `gateOpened` (the
+   * bus listener) owns the grid redraw, the marker teardown, and the log line.
+   */
+  private doOpenGate(actor: Unit, gate: Gate, ctx: BoardCtx): void {
+    if (!this.canFieldAct(actor, ctx)) return;
+    if (!canLockpickGate(gate, actor)) {
+      return this.setHint(`Move ${actor.name} next to the cell to pick its lock.`);
+    }
+    this.battle.openGate(gate, actor);
+    const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
+    this.commitFieldAct(actor, ctx, `${actor.name} picks the cell open!${tail}`);
+  }
+
+  /**
    * Draw a lock glyph over each **cuffed** captive (D90) — a bound ally whose release needs the
    * Expert Lockpick. Its own state-driven layer ({@link captiveMarkers}), redrawn on the
    * rescue/boundary events, so a freed (or ordinary `reach`) captive carries no lock. Reads
@@ -930,6 +977,23 @@ export class BattleScene extends Phaser.Scene {
       const { x, y } = this.tileToWorld(u.pos);
       this.captiveMarkers.push(
         placeIcon(this, x, y - this.view.halfH() * 0.6, "locked", { size: FONT.body }).setDepth(5),
+      );
+    }
+  }
+
+  /**
+   * Draw a bar/lock glyph over each **locked** gate (D103) — a state-driven layer, redrawn on the
+   * board setup + every gateOpened event, so an opened cell drops its marker. The gate tile also
+   * reads as a solid (it's non-walkable while locked, so {@link "../combat-view".CombatView.drawGrid}
+   * raises an obstacle block there); this floats the ▦ over it so it reads as a *cell*, not a wall.
+   */
+  private markGates(): void {
+    clearLayer(this.gateMarkers);
+    for (const g of this.battle.gates) {
+      if (!g.locked) continue;
+      const { x, y } = this.tileToWorld(g.pos);
+      this.gateMarkers.push(
+        placeIcon(this, x, y - this.view.halfH() * 0.9, "gate", { size: FONT.body }).setDepth(5),
       );
     }
   }
@@ -1540,6 +1604,7 @@ export class BattleScene extends Phaser.Scene {
       // Trap-field verbs (D12): Search to scan for hidden traps; the trapper disarms a
       // spotted, adjacent one to pocket its kit. The same shared row helper as deployment.
       this.pushTrapVerbs(specs, actor, "battle");
+      this.pushGateVerbs(specs, actor, "battle"); // Pick Cell — lockpick an adjacent locked gate (D103)
       // The universal Defend (D41): every unit can brace until its next turn — the
       // always-available defensive verb, even for a unit with no job actives.
       // The universal Defend (D41) keeps its dedicated "D" key, sourced from the same
@@ -2309,7 +2374,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private drawGrid(): void {
-    const g = this.add.graphics();
+    // Self-destroy the prior layer so this is re-callable mid-battle (a gate opening flips its tile
+    // walkable, so the grid must redraw to drop that tile's obstacle block, D103). Depth 0 keeps it
+    // under the zone washes (0.36+) and unit tokens (1).
+    this.gridGfx?.destroy();
+    const g = this.add.graphics().setDepth(0);
     this.gridGfx = g;
     this.view.drawGrid(g, this.grid);
   }

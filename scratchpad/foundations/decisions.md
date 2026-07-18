@@ -4006,10 +4006,10 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 ## D103 — Interactable gates: the lock is the tile, opening it is data (prison-break substrate)
 
 - **Status:** Deciding + **building in phases** (2026-07-18). Owner-driven, from a concrete finale
-  narrative (below). **Phase 1 (pure core) + Phase 2a (battle wiring, headless) built**; Phase 2b (render +
-  editor brush + visual e2e) and Phase 3 (the control-room seal — owner idea: a **destructible** door the
-  guards batter down, giving the enemy AI a target) are queued. Candidate for a `decision-adversary`
-  red-team before Phase 3.
+  narrative (below). **Phase 1 (core) + Phase 2a (battle wiring) + Phase 2b render (in-battle, visual-e2e
+  proven) built**; the **editor gate brush** (2b's other half) and Phase 3 (the control-room seal — a
+  **destructible** door the guards batter down) are queued. Candidate for a `decision-adversary` red-team
+  before Phase 3.
 - **Owner's finale flow (the design source):** an **infiltrator** reaches a **control room**, which
   **locks a door sealing the guards** on the far side; that buys the **assault team several turns** to
   **lockpick the cells** open — and the *easiest* open is to **defeat the Captain**, who holds the keys.
@@ -4044,11 +4044,20 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   defeating the Captain pops every keyholder cell; **undo re-locks**). tsc · build · vitest (**1196**) · sim
   digest byte-identical (additive; no content uses gates yet). Gates ride the editor **passthrough** bag so
   a level with gates round-trips losslessly until the brush lands.
-- **Queued — Phase 2b (make it visible/authorable):** **render** (draw the barred gate + lock glyph, the
-  open affordance, the open/keys-drop feedback) + a **visual e2e** (locked gate blocks → Thief picks →
-  prisoner walks out; defeat the Captain → cells pop) — MANDATORY for the new player-facing surface (the
-  D92 freeze cautionary tale); an **editor** gate brush + inspector `openBy` + JSON (graduate out of the
-  passthrough bag). **Phase 3:** the **control-room seal** — a lever/enter trigger that *locks* a
+- **Phase 2b render — built (in-battle, visual-e2e proven):** `BattleScene` draws each locked gate with
+  the `▦` `ICON.gate` (over the obstacle block its non-walkable tile already raises — reads as a *cell*,
+  not a wall); the Thief's **Pick Cell** verb surfaces adjacent to a lockpickable gate in **both**
+  deployment + combat (mirrors the D90 Pick-Lock verb via `canLockpickGate` + `commitFieldAct`); a
+  `gateOpened` bus listener redraws the grid (the opened tile clears — `drawGrid` made self-destroying so
+  it's re-callable), drops the marker, and logs (a Thief's pick or the Warden's keys). Showcased by a new
+  `#scene=jailbreak` scenario (`scenarios/jailbreak.ts`: a lockpick+keyholder cell A + a keyholder-only
+  cell B + the Warden, prisoners now *plain `reach` captives behind the gate*). Guard: **`test:e2e:gates`**
+  (11 assertions — gates render locked + blocking + `▦`; Pick-Cell surfaces; lockpicking cell-a redraws
+  without a freeze; felling the Warden pops the keyholder cell) — the MANDATORY new-surface guard (the D92
+  freeze tale), wired into CI. tsc · build · vitest (**1196**) · sim byte-identical.
+- **Queued — Phase 2b editor brush:** an **editor** gate brush + inspector `openBy` + JSON (graduate gates
+  out of the passthrough bag they currently round-trip through) so the prison is paintable. **Phase 3:** the
+  **control-room seal** — a lever/enter trigger that *locks* a
   guard-facing gate (the inverse of open). The seal is a **destructible** door (the `destructible` `openBy`
   member: the gate carries HP; enemy AI targets it and attacks until it breaks). This **is** the timer — the
   owner's call (2026-07-18): "the delay would just be a result of enemy action to bust down the door" — so

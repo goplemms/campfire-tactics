@@ -11,14 +11,17 @@
 import type { ScenarioConfig } from "../scenario";
 import { PICK_THE_CELL } from "./pick-the-cell";
 import { PRISON_ASSAULT_SCENARIO } from "./prison-assault";
+import { JAILBREAK } from "./jailbreak";
 
 export * from "./pick-the-cell";
 export * from "./prison-assault";
+export * from "./jailbreak";
 
 /** Every registered scenario, keyed by id. */
 export const SCENARIOS: Record<string, ScenarioConfig> = {
   [PICK_THE_CELL.id]: PICK_THE_CELL,
   [PRISON_ASSAULT_SCENARIO.id]: PRISON_ASSAULT_SCENARIO,
+  [JAILBREAK.id]: JAILBREAK,
 };
 
 /** Look up a scenario config by id (the `#scene=<id>` boot path). */

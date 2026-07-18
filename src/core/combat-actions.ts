@@ -82,6 +82,14 @@ export type CombatAction =
    */
   | { kind: "openGate"; gate: string; unit: UnitId }
   /**
+   * **Attack a destructible gate** (D103): `unit` — any unit within attack range — chips the `gate`'s
+   * durability by its attack; the door announces `gateDamaged`, and `gateOpened` (cause `destroyed`)
+   * when it breaks at 0. Logged (mirrors `attack`) so the chip + break ride the state graph a replay
+   * reconstructs and undo crosses (the gate's `hp`/`locked` + its grid tile are checkpointed). Refused
+   * (no-op, unlogged) when the unit is out of range or the gate isn't breakable.
+   */
+  | { kind: "attackGate"; gate: string; unit: UnitId }
+  /**
    * A **sway** (D30/D62 bribe): `target` — an enemy the Noble turned — flips to the player's
    * side for the rest of the fight, announcing `unitSwayed`. `unit` is the briber (named on the
    * bus event). Logged (mirrors `rescue`) so the defection rides the state graph replay

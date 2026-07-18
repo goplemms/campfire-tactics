@@ -3,7 +3,7 @@ import { TileGrid } from "./grid";
 import { createUnit } from "./units";
 import {
   makeGate, openGate, canLockpickGate, lockpickableGates, gatesOpenedByDeath,
-  applyGatesToGrid, openGateOnGrid,
+  applyGatesToGrid, openGateOnGrid, isBreakable, canAttackGate, damageGate, breakableGates,
 } from "./gates";
 
 const STATS = { speed: 10, maxHp: 20, attack: 5, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 };
@@ -72,5 +72,32 @@ describe("gates (D103) — the prison-break substrate", () => {
     const other = foe("someone");
     expect(gatesOpenedByDeath([gate], warden).map((g) => g.id)).toEqual(["cell"]);
     expect(gatesOpenedByDeath([gate], other)).toEqual([]);
+  });
+
+  it("destructible: makeGate seeds durability; damage chips it and breaks it at 0", () => {
+    const door = makeGate("door", { col: 2, row: 2 }, [{ kind: "destructible", hp: 15 }]);
+    expect(door.hp).toBe(15);
+    expect(door.maxHp).toBe(15);
+    expect(isBreakable(door)).toBe(true);
+    expect(damageGate(door, 9)).toBe(false); // 15 → 6, holds
+    expect(door.hp).toBe(6);
+    expect(damageGate(door, 9)).toBe(true); // 6 → 0, breaks
+    expect(door.hp).toBe(0);
+    // A broken/open door is no longer breakable, and further damage is a no-op.
+    openGate(door);
+    expect(isBreakable(door)).toBe(false);
+    expect(damageGate(door, 9)).toBe(false);
+  });
+
+  it("destructible: only a unit within attack range can hit it (any unit — a door isn't lockpick-gated)", () => {
+    const door = makeGate("door", { col: 2, row: 2 }, [{ kind: "destructible", hp: 10 }]);
+    expect(canAttackGate(door, soldier({ col: 2, row: 1 }))).toBe(true); // adjacent melee (range 1)
+    expect(canAttackGate(door, soldier({ col: 2, row: 4 }))).toBe(false); // 2 tiles off, range 1
+    const archer = createUnit({ id: "arc", name: "Arc", side: "player", pos: { col: 2, row: 4 }, jobId: "soldier", primaryJob: "soldier", ...STATS, attackRange: 3 });
+    expect(canAttackGate(door, archer)).toBe(true); // in range at 2 with attackRange 3
+    expect(breakableGates([door], soldier({ col: 2, row: 1 })).map((g) => g.id)).toEqual(["door"]);
+    // A non-destructible gate is never breakable, even point-blank.
+    const cell = makeGate("cell", { col: 2, row: 2 }, [{ kind: "lockpick" }]);
+    expect(canAttackGate(cell, soldier({ col: 2, row: 1 }))).toBe(false);
   });
 });

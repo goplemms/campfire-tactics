@@ -47,7 +47,7 @@ import {
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
 import { captureUnit, freeCaptive, canRelease } from "./deployment";
-import { applyGatesToGrid, openGateOnGrid, canLockpickGate, gatesOpenedByDeath, type Gate } from "./gates";
+import { applyGatesToGrid, openGateOnGrid, canLockpickGate, canAttackGate, damageGate, gatesOpenedByDeath, type Gate } from "./gates";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
@@ -523,6 +523,23 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "attackGate": {
+        // Break-Gate Act (D103): chip the door's durability by the attacker's attack; it breaks open at
+        // 0. Refused (unlogged) when out of range / the gate isn't breakable — mutates nothing.
+        const gate = this.gates.find((g) => g.id === action.gate);
+        if (!gate) return { ok: false, reason: "No such gate." };
+        const striker = this.unit(action.unit);
+        if (!canAttackGate(gate, striker)) return { ok: false, reason: "Out of range, or this gate can't be broken." };
+        const amount = striker.attack;
+        const broke = damageGate(gate, amount);
+        this.bus.emit("gateDamaged", { gate, by: striker, amount });
+        if (broke) {
+          openGateOnGrid(this.grid, gate);
+          this.bus.emit("gateOpened", { gate, by: striker, cause: "destroyed" });
+        }
+        this._log.push(action);
+        return { ok: true };
+      }
       case "sway": {
         // The Noble's BRIBE (D30/D62): a swayed enemy turns coat — flip its side to the
         // player and announce it (the token re-tints on the bus, like unitRescued). Logged
@@ -642,6 +659,16 @@ export class Battle {
    */
   openGate(gate: Gate, by: Unit): void {
     this.apply({ kind: "openGate", gate: gate.id, unit: by.id });
+  }
+
+  /**
+   * **Attack a destructible gate** (D103) — the door-breaking Act. `by` chips `gate`'s durability by
+   * its attack; the gate breaks open at 0. Lowers to the logged `attackGate` action so the chip + break
+   * ride the state graph (replay reconstructs, undo crosses — the gate's hp/locked are checkpointed) and
+   * announce `gateDamaged` / `gateOpened`. A refused hit (out of range / not breakable) mutates nothing.
+   */
+  attackGate(gate: Gate, by: Unit): void {
+    this.apply({ kind: "attackGate", gate: gate.id, unit: by.id });
   }
 
   /**

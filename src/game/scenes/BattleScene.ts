@@ -24,6 +24,7 @@ import {
   freeCaptive,
   canRelease,
   canLockpickGate,
+  canAttackGate,
   type Gate,
   // D63 — the closing net: two radial influence sources. The party's campfire
   // (safe ground, sized by presence) vs. the enemy source (danger, growing on the
@@ -541,7 +542,17 @@ export class BattleScene extends Phaser.Scene {
     this.battle.bus.on("gateOpened", ({ by, cause }) => {
       this.drawGrid();
       this.markGates();
-      this.view.logLine(cause === "keyholder" ? "The keys drop — a cell springs open!" : `${by?.name ?? "The lockpick"} picks a cell open!`, INK.gold);
+      const msg = cause === "keyholder"
+        ? "The keys drop — a cell springs open!"
+        : cause === "destroyed"
+          ? `${by?.name ?? "A blow"} smashes the door open!`
+          : `${by?.name ?? "The lockpick"} picks a cell open!`;
+      this.view.logLine(msg, INK.gold);
+    });
+    // A destructible door took a hit but held (D103): refresh the HP readout + narrate the shudder.
+    this.battle.bus.on("gateDamaged", ({ gate, by }) => {
+      this.markGates(); // re-render the HP readout (hp already decremented on the gate)
+      this.view.logLine(`${by?.name ?? "A blow"} batters the door — ${gate.hp}/${gate.maxHp} left`, INK.ember);
     });
     // The Noble's bribe (D30/D62): a swayed enemy turns coat — re-tint its token to the ally
     // palette here (a listener, like unitRescued), rather than the call site flipping `side`.
@@ -939,14 +950,25 @@ export class BattleScene extends Phaser.Scene {
    * dead button. Mirrors {@link pushRescueVerbs}; shared across deployment + combat.
    */
   private pushGateVerbs(specs: ActionSpec[], actor: Unit, ctx: BoardCtx): void {
-    const gate = this.battle.gates.find((g) => canLockpickGate(g, actor));
-    if (!gate) return;
     const noun = ctx === "deployment" ? "act" : "action";
-    specs.push({
-      text: "Pick Cell",
-      description: `Pick the lock on the adjacent cell — the gate swings open (spends this unit's ${noun}).`,
-      onClick: () => this.doOpenGate(actor, gate, ctx),
-    });
+    // Pick Cell — a Thief lockpicks an adjacent locked cell.
+    const pickable = this.battle.gates.find((g) => canLockpickGate(g, actor));
+    if (pickable) {
+      specs.push({
+        text: "Pick Cell",
+        description: `Pick the lock on the adjacent cell — the gate swings open (spends this unit's ${noun}).`,
+        onClick: () => this.doOpenGate(actor, pickable, ctx),
+      });
+    }
+    // Break Gate — any unit batters a destructible door in reach (the guards busting it down, D103 Phase 3).
+    const breakable = this.battle.gates.find((g) => canAttackGate(g, actor));
+    if (breakable) {
+      specs.push({
+        text: "Break Gate",
+        description: `Batter the door (${breakable.hp}/${breakable.maxHp} left) — chip its durability by this unit's attack; it breaks open at 0 (spends this unit's ${noun}).`,
+        onClick: () => this.doBreakGate(actor, breakable, ctx),
+      });
+    }
   }
 
   /**
@@ -962,6 +984,21 @@ export class BattleScene extends Phaser.Scene {
     this.battle.openGate(gate, actor);
     const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
     this.commitFieldAct(actor, ctx, `${actor.name} picks the cell open!${tail}`);
+  }
+
+  /**
+   * Batter a destructible gate as this unit's Act — the "Break Gate" handler (D103). One hit chips the
+   * door's durability; it breaks open at 0. `gateDamaged` / `gateOpened` (the bus listeners) own the
+   * flash, the HP-readout refresh, the redraw, and the log line.
+   */
+  private doBreakGate(actor: Unit, gate: Gate, ctx: BoardCtx): void {
+    if (!this.canFieldAct(actor, ctx)) return;
+    if (!canAttackGate(gate, actor)) {
+      return this.setHint(`Move ${actor.name} into range of the door to break it.`);
+    }
+    this.battle.attackGate(gate, actor);
+    const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
+    this.commitFieldAct(actor, ctx, `${actor.name} strikes the door!${tail}`);
   }
 
   /**
@@ -992,9 +1029,14 @@ export class BattleScene extends Phaser.Scene {
     for (const g of this.battle.gates) {
       if (!g.locked) continue;
       const { x, y } = this.tileToWorld(g.pos);
-      this.gateMarkers.push(
-        placeIcon(this, x, y - this.view.halfH() * 0.9, "gate", { size: FONT.body }).setDepth(5),
-      );
+      const top = y - this.view.halfH() * 0.9;
+      this.gateMarkers.push(placeIcon(this, x, top, "gate", { size: FONT.body }).setDepth(5));
+      // A destructible door shows its remaining durability under the ▦ (the "batter it down" readout).
+      if (g.hp !== undefined) {
+        this.gateMarkers.push(
+          this.add.text(x, top + 12, `${g.hp}/${g.maxHp}`, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.micro, fontStyle: WEIGHT.bold }).setOrigin(0.5).setDepth(5),
+        );
+      }
     }
   }
 

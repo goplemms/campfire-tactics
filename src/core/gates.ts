@@ -38,7 +38,9 @@ export type GateLock =
   /** An adjacent Expert-Lockpick unit (the Thief) spends an Act to pick it. */
   | { kind: "lockpick" }
   /** Opens the instant a unit matching `tag` (a role or explicit id) is defeated — the keyholder drops the keys. */
-  | { kind: "keyholder"; tag: ObjectiveTag };
+  | { kind: "keyholder"; tag: ObjectiveTag }
+  /** Has durability `hp`: attacking it (a unit within attack range) chips it down; it breaks open at 0. */
+  | { kind: "destructible"; hp: number };
 
 /** A placed gate: a tile that blocks while `locked`, opened per its {@link GateLock} conditions. */
 export interface Gate {
@@ -48,11 +50,18 @@ export interface Gate {
   locked: boolean;
   /** The OR'd conditions any one of which opens it. Empty ⇒ a barred, un-openable gate (scenery). */
   openBy: GateLock[];
+  /** Current durability (from a `destructible` condition) — chipped by attacks, breaks at 0. Absent = indestructible. */
+  hp?: number;
+  /** Starting durability (for the render's HP readout). */
+  maxHp?: number;
 }
 
 /** Build a gate — locked by default (the interesting state; an authored gate starts shut). */
 export function makeGate(id: string, pos: GridCoord, openBy: GateLock[], locked = true): Gate {
-  return { id, pos: { col: pos.col, row: pos.row }, locked, openBy };
+  const gate: Gate = { id, pos: { col: pos.col, row: pos.row }, locked, openBy };
+  const breakable = openBy.find((c) => c.kind === "destructible");
+  if (breakable) { gate.hp = breakable.hp; gate.maxHp = breakable.hp; }
+  return gate;
 }
 
 /** Open a gate (idempotent) — the pure state change; grid unblocking is {@link openGateOnGrid}. */
@@ -82,6 +91,32 @@ export function canLockpickGate(gate: Gate, by: Unit): boolean {
 /** Every locked gate `by` could lockpick this instant (adjacent + capable) — for the scene's interact affordance. */
 export function lockpickableGates(gates: readonly Gate[], by: Unit): Gate[] {
   return gates.filter((g) => canLockpickGate(g, by));
+}
+
+/** Whether `gate` can be broken by attacks — still locked, carries a `destructible` condition + durability. */
+export function isBreakable(gate: Gate): boolean {
+  return gate.locked && gate.hp !== undefined && gate.openBy.some((c) => c.kind === "destructible");
+}
+
+/** Whether `by` can attack `gate` right now — it's breakable and `by` is within its attack range (any unit; a door isn't lockpick-gated). */
+export function canAttackGate(gate: Gate, by: Unit): boolean {
+  return isBreakable(gate) && manhattan(by.pos, gate.pos) <= by.attackRange;
+}
+
+/** Every breakable gate `by` could hit this instant (in attack range) — for the scene's Break-Gate affordance. */
+export function breakableGates(gates: readonly Gate[], by: Unit): Gate[] {
+  return gates.filter((g) => canAttackGate(g, by));
+}
+
+/**
+ * Chip `amount` off a breakable gate's durability (the guards battering the door). Returns **true when
+ * it breaks** (hp reaches 0) — the caller then opens it via {@link openGateOnGrid}. A no-op (returns
+ * false) on an indestructible/open gate or non-positive damage.
+ */
+export function damageGate(gate: Gate, amount: number): boolean {
+  if (!isBreakable(gate) || amount <= 0) return false;
+  gate.hp = Math.max(0, (gate.hp ?? 0) - amount);
+  return gate.hp === 0;
 }
 
 /**

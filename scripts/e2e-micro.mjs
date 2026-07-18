@@ -60,6 +60,30 @@ const MICROS = [
       check("the keyholder cell sprang open — the marker cleared (no freeze)", after.locked === false && after.markers === 0);
     },
   },
+  {
+    id: "micro-gate-destructible",
+    title: "gate · destructible — battering a door down over two hits",
+    async run(g) {
+      const st = await g.bsEval(`
+        const gate = s.battle.gates[0];
+        return { locked: gate.locked, hp: gate.hp, maxHp: gate.maxHp, markers: s.gateMarkers.length,
+                 verbs: s.actionButtons.map(b => b.label && b.label.text).filter(Boolean) };`);
+      check("the door renders locked with its 15/15 durability readout", st.locked === true && st.hp === 15 && st.maxHp === 15 && st.markers === 2);
+      check("the Break Gate verb surfaces", st.verbs.includes("Break Gate"));
+      // First hit: the door holds (durability drops, still locked → gateDamaged, no freeze).
+      const hit1 = await g.bsEval(`
+        const gate = s.battle.gates[0]; const breaker = s.battle.units.find(u => u.id === "breaker");
+        s.battle.attackGate(gate, breaker); // attack 9 → 15 - 9 = 6
+        return { locked: gate.locked, hp: gate.hp, walkable: s.grid.isWalkable(gate.pos) };`);
+      check("one hit chips it but the door holds (6 hp, still blocking)", hit1.locked === true && hit1.hp === 6 && hit1.walkable === false);
+      // Second hit: it breaks open (gateOpened cause=destroyed → grid redraw, markers clear, no freeze).
+      const hit2 = await g.bsEval(`
+        const gate = s.battle.gates[0]; const breaker = s.battle.units.find(u => u.id === "breaker");
+        s.battle.attackGate(gate, breaker); // 6 - 9 → 0, breaks
+        return { locked: gate.locked, hp: gate.hp, walkable: s.grid.isWalkable(gate.pos), markers: s.gateMarkers.length };`);
+      check("the second hit smashes it open — tile clears, markers gone (no freeze)", hit2.locked === false && hit2.hp === 0 && hit2.walkable === true && hit2.markers === 0);
+    },
+  },
 ];
 
 async function main() {

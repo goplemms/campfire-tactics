@@ -65,5 +65,27 @@ export const MICRO_GATE_KEYHOLDER: ScenarioConfig = {
   defaultParty: "assault",
 };
 
+// --- gate · destructible — battering a door down (D103 Phase 3) ---------------
+const GATE_DESTRUCTIBLE_ENCOUNTER: AuthoredEncounter = {
+  id: "micro-gate-destructible",
+  name: "Micro · Break a Door",
+  cols: 6,
+  rows: 3,
+  blocked: CELL_WALLS,
+  playerSpawns: [{ col: 2, row: 1 }], // the breaker — adjacent to the door at (3,1)
+  enemies: [{ templateId: "bandit-thug", pos: { col: 1, row: 0 } }], // one body → the deploy net has a source
+  captives: [{ spec: prisoner, pos: { col: 4, row: 1 } }],
+  gates: [{ id: "door", pos: { col: 3, row: 1 }, openBy: [{ kind: "destructible", hp: 15 }] }], // 15 hp ÷ attack 9 = two hits
+  reward: { gold: 20, materials: [] },
+};
+
+export const MICRO_GATE_DESTRUCTIBLE: ScenarioConfig = {
+  id: "micro-gate-destructible",
+  name: "Micro · Break a Door",
+  encounter: GATE_DESTRUCTIBLE_ENCOUNTER,
+  parties: { assault: [{ id: "breaker", side: "player", pos: { col: 0, row: 0 }, jobId: "soldier", primaryJob: "soldier", ...STATS }] },
+  defaultParty: "assault",
+};
+
 /** Every micro-interaction fixture, in gallery order — spread into the scenario registry. */
-export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER];
+export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER, MICRO_GATE_DESTRUCTIBLE];

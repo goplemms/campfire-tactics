@@ -4006,10 +4006,11 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 ## D103 — Interactable gates: the lock is the tile, opening it is data (prison-break substrate)
 
 - **Status:** Deciding + **building in phases** (2026-07-18). Owner-driven, from a concrete finale
-  narrative (below). **Phase 1 (core) + Phase 2a (battle wiring) + Phase 2b render (in-battle, visual-e2e
-  proven) built**; the **editor gate brush** (2b's other half) and Phase 3 (the control-room seal — a
-  **destructible** door the guards batter down) are queued. Candidate for a `decision-adversary` red-team
-  before Phase 3.
+  narrative (below). **Phase 1 (core) + Phase 2a (wiring) + Phase 2b render + the Phase 3 destructible
+  door (core + render + micro-guard) built.** Remaining: the **editor gate brush** (2b's other half),
+  the **enemy AI targeting a destructible door** (the guards *choosing* to batter the seal), and the
+  control-room **lever/enter trigger** that locks a gate. Candidate for a `decision-adversary` red-team
+  before wiring the full seal into the finale.
 - **Owner's finale flow (the design source):** an **infiltrator** reaches a **control room**, which
   **locks a door sealing the guards** on the far side; that buys the **assault team several turns** to
   **lockpick the cells** open — and the *easiest* open is to **defeat the Captain**, who holds the keys.
@@ -4053,9 +4054,22 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   new **micro-interaction harness (D104)**: two minimal `#scene` fixtures (`micro-gate-lockpick`,
   `micro-gate-keyholder`) driven by **`test:e2e:micro`** — the MANDATORY new-surface guard (the D92 freeze
   tale), wired into CI. tsc · build · vitest (**1196**) · sim byte-identical.
-- **Queued — Phase 2b editor brush:** an **editor** gate brush + inspector `openBy` + JSON (graduate gates
-  out of the passthrough bag they currently round-trip through) so the prison is paintable. **Phase 3:** the
-  **control-room seal** — a lever/enter trigger that *locks* a
+- **Phase 3 destructible door — built (core + render + micro-guard):** the `GateLock` gains
+  `{ kind: "destructible", hp }`; `makeGate` seeds `Gate.hp`/`maxHp`; the interpreters `isBreakable` /
+  `canAttackGate` (any unit in attack range — a door isn't lockpick-gated) / `breakableGates` / `damageGate`
+  (chip, break at 0). `Battle.attackGate` + a logged `attackGate` action chip the door by the striker's
+  attack, emit `gateDamaged` while it holds and `gateOpened` (cause `destroyed`) when it breaks; the
+  checkpoint now snapshots `{locked, hp}` so undoing a hit restores durability + the block. Render: a
+  **Break Gate** verb (any unit, both phases), an HP readout under the `▦`, a `gateDamaged` flash/log, the
+  "smashed open" line. This is the owner's *timer* (D103 footer): the "several turns" = the door's HP under
+  attack, no `closing-gate` countdown. Guard: micro entry #3 `micro-gate-destructible` (`test:e2e:micro`:
+  holds one hit → breaks the next, no freeze) + `gates.test`/`gates-battle.test` (chip/break/range + undo
+  restores hp). barrel +5. tsc · build · vitest (**1199**) · sim byte-identical.
+- **Queued — the enemy AI targeting a door:** the guards *choosing* to batter a destructible seal (an
+  `ai.ts` scoring seam — a gate as a target) — the half of the owner's "the enemy focuses on that" the
+  mechanic is now ready for. **Queued — Phase 2b editor brush:** an **editor** gate brush + inspector
+  `openBy` (incl. the `destructible` hp) + JSON (graduate gates out of the passthrough bag) so the prison
+  is paintable. **Phase 3 seal:** the **control-room** lever/enter trigger that *locks* a gate — a lever/enter trigger that *locks* a
   guard-facing gate (the inverse of open). The seal is a **destructible** door (the `destructible` `openBy`
   member: the gate carries HP; enemy AI targets it and attacks until it breaks). This **is** the timer — the
   owner's call (2026-07-18): "the delay would just be a result of enemy action to bust down the door" — so

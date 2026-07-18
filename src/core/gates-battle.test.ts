@@ -82,4 +82,42 @@ describe("gates in a staged battle (D103 Phase 2a)", () => {
     expect(cellA.locked).toBe(true); // re-locked
     expect(battle.grid.isWalkable({ col: 4, row: 2 })).toBe(false); // tile re-blocked
   });
+
+  it("a destructible door chips over hits, breaks open at 0, and undo restores its durability + block", () => {
+    const DOOR: AuthoredEncounter = {
+      id: "door-test",
+      name: "Door Test",
+      cols: 5,
+      rows: 3,
+      blocked: [],
+      playerSpawns: [{ col: 1, row: 1 }], // the striker — adjacent to the door at (2,1)
+      enemies: [{ templateId: "bandit-thug", pos: { col: 4, row: 1 } }],
+      gates: [{ id: "door", pos: { col: 2, row: 1 }, openBy: [{ kind: "destructible", hp: 15 }] }],
+      reward: { gold: 0, materials: [] },
+    };
+    const striker = createUnit({ id: "striker", side: "player", pos: { col: 0, row: 0 }, jobId: "soldier", primaryJob: "soldier", speed: 10, maxHp: 24, attack: 9, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 });
+    const { battle } = stageEncounter(DOOR, [striker]);
+    const door = gate(battle, "door");
+    const s = unit(battle.units, "striker");
+    expect(battle.grid.isWalkable({ col: 2, row: 1 })).toBe(false); // locked ⇒ blocks
+    expect(door.hp).toBe(15);
+
+    // One hit holds — durability drops, the door still blocks.
+    battle.beginUndo();
+    battle.attackGate(door, s); // 15 − 9 = 6
+    expect(door.hp).toBe(6);
+    expect(door.locked).toBe(true);
+
+    // Undo restores its durability + the block.
+    battle.undo();
+    expect(door.hp).toBe(15);
+    expect(battle.grid.isWalkable({ col: 2, row: 1 })).toBe(false);
+
+    // Two hits break it open.
+    battle.attackGate(door, s);
+    battle.attackGate(door, s); // 6 → 0
+    expect(door.hp).toBe(0);
+    expect(door.locked).toBe(false);
+    expect(battle.grid.isWalkable({ col: 2, row: 1 })).toBe(true); // the way is clear
+  });
 });

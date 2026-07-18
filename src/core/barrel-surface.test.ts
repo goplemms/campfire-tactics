@@ -133,9 +133,13 @@
  *     `gates` field into live `Gate`s at staging). `AuthoredGate` + the `openGate` action + the
  *     `gateOpened` event + `Battle.gates`/`openGate` are type-only / methods (not runtime surface).
  *   - gate render (Phase 2b): +3 — `MICRO_GATE_LOCKPICK` / `MICRO_GATE_KEYHOLDER` / `MICRO_SCENARIOS`
- *     (`scenarios/micro.ts`, the micro-interaction gallery registered in `SCENARIOS` — D104). The
+*     (`scenarios/micro.ts`, the micro-interaction gallery registered in `SCENARIOS` — D104). The
  *     `ICON.gate` glyph + the scene's Pick-Cell verb / markGates render are `game/` (not core surface).
  *     (The transient `JAILBREAK` / `JAILBREAK_ENCOUNTER` showcase this replaced was never merged.)
+ *   - gate destructible (Phase 3): +5 — `isBreakable` / `canAttackGate` / `breakableGates` / `damageGate`
+ *     (`gates.ts`, the door-durability interpreters) + `MICRO_GATE_DESTRUCTIBLE` (`scenarios/micro.ts`, the
+ *     batter-a-door fixture). The `attackGate` action + the `gateDamaged` event + `Gate.hp`/`maxHp` +
+ *     `Battle.attackGate` + the scene's Break-Gate verb are type-only / methods (not runtime surface).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -236,6 +240,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MERCHANT_JOB",
   "MERCHANT_KIT",
   "MERCHANT_SELL",
+  "MICRO_GATE_DESTRUCTIBLE",
   "MICRO_GATE_KEYHOLDER",
   "MICRO_GATE_LOCKPICK",
   "MICRO_SCENARIOS",
@@ -382,6 +387,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "batchSimulate",
   "battleOutcome",
   "breakCamp",
+  "breakableGates",
   "bribeChance",
   "bribeCost",
   "bribeEnemy",
@@ -408,6 +414,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "canAdd",
   "canAffordInfluence",
   "canAffordMaterial",
+  "canAttackGate",
   "canDisarm",
   "canLockpickGate",
   "canPlacePlayerTrap",
@@ -462,6 +469,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "createUnit",
   "currentEncounter",
   "currentNode",
+  "damageGate",
   "debuffs",
   "decayCounters",
   "declaredFaucetInfluence",
@@ -579,6 +587,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "isActive",
   "isAdjacent",
   "isAuthoredEncounter",
+  "isBreakable",
   "isCaptured",
   "isConcealedTrap",
   "isDebuffed",

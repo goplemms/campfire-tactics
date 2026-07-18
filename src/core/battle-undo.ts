@@ -63,11 +63,11 @@ export interface BattleCheckpoint {
   /** Shared-stash counts by value (D63) — so undoing a `placeTrap` refunds its kit. */
   stash?: Record<string, number>;
   /**
-   * Gate `locked` state by id (D103) — so undoing a lockpick Act (or a kill that popped a
-   * keyholder cell) re-locks the gate *and* re-blocks its grid tile on restore. Absent when the
-   * encounter has no gates (zero cost, like `stash`).
+   * Gate `locked` + `hp` state by id (D103) — so undoing a lockpick Act (or a kill that popped a
+   * keyholder cell, or a hit on a destructible door) re-locks the gate, restores its durability, *and*
+   * re-blocks its grid tile on restore. Absent when the encounter has no gates (zero cost, like `stash`).
    */
-  gates?: Map<string, boolean>;
+  gates?: Map<string, { locked: boolean; hp?: number }>;
 }
 
 /** Capture a unit's undoable mutable state by value (tripwired, #115). */
@@ -131,7 +131,7 @@ export function captureCheckpoint(
     clock: clock.snapshot(),
     entities: entities.snapshot(),
     stash: stash ? { ...stash.counts } : undefined,
-    gates: gates && gates.length ? new Map(gates.map((g) => [g.id, g.locked])) : undefined,
+    gates: gates && gates.length ? new Map(gates.map((g) => [g.id, { locked: g.locked, hp: g.hp }])) : undefined,
   };
 }
 
@@ -161,10 +161,11 @@ export function restoreCheckpoint(
   // gate blocks its tile again (and an un-locked one clears). Only when both are wired.
   if (cp.gates && gates && grid) {
     for (const g of gates) {
-      const wasLocked = cp.gates.get(g.id);
-      if (wasLocked !== undefined) {
-        g.locked = wasLocked;
-        grid.setWalkable(g.pos, !wasLocked);
+      const snap = cp.gates.get(g.id);
+      if (snap !== undefined) {
+        g.locked = snap.locked;
+        g.hp = snap.hp;
+        grid.setWalkable(g.pos, !snap.locked);
       }
     }
   }

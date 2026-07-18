@@ -51,6 +51,7 @@ export class EditorScene extends Phaser.Scene {
   private boardCam!: BoardCamera;
   private gridGfx!: Phaser.GameObjects.Graphics;
   private overlayGfx!: Phaser.GameObjects.Graphics; // exit-tile tints
+  private previewGfx!: Phaser.GameObjects.Graphics; // the pending line/rect shape + its anchor
   private grid!: TileGrid;
   private markers: Phaser.GameObjects.GameObject[] = [];
 
@@ -59,6 +60,13 @@ export class EditorScene extends Phaser.Scene {
   private enemyTemplate = ENEMY_IDS[0];
   private captiveRelease: "reach" | "lockpick" = "lockpick";
 
+  /** First tile of a two-click line/rect (M-D); the second click commits the shape. Null = no shape pending. */
+  private shapeAnchor: GridCoord | null = null;
+  /** Rectangle tool mode: an outline (a room/cell ring) vs a solid fill. */
+  private rectFill = false;
+  /** The tile under the cursor, for the coordinate readout + the live shape preview. */
+  private hoveredTile: GridCoord | null = null;
+
   /** The entity under edit in the inspector (M-B). Stored by reference so it survives array reorders. */
   private selection: { kind: "enemy"; ref: DraftEnemy } | { kind: "captive"; ref: DraftCaptive } | null = null;
 
@@ -66,6 +74,7 @@ export class EditorScene extends Phaser.Scene {
   private panel?: HTMLDivElement;
   private exportPre?: HTMLPreElement;
   private validLine?: HTMLDivElement;
+  private coordEl?: HTMLDivElement; // live "tile (col,row)" readout under the cursor
   private inspectorEl?: HTMLDivElement;
   private unitListEl?: HTMLDivElement;
   private brushButtons: HTMLButtonElement[] = [];
@@ -83,6 +92,7 @@ export class EditorScene extends Phaser.Scene {
     this.view.boardScale = BOARD_SCALE;
     this.gridGfx = this.add.graphics();
     this.overlayGfx = this.add.graphics().setDepth(0.5);
+    this.previewGfx = this.add.graphics().setDepth(0.6);
 
     this.renderBoard();
     // Grab-and-drag panning + wheel zoom so a big board (a 20×20 level) is reachable on the
@@ -90,6 +100,9 @@ export class EditorScene extends Phaser.Scene {
     // All the editor's chrome lives in the DOM panel, so the whole scene is board content and
     // pans/zooms cleanly — the title line moved to the panel header.
     this.boardCam = new BoardCamera(this, { onTap: (p) => this.onTap(p) });
+    // Hover drives the coordinate readout + the live line/rect preview (the shape tools are two-click,
+    // so the pending run/box is shown between the anchor and the tile under the cursor).
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onHover, this);
     this.mountPanel();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unmountPanel());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.unmountPanel());
@@ -132,11 +145,67 @@ export class EditorScene extends Phaser.Scene {
   private onTap(pointer: Phaser.Input.Pointer): void {
     const t = this.view.worldToTile(pointer.worldX, pointer.worldY);
     if (!this.grid.inBounds(t)) return;
-    this.paint(t);
+    if (this.brush === "line" || this.brush === "rect") this.shapeTap(t);
+    else this.paint(t);
     this.renderBoard();
     this.renderInspector();
     this.renderUnitList();
     this.updateExport();
+    this.drawShapePreview(); // reflect a just-set anchor before the next mouse move
+    this.updateCoord();
+  }
+
+  /**
+   * Hover: keep the coordinate readout live and, when a line/rect anchor is pending, preview the
+   * shape that a second click would commit. worldX/worldY fold in the camera transform, so the read
+   * stays correct at any pan/zoom. Skipped mid-pan (a drag isn't aiming a shape).
+   */
+  private onHover(pointer: Phaser.Input.Pointer): void {
+    if (this.boardCam?.isDragging) return;
+    const t = this.view.worldToTile(pointer.worldX, pointer.worldY);
+    this.hoveredTile = this.grid.inBounds(t) ? t : null;
+    this.updateCoord();
+    this.drawShapePreview();
+  }
+
+  /**
+   * A tap while the line/rect tool is active. The first tap drops the {@link shapeAnchor}; the second
+   * commits every tile of the run (line) or box (rect) as a **wall** (set, not toggle — a shape adds
+   * structure, it doesn't punch holes in what it overlaps), then clears the anchor.
+   */
+  private shapeTap(t: GridCoord): void {
+    if (!this.shapeAnchor) {
+      this.shapeAnchor = t;
+      return;
+    }
+    const tiles = this.brush === "line" ? lineTiles(this.shapeAnchor, t) : rectTiles(this.shapeAnchor, t, this.rectFill);
+    for (const c of tiles) if (!this.draft.blocked.some((b) => same(b, c))) this.draft.blocked.push(c);
+    this.shapeAnchor = null;
+    this.previewGfx.clear();
+  }
+
+  /** Wash the pending line/rect (anchor → hovered tile) so the shape reads before the second click. */
+  private drawShapePreview(): void {
+    this.previewGfx.clear();
+    if (!this.shapeAnchor || (this.brush !== "line" && this.brush !== "rect")) return;
+    const to = this.hoveredTile ?? this.shapeAnchor;
+    const tiles = this.brush === "line" ? lineTiles(this.shapeAnchor, to) : rectTiles(this.shapeAnchor, to, this.rectFill);
+    for (const c of tiles) this.view.fillTile(this.previewGfx, c, COLOR.accent, 0.3, COLOR.accent);
+  }
+
+  /** Drop any pending line/rect anchor + its preview (on a brush switch, resize, or import). */
+  private cancelShape(): void {
+    this.shapeAnchor = null;
+    this.previewGfx?.clear();
+    this.updateCoord();
+  }
+
+  /** Update the DOM coordinate readout with the tile under the cursor (or a dash when off-board). */
+  private updateCoord(): void {
+    if (!this.coordEl) return;
+    const t = this.hoveredTile;
+    const anchor = this.shapeAnchor ? ` · from (${this.shapeAnchor.col},${this.shapeAnchor.row})` : "";
+    this.coordEl.textContent = `tile ${t ? `(${t.col},${t.row})` : "—"}${anchor}`;
   }
 
   private paint(t: GridCoord): void {
@@ -195,6 +264,7 @@ export class EditorScene extends Phaser.Scene {
     d.blocked = d.blocked.filter(ok); d.playerSpawns = d.playerSpawns.filter(ok);
     d.exit = d.exit.filter(ok); d.traps = d.traps.filter(ok);
     d.enemies = d.enemies.filter((e) => ok(e.pos)); d.captives = d.captives.filter((c) => ok(c.pos));
+    this.cancelShape();
     this.renderBoard();
     this.updateExport();
   }
@@ -234,6 +304,13 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(title.style, { fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
     header.appendChild(title);
     header.appendChild(this.hint("drag to pan · scroll to zoom · Recenter resets the view"));
+    // Live tile-coordinate readout (M-D) — structural work needs precise alignment of cells/doorways.
+    const coord = document.createElement("div");
+    coord.dataset.role = "coord";
+    Object.assign(coord.style, { margin: "2px 0 0", color: "#9fd0f0", fontVariantNumeric: "tabular-nums" } as CSSStyleDeclaration);
+    header.appendChild(coord);
+    this.coordEl = coord;
+    this.updateCoord();
     panel.appendChild(header);
 
     // Tab bar + the persistent cross-cutting Erase tool and the view-reset control.
@@ -293,7 +370,7 @@ export class EditorScene extends Phaser.Scene {
     btn.textContent = b;
     btn.dataset.brush = b;
     Object.assign(btn.style, { margin: "2px", cursor: "pointer", textTransform: "capitalize" } as CSSStyleDeclaration);
-    btn.onclick = () => { this.brush = b; this.highlightBrush(); };
+    btn.onclick = () => { this.brush = b; this.cancelShape(); this.highlightBrush(); };
     this.brushButtons.push(btn);
     return btn;
   }
@@ -327,9 +404,23 @@ export class EditorScene extends Phaser.Scene {
     d.appendChild(size);
     const row = document.createElement("div");
     row.style.margin = "4px 0";
-    row.append(this.brushButton("wall"), this.brushButton("trap"));
+    row.append(this.brushButton("wall"), this.brushButton("line"), this.brushButton("rect"), this.brushButton("trap"));
     d.appendChild(row);
-    d.appendChild(this.hint("walls block movement · traps are hazards (params in a later pass)"));
+
+    // Rectangle mode: an outline (a room/cell ring) vs a solid fill. Toggled live.
+    const rectMode = document.createElement("div");
+    rectMode.style.margin = "4px 0";
+    const modeBtn = document.createElement("button");
+    modeBtn.dataset.role = "rect-mode";
+    modeBtn.style.cursor = "pointer";
+    const paintMode = () => (modeBtn.textContent = this.rectFill ? "rect: filled" : "rect: outline");
+    paintMode();
+    modeBtn.onclick = () => { this.rectFill = !this.rectFill; paintMode(); this.drawShapePreview(); };
+    rectMode.appendChild(modeBtn);
+    d.appendChild(rectMode);
+
+    d.appendChild(this.hint("wall = one tile · line/rect = two clicks (anchor, then far tile) → a wall run/box"));
+    d.appendChild(this.hint("rect outline = a cell/room ring (erase one tile for the door) · traps are hazards"));
   }
 
   private buildEventsDrawer(d: HTMLDivElement): void {
@@ -458,6 +549,7 @@ export class EditorScene extends Phaser.Scene {
     }
     this.draft = next;
     this.selection = null;
+    this.cancelShape();
     this.renderBoard();
     this.unmountPanel();
     this.mountPanel();
@@ -596,6 +688,7 @@ export class EditorScene extends Phaser.Scene {
     this.panel = undefined;
     this.exportPre = undefined;
     this.validLine = undefined;
+    this.coordEl = undefined;
     this.inspectorEl = undefined;
     this.unitListEl = undefined;
     this.brushButtons = [];
@@ -607,4 +700,38 @@ export class EditorScene extends Phaser.Scene {
 /** Two grid coords are the same tile. */
 function same(a: GridCoord, b: GridCoord): boolean {
   return a.col === b.col && a.row === b.row;
+}
+
+/**
+ * A straight **wall run** from `a` to `b`, snapped to the dominant axis (a prison's walls are
+ * rectilinear, so a diagonal drag still yields a clean horizontal *or* vertical line rather than a
+ * staircase). Inclusive of both endpoints.
+ */
+function lineTiles(a: GridCoord, b: GridCoord): GridCoord[] {
+  const dCol = b.col - a.col;
+  const dRow = b.row - a.row;
+  const horizontal = Math.abs(dCol) >= Math.abs(dRow);
+  const out: GridCoord[] = [];
+  const n = horizontal ? Math.abs(dCol) : Math.abs(dRow);
+  const stepCol = horizontal ? Math.sign(dCol) : 0;
+  const stepRow = horizontal ? 0 : Math.sign(dRow);
+  for (let i = 0; i <= n; i++) out.push({ col: a.col + stepCol * i, row: a.row + stepRow * i });
+  return out;
+}
+
+/**
+ * The tiles of the axis-aligned box spanned by `a` and `b`. `filled` fills the interior (a solid
+ * block); otherwise only the **perimeter** ring is returned (a room/cell outline — the door is a
+ * gap you erase afterward).
+ */
+function rectTiles(a: GridCoord, b: GridCoord, filled: boolean): GridCoord[] {
+  const c0 = Math.min(a.col, b.col), c1 = Math.max(a.col, b.col);
+  const r0 = Math.min(a.row, b.row), r1 = Math.max(a.row, b.row);
+  const out: GridCoord[] = [];
+  for (let row = r0; row <= r1; row++) {
+    for (let col = c0; col <= c1; col++) {
+      if (filled || col === c0 || col === c1 || row === r0 || row === r1) out.push({ col, row });
+    }
+  }
+  return out;
 }

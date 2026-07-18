@@ -3934,6 +3934,37 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D101 — Editor shape tools: two-click line/rect walls + a coordinate readout (structural authoring)
+
+- **Status:** Decided + built (2026-07-18). Owner was authoring a **prison** finale map and wanted the
+  layout to read *structurally* (perimeter, corridors, cells). Continues the D100 map-creation expansion.
+- **Context (why):** in `the-rescue.json` the prison is entirely `blocked` tiles — vertical wall runs
+  with one-tile **door gaps** and cell rings around the captives — and **all ~19 were placed one click
+  at a time**. A wall-heavy structural map makes the per-tile grind the dominant cost; it only gets worse
+  at 20×20. The natural fix (drag to paint a run) is now **taken by D100's drag-to-pan**.
+- **Decision — two-click shape tools, not drag-paint.** Two new **wall** brushes: **line** (a straight
+  run, snapped to the dominant axis so a rescue-style perimeter/corridor lands rectilinear) and **rect**
+  (an **outline** ring = a cell/room; a **filled** mode = solid mass). Interaction is **anchor-click →
+  far-click** (with a live accent-wash preview between), deliberately **not a drag** — so it never
+  collides with the pan gesture, and it's *more precise* for structural work than a freehand drag. Shapes
+  **add** walls (set, not toggle — a shape lays structure, it doesn't punch holes in what it crosses); a
+  door is still a **gap you erase** afterward (no door entity, per D98). The geometry (`lineTiles`/
+  `rectTiles`) is pure. A pending anchor is cancelled on brush-switch / resize / import.
+- **Decision — live coordinate readout.** The panel header shows `tile (col,row)` under the cursor (and
+  the pending anchor while a shape is aimed). Structural authoring is alignment-bound — cells and doorways
+  have to line up — and counting diamonds by eye doesn't scale; the readout is the cheap precision aid.
+- **Scoped (JIT):** line/rect target **walls only** (the structural need); no fill-flood, no
+  mirror/symmetry, no cell-stamp macro (rect-outline + erase-a-gap already yields a cell) — offered and
+  **deferred** by the owner. The readout is a DOM line (robust under camera zoom), not a near-cursor label.
+- **Guards:** `test:e2e:editor` extended — the coordinate readout tracks the hovered tile, the line tool
+  lays a 4-tile run in two clicks, rect-outline lays a 6-tile ring, and the level still validates (via a
+  new `harness.hover` primitive). Brush palette is now **10**. tsc · build · vitest (**1184**) green;
+  `game/`-only, no core/routing/surface touched.
+- **Reuses:** **D98** (the editor brush loop + `CombatView.fillTile` for the preview wash + the DOM panel),
+  **D100** (the pan gesture the two-click model is designed around). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

@@ -91,7 +91,7 @@ async function main() {
         let st = await g.eval(STATE);
         console.log("• #editor boots with the brush palette");
         check("the editor scene is active", st.active === true);
-        check("the brush palette is present (8 brushes incl. select)", st.brushButtons === 8);
+        check("the brush palette is present (10 brushes incl. select + line/rect)", st.brushButtons === 10);
         check("the drawer tab bar is present (4 tabs)", st.tabs === 4);
         check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));
@@ -185,6 +185,37 @@ async function main() {
         await sleep(100);
         const stTap = await g.eval(STATE);
         check("a tap after recenter still paints (walls incremented)", stTap.walls === wallsBeforeDrag + 1);
+
+        // Structural wall tools (M-D): two-click line + rectangle, plus the live coordinate readout.
+        // Camera is recentered (scroll 0, zoom 1), so a tile's board-world point equals its screen point.
+        console.log("• line / rectangle wall tools + coordinate readout (structural authoring)");
+        const tileScreen = (col, row) =>
+          g.eval(`(() => { const p = window.game.scene.getScene("EditorScene").view.tileToWorld({col:${col},row:${row}}); return { x: Math.round(p.x), y: Math.round(p.y) }; })()`);
+        const coordText = () => g.eval(`document.querySelector('[data-role="coord"]').textContent`);
+        const blocked = async () => (await g.eval(STATE)).walls;
+
+        // The coordinate readout tracks the hovered tile.
+        const hb = await tileScreen(2, 0);
+        await g.hover(hb.x, hb.y);
+        await sleep(60);
+        check("the coordinate readout shows the hovered tile", (await coordText()).includes("(2,0)"));
+        check("the rect outline/fill mode toggle is present", (await g.eval(`!!document.querySelector('button[data-role="rect-mode"]')`)) === true);
+
+        // Line tool: anchor (2,0) → far (2,3) lays a 4-tile vertical wall run in two clicks.
+        const b0 = await blocked();
+        await g.eval(setBrush("line"));
+        let p = await tileScreen(2, 0); await g.clickScene(p.x, p.y); await sleep(60);
+        p = await tileScreen(2, 3); await g.clickScene(p.x, p.y); await sleep(60);
+        check("line tool laid a 4-tile wall run (two clicks)", (await blocked()) === b0 + 4);
+
+        // Rectangle outline: corners (4,5)–(6,6) → a 6-tile wall ring (a cell/room outline).
+        const b1 = await blocked();
+        await g.eval(setBrush("rect"));
+        p = await tileScreen(4, 5); await g.clickScene(p.x, p.y); await sleep(60);
+        p = await tileScreen(6, 6); await g.clickScene(p.x, p.y); await sleep(60);
+        check("rect outline laid a 6-tile wall ring", (await blocked()) === b1 + 6);
+        check("the level still validates after the shape tools", (await g.eval(STATE)).valid === true);
+        await g.screenshot(path.join(OUT, "06-shapes.png"));
 
         assertNoProblems(g.problems);
       } catch (err) {

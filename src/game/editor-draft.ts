@@ -23,8 +23,13 @@
 import type { GridCoord, UnitSpec, UnitStats, AuthoredEncounter, ObjectiveSpec, ObjectiveTag } from "../core";
 import { getEnemyTemplate } from "../core";
 
-/** A brush the editor paints with — what a tile click stamps. `select` opens the identity/stat inspector (M-B). */
-export type Brush = "select" | "wall" | "spawn" | "enemy" | "captive" | "exit" | "trap" | "erase";
+/**
+ * A brush the editor paints with — what a tile click stamps. `select` opens the identity/stat
+ * inspector (M-B). `line`/`rect` are **two-click wall shape tools** (M-D): click an anchor, click
+ * the far tile, and the run/box of walls lands in one gesture — the structural-authoring workhorses
+ * (a prison's perimeter, corridors, and cell rings are wall shapes, not one-off tiles).
+ */
+export type Brush = "select" | "wall" | "line" | "rect" | "spawn" | "enemy" | "captive" | "exit" | "trap" | "erase";
 
 /**
  * The combat stat fields the inspector edits — typed against {@link UnitStats} so a **rename or

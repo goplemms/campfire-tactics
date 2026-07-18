@@ -181,6 +181,11 @@ export async function withGame(fn, opts = {}) {
         const box = await canvasBox();
         await page.mouse.click(box.x + x, box.y + y);
       },
+      // Move the pointer to scene coords without clicking (fires pointermove — for hover readouts/previews).
+      async hover(x, y) {
+        const box = await canvasBox();
+        await page.mouse.move(box.x + x, box.y + y);
+      },
       async clickTile(coord) {
         const w = await page.evaluate(bs(`const p=s.tileToWorld(${JSON.stringify(coord)});return {x:p.x,y:p.y};`));
         await this.clickScene(w.x, w.y);

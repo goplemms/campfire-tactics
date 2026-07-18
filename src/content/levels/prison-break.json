@@ -1,0 +1,32 @@
+{
+  "id": "prison-break",
+  "name": "The Prison Break",
+  "cols": 10,
+  "rows": 6,
+  "blocked": [{ "col": 5, "row": 2 }, { "col": 5, "row": 3 }, { "col": 7, "row": 0 }, { "col": 7, "row": 5 }],
+  "playerSpawns": [{ "col": 0, "row": 1 }, { "col": 0, "row": 2 }, { "col": 0, "row": 3 }, { "col": 0, "row": 4 }, { "col": 1, "row": 2 }],
+  "enemies": [
+    { "templateId": "bandit-captain", "pos": { "col": 9, "row": 2 }, "id": "prison-warden", "role": "captain" },
+    { "templateId": "bandit-bowman", "pos": { "col": 9, "row": 4 } },
+    { "templateId": "bandit-cutthroat", "pos": { "col": 8, "row": 1 } },
+    { "templateId": "bandit-thug", "pos": { "col": 8, "row": 3 } },
+    { "templateId": "bandit-thug", "pos": { "col": 8, "row": 4 } }
+  ],
+  "captives": [
+    {
+      "spec": { "id": "prisoner-0", "name": "Prisoner", "side": "player", "pos": { "col": 9, "row": 0 }, "jobId": "soldier", "primaryJob": "soldier", "role": "prisoner", "speed": 10, "maxHp": 22, "attack": 6, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
+      "pos": { "col": 9, "row": 0 },
+      "release": { "kind": "lockpick" }
+    },
+    {
+      "spec": { "id": "prisoner-1", "name": "Prisoner", "side": "player", "pos": { "col": 9, "row": 5 }, "jobId": "soldier", "primaryJob": "soldier", "role": "prisoner", "speed": 10, "maxHp": 22, "attack": 6, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
+      "pos": { "col": 9, "row": 5 },
+      "release": { "kind": "lockpick" }
+    }
+  ],
+  "objectives": [
+    { "id": "storm", "kind": "eliminate-all", "required": true, "label": "Storm the prison — defeat the garrison" },
+    { "id": "extract", "kind": "extraction", "required": true, "label": "Free the prisoners and escort them to the exit", "span": [{ "col": 0, "row": 0 }, { "col": 0, "row": 1 }, { "col": 0, "row": 2 }, { "col": 0, "row": 3 }, { "col": 0, "row": 4 }, { "col": 0, "row": 5 }], "escort": { "role": "prisoner" } }
+  ],
+  "reward": { "gold": 220, "materials": [], "xp": 100 }
+}

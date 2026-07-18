@@ -14,11 +14,18 @@
  *   timed gauge that, on completion, sweeps a coordinate span (downing occupants)
  *   and **fails** the objective. It **fizzles** (resolves **met**) when its tagged
  *   driver is killed or immobilized — kill/snare the driver to stop the gate.
+ * - **`extraction`** — a *goal* (D97/C2): **met** when every tagged escortee (a freed
+ *   prisoner, `escort`) is alive, no longer captured, and standing on the `span` exit
+ *   tiles. The finale's second win-path — free the cells and get the prisoners out —
+ *   OR'd against `eliminate-all` (the frontal path) by the classifier.
+ *
+ * A **goal** kind ({@link isGoalKind}: `eliminate-all` / `extraction`) *wins* the
+ * encounter when met; goals are **OR'd** — achieving *any one* wins (D97/C2). A
+ * **constraint** kind (`closing-gate`) must *not fail*; constraints are AND'd. Both
+ * are combined by the classifier next to staging ({@link "./staging".encounterOutcome}).
  *
  * Objectives are **tag-bound** ({@link ObjectiveTag}: a unit role or id, a span by
- * coordinate), designed so a generator can emit them later. The graded
- * win/objective-failure/wipe classifier lives next to staging ({@link
- * "./staging".encounterOutcome}).
+ * coordinate), designed so a generator can emit them later.
  *
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
@@ -29,8 +36,32 @@ import { CTClock } from "./clock";
 import { isImmobilized } from "./status";
 import { applyDamage, battleOutcome } from "./combat";
 
-/** The objective kinds M14 ships (D50). */
-export type ObjectiveKind = "eliminate-all" | "closing-gate";
+/**
+ * The canonical objective kinds (D50; `extraction` added D97) — the **single source** the type
+ * *and* every runtime kind-check derive from. Add a kind here and it propagates to
+ * {@link ObjectiveKind} and to consumers like the content pipeline's `validateLevel` (which
+ * imports this list rather than hand-copying it, so the editor/pipeline can't drift, D98).
+ */
+export const OBJECTIVE_KINDS = ["eliminate-all", "closing-gate", "extraction"] as const;
+
+/** The objective kinds (D50; `extraction` added D97), derived from {@link OBJECTIVE_KINDS}. */
+export type ObjectiveKind = (typeof OBJECTIVE_KINDS)[number];
+
+/**
+ * The **goal** kinds (D97/C2) — objectives that represent *winning*: achieving any one
+ * wins the encounter (goals are OR'd by {@link "./staging".encounterOutcome}). Every
+ * other kind is a **constraint** (must-not-fail, AND'd). `eliminate-all` (clear the
+ * field) and `extraction` (get the prisoners out) are the two win-paths the finale ORs.
+ */
+export const GOAL_KINDS: ReadonlySet<ObjectiveKind> = new Set<ObjectiveKind>([
+  "eliminate-all",
+  "extraction",
+]);
+
+/** True if `kind` is a win-achieving **goal** (OR'd), false if a must-not-fail **constraint**. */
+export function isGoalKind(kind: ObjectiveKind): boolean {
+  return GOAL_KINDS.has(kind);
+}
 
 /** Where an objective stands right now (D50). */
 export type ObjectiveStatus = "met" | "failed" | "pending";
@@ -57,10 +88,21 @@ export interface ObjectiveSpec {
   // --- closing-gate fields ---
   /** Gauge fill per tick; the gate closes (fails) when it reaches 100 (≈ N turns). */
   speed?: number;
-  /** Tiles swept (their occupants downed) when the gate closes. */
+  /**
+   * A coordinate span. For `closing-gate`: the tiles swept (occupants downed) when the
+   * gate closes. For `extraction`: the **exit tiles** the escortees must reach (D97).
+   */
   span?: GridCoord[];
   /** The driver to disable (kill/immobilize) to stop the gate. */
   driver?: ObjectiveTag;
+  // --- extraction fields (D97) ---
+  /**
+   * The units to escort to the `span` exit tiles (the freed prisoners) — tagged by
+   * role/id like {@link driver}. Extraction is **met** when *every* alive escortee is
+   * freed (uncaptured) and standing on an exit tile; a lost prisoner leaves it *pending*
+   * (a goal never *fails*, so the frontal `eliminate-all` path stays open).
+   */
+  escort?: ObjectiveTag;
 }
 
 /** A live, armed objective: its current {@link ObjectiveStatus} + render progress. */
@@ -81,13 +123,14 @@ export const DEFAULT_GOAL: ObjectiveSpec = {
 };
 
 /**
- * Prepend the {@link DEFAULT_GOAL} unless the list already names an explicit goal
- * (an `eliminate-all`) — so every encounter has a way to *win*, but authored
- * goals are honored as-is (D50). A closing-gate alone is a *constraint*, not a
- * goal, so it still gets the default elimination goal.
+ * Prepend the {@link DEFAULT_GOAL} unless the list already names an explicit **goal**
+ * ({@link isGoalKind} — `eliminate-all` *or* `extraction`) — so every encounter has a
+ * way to *win*, but authored goals are honored as-is (D50/D97). A closing-gate alone is
+ * a *constraint*, not a goal, so it still gets the default elimination goal; an
+ * extraction-only encounter (win solely by getting the prisoners out) does **not**.
  */
 export function withDefaultGoal(specs: readonly ObjectiveSpec[] = []): ObjectiveSpec[] {
-  return specs.some((s) => s.kind === "eliminate-all") ? [...specs] : [DEFAULT_GOAL, ...specs];
+  return specs.some((s) => isGoalKind(s.kind)) ? [...specs] : [DEFAULT_GOAL, ...specs];
 }
 
 /** Match a unit against an objective tag (role or explicit id). */
@@ -116,6 +159,29 @@ function armOne(clock: CTClock, units: readonly Unit[], spec: ObjectiveSpec): Ar
         return o.over && o.winner === "player" ? "met" : "pending";
       },
       progress: () => undefined,
+    };
+  }
+
+  if (spec.kind === "extraction") {
+    // A goal (D97): met when every tagged escortee (a freed prisoner) is alive,
+    // uncaptured, and standing on an exit tile. Never *fails* — a downed/lost
+    // prisoner just leaves it pending, so the frontal path stays open.
+    const exit = spec.span ?? [];
+    const onExit = (u: Unit) => exit.some((t) => t.col === u.pos.col && t.row === u.pos.row);
+    const escortees = () => units.filter((u) => matchesTag(u, spec.escort));
+    return {
+      spec,
+      status: () => {
+        const es = escortees();
+        if (es.length === 0) return "pending"; // nothing tagged to extract yet
+        return es.every((u) => u.alive && !u.captured && onExit(u)) ? "met" : "pending";
+      },
+      // HUD readout: fraction of the prisoners currently freed-and-at-the-exit.
+      progress: () => {
+        const es = escortees();
+        if (es.length === 0) return undefined;
+        return es.filter((u) => u.alive && !u.captured && onExit(u)).length / es.length;
+      },
     };
   }
 

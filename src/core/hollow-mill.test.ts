@@ -7,9 +7,9 @@ import {
   THIEVES_DEN,
   OUTER_YARD,
   CUFFED_CELL,
-  STUB_FINALE,
+  PRISON_ASSAULT,
 } from "./hollow-mill";
-import { stageEncounter } from "./staging";
+import { stageEncounter, encounterOutcome } from "./staging";
 import { isConcealedTrap } from "./entities";
 import { validateExpedition } from "./expedition";
 import { createRunFromExpedition } from "./run";
@@ -19,7 +19,7 @@ import { THIEVES_GUILD_CONTACT } from "./stories";
 import { SCOUT_PRESTIGE_FLOOR } from "./jobs-data/scout-line";
 import { intelFloor } from "./intel";
 import { createUnit } from "./units";
-import { freeCaptive } from "./deployment";
+import { freeCaptive, canRelease } from "./deployment";
 import { gearDelta } from "./gear-condition";
 import { grantItem } from "./inventory";
 
@@ -84,7 +84,7 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(m.nodes.den.authoredId).toBe(THIEVES_DEN.id);
     expect(m.nodes.outerYard.authoredId).toBe(OUTER_YARD.id);
     expect(m.nodes.cuffedCell.authoredId).toBe(CUFFED_CELL.id);
-    expect(m.nodes.finale.authoredId).toBe(STUB_FINALE.id);
+    expect(m.nodes.finale.authoredId).toBe(PRISON_ASSAULT.id);
     // The pinned event nodes bind their beats (the pre-fork town + the mentor two-beat).
     expect(m.nodes.camp2.eventId).toBe("provision-choice");
     expect(m.nodes.market.eventId).toBe("merchant-town");
@@ -292,5 +292,103 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     const run = createRunFromExpedition(THE_HOLLOW_MILL);
     const staged = stageEncounter(THIEVES_DEN, run.party);
     expect(staged.battle.units.some((u) => u.side === "enemy" && u.thief)).toBe(true);
+  });
+});
+
+describe("The Prison Assault finale (D97) — the dual-OR win", () => {
+  /** The starting trio (soldier/hunter/scout — no lockpick), as live units. */
+  const finaleParty = () => THE_HOLLOW_MILL.bundle.party.map(createUnit);
+  const extractSpan = (staged: ReturnType<typeof stageEncounter>) =>
+    staged.objectives.find((o) => o.spec.kind === "extraction")!.spec.span!;
+
+  it("authors two OR'd goals: storm the garrison OR extract the prisoners", () => {
+    const goals = PRISON_ASSAULT.objectives ?? [];
+    expect(goals.map((o) => o.kind).sort()).toEqual(["eliminate-all", "extraction"]);
+    const extraction = goals.find((o) => o.kind === "extraction")!;
+    expect(extraction.escort).toEqual({ role: "prisoner" });
+    expect((extraction.span ?? []).length).toBeGreaterThan(0);
+    // Both cells are lockpick-gated (Thief-only), and there are exactly two prisoners.
+    expect(PRISON_ASSAULT.captives).toHaveLength(2);
+    expect(PRISON_ASSAULT.captives!.every((c) => c.release?.kind === "lockpick")).toBe(true);
+  });
+
+  it("frontal path: clearing the garrison wins even with the prisoners still cuffed", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    expect(encounterOutcome(staged)).toBeUndefined(); // undecided at the start
+    for (const u of staged.battle.units) if (u.side === "enemy") u.alive = false;
+    // Prisoners never freed — extraction stays pending — but eliminate-all wins (OR'd, D97).
+    expect(staged.battle.units.filter((u) => u.captured).length).toBe(2);
+    expect(encounterOutcome(staged)).toBe("win");
+  });
+
+  it("extraction path: escort the freed prisoners out — a win with the garrison still standing", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    const exit = extractSpan(staged);
+    expect(prisoners).toHaveLength(2);
+    prisoners.forEach((p, i) => { freeCaptive(p); p.pos = { ...exit[i] }; });
+    // The garrison is untouched — a frontal party would still be mid-fight here.
+    expect(staged.battle.units.some((u) => u.side === "enemy" && u.alive)).toBe(true);
+    expect(encounterOutcome(staged)).toBe("win");
+  });
+
+  it("extraction stays pending until EVERY freed prisoner is at the exit", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    const exit = extractSpan(staged);
+    // Free + extract only the first — enemies still up, one prisoner short ⇒ undecided.
+    freeCaptive(prisoners[0]); prisoners[0].pos = { ...exit[0] };
+    expect(encounterOutcome(staged)).toBeUndefined();
+    // A still-cuffed prisoner parked on the exit tile does NOT count.
+    prisoners[1].pos = { ...exit[1] };
+    expect(encounterOutcome(staged)).toBeUndefined();
+    freeCaptive(prisoners[1]);
+    expect(encounterOutcome(staged)).toBe("win");
+  });
+
+  it("the cells resist the starting trio — no lockpick capability, so it wins frontally (C4)", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    const party = staged.battle.units.filter((u) => u.side === "player" && !u.captured);
+    for (const p of prisoners) for (const by of party) expect(canRelease(p, by)).toBe(false);
+  });
+
+  // --- Adversarial edge cases (the D97 /challenge pass) ----------------------
+
+  it("no prisoner starts on/near the exit — extraction can't be won before the fight (challenge F)", () => {
+    // The one non-structural risk the classifier has: extraction is polled from battle-start, so
+    // a prisoner authored ON the exit (freed in deploy) would instant-win with zero combat. The
+    // shipped finale is safe only by GEOMETRY (cells deep in enemy ground, exit at the home edge) —
+    // pin it so a future re-placement can't silently make the finale a walkover.
+    const ext = PRISON_ASSAULT.objectives!.find((o) => o.kind === "extraction")!;
+    const exitCols = new Set((ext.span ?? []).map((t) => t.col));
+    for (const c of PRISON_ASSAULT.captives ?? []) {
+      expect(exitCols.has(c.pos.col)).toBe(false);
+      expect(c.pos.col).toBeGreaterThan(4); // a real cross-board escort, not a step to freedom
+    }
+  });
+
+  it("party wiped with the cells still cuffed ⇒ WIPE (bound bodies don't keep the side alive, challenge A1c)", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    for (const u of staged.battle.units) if (u.side === "player" && u.role !== "prisoner") u.alive = false;
+    expect(encounterOutcome(staged)).toBe("wipe");
+  });
+
+  it("both prisoners downed never VACUOUSLY satisfies extraction (challenge A4)", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    prisoners.forEach((p) => { p.captured = false; p.alive = false; }); // freed then cut down
+    // A party member still stands + the garrison is up → the empty escort set must read PENDING,
+    // not a vacuous win (dead escortees stay in the tag set, so `every(alive)` fails).
+    expect(encounterOutcome(staged)).toBeUndefined();
+  });
+
+  it("a lone freed prisoner escorted out WINS even after the party falls (freed = party member, challenge A1a)", () => {
+    const staged = stageEncounter(PRISON_ASSAULT, finaleParty());
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    const exit = extractSpan(staged);
+    for (const u of staged.battle.units) if (u.side === "player" && u.role !== "prisoner") u.alive = false;
+    prisoners.forEach((p, i) => { freeCaptive(p); p.pos = { ...exit[i] }; }); // extracted anyway
+    expect(encounterOutcome(staged)).toBe("win"); // the extraction stands on its own
   });
 });

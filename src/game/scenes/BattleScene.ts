@@ -11,7 +11,6 @@ import {
   refreshAuras,
   isAdjacent,
   TileGrid,
-  TILE_HEIGHT,
   Battle,
   availableSkills,
   getJob,
@@ -98,7 +97,7 @@ import { showModal } from "../overlay-card";
 import { isScreenshotMode, clearLayer } from "../ui";
 import { captureRepro } from "../repro-capture";
 import { HintPanel } from "../hint-panel";
-import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND } from "../legend-strip";
+import { LegendStrip, DEPLOY_LEGEND, BATTLE_LEGEND, EXIT_LEGEND_ITEM } from "../legend-strip";
 import { MiniCard, type CardRow } from "../info-cards";
 import { dropNet as dropNetCage } from "../deploy-fx";
 import { ICON, placeIcon } from "../icons";
@@ -153,8 +152,6 @@ export class BattleScene extends Phaser.Scene {
   /** The persistent tarpit-aura ring (Heavy Knight) — drawn in both Deployment and Battle (D64). */
   private auraGfx!: Phaser.GameObjects.Graphics;
   private boardObjects: Phaser.GameObjects.GameObject[] = [];
-  private originX = 0;
-  private originY = 0;
   /** Shared board geometry + grid/tile drawing (the converged combat presentation). */
   private view!: CombatView;
 
@@ -226,6 +223,8 @@ export class BattleScene extends Phaser.Scene {
   // D63 — the closing net: an advancing enemy danger front, a deployment-phase CT
   // clock that interleaves player turns with the front's, and the dug-in stance set.
   private dangerZoneGfx?: Phaser.GameObjects.Graphics;
+  /** The extraction exit span tint (D97) — the "escape route" the freed prisoners walk to. */
+  private exitZoneGfx?: Phaser.GameObjects.Graphics;
   /** The party's campfire (safe ground) and the enemy danger source (D63). */
   private campfire!: DeploySource;
   private front!: DeployFront;
@@ -452,6 +451,9 @@ export class BattleScene extends Phaser.Scene {
     this.safeZoneGfx = undefined;
     this.dangerZoneGfx?.destroy();
     this.dangerZoneGfx = undefined;
+    // Same lazy-create + stale-on-re-entry hazard as the zone graphics (D96): reset it here.
+    this.exitZoneGfx?.destroy();
+    this.exitZoneGfx = undefined;
     this.deployReachGfx?.destroy();
     this.deployReachGfx = undefined;
     // The CT-rail chevron is created lazily (`if (!this.railChevron)` in layoutRailChevron) and
@@ -467,9 +469,9 @@ export class BattleScene extends Phaser.Scene {
     this.view.clearPreview(this.preview);
     this.threatGfx.clear();
 
-    this.originX = this.scale.width / 2;
-    this.originY = this.scale.height / 2 - (this.grid.rows * TILE_HEIGHT * BOARD_SCALE) / 2 + 4;
-    this.view.setOrigin(this.originX, this.originY);
+    // The shared board-centering (CombatView.centerOrigin) — the one formula, so a grid/tile
+    // metric change reaches the editor too (the view owns the resulting origin).
+    this.view.centerOrigin(this.grid.rows, this.scale.height, this.scale.width / 2);
 
     this.drawGrid();
     this.spawnUnits();
@@ -544,6 +546,8 @@ export class BattleScene extends Phaser.Scene {
       this.view.refreshUnits();
       this.safeZoneGfx?.clear();
       this.dangerZoneGfx?.clear();
+      // The exit route persists into battle (the escort is mid-fight) — repaint it (D97).
+      this.drawExitZone();
       this.deployReachGfx?.clear();
       clearLayer(this.deployMarkers);
       this.markCuffedCaptives(); // a still-cuffed captive keeps its lock into the fight (D90)
@@ -564,7 +568,7 @@ export class BattleScene extends Phaser.Scene {
     // now; startBattle lifts it. Refresh re-applies the veil after spawnUnits.
     this.view.concealEnemies = true;
     this.view.refreshUnits();
-    this.legendStrip.setItems(DEPLOY_LEGEND);
+    this.legendStrip.setItems(this.hasExtraction() ? [...DEPLOY_LEGEND, EXIT_LEGEND_ITEM] : DEPLOY_LEGEND);
     // Deployment's RNG draws from the one encounter seed the Battle now owns (D67), via its
     // label-keyed stream seam — the scene no longer reaches into run.seed for its rolls.
     // (battle seed == run.seed, so the streams are byte-identical to the prior wiring.)
@@ -1090,6 +1094,31 @@ export class BattleScene extends Phaser.Scene {
     paintZones(this.view, this.safeZoneGfx, this.dangerZoneGfx, this.grid, this.campfire, this.front);
     // The tarpit ring renders in Deployment too (D64) — position around the tax.
     this.refreshAuras();
+    // The extraction exit span (D97) — painted in deploy and kept through battle.
+    this.drawExitZone();
+  }
+
+  /**
+   * Tint the **extraction exit span** (D97) — the "escape route" a freed prisoner must reach
+   * to win by extraction (the finale's second win-path). A static gold overlay shown only when
+   * the staged encounter carries an `extraction` objective; absent otherwise. Unlike the deploy
+   * safe/danger zones (retired on `battleBegan`), this persists into battle — the escort happens
+   * mid-fight. Lazily created + pushed to `boardObjects`; reset in {@link rebuildBoard} (D96).
+   */
+  private drawExitZone(): void {
+    const ext = this.loop.staged?.objectives.find((o) => o.spec.kind === "extraction")?.spec;
+    if (!ext?.span?.length) return;
+    if (!this.exitZoneGfx) {
+      this.exitZoneGfx = this.add.graphics().setDepth(0.42);
+      this.boardObjects.push(this.exitZoneGfx);
+    }
+    this.exitZoneGfx.clear();
+    for (const t of ext.span) this.view.fillTile(this.exitZoneGfx, t, COLOR.exit, 0.22, COLOR.exit);
+  }
+
+  /** True when the staged encounter carries an extraction objective (the finale, D97). */
+  private hasExtraction(): boolean {
+    return !!this.loop.staged?.objectives.some((o) => o.spec.kind === "extraction");
   }
 
   /**
@@ -1237,7 +1266,7 @@ export class BattleScene extends Phaser.Scene {
     this.situationCard.resetView("camp"); // foes are on the board now — default the situation card back to Camp
     this.refreshSituationCard();
     this.drawRail(false); // swap the deploy rail (player + net) for the full combat roster
-    this.legendStrip.setItems(BATTLE_LEGEND);
+    this.legendStrip.setItems(this.hasExtraction() ? [...BATTLE_LEGEND, EXIT_LEGEND_ITEM] : BATTLE_LEGEND);
     this.clearActionButtons();
     this.theftAttempts.clear();
     this.goldStolen = 0;

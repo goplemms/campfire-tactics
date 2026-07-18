@@ -4,7 +4,7 @@ import { TileGrid } from "./grid";
 import { Battle } from "./turn";
 import type { EncounterDef } from "./generation";
 import type { AuthoredEncounter } from "./authored";
-import type { ArmedObjective, ObjectiveStatus } from "./objectives";
+import type { ArmedObjective, ObjectiveStatus, ObjectiveSpec } from "./objectives";
 import {
   stageEncounter,
   encounterOutcome,
@@ -133,8 +133,12 @@ describe("stageEncounter — one shape for both sources (D50)", () => {
 
 // --- encounterOutcome truth table (D50/D51) ---------------------------------
 
-function fakeObjective(required: boolean, status: ObjectiveStatus): ArmedObjective {
-  return { spec: { id: status, kind: "eliminate-all", required, label: status }, status: () => status, progress: () => undefined };
+function fakeObjective(
+  required: boolean,
+  status: ObjectiveStatus,
+  kind: ObjectiveSpec["kind"] = "eliminate-all",
+): ArmedObjective {
+  return { spec: { id: `${kind}:${status}`, kind, required, label: status }, status: () => status, progress: () => undefined };
 }
 
 function staged(players: Unit[], enemies: Unit[], objectives: ArmedObjective[]): StagedEncounter {
@@ -151,25 +155,62 @@ describe("encounterOutcome (D50/D51)", () => {
     expect(encounterOutcome(s)).toBe("win");
   });
 
-  it("objective-failure: a required objective failed (enemies may still stand)", () => {
-    const s = staged([hero()], [foe()], [fakeObjective(true, "failed")]);
+  it("objective-failure: a required CONSTRAINT failed (enemies may still stand)", () => {
+    // Only a constraint (closing-gate) can fail into objective-failure; a goal never fails (D97).
+    const s = staged([hero()], [foe()], [fakeObjective(true, "failed", "closing-gate")]);
     expect(encounterOutcome(s)).toBe("objective-failure");
   });
 
-  it("wipe: no combat-capable player remains (precedence over a failed objective)", () => {
+  it("wipe: no combat-capable player remains (precedence over a failed constraint)", () => {
     const down = hero();
     down.alive = false;
-    const s = staged([down], [foe()], [fakeObjective(true, "failed")]);
+    const s = staged([down], [foe()], [fakeObjective(true, "failed", "closing-gate")]);
     expect(encounterOutcome(s)).toBe("wipe");
   });
 
-  it("pending: a required objective is still undecided", () => {
+  it("pending: a required goal is still undecided", () => {
     const s = staged([hero()], [foe()], [fakeObjective(true, "pending")]);
     expect(encounterOutcome(s)).toBeUndefined();
   });
 
   it("an optional failure does NOT downgrade a win", () => {
-    const s = staged([hero()], [], [fakeObjective(true, "met"), fakeObjective(false, "failed")]);
+    const s = staged([hero()], [], [fakeObjective(true, "met"), fakeObjective(false, "failed", "closing-gate")]);
+    expect(encounterOutcome(s)).toBe("win");
+  });
+
+  // --- OR-victory: goals are OR'd, constraints AND'd (D97/C2) ----------------
+
+  it("OR-victory: ANY required goal met wins, even with a sibling goal unmet", () => {
+    // Two goals (frontal eliminate-all + extraction). Extraction met, elimination still pending.
+    const s = staged([hero()], [foe()], [
+      fakeObjective(true, "pending", "eliminate-all"),
+      fakeObjective(true, "met", "extraction"),
+    ]);
+    expect(encounterOutcome(s)).toBe("win");
+  });
+
+  it("OR-victory: no goal met yet ⇒ still pending", () => {
+    const s = staged([hero()], [foe()], [
+      fakeObjective(true, "pending", "eliminate-all"),
+      fakeObjective(true, "pending", "extraction"),
+    ]);
+    expect(encounterOutcome(s)).toBeUndefined();
+  });
+
+  it("a goal met but a required constraint still pending ⇒ not yet a win", () => {
+    // eliminate-all met, but the closing-gate constraint hasn't resolved — constraints AND.
+    const s = staged([hero()], [], [
+      fakeObjective(true, "met", "eliminate-all"),
+      fakeObjective(true, "pending", "closing-gate"),
+    ]);
+    expect(encounterOutcome(s)).toBeUndefined();
+  });
+
+  it("a goal met AND every constraint met ⇒ win", () => {
+    const s = staged([hero()], [], [
+      fakeObjective(true, "met", "extraction"),
+      fakeObjective(true, "met", "closing-gate"),
+    ]);
     expect(encounterOutcome(s)).toBe("win");
   });
 });

@@ -130,6 +130,8 @@ export const COLOR = {
   reach: 0xc87a32,
   /** Intel panels, recruiter / merchant / pinned accents — warm tan (was blue). */
   info: 0xc09a5a,
+  /** Extraction exit span (D97) — a cool teal, distinct from every warm zone wash. */
+  exit: 0x46a6c8,
   /** Capture-net cage FX. */
   net: 0xe6d8b0,
 

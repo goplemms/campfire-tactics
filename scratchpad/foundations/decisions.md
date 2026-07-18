@@ -3719,6 +3719,187 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D97 — The dual-OR finale: goals are OR'd, the Prison Assault liberates by frontal OR extraction
+
+- **Status:** Decided + **built & green** (2026-07-16), issue **#169**. Realizes the arc plan's
+  **C2** (OR-victory) at its use site — the finale both Wave-0 arms (D92) converge on. Consumes
+  **D50** (the objective model), **D52** (captives / recruit-on-win), **D90** (the lockpick cell).
+- **Context (why now):** Wave-0 (D92) shipped two topology-exclusive arms — **sustain** (frees the
+  Medic) and **infiltration** (earns the Thief + the D90 lockpick taste) — that reconverged on a
+  **stub finale**. So the arms' divergent investment never actually *cashed out*: both dead-ended
+  into the same holdout fight. The finale is where the choice was designed to pay off differently,
+  and it needs the one mechanic the arc plan deferred "until its consumer exists": **C2**, an
+  OR-victory. `encounterOutcome` was **AND-only** (`required.every(met)`), so it supported exactly
+  one win-path.
+- **Decision — split required objectives into *goals* (OR'd) and *constraints* (AND'd).** The
+  objective model already separated a **goal** (`eliminate-all` — *met* = a win) from a
+  **constraint** (`closing-gate` — *failed* = a loss); only the classifier was single-path. C2 is
+  the small, reusable generalization: `encounterOutcome` now = `wipe → any required constraint
+  failed → (every required constraint met AND **any** required goal met) = win`. **Goals OR, constraints
+  AND.** A goal **never fails** (an unmet goal is just pending), so an abandoned rescue can't *lose*
+  the fight — the frontal path stays open. Single-goal encounters are byte-unchanged (the OR over one
+  goal is the old AND). `isGoalKind`/`GOAL_KINDS` name the split; `withDefaultGoal` now injects the
+  default elimination goal only when **no** goal kind is present (an extraction-only encounter is legal).
+- **The new goal kind — `extraction`** (D97). Met when **every** tagged escortee (a freed prisoner,
+  `escort: ObjectiveTag`) is **alive, uncaptured, and standing on an `exit` span**. It reuses the
+  exact primitives `closing-gate` already had — an `ObjectiveTag` (who) + a `span` of tiles (where) +
+  the `onSpan` reader — so no new movement machinery. `progress()` reports the freed-and-at-exit
+  fraction for the HUD. This is the honest **escort-to-exit** extraction the arc plan's **C1** demands
+  (not a cell-open flag-flip); the *full* extraction/interior-deploy/alarm rework stays the **parked
+  deployment deep-dive** — the finale uses the lean version on shipped rails (home-edge deploy, the
+  D52 captive + D90 lockpick + normal movement).
+- **The finale — The Prison Assault** (`hollow-mill.ts`, replaces `STUB_FINALE`). A fortified garrison
+  (the real brawler — the softened Wagon/Outer-Yard captains were warm-ups) **plus two cell prisoners**
+  (`role: "prisoner"`, `release: lockpick`) and an **exit span** (the home edge — the way in is the way
+  out). Two OR'd goals: **`eliminate-all`** (frontal, any party) and **`extraction`** (free the cells +
+  walk the prisoners to the exit — Thief-only, since only a Thief picks the locks, **C4**). Either wins;
+  a non-Thief party simply can't open the cells so extraction stays pending and it wins frontally. The
+  prisoners **recruit on the win either way** (recruit-on-win is capability-blind, D52) — the Thief's
+  edge is the *quieter route to the same liberation* (a win with the garrison left standing), not an
+  exclusive recruit. The eliminate-all goal is listed **explicitly** — with `extraction` now a goal,
+  the default is no longer injected, and a frontal party must have its win-path named.
+- **Render (`BattleScene`):** the objective check-list already rendered generically, so the extraction
+  row (label + freed/at-exit %) shows for free. The one new surface is the **exit-span tint** — a gold
+  "escape route" overlay (`drawExitZone`, painted in deploy and **kept through battle** since the escort
+  is mid-fight; the deploy safe/danger zones retire on `battleBegan`, this does not). `exitZoneGfx` is a
+  lazily-created cached field, so per **D96** it is **reset in `rebuildBoard()`** (destroy + `undefined`)
+  — the freeze-on-re-entry discipline, honored up front.
+- **Red-team outcomes folded in:** (1) a *failed goal* can no longer trigger objective-failure — that
+  path is constraint-only now; the staging truth-table test was corrected to the new semantics (a goal
+  never fails). (2) The **all-prisoners-must-survive-and-exit** reading was chosen over "extract whoever
+  you saved" — it avoids the degenerate where downing every prisoner makes extraction *vacuously* met,
+  and gives the escort real "keep them alive" tension; a lost prisoner leaves it *pending* (fall back to
+  frontal), never *failed*. (3) The finale is a **new player-facing surface** (the D92/#168 cautionary
+  tale) — so a **`#scene=prison-assault` scenario** (a pure-data mirror, D91, NOT an import of the live
+  finale, keeping the registry side-effect-free) + an **extended `e2e-scenario`** step both arms through
+  the real headless scene (exit-zone paints · both goal rows render · the Thief extracts to a garrison-
+  standing win · the frontal arm's cells hold, C4).
+- **Build (one pass, on `claude/verify-memento-plugin-a7u52w`):** core `objectives.ts` (the `extraction`
+  kind + `isGoalKind`/`GOAL_KINDS` + `withDefaultGoal`) & `staging.ts` (the OR/AND classifier);
+  `hollow-mill.ts` (`PRISON_ASSAULT` replaces the stub); `scenarios/prison-assault.ts` + registry;
+  `BattleScene.drawExitZone`. Tests: `objectives.test` (extraction arms/reads/pending/never-fails),
+  `staging.test` (the OR-victory truth table), `hollow-mill.test` + `wave0-arc.test` (both finale
+  win-paths, end-to-end extraction with a real prestiged Thief), `scenario.test`, barrel surface.
+- **Guards:** tsc · vitest (**1153**) · build · `sim` (digest unchanged — the naive bot still completes
+  the finale frontally, obj-fail 0) · e2e (deploy 73 + **scenario 33** + second-battle 6 + arc 9, no
+  page errors) · audit:visual (0/14) · audit:challenge (7/7). `core/` free of Phaser/DOM/`Math.random`.
+- **Challenged (survived, 2026-07-16).** Ran the break-cases, not the happy path — all guarded now:
+  (1) **freed prisoners are walkable** — the scariest assumption (the tests *teleport* prisoners to
+  the exit): verified `standingOrder:"defend"` is inert (no registry posture; the scene auto-runs
+  **only** enemy turns), so a freed prisoner is player-controlled — the extraction path is real, not
+  just resolvable. (2) **No vacuous extraction** — downing every prisoner leaves it *pending*, never a
+  win (dead escortees stay in the tag set, so `every(alive)` fails). (3) **Wipe stays coherent** — a
+  bound cell doesn't keep the side alive (party-dead + cuffed = wipe), but a *freed* prisoner is a full
+  party member (staves off the wipe, can win by extraction alone — freed = recruited). (4) **The one
+  non-structural risk (F):** extraction is polled from battle-start, so a prisoner authored *on* the
+  exit could instant-win with zero combat — the shipped finale is safe only by **geometry** (cells at
+  col 8, exit at col 0). Pinned with a guard (`no prisoner starts on/near the exit`) so a re-placement
+  can't silently make it a walkover. (5) **Pre-existing footgun (not a D97 regression):** an
+  all-*optional* objective list instant-wins at turn 0 — `withDefaultGoal` suppresses the default when
+  any goal kind (even optional) is present; left as-is (the shipped goals are required) and noted.
+- **Forces no parked system** (full extraction/C1 · interior-deploy/C5 · alarm · any-of beyond the two
+  goals) — the signal it's correctly scoped. **Reuses:** **D50** (objectives), **D52** (captives /
+  recruit-on-win), **D90** (the lockpick cell), **D91** (the scenario harness), **D96** (the
+  `rebuildBoard` reset discipline). **Superseded by:** —
+
+---
+
+## D98 — The visual level editor + the JSON content pipeline
+
+- **Status:** Decided + **building in milestones** (2026-07-16). Owner-driven tooling call after the
+  D97 finale — authoring `AuthoredEncounter`s as TS objects means hand-computing every col/row. Two
+  parts: a **visual editor** (author faster) and a **file-based content pipeline** (a home for its
+  output). MVP-first (curious-builder): the smallest working slice, then grow.
+- **Context (why):** the finale was hand-authored coordinate-by-coordinate. A visual editor removes
+  that pain; but an editor is only useful if its output has somewhere to *go*. The pipeline is the
+  load-bearing enabler — build it first so every future editor brush just adds fields that flow through.
+- **Decision — Part 1: the content pipeline (the chosen "location the game pulls from").** Levels are
+  `.json` files (a **serialized `AuthoredEncounter`** — it's already pure data, no new format) under
+  `src/content/levels/`, **glob-loaded at build time** (`import.meta.glob`, eager) into a registry keyed
+  by `id`, **validated fail-loud** (`validateLevel`: shape + enemy-template resolution + objective kinds).
+  A dropped-in file is auto-discovered — **no registry edit**. Playable standalone via a new **`#level=<id>`**
+  route that wraps the level in a throwaway single-arm scenario and **reuses the D91 one-node-run boot**
+  (`buildScenarioRun`) — so it renders through the same `BattleScene` path as `#scene`; bare `#level` is a
+  picker. **No runtime fetch, no backend** — build-time + deterministic, which the `core/`-purity ethos
+  wants. The hard constraint that shaped this: a **browser editor can't write repo files**, so the loop is
+  always *editor exports `.json` → drop in `content/levels/` → commit → glob picks it up* (a dev-server
+  write-back could later remove the manual drop, in dev only). **Layering:** `content/` is Vite-aware
+  (uses `import.meta.glob`), so it sits **between** `core/` (pure) and `game/` — not in core.
+- **Decision — Part 2: the visual editor.** An **`#editor`** Phaser scene that **reuses `CombatView`**
+  (render) + **`worldToTile`** (click-pick) to paint a draft `AuthoredEncounter` by clicking tiles, with a
+  live DOM export panel (the D95 panel idiom). Built in milestones: **M1 (done)** — grid render, click a
+  tile to toggle a **blocked wall**, live JSON export + Copy. **M2 (done)** — the brush palette (wall ·
+  spawn · enemy by template · captive reach/lockpick · exit · trap · erase) + adjustable grid + live
+  validation + a **Download `.json`** button emitting a folder-ready file. The draft→encounter
+  serialization is a **pure, unit-tested** module (`editor-draft.ts`) proving the editor emits
+  pipeline-valid, playable levels (incl. the D97 extraction shape when exit tiles + prisoners are placed).
+  **M3** — a pasteable-literal export + **import** to edit existing levels + richer objective authoring.
+  **M4** — docs + guard sweep. The full loop now runs: paint in `#editor` → Download `.json` → drop in
+  `content/levels/` → play at `#level=<id>`.
+- **Scoped (JIT):** **single standalone encounters** only — **not** the expedition **map/DAG** (slotting a
+  level into the Hollow Mill arc stays a deliberate wiring step / a future *map editor*, so the curated
+  finale can't be silently replaced by whatever JSON appears); DOM palette + Phaser board; JSON = raw
+  serialized `AuthoredEncounter`.
+- **No silent drift from the model (D98 hardening).** The editor must track the game's grid/encounter
+  model, not hand-copy it. Audited: the enemy roster (`ENEMY_IDS`) derives from the core templates, the
+  export is typed `AuthoredEncounter` (tsc breaks on any model change), the grid reuses `TileGrid` +
+  `CombatView`. Two hand-copies were removed: (1) the objective-kind list — `ObjectiveKind` is now
+  **derived from a canonical `OBJECTIVE_KINDS`** array in core, which `validateLevel` imports (a kind
+  added to the game is authorable immediately; a `levels.test` case pins it); (2) the board-centering
+  formula — extracted to **`CombatView.centerOrigin`**, shared by the battle and the editor, so a
+  grid/tile-metric change reaches both (byte-identical origin — deploy-battle e2e unchanged).
+- **Guards:** `content/levels.test` (glob loads/validates/plays + kind-list tracks core), `editor-draft.test`
+  (draft → valid/playable), **`test:e2e:editor`** (palette paints + export validates), **`test:e2e:level`**
+  (a glob level renders + the picker). tsc · build · vitest (**1164**). `core/` change is the single-source
+  `OBJECTIVE_KINDS` only; all editor code is `content/`/`game/`.
+- **Reuses:** **D91** (the scenario one-node-run boot + `#scene` harness), **D50/D52** (the
+  `AuthoredEncounter` shape + captives), **D95** (the DOM overlay-panel idiom), **D96** (the
+  cached-GameObject reset discipline, for the editor scene). **Superseded by:** —
+
+---
+
+## D99 — The finale is a RESCUE: keep extraction, defer the deploy-side flank (refines D97)
+
+- **Status:** Decided (design) + **building standalone** (2026-07-17). Owner reframe; survived a
+  `decision-adversary` red-team. Refines the D97 finale; the flank half is deferred to its own session.
+  Handoff: [`finale-authoring-handoff.md`](finale-authoring-handoff.md).
+- **Context (why):** D97 shipped the finale as a "storm **vs.** extract" dual-OR. The owner reframed the
+  *intent*: the mission is a **prison rescue** — free a **group of captives** (some are **named
+  characters**, seeds for later campaigns). Separately, the owner wanted the infiltration arm's payoff to
+  become a **deployment advantage** (come in from a different side with Intel), realizing the arc plan's
+  parked **C5 (deploy-inside)** — the game's signature phase.
+- **Decision — Part 1: the finale is a rescue, one intent / two means.** Keep the D97 **dual-OR** (C2),
+  but reframe both goals as the *same rescue*: **extraction** (escort the captive group out) is the
+  thematic **heart**; **eliminate-all** (clear the garrison) *also* completes the rescue (the captives are
+  safe). Extraction binds `escort: {role:"prisoner"}` to the **whole group** (all must be out). Prisoners
+  are D52 captives (recruit-on-win), named as placeholders to graduate into campaign characters later.
+- **Decision — Part 2: the infiltration payoff is a DEPLOY-SIDE that SERVES extraction — and it is
+  DEFERRED.** A red-team killed the tempting version ("*replace* extraction with a better deploy spot"):
+  that trades a **distinct victory** (win with the garrison standing) for a **cheaper identical victory**,
+  and strands C2's only live consumer. The **kept** design: extraction stays the distinct win, and the
+  Intel-gated flank *insert near the cells* is what finally makes escorting the group **viable** (fixing
+  the real flaw — the sim never takes extraction because the full-board escort is too slow). The flank is
+  built **on top**, in its own session, **not now**.
+  - **Load-bearing red-team caveat (F1) for that session:** the deploy net has a **single** home-edge
+    campfire, so a *meaningful* flank (deep in enemy ground) can't be a *safe* insert without a **second
+    protection source = the full parked C5**. The **lean** version is therefore a **binary-unlock alternate
+    spawn set** (Intel ⇒ you *may* deploy from the flank; its risk is natural net-exposure — **no** "safe
+    informed vs. risky blind" claim, which is the part that forces the deep-dive). Reuses the existing
+    `opts.playerSpawns` staging override + a runloop flag-check + a deploy-time choice + a new visual e2e.
+  - **Do NOT** make extraction easy by placing cells near the exit — that re-arms D97's challenge-F
+    walkover footgun. The flank (a *start* position), not the *cell* position, is the sanctioned fix.
+- **Built so far (standalone, arc untouched):** `content/levels/the-rescue.json` (`#level=the-rescue`) —
+  the group rescue, authored via the D98 pipeline by the `level-author` agent. Iterated standalone; the
+  live arc finale stays D97's `PRISON_ASSAULT` until **promotion** (an owner-directed step) once the flank
+  + the map-creation expansion (roadmap) settle.
+- **Guards:** `levels.test` proves both rescue win-paths (incl. *all three* captives must be extracted, not
+  two); `test:e2e:level` boots `#level=the-rescue`. tsc · vitest (**1166**) · build green. `core/` untouched.
+- **Reuses:** **D97** (the dual-OR extraction classifier + `extraction` kind), **D98** (the editor +
+  pipeline + `level-author` agent), **D52** (captives / recruit-on-win). **Parks:** the arc plan's **C5**
+  deployment deep-dive (now the deferred flank session). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

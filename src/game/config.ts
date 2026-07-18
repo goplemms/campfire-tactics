@@ -5,6 +5,8 @@ import { BattleScene } from "./scenes/BattleScene";
 import { ExpeditionBootScene, HollowMillBootScene } from "./boot/demos";
 import { BattleBootScene, OverworldBootScene, JumpBootScene, DebugBootScene, ScenarioBootScene } from "./boot/debug";
 import { ReproBootScene } from "./boot/repro";
+import { LevelBootScene } from "./boot/level";
+import { EditorScene } from "./scenes/EditorScene";
 import { COLOR } from "./theme";
 
 // Standalone **Hollow Mill** mode (M14/D44/D52): `#demo` boots the authored
@@ -46,6 +48,12 @@ const isScene = base === "scene" || base.startsWith("scene=");
 // `#repro` (debug, D-repro): re-enter the last captured run state (localStorage) — the
 // same-browser twin of the debug menu's cross-machine Restore box (see repro-capture.ts).
 const isRepro = base === "repro";
+// `#editor` (dev-only, D98): the visual level editor — paint a draft AuthoredEncounter by
+// clicking tiles and export it, on the same CombatView the battle renders with.
+const isEditor = base === "editor";
+// `#level` (D98): play a JSON content level from `content/levels/`. `#level=<id>` boots that
+// level standalone (reusing the scenario one-node-run); bare `#level` lists every loaded level.
+const isLevel = base === "level" || base.startsWith("level=");
 
 /** Phaser game configuration for the web build. */
 export const gameConfig: Phaser.Types.Core.GameConfig = {
@@ -54,7 +62,11 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   width: 800,
   height: 600,
   backgroundColor: COLOR.bg,
-  scene: isRepro
+  scene: isEditor
+    ? [EditorScene]
+    : isLevel
+    ? [LevelBootScene, GuildScene, OverworldScene, BattleScene]
+    : isRepro
     ? [ReproBootScene, GuildScene, OverworldScene, BattleScene]
     : isDebug
     ? [DebugBootScene, GuildScene, OverworldScene, BattleScene]

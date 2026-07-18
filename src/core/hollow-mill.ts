@@ -7,8 +7,8 @@
  * (the universal market mechanic introduced route-neutrally), then a **topology-exclusive fork**
  * — a genuine either/or the map (not an assertion) enforces (arc-plan **C8**): the two arms
  * share no nodes and reconverge **only** at the terminal finale, so committing to one makes the
- * other unreachable. It reaches a **stub finale** so the run is completable (the dual-OR finale
- * is #169).
+ * other unreachable. The finale is **The Prison Assault** (D97/#169) — a **dual-OR** win (storm
+ * the garrison OR pick the cells and extract the prisoners), the arms' investment cashing out.
  *
  * Topology:
  * ```
@@ -17,7 +17,7 @@
  *         Sustain:       L5 Prison Wagon (frees the Medic) ─► L6 Rest ───────────────────┐
  *         Infiltration:  L5 Guild-contact (C7 beat-1) ─► L6 Den (relic) ─► L7 Outer Yard  │
  *                          ─► L8 Guild-rite (C7 beat-2 → Thief) ─► L9 Cuffed Cell (D90) ──┤
- *      ─► L10 stub finale ◄──────────────────────────────────────────────────────────────┘
+ *      ─► L10 Prison Assault (dual-OR finale, D97) ◄────────────────────────────────────┘
  * ```
  * The **infiltration arm** carries the C3 job-XP fights (Den + Outer Yard tuned so guaranteed
  * objective-XP clears the Scout to the prestige floor by the rite) and the D90 lockpick cell
@@ -33,6 +33,7 @@
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
 
+import type { GridCoord } from "./iso";
 import type { UnitSpec } from "./units";
 import { getJob, type JobId } from "./jobs";
 import type { AuthoredEncounter } from "./authored";
@@ -329,25 +330,86 @@ export const THIEVES_DEN: AuthoredEncounter = {
 };
 
 /**
- * The stub finale (L7) — a placeholder so the run is completable. Layers 6–10 are NOT
- * designed; this is a minimal holdout fight, NOT the authored finale. Replace when those
- * layers are designed.
+ * The finale's **cell prisoners** (D97) — the liberation objective's escortees. Each is a
+ * `release: lockpick` captive (only the Thief picks the cells) tagged `role: "prisoner"` so
+ * the `extraction` objective binds to them. Placeholder identities — a JIT content detail.
  */
-export const STUB_FINALE: AuthoredEncounter = {
-  id: "stub-finale",
-  name: "The Mill (stub finale)",
-  cols: 8,
+const CELL_PRISONER_A: UnitSpec = member("prisoner-a", "Gaunt Prisoner", "soldier", {
+  role: "prisoner",
+  standingOrder: "defend",
+});
+const CELL_PRISONER_B: UnitSpec = member("prisoner-b", "Shackled Prisoner", "soldier", {
+  role: "prisoner",
+  standingOrder: "defend",
+});
+
+/**
+ * The finale **exit span** (D97) — the left/home edge the freed prisoners must be escorted
+ * back to. The party deploys here (the way in *is* the way out); the extraction goal is met
+ * only when every freed prisoner stands on one of these tiles.
+ */
+const FINALE_EXIT: GridCoord[] = [
+  { col: 0, row: 0 }, { col: 0, row: 1 }, { col: 0, row: 2 },
+  { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 0, row: 5 },
+];
+
+/**
+ * L10 — **The Prison Assault** (D97): the finale both arms converge on. "Liberate the prison"
+ * is a genuine **either/or** win (C2), the arms' divergent investment finally cashing out:
+ *
+ * - **Frontal (any party)** — storm the fortified garrison (`eliminate-all`). The default any
+ *   party can always take; the softened road captains (Wagon / Outer Yard) were the *warm-ups*,
+ *   this is the real brawler at template strength.
+ * - **Extraction (Thief party)** — pick the cells (`release: lockpick`, Thief-only) and **escort
+ *   the freed prisoners to the exit** ({@link FINALE_EXIT}). A win *without* clearing the
+ *   garrison — the deployment-pillar headline: the freed body deep in enemy ground, walked out.
+ *
+ * The two goals are **OR'd** by {@link "./staging".encounterOutcome} — either wins. A non-Thief
+ * party simply can't open the cells, so extraction stays pending and it wins frontally (C4). The
+ * prisoners recruit on the win either way (recruit-on-win is capability-blind, D52) — you free
+ * them whichever path you take; extraction is the *harder, quieter* route to the same liberation.
+ */
+export const PRISON_ASSAULT: AuthoredEncounter = {
+  id: "prison-assault",
+  name: "The Prison Assault",
+  cols: 9,
   rows: 6,
-  blocked: [{ col: 4, row: 2 }],
+  // Interior walls — cell blocks the party threads on the way in (and the prisoners on the way out).
+  blocked: [{ col: 4, row: 2 }, { col: 4, row: 3 }, { col: 6, row: 0 }, { col: 6, row: 5 }],
   playerSpawns: [
     { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
   ],
   enemies: [
-    { templateId: "bandit-captain", pos: { col: 7, row: 2 }, id: "mill-captain", role: "captain" },
-    { templateId: "bandit-thug", pos: { col: 6, row: 1 } },
-    { templateId: "bandit-thug", pos: { col: 6, row: 4 } },
+    // The prison garrison — the finale brawler (the warden, full-strength captain) + the watch.
+    { templateId: "bandit-captain", pos: { col: 8, row: 2 }, id: "prison-warden", role: "captain" },
+    { templateId: "bandit-bowman", pos: { col: 8, row: 4 } },
+    { templateId: "bandit-thug", pos: { col: 7, row: 1 } },
+    { templateId: "bandit-thug", pos: { col: 7, row: 4 } },
+    { templateId: "bandit-cutthroat", pos: { col: 7, row: 3 } },
   ],
-  reward: { gold: 150, materials: [{ id: "salve", count: 1 }], xp: 60 },
+  // Two cells in the far corners — `release: lockpick` (Thief-only), tagged for the extraction goal.
+  captives: [
+    { spec: CELL_PRISONER_A, pos: { col: 8, row: 0 }, release: { kind: "lockpick" } },
+    { spec: CELL_PRISONER_B, pos: { col: 8, row: 5 }, release: { kind: "lockpick" } },
+  ],
+  rumors: [
+    "They say the mill's heart is a gaol — the vanished carters are penned behind the garrison wall.",
+    "Two cells still hold the living. The warden keeps the keys, and the watch never fully sleeps.",
+    "The locks are old prison iron — no brute-forcing them; only a picked tumbler opens a cell quietly.",
+  ],
+  // The two win-paths (D97): storm the garrison OR free the cells and walk the prisoners out.
+  objectives: [
+    { id: "storm-garrison", kind: "eliminate-all", required: true, label: "Storm the prison — defeat the garrison" },
+    {
+      id: "liberate-prisoners",
+      kind: "extraction",
+      required: true,
+      label: "Free the prisoners and escort them to the exit",
+      span: FINALE_EXIT,
+      escort: { role: "prisoner" },
+    },
+  ],
+  reward: { gold: 200, materials: [{ id: "salve", count: 2 }], xp: 90 },
 };
 
 // --- The hand-built map (D52) — the layered DAG -----------------------------
@@ -390,8 +452,9 @@ function hollowMillMap(): OverworldMap {
     outerYard: node("outerYard", 7, "combat", ["guildRite"], { authoredId: OUTER_YARD.id }), // C3 fight #2
     guildRite: node("guildRite", 8, "event", ["cuffedCell"], { eventId: "guild-rite" }), // C7 beat-2 (fire → Thief)
     cuffedCell: node("cuffedCell", 9, "combat", ["finale"], { authoredId: CUFFED_CELL.id }), // D90 taste's live home
-    // L10 — the terminal stub finale (shared endpoint; the dual-OR approach is #169).
-    finale: node("finale", 10, "combat", [], { authoredId: STUB_FINALE.id }),
+    // L10 — The Prison Assault: the terminal finale both arms converge on, with the
+    // dual-OR win (storm the garrison OR extract the prisoners), D97.
+    finale: node("finale", 10, "combat", [], { authoredId: PRISON_ASSAULT.id }),
   };
   return {
     seed: "hollow-mill",
@@ -416,7 +479,7 @@ export const THE_HOLLOW_MILL: AuthoredExpedition = registerExpedition({
     [THIEVES_DEN.id]: THIEVES_DEN,
     [OUTER_YARD.id]: OUTER_YARD,
     [CUFFED_CELL.id]: CUFFED_CELL,
-    [STUB_FINALE.id]: STUB_FINALE,
+    [PRISON_ASSAULT.id]: PRISON_ASSAULT,
   },
   bundle: {
     party: HOLLOW_MILL_PARTY,

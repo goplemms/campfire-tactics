@@ -710,13 +710,27 @@ States: `todo` → `in-progress` → `testable` → `done`
 
 </details>
 
-- **Next step:** **M12 is done** (in-browser gate confirmed 2026-06-08 — the four-class
-  combat slice + *The Hollow Mill* demo quest play through end to end; accepted as a
-  solution-iteration checkpoint). On go-ahead, open the PR. The next iteration pass is open
-  (balance numbers / kits into the run flow / fog depth — see the M12 block above). Earlier:
-  **M11 done** (merged PR #12); the **M9/M10** hall-flow + economy gates remain pending
-  in-browser confirmation (code-complete/testable); the run-frame queue still holds the
-  **terminal-ending design** and the **save system + lord game-over** (D27).
+- **Frontier (post-M12):** the demo-expedition line is well past the M12 table above — read
+  `decisions.md` **to D97**. The Hollow Mill's back half is the Wave-0 arc: two topology-exclusive
+  arms (**sustain**/Medic · **infiltration**/Thief, D92) that now converge on a **real dual-OR
+  finale — The Prison Assault (D97/#169)**: win by **storming the garrison** (`eliminate-all`, any
+  party) **OR** by **extraction** (a Thief picks the cells + escorts the prisoners to the exit).
+  C2 (OR-victory) is built as the reusable `isGoalKind` split (goals OR'd, constraints AND'd) + a new
+  `extraction` objective kind; the `STUB_FINALE` is retired.
+- **Current frontier (2026-07-17 — branch `claude/verify-memento-plugin-a7u52w`):** two threads past D97.
+  **(1) Tooling — the level editor + content pipeline (D98):** `#editor` (paint a level, Download JSON) →
+  `content/levels/*.json` glob-loaded → `#level=<id>` plays it; a `level-author` agent + drift-free
+  single-sourcing. **(2) The finale as a RESCUE (D99, refines D97):** free a **group of captives**, dual-OR
+  kept (extraction = the heart, eliminate-all = also completes it). Built standalone as
+  `content/levels/the-rescue.json` (`#level=the-rescue`) — **not yet in the arc**; the live finale stays
+  D97's `PRISON_ASSAULT`. **Read [`finale-authoring-handoff.md`](finale-authoring-handoff.md) + D97–D99
+  before changing the finale.** Guards green: tsc · vitest **1166** · build · e2e (`test:e2e:level`,
+  `:editor`, + the D97 scenario/arc/second-battle suites).
+- **Deferred / next (see the handoff doc):** rename the placeholder captives into named characters; the
+  **flank / repositioning session** (the Intel deploy-side that makes extraction viable — red-teamed,
+  kept-not-replaced, C5-lite); the **map-creation expansion** (bigger/richer boards + more of the
+  `AuthoredEncounter` surface in the editor + import + maybe a map/topology editor — the owner's stated
+  next direction); then **promote The Rescue into the arc**. Older queue: status-model (#171), save-model (#117).
 - **Blockers:** none.
 
 <details><summary>Stale footer (M2-era notes, kept for history)</summary>

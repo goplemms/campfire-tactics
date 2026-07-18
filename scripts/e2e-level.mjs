@@ -61,7 +61,7 @@ async function main() {
         };`);
         console.log("• #level=the-rescue boots the group rescue finale");
         check("the-rescue renders a deployment board", tr.phase === "deployment");
-        check("its garrison + 3 prisoners are staged", tr.enemies === 5 && tr.prisoners === 3);
+        check("its garrison + 3 prisoners are staged", tr.enemies === 8 && tr.prisoners === 3);
         check("it carries the two OR'd goals", tr.goals === "eliminate-all,extraction");
         await g.screenshot(path.join(OUT, "04-the-rescue.png"));
 

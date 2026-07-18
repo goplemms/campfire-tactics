@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LEVELS, getLevel, listLevels, validateLevel, levelToScenario } from "./levels";
-import { buildScenarioRun, encounterOutcome, OBJECTIVE_KINDS } from "../core";
+import { buildScenarioRun, encounterOutcome, OBJECTIVE_KINDS, TileGrid, findPath } from "../core";
 
 /**
  * The JSON level content pipeline (D98) — proves a `.json` in `content/levels/` is
@@ -160,6 +160,24 @@ describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
   it("leaves the shipped finale levels clean (no false positives)", () => {
     expect(validateLevel(getLevel("the-rescue")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
     expect(validateLevel(getLevel("prison-break")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
+  });
+});
+
+describe("the-rescue is a properly-connected prison (structured layout)", () => {
+  it("every captive is reachable from a player spawn — no chokepoint seals a cell", () => {
+    // The win-path tests teleport prisoners to the exit, so they'd stay green even if a wall
+    // edit sealed a cell. This walks the real A* grid to prove each captive can actually be
+    // reached (freed) and escorted out through the chokepoints.
+    const level = getLevel("the-rescue")!;
+    const grid = new TileGrid(level.cols, level.rows, level.blocked);
+    const spawn = level.playerSpawns[0];
+    for (const c of level.captives ?? []) {
+      expect(findPath(grid, spawn, c.pos), `captive "${c.spec.id}" is walled off from the party`).not.toBeNull();
+    }
+    // And the exit span is reachable from the deep cellblock (the escort route back exists).
+    const deepest = level.captives!.reduce((a, b) => (b.pos.col > a.pos.col ? b : a));
+    const exit = level.objectives!.find((o) => o.kind === "extraction")!.span![0];
+    expect(findPath(grid, deepest.pos, exit), "no escort route from the cells to the exit").not.toBeNull();
   });
 });
 

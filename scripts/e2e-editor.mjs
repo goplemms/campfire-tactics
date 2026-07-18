@@ -127,9 +127,9 @@ async function main() {
         await sleep(200);
         const st3 = await g.eval(STATE);
         console.log("• importing the-rescue.json loads it into the draft (no freeze)");
-        check("import loaded the-rescue's 5 enemies", st3.enemies === 5);
+        check("import loaded the-rescue's 8 enemies", st3.enemies === 8);
         check("import loaded the-rescue's 3 captives", st3.captives === 3);
-        check("import loaded the 6-tile exit span", st3.exit === 6);
+        check("import loaded the 7-tile exit span", st3.exit === 7);
         check("import carried the named captive ids (not clobbered)", st3.expCaptiveIds === "wren,cass,bram");
         check("import carried the custom extraction label", st3.expExtractLabel === "Free the captives and escort them to the exit");
         check("import carried the authored reward (260g, not the 50g default)", st3.expReward === 260);
@@ -142,7 +142,7 @@ async function main() {
         await sleep(120);
         const stU = await g.eval(STATE);
         console.log("• the Units drawer lists every placed unit");
-        check("the unit list shows all 8 units (5 enemies + 3 captives)", stU.unitRows === 8);
+        check("the unit list shows all 11 units (8 enemies + 3 captives)", stU.unitRows === 11);
 
         // Inspector: select the warden via its list row, rename it + bump its maxHp (freeze-catch).
         const ed = await g.eval(EDIT);

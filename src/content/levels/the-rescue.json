@@ -1,50 +1,53 @@
 {
   "id": "the-rescue",
   "name": "The Rescue",
-  "cols": 11,
-  "rows": 6,
+  "cols": 13,
+  "rows": 7,
   "blocked": [
-    { "col": 4, "row": 0 },
-    { "col": 4, "row": 1 },
-    { "col": 4, "row": 4 },
-    { "col": 4, "row": 5 },
-    { "col": 8, "row": 0 },
-    { "col": 8, "row": 5 }
+    { "col": 3, "row": 0 }, { "col": 3, "row": 1 }, { "col": 3, "row": 4 }, { "col": 3, "row": 5 }, { "col": 3, "row": 6 },
+    { "col": 6, "row": 2 }, { "col": 6, "row": 3 },
+    { "col": 8, "row": 0 }, { "col": 8, "row": 1 }, { "col": 8, "row": 3 }, { "col": 8, "row": 4 }, { "col": 8, "row": 5 }, { "col": 8, "row": 6 },
+    { "col": 10, "row": 2 }, { "col": 11, "row": 2 }, { "col": 12, "row": 2 },
+    { "col": 10, "row": 4 }, { "col": 11, "row": 4 }, { "col": 12, "row": 4 }
   ],
   "playerSpawns": [
     { "col": 0, "row": 1 },
     { "col": 0, "row": 2 },
     { "col": 0, "row": 3 },
     { "col": 0, "row": 4 },
-    { "col": 1, "row": 2 }
+    { "col": 0, "row": 5 },
+    { "col": 1, "row": 3 }
   ],
   "enemies": [
-    { "templateId": "bandit-captain", "pos": { "col": 7, "row": 2 }, "id": "the-warden", "role": "captain" },
-    { "templateId": "bandit-cutthroat", "pos": { "col": 8, "row": 1 } },
-    { "templateId": "bandit-bowman", "pos": { "col": 8, "row": 4 } },
-    { "templateId": "bandit-thug", "pos": { "col": 6, "row": 3 } },
-    { "templateId": "bandit-thug", "pos": { "col": 7, "row": 4 } }
+    { "templateId": "bandit-thug", "pos": { "col": 4, "row": 2 } },
+    { "templateId": "bandit-cutthroat", "pos": { "col": 4, "row": 3 } },
+    { "templateId": "bandit-cutthroat", "pos": { "col": 5, "row": 1 } },
+    { "templateId": "bandit-bowman", "pos": { "col": 5, "row": 4 } },
+    { "templateId": "bandit-thug", "pos": { "col": 7, "row": 1 } },
+    { "templateId": "bandit-thug", "pos": { "col": 7, "row": 4 } },
+    { "templateId": "bandit-thug", "pos": { "col": 9, "row": 0 } },
+    { "templateId": "bandit-captain", "pos": { "col": 9, "row": 4 }, "id": "the-warden", "role": "captain" }
   ],
   "captives": [
     {
-      "spec": { "id": "wren", "name": "Wren", "side": "player", "pos": { "col": 9, "row": 1 }, "jobId": "medic", "primaryJob": "medic", "role": "prisoner", "speed": 11, "maxHp": 20, "attack": 5, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
-      "pos": { "col": 9, "row": 1 },
+      "spec": { "id": "wren", "name": "Wren", "side": "player", "pos": { "col": 11, "row": 1 }, "jobId": "medic", "primaryJob": "medic", "role": "prisoner", "speed": 11, "maxHp": 20, "attack": 5, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
+      "pos": { "col": 11, "row": 1 },
       "release": { "kind": "lockpick" }
     },
     {
-      "spec": { "id": "cass", "name": "Cass", "side": "player", "pos": { "col": 9, "row": 2 }, "jobId": "hunter", "primaryJob": "hunter", "role": "prisoner", "speed": 11, "maxHp": 20, "attack": 7, "defense": 1, "moveRange": 4, "sightRadius": 6, "attackRange": 3 },
-      "pos": { "col": 9, "row": 2 },
+      "spec": { "id": "cass", "name": "Cass", "side": "player", "pos": { "col": 11, "row": 3 }, "jobId": "hunter", "primaryJob": "hunter", "role": "prisoner", "speed": 11, "maxHp": 20, "attack": 7, "defense": 1, "moveRange": 4, "sightRadius": 6, "attackRange": 3 },
+      "pos": { "col": 11, "row": 3 },
       "release": { "kind": "lockpick" }
     },
     {
-      "spec": { "id": "bram", "name": "Bram", "side": "player", "pos": { "col": 9, "row": 3 }, "jobId": "heavy-knight", "primaryJob": "heavy-knight", "role": "prisoner", "speed": 9, "maxHp": 30, "attack": 7, "defense": 4, "moveRange": 3, "sightRadius": 5, "attackRange": 1 },
-      "pos": { "col": 9, "row": 3 },
+      "spec": { "id": "bram", "name": "Bram", "side": "player", "pos": { "col": 11, "row": 5 }, "jobId": "heavy-knight", "primaryJob": "heavy-knight", "role": "prisoner", "speed": 9, "maxHp": 30, "attack": 7, "defense": 4, "moveRange": 3, "sightRadius": 5, "attackRange": 1 },
+      "pos": { "col": 11, "row": 5 },
       "release": { "kind": "lockpick" }
     }
   ],
   "objectives": [
     { "id": "storm", "kind": "eliminate-all", "required": true, "label": "Clear the garrison — the captives are safe" },
-    { "id": "extract", "kind": "extraction", "required": true, "label": "Free the captives and escort them to the exit", "span": [{ "col": 0, "row": 0 }, { "col": 0, "row": 1 }, { "col": 0, "row": 2 }, { "col": 0, "row": 3 }, { "col": 0, "row": 4 }, { "col": 0, "row": 5 }], "escort": { "role": "prisoner" } }
+    { "id": "extract", "kind": "extraction", "required": true, "label": "Free the captives and escort them to the exit", "span": [{ "col": 0, "row": 0 }, { "col": 0, "row": 1 }, { "col": 0, "row": 2 }, { "col": 0, "row": 3 }, { "col": 0, "row": 4 }, { "col": 0, "row": 5 }, { "col": 0, "row": 6 }], "escort": { "role": "prisoner" } }
   ],
   "reward": { "gold": 260, "materials": [], "xp": 120 }
 }

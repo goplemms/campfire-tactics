@@ -4243,7 +4243,9 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 - **Tests:** the `lockGateOnGrid` unit test flipped from "restores durability" to "KEEPS its accumulated
   damage" (and its old form was found to have passed for the wrong reason — it damaged an *open*,
   non-breakable door, so the restore line masked a no-op); plus a battle-level `D107` case (batter → lever
-  open → lever re-seal keeps the damage → one more hit finishes it). No new exports.
+  open → lever re-seal keeps the damage → one more hit finishes it). Render guard (D92 rule): a new
+  `MICRO_GATE_RESEAL` fixture + `test:e2e:micro` block proves the **HP readout persists** in the real scene
+  across the open→re-seal toggle (stays `11/20`, never a restored `20/20`). barrel: +`MICRO_GATE_RESEAL`.
 - **Remaining:** the other D105 finale-timer items (x-ray-sight-gated batter, untuned HP-vs-garrison, the
   hold-order that disables the loop, the lever-as-skeleton-key). **Superseded by:** —
 

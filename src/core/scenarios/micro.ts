@@ -157,5 +157,29 @@ export const MICRO_GATE_REMNANT: ScenarioConfig = {
   defaultParty: "assault",
 };
 
+// --- gate · re-seal — the lever keeps a battered door's damage, no top-up (D107) ---
+const GATE_RESEAL_ENCOUNTER: AuthoredEncounter = {
+  id: "micro-gate-reseal",
+  name: "Micro · Re-seal Keeps Damage",
+  cols: 5,
+  rows: 3,
+  blocked: [{ col: 3, row: 0 }, { col: 3, row: 2 }], // wall column 3 except the door at (3,1)
+  playerSpawns: [{ col: 2, row: 1 }], // the breaker — adjacent to the door AND beside the lever at (2,0)
+  enemies: [{ templateId: "bandit-thug", pos: { col: 4, row: 1 } }], // a body on the far side → deploy net source
+  captives: [],
+  // A destructible seal, wired to a lever. Batter it partway, toggle it, and the readout must persist.
+  gates: [{ id: "door", pos: { col: 3, row: 1 }, openBy: [{ kind: "destructible", hp: 20 }] }], // one hit (9) → 11, holds
+  levers: [{ id: "switch", pos: { col: 2, row: 0 }, targets: ["door"] }],
+  reward: { gold: 20, materials: [] },
+};
+
+export const MICRO_GATE_RESEAL: ScenarioConfig = {
+  id: "micro-gate-reseal",
+  name: "Micro · Re-seal Keeps Damage",
+  encounter: GATE_RESEAL_ENCOUNTER,
+  parties: { assault: [{ id: "breaker", side: "player", pos: { col: 0, row: 0 }, jobId: "soldier", primaryJob: "soldier", ...STATS }] },
+  defaultParty: "assault",
+};
+
 /** Every micro-interaction fixture, in gallery order — spread into the scenario registry. */
-export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER, MICRO_GATE_DESTRUCTIBLE, MICRO_GATE_ENEMY_BATTER, MICRO_LEVER_SEAL, MICRO_GATE_REMNANT];
+export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER, MICRO_GATE_DESTRUCTIBLE, MICRO_GATE_ENEMY_BATTER, MICRO_LEVER_SEAL, MICRO_GATE_REMNANT, MICRO_GATE_RESEAL];

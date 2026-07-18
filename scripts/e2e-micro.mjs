@@ -158,6 +158,41 @@ const MICROS = [
         pulled.broken === true && pulled.locked === false && pulled.walkable === true && pulled.markers === 1);
     },
   },
+  {
+    id: "micro-gate-reseal",
+    title: "gate · re-seal — the lever keeps a battered door's damage (no top-up, D107)",
+    async run(g) {
+      // hpText reads the durability readout under the ▦ (gateMarkers[1] when the door is locked).
+      const st = await g.bsEval(`
+        const door = s.battle.gates[0];
+        return { locked: door.locked, hp: door.hp,
+                 hpText: s.gateMarkers.length > 1 ? (s.gateMarkers[1].text ?? null) : null };`);
+      check("the seal renders locked with a full 20/20 readout", st.locked === true && st.hp === 20 && st.hpText === "20/20");
+      // Batter it once → it holds at 11, and the readout drops with it.
+      const hit = await g.bsEval(`
+        const door = s.battle.gates[0]; const breaker = s.battle.units.find(u => u.id === "breaker");
+        s.battle.attackGate(door, breaker); // 20 - 9 = 11
+        return { hp: door.hp, hpText: s.gateMarkers.length > 1 ? (s.gateMarkers[1].text ?? null) : null };`);
+      check("one hit chips it to 11/20 (holds)", hit.hp === 11 && hit.hpText === "11/20");
+      // Pull the lever (door locked → opens): the marker drops (an open doorway).
+      const opened = await g.bsEval(`
+        const lever = s.battle.levers[0]; const breaker = s.battle.units.find(u => u.id === "breaker");
+        s.battle.pullLever(lever, breaker);
+        const door = s.battle.gates[0];
+        return { locked: door.locked, hp: door.hp, walkable: s.grid.isWalkable(door.pos), markers: s.gateMarkers.length };`);
+      check("pulling the lever opens the damaged door (hp unchanged, marker drops)",
+        opened.locked === false && opened.hp === 11 && opened.walkable === true && opened.markers === 0);
+      // Pull again (door open → re-seals): it must re-block AND still read 11/20 — NOT a restored 20/20.
+      const resealed = await g.bsEval(`
+        const lever = s.battle.levers[0]; const breaker = s.battle.units.find(u => u.id === "breaker");
+        s.battle.pullLever(lever, breaker);
+        const door = s.battle.gates[0];
+        return { locked: door.locked, hp: door.hp, walkable: s.grid.isWalkable(door.pos),
+                 hpText: s.gateMarkers.length > 1 ? (s.gateMarkers[1].text ?? null) : null };`);
+      check("re-sealing keeps the damage — the readout stays 11/20, no free top-up (no freeze)",
+        resealed.locked === true && resealed.hp === 11 && resealed.walkable === false && resealed.hpText === "11/20");
+    },
+  },
 ];
 
 async function main() {

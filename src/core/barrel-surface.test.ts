@@ -152,6 +152,9 @@
  *     passable-remnant terminal state — the lever can never re-seal it) + `MICRO_GATE_REMNANT`
  *     (`scenarios/micro.ts`, the destroy-then-fail-to-reseal fixture). `Gate.broken` + the
  *     `ICON.gateRemnant` glyph + the scene's remnant render are type-only / `game/` (not core surface).
+ *   - gate re-seal keeps damage (D107): +1 — `MICRO_GATE_RESEAL` (`scenarios/micro.ts`, the batter →
+ *     lever-open → lever-reseal render guard proving the HP readout persists, no top-up). The
+ *     `lockGateOnGrid` durability change is a method-body edit (not a surface delta).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -257,6 +260,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MICRO_GATE_KEYHOLDER",
   "MICRO_GATE_LOCKPICK",
   "MICRO_GATE_REMNANT",
+  "MICRO_GATE_RESEAL",
   "MICRO_LEVER_SEAL",
   "MICRO_SCENARIOS",
   "MIRA_MERCHANT",

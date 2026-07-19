@@ -4499,13 +4499,26 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 - **Scoped (JIT):** standalone **soft play** only — not saved/wired into the arc (that stays the deliberate
   promotion step, D99); the party registry is a handful of presets, not a full roster/loadout builder
   (the seam is there when wanted). No change to combat, the pipeline, or the JSON shape.
-- **Guards:** tsc · build · vitest **1215** · sim · **`test:e2e:editor:playtest`** (new — 14 assertions:
+- **Challenge pass (`memento:challenge`, 2026-07-19, before PR).** Enumerated failure modes and *ran* the
+  dangerous ones in real headless Chrome rather than re-walking the happy path. **Settled by inspection:**
+  `registerExpedition` overwrites (a second playtest of the same id can't throw); the `window` keydown/
+  form-edit listeners are added with the **same bound instance refs**, so `addEventListener` dedups them —
+  a round-trip can't double them (confirmed live: one Ctrl+Z undoes exactly one paint post-return); only
+  `returnToOverworld` starts the overworld, and it's the branch we guard. **Ran (all survived):** a
+  **zero-enemy** draft (validates, boots, resolves — no freeze); an **over-crowded 3×3 board + the 5-body
+  Vanguard** (the "too crowded?" case — deployment surfaces the crush, drives forward, no freeze); the Exit
+  button clickable **over the resolution dimmer**. **One real defect found + fixed:** the Exit button
+  (y=18) **overdrew the deploy state line** ("· reach N · M kits") — moved to y=44 (below the title, clear
+  of the left objectives + right situation card in every phase). The two freeze-prone edge levels were
+  **promoted into the committed guard** so the failure class can't return.
+- **Guards:** tsc · build · vitest **1215** · sim · **`test:e2e:editor:playtest`** (new — **19 assertions**:
   paint → Playtest → BattleScene deploy with the chosen 5-body squad → Exit → editor active with the draft
-  intact + re-validated → a second playtest still boots; **no page errors** = the freeze catch, D92) ·
-  editor (97) · deploy-battle (73) · level (11) · scenario (34) · visual-audit (14) · challenge (7), all
-  green. New code is `game/playtest.ts` + editor/BattleScene wiring; `core/` untouched. **Reuses:** **D98**
-  (editor + pipeline), **D91** (scenario one-node boot + `#level`/`#scene` path), **D109** (the Scenario
-  drawer). **Superseded by:** —
+  intact + re-validated → a second playtest still boots → a zero-enemy board and an over-crowded 3×3+5 board
+  each boot + Exit without freezing; **no page errors** = the freeze catch, D92) · editor (97) ·
+  deploy-battle (73) · level (11) · scenario (34) · visual-audit (14) · challenge (7), all green. New code is
+  `game/playtest.ts` + editor/BattleScene wiring; `core/` untouched. **Reuses:** **D98** (editor +
+  pipeline), **D91** (scenario one-node boot + `#level`/`#scene` path), **D109** (the Scenario drawer).
+  **Superseded by:** —
 
 ---
 

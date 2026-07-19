@@ -415,9 +415,15 @@ export class BattleScene extends Phaser.Scene {
     this.startCombatNode();
   }
 
-  /** The dev-only top-center "Exit Playtest" button (soft-play, when {@link returnTo} is set). */
+  /**
+   * The dev-only top-center "Exit Playtest" button (soft-play, when {@link returnTo} is set). Sits
+   * a line *below* the phase title (y=44, not the title's y=16) so it never overdraws the deploy
+   * state string ("· reach N · M kits") — the top-centre band is clear of the left-anchored title/
+   * objectives and the right-anchored situation card in every phase. Board tops out ~y=230, so no
+   * board overlap even on a small level.
+   */
   private buildExitButton(): void {
-    const btn = new Button(this, this.scale.width / 2, 18, {
+    const btn = new Button(this, this.scale.width / 2, 44, {
       text: "✎ Exit Playtest",
       w: 132,
       h: 26,

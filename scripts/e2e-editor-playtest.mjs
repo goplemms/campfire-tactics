@@ -84,7 +84,7 @@ async function main() {
 
         // Exit Playtest (the canvas button, top-centre) → back to the editor, draft intact.
         console.log("• Exit Playtest returns to the editor with the draft intact");
-        await g.clickScene(400, 18); // the "✎ Exit Playtest" button centre (scale.width/2, 18)
+        await g.clickScene(400, 44); // the "✎ Exit Playtest" button centre (scale.width/2, 44)
         await g.waitForScene("EditorScene", ["draft"]);
         await sleep(500);
         st = await g.eval(WHICH);
@@ -104,6 +104,42 @@ async function main() {
         st = await g.eval(WHICH);
         check("the second playtest boots the BattleScene again", st.battleActive === true);
         check("the second playtest defaults to the standard trio", st.partyLen === 5 || st.partyLen === 3); // picker keeps its last value across the remount
+        await g.clickScene(400, 44); // exit back to the editor before the edge-case levels
+        await g.waitForScene("EditorScene", ["draft"]);
+        await sleep(300);
+
+        // Edge levels the palette can't easily paint but an author WILL playtest — these are the
+        // adversarial break-cases (a functional test invites degenerate boards). Force the draft
+        // directly, boot, assert a live phase + no page errors (the freeze catch), then exit.
+        const forceDraft = (d) => `(() => {
+          const sc = window.game.scene.getScene("EditorScene");
+          Object.assign(sc.draft, ${JSON.stringify(d)});
+          sc.renderBoard(); sc.updateExport();
+          document.querySelector('button[data-tab="Scenario"]').click();
+          return true;
+        })()`;
+        const bootExit = async (label, draft, party, expectLen) => {
+          await g.eval(forceDraft(draft));
+          await sleep(100);
+          if (party) await g.eval(`(() => { const s = document.querySelector('select[data-role="playtest-party"]'); s.value = ${JSON.stringify(party)}; s.dispatchEvent(new Event("change")); })()`);
+          await g.eval(`document.querySelector('button[data-role="playtest"]').click()`);
+          await g.waitForScene("BattleScene", ["run", "loop"]);
+          await sleep(500);
+          const s = await g.eval(WHICH);
+          check(`${label}: booted to a live phase (no freeze)`, s.battleActive === true && s.battlePhase != null);
+          if (expectLen) check(`${label}: fielded the ${expectLen}-body squad`, s.partyLen === expectLen);
+          await g.clickScene(400, 44);
+          await g.waitForScene("EditorScene", ["draft"]);
+          await sleep(300);
+          check(`${label}: Exit returned to the editor`, (await g.eval(WHICH)).editorActive === true);
+        };
+
+        console.log("• edge levels: a zero-enemy board and an over-crowded board don't freeze");
+        // Zero enemies (validates: spawns present, empty enemy array) — a vacuous but bootable level.
+        await bootExit("zero-enemy", { id: "pt-empty", name: "Empty", cols: 6, rows: 6, blocked: [], playerSpawns: [{ col: 0, row: 0 }, { col: 1, row: 0 }], enemies: [], captives: [], exit: [], traps: [], gates: [], levers: [], objectives: [] }, null);
+        // Over-crowded: a 3×3 board with the 5-body Vanguard — the "is this too crowded to field a squad?"
+        // case, which is the whole point of soft-play; deployment must surface the crush, not freeze.
+        await bootExit("crowded-3x3-vanguard-5", { id: "pt-tiny", name: "Tiny", cols: 3, rows: 3, blocked: [], playerSpawns: [{ col: 0, row: 0 }], enemies: [{ templateId: "bandit-thug", pos: { col: 2, row: 2 } }], captives: [], exit: [], traps: [], gates: [], levers: [], objectives: [] }, "Vanguard (5)", 5);
 
         assertNoProblems(g.problems);
       } catch (err) {

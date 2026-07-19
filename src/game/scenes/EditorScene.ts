@@ -41,13 +41,76 @@ type TabName = (typeof TAB_NAMES)[number];
  */
 
 const BOARD_SCALE = 1.3;
-const PANEL_W = 320;
 
 /** Every enemy template the palette offers (authored archetypes first, then the procedural pool). */
 const ENEMY_IDS = [...Object.keys(BANDIT_TEMPLATES), ...ENEMY_TEMPLATES.map((t) => t.id)];
 
 /** A short board label for a placed enemy token. */
 const abbrev = (id: string) => (id.split("-").pop() || id).slice(0, 3);
+
+/** Editor display prefs (D109 slice 2) — chosen live in the dock's options row, persisted per browser. */
+interface EditorPrefs {
+  cardSize: number; // slab-tray card width in px (62 compact · 78 default · 96 large)
+  enemyTint: "red" | "role"; // uniform danger-red ring vs an archetype-role ring (board + cards)
+  captiveVariants: 1 | 2; // one lockpick captive card, or lockpick + reach
+}
+const PREFS_KEY = "campfire-editor-prefs";
+const DEFAULT_PREFS: EditorPrefs = { cardSize: 78, enemyTint: "red", captiveVariants: 1 };
+function loadEditorPrefs(): EditorPrefs {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(PREFS_KEY) : null;
+    const p = raw ? { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<EditorPrefs>) } : { ...DEFAULT_PREFS };
+    // Sanitize each field back to a known-good value — a manually-tampered store or a future
+    // shape change can't wedge the tray with e.g. a "huge" card width or captiveVariants: 9.
+    return {
+      cardSize: [62, 78, 96].includes(p.cardSize) ? p.cardSize : DEFAULT_PREFS.cardSize,
+      enemyTint: p.enemyTint === "role" ? "role" : "red",
+      captiveVariants: p.captiveVariants === 2 ? 2 : 1,
+    };
+  } catch {
+    return { ...DEFAULT_PREFS };
+  }
+}
+function saveEditorPrefs(p: EditorPrefs): void {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* ignore quota/denied */ }
+}
+/** Per-archetype role ring colour for the "role" tint option (the token body stays enemy-red so the
+ *  board's red=enemy convention holds — only the ring carries the archetype). */
+const ROLE_TINT: Record<string, string> = {
+  "bandit-thug": "#e06b6b", "bandit-bowman": "#e0b24a", "bandit-cutthroat": "#c07fd0",
+  "snare-trapper": "#4fb0a0", sapper: "#e0843a", "bandit-captain": "#f0c060",
+  goblin: "#9bd66f", brute: "#e06b6b", archer: "#e0b24a", warg: "#c07fd0", thief: "#9a6bd0",
+};
+const enemyRing = (id: string, tint: EditorPrefs["enemyTint"]): string =>
+  tint === "role" ? (ROLE_TINT[id] ?? "#6b1c1c") : "#6b1c1c";
+/** "#e0b24a" → 0xe0b24a, for a Phaser stroke colour. */
+const hexToNum = (hex: string): number => parseInt(hex.replace("#", ""), 16);
+
+/** A template's base combat stats for a card face (looks up either roster map). */
+function enemyStat(id: string): { hp: number; atk: number } {
+  const t = (BANDIT_TEMPLATES as Record<string, { maxHp: number; attack: number }>)[id] ?? ENEMY_TEMPLATES.find((e) => e.id === id);
+  return t ? { hp: t.maxHp, atk: t.attack } : { hp: 0, atk: 0 };
+}
+/** A display name for an enemy card ("bandit-thug" → "Bandit Thug", "sapper" → "Sapper"). */
+function enemyLabel(id: string): string {
+  return id.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+/** Slab-tray thumbnails (D109 slice 2) — mirror the board's markers so a card reads as the tile it paints. */
+function tokenThumb(glyph: string, fill: string, ring: string, ink: string): string {
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><ellipse cx="15" cy="24" rx="10" ry="4" fill="#00000055"/><circle cx="15" cy="14" r="10" fill="${fill}" stroke="${ring}" stroke-width="2.5"/><text x="15" y="18" text-anchor="middle" font-size="10" font-family="monospace" font-weight="700" fill="${ink}">${glyph}</text></svg>`;
+}
+function glyphThumb(g: string, color: string): string {
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><text x="15" y="22" text-anchor="middle" font-size="20" font-weight="700" fill="${color}">${g}</text></svg>`;
+}
+function blockThumb(): string {
+  return `<svg width="34" height="30" viewBox="0 0 34 30"><polygon points="17,3 32,11 17,19 2,11" fill="#7a6450" stroke="#1c130c"/><polygon points="2,11 17,19 17,27 2,19" fill="#382b1e" stroke="#1c130c"/><polygon points="32,11 17,19 17,27 32,19" fill="#52412f" stroke="#1c130c"/></svg>`;
+}
+function lineThumb(): string {
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><line x1="5" y1="24" x2="25" y2="6" stroke="#c8a24a" stroke-width="3" stroke-linecap="round"/></svg>`;
+}
+function rectThumb(): string {
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><rect x="6" y="8" width="18" height="14" fill="none" stroke="#c8a24a" stroke-width="2.5"/></svg>`;
+}
 
 export class EditorScene extends Phaser.Scene {
   private view!: CombatView;
@@ -80,8 +143,15 @@ export class EditorScene extends Phaser.Scene {
   /** Auto-increment counters for object ids (gate-1, lever-1, …). */
   private objectSeq = 0;
 
-  // DOM overlay (the D95 panel idiom).
+  // DOM overlay (the D95 panel idiom). The panel now mounts in-flow inside {@link dock}, a
+  // full-width slab tray BELOW the canvas (D98 placement pass), instead of the old fixed
+  // top-right column — so the board keeps full canvas width and the chrome never overlaps it.
   private panel?: HTMLDivElement;
+  private dock?: HTMLDivElement;
+  /** The slide-in side drawer (D109 slice 2) — the "edit a placed object" surface (unit list +
+   *  inspector). Board stays full-size while it's open; auto-opens on Select, toggled by "Details". */
+  private sideDrawer?: HTMLDivElement;
+  private drawerOpen = false;
   private exportPre?: HTMLPreElement;
   private validLine?: HTMLDivElement;
   private coordEl?: HTMLDivElement; // live "tile (col,row)" readout under the cursor
@@ -89,6 +159,15 @@ export class EditorScene extends Phaser.Scene {
   private unitListEl?: HTMLDivElement;
   private objectivesEl?: HTMLDivElement; // the M-C objectives editor list
   private brushButtons: HTMLButtonElement[] = [];
+  /** Slab-tray placeable cards (D109 slice 2) — a thumbnail per brush; enemy templates are unrolled
+   *  one card each. `template`/`release` ride the click so a card sets the brush AND its variant. */
+  private paletteCards: { el: HTMLButtonElement; brush: Brush; template?: string; release?: "reach" | "lockpick" }[] = [];
+  /** Per-tab empty card strips, filled/refilled by {@link fillPalette} whenever a display pref changes. */
+  private paletteStrips: Partial<Record<TabName, HTMLDivElement>> = {};
+  /** Live display prefs (card size · enemy tint · captive variants), chosen in the options row. */
+  private prefs: EditorPrefs = loadEditorPrefs();
+  /** Repaint closures for the options-row toggles (refresh the active highlight after a pref change). */
+  private optionButtons: (() => void)[] = [];
   private tabButtons: HTMLButtonElement[] = [];
   private drawers: Partial<Record<TabName, HTMLDivElement>> = {};
   private activeTab: TabName = "Terrain";
@@ -98,6 +177,9 @@ export class EditorScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Editor-only page layout (D98): top-align the canvas + hide the guild run-bar + swap #app
+    // off grid-centring so Phaser's Scale.FIT owns sizing. Paired with the editorScale in config.ts.
+    document.body.classList.add("editor-mode");
     this.cameras.main.setBackgroundColor(COLOR.bg);
     this.view = new CombatView(this);
     this.view.boardScale = BOARD_SCALE;
@@ -124,8 +206,9 @@ export class EditorScene extends Phaser.Scene {
   private renderBoard(): void {
     this.grid = new TileGrid(this.draft.cols, this.draft.rows, this.draft.blocked);
     // The shared board-centering (CombatView.centerOrigin) — same formula as the battle, so a
-    // grid/tile change propagates here for free. Centre in the area left of the panel.
-    this.view.centerOrigin(this.draft.rows, this.scale.height, (this.scale.width - PANEL_W) / 2);
+    // grid/tile change propagates here for free. The chrome now lives in the slab tray BELOW the
+    // canvas (not a right column), so the board centres in the FULL canvas width (D98).
+    this.view.centerOrigin(this.draft.rows, this.scale.height, this.scale.width / 2);
 
     this.gridGfx.clear();
     this.view.drawGrid(this.gridGfx, this.grid);
@@ -135,7 +218,12 @@ export class EditorScene extends Phaser.Scene {
 
     clearLayer(this.markers);
     for (const s of this.draft.playerSpawns) this.mark(s, "P", COLOR.success, "#0d1a12");
-    for (const e of this.draft.enemies) this.mark(e.pos, abbrev(e.templateId), COLOR.danger, "#fff");
+    for (const e of this.draft.enemies) {
+      // Role tint (D109 slice 2): keep the red body (red = enemy) but ring the token in the archetype's
+      // role colour so the board matches the tinted cards. Uniform red → the default dark ring.
+      const ring = this.prefs.enemyTint === "role" ? hexToNum(enemyRing(e.templateId, "role")) : undefined;
+      this.mark(e.pos, abbrev(e.templateId), COLOR.danger, "#fff", ring);
+    }
     for (const c of this.draft.captives) this.mark(c.pos, c.release === "lockpick" ? "⚿" : "○", 0x9a6bc0, "#fff");
     for (const t of this.draft.traps) this.mark(t, "▲", COLOR.accent, "#1a1206");
     // Gates (▦) tagged with a letter per open-condition (L/K/D); a selected object rings gold.
@@ -144,11 +232,14 @@ export class EditorScene extends Phaser.Scene {
   }
 
   /** A small labelled token centred on a tile (the editor's entity marker). */
-  private mark(pos: GridCoord, label: string, fill: number, textColor: string): void {
+  private mark(pos: GridCoord, label: string, fill: number, textColor: string, ring?: number): void {
     const { x, y } = this.view.tileToWorld(pos);
     const cy = y - this.view.halfH() * 0.25;
+    const circle = this.add.circle(x, cy, 12, fill).setDepth(2);
+    if (ring !== undefined) circle.setStrokeStyle(2.5, ring, 1); // role-tinted archetype ring (D109)
+    else circle.setStrokeStyle(1, 0x000000, 0.5);
     this.markers.push(
-      this.add.circle(x, cy, 12, fill).setStrokeStyle(1, 0x000000, 0.5).setDepth(2),
+      circle,
       this.add.text(x, cy, label, { color: textColor, fontFamily: FONT.family, fontSize: "12px", fontStyle: "bold" }).setOrigin(0.5).setDepth(3),
     );
   }
@@ -236,6 +327,7 @@ export class EditorScene extends Phaser.Scene {
         else if (gate) this.selection = { kind: "gate", ref: gate };
         else if (lever) this.selection = { kind: "lever", ref: lever };
         else this.selection = null;
+        if (this.selection) this.openDrawer(); // reveal the inspector on the selected object (board stays full-size)
         return;
       }
       case "wall": return void this.toggleCoord(d.blocked, t);
@@ -323,11 +415,21 @@ export class EditorScene extends Phaser.Scene {
   // --- DOM palette (position:fixed, the debug-menu.ts idiom) ----------------
 
   private mountPanel(): void {
+    // The slab tray (D98 placement): a full-width dock in normal flow BELOW the canvas, with a
+    // resize grip. Growing the dock shrinks #app and Scale.FIT scales the board down (never
+    // clips). NOTE: this pass relocates + resizes the chrome; the thumbnail-gallery restyle of
+    // the palette (and the bar/drawer split) is the next slice — the controls below are unchanged.
+    const dock = document.createElement("div");
+    Object.assign(dock.style, {
+      flex: "0 0 auto", height: "210px", display: "flex", flexDirection: "column",
+      background: "#16110d", borderTop: "1px solid #5a4630", boxSizing: "border-box",
+    } as CSSStyleDeclaration);
+    dock.appendChild(this.buildDockGrip());
+
     const panel = document.createElement("div");
     Object.assign(panel.style, {
-      position: "fixed", top: "8px", right: "8px", width: `${PANEL_W - 24}px`, maxHeight: "94vh", overflow: "auto",
-      background: "rgba(20,18,16,0.95)", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace",
-      border: "1px solid #4a423a", borderRadius: "6px", padding: "10px", zIndex: "1000",
+      flex: "1 1 auto", minHeight: "0", overflow: "auto", width: "100%", boxSizing: "border-box",
+      background: "transparent", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace", padding: "8px 12px 12px",
     } as CSSStyleDeclaration);
 
     // Panel header — the title (moved off the canvas so the scene pans/zooms cleanly) + the
@@ -346,6 +448,9 @@ export class EditorScene extends Phaser.Scene {
     header.appendChild(coord);
     this.coordEl = coord;
     this.updateCoord();
+    // Display-options row (D109 slice 2) — the card tweaks as live, persisted toggles.
+    this.optionButtons = [];
+    header.appendChild(this.optionsRow());
     panel.appendChild(header);
 
     // Tab bar + the persistent cross-cutting Erase tool and the view-reset control.
@@ -371,6 +476,13 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(recenter.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
     recenter.onclick = () => this.boardCam.recenter();
     tabBar.appendChild(recenter);
+    // "Details" toggle — opens/closes the side drawer (unit list + inspector). Board stays full-size.
+    const details = document.createElement("button");
+    details.textContent = "⋯ Details";
+    details.dataset.role = "details-toggle";
+    Object.assign(details.style, { margin: "2px", marginLeft: "8px", cursor: "pointer", color: "#f2b65a" } as CSSStyleDeclaration);
+    details.onclick = () => this.toggleDrawer();
+    tabBar.appendChild(details);
     panel.appendChild(tabBar);
 
     // Drawers — one per tab, shown/hidden by showTab.
@@ -387,22 +499,25 @@ export class EditorScene extends Phaser.Scene {
     this.buildEventsDrawer(this.drawers.Events!);
     this.buildScenarioDrawer(this.drawers.Scenario!);
 
-    // Persistent inspector (M-B → M-D2): edits whatever object is selected — a unit, gate, or lever —
-    // regardless of the open drawer, so "Select an object → tweak it" works everywhere.
-    const inspector = document.createElement("div");
-    inspector.dataset.role = "inspector";
-    Object.assign(inspector.style, { margin: "8px 0 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
-    panel.appendChild(inspector);
-    this.inspectorEl = inspector;
-
-    // Persistent ✓/⚠ status bar (outside the drawers, so live guards never hide).
+    // Persistent ✓/⚠ status bar in the bar (outside the drawers, so live guards never hide).
     const valid = document.createElement("div");
     valid.style.margin = "8px 0 0";
     panel.appendChild(valid);
     this.validLine = valid;
 
-    document.body.appendChild(panel);
+    dock.appendChild(panel);
+    document.body.appendChild(dock);
+    this.dock = dock;
     this.panel = panel;
+    // The side drawer (the "edit a placed object" surface: unit list + inspector). Fixed to the right,
+    // non-modal (the board stays interactive), slides in on Select / the Details toggle.
+    this.buildSideDrawer();
+    // Phaser sized the FIT canvas against the full-height #app at boot — BEFORE this dock existed.
+    // Appending the dock shrinks #app but fires no resize, so re-fit once layout has flushed, else
+    // the canvas overflows its box (820×615 into a 470-tall #app). rAF so #app's new height is live.
+    requestAnimationFrame(() => this.scale.refresh());
+    this.fillPalette(); // build the card strips from the current display prefs
+    for (const paint of this.optionButtons) paint(); // light the active size/tint/captive toggles
     this.showTab(this.activeTab);
     this.highlightBrush();
     this.renderUnitList();
@@ -419,6 +534,213 @@ export class EditorScene extends Phaser.Scene {
     btn.onclick = () => { this.brush = b; this.cancelShape(); this.highlightBrush(); };
     this.brushButtons.push(btn);
     return btn;
+  }
+
+  /**
+   * A slab-tray placeable **card** (D109 slice 2) — a thumbnail + label wired to select its brush,
+   * and (for the unrolled enemy roster / captive variants) the template or release it carries. Keeps
+   * the same `data-brush` hook the e2e drives; enemy cards additionally tag `data-template`.
+   */
+  private paletteCard(opts: { brush: Brush; label: string; thumb: string; template?: string; release?: "reach" | "lockpick"; stat?: string }): HTMLButtonElement {
+    const size = this.prefs.cardSize;
+    const card = document.createElement("button");
+    card.dataset.brush = opts.brush;
+    if (opts.template) card.dataset.template = opts.template;
+    Object.assign(card.style, {
+      flex: "0 0 auto", width: `${size}px`, padding: "5px 4px 4px", cursor: "pointer", textAlign: "center",
+      background: "#1a140d", border: "1px solid #4a423a", borderRadius: "5px", boxSizing: "border-box",
+      font: "10px/1.25 ui-monospace, monospace", color: "#ddd3c2",
+    } as CSSStyleDeclaration);
+    const thumb = document.createElement("div");
+    const thumbH = size <= 66 ? 32 : size >= 90 ? 46 : 38;
+    Object.assign(thumb.style, { height: `${thumbH}px`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "3px" } as CSSStyleDeclaration);
+    thumb.innerHTML = opts.thumb;
+    const name = document.createElement("div");
+    name.textContent = opts.label;
+    Object.assign(name.style, { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as CSSStyleDeclaration);
+    card.append(thumb, name);
+    if (opts.stat) {
+      const s = document.createElement("div");
+      s.textContent = opts.stat;
+      Object.assign(s.style, { fontSize: "9px", color: "#b2a48b", fontVariantNumeric: "tabular-nums" } as CSSStyleDeclaration);
+      card.appendChild(s);
+    }
+    card.title = opts.label;
+    card.onclick = () => {
+      this.brush = opts.brush;
+      if (opts.template) this.enemyTemplate = opts.template;
+      if (opts.release) this.captiveRelease = opts.release;
+      this.cancelShape();
+      this.highlightBrush();
+    };
+    this.paletteCards.push({ el: card, brush: opts.brush, template: opts.template, release: opts.release });
+    return card;
+  }
+
+  /** A horizontal, scrollable strip of placeable cards — the slab-tray row for a category. */
+  private cardStrip(cards: HTMLElement[]): HTMLDivElement {
+    const strip = document.createElement("div");
+    Object.assign(strip.style, { display: "flex", gap: "6px", overflowX: "auto", overflowY: "hidden", padding: "2px 2px 6px", margin: "4px 0" } as CSSStyleDeclaration);
+    for (const c of cards) strip.appendChild(c);
+    return strip;
+  }
+
+  /** The enemy-template cards (the roster unrolled from the old dropdown) + a captive card per release. */
+  private unitCards(): HTMLElement[] {
+    const tint = this.prefs.enemyTint;
+    const enemyCards = ENEMY_IDS.map((id) => {
+      const t = enemyStat(id);
+      return this.paletteCard({ brush: "enemy", template: id, label: enemyLabel(id), thumb: tokenThumb(abbrev(id), "#e06b6b", enemyRing(id, tint), "#2a0d0d"), stat: `HP ${t.hp} · ATK ${t.atk}` });
+    });
+    const captives = this.prefs.captiveVariants === 2
+      ? [
+          this.paletteCard({ brush: "captive", release: "lockpick", label: "Captive · pick", thumb: tokenThumb("⚿", "#9a6bd0", "#4a2c6b", "#fff") }),
+          this.paletteCard({ brush: "captive", release: "reach", label: "Captive · reach", thumb: tokenThumb("○", "#9a6bd0", "#4a2c6b", "#fff") }),
+        ]
+      : [this.paletteCard({ brush: "captive", release: "lockpick", label: "Captive", thumb: tokenThumb("⚿", "#9a6bd0", "#4a2c6b", "#fff") })];
+    return [...enemyCards, ...captives];
+  }
+
+  /** (Re)build every category's card strip from the current display prefs — on mount and on any options
+   *  change, so a size/tint/captive-variant edit re-renders the tray in place (no full remount). */
+  private fillPalette(): void {
+    this.paletteCards = [];
+    const put = (tab: TabName, cards: HTMLElement[]): void => {
+      const s = this.paletteStrips[tab];
+      if (!s) return;
+      s.innerHTML = "";
+      for (const c of cards) s.appendChild(c);
+    };
+    put("Terrain", [
+      this.paletteCard({ brush: "wall", label: "Wall", thumb: blockThumb() }),
+      this.paletteCard({ brush: "line", label: "Line", thumb: lineThumb() }),
+      this.paletteCard({ brush: "rect", label: "Rect", thumb: rectThumb() }),
+    ]);
+    put("Objects", [
+      this.paletteCard({ brush: "gate", label: "Gate", thumb: glyphThumb("▦", "#f2b65a") }),
+      this.paletteCard({ brush: "lever", label: "Lever", thumb: glyphThumb("⎇", "#62c6d6") }),
+      this.paletteCard({ brush: "trap", label: "Trap", thumb: glyphThumb("▲", "#f2b65a") }),
+    ]);
+    put("Units", this.unitCards());
+    put("Events", [
+      this.paletteCard({ brush: "spawn", label: "Spawn", thumb: tokenThumb("P", "#ffcf6b", "#57b07a", "#1a1410") }),
+      this.paletteCard({ brush: "exit", label: "Exit", thumb: glyphThumb("⚑", "#46a6c8") }),
+    ]);
+    this.highlightBrush();
+  }
+
+  /**
+   * The dock's display-options row (D109 slice 2) — the card tweaks made **live, choosable** toggles:
+   * card **size** (S/M/L) · enemy **tint** (red / role-ring) · **captive** variants (1 / 2). Persisted
+   * per browser; a click re-renders the tray + re-tints the board in place.
+   */
+  private optionsRow(): HTMLDivElement {
+    const wrap = document.createElement("div");
+    wrap.dataset.role = "editor-options";
+    Object.assign(wrap.style, { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px", margin: "4px 0 2px", fontSize: "11px", color: "#b2a48b" } as CSSStyleDeclaration);
+    const group = (label: string, choices: { text: string; on: () => boolean; set: () => void }[]): HTMLSpanElement => {
+      const g = document.createElement("span");
+      Object.assign(g.style, { display: "inline-flex", alignItems: "center", gap: "3px" } as CSSStyleDeclaration);
+      g.append(label + " ");
+      for (const c of choices) {
+        const b = document.createElement("button");
+        b.textContent = c.text;
+        b.dataset.opt = `${label}:${c.text}`;
+        Object.assign(b.style, { cursor: "pointer", padding: "2px 7px", borderRadius: "3px", border: "1px solid #4a423a", background: "#1a140d", color: "#ddd3c2", font: "11px ui-monospace, monospace" } as CSSStyleDeclaration);
+        const paint = (): void => { const on = c.on(); b.style.background = on ? "#c8a24a" : "#1a140d"; b.style.color = on ? "#1a1206" : "#ddd3c2"; b.style.fontWeight = on ? "700" : "400"; };
+        b.onclick = () => { c.set(); this.applyPrefs(); };
+        this.optionButtons.push(paint);
+        g.appendChild(b);
+      }
+      return g;
+    };
+    wrap.append(
+      group("size", [
+        { text: "S", on: () => this.prefs.cardSize === 62, set: () => (this.prefs.cardSize = 62) },
+        { text: "M", on: () => this.prefs.cardSize === 78, set: () => (this.prefs.cardSize = 78) },
+        { text: "L", on: () => this.prefs.cardSize === 96, set: () => (this.prefs.cardSize = 96) },
+      ]),
+      group("enemy", [
+        { text: "red", on: () => this.prefs.enemyTint === "red", set: () => (this.prefs.enemyTint = "red") },
+        { text: "role", on: () => this.prefs.enemyTint === "role", set: () => (this.prefs.enemyTint = "role") },
+      ]),
+      group("captive", [
+        { text: "1", on: () => this.prefs.captiveVariants === 1, set: () => (this.prefs.captiveVariants = 1) },
+        { text: "2", on: () => this.prefs.captiveVariants === 2, set: () => (this.prefs.captiveVariants = 2) },
+      ]),
+    );
+    return wrap;
+  }
+
+  /** Persist the prefs, then re-render the tray + board + option highlights so the change is immediate. */
+  private applyPrefs(): void {
+    saveEditorPrefs(this.prefs);
+    this.fillPalette();
+    this.renderBoard(); // re-tint the board's enemy markers if the tint pref changed
+    for (const paint of this.optionButtons) paint();
+  }
+
+  /**
+   * The side drawer (D109 slice 2) — the "edit a placed object" surface: the unit list (find/select)
+   * + the Inspector (tweak the selected unit / gate / lever). Fixed to the right, non-modal so the
+   * board stays interactive and full-size while you edit; slides in on Select or the Details toggle.
+   */
+  private buildSideDrawer(): void {
+    const drawer = document.createElement("div");
+    drawer.dataset.role = "side-drawer";
+    Object.assign(drawer.style, {
+      position: "fixed", top: "0", right: "0", height: "100vh", width: "270px", zIndex: "1001",
+      background: "rgba(22,17,13,0.97)", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace",
+      borderLeft: "1px solid #76583a", boxShadow: "-20px 0 50px -30px #000", padding: "12px 13px 20px",
+      overflow: "auto", boxSizing: "border-box", transform: "translateX(102%)", transition: "transform .2s ease",
+    } as CSSStyleDeclaration);
+
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 8px" } as CSSStyleDeclaration);
+    const title = document.createElement("div");
+    title.textContent = "Details — edit a placed object";
+    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a", fontSize: "12px" } as CSSStyleDeclaration);
+    const close = document.createElement("button");
+    close.textContent = "✕"; close.dataset.role = "drawer-close"; close.style.cursor = "pointer";
+    close.onclick = () => this.closeDrawer();
+    head.append(title, close);
+    drawer.appendChild(head);
+
+    // The unit list — click a row to select (reaches units occluded / off a wide board).
+    const list = document.createElement("div");
+    list.dataset.role = "unit-list";
+    Object.assign(list.style, { margin: "4px 0", maxHeight: "180px", overflow: "auto", border: "1px solid #3a332c", borderRadius: "4px" } as CSSStyleDeclaration);
+    drawer.appendChild(list);
+    this.unitListEl = list;
+
+    // The inspector — edits whatever object is selected (unit / gate / lever).
+    const inspector = document.createElement("div");
+    inspector.dataset.role = "inspector";
+    Object.assign(inspector.style, { margin: "8px 0 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
+    drawer.appendChild(inspector);
+    this.inspectorEl = inspector;
+
+    document.body.appendChild(drawer);
+    this.sideDrawer = drawer;
+  }
+
+  private openDrawer(): void {
+    this.drawerOpen = true;
+    if (this.sideDrawer) this.sideDrawer.style.transform = "none";
+    this.syncDrawerToggle();
+  }
+  private closeDrawer(): void {
+    this.drawerOpen = false;
+    if (this.sideDrawer) this.sideDrawer.style.transform = "translateX(102%)";
+    this.syncDrawerToggle();
+  }
+  private toggleDrawer(): void {
+    if (this.drawerOpen) this.closeDrawer();
+    else this.openDrawer();
+  }
+  private syncDrawerToggle(): void {
+    const t = this.panel?.querySelector('[data-role="details-toggle"]') as HTMLButtonElement | null;
+    if (t) t.textContent = this.drawerOpen ? "⋯ Details ✕" : "⋯ Details";
   }
 
   /** Show one drawer, hide the rest, highlight the active tab. */
@@ -448,10 +770,8 @@ export class EditorScene extends Phaser.Scene {
     size.append(" × ");
     size.appendChild(this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n)));
     d.appendChild(size);
-    const row = document.createElement("div");
-    row.style.margin = "4px 0";
-    row.append(this.brushButton("wall"), this.brushButton("line"), this.brushButton("rect"));
-    d.appendChild(row);
+    this.paletteStrips.Terrain = this.cardStrip([]);
+    d.appendChild(this.paletteStrips.Terrain);
 
     // Rectangle mode: an outline (a room/cell ring) vs a solid fill. Toggled live.
     const rectMode = document.createElement("div");
@@ -475,22 +795,24 @@ export class EditorScene extends Phaser.Scene {
    * unwired; the persistent inspector edits either (a gate's `openBy`/`locked`, a lever's targets).
    */
   private buildObjectsDrawer(d: HTMLDivElement): void {
-    const row = document.createElement("div");
-    row.style.margin = "4px 0";
-    row.append(this.brushButton("gate"), this.brushButton("lever"), this.brushButton("trap"));
-    d.appendChild(row);
+    this.paletteStrips.Objects = this.cardStrip([]);
+    d.appendChild(this.paletteStrips.Objects);
     d.appendChild(this.hint("gate = a locked cell/door (default: lockpick) · lever = a pull-switch · trap = a hazard"));
     d.appendChild(this.hint("place one, then Select it → the inspector sets a gate's opens / a lever's target gates"));
   }
 
   private buildEventsDrawer(d: HTMLDivElement): void {
-    const row = document.createElement("div");
-    row.style.margin = "4px 0";
-    row.append(this.brushButton("spawn"), this.brushButton("exit"));
-    d.appendChild(row);
+    this.paletteStrips.Events = this.cardStrip([]);
+    d.appendChild(this.paletteStrips.Events);
     d.appendChild(this.hint("deploy spawns · extraction exit tiles (the extraction span)"));
+    d.appendChild(this.hint("win/lose objectives live under the Scenario tab (they're level-wide, not a placeable)"));
+  }
 
-    // Objectives editor (M-C) — win/lose conditions as data. label + required + kind-specific fields.
+  /**
+   * The **Objectives** editor (M-C) — win/lose conditions as data. Level-wide (not a placeable), so it
+   * lives in the Scenario tab body (D109 slice 2, moved out of Events). label + required + kind fields.
+   */
+  private buildObjectivesEditor(d: HTMLDivElement): void {
     const objHead = document.createElement("div");
     Object.assign(objHead.style, { margin: "8px 0 2px", fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
     objHead.append("Objectives ");
@@ -623,36 +945,19 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private buildUnitsDrawer(d: HTMLDivElement): void {
-    const row = document.createElement("div");
-    row.style.margin = "4px 0";
-    row.append(this.brushButton("enemy"), this.brushButton("captive"));
-    d.appendChild(row);
-
-    // Place-time defaults for the enemy/captive brushes.
-    const ctx = document.createElement("div");
-    ctx.style.margin = "4px 0";
-    ctx.append("enemy ");
-    const tmpl = document.createElement("select");
-    for (const id of ENEMY_IDS) { const o = document.createElement("option"); o.value = id; o.textContent = id; tmpl.appendChild(o); }
-    tmpl.value = this.enemyTemplate;
-    tmpl.onchange = () => (this.enemyTemplate = tmpl.value);
-    ctx.appendChild(tmpl);
-    ctx.append("  captive ");
-    const rel = document.createElement("select");
-    for (const r of ["lockpick", "reach"]) { const o = document.createElement("option"); o.value = r; o.textContent = r; rel.appendChild(o); }
-    rel.value = this.captiveRelease;
-    rel.onchange = () => (this.captiveRelease = rel.value as "reach" | "lockpick");
-    ctx.appendChild(rel);
-    d.appendChild(ctx);
-
-    // The unit list — click a row to select (reaches units occluded by the panel / off a wide board).
-    const list = document.createElement("div");
-    list.dataset.role = "unit-list";
-    Object.assign(list.style, { margin: "4px 0", maxHeight: "112px", overflow: "auto", border: "1px solid #3a332c", borderRadius: "4px" } as CSSStyleDeclaration);
-    d.appendChild(list);
-    this.unitListEl = list;
+    // The enemy roster, unrolled from the old dropdown into one card each (D109 slice 2) + a captive
+    // card. Each enemy card sets the brush AND its template; the captive card its release. Filled by
+    // fillPalette so a display-pref change (size/tint/captive-variants) re-renders it in place.
+    this.paletteStrips.Units = this.cardStrip([]);
+    d.appendChild(this.paletteStrips.Units);
+    d.appendChild(this.hint("pick an archetype → click the board to place · placed units are edited in the Details drawer"));
   }
 
+  /**
+   * The **Scenario** tab body (D109 slice 2) — the level as a whole, not a placeable: identity, reward,
+   * the level-wide objectives, and JSON import/export. The natural home for the future cross-expedition
+   * tools & checks (arc-linking, cross-level validation, playtest).
+   */
   private buildScenarioDrawer(d: HTMLDivElement): void {
     d.appendChild(this.field("id", this.draft.id, (v) => { this.draft.id = v; this.updateExport(); }));
     d.appendChild(this.field("name", this.draft.name, (v) => { this.draft.name = v; this.updateExport(); }));
@@ -669,6 +974,9 @@ export class EditorScene extends Phaser.Scene {
     xp.dataset.role = "reward-xp";
     reward.appendChild(xp);
     d.appendChild(reward);
+
+    // Level-wide win/lose objectives (moved here from Events — they're scenario-level, D109 slice 2).
+    this.buildObjectivesEditor(d);
 
     // Import (the M-A round-trip inverse).
     const imp = document.createElement("div");
@@ -932,6 +1240,16 @@ export class EditorScene extends Phaser.Scene {
       b.style.color = active ? "#1a1206" : "";
       b.style.fontWeight = active ? "700" : "";
     }
+    // Slab-tray cards: active when the brush matches AND (for the unrolled variants) its template /
+    // release is the selected one, so exactly one enemy archetype card lights up.
+    for (const c of this.paletteCards) {
+      const active = c.brush === this.brush
+        && (c.template === undefined || c.template === this.enemyTemplate)
+        && (c.release === undefined || c.release === this.captiveRelease);
+      c.el.style.borderColor = active ? "#f2b65a" : "#4a423a";
+      c.el.style.background = active ? "#271e16" : "#1a140d";
+      c.el.style.boxShadow = active ? "0 0 0 1px #f2b65a" : "";
+    }
   }
 
   private updateExport(): void {
@@ -943,7 +1261,67 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * The slab tray's resize grip (D98). Dragging it changes the dock height; a taller dock shrinks
+   * #app, and `this.scale.refresh()` re-fits the FIT-scaled canvas into the smaller box — so the
+   * board scales down smoothly instead of clipping. Clamped so neither the board nor the tray can
+   * collapse to nothing.
+   */
+  private buildDockGrip(): HTMLDivElement {
+    const grip = document.createElement("div");
+    grip.dataset.role = "dock-grip";
+    grip.textContent = "⣿ ⣿ ⣿";
+    grip.title = "drag to resize the tray";
+    Object.assign(grip.style, {
+      flex: "0 0 auto", height: "13px", display: "flex", alignItems: "center", justifyContent: "center",
+      cursor: "ns-resize", color: "#80766a", letterSpacing: "3px", fontSize: "10px",
+      background: "#241b10", borderBottom: "1px solid #2c2117", userSelect: "none", touchAction: "none",
+    } as CSSStyleDeclaration);
+    let startY = 0;
+    let startH = 0;
+    let dragging = false;
+    // Re-fit on the NEXT frame, coalesced: setting dock.style.height doesn't flush flexbox
+    // synchronously, so a same-tick scale.refresh() would measure a stale (too-tall) #app and
+    // leave the canvas overflowing by a sliver (a white repaint strip). rAF defers the refit
+    // past layout, and running it in a frame guarantees a render clears the resized backing store.
+    let pending = 0;
+    const refit = (): void => {
+      pending = 0;
+      this.scale.refresh();
+    };
+    const scheduleRefit = (): void => {
+      if (!pending) pending = requestAnimationFrame(refit);
+    };
+    const onMove = (e: PointerEvent): void => {
+      if (!dragging) return;
+      const h = Math.max(120, Math.min(window.innerHeight - 160, startH + (startY - e.clientY)));
+      if (this.dock) this.dock.style.height = `${h}px`;
+      scheduleRefit();
+    };
+    const onUp = (): void => {
+      dragging = false;
+      scheduleRefit(); // settle-fit against the final, flushed layout
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    grip.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      startY = e.clientY;
+      startH = this.dock?.offsetHeight ?? 210;
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      e.preventDefault();
+    });
+    return grip;
+  }
+
   private unmountPanel(): void {
+    this.dock?.remove();
+    this.dock = undefined;
+    this.sideDrawer?.remove();
+    this.sideDrawer = undefined;
+    this.drawerOpen = false;
+    document.body.classList.remove("editor-mode");
     this.panel?.remove();
     this.panel = undefined;
     this.exportPre = undefined;
@@ -953,6 +1331,9 @@ export class EditorScene extends Phaser.Scene {
     this.unitListEl = undefined;
     this.objectivesEl = undefined;
     this.brushButtons = [];
+    this.paletteCards = [];
+    this.paletteStrips = {};
+    this.optionButtons = [];
     this.tabButtons = [];
     this.drawers = {};
   }

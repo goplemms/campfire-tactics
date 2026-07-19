@@ -31,6 +31,8 @@ const STATE = `(() => {
   return {
     active: !!(sc && sc.scene.isActive("EditorScene")),
     brushButtons: document.querySelectorAll("button[data-brush]").length,
+    enemyCards: document.querySelectorAll('button[data-brush="enemy"]').length,
+    essentialBrushes: ["wall","line","rect","gate","lever","trap","spawn","exit","enemy","captive","select","erase"].every((b) => !!document.querySelector('button[data-brush="' + b + '"]')),
     tabs: document.querySelectorAll("button[data-tab]").length,
     unitRows: document.querySelectorAll("[data-unit-row]").length,
     walls: d.blocked?.length ?? null,
@@ -88,28 +90,71 @@ async function main() {
     async (g) => {
       try {
         await sleep(900);
+        // A tile's on-screen point from its live board-world coord (recenter- + FIT-safe): the
+        // board now centres in the FULL canvas width (D98), so pixel-hardcoded clicks would miss.
+        // Valid only at the default camera (scroll 0, zoom 1) — true at boot and after Recenter.
+        const tileScreen = (col, row) =>
+          g.eval(`(() => { const p = window.game.scene.getScene("EditorScene").view.tileToWorld({col:${col},row:${row}}); return { x: Math.round(p.x), y: Math.round(p.y) }; })()`);
+        const clickTile = async (col, row) => { const p = await tileScreen(col, row); await g.clickScene(p.x, p.y); await sleep(80); };
         let st = await g.eval(STATE);
         console.log("• #editor boots with the brush palette");
         check("the editor scene is active", st.active === true);
-        check("the brush palette is present (12 brushes incl. gate + lever)", st.brushButtons === 12);
+        check("the placeable gallery has every essential brush (incl. gate + lever)", st.essentialBrushes === true);
+        check("the enemy roster is unrolled into cards (not a dropdown)", st.enemyCards >= 6);
         check("the drawer tab bar is present (5 tabs incl. Objects)", st.tabs === 5);
+
+        // D109 slice 2 — the card tweaks are live, persisted display options (size / tint / captive).
+        console.log("• display options: size · enemy tint · captive variants");
+        check("the display-options row is present", (await g.eval(`!!document.querySelector('[data-role="editor-options"]')`)) === true);
+        const wallW = () => g.eval(`document.querySelector('button[data-brush="wall"]').offsetWidth`);
+        await g.eval(`document.querySelector('button[data-opt="size:M"]').click()`); await sleep(80);
+        const wM = await wallW();
+        await g.eval(`document.querySelector('button[data-opt="size:L"]').click()`); await sleep(120);
+        const wL = await wallW();
+        check("choosing the Large size option widens the cards", wL > wM);
+        await g.eval(`document.querySelector('button[data-opt="size:M"]').click()`); await sleep(80);
+        await g.eval(`document.querySelector('button[data-opt="enemy:role"]').click()`); await sleep(100);
+        const roleOn = await g.eval(`document.querySelector('button[data-opt="enemy:role"]').style.fontWeight === "700"`);
+        check("choosing the role tint option activates it (no freeze)", roleOn === true);
+        const captive2 = await g.eval(`(() => { document.querySelector('button[data-opt="captive:2"]').click(); return document.querySelectorAll('button[data-brush="captive"]').length; })()`);
+        await sleep(100);
+        check("choosing 2 captive variants adds the reach card", captive2 === 2);
+        // restore defaults so persisted prefs don't leak into later assertions / runs
+        await g.eval(`document.querySelector('button[data-opt="enemy:red"]').click(); document.querySelector('button[data-opt="captive:1"]').click();`); await sleep(80);
         check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));
 
-        // Wall brush (default): real clicks place walls.
-        for (const [x, y] of [[200, 300], [250, 320]]) { await g.clickScene(x, y); await sleep(80); }
+        // D98 placement geometry: the slab dock sits BELOW the canvas, and the FIT-scaled board must
+        // never overflow into it — not even on a short viewport (the challenge's clip failure mode).
+        console.log("• the slab dock sits below the canvas (no bleed / no clip)");
+        const fits = () => g.eval(`(() => {
+          const c = document.querySelector("canvas").getBoundingClientRect();
+          const dockTop = document.querySelector('[data-role="dock-grip"]').parentElement.getBoundingClientRect().top;
+          const app = document.getElementById("app").getBoundingClientRect();
+          return { overflow: Math.round(c.bottom - dockTop), inApp: c.bottom <= app.bottom + 1, dockPresent: !!document.querySelector('[data-role="dock-grip"]') };
+        })()`);
+        let fit = await fits();
+        check("the resize grip / dock is present below the board", fit.dockPresent === true);
+        check("the board sits above the dock at the default viewport (no bleed)", fit.overflow <= 1 && fit.inApp);
+        await g.page.setViewport({ width: 900, height: 600 }); await sleep(300);
+        fit = await fits();
+        check("the board still fits above the dock on a short viewport (no clip)", fit.overflow <= 1 && fit.inApp);
+        await g.page.setViewport({ width: 820, height: 680 }); await sleep(300);
+
+        // Wall brush (default): real clicks place walls. (Blank draft is 9×6 — cols 0-8, rows 0-5.)
+        for (const [c, r] of [[2, 2], [3, 2]]) await clickTile(c, r);
         st = await g.eval(STATE);
         check("wall brush + clicks place walls (click-pick works)", st.walls === 2);
 
         // Spawn brush.
         await g.eval(setBrush("spawn"));
-        for (const [x, y] of [[120, 280], [120, 320]]) { await g.clickScene(x, y); await sleep(80); }
+        for (const [c, r] of [[0, 4], [1, 4]]) await clickTile(c, r);
         // Enemy brush.
         await g.eval(setBrush("enemy"));
-        for (const [x, y] of [[340, 300], [380, 320]]) { await g.clickScene(x, y); await sleep(80); }
+        for (const [c, r] of [[5, 2], [6, 2]]) await clickTile(c, r);
         // Exit brush.
         await g.eval(setBrush("exit"));
-        for (const [x, y] of [[100, 260], [100, 300]]) { await g.clickScene(x, y); await sleep(80); }
+        for (const [c, r] of [[8, 0], [8, 1]]) await clickTile(c, r);
 
         st = await g.eval(STATE);
         console.log("• the palette paints spawns / enemies / exit tiles");
@@ -120,9 +165,9 @@ async function main() {
         check("the draft validates as a playable level", st.valid === true);
         await g.screenshot(path.join(OUT, "02-painted.png"));
 
-        // Erase brush removes an entity at a clicked tile.
+        // Erase brush removes an entity at a clicked tile (one of the enemies placed above, (5,2)).
         await g.eval(setBrush("erase"));
-        await g.clickScene(340, 300); await sleep(80);
+        await clickTile(5, 2);
         const st2 = await g.eval(STATE);
         console.log("• erase brush removes a placed entity");
         check("erasing an enemy tile decrements the enemies", st2.enemies === 1);
@@ -143,11 +188,17 @@ async function main() {
         check("the imported finale validates", st3.valid === true);
         await g.screenshot(path.join(OUT, "03-imported.png"));
 
-        // Switch to the Units drawer — the list reaches every placed unit (occlusion fix).
-        await g.eval(clickTab("Units"));
-        await sleep(120);
+        // The side drawer (D109 slice 2) — the "edit a placed object" surface (unit list + inspector),
+        // opened by the Details toggle; the board stays full-size behind it.
+        console.log("• the Details side drawer reveals the edit surface");
+        const drawerShown = () => g.eval(`(() => { const d = document.querySelector('[data-role="side-drawer"]'); return d && d.style.transform === "none"; })()`);
+        check("the side drawer starts closed", (await drawerShown()) === false);
+        check("the Details toggle is present", (await g.eval(`!!document.querySelector('[data-role="details-toggle"]')`)) === true);
+        await g.eval(`document.querySelector('[data-role="details-toggle"]').click()`); await sleep(150);
+        check("the Details toggle opens the drawer", (await drawerShown()) === true);
+        // The unit list lives in the drawer now — it reaches every placed unit (occlusion fix).
         const stU = await g.eval(STATE);
-        console.log("• the Units drawer lists every placed unit");
+        console.log("• the drawer's unit list lists every placed unit");
         check("the unit list shows all 11 units (8 enemies + 3 captives)", stU.unitRows === 11);
 
         // Inspector: select the warden via its list row, rename it + bump its maxHp (freeze-catch).
@@ -160,6 +211,8 @@ async function main() {
         check("the id rename + maxHp override flow to the export", st4.wardenEditedHp === 99);
         check("the level still validates after the edit", st4.valid === true);
         await g.screenshot(path.join(OUT, "04-inspected.png"));
+        // Close the drawer so it stops overlaying the right of the board for the board-click sections below.
+        await g.eval(`document.querySelector('[data-role="drawer-close"]').click()`); await sleep(80);
 
         // Camera controls (large-map fix): drag pans the board, a drag does NOT paint, and
         // Recenter restores the default framing — so a 20×20 level is reachable on the fixed canvas.
@@ -181,7 +234,7 @@ async function main() {
         await sleep(80);
         const camReset = await g.eval(CAM);
         check("Recenter restored the default framing", camReset.sx === 0 && camReset.sy === 0 && camReset.zoom === 1);
-        await g.clickScene(448, 262); // a plain tap on the empty tile (5,0)
+        { const p = await tileScreen(5, 0); await g.clickScene(p.x, p.y); } // a plain tap on the empty tile (5,0)
         await sleep(100);
         const stTap = await g.eval(STATE);
         check("a tap after recenter still paints (walls incremented)", stTap.walls === wallsBeforeDrag + 1);
@@ -189,8 +242,6 @@ async function main() {
         // Structural wall tools (M-D): two-click line + rectangle, plus the live coordinate readout.
         // Camera is recentered (scroll 0, zoom 1), so a tile's board-world point equals its screen point.
         console.log("• line / rectangle wall tools + coordinate readout (structural authoring)");
-        const tileScreen = (col, row) =>
-          g.eval(`(() => { const p = window.game.scene.getScene("EditorScene").view.tileToWorld({col:${col},row:${row}}); return { x: Math.round(p.x), y: Math.round(p.y) }; })()`);
         const coordText = () => g.eval(`document.querySelector('[data-role="coord"]').textContent`);
         const blocked = async () => (await g.eval(STATE)).walls;
 
@@ -220,7 +271,7 @@ async function main() {
         // Objectives editor + reward (M-C): the-rescue imported with 2 objectives — tune label/required,
         // add one, set the reward — the gaps the visual editor couldn't reach before.
         console.log("• objectives editor + reward controls (M-C)");
-        await g.eval(clickTab("Events"));
+        await g.eval(clickTab("Scenario")); // objectives are level-wide → the Scenario tab body now (D109 slice 2)
         await sleep(80);
         const objCount = () => g.eval(`document.querySelectorAll('[data-role="objective"]').length`);
         const expObj = () => g.eval(`JSON.parse(document.querySelector("pre").textContent).objectives`);
@@ -273,9 +324,13 @@ async function main() {
         let oe = await objExp();
         check("a gate lands as a default lockpick cell + a lever lands unwired", oe.gates === 1 && oe.levers === 1 && oe.openBy.join() === "lockpick" && oe.targets.length === 0);
 
-        // Select the gate → inspector; add a destructible condition (a batter-able door).
+        // Select the gate → inspector; add a destructible condition (a batter-able door). Close the
+        // drawer first so we can prove Select auto-reopens it (the board stays full-size behind it).
+        await g.eval(`document.querySelector('[data-role="drawer-close"]').click()`); await sleep(80);
+        check("the drawer closed via its ✕", (await g.eval(`document.querySelector('[data-role="side-drawer"]').style.transform !== "none"`)) === true);
         await g.eval(setBrush("select"));
         gp = await tileScreen(1, 3); await g.clickScene(gp.x, gp.y); await sleep(120);
+        check("selecting a placed object on the board auto-opens the drawer", (await g.eval(`document.querySelector('[data-role="side-drawer"]').style.transform === "none"`)) === true);
         await g.eval(`(() => {
           const insp = document.querySelector('[data-role="inspector"]');
           const box = [...insp.querySelectorAll('input[type=checkbox]')].find((b) => (b.parentElement.textContent || "").includes("destructible"));

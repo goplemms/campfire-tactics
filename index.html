@@ -58,6 +58,16 @@
       #runbar button:hover {
         background: #3a8257;
       }
+      /* Editor route (D98 placement): the chrome is an in-flow slab tray BELOW the canvas
+         (built by EditorScene, appended after #app). Top-align the canvas so the reclaimed
+         vertical slack pools at the bottom by the tray, hide the guild run-bar, and let
+         Phaser's Scale.FIT own the canvas sizing (display:block, not the grid centring). */
+      body.editor-mode #runbar {
+        display: none;
+      }
+      body.editor-mode #app {
+        display: block;
+      }
     </style>
   </head>
   <body>

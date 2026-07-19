@@ -4306,6 +4306,64 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D109 — Editor placement: the slab tray below the canvas (Scale.FIT on the editor route)
+
+- **Status:** Slices 1 + 2 landed (2026-07-19, branch `claude/level-editor-placement-ni924o`).
+  Owner-directed, TaleSpire slab-tray direction, worked interactively (mock → `memento:challenge` →
+  build → real-scene screenshot per step). **Slice 1** = geometry/relocation; **slice 2** = the
+  thumbnail gallery, live display options, and the bar/side-drawer split. Editor e2e now **59** green.
+- **Why:** the D98 editor's chrome was a fixed **right-hand column** eating ~40% of the canvas width —
+  wrong for the owner's stated next direction (bigger 20×20 boards, richer maps). Owner ask: run the
+  editor along the **bottom, edge-to-edge, below the map**, reclaiming the unused space — **without
+  bleeding onto game space**. A `memento:challenge` pass surfaced that on a fixed, unscaled 800×600
+  canvas "below the canvas + no bleed + reclaim the unused band" are **mutually exclusive**; chosen
+  resolution **(A)**: chrome is a DOM sibling **below** `#app` + an **editor-route-only `Scale.FIT`**
+  so the board never clips, **top-aligned** so the reclaimed slack pools by the tray.
+- **What landed (slice 1 — geometry + relocation):**
+  - **`config.ts`** — an `editorScale` (`Scale.FIT` + `CENTER_HORIZONTALLY`, 800×600) applied **only on
+    the `#editor` route**; every other scene keeps the fixed 1:1 Scale.NONE canvas.
+  - **`index.html`** — `body.editor-mode`: hide the guild run-bar, `#app` → `display:block` so Phaser
+    owns sizing and the canvas top-aligns.
+  - **`EditorScene`** — the DOM panel moved from the `position:fixed` right column into an **in-flow
+    slab dock below the canvas** with a **drag-resize grip** (`[data-role="dock-grip"]`); the board now
+    centres in the **full** canvas width. Two refit gotchas fixed: Phaser sizes the FIT canvas against
+    the full-height `#app` **at boot before the dock exists** → a deferred `scale.refresh()` after
+    mount; and a same-tick refresh during a drag measures a **stale (unflushed) `#app`** → the grip
+    coalesces refits into a `requestAnimationFrame` (kills an 820×615 overflow + a white repaint strip).
+  - **`harness.mjs`** — `clickScene`/`hover`/`drag` are now **scale-aware** (map logical scene coords
+    through `box.width / gameSize.width`); the ratio is exactly 1 for every Scale.NONE scene, so it only
+    engages under the editor's FIT. Required because the harness had **hard-assumed** a 1:1 canvas.
+  - **`e2e-editor.mjs`** — early pixel-hardcoded board clicks → **tile-based** (`view.tileToWorld`,
+    recenter-safe, since the board moved to the full-width centre) + a new **no-bleed / short-viewport
+    no-clip guard** (asserts the FIT board never overflows into the dock, including at 900×600).
+- **Guards:** tsc · build · vitest **1215** · sim · e2e (editor **49**, deploy-battle, level, scenario,
+  arc, second-battle, micro, repro) · visual-audit (14) · challenge — all green. Stepped through in the
+  real scene (default + grip-grown screenshots): board full-width, top-aligned, scales down gracefully
+  on resize, never bleeds onto the dock.
+- **What landed (slice 2 — the gallery + options + the split):**
+  - **Thumbnail gallery** — the per-tab text brush palette became horizontally-scrolling **placeable
+    cards** (inline-SVG thumbnails mirroring the board markers); the **enemy roster is unrolled** from
+    the old `<select>` into one card each (HP/ATK on the face). Cards keep the `data-brush` hook (enemy
+    cards add `data-template`); `fillPalette()` (re)builds the strips from the current prefs.
+  - **Live display options** (a persisted `EditorPrefs` row) — the three card tweaks made **choosable**:
+    **size** (S/M/L) · enemy **tint** (uniform danger-red ring vs an archetype **role** ring, applied to
+    **both** cards and board tokens so red=enemy holds — `mark()` gained an optional ring colour) ·
+    **captive** variants (1 / 2). Persist to `localStorage`, apply in place (no remount).
+  - **Bar / side-drawer split** — the dock is now a short **painting bar** (tabs · gallery · tools ·
+    coord · validation · options · grip); a **non-modal side drawer** (fixed right, `[data-role="side-drawer"]`)
+    is the **edit-a-placed-object** surface (unit list + inspector). Board stays **full-size** behind it
+    (the owner's chosen trade — the drawer overlays the right rather than shrinking the board); a
+    **Details** toggle opens/closes it and a board/list **Select auto-opens** it. **Scenario** stays a
+    tab but its body is the **level as a whole** — id/name · reward · the level-wide **Objectives**
+    (moved here from Events) · JSON import/export — the future home for **cross-expedition tools & checks**.
+- **Reuses:** **D98** (editor + content pipeline). **Deferred / next:** the bar/side-drawer overlaps the
+  board's right while open (inherent to the side-drawer choice — close to paint); the Scenario tab's
+  cross-expedition tooling (arc-linking · cross-level checks · playtest); a proper editor test rung was
+  weighed (`memento:challenge`) and **declined for now** — screenshots-as-bandaid, formal editor tests
+  later. **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

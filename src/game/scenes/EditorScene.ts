@@ -59,7 +59,14 @@ const DEFAULT_PREFS: EditorPrefs = { cardSize: 78, enemyTint: "red", captiveVari
 function loadEditorPrefs(): EditorPrefs {
   try {
     const raw = typeof localStorage !== "undefined" ? localStorage.getItem(PREFS_KEY) : null;
-    return raw ? { ...DEFAULT_PREFS, ...JSON.parse(raw) } : { ...DEFAULT_PREFS };
+    const p = raw ? { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<EditorPrefs>) } : { ...DEFAULT_PREFS };
+    // Sanitize each field back to a known-good value — a manually-tampered store or a future
+    // shape change can't wedge the tray with e.g. a "huge" card width or captiveVariants: 9.
+    return {
+      cardSize: [62, 78, 96].includes(p.cardSize) ? p.cardSize : DEFAULT_PREFS.cardSize,
+      enemyTint: p.enemyTint === "role" ? "role" : "red",
+      captiveVariants: p.captiveVariants === 2 ? 2 : 1,
+    };
   } catch {
     return { ...DEFAULT_PREFS };
   }

@@ -16,6 +16,7 @@
     "test:e2e:repro": "node scripts/e2e-repro.mjs",
     "test:e2e:second-battle": "node scripts/e2e-second-battle.mjs",
     "test:e2e:editor": "node scripts/e2e-editor.mjs",
+    "test:e2e:editor:playtest": "node scripts/e2e-editor-playtest.mjs",
     "test:e2e:level": "node scripts/e2e-level.mjs",
     "test:e2e:micro": "node scripts/e2e-micro.mjs",
     "audit:visual": "node scripts/visual-audit.mjs",

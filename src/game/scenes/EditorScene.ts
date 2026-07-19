@@ -5,6 +5,8 @@ import { COLOR, FONT } from "../theme";
 import { clearLayer } from "../ui";
 import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
 import { validateLevel } from "../../content/levels";
+import { buildPlaytest, playtestPartyNames, DEFAULT_PLAYTEST_PARTY } from "../playtest";
+import type { RunHandoff } from "./OverworldScene";
 import {
   blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec, standardObjectives,
   effectiveEnemyStat, setEnemyStat, setSpecStat, STAT_FIELDS,
@@ -140,6 +142,8 @@ export class EditorScene extends Phaser.Scene {
   private markers: Phaser.GameObjects.GameObject[] = [];
 
   private draft: EditorDraft = blankDraft();
+  /** The squad the next soft-play (Playtest) will field — chosen in the Scenario tab's picker. */
+  private playtestParty: string = DEFAULT_PLAYTEST_PARTY;
   private brush: Brush = "wall";
   private enemyTemplate = ENEMY_IDS[0];
   private captiveRelease: "reach" | "lockpick" = "lockpick";
@@ -679,6 +683,41 @@ export class EditorScene extends Phaser.Scene {
     a.download = `${this.draft.id || "level"}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  /**
+   * **Soft play** (D-editor): boot the current draft straight into the real {@link BattleScene}
+   * with the chosen playtest squad, so the author can *functionally* test it — deploy the squad
+   * (is the board too crowded to field one?), walk it around (is the gate too far from the lever?),
+   * and watch the AI (do the enemy behaviours read right?) — without the export → drop-in → reload
+   * loop. Gated on {@link validateLevel} (the same guard the export shows), so an invalid draft
+   * surfaces the reason instead of a mid-boot crash. `returnTo: "EditorScene"` bounces the finished
+   * (or exited) fight back here; the draft rides on this scene's instance, so it survives the
+   * round-trip untouched (undo history included).
+   */
+  private playtest(): void {
+    const enc = draftToEncounter(this.draft);
+    const issues = validateLevel(enc);
+    if (issues.length) {
+      if (this.validLine) {
+        this.validLine.textContent = `⚠ can't playtest — ${issues.join("; ")}`;
+        this.validLine.style.color = "#f0a0a0";
+      }
+      return;
+    }
+    let handoff: RunHandoff;
+    try {
+      const { run, loop } = buildPlaytest(enc, this.playtestParty);
+      handoff = { run, loop, returnTo: "EditorScene" };
+    } catch (err) {
+      if (this.validLine) {
+        this.validLine.textContent = `⚠ playtest build failed: ${(err as Error).message}`;
+        this.validLine.style.color = "#f0a0a0";
+      }
+      return;
+    }
+    // The DOM panel is torn down by the SHUTDOWN hook; the draft stays on the instance for the return.
+    this.scene.start("BattleScene", handoff);
   }
 
   // --- DOM palette (position:fixed, the debug-menu.ts idiom) ----------------
@@ -1282,6 +1321,30 @@ export class EditorScene extends Phaser.Scene {
     impBtn.onclick = () => this.importJson(impArea.value);
     imp.append(impArea, impBtn);
     d.appendChild(imp);
+
+    // Soft play (D-editor): pick a squad, then ▶ Playtest boots the draft into the real BattleScene
+    // and returns here — a functional test (deploy/spacing, gate↔lever reach, enemy behaviour) with
+    // no export→drop-in→reload loop. The squad picker maps onto the scenario party matrix, so a
+    // level tailored to a class can be fielded with the right cast (owner ask). Default = small trio.
+    const play = document.createElement("div");
+    play.style.margin = "6px 0";
+    play.append("playtest squad ");
+    const squad = document.createElement("select");
+    squad.dataset.role = "playtest-party";
+    squad.style.cursor = "pointer";
+    for (const name of playtestPartyNames()) {
+      const opt = document.createElement("option");
+      opt.value = name; opt.textContent = name; opt.selected = name === this.playtestParty;
+      squad.appendChild(opt);
+    }
+    squad.onchange = () => { this.playtestParty = squad.value; };
+    const playBtn = document.createElement("button");
+    playBtn.textContent = "▶ Playtest"; playBtn.style.cursor = "pointer"; playBtn.style.marginLeft = "6px";
+    playBtn.dataset.role = "playtest";
+    playBtn.title = "Boot the draft in the real battle scene to test it, then return here";
+    playBtn.onclick = () => this.playtest();
+    play.append(squad, playBtn);
+    d.appendChild(play);
 
     const btns = document.createElement("div");
     const copy = document.createElement("button"); copy.textContent = "Copy"; copy.style.cursor = "pointer";

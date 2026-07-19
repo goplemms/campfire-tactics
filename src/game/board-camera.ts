@@ -146,6 +146,9 @@ export class BoardCamera {
   }
 
   private onDown(pointer: Phaser.Input.Pointer): void {
+    // Only the primary (left) button pans or taps — right/middle are free for a scene to use (the
+    // editor drives a right-click erase), and must not be swallowed as a pan or fire a stray tap.
+    if (pointer.button !== 0) return;
     this.pressed = true;
     this.dragging = false;
     this.downX = pointer.x;

@@ -4398,6 +4398,43 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D111 — Editor input QoL, part 2: drag-to-paint · right-click erase · alt eyedropper · hotkeys · undo/redo
+
+- **Status:** Decided + built (2026-07-19, branch `claude/editor-drag-key-modifier-hjs0qa`).
+- **Why:** with panning moved behind Shift (D110) the plain drag gesture was freed up; the owner asked
+  for a batch of ergonomics improvements "in theme" with the modifier work. Five landed together because
+  they all funnel through the same press/tap/keyboard path.
+- **What:**
+  - **Drag-to-paint.** A press on a toggle-terrain brush (wall/spawn/exit/trap) or a right-click opens a
+    **stroke**: the first tile's state fixes the op (empty→**add**, occupied→**remove**; right-click / the
+    Erase brush →**erase all**), and every tile the cursor sweeps applies it once — gap-filled with
+    `lineTiles` so a fast drag lays a continuous run. The board redraws per-tile; the heavy DOM/export
+    refresh waits for release. Entity/shape/select brushes stay click-driven. `BoardCamera.onDown` now
+    ignores non-left buttons so a right-drag never pans or fires a stray tap.
+  - **Right-click / right-drag erase** from any brush (context menu suppressed via `input.mouse.disableContextMenu()`).
+  - **Alt-click eyedropper** — adopt the brush that would recreate the object under the cursor (enemy →
+    its archetype, captive → its release, gate/lever/trap/terrain) and jump to its home tab. Rounds out the
+    modifier set: **Shift** pan · **Ctrl** select · **Alt** pick · **right-button** erase.
+  - **Brush hotkeys** (`W/L/R G/V/T N/C P/X S/E`) + **Esc** (cancel a pending shape + deselect), on a
+    `window` keydown listener **paired with mountPanel/unmountPanel** (so it survives the import remount)
+    and **ignored while a form field is focused** (typing an id never switches brush). A hotkey jumps to
+    the brush's home tab so the picked card is visible.
+  - **Undo / redo** (`Ctrl/⌘+Z` · `Ctrl/⌘+Shift+Z` / `Ctrl+Y` · **↶/↷ buttons**) over whole-draft JSON
+    snapshots — one entry per committed edit (a whole stroke = one undo). Covers board/placement/shape
+    edits; inspector/objective/reward form fields are direct-manipulation and off the stack.
+- **Render (D92 rule — player-facing interactions).** `e2e-editor.mjs` grew to **88** assertions, all
+  driven in real headless Chrome: drag-paint a run + re-drag to erase; alt-click eyedrop; right-click +
+  right-drag erase; the hotkeys (incl. the home-tab jump and the input-focus suppression); Esc clearing a
+  shape anchor + a selection; and undo/redo via both the keyboard and the buttons. The shared harness'
+  `clickScene`/`drag` gained an optional mouse-button arg (right-click). The `cautionary tale` footgun
+  (an import that remounts the panel silently dropping a listener) bit once here and is now covered.
+- **Guards:** tsc · build · vitest **1215** · e2e (editor **88**, deploy-battle **73**) · visual-audit (14)
+  · challenge (7). **Reuses:** **D109/D110** (the editor · `BoardCamera` · the shift/ctrl modifier path).
+  **Deferred / next:** undo coverage for inspector form edits; drag-to-place for *entity* brushes (a row
+  of enemies) if it's ever wanted. **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

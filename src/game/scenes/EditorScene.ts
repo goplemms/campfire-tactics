@@ -321,13 +321,18 @@ export class EditorScene extends Phaser.Scene {
     this.drawShapePreview();
     // Advance an in-progress stroke: apply its op to every tile between the last painted one and here,
     // so a fast drag lays a continuous run rather than dotting only the sampled points.
-    if (this.stroke && this.hoveredTile) {
-      for (const c of lineTiles(this.stroke.last, this.hoveredTile)) {
-        const k = `${c.col},${c.row}`;
-        if (!this.stroke.painted.has(k)) { this.applyStroke(c); this.stroke.painted.add(k); }
+    if (this.stroke) {
+      // A stroke only advances while the button is still down. If a pointer-up was missed (focus loss,
+      // pointercancel), terminate it here — otherwise a bare hover would paint every tile it crosses.
+      if (!pointer.isDown) { this.onPointerUp(); return; }
+      if (this.hoveredTile) {
+        for (const c of lineTiles(this.stroke.last, this.hoveredTile)) {
+          const k = `${c.col},${c.row}`;
+          if (!this.stroke.painted.has(k)) { this.applyStroke(c); this.stroke.painted.add(k); }
+        }
+        this.stroke.last = this.hoveredTile;
+        this.renderBoard(); // cheap per-tile canvas redraw; the heavy DOM/export refresh waits for pointer-up
       }
-      this.stroke.last = this.hoveredTile;
-      this.renderBoard(); // cheap per-tile canvas redraw; the heavy DOM/export refresh waits for pointer-up
     }
   }
 
@@ -518,6 +523,7 @@ export class EditorScene extends Phaser.Scene {
     this.undoStack.push(this.cloneDraft());
     if (this.undoStack.length > HISTORY_MAX) this.undoStack.shift();
     this.redoStack = [];
+    this.refreshHistoryButtons();
   }
 
   private undo(): void {
@@ -616,6 +622,7 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private resize(cols: number, rows: number): void {
+    this.pushHistory(); // a shrink drops off-board entities — make that recoverable (it was silent data loss)
     this.draft.cols = Math.max(1, Math.min(20, cols || 1));
     this.draft.rows = Math.max(1, Math.min(20, rows || 1));
     // Drop anything now off the board.
@@ -1016,9 +1023,13 @@ export class EditorScene extends Phaser.Scene {
     const size = document.createElement("div");
     size.style.margin = "4px 0";
     size.append("size ");
-    size.appendChild(this.numInput(this.draft.cols, (n) => this.resize(n, this.draft.rows)));
+    const colsIn = this.numInput(this.draft.cols, (n) => this.resize(n, this.draft.rows));
+    colsIn.dataset.role = "cols";
+    size.appendChild(colsIn);
     size.append(" × ");
-    size.appendChild(this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n)));
+    const rowsIn = this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n));
+    rowsIn.dataset.role = "rows";
+    size.appendChild(rowsIn);
     d.appendChild(size);
     this.paletteStrips.Terrain = this.cardStrip([]);
     d.appendChild(this.paletteStrips.Terrain);
@@ -1302,6 +1313,7 @@ export class EditorScene extends Phaser.Scene {
       }
       return;
     }
+    this.pushHistory(); // an import replaces the whole draft — make it undoable (the stack survives the remount)
     this.draft = next;
     this.selection = null;
     this.cancelShape();

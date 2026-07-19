@@ -520,6 +520,53 @@ async function main() {
         check("the Undo button reverses the paint too", (await g.eval(STATE)).walls === wUndo);
         await g.screenshot(path.join(OUT, "09-gestures.png"));
 
+        // Robustness: a stroke abandoned by a MISSED pointer-up (focus loss / pointercancel — cases the
+        // harness can't emit) must not keep painting on a bare hover. Simulate the dangling state, then
+        // hover (no button held) over another tile: it must paint nothing and terminate the stroke.
+        console.log("• a dangling stroke (missed pointer-up) does not paint on a bare hover");
+        await g.eval(setBrush("wall"));
+        const dg = await g.eval(`(() => {
+          const sc = window.game.scene.getScene("EditorScene"), d = sc.draft;
+          const occ = (c, r) => [...d.blocked, ...d.playerSpawns, ...d.exit, ...d.traps, ...d.enemies.map((e) => e.pos), ...d.captives.map((x) => x.pos), ...d.gates.map((g) => g.pos), ...d.levers.map((l) => l.pos)].some((p) => p.col === c && p.row === r);
+          const on = (p) => p.x > 60 && p.x < 740 && p.y > 60 && p.y < 540;
+          for (let r = 0; r < d.rows; r++) for (let c = 0; c + 3 < d.cols; c++) {
+            if (occ(c, r) || occ(c + 3, r)) continue;
+            const a = sc.view.tileToWorld({ col: c, row: r }), z = sc.view.tileToWorld({ col: c + 3, row: r });
+            if (!on(a) || !on(z)) continue;
+            return { last: { col: c, row: r }, hover: { x: Math.round(z.x), y: Math.round(z.y) } };
+          }
+          return null;
+        })()`);
+        const wDangle = (await g.eval(STATE)).walls;
+        await g.eval(`(() => { window.game.scene.getScene("EditorScene").stroke = { op: "add", last: ${JSON.stringify(dg.last)}, painted: new Set() }; })()`);
+        await g.hover(dg.hover.x, dg.hover.y); // move with NO button pressed
+        await sleep(100);
+        check("a bare hover with a dangling stroke paints nothing", (await g.eval(STATE)).walls === wDangle);
+        check("the dangling stroke was terminated", (await g.eval(`window.game.scene.getScene("EditorScene").stroke`)) === null);
+
+        // Undo covers the destructive whole-draft ops, not just paints: a board shrink drops off-board
+        // entities — that must be recoverable, not silent data loss.
+        console.log("• undo recovers a resize shrink (dropped entities) and an import");
+        await g.eval(clickTab("Scenario")); await sleep(60);
+        const dims = () => g.eval(`(() => { const d = window.game.scene.getScene("EditorScene").draft; return { cols: d.cols, rows: d.rows, enemies: d.enemies.length }; })()`);
+        const before = await dims();
+        // Shrink to 3×3 via the size inputs (onchange) — this drops most of the-rescue's entities.
+        await g.eval(`(() => { const w = document.querySelector('input[data-role="cols"]'), h = document.querySelector('input[data-role="rows"]'); w.value = "3"; w.dispatchEvent(new Event("change")); h.value = "3"; h.dispatchEvent(new Event("change")); })()`);
+        await sleep(80);
+        const shrunk = await dims();
+        check("shrinking the board dropped entities", shrunk.cols === 3 && shrunk.enemies < before.enemies);
+        await g.eval(`document.querySelector('button[data-role="undo"]').click()`); await sleep(80);
+        await g.eval(`document.querySelector('button[data-role="undo"]').click()`); await sleep(80); // two dims = two snapshots
+        const restored = await dims();
+        check("undo recovers the dropped entities + dimensions", restored.enemies === before.enemies && restored.cols === before.cols);
+
+        // Import is undoable too (the stack survives the panel remount the import triggers).
+        const enemiesPreImport = (await dims()).enemies;
+        await g.eval(IMPORT); await sleep(150);
+        check("re-importing the-rescue loads its 8 enemies", (await dims()).enemies === 8);
+        await g.eval(`document.querySelector('button[data-role="undo"]').click()`); await sleep(100);
+        check("undo reverses the import (draft restored)", (await dims()).enemies === enemiesPreImport);
+
         assertNoProblems(g.problems);
       } catch (err) {
         await g.screenshot(path.join(OUT, "zz-failure.png")).catch(() => {});

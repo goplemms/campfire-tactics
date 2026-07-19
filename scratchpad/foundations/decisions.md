@@ -4428,7 +4428,24 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   shape anchor + a selection; and undo/redo via both the keyboard and the buttons. The shared harness'
   `clickScene`/`drag` gained an optional mouse-button arg (right-click). The `cautionary tale` footgun
   (an import that remounts the panel silently dropping a listener) bit once here and is now covered.
-- **Guards:** tsc · build · vitest **1215** · e2e (editor **88**, deploy-battle **73**) · visual-audit (14)
+- **Challenge pass (`memento:challenge`, 2026-07-19).** Traced the paths the happy-path e2e never hit;
+  three real defects found + fixed (each now has a regression test):
+  - **(A, correctness) dangling stroke painted on a bare hover.** `onHover` advanced the stroke gated only
+    on `this.stroke` being set — never on the button still being down. A *missed* pointer-up (focus loss /
+    pointercancel — the `POINTER_UP`/`_OUTSIDE` handlers don't cover it) left the stroke live, and then
+    merely moving the mouse painted every tile it crossed. **Confirmed** by injecting the dangling state
+    and hovering (walls climbed). Fix: `onHover` terminates the stroke when `!pointer.isDown`.
+  - **(B, data-loss) a board shrink was silent, irreversible data loss.** `resize` dropped off-board
+    entities without a history snapshot → not undoable. Fix: `pushHistory()` in `resize` (the size inputs
+    are `onchange`, so one snapshot per resize).
+  - **(C, gap) an import wasn't undoable.** `importJson` replaced the whole draft with no snapshot. Fix:
+    `pushHistory()` before the swap — the undo stack survives the panel remount the import triggers.
+  - Also: `pushHistory` now refreshes the ↶/↷ button enabled-state, and the size inputs got
+    `data-role="cols"/"rows"` (test-targetable). Findings judged **not worth fixing** and left as noted
+    quirks: a stroke that leaves the board and re-enters draws a connecting line (Photoshop-like, expected);
+    the cursor's grab-hand can stick if Shift is released off-window (cosmetic — the pan gate reads the
+    pointer event, not the tracked key, so panning stays correct).
+- **Guards:** tsc · build · vitest **1215** · e2e (editor **94**, deploy-battle **73**) · visual-audit (14)
   · challenge (7). **Reuses:** **D109/D110** (the editor · `BoardCamera` · the shift/ctrl modifier path).
   **Deferred / next:** undo coverage for inspector form edits; drag-to-place for *entity* brushes (a row
   of enemies) if it's ever wanted. **Superseded by:** —

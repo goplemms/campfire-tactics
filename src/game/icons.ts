@@ -63,6 +63,12 @@ export const ICON = {
   netSource: { glyph: "❖", label: "the net's source", color: INK.danger },
   // A cuffed captive's shackle-lock (D90): only a lockpick (the Thief) frees it — the "Pick the Cell" taste.
   locked: { glyph: "⚿", label: "cuffed — needs a lockpick", color: INK.ember },
+  // A locked interactable gate/cell (D103): blocks its tile until picked (a Thief) or its keyholder falls.
+  gate: { glyph: "▦", label: "locked gate — pick it or defeat its keyholder", color: INK.ember },
+  // A pull-lever (D103): toggles its target gate(s) — the control-room seal.
+  lever: { glyph: "⎇", label: "lever — pull to seal/open its gate", color: INK.cyan },
+  // A smashed door (D106): a destructible gate battered to 0 — a passable remnant, permanent (no reseal).
+  gateRemnant: { glyph: "▨", label: "smashed door — a passable remnant (permanently breached)", color: INK.disabled },
 
   // --- UI affordances ---
   expand: { glyph: "▸", label: "expand" },

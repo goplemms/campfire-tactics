@@ -121,6 +121,40 @@
  *   - PR-2 (the topology rewrite): +1 net — +`OUTER_YARD` / +`CUFFED_CELL` (the two new
  *     infiltration-arm encounters in `hollow-mill.ts`), −`SECURED_WAGON` (the Medic catch-up,
  *     deleted — no catch-up on the Thief arm, C8). `CAPTIVE_PRISONER` is module-private.
+ *
+ * Interactable gates deltas (D103 — the prison-break substrate):
+ *   - gate core (Phase 1): +8 — `makeGate` / `openGate` / `openGateOnGrid` / `applyGatesToGrid` /
+ *     `canLockpickGate` / `lockpickableGates` / `gatesOpenedByDeath` (`gates.ts`, the locked-tile
+ *     enclosure + the lockpick/keyholder open interpreters), and `matchesTag` (promoted from
+ *     module-private in `objectives.ts` so the keyholder lock reuses the one tag matcher). `Gate` /
+ *     `GateLock` are type-only. `TileGrid.setWalkable` is a method, not a barrel export. No
+ *     registration at import → sim digest unchanged.
+ *   - gate wiring (Phase 2a): +1 — `buildAuthoredGates` (`authored.ts`, inflate the authored
+ *     `gates` field into live `Gate`s at staging). `AuthoredGate` + the `openGate` action + the
+ *     `gateOpened` event + `Battle.gates`/`openGate` are type-only / methods (not runtime surface).
+ *   - gate render (Phase 2b): +3 — `MICRO_GATE_LOCKPICK` / `MICRO_GATE_KEYHOLDER` / `MICRO_SCENARIOS`
+*     (`scenarios/micro.ts`, the micro-interaction gallery registered in `SCENARIOS` — D104). The
+ *     `ICON.gate` glyph + the scene's Pick-Cell verb / markGates render are `game/` (not core surface).
+ *     (The transient `JAILBREAK` / `JAILBREAK_ENCOUNTER` showcase this replaced was never merged.)
+ *   - gate destructible (Phase 3): +5 — `isBreakable` / `canAttackGate` / `breakableGates` / `damageGate`
+ *     (`gates.ts`, the door-durability interpreters) + `MICRO_GATE_DESTRUCTIBLE` (`scenarios/micro.ts`, the
+ *     batter-a-door fixture). The `attackGate` action + the `gateDamaged` event + `Gate.hp`/`maxHp` +
+ *     `Battle.attackGate` + the scene's Break-Gate verb are type-only / methods (not runtime surface).
+ *   - gate AI target (Phase 3): +1 — `MICRO_GATE_ENEMY_BATTER` (`scenarios/micro.ts`, the walled-off-guard
+ *     fixture). The `AIPlan.gateTarget` / `AIOptions.gates` / `AI.doorBreak` door-targeting seam is
+ *     type-only / a weight (not runtime surface).
+ *   - gate lever (Phase 3): +6 — `makeLever` / `lockGateOnGrid` / `canPullLever` / `pullableLevers`
+ *     (`gates.ts`, the pull-switch seal) + `buildAuthoredLevers` (`authored.ts`) + `MICRO_LEVER_SEAL`
+ *     (`scenarios/micro.ts`, the slam-a-door-shut fixture). `Lever` / `AuthoredLever` / the `pullLever`
+ *     action / the `gateLocked` event / `Battle.pullLever` / the scene's Pull-Lever verb are type-only /
+ *     methods (not runtime surface).
+ *   - gate destroyed / remnant (D106): +2 — `destroyGateOnGrid` (`gates.ts`, the smash-to-a-permanent-
+ *     passable-remnant terminal state — the lever can never re-seal it) + `MICRO_GATE_REMNANT`
+ *     (`scenarios/micro.ts`, the destroy-then-fail-to-reseal fixture). `Gate.broken` + the
+ *     `ICON.gateRemnant` glyph + the scene's remnant render are type-only / `game/` (not core surface).
+ *   - gate re-seal keeps damage (D107): +1 — `MICRO_GATE_RESEAL` (`scenarios/micro.ts`, the batter →
+ *     lever-open → lever-reseal render guard proving the HP readout persists, no top-up). The
+ *     `lockGateOnGrid` durability change is a method-body edit (not a surface delta).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -221,6 +255,14 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MERCHANT_JOB",
   "MERCHANT_KIT",
   "MERCHANT_SELL",
+  "MICRO_GATE_DESTRUCTIBLE",
+  "MICRO_GATE_ENEMY_BATTER",
+  "MICRO_GATE_KEYHOLDER",
+  "MICRO_GATE_LOCKPICK",
+  "MICRO_GATE_REMNANT",
+  "MICRO_GATE_RESEAL",
+  "MICRO_LEVER_SEAL",
+  "MICRO_SCENARIOS",
   "MIRA_MERCHANT",
   "MORALE_TIERS",
   "MORTALITY",
@@ -326,6 +368,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "applyCharacterBoons",
   "applyDamage",
   "applyEngageInterestEffect",
+  "applyGatesToGrid",
   "applyGearCondition",
   "applyGrant",
   "applyGrantEffect",
@@ -363,12 +406,15 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "batchSimulate",
   "battleOutcome",
   "breakCamp",
+  "breakableGates",
   "bribeChance",
   "bribeCost",
   "bribeEnemy",
   "buildAuthoredCaptives",
   "buildAuthoredEnemies",
+  "buildAuthoredGates",
   "buildAuthoredGrid",
+  "buildAuthoredLevers",
   "buildEnemies",
   "buildGrid",
   "buildLedger",
@@ -388,8 +434,11 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "canAdd",
   "canAffordInfluence",
   "canAffordMaterial",
+  "canAttackGate",
   "canDisarm",
+  "canLockpickGate",
   "canPlacePlayerTrap",
+  "canPullLever",
   "canRelease",
   "canSee",
   "canSeeUnit",
@@ -441,6 +490,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "createUnit",
   "currentEncounter",
   "currentNode",
+  "damageGate",
   "debuffs",
   "decayCounters",
   "declaredFaucetInfluence",
@@ -451,6 +501,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "deployForecast",
   "deployModifiers",
   "describeUnit",
+  "destroyGateOnGrid",
   "disarmTrap",
   "dispatch",
   "dispatchRefusal",
@@ -498,6 +549,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "frontSpeed",
   "frontTurnStage",
   "gainRunGold",
+  "gatesOpenedByDeath",
   "gearDelta",
   "gearRefusal",
   "generateEncounter",
@@ -557,6 +609,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "isActive",
   "isAdjacent",
   "isAuthoredEncounter",
+  "isBreakable",
   "isCaptured",
   "isConcealedTrap",
   "isDebuffed",
@@ -586,9 +639,13 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "listScenarios",
   "loadPurse",
   "loadSupply",
+  "lockGateOnGrid",
   "lockGear",
+  "lockpickableGates",
   "lootBandFor",
   "makeConcealedTrap",
+  "makeGate",
+  "makeLever",
   "makeTrap",
   "manhattan",
   "markBonus",
@@ -599,6 +656,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "marketReadyAt",
   "marketStock",
   "marketTierBonus",
+  "matchesTag",
   "medHealAmount",
   "medicalHerbs",
   "memberRefusal",
@@ -622,6 +680,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "nudgeMorale",
   "occupiedGrid",
   "onSkillCooldown",
+  "openGate",
+  "openGateOnGrid",
   "openingPurseLog",
   "opposite",
   "orderOf",
@@ -650,6 +710,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "projectForecast",
   "projectManifest",
   "protectRadiusOn",
+  "pullableLevers",
   "purseFromLog",
   "purseTotalBySource",
   "rampMark",

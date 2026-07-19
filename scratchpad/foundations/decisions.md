@@ -3900,6 +3900,412 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D100 — Board camera: grab-and-drag pan + wheel zoom (a bigger board than the viewport)
+
+- **Status:** Decided + built (2026-07-18). Owner-driven, first step of the D98 map-creation expansion:
+  authoring a **20×20** level in `#editor` overran the fixed 800×600 canvas — the far tiles were simply
+  unreachable and the whole board never fit on screen. Owner proposed drag-to-move, noting it "would be
+  naturally useful for the actual game as well."
+- **Context (why):** the isometric board is drawn through `CombatView` at a fixed origin + `boardScale`
+  on a `Scale.NONE` 800×600 canvas. A 20×20 diamond spans ~1580×790px — far past the ~480px-wide area
+  left of the editor panel — so most tiles fell off-canvas with no way to pan to them.
+- **Decision — pan/zoom the scene CAMERA, not the draw origin.** A reusable `game/board-camera.ts`
+  (`BoardCamera`) drives `cameras.main` scroll (grab-and-drag) + zoom (wheel, anchored on the cursor),
+  with a **click-vs-drag** discriminator: a press that moves past a threshold pans and **suppresses the
+  tap**, so a drag never also paints; a genuine tap dispatches through an `onTap` callback. Chosen over
+  moving `CombatView.originX/originY` because `pointer.worldX/worldY` already fold in camera scroll+zoom
+  — so `worldToTile` picking stays correct for **free**, with **no per-frame board redraw** (a 20×20 is
+  400 diamonds). A **Recenter** control resets to the default framing so you can never get lost.
+- **Editor integration:** the scene's only on-canvas chrome (the title line) **moved to the DOM panel
+  header**, so the whole Phaser scene is now board content and pans/zooms cleanly (no HUD drift). The
+  brush loop moved from a direct `POINTER_DOWN` bind to `BoardCamera`'s `onTap`.
+- **Reusable for the game (the owner's stated second motive):** `BoardCamera` is scene-agnostic — the
+  battle board can adopt the same control for a large field. **Caveat for that adopter (recorded now):**
+  camera scroll/zoom moves **everything** the camera renders, so a scene with on-canvas HUD (BattleScene
+  has lots) needs that HUD on a **second, fixed camera** first. The editor sidesteps it by keeping all
+  chrome in the DOM — the game wiring is a deliberate follow-up, not done here.
+- **Guards:** `test:e2e:editor` extended — a real press-move-release **drag scrolls the camera**, a drag
+  **does not paint** (click-vs-drag), **Recenter** resets scroll+zoom, and a tap **after** recenter still
+  paints (discrimination intact). Added a `harness.drag(x1,y1,x2,y2)` primitive (real pointer, stepped
+  move). tsc · build · vitest (**1184**) green; the 14-surface visual audit + other e2e are unaffected
+  (the change is `game/`-only and touches no core logic, routing, or game surface).
+- **Reuses:** **D98** (the `#editor` scene + `CombatView`/`worldToTile` click-pick + the DOM panel idiom).
+  **Superseded by:** —
+
+---
+
+## D101 — Editor shape tools: two-click line/rect walls + a coordinate readout (structural authoring)
+
+- **Status:** Decided + built (2026-07-18). Owner was authoring a **prison** finale map and wanted the
+  layout to read *structurally* (perimeter, corridors, cells). Continues the D100 map-creation expansion.
+- **Context (why):** in `the-rescue.json` the prison is entirely `blocked` tiles — vertical wall runs
+  with one-tile **door gaps** and cell rings around the captives — and **all ~19 were placed one click
+  at a time**. A wall-heavy structural map makes the per-tile grind the dominant cost; it only gets worse
+  at 20×20. The natural fix (drag to paint a run) is now **taken by D100's drag-to-pan**.
+- **Decision — two-click shape tools, not drag-paint.** Two new **wall** brushes: **line** (a straight
+  run, snapped to the dominant axis so a rescue-style perimeter/corridor lands rectilinear) and **rect**
+  (an **outline** ring = a cell/room; a **filled** mode = solid mass). Interaction is **anchor-click →
+  far-click** (with a live accent-wash preview between), deliberately **not a drag** — so it never
+  collides with the pan gesture, and it's *more precise* for structural work than a freehand drag. Shapes
+  **add** walls (set, not toggle — a shape lays structure, it doesn't punch holes in what it crosses); a
+  door is still a **gap you erase** afterward (no door entity, per D98). The geometry (`lineTiles`/
+  `rectTiles`) is pure. A pending anchor is cancelled on brush-switch / resize / import.
+- **Decision — live coordinate readout.** The panel header shows `tile (col,row)` under the cursor (and
+  the pending anchor while a shape is aimed). Structural authoring is alignment-bound — cells and doorways
+  have to line up — and counting diamonds by eye doesn't scale; the readout is the cheap precision aid.
+- **Scoped (JIT):** line/rect target **walls only** (the structural need); no fill-flood, no
+  mirror/symmetry, no cell-stamp macro (rect-outline + erase-a-gap already yields a cell) — offered and
+  **deferred** by the owner. The readout is a DOM line (robust under camera zoom), not a near-cursor label.
+- **Guards:** `test:e2e:editor` extended — the coordinate readout tracks the hovered tile, the line tool
+  lays a 4-tile run in two clicks, rect-outline lays a 6-tile ring, and the level still validates (via a
+  new `harness.hover` primitive). Brush palette is now **10**. tsc · build · vitest (**1184**) green;
+  `game/`-only, no core/routing/surface touched.
+- **Reuses:** **D98** (the editor brush loop + `CombatView.fillTile` for the preview wash + the DOM panel),
+  **D100** (the pan gesture the two-click model is designed around). **Superseded by:** —
+
+---
+
+## D102 — Editor M-C: objectives editor + reward controls graduate from passthrough
+
+- **Status:** Decided + built (2026-07-18). Closes the largest editor↔JSON gap for finale authoring —
+  the owner asked what the visual editor *couldn't* reach that hand-authoring can, and objectives + reward
+  were the biggest (both were **passthrough-only**: round-tripped on import, but no UI to create/edit).
+- **Context (why):** the finale *is* objectives — `eliminate-all` OR `extraction` (D97), and `closing-gate`
+  is the "escape before the alarm" tension a prison break wants. The editor only **auto-derived** the
+  standard rescue pair (fixed generic labels, `required: true`) and couldn't author or tune any of it; the
+  reward was a fixed `{gold:50,xp:40}`. `editor-draft.ts` already earmarked these as **M-C**.
+- **Decision — graduate `objectives` + `reward` to first-class draft fields.** They leave the
+  {@link DraftPassthrough} bag (which now holds only rumors/intelDepth/grants → M-E) and become real
+  `EditorDraft` fields with controls:
+  - **Objectives editor** (Events drawer): add/remove rows; per row a **kind** picker
+    (eliminate-all · closing-gate · extraction), a **label** text field, a **required** checkbox (the
+    win/lose-gating vs. optional-bonus switch), and kind-specific fields — closing-gate **speed** +
+    **driver** role; extraction **escort** role. A **"Derive from board"** button drops the standard pair
+    in so labels/required become tunable. A kind change rebuilds a **clean** objective (no stale fields).
+  - **Reward control** (Scenario drawer): **gold** + **xp** (materials round-trip verbatim — no picker yet).
+- **Decision — the exit brush stays the one source for an extraction span.** An extraction row's `span`
+  is **(re)bound to the painted exit tiles on export**, not authored per-objective — so there's a single
+  place to place the span and it can't drift from the board. `standardObjectives()` is the **one** derive
+  helper shared by the export path (empty list ⇒ derive) and the "Derive" button, so they can't diverge.
+  Empty `objectives` still auto-derives (a plain painted rescue "just works"); a non-empty list is verbatim.
+- **Scoped (JIT):** closing-gate's **swept-tiles span** isn't paintable yet (a new brush) → an
+  editor-made gate is a **pure timer** (`span ?? []` tolerates it); reward **materials** have no picker
+  (round-trip only); **grants / rumors / intelDepth** stay passthrough (→ M-E). Objective **ids** are
+  auto-generated (`obj-N`), not hand-edited.
+- **Guards:** `editor-draft.test` (authored objectives beat the derive — tuned label + optional `required`
+  + extraction span rebound to exit; graduation asserted); the M-A **round-trip** + the-rescue lossless
+  tests still deep-equal with the fields graduated. `test:e2e:editor` extended (imported finale shows its 2
+  objectives as rows; edit label + toggle required → export; ＋add; reward gold → export; still validates).
+  tsc · build · vitest (**1185**) · editor/level e2e green. `game/` + one `game/`-test only; **no core,
+  routing, or game-surface change** — the serialized shape is unchanged, so `staging`/`levels` are untouched.
+- **Reuses:** **D98** (editor + the passthrough-graduation plan it named), **D97/D50** (the objective model
+  + `OBJECTIVE_KINDS`), **D99** (the walkover guard still validates the authored span). **Superseded by:** —
+
+---
+
+## D103 — Interactable gates: the lock is the tile, opening it is data (prison-break substrate)
+
+- **Status:** Deciding + **building in phases** (2026-07-18). Owner-driven, from a concrete finale
+  narrative (below). **Phase 1 (core) + Phase 2a (wiring) + Phase 2b render + the Phase 3 destructible
+  door + the enemy AI battering it + the control-room lever + the editor gate/lever brushes built** — the
+  full seal loop plays *and* the prison is paintable. Remaining: **promote** the seal into the Hollow Mill
+  finale (an owner-directed step). Candidate for a `decision-adversary` red-team before that promotion.
+- **Owner's finale flow (the design source):** an **infiltrator** reaches a **control room**, which
+  **locks a door sealing the guards** on the far side; that buys the **assault team several turns** to
+  **lockpick the cells** open — and the *easiest* open is to **defeat the Captain**, who holds the keys.
+- **Decision — the gate IS the lock (spatial), not a flag on the unit.** A **gate** occupies a tile and,
+  while `locked`, is **impassable** — it physically **encloses** a cell's prisoner (can't leave till it
+  opens) and **shuts out** the control room's guards. This replaces the old "the captive carries a
+  lockpick flag" model: the enclosure is real board geometry (pathing/reach read `TileGrid.isWalkable`),
+  wired via a new runtime `TileGrid.setWalkable` — a locked gate blocks its tile; opening clears it.
+- **Decision — how you open it is DATA (`openBy`), so freeing prisoners is extensible.** Each gate carries
+  an OR'd list of {@link GateLock} conditions interpreted in one place — **new ways to free a cell are new
+  records, not new branches** (the D4 field-entity ethos, same as skills/objectives/events). This is the
+  whole point the owner asked for: "additional mechanics besides lockpicking." Two conditions ship first
+  (deliberately *different shapes*, to prove the interpreter is genuinely extensible, not aspirational):
+  - **lockpick** — an *adjacent* Expert-Lockpick unit (the Thief) spends an Act. Reuses the exact
+    capability gate the captive rescue used (`unitHasCapability(by,"lockpick")`, never a jobId, D54/D72).
+  - **keyholder** — opens **automatically** when a unit matching a `tag` (role/id) is **defeated** — the
+    Captain drops the keys. Event-driven + tag-bound (reuses `matchesTag`, promoted from module-private).
+- **Phase 1 — pure core (built): `gates.ts`.** `Gate` (`locked` + `openBy`), `makeGate`/`openGate`;
+  the interpreters `canLockpickGate` (locked + has-lockpick-cond + adjacent + capable), `lockpickableGates`,
+  `gatesOpenedByDeath`; the grid interplay `applyGatesToGrid` (block locked tiles at assembly) +
+  `openGateOnGrid` (open + unblock). No Phaser/DOM/`Math.random`. Guards: `gates.test` (locked blocks &
+  open clears the tile; only an adjacent Thief picks; keyholder death opens every matching locked cell by
+  role *or* id, and never a lockpick-only cell or an already-open one); barrel-surface +8 (documented).
+- **Phase 2a — battle wiring (built, headless):** `AuthoredEncounter.gates` (+ `AuthoredGate` +
+  `buildAuthoredGates`) armed in **staging**; `Battle` gained `gates` — it `applyGatesToGrid` on
+  construction (locked tiles block) and wires a `unitDefeated` hook that `openGateOnGrid`s keyholder cells
+  (the Captain drops the keys); a logged **`openGate` action** + `Battle.openGate(gate, by)` (the interact
+  Act — the rescue Act generalized: adjacent + capable → open, refused = a no-op); a `gateOpened` event;
+  and **undo/replay correctness** — the checkpoint snapshots each gate's `locked` and re-blocks its tile on
+  restore (so undoing a lockpick, or a kill that popped a cell, re-locks it). Guards: `gates-battle.test`
+  (locked blocks; Thief opens the adjacent cell + `gateOpened` fires; a non-lockpick unit is refused;
+  defeating the Captain pops every keyholder cell; **undo re-locks**). tsc · build · vitest (**1196**) · sim
+  digest byte-identical (additive; no content uses gates yet). Gates ride the editor **passthrough** bag so
+  a level with gates round-trips losslessly until the brush lands.
+- **Phase 2b render — built (in-battle, visual-e2e proven):** `BattleScene` draws each locked gate with
+  the `▦` `ICON.gate` (over the obstacle block its non-walkable tile already raises — reads as a *cell*,
+  not a wall); the Thief's **Pick Cell** verb surfaces adjacent to a lockpickable gate in **both**
+  deployment + combat (mirrors the D90 Pick-Lock verb via `canLockpickGate` + `commitFieldAct`); a
+  `gateOpened` bus listener redraws the grid (the opened tile clears — `drawGrid` made self-destroying so
+  it's re-callable), drops the marker, and logs (a Thief's pick or the keyholder's keys). Guarded by the
+  new **micro-interaction harness (D104)**: two minimal `#scene` fixtures (`micro-gate-lockpick`,
+  `micro-gate-keyholder`) driven by **`test:e2e:micro`** — the MANDATORY new-surface guard (the D92 freeze
+  tale), wired into CI. tsc · build · vitest (**1196**) · sim byte-identical.
+- **Phase 3 destructible door — built (core + render + micro-guard):** the `GateLock` gains
+  `{ kind: "destructible", hp }`; `makeGate` seeds `Gate.hp`/`maxHp`; the interpreters `isBreakable` /
+  `canAttackGate` (any unit in attack range — a door isn't lockpick-gated) / `breakableGates` / `damageGate`
+  (chip, break at 0). `Battle.attackGate` + a logged `attackGate` action chip the door by the striker's
+  attack, emit `gateDamaged` while it holds and `gateOpened` (cause `destroyed`) when it breaks; the
+  checkpoint now snapshots `{locked, hp}` so undoing a hit restores durability + the block. Render: a
+  **Break Gate** verb (any unit, both phases), an HP readout under the `▦`, a `gateDamaged` flash/log, the
+  "smashed open" line. This is the owner's *timer* (D103 footer): the "several turns" = the door's HP under
+  attack, no `closing-gate` countdown. Guard: micro entry #3 `micro-gate-destructible` (`test:e2e:micro`:
+  holds one hit → breaks the next, no freeze) + `gates.test`/`gates-battle.test` (chip/break/range + undo
+  restores hp). barrel +5. tsc · build · vitest (**1199**) · sim byte-identical.
+- **Enemy AI targeting a door — built (Phase 3):** the guards *choose* to batter a destructible seal.
+  `planEnemyTurn` gains a **door-break tier** in its enumerate-score-pick: `AIPlan.gateTarget` +
+  `AIOptions.gates` (threaded from `Battle.runPolicyTurn`) + `AI.doorBreak` (500 — below any foe attack
+  `actionBase` 1000+, above pure advance). The user's *"the condition won't always be true"* is the crux:
+  door-break is offered **only when the unit is terrain-walled-off from *every* seen foe** (`findPath`
+  returns null — the locked door is the wall); if a route around exists the guard advances/fights and
+  never wastes a turn on a door. Priority is **foe > door > advance**; `planActions` lowers `gateTarget`
+  to the logged `attackGate`; the scene renders it via the same `gateDamaged`/`gateOpened` bus listeners
+  (no scene change). Guard: micro entry #4 `micro-gate-enemy-batter` (a walled-off guard batters a 20-hp
+  door down over turns) + `ai.test` (batters when walled off · does NOT break a door it can walk around ·
+  prefers a reachable foe). barrel +1. tsc · build · vitest (**1202**) · **sim digest byte-identical**
+  (gateless content ⇒ no door-break path). This is the finale's "several turns" made real.
+- **Control-room lever — built (Phase 3, completes the seal loop):** a `Lever` (`{id, pos, targets[]}`) —
+  a pull-switch that **toggles** its target gates from a distance (the remote-trigger `GateLock` shape).
+  `Battle.pullLever` + a logged `pullLever` action toggle each target: an open door **slams shut**
+  (`lockGateOnGrid` — re-block + restore durability, so a freshly-shut door is whole), a locked one
+  reopens; a gate whose tile a **living unit occupies is never sealed** (no trapping a body in a wall).
+  `AuthoredEncounter.levers` (+ `AuthoredLever` + `buildAuthoredLevers`) armed in staging; a `gateLocked`
+  event + the `lever` `gateOpened` cause drive the render (`⎇` `ICON.lever` marker, a **Pull Lever** verb,
+  the "slams shut" redraw). Undo crosses the toggle via the existing gate checkpoint (no new state). **The
+  full loop now plays:** the infiltrator pulls the lever → the destructible door seals → the AI guards
+  batter it down over turns. Guard: micro entry #5 `micro-lever-seal` + `gates.test`/`gates-battle.test`
+  (toggle, the occupancy guard, undo). barrel +6. tsc · build · vitest (**1205**) · e2e:micro (19 across 5)
+  · deploy-battle e2e · sim byte-identical. **The seal is the timer** (owner, 2026-07-18): "the delay would
+  just be a result of enemy action to bust down the door" — emergent from the door's HP under attack, **no**
+  `closing-gate` countdown.
+- **Editor gate/lever brushes — built (Phase 2b, closes the editor↔JSON gap; owner-flagged categorization).**
+  The owner's insight: *"wall and placeable elements don't really seem the same"* — a painted **substrate**
+  vs. a **placed object** with its own properties. So a new **Objects** tab (gate · lever · trap — trap moved
+  here) sits beside **Terrain** (now walls/floor only), with **Select + Erase** promoted to persistent
+  cross-cutting tools. Gates + levers **graduated** to first-class `EditorDraft` fields (out of the M-A
+  passthrough bag). A gate lands as a default **lockpick cell**; the **persistent inspector** (moved out of
+  the Units drawer so it edits *any* selected object anywhere) sets a gate's `openBy` (lockpick / keyholder
+  + role / destructible + hp) + `locked`, and a lever's **target gates** (a checklist of placed gate ids).
+  Board markers: `▦`+`L/K/D` tag per gate, `⎇` per lever, gold ring on the selected object. Guard:
+  `test:e2e:editor` extended (place a gate → default lockpick; inspector adds destructible; place + wire a
+  lever → targets in the export; still validates) + `editor-draft.test` round-trip. Palette 12 brushes / 5
+  tabs. tsc · build · vitest (**1205**) · e2e:editor (46) · level e2e · sim byte-identical. **The prison is
+  now fully paintable** — walls, cells (lockpick/keyholder/destructible), the control-room lever, all in
+  `#editor` → Download JSON → play. **Then:** promote the seal into the finale.
+- **Scoped (JIT):** first cut = **lockpick + keyholder** only. Seam-ready, not built: **lever** (a remote
+  switch tile), **key** (a carried item), **destructible** (bash it down — needs units to target a non-unit,
+  the one bigger lift). Each is a new `GateLock` member + a case, nothing structural.
+- **Reuses:** **D4** (the field-entity/data-callback ethos), **D52/D69** (the captive rescue + the exact
+  lockpick capability gate), **D50/D97** (`ObjectiveTag`/`matchesTag` for the keyholder), the `TileGrid`
+  (extended with `setWalkable`). **Supersedes (in time):** the captive `lockpick`-release flag as the
+  *cell* model — a cuffed captive becomes "a plain captive behind a lockpick gate." **Superseded by:** —
+
+---
+
+## D104 — The micro-interaction harness: a rendered microcosm per mechanic
+
+- **Status:** Decided + built (2026-07-18). Owner idea, standing up alongside the D103 gate render — "a
+  smaller microcosm version of our individual encounter visual tests," one per micro-interaction
+  (defeat→keys, a unit destroying a door, …).
+- **Context (the gap):** a mechanic had two coverage rungs with nothing between — **vitest microtests**
+  (fast, isolated, one behavior, but **never render** → can't catch a Phaser **freeze**/bad marker) and a
+  **full-encounter e2e** (renders, catches freezes, but heavyweight — boots Chrome + stages a whole
+  encounter to check one beat). The middle rung was missing: a *rendered* proof of one micro-behavior.
+- **Decision — a "mechanic storybook" on the existing `#scene` rail, not a new framework.** Three thin
+  pieces: **(1)** minimal single-mechanic **fixtures** — each a tiny `ScenarioConfig` (`scenarios/micro.ts`):
+  one actor + the one entity under test + a lone body so the deploy net has a danger source, ~15 lines.
+  **(2)** one **walker** (`scripts/e2e-micro.mjs`) that boots each fixture **in a single Chrome session**
+  via `g.boot` (the harness's cheap re-boot, not a browser per case), drives the one interaction via
+  `bsEval`, and asserts the **visible** effect (marker present/gone, verb surfaces, tile clears) + no page
+  error (the freeze catch). **(3)** the fixtures double as a **clickable gallery** — bare `#scene` already
+  lists them, so each interaction is walkable by hand in isolation. Adding a mechanic's render guard = one
+  fixture + a ~10-line walker block.
+- **Boundaries (what it is NOT):** it **complements**, not replaces — vitest keeps the **logic** depth, the
+  full-encounter e2es (`test:e2e`, `:scenario`) keep the **integrated flow**. A render freeze only surfaces
+  in real Phaser, so Chrome stays unavoidable; the single-session walker is the efficiency lever. Kept
+  lean deliberately so it earns its keep (the owner's "make sure it's a microcosm" intent).
+- **Built:** `MICRO_GATE_LOCKPICK` + `MICRO_GATE_KEYHOLDER` (the first two entries — the D103 gate render's
+  guard) via `test:e2e:micro` (6 assertions, 2 interactions, one browser session), wired into CI. The
+  transient `#scene=jailbreak` showcase + `test:e2e:gates` (added earlier this session only to host the
+  gate guard) were **retired** into this — no redundant scenario. barrel: −`JAILBREAK`/`JAILBREAK_ENCOUNTER`
+  +`MICRO_GATE_LOCKPICK`/`MICRO_GATE_KEYHOLDER`/`MICRO_SCENARIOS`.
+- **Next customers:** the D103 **destructible door** (Phase 3) lands as micro entry #3 (a unit attacking a
+  gate → it breaks); then `key`/`lever` gate opens, and existing beats (rescue, trap-spring, sway) can
+  migrate in as cheap entries over time.
+- **Reuses:** the **#170** `#scene` scenario harness (boot-any-encounter + the picker) + `harness.mjs`'s
+  `g.boot`/`bsEval`/`assertNoProblems`. **Superseded by:** —
+
+---
+
+## D105 — Red-team pass on the D100–D104 work: three confirmed correctness fixes (C1/C2/C3)
+
+- **Status:** Decided + built (2026-07-18). Owner ask ("let's red team everything we work on in this
+  session") → two `decision-adversary` passes (gate mechanics + finale; editor + AI + harness) plus a
+  throwaway probe test that asserted *correct* behavior so a failure = a confirmed bug. Three fired.
+- **C1 — a gate opening on a wall tile dissolved the terrain.** `TileGrid` held a single `blocked`
+  layer, so `openGateOnGrid`'s `setWalkable(pos,true)` couldn't tell a permanent wall from a gate
+  block — opening a gate placed on (or reinforced by) a wall tile punched a permanent hole. **Fix:**
+  split the grid into an **immutable `wall` layer** (authored terrain) + a **runtime `blocked`
+  overlay** (the gate seam). `isWalkable` requires *both* clear, so `setWalkable(wallTile,true)` is
+  inert — the wall always wins. `setWalkable` only ever touches the overlay. (`grid.ts`; regression in
+  `grid.test.ts`.)
+- **C2 — an all-optional objective set was a turn-one trivial win.** `withDefaultGoal` skipped the
+  injected default whenever the list named *any* goal-kind — **even an optional one** — leaving zero
+  required objectives, which `encounterOutcome` scores as a vacuous win (a live enemy, instant
+  victory). **Fix:** inject the default unless the list names a **required** goal
+  (`isGoalKind(s.kind) && s.required`). An optional goal no longer suppresses it. Consistent with the
+  finale (both its OR'd goals are `required:true`). (`objectives.ts`; regressions in
+  `objectives.test.ts` + an end-to-end `stageEncounter` case in `staging.test.ts`.)
+- **C3 — the enemy AI battered an irrelevant destructible door.** The door-break relevance gate
+  proved "walled off from *every* seen foe" but never "breaking *this* door helps" — so a guard sealed
+  by **permanent terrain** with an unrelated/decorative door in range smashed it for turns. **Fix:**
+  filter `breakableDoors` to those whose *opening actually reveals a route* — probe each by momentarily
+  opening its overlay tile and re-pathing to a seen foe, restoring it either way. The finale's genuine
+  seal (the door *is* the sole wall) still batters; the decorative door is skipped. Conservative on
+  doors-in-series (never batters without provable progress). (`ai.ts`; regressions in `ai.test.ts` — a
+  bad case *and* a kept-good case.)
+- **Deferred (surfaced, not yet fixed — owner to prioritize):** the finale-promotion blockers (the
+  "several turns" seal isn't a robust timer — infinite reseal, x-ray-sight-gated batter, untuned HP,
+  hold-order silently disables it; the lever is an unconditional skeleton key bypassing `openBy`;
+  silent-unrescuable-prisoner via empty `openBy` / an escaping keyholder) and the editor authoring
+  footguns (`objectSeq` id collision on import, dangling lever targets after erase, empty-span
+  extraction, no gate/lever `validateLevel` coverage). These gate the **finale promotion**, not these
+  three correctness bugs. **Superseded by:** D106 (the seal's infinite-reseal, F2a, is now closed).
+
+---
+
+## D106 — A smashed door is a permanent breach: the destroyed gate leaves a passable remnant
+
+- **Status:** Decided + built (2026-07-18). Owner design — "make [the door] a unit-style element entity:
+  when it is destroyed it leaves a remnant on the board you can move over, more just a marker. Only the
+  lever can toggle it, whereas destroying it will be permanently disabled." Directly closes the D105 F2a
+  **infinite-reseal** exploit as a *design* fix, not a tuning band-aid.
+- **The problem it solves (F2a):** `lockGateOnGrid` restored a destructible door to full HP on every
+  re-seal, so one unit posted at the lever could re-seal the door at full durability each time the guards
+  battered it to 0 — the "several turns" pressure the finale is built on evaporated into a permanent
+  free wall. The seal needed a *one-way* state: once broken, it stays broken.
+- **Decision — a third gate state, `broken`, distinct from intact-open.** A `destructible` gate now has a
+  lifecycle: **locked** (shut, blocks) → **open** (intact, `locked:false`, lever can re-seal) → **broken**
+  (smashed to 0 hp, `locked:false` + `broken:true`, a *passable remnant*, **never** re-sealable). The
+  break-loop calls the new `destroyGateOnGrid` (sets `broken`, unlocks, zeroes hp, unblocks the tile)
+  instead of `openGateOnGrid`; `lockGateOnGrid` and the `pullLever` toggle both **no-op on a broken gate**;
+  `isBreakable` excludes broken (can't re-batter rubble). So the guards' battering is a permanent breach
+  and the reseal is gone — while an *intact* door (opened by lockpick/keyholder/lever) stays fully
+  toggleable. The distinction is exactly the owner's "only the lever can toggle it [while intact]; destroying
+  it is permanent."
+- **Render (D92 rule — a new player-facing surface).** A broken gate draws a muted, low, **passable ▨
+  remnant** marker (`ICON.gateRemnant`) instead of the ▦ lock + HP readout — proven **in the real scene**
+  via a new `MICRO_GATE_REMNANT` fixture + `test:e2e:micro` block (smash it → ▨ remnant + walkable → pull
+  the lever → it stays a remnant, no re-seal, no freeze). The existing destructible + enemy-batter micro
+  assertions updated from "markers gone" to "▨ remnant present."
+- **Undo/replay:** the gate checkpoint now snapshots `broken` alongside `locked`/`hp`, so undoing the
+  killing blow restores the whole, sealing, un-broken door (covered in `gates-battle.test`).
+- **Scope kept lean (NOT a literal Unit):** the door stays a `Gate` record — it already behaves
+  entity-like (HP, attackable in range). "Unit-style" is the *feel* (it's destroyed and leaves a remnant),
+  captured by the `broken` state; no unit-list/targeting refactor. barrel: +`destroyGateOnGrid` +
+  `MICRO_GATE_REMNANT`.
+- **Remaining (not this change):** the *double-pull top-up* (opening then re-sealing a still-standing
+  damaged door restores its HP) is a lesser, **risky/costly** vector — **now closed by D107**; the other
+  D105 finale-timer items (x-ray-sight-gated batter, untuned HP-vs-garrison, the hold-order that disables
+  the loop, the lever-as-skeleton-key) are still open. **Superseded by:** D107 (the reseal HP-restore is gone).
+
+---
+
+## D107 — A lever re-seal no longer mends the door: battering persists across seals
+
+- **Status:** Decided + built (2026-07-18). Owner ruling — "I do not believe flipping the lever should
+  restore the health of the door." Closes the *double-pull top-up* vector D106 left open.
+- **The problem it solves:** `lockGateOnGrid` restored a destructible door to full HP on re-seal (a
+  hold-over from the D103 "a freshly-shut door is whole" framing). Combined with the lever's toggle, a
+  player could open→re-seal a still-standing damaged door to top its durability back up — a softer sibling
+  of the F2a exploit D106 killed. It also just modeled the wrong thing: slamming a battered door shut
+  doesn't repair the cracks.
+- **Decision — re-sealing keeps the accumulated damage.** `lockGateOnGrid` now only re-locks + re-blocks
+  the tile; it no longer touches `hp`. So the guards' battering **persists across re-seals**, and each
+  fresh seal buys strictly *less* time than the last — the pressure ratchets instead of resetting. (The
+  only place a destructible door's hp resets to `maxHp` was this line; nothing else restores it.)
+- **Interaction with D106:** a door still has its three states (locked → open → broken); D106 made
+  *destruction* permanent (the remnant), D107 makes *damage* sticky (no top-up on the intact door). Together
+  the "several turns" seal is now a genuine, monotonic timer — resealing delays the breach but never
+  rewinds it, and once it breaks it's gone.
+- **Tests:** the `lockGateOnGrid` unit test flipped from "restores durability" to "KEEPS its accumulated
+  damage" (and its old form was found to have passed for the wrong reason — it damaged an *open*,
+  non-breakable door, so the restore line masked a no-op); plus a battle-level `D107` case (batter → lever
+  open → lever re-seal keeps the damage → one more hit finishes it). Render guard (D92 rule): a new
+  `MICRO_GATE_RESEAL` fixture + `test:e2e:micro` block proves the **HP readout persists** in the real scene
+  across the open→re-seal toggle (stays `11/20`, never a restored `20/20`). barrel: +`MICRO_GATE_RESEAL`.
+- **Remaining:** the other D105 finale-timer items (x-ray-sight-gated batter, untuned HP-vs-garrison, the
+  hold-order that disables the loop, the lever-as-skeleton-key) — reframed into a doctrine in D108.
+  **Superseded by:** —
+
+---
+
+## D108 — The prison-break guard doctrine + `in-combat` as the first tag-status (design, scope agreed)
+
+- **Status:** Designed, scope agreed (2026-07-18) — owner-directed design conversation. **Not yet built.**
+  One crux still owed before build: **what sets and clears `in-combat`** (see the open question). Recorded
+  now so the direction is durable (it lived only in the session transcript).
+- **Why:** the D105 red-team surfaced four *loose* finale-timer behaviors — door-break gated on x-ray sight,
+  untuned door-HP-vs-garrison, a `hold` order silently disabling battering, and a lever that skeleton-keys
+  any wired gate. The owner's insight: three of the four are **accidents of the enemy AI's targeting model**
+  (door-break was bolted onto the "see a foe → attack it" loop, so it inherited that loop's preconditions).
+  The fix isn't four patches — it's replacing the accident with an intentional **guard doctrine**.
+- **The doctrine — a sealed door is an alarm.** When the route to the control room is sealed, every guard on
+  the far side wants **through** it (something's clearly gone wrong), and *how* they open it depends on what
+  they carry:
+  - The **Warden** (see below) holds the key → walks to the door and **unlocks it** — a fast adjacent Act,
+    no HP grind. Re-opening the seal lets his guards back in (undoes the player's lever).
+  - **Keyless guards** → **batter it down** (the D106/D107 destructible-HP model, now a genuine timer).
+  - All of it is **suppressed while `in-combat`** — a unit trading blows doesn't peel off to answer the door.
+  This is a **spatial/objective drive** (walled off from the goal → converge on the door), **decoupled from
+  vision** (retires red-team #1) with `in-combat` as the single off-switch (retires #3, the hold footgun).
+  The lever stays a **general tool** — works from an infiltrator start *or* an assault start.
+- **The Warden = the route's major boss = the keyholder — one unit, the whole tension.** *Alive*, he walks
+  to the sealed door and re-opens it with his key (buys the garrison back in). *Dead*, his cells pop open
+  (the existing keyholder-death mechanic — the assault team's shortcut). Kill-him-fast vs he-undoes-your-seal.
+- **Keyholder becomes an *active, living* behavior (new).** Today `keyholder` is **only a death trigger**
+  (`gatesOpenedByDeath`). D108 adds a *living* keyholder who **reaches a gate and opens it as an action** —
+  a new AI drive, reusing the existing gate-interact Act shape. Deliberately **no item object**: "using the
+  key" == the keyholder-tagged unit reaches the door and opens it. (Same character keeps both behaviors.)
+- **`in-combat` = the first real tag-status — this is the concrete use-site that graduates Epic #171.** The
+  parked status-model track was left *design-only, use-site-gated*; this finale is the pull. Scope discipline:
+  introduce the status **vocabulary** with `in-combat` (self-contained), and **do NOT** migrate `captured`
+  in the same step — folding `captured`→status is the ~30-site migration rev-4 already flagged; it stays a
+  deliberate later step, not a prerequisite. (Owner's instinct "a tag-status is a better way to fold in
+  captured units" matches the track — validated, just sequenced apart.)
+- **Lever skeleton-key (#4) — separate, clean fix.** Add `{kind:"lever"}` to the gate `openBy` union (the
+  seam is already stubbed in `gates.ts`) so a lever only controls gates *authored to accept it* — lever
+  control becomes a gate property, not an unconstrained wire. Independent of the doctrine above.
+- **Scope principle — three behaviors, not three frameworks** (concrete-first / YAGNI, matching the status
+  track's use-site-pulled laddering):
+  1. **Guard door-doctrine** — the AI drive (converge → key-open or batter → gated by `in-combat`).
+  2. **`in-combat` as the first tag-status** — minimal status vocabulary + its set/clear rules.
+  3. **Keyholder-opens-door as a behavior** — reuse the gate-interact Act; **no** item object.
+- **Explicitly deferred (NOT built now):** a **transferable in-encounter item system** (a guard drops a key,
+  another picks it up and uses it) — confirmed we have **no board item-pickup today**; the nearest patterns
+  are the captive-rescue + gate-interact Acts (step adjacent → logged Act), which is the shape it'll take
+  **when a use-site pulls it**. Also still open: the untuned-HP tuning (#2) — candidate shape is
+  *breach-points-as-turns* (each batterer chips a fixed 1/turn, so break-time = HP ÷ batterers, "several
+  turns" authored directly); to be settled during the doctrine build.
+- **Open question (the crux to define before build):** the **set/clear rules for `in-combat`** — what marks
+  a unit in combat (attacked this turn? adjacent to a live foe? took damage recently?) and what clears it
+  (no adjacent foe for N turns?). This determines whether the doctrine feels *fair* — too sticky and guards
+  never answer the door; too loose and they abandon fights to babysit it. **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

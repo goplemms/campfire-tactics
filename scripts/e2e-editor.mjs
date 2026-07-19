@@ -50,6 +50,12 @@ const STATE = `(() => {
   };
 })()`;
 
+// The board camera's live scroll/zoom — proves drag-pans / wheel-zooms / Recenter reset.
+const CAM = `(() => {
+  const c = window.game.scene.getScene("EditorScene").cameras.main;
+  return { sx: Math.round(c.scrollX), sy: Math.round(c.scrollY), zoom: +c.zoom.toFixed(3) };
+})()`;
+
 const clickTab = (t) => `document.querySelector('button[data-tab="${t}"]').click()`;
 
 // Select the warden by clicking its UNIT-LIST row (the occlusion fix — no board pixel-hunt), then
@@ -85,8 +91,8 @@ async function main() {
         let st = await g.eval(STATE);
         console.log("• #editor boots with the brush palette");
         check("the editor scene is active", st.active === true);
-        check("the brush palette is present (8 brushes incl. select)", st.brushButtons === 8);
-        check("the drawer tab bar is present (4 tabs)", st.tabs === 4);
+        check("the brush palette is present (12 brushes incl. gate + lever)", st.brushButtons === 12);
+        check("the drawer tab bar is present (5 tabs incl. Objects)", st.tabs === 5);
         check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));
 
@@ -154,6 +160,143 @@ async function main() {
         check("the id rename + maxHp override flow to the export", st4.wardenEditedHp === 99);
         check("the level still validates after the edit", st4.valid === true);
         await g.screenshot(path.join(OUT, "04-inspected.png"));
+
+        // Camera controls (large-map fix): drag pans the board, a drag does NOT paint, and
+        // Recenter restores the default framing — so a 20×20 level is reachable on the fixed canvas.
+        console.log("• grab-and-drag pans the board (large-map reachability)");
+        const camBefore = await g.eval(CAM);
+        check("camera starts at the default framing", camBefore.sx === 0 && camBefore.sy === 0 && camBefore.zoom === 1);
+        const wallsBeforeDrag = (await g.eval(STATE)).walls;
+        await g.eval(setBrush("wall"));
+        await g.drag(430, 300, 250, 300); // drag left over the board
+        await sleep(120);
+        const camAfter = await g.eval(CAM);
+        const stDrag = await g.eval(STATE);
+        check("dragging scrolled the camera", Math.abs(camAfter.sx) > 30);
+        check("a drag did not paint a tile (click vs drag)", stDrag.walls === wallsBeforeDrag);
+        await g.screenshot(path.join(OUT, "05-panned.png"));
+
+        // Recenter resets scroll+zoom; after it a genuine tap still paints (discrimination intact).
+        await g.eval(`document.querySelector('button[data-role="recenter"]').click()`);
+        await sleep(80);
+        const camReset = await g.eval(CAM);
+        check("Recenter restored the default framing", camReset.sx === 0 && camReset.sy === 0 && camReset.zoom === 1);
+        await g.clickScene(448, 262); // a plain tap on the empty tile (5,0)
+        await sleep(100);
+        const stTap = await g.eval(STATE);
+        check("a tap after recenter still paints (walls incremented)", stTap.walls === wallsBeforeDrag + 1);
+
+        // Structural wall tools (M-D): two-click line + rectangle, plus the live coordinate readout.
+        // Camera is recentered (scroll 0, zoom 1), so a tile's board-world point equals its screen point.
+        console.log("• line / rectangle wall tools + coordinate readout (structural authoring)");
+        const tileScreen = (col, row) =>
+          g.eval(`(() => { const p = window.game.scene.getScene("EditorScene").view.tileToWorld({col:${col},row:${row}}); return { x: Math.round(p.x), y: Math.round(p.y) }; })()`);
+        const coordText = () => g.eval(`document.querySelector('[data-role="coord"]').textContent`);
+        const blocked = async () => (await g.eval(STATE)).walls;
+
+        // The coordinate readout tracks the hovered tile.
+        const hb = await tileScreen(2, 0);
+        await g.hover(hb.x, hb.y);
+        await sleep(60);
+        check("the coordinate readout shows the hovered tile", (await coordText()).includes("(2,0)"));
+        check("the rect outline/fill mode toggle is present", (await g.eval(`!!document.querySelector('button[data-role="rect-mode"]')`)) === true);
+
+        // Line tool: anchor (2,0) → far (2,3) lays a 4-tile vertical wall run in two clicks.
+        const b0 = await blocked();
+        await g.eval(setBrush("line"));
+        let p = await tileScreen(2, 0); await g.clickScene(p.x, p.y); await sleep(60);
+        p = await tileScreen(2, 3); await g.clickScene(p.x, p.y); await sleep(60);
+        check("line tool laid a 4-tile wall run (two clicks)", (await blocked()) === b0 + 4);
+
+        // Rectangle outline: corners (4,5)–(6,6) → a 6-tile wall ring (a cell/room outline).
+        const b1 = await blocked();
+        await g.eval(setBrush("rect"));
+        p = await tileScreen(4, 5); await g.clickScene(p.x, p.y); await sleep(60);
+        p = await tileScreen(6, 6); await g.clickScene(p.x, p.y); await sleep(60);
+        check("rect outline laid a 6-tile wall ring", (await blocked()) === b1 + 6);
+        check("the level still validates after the shape tools", (await g.eval(STATE)).valid === true);
+        await g.screenshot(path.join(OUT, "06-shapes.png"));
+
+        // Objectives editor + reward (M-C): the-rescue imported with 2 objectives — tune label/required,
+        // add one, set the reward — the gaps the visual editor couldn't reach before.
+        console.log("• objectives editor + reward controls (M-C)");
+        await g.eval(clickTab("Events"));
+        await sleep(80);
+        const objCount = () => g.eval(`document.querySelectorAll('[data-role="objective"]').length`);
+        const expObj = () => g.eval(`JSON.parse(document.querySelector("pre").textContent).objectives`);
+        check("the imported finale shows its 2 objectives as editable rows", (await objCount()) === 2);
+
+        // Edit the first objective's label + toggle its required flag off (the two fields we explained).
+        await g.eval(`(() => {
+          const row = document.querySelector('[data-role="objective"]');
+          const label = row.querySelector('input:not([type=checkbox])');
+          label.value = "Storm the Iron Gaol"; label.dispatchEvent(new Event("input"));
+          const req = row.querySelector('input[type=checkbox]');
+          req.checked = false; req.dispatchEvent(new Event("change"));
+        })()`);
+        await sleep(80);
+        const o0 = (await expObj())[0];
+        check("editing an objective label flows to the export", o0.label === "Storm the Iron Gaol");
+        check("toggling required off flows to the export (an optional objective)", o0.required === false);
+
+        // Add an objective → 3 rows, 3 in the export.
+        await g.eval(`document.querySelector('button[data-role="add-objective"]').click()`);
+        await sleep(80);
+        check("＋ add appends an objective row", (await objCount()) === 3);
+        check("the added objective reaches the export", (await expObj()).length === 3);
+
+        // Reward control (Scenario drawer).
+        await g.eval(clickTab("Scenario"));
+        await sleep(60);
+        await g.eval(`(() => { const el = document.querySelector('input[data-role="reward-gold"]'); el.value = "500"; el.dispatchEvent(new Event("change")); })()`);
+        await sleep(60);
+        check("editing the reward gold flows to the export", (await g.eval(`JSON.parse(document.querySelector("pre").textContent).reward.gold`)) === 500);
+        check("the level still validates after objective + reward edits", (await g.eval(STATE)).valid === true);
+        await g.screenshot(path.join(OUT, "07-objectives.png"));
+
+        // Objects (M-D2): gates + levers as placeable objects in the new Objects tab, edited via the
+        // persistent inspector — the last editor↔JSON gap, so the prison is fully paintable.
+        console.log("• objects: gate + lever authoring (M-D2)");
+        await g.eval(clickTab("Objects"));
+        await sleep(60);
+        const objExp = () => g.eval(`(() => {
+          const e = JSON.parse(document.querySelector("pre").textContent);
+          return { gates: (e.gates || []).length, levers: (e.levers || []).length,
+                   openBy: e.gates && e.gates[0] ? e.gates[0].openBy.map((c) => c.kind).sort() : [],
+                   targets: e.levers && e.levers[0] ? e.levers[0].targets : [] };
+        })()`);
+        // Place a gate (default lockpick cell) + a lever on empty tiles.
+        await g.eval(setBrush("gate"));
+        let gp = await tileScreen(1, 3); await g.clickScene(gp.x, gp.y); await sleep(60);
+        await g.eval(setBrush("lever"));
+        const lp = await tileScreen(1, 5); await g.clickScene(lp.x, lp.y); await sleep(60);
+        let oe = await objExp();
+        check("a gate lands as a default lockpick cell + a lever lands unwired", oe.gates === 1 && oe.levers === 1 && oe.openBy.join() === "lockpick" && oe.targets.length === 0);
+
+        // Select the gate → inspector; add a destructible condition (a batter-able door).
+        await g.eval(setBrush("select"));
+        gp = await tileScreen(1, 3); await g.clickScene(gp.x, gp.y); await sleep(120);
+        await g.eval(`(() => {
+          const insp = document.querySelector('[data-role="inspector"]');
+          const box = [...insp.querySelectorAll('input[type=checkbox]')].find((b) => (b.parentElement.textContent || "").includes("destructible"));
+          box.checked = true; box.dispatchEvent(new Event("change"));
+        })()`);
+        await sleep(120);
+        oe = await objExp();
+        check("the gate inspector adds a destructible condition (lockpick + destructible)", oe.openBy.join() === "destructible,lockpick");
+
+        // Select the lever → inspector; wire it to the gate.
+        await g.eval(setBrush("select"));
+        await g.clickScene(lp.x, lp.y); await sleep(120);
+        await g.eval(`(() => {
+          const insp = document.querySelector('[data-role="inspector"]');
+          insp.querySelector('input[type=checkbox]').click(); // the first gate in the target checklist
+        })()`);
+        await sleep(120);
+        oe = await objExp();
+        check("wiring the lever targets the gate in the export", oe.targets.length === 1);
+        check("the level still validates with gates + a lever placed", (await g.eval(STATE)).valid === true);
+        await g.screenshot(path.join(OUT, "08-objects.png"));
 
         assertNoProblems(g.problems);
       } catch (err) {

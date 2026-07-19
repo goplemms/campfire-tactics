@@ -43,4 +43,22 @@ describe("TileGrid", () => {
     expect(() => new TileGrid(0, 5)).toThrow();
     expect(() => new TileGrid(5, -1)).toThrow();
   });
+
+  it("keeps permanent walls blocked even when the gate overlay is cleared (C1)", () => {
+    // A gate that sits on a wall tile must not dissolve the terrain when opened:
+    // setWalkable(true) only clears the runtime overlay, never the base wall.
+    const grid = new TileGrid(3, 3, [{ col: 1, row: 1 }]);
+    expect(grid.isWalkable({ col: 1, row: 1 })).toBe(false);
+    grid.setWalkable({ col: 1, row: 1 }, true); // e.g. a gate on this tile opens
+    expect(grid.isWalkable({ col: 1, row: 1 })).toBe(false); // wall still stands
+  });
+
+  it("toggles the gate overlay on a floor tile in both directions (C1)", () => {
+    const grid = new TileGrid(3, 3); // no walls — a plain floor
+    expect(grid.isWalkable({ col: 1, row: 1 })).toBe(true);
+    grid.setWalkable({ col: 1, row: 1 }, false); // a locked gate blocks it
+    expect(grid.isWalkable({ col: 1, row: 1 })).toBe(false);
+    grid.setWalkable({ col: 1, row: 1 }, true); // the gate opens
+    expect(grid.isWalkable({ col: 1, row: 1 })).toBe(true);
+  });
 });

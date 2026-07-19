@@ -173,6 +173,18 @@ describe("encounterOutcome (D50/D51)", () => {
     expect(encounterOutcome(s)).toBeUndefined();
   });
 
+  it("C2: an all-OPTIONAL authored goal doesn't stage into a turn-one trivial win", () => {
+    // A live enemy + a single optional eliminate-all goal must NOT win vacuously: staging injects
+    // the default REQUIRED goal, so the field must actually be cleared first.
+    const trivial: AuthoredEncounter = {
+      ...AUTHORED,
+      objectives: [{ id: "bonus", kind: "eliminate-all", required: false, label: "optional" }],
+    };
+    const s = stageEncounter(trivial, [player("hero")]);
+    expect(s.objectives.some((o) => o.spec.required && o.spec.kind === "eliminate-all")).toBe(true);
+    expect(encounterOutcome(s)).toBeUndefined(); // pending — a foe still stands
+  });
+
   it("an optional failure does NOT downgrade a win", () => {
     const s = staged([hero()], [], [fakeObjective(true, "met"), fakeObjective(false, "failed", "closing-gate")]);
     expect(encounterOutcome(s)).toBe("win");

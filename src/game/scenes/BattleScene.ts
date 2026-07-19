@@ -23,6 +23,11 @@ import {
   countOf,
   freeCaptive,
   canRelease,
+  canLockpickGate,
+  canAttackGate,
+  canPullLever,
+  type Gate,
+  type Lever,
   // D63 — the closing net: two radial influence sources. The party's campfire
   // (safe ground, sized by presence) vs. the enemy source (danger, growing on the
   // deployment clock); the danger overrides the campfire, shrinking your territory.
@@ -232,6 +237,10 @@ export class BattleScene extends Phaser.Scene {
   private deployMarkers: Phaser.GameObjects.GameObject[] = [];
   /** Lock glyphs over cuffed captives (D90) — a state-driven layer, redrawn on rescue/boundary. */
   private captiveMarkers: Phaser.GameObjects.GameObject[] = [];
+  /** Lock/bar glyphs over each locked interactable gate (D103) — redrawn on gateOpened + board setup. */
+  private gateMarkers: Phaser.GameObjects.GameObject[] = [];
+  /** Lever glyphs over each pull-switch (D103) — static, drawn at board setup. */
+  private leverMarkers: Phaser.GameObjects.GameObject[] = [];
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
@@ -465,6 +474,8 @@ export class BattleScene extends Phaser.Scene {
     this.railChevron = undefined;
     clearLayer(this.deployMarkers);
     clearLayer(this.captiveMarkers);
+    clearLayer(this.gateMarkers);
+    clearLayer(this.leverMarkers);
     this.highlight.clear();
     this.view.clearPreview(this.preview);
     this.threatGfx.clear();
@@ -529,6 +540,32 @@ export class BattleScene extends Phaser.Scene {
       this.flashHeal(unit);
       this.view.logRescue(unit, by);
       this.markCuffedCaptives(); // a freed captive drops its lock glyph (D90)
+    });
+    // A gate opened (D103): the tile is now walkable, so redraw the grid to drop its obstacle block,
+    // remark the gates (the opened one loses its ▦), and narrate. Same reaction for a Thief's lockpick
+    // and the automatic keyholder pop (the Warden's keys) — only the log line differs by `cause`.
+    this.battle.bus.on("gateOpened", ({ by, cause }) => {
+      this.drawGrid();
+      this.markGates();
+      const msg = cause === "keyholder"
+        ? "The keys drop — a cell springs open!"
+        : cause === "destroyed"
+          ? `${by?.name ?? "A blow"} smashes the door open!`
+          : cause === "lever"
+            ? `${by?.name ?? "The lever"} throws the lever — the gate grinds open!`
+            : `${by?.name ?? "The lockpick"} picks a cell open!`;
+      this.view.logLine(msg, INK.gold);
+    });
+    // A lever slammed a gate shut (D103): the tile re-blocks, so redraw the grid + re-mark the gate.
+    this.battle.bus.on("gateLocked", ({ by }) => {
+      this.drawGrid();
+      this.markGates();
+      this.view.logLine(`${by?.name ?? "The lever"} throws the lever — the door slams shut!`, INK.gold);
+    });
+    // A destructible door took a hit but held (D103): refresh the HP readout + narrate the shudder.
+    this.battle.bus.on("gateDamaged", ({ gate, by }) => {
+      this.markGates(); // re-render the HP readout (hp already decremented on the gate)
+      this.view.logLine(`${by?.name ?? "A blow"} batters the door — ${gate.hp}/${gate.maxHp} left`, INK.ember);
     });
     // The Noble's bribe (D30/D62): a swayed enemy turns coat — re-tint its token to the ally
     // palette here (a listener, like unitRescued), rather than the call site flipping `side`.
@@ -599,6 +636,8 @@ export class BattleScene extends Phaser.Scene {
     this.drawZones();
     drawSourceMarkers(this, this.view, this.deployMarkers, this.campfire, this.front);
     this.markCuffedCaptives(); // lock glyphs over any cuffed captives (D90)
+    this.markGates(); // lock/bar glyphs over any locked interactable gates (D103)
+    this.markLevers(); // lever glyphs over any pull-switches (D103)
     // Trap-field (D12): enemy hazards are live across *both* phases, so the party's
     // opening Awareness scan happens here — at the deploy line, not at combat start.
     // Spotted traps draw now, so positioning is informed; the rest are sensed as units
@@ -838,6 +877,7 @@ export class BattleScene extends Phaser.Scene {
       }
       this.pushTrapVerbs(specs, actor, "deployment"); // Search / Disarm — the shared trap-field verbs
       this.pushRescueVerbs(specs, actor, "deployment"); // Pick Lock — free an adjacent cuffed captive (D90)
+      this.pushGateVerbs(specs, actor, "deployment"); // Pick Cell — lockpick an adjacent locked gate (D103)
     }
     // Start Battle is a turn-control (commit early at any point), so it sits in the control
     // box (a full-width row above the Undo/primary pair) — not among the unit's verbs.
@@ -918,6 +958,88 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
+   * Push the **Pick Cell** verb (D103) when this unit can lockpick an adjacent locked gate — the
+   * Thief's cell-open Act. Surfaced only when the core gate would pass ({@link canLockpickGate}:
+   * locked + a lockpick condition + adjacent + Expert Lockpick), so a non-lockpick unit never sees a
+   * dead button. Mirrors {@link pushRescueVerbs}; shared across deployment + combat.
+   */
+  private pushGateVerbs(specs: ActionSpec[], actor: Unit, ctx: BoardCtx): void {
+    const noun = ctx === "deployment" ? "act" : "action";
+    // Pick Cell — a Thief lockpicks an adjacent locked cell.
+    const pickable = this.battle.gates.find((g) => canLockpickGate(g, actor));
+    if (pickable) {
+      specs.push({
+        text: "Pick Cell",
+        description: `Pick the lock on the adjacent cell — the gate swings open (spends this unit's ${noun}).`,
+        onClick: () => this.doOpenGate(actor, pickable, ctx),
+      });
+    }
+    // Break Gate — any unit batters a destructible door in reach (the guards busting it down, D103 Phase 3).
+    const breakable = this.battle.gates.find((g) => canAttackGate(g, actor));
+    if (breakable) {
+      specs.push({
+        text: "Break Gate",
+        description: `Batter the door (${breakable.hp}/${breakable.maxHp} left) — chip its durability by this unit's attack; it breaks open at 0 (spends this unit's ${noun}).`,
+        onClick: () => this.doBreakGate(actor, breakable, ctx),
+      });
+    }
+    // Pull Lever — throw an adjacent control-room switch to seal/open its gate (D103 Phase 3).
+    const lever = this.battle.levers.find((l) => canPullLever(l, actor));
+    if (lever) {
+      specs.push({
+        text: "Pull Lever",
+        description: `Throw the switch — slam its door shut (seal the guards out) or grind it open (spends this unit's ${noun}).`,
+        onClick: () => this.doPullLever(actor, lever, ctx),
+      });
+    }
+  }
+
+  /**
+   * Lockpick an adjacent gate as this unit's Act — the "Pick Cell" handler (D103), shared across both
+   * phases via {@link commitFieldAct}. The core {@link canLockpickGate} is the gate; `gateOpened` (the
+   * bus listener) owns the grid redraw, the marker teardown, and the log line.
+   */
+  private doOpenGate(actor: Unit, gate: Gate, ctx: BoardCtx): void {
+    if (!this.canFieldAct(actor, ctx)) return;
+    if (!canLockpickGate(gate, actor)) {
+      return this.setHint(`Move ${actor.name} next to the cell to pick its lock.`);
+    }
+    this.battle.openGate(gate, actor);
+    const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
+    this.commitFieldAct(actor, ctx, `${actor.name} picks the cell open!${tail}`);
+  }
+
+  /**
+   * Batter a destructible gate as this unit's Act — the "Break Gate" handler (D103). One hit chips the
+   * door's durability; it breaks open at 0. `gateDamaged` / `gateOpened` (the bus listeners) own the
+   * flash, the HP-readout refresh, the redraw, and the log line.
+   */
+  private doBreakGate(actor: Unit, gate: Gate, ctx: BoardCtx): void {
+    if (!this.canFieldAct(actor, ctx)) return;
+    if (!canAttackGate(gate, actor)) {
+      return this.setHint(`Move ${actor.name} into range of the door to break it.`);
+    }
+    this.battle.attackGate(gate, actor);
+    const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
+    this.commitFieldAct(actor, ctx, `${actor.name} strikes the door!${tail}`);
+  }
+
+  /**
+   * Throw an adjacent lever as this unit's Act — the "Pull Lever" handler (D103). Toggles the lever's
+   * target gates; `gateLocked` / `gateOpened` (the bus listeners) own the grid redraw, the markers, and
+   * the log line.
+   */
+  private doPullLever(actor: Unit, lever: Lever, ctx: BoardCtx): void {
+    if (!this.canFieldAct(actor, ctx)) return;
+    if (!canPullLever(lever, actor)) {
+      return this.setHint(`Move ${actor.name} next to the lever to pull it.`);
+    }
+    this.battle.pullLever(lever, actor);
+    const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
+    this.commitFieldAct(actor, ctx, `${actor.name} throws the lever!${tail}`);
+  }
+
+  /**
    * Draw a lock glyph over each **cuffed** captive (D90) — a bound ally whose release needs the
    * Expert Lockpick. Its own state-driven layer ({@link captiveMarkers}), redrawn on the
    * rescue/boundary events, so a freed (or ordinary `reach`) captive carries no lock. Reads
@@ -931,6 +1053,44 @@ export class BattleScene extends Phaser.Scene {
       this.captiveMarkers.push(
         placeIcon(this, x, y - this.view.halfH() * 0.6, "locked", { size: FONT.body }).setDepth(5),
       );
+    }
+  }
+
+  /**
+   * Draw a bar/lock glyph over each **locked** gate (D103) — a state-driven layer, redrawn on the
+   * board setup + every gateOpened event, so an opened cell drops its marker. The gate tile also
+   * reads as a solid (it's non-walkable while locked, so {@link "../combat-view".CombatView.drawGrid}
+   * raises an obstacle block there); this floats the ▦ over it so it reads as a *cell*, not a wall.
+   */
+  private markGates(): void {
+    clearLayer(this.gateMarkers);
+    for (const g of this.battle.gates) {
+      // A smashed door (D106) leaves a passable remnant on its tile — a low, muted floor marker (not a
+      // block, and never the ▦ lock/HP readout). Rendered before the locked-only skip below.
+      if (g.broken) {
+        const { x, y } = this.tileToWorld(g.pos);
+        this.gateMarkers.push(placeIcon(this, x, y, "gateRemnant", { size: FONT.body }).setDepth(2));
+        continue;
+      }
+      if (!g.locked) continue;
+      const { x, y } = this.tileToWorld(g.pos);
+      const top = y - this.view.halfH() * 0.9;
+      this.gateMarkers.push(placeIcon(this, x, top, "gate", { size: FONT.body }).setDepth(5));
+      // A destructible door shows its remaining durability under the ▦ (the "batter it down" readout).
+      if (g.hp !== undefined) {
+        this.gateMarkers.push(
+          this.add.text(x, top + 12, `${g.hp}/${g.maxHp}`, { color: INK.ember, fontFamily: FONT.family, fontSize: FONT.micro, fontStyle: WEIGHT.bold }).setOrigin(0.5).setDepth(5),
+        );
+      }
+    }
+  }
+
+  /** Draw a lever glyph over each pull-switch (D103) — a static layer (levers don't move; their gates do). */
+  private markLevers(): void {
+    clearLayer(this.leverMarkers);
+    for (const l of this.battle.levers) {
+      const { x, y } = this.tileToWorld(l.pos);
+      this.leverMarkers.push(placeIcon(this, x, y - this.view.halfH() * 0.9, "lever", { size: FONT.body }).setDepth(5));
     }
   }
 
@@ -1540,6 +1700,7 @@ export class BattleScene extends Phaser.Scene {
       // Trap-field verbs (D12): Search to scan for hidden traps; the trapper disarms a
       // spotted, adjacent one to pocket its kit. The same shared row helper as deployment.
       this.pushTrapVerbs(specs, actor, "battle");
+      this.pushGateVerbs(specs, actor, "battle"); // Pick Cell — lockpick an adjacent locked gate (D103)
       // The universal Defend (D41): every unit can brace until its next turn — the
       // always-available defensive verb, even for a unit with no job actives.
       // The universal Defend (D41) keeps its dedicated "D" key, sourced from the same
@@ -2309,7 +2470,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private drawGrid(): void {
-    const g = this.add.graphics();
+    // Self-destroy the prior layer so this is re-callable mid-battle (a gate opening flips its tile
+    // walkable, so the grid must redraw to drop that tile's obstacle block, D103). Depth 0 keeps it
+    // under the zone washes (0.36+) and unit tokens (1).
+    this.gridGfx?.destroy();
+    const g = this.add.graphics().setDepth(0);
     this.gridGfx = g;
     this.view.drawGrid(g, this.grid);
   }

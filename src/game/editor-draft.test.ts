@@ -60,6 +60,28 @@ describe("editor draft → encounter (D98 M2)", () => {
     expect(enc.objectives).toBeUndefined(); // default elimination goal injected at stage
     expect(enc.reward).toBeDefined();
   });
+
+  it("authored objectives (M-C) win over the derive: tuned label + optional required + rebound extraction span", () => {
+    const draft: EditorDraft = {
+      ...playableDraft(),
+      captives: [{ pos: { col: 7, row: 0 }, release: "lockpick" }],
+      exit: [{ col: 0, row: 0 }, { col: 0, row: 1 }, { col: 0, row: 2 }],
+      objectives: [
+        { id: "storm", kind: "eliminate-all", required: false, label: "Storm the Iron Gaol" },
+        // A stale span here must be overwritten by the painted exit tiles (the exit brush is the source).
+        { id: "extract", kind: "extraction", required: true, label: "Get them over the wall", span: [{ col: 9, row: 9 }], escort: { role: "prisoner" } },
+      ],
+      reward: { gold: 300, materials: [], xp: 150 },
+    };
+    const enc = draftToEncounter(draft);
+    expect(validateLevel(enc)).toEqual([]);
+    const storm = enc.objectives!.find((o) => o.id === "storm")!;
+    expect(storm.label).toBe("Storm the Iron Gaol"); // label tuned
+    expect(storm.required).toBe(false); // required toggled → optional/bonus
+    const extract = enc.objectives!.find((o) => o.id === "extract")!;
+    expect(extract.span).toEqual(draft.exit); // rebound to the painted exit, NOT the stale (9,9)
+    expect(enc.reward).toEqual({ gold: 300, materials: [], xp: 150 }); // authored reward
+  });
 });
 
 describe("editor import round-trip (D98 editor M-A — lossless import)", () => {
@@ -99,11 +121,12 @@ describe("editor import round-trip (D98 editor M-A — lossless import)", () => 
     expect(() => encounterToDraft(withTrapParams)).toThrow(/trap params aren't editable yet/);
   });
 
-  it("import preserves the passthrough bag only for fields present (tidy)", () => {
+  it("graduates objectives + reward to first-class draft fields (M-C), not the passthrough bag", () => {
     const draft = encounterToDraft(getLevel("sample-skirmish")!);
-    // sample-skirmish has no objectives/captives — only reward rides the bag.
-    expect(draft._passthrough?.objectives).toBeUndefined();
-    expect(draft._passthrough?.reward).toEqual({ gold: 50, materials: [], xp: 40 });
+    // objectives + reward are first-class now (the DraftPassthrough type no longer even has them —
+    // the bag holds only rumors/intelDepth/grants).
+    expect(draft.reward).toEqual({ gold: 50, materials: [], xp: 40 });
+    expect(draft.objectives).toBeUndefined(); // sample-skirmish has no captives/objectives
   });
 });
 

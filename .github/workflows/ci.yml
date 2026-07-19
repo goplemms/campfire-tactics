@@ -44,6 +44,14 @@ jobs:
         run: npm run test:e2e:scenario
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      - name: E2E (visual level editor — paint + export + import round-trip)
+        run: npm run test:e2e:editor
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      - name: E2E (JSON level pipeline — #level boot + play)
+        run: npm run test:e2e:level
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
       - name: E2E (overworld authored-event screens)
         run: npm run test:e2e:arc
         env:
@@ -54,6 +62,10 @@ jobs:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
       - name: E2E (second battle — stale-cached-object re-entry freeze)
         run: npm run test:e2e:second-battle
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      - name: E2E (micro-interaction harness — per-mechanic render guards)
+        run: npm run test:e2e:micro
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
       # Visual audit: walk the 14 player-facing surfaces, capture each, and run the

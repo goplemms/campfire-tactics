@@ -32,6 +32,7 @@ import { isImmobilized, isDebuffed, hasStatus, EXPOSED } from "./status";
 import { canSeeUnit } from "./vision";
 import { availableSkills } from "./leveling";
 import { orderOf } from "./standing-orders";
+import { isBreakable, type Gate } from "./gates";
 
 /** Scoring weights — all tunable data, a numbers pass later (D42). */
 export const AI = {
@@ -65,6 +66,12 @@ export const AI = {
   approachWeight: 4,
   /** How far a `"hold"` guard will stray from its post to act (D81 leash). */
   holdLeash: 2,
+  /**
+   * Value of battering a **destructible door** (D103): below any foe attack (`actionBase` 1000+),
+   * above pure advance (negative), so a walled-off guard breaks the seal in its way but always
+   * prefers a reachable foe. Only offered when *no* foe is terrain-reachable (see `planEnemyTurn`).
+   */
+  doorBreak: 500,
 } as const;
 
 /**
@@ -121,12 +128,22 @@ export interface AIPlan {
   target: Unit | null;
   /** An ability to use on `target` instead of a basic attack (D42 enemy abilities). */
   ability?: SkillDef;
+  /**
+   * A **destructible door to batter** from the destination (D103) — set only when no foe is a
+   * target (the priority is foe > door > advance). Lowered to an `attackGate` action.
+   */
+  gateTarget?: Gate;
 }
 
 /** Optional planner inputs the {@link "./turn".Battle} can supply (D42). */
 export interface AIOptions {
   /** True if `unit` is committed to an in-flight charge/channel (interrupt bonus). */
   isCharging?: (u: Unit) => boolean;
+  /**
+   * The encounter's interactable gates (D103) — so a guard **walled off** from every foe by a
+   * locked destructible door will batter it down (the control-room seal). Absent ⇒ no door-breaking.
+   */
+  gates?: readonly Gate[];
 }
 
 /**
@@ -287,6 +304,28 @@ export function planEnemyTurn(
   const post = holdPost(unit);
   const leash = leashOf(unit);
 
+  // Door-break relevance (D103): only when the unit is **terrain-walled-off** from *every* seen foe —
+  // no walkable route exists (the locked destructible door is the wall). If a foe is path-reachable
+  // (even a long way round), the guard advances/fights normally and never wastes a turn on a door.
+  const wallsOff =
+    seen.length > 0 && !post && seen.every((f) => findPath(grid, unit.pos, f.pos) === null);
+  // …and only doors whose *opening actually reveals a route to a foe* (C3): a breakable door that
+  // isn't the true blocker (a foe walled off by permanent terrain, an unrelated/decorative door)
+  // leads nowhere when broken, so battering it just wastes turns. Probe by momentarily opening the
+  // door's overlay tile and re-pathing; restore it either way. (Doors in series read as irrelevant
+  // until the last is the sole remaining wall — conservative: never batter without provable progress.)
+  const opensARoute = (g: Gate): boolean => {
+    grid.setWalkable(g.pos, true);
+    try {
+      return seen.some((f) => findPath(grid, unit.pos, f.pos) !== null);
+    } finally {
+      grid.setWalkable(g.pos, false);
+    }
+  };
+  const breakableDoors = wallsOff
+    ? (opts.gates ?? []).filter((g) => isBreakable(g) && opensARoute(g))
+    : [];
+
   let bestPlan: AIPlan = stay;
   let bestScore = -Infinity;
 
@@ -326,9 +365,16 @@ export function planEnemyTurn(
       }
     }
 
+    // A destructible door in attack range from here (only relevant when walled off from every foe,
+    // and never over an actual foe attack — the priority is foe > door > advance).
+    const doorTarget = actTarget ? undefined : breakableDoors.find((g) => manhattan(d.tile, g.pos) <= unit.attackRange);
+
     let score: number;
     if (actTarget) {
       score = actionScore + movePart;
+    } else if (doorTarget) {
+      // Batter the seal in the way — beats advancing (which would only idle against the door).
+      score = AI.doorBreak + movePart;
     } else if (post) {
       // A holder never advances on foes — with no one to fight from the leash,
       // it closes on its POST instead (staying put when already home, walking
@@ -343,14 +389,14 @@ export function planEnemyTurn(
 
     if (score > bestScore) {
       bestScore = score;
-      bestPlan = { unit, path: d.path, destination: d.tile, target: actTarget, ability: actAbility };
+      bestPlan = { unit, path: d.path, destination: d.tile, target: actTarget, ability: actAbility, gateTarget: doorTarget };
     }
   }
 
   // Safety net: if the planner somehow stalled but a path to a seen foe exists,
   // fall back to a simple approach (keeps the AI from freezing on odd maps).
   // Never for a holder — standing at its post IS its plan, not a stall (D81).
-  if (bestPlan.target === null && bestPlan.path.length === 0 && !isImmobilized(unit) && !post && seen.length > 0) {
+  if (bestPlan.target === null && !bestPlan.gateTarget && bestPlan.path.length === 0 && !isImmobilized(unit) && !post && seen.length > 0) {
     const nearest = [...seen].sort((a, b) => manhattan(unit.pos, a.pos) - manhattan(unit.pos, b.pos))[0];
     const nav = occupiedGrid(grid, units, [unit, nearest]);
     const path = findPath(nav, unit.pos, nearest.pos);

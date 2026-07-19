@@ -123,18 +123,23 @@ export const DEFAULT_GOAL: ObjectiveSpec = {
 };
 
 /**
- * Prepend the {@link DEFAULT_GOAL} unless the list already names an explicit **goal**
+ * Prepend the {@link DEFAULT_GOAL} unless the list already names a **required** goal
  * ({@link isGoalKind} — `eliminate-all` *or* `extraction`) — so every encounter has a
- * way to *win*, but authored goals are honored as-is (D50/D97). A closing-gate alone is
- * a *constraint*, not a goal, so it still gets the default elimination goal; an
- * extraction-only encounter (win solely by getting the prisoners out) does **not**.
+ * *required* way to *win*, but authored required goals are honored as-is (D50/D97). A
+ * closing-gate alone is a *constraint*, not a goal, so it still gets the default elimination
+ * goal; an extraction-only encounter (win solely by getting the prisoners out) does **not**.
+ *
+ * The `required` guard closes the C2 footgun: an *optional* goal (e.g. an `eliminate-all` row
+ * with `required:false`) no longer suppresses the default. Without it a level whose only goal
+ * is optional would carry **zero required goals**, which {@link "./staging".encounterOutcome}
+ * scores as a vacuous instant win — a live enemy and turn-one victory.
  */
 export function withDefaultGoal(specs: readonly ObjectiveSpec[] = []): ObjectiveSpec[] {
-  return specs.some((s) => isGoalKind(s.kind)) ? [...specs] : [DEFAULT_GOAL, ...specs];
+  return specs.some((s) => isGoalKind(s.kind) && s.required) ? [...specs] : [DEFAULT_GOAL, ...specs];
 }
 
-/** Match a unit against an objective tag (role or explicit id). */
-function matchesTag(u: Unit, tag?: ObjectiveTag): boolean {
+/** Match a unit against an objective tag (role or explicit id) — shared with the gate keyholder lock (D103). */
+export function matchesTag(u: Unit, tag?: ObjectiveTag): boolean {
   if (!tag) return false;
   if (tag.id !== undefined && u.id !== tag.id) return false;
   if (tag.role !== undefined && u.role !== tag.role) return false;

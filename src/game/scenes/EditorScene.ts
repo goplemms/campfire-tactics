@@ -1,11 +1,12 @@
 import Phaser from "phaser";
 import { CombatView } from "../combat-view";
-import { COLOR, FONT, INK } from "../theme";
+import { BoardCamera } from "../board-camera";
+import { COLOR, FONT } from "../theme";
 import { clearLayer } from "../ui";
-import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, type GridCoord, type AuthoredEncounter, type JobId } from "../../core";
+import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
 import { validateLevel } from "../../content/levels";
 import {
-  blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec,
+  blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec, standardObjectives,
   effectiveEnemyStat, setEnemyStat, setSpecStat, STAT_FIELDS,
   type Brush, type EditorDraft, type DraftEnemy, type DraftCaptive, type StatField,
 } from "../editor-draft";
@@ -14,12 +15,15 @@ import {
 const JOB_IDS = Object.keys(JOBS);
 
 /**
- * The panel drawers (D98 editor M-UI). Grouped by what you author, in genre-conventional terms:
- * **Terrain** (tiles/walls), **Units** (attributed entities), **Events** (the conditional-logic
- * layer — deploy/extraction markers now, objectives + future triggers later), **Scenario**
- * (meta + JSON I/O). The ✓/⚠ status bar sits outside the drawers so the live guards never hide.
+ * The panel drawers (D98 editor M-UI). Grouped by **what kind of thing** you author, so a painted
+ * *substrate* and a *placed object* never share a palette (the D103 categorization): **Terrain**
+ * (the walls/floor substrate you paint — single/line/rect), **Objects** (discrete placeable elements
+ * with their own properties — gates · levers · traps), **Units** (attributed entities — enemies ·
+ * captives), **Events** (the conditional-logic layer — deploy/extraction markers + objectives),
+ * **Scenario** (meta + JSON I/O). The ✓/⚠ status bar sits outside the drawers so the live guards
+ * never hide; the inspector is persistent so selecting *any* object edits it wherever you are.
  */
-const TAB_NAMES = ["Terrain", "Units", "Events", "Scenario"] as const;
+const TAB_NAMES = ["Terrain", "Objects", "Units", "Events", "Scenario"] as const;
 type TabName = (typeof TAB_NAMES)[number];
 
 /**
@@ -47,8 +51,10 @@ const abbrev = (id: string) => (id.split("-").pop() || id).slice(0, 3);
 
 export class EditorScene extends Phaser.Scene {
   private view!: CombatView;
+  private boardCam!: BoardCamera;
   private gridGfx!: Phaser.GameObjects.Graphics;
   private overlayGfx!: Phaser.GameObjects.Graphics; // exit-tile tints
+  private previewGfx!: Phaser.GameObjects.Graphics; // the pending line/rect shape + its anchor
   private grid!: TileGrid;
   private markers: Phaser.GameObjects.GameObject[] = [];
 
@@ -57,15 +63,31 @@ export class EditorScene extends Phaser.Scene {
   private enemyTemplate = ENEMY_IDS[0];
   private captiveRelease: "reach" | "lockpick" = "lockpick";
 
+  /** First tile of a two-click line/rect (M-D); the second click commits the shape. Null = no shape pending. */
+  private shapeAnchor: GridCoord | null = null;
+  /** Rectangle tool mode: an outline (a room/cell ring) vs a solid fill. */
+  private rectFill = false;
+  /** The tile under the cursor, for the coordinate readout + the live shape preview. */
+  private hoveredTile: GridCoord | null = null;
+
   /** The entity under edit in the inspector (M-B). Stored by reference so it survives array reorders. */
-  private selection: { kind: "enemy"; ref: DraftEnemy } | { kind: "captive"; ref: DraftCaptive } | null = null;
+  private selection:
+    | { kind: "enemy"; ref: DraftEnemy }
+    | { kind: "captive"; ref: DraftCaptive }
+    | { kind: "gate"; ref: AuthoredGate }
+    | { kind: "lever"; ref: AuthoredLever }
+    | null = null;
+  /** Auto-increment counters for object ids (gate-1, lever-1, …). */
+  private objectSeq = 0;
 
   // DOM overlay (the D95 panel idiom).
   private panel?: HTMLDivElement;
   private exportPre?: HTMLPreElement;
   private validLine?: HTMLDivElement;
+  private coordEl?: HTMLDivElement; // live "tile (col,row)" readout under the cursor
   private inspectorEl?: HTMLDivElement;
   private unitListEl?: HTMLDivElement;
+  private objectivesEl?: HTMLDivElement; // the M-C objectives editor list
   private brushButtons: HTMLButtonElement[] = [];
   private tabButtons: HTMLButtonElement[] = [];
   private drawers: Partial<Record<TabName, HTMLDivElement>> = {};
@@ -81,14 +103,17 @@ export class EditorScene extends Phaser.Scene {
     this.view.boardScale = BOARD_SCALE;
     this.gridGfx = this.add.graphics();
     this.overlayGfx = this.add.graphics().setDepth(0.5);
-
-    this.add
-      .text(12, 14, "Level Editor — pick a brush, click tiles", { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body })
-      .setOrigin(0, 0.5)
-      .setDepth(10);
+    this.previewGfx = this.add.graphics().setDepth(0.6);
 
     this.renderBoard();
-    this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
+    // Grab-and-drag panning + wheel zoom so a big board (a 20×20 level) is reachable on the
+    // fixed 800×600 canvas; a genuine tap still paints via onTap (a drag only moves the camera).
+    // All the editor's chrome lives in the DOM panel, so the whole scene is board content and
+    // pans/zooms cleanly — the title line moved to the panel header.
+    this.boardCam = new BoardCamera(this, { onTap: (p) => this.onTap(p) });
+    // Hover drives the coordinate readout + the live line/rect preview (the shape tools are two-click,
+    // so the pending run/box is shown between the anchor and the tile under the cursor).
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onHover, this);
     this.mountPanel();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unmountPanel());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.unmountPanel());
@@ -113,6 +138,9 @@ export class EditorScene extends Phaser.Scene {
     for (const e of this.draft.enemies) this.mark(e.pos, abbrev(e.templateId), COLOR.danger, "#fff");
     for (const c of this.draft.captives) this.mark(c.pos, c.release === "lockpick" ? "⚿" : "○", 0x9a6bc0, "#fff");
     for (const t of this.draft.traps) this.mark(t, "▲", COLOR.accent, "#1a1206");
+    // Gates (▦) tagged with a letter per open-condition (L/K/D); a selected object rings gold.
+    for (const g of this.draft.gates) this.mark(g.pos, `▦${gateTag(g)}`, this.selection?.ref === g ? COLOR.gold : COLOR.accent, "#1a1206");
+    for (const l of this.draft.levers) this.mark(l.pos, "⎇", this.selection?.ref === l ? COLOR.gold : 0x62c6d6, "#08161a");
   }
 
   /** A small labelled token centred on a tile (the editor's entity marker). */
@@ -127,14 +155,72 @@ export class EditorScene extends Phaser.Scene {
 
   // --- Click → paint --------------------------------------------------------
 
-  private onPointerDown(pointer: Phaser.Input.Pointer): void {
+  /** A genuine tap (not a camera drag) — dispatched by {@link BoardCamera}. worldX/worldY fold in camera scroll+zoom. */
+  private onTap(pointer: Phaser.Input.Pointer): void {
     const t = this.view.worldToTile(pointer.worldX, pointer.worldY);
     if (!this.grid.inBounds(t)) return;
-    this.paint(t);
+    if (this.brush === "line" || this.brush === "rect") this.shapeTap(t);
+    else this.paint(t);
     this.renderBoard();
     this.renderInspector();
     this.renderUnitList();
+    this.renderObjectives(); // keep an extraction row's "span = N exit tiles" note fresh as exit is painted
     this.updateExport();
+    this.drawShapePreview(); // reflect a just-set anchor before the next mouse move
+    this.updateCoord();
+  }
+
+  /**
+   * Hover: keep the coordinate readout live and, when a line/rect anchor is pending, preview the
+   * shape that a second click would commit. worldX/worldY fold in the camera transform, so the read
+   * stays correct at any pan/zoom. Skipped mid-pan (a drag isn't aiming a shape).
+   */
+  private onHover(pointer: Phaser.Input.Pointer): void {
+    if (this.boardCam?.isDragging) return;
+    const t = this.view.worldToTile(pointer.worldX, pointer.worldY);
+    this.hoveredTile = this.grid.inBounds(t) ? t : null;
+    this.updateCoord();
+    this.drawShapePreview();
+  }
+
+  /**
+   * A tap while the line/rect tool is active. The first tap drops the {@link shapeAnchor}; the second
+   * commits every tile of the run (line) or box (rect) as a **wall** (set, not toggle — a shape adds
+   * structure, it doesn't punch holes in what it overlaps), then clears the anchor.
+   */
+  private shapeTap(t: GridCoord): void {
+    if (!this.shapeAnchor) {
+      this.shapeAnchor = t;
+      return;
+    }
+    const tiles = this.brush === "line" ? lineTiles(this.shapeAnchor, t) : rectTiles(this.shapeAnchor, t, this.rectFill);
+    for (const c of tiles) if (!this.draft.blocked.some((b) => same(b, c))) this.draft.blocked.push(c);
+    this.shapeAnchor = null;
+    this.previewGfx.clear();
+  }
+
+  /** Wash the pending line/rect (anchor → hovered tile) so the shape reads before the second click. */
+  private drawShapePreview(): void {
+    this.previewGfx.clear();
+    if (!this.shapeAnchor || (this.brush !== "line" && this.brush !== "rect")) return;
+    const to = this.hoveredTile ?? this.shapeAnchor;
+    const tiles = this.brush === "line" ? lineTiles(this.shapeAnchor, to) : rectTiles(this.shapeAnchor, to, this.rectFill);
+    for (const c of tiles) this.view.fillTile(this.previewGfx, c, COLOR.accent, 0.3, COLOR.accent);
+  }
+
+  /** Drop any pending line/rect anchor + its preview (on a brush switch, resize, or import). */
+  private cancelShape(): void {
+    this.shapeAnchor = null;
+    this.previewGfx?.clear();
+    this.updateCoord();
+  }
+
+  /** Update the DOM coordinate readout with the tile under the cursor (or a dash when off-board). */
+  private updateCoord(): void {
+    if (!this.coordEl) return;
+    const t = this.hoveredTile;
+    const anchor = this.shapeAnchor ? ` · from (${this.shapeAnchor.col},${this.shapeAnchor.row})` : "";
+    this.coordEl.textContent = `tile ${t ? `(${t.col},${t.row})` : "—"}${anchor}`;
   }
 
   private paint(t: GridCoord): void {
@@ -143,8 +229,12 @@ export class EditorScene extends Phaser.Scene {
       case "select": {
         const en = d.enemies.find((e) => same(e.pos, t));
         const cap = d.captives.find((c) => same(c.pos, t));
+        const gate = d.gates.find((g) => same(g.pos, t));
+        const lever = d.levers.find((l) => same(l.pos, t));
         if (en) this.selection = { kind: "enemy", ref: en };
         else if (cap) this.selection = { kind: "captive", ref: this.materializeCaptive(cap) };
+        else if (gate) this.selection = { kind: "gate", ref: gate };
+        else if (lever) this.selection = { kind: "lever", ref: lever };
         else this.selection = null;
         return;
       }
@@ -164,11 +254,26 @@ export class EditorScene extends Phaser.Scene {
         else d.captives.push({ pos: t, release: this.captiveRelease });
         return;
       }
+      case "gate": {
+        // A default lockpick cell (the common prison cell); select + inspector edit its openBy/locked.
+        const i = d.gates.findIndex((g) => same(g.pos, t));
+        if (i >= 0) d.gates.splice(i, 1);
+        else d.gates.push({ id: `gate-${++this.objectSeq}`, pos: { col: t.col, row: t.row }, openBy: [{ kind: "lockpick" }], locked: true });
+        return;
+      }
+      case "lever": {
+        const i = d.levers.findIndex((l) => same(l.pos, t));
+        if (i >= 0) d.levers.splice(i, 1);
+        else d.levers.push({ id: `lever-${++this.objectSeq}`, pos: { col: t.col, row: t.row }, targets: [] });
+        return;
+      }
       case "erase": {
         this.removeCoord(d.blocked, t); this.removeCoord(d.playerSpawns, t);
         this.removeCoord(d.exit, t); this.removeCoord(d.traps, t);
         d.enemies = d.enemies.filter((e) => !same(e.pos, t));
         d.captives = d.captives.filter((c) => !same(c.pos, t));
+        d.gates = d.gates.filter((g) => !same(g.pos, t));
+        d.levers = d.levers.filter((l) => !same(l.pos, t));
         return;
       }
     }
@@ -193,6 +298,8 @@ export class EditorScene extends Phaser.Scene {
     d.blocked = d.blocked.filter(ok); d.playerSpawns = d.playerSpawns.filter(ok);
     d.exit = d.exit.filter(ok); d.traps = d.traps.filter(ok);
     d.enemies = d.enemies.filter((e) => ok(e.pos)); d.captives = d.captives.filter((c) => ok(c.pos));
+    d.gates = d.gates.filter((g) => ok(g.pos)); d.levers = d.levers.filter((l) => ok(l.pos));
+    this.cancelShape();
     this.renderBoard();
     this.updateExport();
   }
@@ -223,7 +330,25 @@ export class EditorScene extends Phaser.Scene {
       border: "1px solid #4a423a", borderRadius: "6px", padding: "10px", zIndex: "1000",
     } as CSSStyleDeclaration);
 
-    // Tab bar + the persistent cross-cutting Erase tool.
+    // Panel header — the title (moved off the canvas so the scene pans/zooms cleanly) + the
+    // camera-control hint. The board is grab-and-drag pannable and wheel-zoomable; Recenter resets.
+    const header = document.createElement("div");
+    header.style.margin = "0 0 6px";
+    const title = document.createElement("div");
+    title.textContent = "Level Editor — pick a brush, click tiles";
+    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    header.appendChild(title);
+    header.appendChild(this.hint("drag to pan · scroll to zoom · Recenter resets the view"));
+    // Live tile-coordinate readout (M-D) — structural work needs precise alignment of cells/doorways.
+    const coord = document.createElement("div");
+    coord.dataset.role = "coord";
+    Object.assign(coord.style, { margin: "2px 0 0", color: "#9fd0f0", fontVariantNumeric: "tabular-nums" } as CSSStyleDeclaration);
+    header.appendChild(coord);
+    this.coordEl = coord;
+    this.updateCoord();
+    panel.appendChild(header);
+
+    // Tab bar + the persistent cross-cutting Erase tool and the view-reset control.
     const tabBar = document.createElement("div");
     tabBar.style.margin = "0 0 6px";
     this.tabButtons = [];
@@ -237,7 +362,15 @@ export class EditorScene extends Phaser.Scene {
       tabBar.appendChild(t);
     }
     tabBar.append(" ");
-    tabBar.appendChild(this.brushButton("erase")); // always reachable, whatever drawer is open
+    // Cross-cutting tools, reachable from any drawer: Select picks/edits any placed object, Erase removes.
+    tabBar.appendChild(this.brushButton("select"));
+    tabBar.appendChild(this.brushButton("erase"));
+    const recenter = document.createElement("button");
+    recenter.textContent = "Recenter";
+    recenter.dataset.role = "recenter";
+    Object.assign(recenter.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
+    recenter.onclick = () => this.boardCam.recenter();
+    tabBar.appendChild(recenter);
     panel.appendChild(tabBar);
 
     // Drawers — one per tab, shown/hidden by showTab.
@@ -249,9 +382,18 @@ export class EditorScene extends Phaser.Scene {
       panel.appendChild(d);
     }
     this.buildTerrainDrawer(this.drawers.Terrain!);
+    this.buildObjectsDrawer(this.drawers.Objects!);
     this.buildUnitsDrawer(this.drawers.Units!);
     this.buildEventsDrawer(this.drawers.Events!);
     this.buildScenarioDrawer(this.drawers.Scenario!);
+
+    // Persistent inspector (M-B → M-D2): edits whatever object is selected — a unit, gate, or lever —
+    // regardless of the open drawer, so "Select an object → tweak it" works everywhere.
+    const inspector = document.createElement("div");
+    inspector.dataset.role = "inspector";
+    Object.assign(inspector.style, { margin: "8px 0 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
+    panel.appendChild(inspector);
+    this.inspectorEl = inspector;
 
     // Persistent ✓/⚠ status bar (outside the drawers, so live guards never hide).
     const valid = document.createElement("div");
@@ -274,7 +416,7 @@ export class EditorScene extends Phaser.Scene {
     btn.textContent = b;
     btn.dataset.brush = b;
     Object.assign(btn.style, { margin: "2px", cursor: "pointer", textTransform: "capitalize" } as CSSStyleDeclaration);
-    btn.onclick = () => { this.brush = b; this.highlightBrush(); };
+    btn.onclick = () => { this.brush = b; this.cancelShape(); this.highlightBrush(); };
     this.brushButtons.push(btn);
     return btn;
   }
@@ -308,9 +450,37 @@ export class EditorScene extends Phaser.Scene {
     d.appendChild(size);
     const row = document.createElement("div");
     row.style.margin = "4px 0";
-    row.append(this.brushButton("wall"), this.brushButton("trap"));
+    row.append(this.brushButton("wall"), this.brushButton("line"), this.brushButton("rect"));
     d.appendChild(row);
-    d.appendChild(this.hint("walls block movement · traps are hazards (params in a later pass)"));
+
+    // Rectangle mode: an outline (a room/cell ring) vs a solid fill. Toggled live.
+    const rectMode = document.createElement("div");
+    rectMode.style.margin = "4px 0";
+    const modeBtn = document.createElement("button");
+    modeBtn.dataset.role = "rect-mode";
+    modeBtn.style.cursor = "pointer";
+    const paintMode = () => (modeBtn.textContent = this.rectFill ? "rect: filled" : "rect: outline");
+    paintMode();
+    modeBtn.onclick = () => { this.rectFill = !this.rectFill; paintMode(); this.drawShapePreview(); };
+    rectMode.appendChild(modeBtn);
+    d.appendChild(rectMode);
+
+    d.appendChild(this.hint("the wall/floor substrate. wall = one tile · line/rect = two clicks → a run/box"));
+    d.appendChild(this.hint("rect outline = a cell/room ring (place a gate in the gap for the door)"));
+  }
+
+  /**
+   * The **Objects** drawer (D103) — discrete placeable elements with their own properties, kept apart
+   * from the painted Terrain substrate. A gate lands as a default lockpick cell; a lever lands
+   * unwired; the persistent inspector edits either (a gate's `openBy`/`locked`, a lever's targets).
+   */
+  private buildObjectsDrawer(d: HTMLDivElement): void {
+    const row = document.createElement("div");
+    row.style.margin = "4px 0";
+    row.append(this.brushButton("gate"), this.brushButton("lever"), this.brushButton("trap"));
+    d.appendChild(row);
+    d.appendChild(this.hint("gate = a locked cell/door (default: lockpick) · lever = a pull-switch · trap = a hazard"));
+    d.appendChild(this.hint("place one, then Select it → the inspector sets a gate's opens / a lever's target gates"));
   }
 
   private buildEventsDrawer(d: HTMLDivElement): void {
@@ -318,13 +488,144 @@ export class EditorScene extends Phaser.Scene {
     row.style.margin = "4px 0";
     row.append(this.brushButton("spawn"), this.brushButton("exit"));
     d.appendChild(row);
-    d.appendChild(this.hint("deploy spawns · extraction exit · objectives + triggers coming next"));
+    d.appendChild(this.hint("deploy spawns · extraction exit tiles (the extraction span)"));
+
+    // Objectives editor (M-C) — win/lose conditions as data. label + required + kind-specific fields.
+    const objHead = document.createElement("div");
+    Object.assign(objHead.style, { margin: "8px 0 2px", fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    objHead.append("Objectives ");
+    const add = document.createElement("button");
+    add.textContent = "＋ add"; add.dataset.role = "add-objective"; add.style.cursor = "pointer";
+    add.onclick = () => this.addObjective();
+    const derive = document.createElement("button");
+    derive.textContent = "Derive from board"; derive.dataset.role = "derive-objectives"; derive.style.cursor = "pointer"; derive.style.marginLeft = "4px";
+    derive.onclick = () => { this.draft.objectives = standardObjectives(this.draft.exit, this.draft.captives.length > 0); this.afterObjectiveEdit(); };
+    objHead.append(add, derive);
+    d.appendChild(objHead);
+
+    const list = document.createElement("div");
+    list.dataset.role = "objective-list";
+    list.style.margin = "2px 0";
+    d.appendChild(list);
+    this.objectivesEl = list;
+
+    d.appendChild(this.hint("empty ⇒ auto (eliminate-all + extraction when exit+captives) · required off = an optional/bonus objective"));
+    this.renderObjectives();
+  }
+
+  /** Append a fresh eliminate-all objective and re-render the list. */
+  private addObjective(): void {
+    (this.draft.objectives ??= []).push({ id: this.uniqueObjectiveId(), kind: "eliminate-all", required: true, label: "New objective" });
+    this.afterObjectiveEdit();
+  }
+
+  /** A run-unique objective id (`obj-N`) for a freshly-added row. */
+  private uniqueObjectiveId(): string {
+    const used = new Set((this.draft.objectives ?? []).map((o) => o.id));
+    let n = 1;
+    while (used.has(`obj-${n}`)) n++;
+    return `obj-${n}`;
+  }
+
+  /** After a structural objective change (add/remove/kind/derive): rebuild the list + refresh the export. */
+  private afterObjectiveEdit(): void {
+    this.renderObjectives();
+    this.updateExport();
+  }
+
+  /** Render the objectives editor — one editable block per objective (or an auto-derive placeholder). */
+  private renderObjectives(): void {
+    const host = this.objectivesEl;
+    if (!host) return;
+    host.innerHTML = "";
+    const objs = this.draft.objectives ?? [];
+    if (!objs.length) {
+      host.textContent = "· auto-derived — paint exit + captives for the rescue pair, or ＋ add / Derive to author explicitly";
+      host.style.opacity = "0.55";
+      return;
+    }
+    host.style.opacity = "1";
+    objs.forEach((o, i) => host.appendChild(this.objectiveRow(o, i)));
+  }
+
+  /** One objective's editable block: kind · required · remove, its label, and the kind-specific fields. */
+  private objectiveRow(o: ObjectiveSpec, i: number): HTMLDivElement {
+    const box = document.createElement("div");
+    box.dataset.role = "objective";
+    Object.assign(box.style, { margin: "4px 0", padding: "5px", border: "1px solid #4a423a", borderRadius: "4px" } as CSSStyleDeclaration);
+
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "6px" } as CSSStyleDeclaration);
+    const kind = document.createElement("select");
+    kind.dataset.field = "kind";
+    for (const k of OBJECTIVE_KINDS) { const opt = document.createElement("option"); opt.value = k; opt.textContent = k; kind.appendChild(opt); }
+    kind.value = o.kind;
+    kind.onchange = () => this.changeObjectiveKind(i, kind.value as ObjectiveKind);
+    head.appendChild(kind);
+    // Required checkbox — the "gates win/lose vs. optional bonus" switch.
+    const reqLabel = document.createElement("label");
+    reqLabel.style.cursor = "pointer";
+    const req = document.createElement("input");
+    req.type = "checkbox"; req.checked = o.required; req.dataset.field = "required";
+    req.onchange = () => { o.required = req.checked; this.updateExport(); };
+    reqLabel.append(req, "required");
+    head.appendChild(reqLabel);
+    const rm = document.createElement("button");
+    rm.textContent = "✕"; rm.title = "remove objective"; rm.dataset.role = "remove-objective";
+    Object.assign(rm.style, { marginLeft: "auto", cursor: "pointer" } as CSSStyleDeclaration);
+    rm.onclick = () => {
+      this.draft.objectives!.splice(i, 1);
+      if (!this.draft.objectives!.length) delete this.draft.objectives;
+      this.afterObjectiveEdit();
+    };
+    head.appendChild(rm);
+    box.appendChild(head);
+
+    box.appendChild(this.field("label", o.label, (v) => { o.label = v; this.updateExport(); }));
+
+    if (o.kind === "closing-gate") {
+      // A timed gauge (fails the constraint at 100). driver = the unit whose death/immobilize stops it.
+      const cg = document.createElement("div");
+      cg.style.margin = "3px 0";
+      cg.append("speed ");
+      cg.appendChild(this.numInput(o.speed ?? 10, (n) => { if (Number.isFinite(n)) { o.speed = n; this.updateExport(); } }));
+      box.appendChild(cg);
+      box.appendChild(this.selectRow("driver", ["", "sapper", "captain"], o.driver?.role ?? "", (v) => { if (v) o.driver = { role: v }; else delete o.driver; this.updateExport(); }));
+      box.appendChild(this.hint("swept-tiles span isn't paintable yet — a pure timer for now"));
+    } else if (o.kind === "extraction") {
+      const ex = document.createElement("div");
+      ex.style.margin = "3px 0";
+      ex.append("escort role ");
+      const role = document.createElement("input");
+      role.value = o.escort?.role ?? "prisoner"; role.style.width = "90px"; role.dataset.field = "escort";
+      role.oninput = () => { o.escort = { role: role.value || "prisoner" }; this.updateExport(); };
+      ex.appendChild(role);
+      box.appendChild(ex);
+      box.appendChild(this.hint(`span = ${this.draft.exit.length} exit tile(s) — paint with the exit brush`));
+    }
+    return box;
+  }
+
+  /** The draft's reward, created at the tidy default the first time it's edited. */
+  private ensureReward(): EncounterReward {
+    if (!this.draft.reward) this.draft.reward = { gold: 50, materials: [], xp: 40 };
+    return this.draft.reward;
+  }
+
+  /** Replace an objective with a clean shape for its new kind (preserving id/label/required — no stale fields). */
+  private changeObjectiveKind(i: number, kind: ObjectiveKind): void {
+    const prev = this.draft.objectives![i];
+    const next: ObjectiveSpec = { id: prev.id, kind, required: prev.required, label: prev.label };
+    if (kind === "closing-gate") { next.speed = prev.speed ?? 10; if (prev.driver) next.driver = prev.driver; }
+    if (kind === "extraction") { next.escort = prev.escort ?? { role: "prisoner" }; next.span = [...this.draft.exit]; }
+    this.draft.objectives![i] = next;
+    this.afterObjectiveEdit();
   }
 
   private buildUnitsDrawer(d: HTMLDivElement): void {
     const row = document.createElement("div");
     row.style.margin = "4px 0";
-    row.append(this.brushButton("select"), this.brushButton("enemy"), this.brushButton("captive"));
+    row.append(this.brushButton("enemy"), this.brushButton("captive"));
     d.appendChild(row);
 
     // Place-time defaults for the enemy/captive brushes.
@@ -350,18 +651,24 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(list.style, { margin: "4px 0", maxHeight: "112px", overflow: "auto", border: "1px solid #3a332c", borderRadius: "4px" } as CSSStyleDeclaration);
     d.appendChild(list);
     this.unitListEl = list;
-
-    // The inspector (M-B).
-    const inspector = document.createElement("div");
-    inspector.dataset.role = "inspector";
-    Object.assign(inspector.style, { margin: "6px 0 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
-    d.appendChild(inspector);
-    this.inspectorEl = inspector;
   }
 
   private buildScenarioDrawer(d: HTMLDivElement): void {
     d.appendChild(this.field("id", this.draft.id, (v) => { this.draft.id = v; this.updateExport(); }));
     d.appendChild(this.field("name", this.draft.name, (v) => { this.draft.name = v; this.updateExport(); }));
+
+    // Win reward (M-C) — gold + xp. materials round-trip verbatim (no picker yet).
+    const reward = document.createElement("div");
+    reward.style.margin = "3px 0";
+    reward.append("reward — gold ");
+    const gold = this.numInput(this.draft.reward?.gold ?? 50, (n) => { if (Number.isFinite(n)) { this.ensureReward().gold = n; this.updateExport(); } });
+    gold.dataset.role = "reward-gold";
+    reward.appendChild(gold);
+    reward.append(" xp ");
+    const xp = this.numInput(this.draft.reward?.xp ?? 40, (n) => { if (Number.isFinite(n)) { this.ensureReward().xp = n; this.updateExport(); } });
+    xp.dataset.role = "reward-xp";
+    reward.appendChild(xp);
+    d.appendChild(reward);
 
     // Import (the M-A round-trip inverse).
     const imp = document.createElement("div");
@@ -439,6 +746,7 @@ export class EditorScene extends Phaser.Scene {
     }
     this.draft = next;
     this.selection = null;
+    this.cancelShape();
     this.renderBoard();
     this.unmountPanel();
     this.mountPanel();
@@ -452,18 +760,81 @@ export class EditorScene extends Phaser.Scene {
     if (!host) return;
     const sel = this.selection;
     if (sel) {
-      const list: unknown[] = sel.kind === "enemy" ? this.draft.enemies : this.draft.captives;
+      const list: unknown[] =
+        sel.kind === "enemy" ? this.draft.enemies
+        : sel.kind === "captive" ? this.draft.captives
+        : sel.kind === "gate" ? this.draft.gates
+        : this.draft.levers;
       if (!list.includes(sel.ref)) this.selection = null;
     }
     host.innerHTML = "";
     if (!this.selection) {
-      host.textContent = "· select-brush an entity to edit its identity + stats";
+      host.textContent = "· Select an object (a unit, gate, or lever) to edit it";
       host.style.opacity = "0.55";
       return;
     }
     host.style.opacity = "1";
     if (this.selection.kind === "enemy") this.renderEnemyInspector(host, this.selection.ref);
-    else this.renderCaptiveInspector(host, this.selection.ref);
+    else if (this.selection.kind === "captive") this.renderCaptiveInspector(host, this.selection.ref);
+    else if (this.selection.kind === "gate") this.renderGateInspector(host, this.selection.ref);
+    else this.renderLeverInspector(host, this.selection.ref);
+  }
+
+  /** Inspector for a gate (M-D2): its `locked` state + the `openBy` conditions (lockpick / keyholder / destructible) with params. */
+  private renderGateInspector(host: HTMLDivElement, g: AuthoredGate): void {
+    host.appendChild(this.inspectorHeader(`gate · ${g.id} @ (${g.pos.col},${g.pos.row})`));
+    host.appendChild(this.checkboxRow("starts locked", g.locked !== false, (on) => { g.locked = on; this.afterInspect(); }));
+
+    const has = (k: GateLock["kind"]) => g.openBy.some((c) => c.kind === k);
+    const setCond = (k: GateLock["kind"], on: boolean) => {
+      g.openBy = g.openBy.filter((c) => c.kind !== k);
+      if (on) g.openBy.push(k === "lockpick" ? { kind: "lockpick" } : k === "keyholder" ? { kind: "keyholder", tag: { role: "captain" } } : { kind: "destructible", hp: 20 });
+      this.renderInspector(); // structural (params show/hide) → rebuild; afterInspect refreshes the board/export
+      this.afterInspect();
+    };
+    host.appendChild(this.hint("opens by (any one):"));
+    host.appendChild(this.checkboxRow("lockpick (a Thief picks it)", has("lockpick"), (on) => setCond("lockpick", on)));
+    host.appendChild(this.checkboxRow("keyholder (a tagged unit's defeat opens it)", has("keyholder"), (on) => setCond("keyholder", on)));
+    const key = g.openBy.find((c) => c.kind === "keyholder");
+    if (key && key.kind === "keyholder") {
+      host.appendChild(this.field("keyholder role", key.tag.role ?? "", (v) => { const t = v.trim(); key.tag = t ? { role: t } : {}; this.afterInspect(); }));
+    }
+    host.appendChild(this.checkboxRow("destructible (battered down by attacks)", has("destructible"), (on) => setCond("destructible", on)));
+    const dest = g.openBy.find((c) => c.kind === "destructible");
+    if (dest && dest.kind === "destructible") {
+      const row = document.createElement("div");
+      row.style.margin = "3px 0";
+      row.append("door hp ");
+      row.appendChild(this.numInput(dest.hp, (n) => { if (Number.isFinite(n)) { dest.hp = n; this.afterInspect(); } }));
+      host.appendChild(row);
+    }
+  }
+
+  /** Inspector for a lever (M-D2): a checklist of the placed gates it toggles when pulled. */
+  private renderLeverInspector(host: HTMLDivElement, l: AuthoredLever): void {
+    host.appendChild(this.inspectorHeader(`lever · ${l.id} @ (${l.pos.col},${l.pos.row})`));
+    if (!this.draft.gates.length) {
+      host.appendChild(this.hint("place a gate first, then check it here to wire this lever to it"));
+      return;
+    }
+    host.appendChild(this.hint("toggles these gates when pulled:"));
+    for (const g of this.draft.gates) {
+      host.appendChild(this.checkboxRow(`${g.id} (${g.pos.col},${g.pos.row})`, l.targets.includes(g.id), (on) => {
+        l.targets = on ? [...new Set([...l.targets, g.id])] : l.targets.filter((id) => id !== g.id);
+        this.afterInspect();
+      }));
+    }
+  }
+
+  /** A labelled checkbox row. */
+  private checkboxRow(label: string, checked: boolean, onChange: (on: boolean) => void): HTMLElement {
+    const wrap = document.createElement("label");
+    Object.assign(wrap.style, { display: "block", margin: "3px 0", cursor: "pointer" } as CSSStyleDeclaration);
+    const box = document.createElement("input");
+    box.type = "checkbox"; box.checked = checked;
+    box.onchange = () => onChange(box.checked);
+    wrap.append(box, ` ${label}`);
+    return wrap;
   }
 
   private renderEnemyInspector(host: HTMLDivElement, e: DraftEnemy): void {
@@ -577,8 +948,10 @@ export class EditorScene extends Phaser.Scene {
     this.panel = undefined;
     this.exportPre = undefined;
     this.validLine = undefined;
+    this.coordEl = undefined;
     this.inspectorEl = undefined;
     this.unitListEl = undefined;
+    this.objectivesEl = undefined;
     this.brushButtons = [];
     this.tabButtons = [];
     this.drawers = {};
@@ -588,4 +961,47 @@ export class EditorScene extends Phaser.Scene {
 /** Two grid coords are the same tile. */
 function same(a: GridCoord, b: GridCoord): boolean {
   return a.col === b.col && a.row === b.row;
+}
+
+/** A compact letter tag for a gate's open conditions (L=lockpick · K=keyholder · D=destructible), for the board marker. */
+function gateTag(g: AuthoredGate): string {
+  let s = "";
+  if (g.openBy.some((c) => c.kind === "lockpick")) s += "L";
+  if (g.openBy.some((c) => c.kind === "keyholder")) s += "K";
+  if (g.openBy.some((c) => c.kind === "destructible")) s += "D";
+  return s;
+}
+
+/**
+ * A straight **wall run** from `a` to `b`, snapped to the dominant axis (a prison's walls are
+ * rectilinear, so a diagonal drag still yields a clean horizontal *or* vertical line rather than a
+ * staircase). Inclusive of both endpoints.
+ */
+function lineTiles(a: GridCoord, b: GridCoord): GridCoord[] {
+  const dCol = b.col - a.col;
+  const dRow = b.row - a.row;
+  const horizontal = Math.abs(dCol) >= Math.abs(dRow);
+  const out: GridCoord[] = [];
+  const n = horizontal ? Math.abs(dCol) : Math.abs(dRow);
+  const stepCol = horizontal ? Math.sign(dCol) : 0;
+  const stepRow = horizontal ? 0 : Math.sign(dRow);
+  for (let i = 0; i <= n; i++) out.push({ col: a.col + stepCol * i, row: a.row + stepRow * i });
+  return out;
+}
+
+/**
+ * The tiles of the axis-aligned box spanned by `a` and `b`. `filled` fills the interior (a solid
+ * block); otherwise only the **perimeter** ring is returned (a room/cell outline — the door is a
+ * gap you erase afterward).
+ */
+function rectTiles(a: GridCoord, b: GridCoord, filled: boolean): GridCoord[] {
+  const c0 = Math.min(a.col, b.col), c1 = Math.max(a.col, b.col);
+  const r0 = Math.min(a.row, b.row), r1 = Math.max(a.row, b.row);
+  const out: GridCoord[] = [];
+  for (let row = r0; row <= r1; row++) {
+    for (let col = c0; col <= c1; col++) {
+      if (filled || col === c0 || col === c1 || row === r0 || row === r1) out.push({ col, row });
+    }
+  }
+  return out;
 }

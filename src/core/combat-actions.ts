@@ -74,6 +74,30 @@ export type CombatAction =
    */
   | { kind: "rescue"; target: UnitId; unit?: UnitId }
   /**
+   * **Open a gate** by lockpicking (D103): `unit` — an adjacent Expert-Lockpick holder (the
+   * Thief) — springs the locked `gate`, clearing its tile's block and announcing `gateOpened`.
+   * Logged (mirrors `rescue`) so the open rides the state graph a replay reconstructs and undo
+   * can cross (the gate's `locked` + its grid tile are checkpointed). Refused (no-op, unlogged)
+   * when the unit isn't adjacent/capable or the gate has no lockpick condition.
+   */
+  | { kind: "openGate"; gate: string; unit: UnitId }
+  /**
+   * **Attack a destructible gate** (D103): `unit` — any unit within attack range — chips the `gate`'s
+   * durability by its attack; the door announces `gateDamaged`, and `gateOpened` (cause `destroyed`)
+   * when it breaks at 0. Logged (mirrors `attack`) so the chip + break ride the state graph a replay
+   * reconstructs and undo crosses (the gate's `hp`/`locked` + its grid tile are checkpointed). Refused
+   * (no-op, unlogged) when the unit is out of range or the gate isn't breakable.
+   */
+  | { kind: "attackGate"; gate: string; unit: UnitId }
+  /**
+   * **Pull a lever** (D103): `unit` — adjacent to `lever` — toggles the locked state of the lever's
+   * target gates (the control-room seal slamming a door shut, sealing the guards out; or reopening it).
+   * Logged (mirrors `openGate`) so the toggle rides the state graph a replay reconstructs and undo
+   * crosses (each target gate's `locked`/`hp` + its grid tile are checkpointed). A gate whose tile a
+   * living unit occupies is **not** sealed (never trap a body in a wall). Refused (no-op) when out of reach.
+   */
+  | { kind: "pullLever"; lever: string; unit: UnitId }
+  /**
    * A **sway** (D30/D62 bribe): `target` — an enemy the Noble turned — flips to the player's
    * side for the rest of the fight, announcing `unitSwayed`. `unit` is the briber (named on the
    * bus event). Logged (mirrors `rescue`) so the defection rides the state graph replay

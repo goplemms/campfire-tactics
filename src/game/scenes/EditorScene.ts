@@ -48,6 +48,37 @@ const ENEMY_IDS = [...Object.keys(BANDIT_TEMPLATES), ...ENEMY_TEMPLATES.map((t) 
 /** A short board label for a placed enemy token. */
 const abbrev = (id: string) => (id.split("-").pop() || id).slice(0, 3);
 
+/** Editor display prefs (D109 slice 2) — chosen live in the dock's options row, persisted per browser. */
+interface EditorPrefs {
+  cardSize: number; // slab-tray card width in px (62 compact · 78 default · 96 large)
+  enemyTint: "red" | "role"; // uniform danger-red ring vs an archetype-role ring (board + cards)
+  captiveVariants: 1 | 2; // one lockpick captive card, or lockpick + reach
+}
+const PREFS_KEY = "campfire-editor-prefs";
+const DEFAULT_PREFS: EditorPrefs = { cardSize: 78, enemyTint: "red", captiveVariants: 1 };
+function loadEditorPrefs(): EditorPrefs {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(PREFS_KEY) : null;
+    return raw ? { ...DEFAULT_PREFS, ...JSON.parse(raw) } : { ...DEFAULT_PREFS };
+  } catch {
+    return { ...DEFAULT_PREFS };
+  }
+}
+function saveEditorPrefs(p: EditorPrefs): void {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* ignore quota/denied */ }
+}
+/** Per-archetype role ring colour for the "role" tint option (the token body stays enemy-red so the
+ *  board's red=enemy convention holds — only the ring carries the archetype). */
+const ROLE_TINT: Record<string, string> = {
+  "bandit-thug": "#e06b6b", "bandit-bowman": "#e0b24a", "bandit-cutthroat": "#c07fd0",
+  "snare-trapper": "#4fb0a0", sapper: "#e0843a", "bandit-captain": "#f0c060",
+  goblin: "#9bd66f", brute: "#e06b6b", archer: "#e0b24a", warg: "#c07fd0", thief: "#9a6bd0",
+};
+const enemyRing = (id: string, tint: EditorPrefs["enemyTint"]): string =>
+  tint === "role" ? (ROLE_TINT[id] ?? "#6b1c1c") : "#6b1c1c";
+/** "#e0b24a" → 0xe0b24a, for a Phaser stroke colour. */
+const hexToNum = (hex: string): number => parseInt(hex.replace("#", ""), 16);
+
 /** A template's base combat stats for a card face (looks up either roster map). */
 function enemyStat(id: string): { hp: number; atk: number } {
   const t = (BANDIT_TEMPLATES as Record<string, { maxHp: number; attack: number }>)[id] ?? ENEMY_TEMPLATES.find((e) => e.id === id);
@@ -120,6 +151,12 @@ export class EditorScene extends Phaser.Scene {
   /** Slab-tray placeable cards (D109 slice 2) — a thumbnail per brush; enemy templates are unrolled
    *  one card each. `template`/`release` ride the click so a card sets the brush AND its variant. */
   private paletteCards: { el: HTMLButtonElement; brush: Brush; template?: string; release?: "reach" | "lockpick" }[] = [];
+  /** Per-tab empty card strips, filled/refilled by {@link fillPalette} whenever a display pref changes. */
+  private paletteStrips: Partial<Record<TabName, HTMLDivElement>> = {};
+  /** Live display prefs (card size · enemy tint · captive variants), chosen in the options row. */
+  private prefs: EditorPrefs = loadEditorPrefs();
+  /** Repaint closures for the options-row toggles (refresh the active highlight after a pref change). */
+  private optionButtons: (() => void)[] = [];
   private tabButtons: HTMLButtonElement[] = [];
   private drawers: Partial<Record<TabName, HTMLDivElement>> = {};
   private activeTab: TabName = "Terrain";
@@ -170,7 +207,12 @@ export class EditorScene extends Phaser.Scene {
 
     clearLayer(this.markers);
     for (const s of this.draft.playerSpawns) this.mark(s, "P", COLOR.success, "#0d1a12");
-    for (const e of this.draft.enemies) this.mark(e.pos, abbrev(e.templateId), COLOR.danger, "#fff");
+    for (const e of this.draft.enemies) {
+      // Role tint (D109 slice 2): keep the red body (red = enemy) but ring the token in the archetype's
+      // role colour so the board matches the tinted cards. Uniform red → the default dark ring.
+      const ring = this.prefs.enemyTint === "role" ? hexToNum(enemyRing(e.templateId, "role")) : undefined;
+      this.mark(e.pos, abbrev(e.templateId), COLOR.danger, "#fff", ring);
+    }
     for (const c of this.draft.captives) this.mark(c.pos, c.release === "lockpick" ? "⚿" : "○", 0x9a6bc0, "#fff");
     for (const t of this.draft.traps) this.mark(t, "▲", COLOR.accent, "#1a1206");
     // Gates (▦) tagged with a letter per open-condition (L/K/D); a selected object rings gold.
@@ -179,11 +221,14 @@ export class EditorScene extends Phaser.Scene {
   }
 
   /** A small labelled token centred on a tile (the editor's entity marker). */
-  private mark(pos: GridCoord, label: string, fill: number, textColor: string): void {
+  private mark(pos: GridCoord, label: string, fill: number, textColor: string, ring?: number): void {
     const { x, y } = this.view.tileToWorld(pos);
     const cy = y - this.view.halfH() * 0.25;
+    const circle = this.add.circle(x, cy, 12, fill).setDepth(2);
+    if (ring !== undefined) circle.setStrokeStyle(2.5, ring, 1); // role-tinted archetype ring (D109)
+    else circle.setStrokeStyle(1, 0x000000, 0.5);
     this.markers.push(
-      this.add.circle(x, cy, 12, fill).setStrokeStyle(1, 0x000000, 0.5).setDepth(2),
+      circle,
       this.add.text(x, cy, label, { color: textColor, fontFamily: FONT.family, fontSize: "12px", fontStyle: "bold" }).setOrigin(0.5).setDepth(3),
     );
   }
@@ -391,6 +436,9 @@ export class EditorScene extends Phaser.Scene {
     header.appendChild(coord);
     this.coordEl = coord;
     this.updateCoord();
+    // Display-options row (D109 slice 2) — the card tweaks as live, persisted toggles.
+    this.optionButtons = [];
+    header.appendChild(this.optionsRow());
     panel.appendChild(header);
 
     // Tab bar + the persistent cross-cutting Erase tool and the view-reset control.
@@ -454,6 +502,8 @@ export class EditorScene extends Phaser.Scene {
     // Appending the dock shrinks #app but fires no resize, so re-fit once layout has flushed, else
     // the canvas overflows its box (820×615 into a 470-tall #app). rAF so #app's new height is live.
     requestAnimationFrame(() => this.scale.refresh());
+    this.fillPalette(); // build the card strips from the current display prefs
+    for (const paint of this.optionButtons) paint(); // light the active size/tint/captive toggles
     this.showTab(this.activeTab);
     this.highlightBrush();
     this.renderUnitList();
@@ -478,16 +528,18 @@ export class EditorScene extends Phaser.Scene {
    * the same `data-brush` hook the e2e drives; enemy cards additionally tag `data-template`.
    */
   private paletteCard(opts: { brush: Brush; label: string; thumb: string; template?: string; release?: "reach" | "lockpick"; stat?: string }): HTMLButtonElement {
+    const size = this.prefs.cardSize;
     const card = document.createElement("button");
     card.dataset.brush = opts.brush;
     if (opts.template) card.dataset.template = opts.template;
     Object.assign(card.style, {
-      flex: "0 0 auto", width: "78px", padding: "5px 4px 4px", cursor: "pointer", textAlign: "center",
+      flex: "0 0 auto", width: `${size}px`, padding: "5px 4px 4px", cursor: "pointer", textAlign: "center",
       background: "#1a140d", border: "1px solid #4a423a", borderRadius: "5px", boxSizing: "border-box",
       font: "10px/1.25 ui-monospace, monospace", color: "#ddd3c2",
     } as CSSStyleDeclaration);
     const thumb = document.createElement("div");
-    Object.assign(thumb.style, { height: "38px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "3px" } as CSSStyleDeclaration);
+    const thumbH = size <= 66 ? 32 : size >= 90 ? 46 : 38;
+    Object.assign(thumb.style, { height: `${thumbH}px`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "3px" } as CSSStyleDeclaration);
     thumb.innerHTML = opts.thumb;
     const name = document.createElement("div");
     name.textContent = opts.label;
@@ -521,12 +573,97 @@ export class EditorScene extends Phaser.Scene {
 
   /** The enemy-template cards (the roster unrolled from the old dropdown) + a captive card per release. */
   private unitCards(): HTMLElement[] {
+    const tint = this.prefs.enemyTint;
     const enemyCards = ENEMY_IDS.map((id) => {
       const t = enemyStat(id);
-      return this.paletteCard({ brush: "enemy", template: id, label: enemyLabel(id), thumb: tokenThumb(abbrev(id), "#e06b6b", "#6b1c1c", "#2a0d0d"), stat: `HP ${t.hp} · ATK ${t.atk}` });
+      return this.paletteCard({ brush: "enemy", template: id, label: enemyLabel(id), thumb: tokenThumb(abbrev(id), "#e06b6b", enemyRing(id, tint), "#2a0d0d"), stat: `HP ${t.hp} · ATK ${t.atk}` });
     });
-    const captive = this.paletteCard({ brush: "captive", release: "lockpick", label: "Captive", thumb: tokenThumb("⚿", "#9a6bd0", "#4a2c6b", "#fff") });
-    return [...enemyCards, captive];
+    const captives = this.prefs.captiveVariants === 2
+      ? [
+          this.paletteCard({ brush: "captive", release: "lockpick", label: "Captive · pick", thumb: tokenThumb("⚿", "#9a6bd0", "#4a2c6b", "#fff") }),
+          this.paletteCard({ brush: "captive", release: "reach", label: "Captive · reach", thumb: tokenThumb("○", "#9a6bd0", "#4a2c6b", "#fff") }),
+        ]
+      : [this.paletteCard({ brush: "captive", release: "lockpick", label: "Captive", thumb: tokenThumb("⚿", "#9a6bd0", "#4a2c6b", "#fff") })];
+    return [...enemyCards, ...captives];
+  }
+
+  /** (Re)build every category's card strip from the current display prefs — on mount and on any options
+   *  change, so a size/tint/captive-variant edit re-renders the tray in place (no full remount). */
+  private fillPalette(): void {
+    this.paletteCards = [];
+    const put = (tab: TabName, cards: HTMLElement[]): void => {
+      const s = this.paletteStrips[tab];
+      if (!s) return;
+      s.innerHTML = "";
+      for (const c of cards) s.appendChild(c);
+    };
+    put("Terrain", [
+      this.paletteCard({ brush: "wall", label: "Wall", thumb: blockThumb() }),
+      this.paletteCard({ brush: "line", label: "Line", thumb: lineThumb() }),
+      this.paletteCard({ brush: "rect", label: "Rect", thumb: rectThumb() }),
+    ]);
+    put("Objects", [
+      this.paletteCard({ brush: "gate", label: "Gate", thumb: glyphThumb("▦", "#f2b65a") }),
+      this.paletteCard({ brush: "lever", label: "Lever", thumb: glyphThumb("⎇", "#62c6d6") }),
+      this.paletteCard({ brush: "trap", label: "Trap", thumb: glyphThumb("▲", "#f2b65a") }),
+    ]);
+    put("Units", this.unitCards());
+    put("Events", [
+      this.paletteCard({ brush: "spawn", label: "Spawn", thumb: tokenThumb("P", "#ffcf6b", "#57b07a", "#1a1410") }),
+      this.paletteCard({ brush: "exit", label: "Exit", thumb: glyphThumb("⚑", "#46a6c8") }),
+    ]);
+    this.highlightBrush();
+  }
+
+  /**
+   * The dock's display-options row (D109 slice 2) — the card tweaks made **live, choosable** toggles:
+   * card **size** (S/M/L) · enemy **tint** (red / role-ring) · **captive** variants (1 / 2). Persisted
+   * per browser; a click re-renders the tray + re-tints the board in place.
+   */
+  private optionsRow(): HTMLDivElement {
+    const wrap = document.createElement("div");
+    wrap.dataset.role = "editor-options";
+    Object.assign(wrap.style, { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px", margin: "4px 0 2px", fontSize: "11px", color: "#b2a48b" } as CSSStyleDeclaration);
+    const group = (label: string, choices: { text: string; on: () => boolean; set: () => void }[]): HTMLSpanElement => {
+      const g = document.createElement("span");
+      Object.assign(g.style, { display: "inline-flex", alignItems: "center", gap: "3px" } as CSSStyleDeclaration);
+      g.append(label + " ");
+      for (const c of choices) {
+        const b = document.createElement("button");
+        b.textContent = c.text;
+        b.dataset.opt = `${label}:${c.text}`;
+        Object.assign(b.style, { cursor: "pointer", padding: "2px 7px", borderRadius: "3px", border: "1px solid #4a423a", background: "#1a140d", color: "#ddd3c2", font: "11px ui-monospace, monospace" } as CSSStyleDeclaration);
+        const paint = (): void => { const on = c.on(); b.style.background = on ? "#c8a24a" : "#1a140d"; b.style.color = on ? "#1a1206" : "#ddd3c2"; b.style.fontWeight = on ? "700" : "400"; };
+        b.onclick = () => { c.set(); this.applyPrefs(); };
+        this.optionButtons.push(paint);
+        g.appendChild(b);
+      }
+      return g;
+    };
+    wrap.append(
+      group("size", [
+        { text: "S", on: () => this.prefs.cardSize === 62, set: () => (this.prefs.cardSize = 62) },
+        { text: "M", on: () => this.prefs.cardSize === 78, set: () => (this.prefs.cardSize = 78) },
+        { text: "L", on: () => this.prefs.cardSize === 96, set: () => (this.prefs.cardSize = 96) },
+      ]),
+      group("enemy", [
+        { text: "red", on: () => this.prefs.enemyTint === "red", set: () => (this.prefs.enemyTint = "red") },
+        { text: "role", on: () => this.prefs.enemyTint === "role", set: () => (this.prefs.enemyTint = "role") },
+      ]),
+      group("captive", [
+        { text: "1", on: () => this.prefs.captiveVariants === 1, set: () => (this.prefs.captiveVariants = 1) },
+        { text: "2", on: () => this.prefs.captiveVariants === 2, set: () => (this.prefs.captiveVariants = 2) },
+      ]),
+    );
+    return wrap;
+  }
+
+  /** Persist the prefs, then re-render the tray + board + option highlights so the change is immediate. */
+  private applyPrefs(): void {
+    saveEditorPrefs(this.prefs);
+    this.fillPalette();
+    this.renderBoard(); // re-tint the board's enemy markers if the tint pref changed
+    for (const paint of this.optionButtons) paint();
   }
 
   /** Show one drawer, hide the rest, highlight the active tab. */
@@ -556,11 +693,8 @@ export class EditorScene extends Phaser.Scene {
     size.append(" × ");
     size.appendChild(this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n)));
     d.appendChild(size);
-    d.appendChild(this.cardStrip([
-      this.paletteCard({ brush: "wall", label: "Wall", thumb: blockThumb() }),
-      this.paletteCard({ brush: "line", label: "Line", thumb: lineThumb() }),
-      this.paletteCard({ brush: "rect", label: "Rect", thumb: rectThumb() }),
-    ]));
+    this.paletteStrips.Terrain = this.cardStrip([]);
+    d.appendChild(this.paletteStrips.Terrain);
 
     // Rectangle mode: an outline (a room/cell ring) vs a solid fill. Toggled live.
     const rectMode = document.createElement("div");
@@ -584,20 +718,15 @@ export class EditorScene extends Phaser.Scene {
    * unwired; the persistent inspector edits either (a gate's `openBy`/`locked`, a lever's targets).
    */
   private buildObjectsDrawer(d: HTMLDivElement): void {
-    d.appendChild(this.cardStrip([
-      this.paletteCard({ brush: "gate", label: "Gate", thumb: glyphThumb("▦", "#f2b65a") }),
-      this.paletteCard({ brush: "lever", label: "Lever", thumb: glyphThumb("⎇", "#62c6d6") }),
-      this.paletteCard({ brush: "trap", label: "Trap", thumb: glyphThumb("▲", "#f2b65a") }),
-    ]));
+    this.paletteStrips.Objects = this.cardStrip([]);
+    d.appendChild(this.paletteStrips.Objects);
     d.appendChild(this.hint("gate = a locked cell/door (default: lockpick) · lever = a pull-switch · trap = a hazard"));
     d.appendChild(this.hint("place one, then Select it → the inspector sets a gate's opens / a lever's target gates"));
   }
 
   private buildEventsDrawer(d: HTMLDivElement): void {
-    d.appendChild(this.cardStrip([
-      this.paletteCard({ brush: "spawn", label: "Spawn", thumb: tokenThumb("P", "#ffcf6b", "#57b07a", "#1a1410") }),
-      this.paletteCard({ brush: "exit", label: "Exit", thumb: glyphThumb("⚑", "#46a6c8") }),
-    ]));
+    this.paletteStrips.Events = this.cardStrip([]);
+    d.appendChild(this.paletteStrips.Events);
     d.appendChild(this.hint("deploy spawns · extraction exit tiles (the extraction span)"));
 
     // Objectives editor (M-C) — win/lose conditions as data. label + required + kind-specific fields.
@@ -734,8 +863,10 @@ export class EditorScene extends Phaser.Scene {
 
   private buildUnitsDrawer(d: HTMLDivElement): void {
     // The enemy roster, unrolled from the old dropdown into one card each (D109 slice 2) + a captive
-    // card. Each enemy card sets the brush AND its template; the captive card its release.
-    d.appendChild(this.cardStrip(this.unitCards()));
+    // card. Each enemy card sets the brush AND its template; the captive card its release. Filled by
+    // fillPalette so a display-pref change (size/tint/captive-variants) re-renders it in place.
+    this.paletteStrips.Units = this.cardStrip([]);
+    d.appendChild(this.paletteStrips.Units);
     d.appendChild(this.hint("pick an archetype → click the board to place · Captive drops a lockpick prisoner"));
 
     // The unit list — click a row to select (reaches units occluded by the panel / off a wide board).
@@ -1114,6 +1245,8 @@ export class EditorScene extends Phaser.Scene {
     this.objectivesEl = undefined;
     this.brushButtons = [];
     this.paletteCards = [];
+    this.paletteStrips = {};
+    this.optionButtons = [];
     this.tabButtons = [];
     this.drawers = {};
   }

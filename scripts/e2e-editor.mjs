@@ -102,6 +102,25 @@ async function main() {
         check("the placeable gallery has every essential brush (incl. gate + lever)", st.essentialBrushes === true);
         check("the enemy roster is unrolled into cards (not a dropdown)", st.enemyCards >= 6);
         check("the drawer tab bar is present (5 tabs incl. Objects)", st.tabs === 5);
+
+        // D109 slice 2 — the card tweaks are live, persisted display options (size / tint / captive).
+        console.log("• display options: size · enemy tint · captive variants");
+        check("the display-options row is present", (await g.eval(`!!document.querySelector('[data-role="editor-options"]')`)) === true);
+        const wallW = () => g.eval(`document.querySelector('button[data-brush="wall"]').offsetWidth`);
+        await g.eval(`document.querySelector('button[data-opt="size:M"]').click()`); await sleep(80);
+        const wM = await wallW();
+        await g.eval(`document.querySelector('button[data-opt="size:L"]').click()`); await sleep(120);
+        const wL = await wallW();
+        check("choosing the Large size option widens the cards", wL > wM);
+        await g.eval(`document.querySelector('button[data-opt="size:M"]').click()`); await sleep(80);
+        await g.eval(`document.querySelector('button[data-opt="enemy:role"]').click()`); await sleep(100);
+        const roleOn = await g.eval(`document.querySelector('button[data-opt="enemy:role"]').style.fontWeight === "700"`);
+        check("choosing the role tint option activates it (no freeze)", roleOn === true);
+        const captive2 = await g.eval(`(() => { document.querySelector('button[data-opt="captive:2"]').click(); return document.querySelectorAll('button[data-brush="captive"]').length; })()`);
+        await sleep(100);
+        check("choosing 2 captive variants adds the reach card", captive2 === 2);
+        // restore defaults so persisted prefs don't leak into later assertions / runs
+        await g.eval(`document.querySelector('button[data-opt="enemy:red"]').click(); document.querySelector('button[data-opt="captive:1"]').click();`); await sleep(80);
         check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));
 

@@ -567,6 +567,26 @@ async function main() {
         await g.eval(`document.querySelector('button[data-role="undo"]').click()`); await sleep(100);
         check("undo reverses the import (draft restored)", (await dims()).enemies === enemiesPreImport);
 
+        // Undo also covers inspector FORM edits (id / stats / objectives / reward), coalesced per field —
+        // the gap the challenge flagged. Edit an enemy's maxHp through the inspector, then undo it.
+        console.log("• undo reverts an inspector stat edit (coalesced form-edit history)");
+        await closeDrawerIfOpen(); await sleep(60);
+        const enemyPt = await g.eval(`(() => {
+          const sc = window.game.scene.getScene("EditorScene"), d = sc.draft;
+          const on = (p) => p.x > 60 && p.x < 740 && p.y > 60 && p.y < 540;
+          for (const e of d.enemies) { const p = sc.view.tileToWorld(e.pos); if (on(p)) return { x: Math.round(p.x), y: Math.round(p.y) }; }
+          return null;
+        })()`);
+        await g.eval(setBrush("select"));
+        await g.clickScene(enemyPt.x, enemyPt.y); await sleep(120);
+        check("selecting an enemy shows the stat grid", (await g.eval(`document.querySelectorAll('input[data-stat]').length`)) >= 7);
+        const has77 = () => g.eval(`JSON.parse(document.querySelector("pre").textContent).enemies.some((e) => e.overrides && e.overrides.maxHp === 77)`);
+        await g.eval(`(() => { const hp = document.querySelector('input[data-stat="maxHp"]'); hp.value = "77"; hp.dispatchEvent(new Event("change")); })()`);
+        await sleep(100);
+        check("editing maxHp to 77 flows to the export", (await has77()) === true);
+        await g.page.keyboard.down("Control"); await g.page.keyboard.press("KeyZ"); await g.page.keyboard.up("Control"); await sleep(100);
+        check("Ctrl+Z reverts the inspector stat edit", (await has77()) === false);
+
         assertNoProblems(g.problems);
       } catch (err) {
         await g.screenshot(path.join(OUT, "zz-failure.png")).catch(() => {});

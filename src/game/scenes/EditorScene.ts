@@ -173,8 +173,11 @@ export class EditorScene extends Phaser.Scene {
   private redoStack: EditorDraft[] = [];
   private undoBtn?: HTMLButtonElement;
   private redoBtn?: HTMLButtonElement;
-  /** Bound so the same reference detaches on teardown. Keyboard shortcuts live on `window` (see {@link onKeyDown}). */
+  /** The form control whose edits are coalescing into one undo entry (null between edits). See {@link onPanelEdit}. */
+  private lastEditTarget: EventTarget | null = null;
+  /** Bound so the same reference detaches on teardown. Keyboard + form-edit hooks live on `window`. */
   private readonly hKeyDown = (ev: KeyboardEvent) => this.onKeyDown(ev);
+  private readonly hPanelEdit = (ev: Event) => this.onPanelEdit(ev);
 
   // DOM overlay (the D95 panel idiom). The panel now mounts in-flow inside {@link dock}, a
   // full-width slab tray BELOW the canvas (D98 placement pass), instead of the old fixed
@@ -518,12 +521,36 @@ export class EditorScene extends Phaser.Scene {
     return JSON.parse(JSON.stringify(this.draft)) as EditorDraft;
   }
 
-  /** Snapshot the pre-edit draft onto the undo stack (and drop the redo future). Call *before* a mutation. */
-  private pushHistory(): void {
+  /** Push a pre-edit snapshot onto the undo stack + drop the redo future. The raw primitive (no coalescing reset). */
+  private snapshotDraft(): void {
     this.undoStack.push(this.cloneDraft());
     if (this.undoStack.length > HISTORY_MAX) this.undoStack.shift();
     this.redoStack = [];
     this.refreshHistoryButtons();
+  }
+
+  /** Snapshot for a board / destructive edit — also ends any in-progress field-edit coalescing. Call *before* the mutation. */
+  private pushHistory(): void {
+    this.snapshotDraft();
+    this.lastEditTarget = null;
+  }
+
+  /**
+   * Capture-phase form-edit hook (mounted on window). An inspector / objective / reward edit mutates the
+   * draft through the control's *own* (target-phase) handler; this runs first — in the capture phase — so
+   * it can snapshot the **pre-edit** draft. Coalesced per control: a field's keystrokes (and its input+
+   * change pair) collapse to one undo entry, and a blur or a move to another control opens the next. The
+   * size inputs (already snapshot via {@link resize}) and the import box (not a draft edit) are excluded.
+   */
+  private onPanelEdit(ev: Event): void {
+    if (ev.type === "focusout") { this.lastEditTarget = null; return; }
+    const el = ev.target as HTMLElement | null;
+    if (!el || (el.tagName !== "INPUT" && el.tagName !== "SELECT" && el.tagName !== "TEXTAREA")) return;
+    const role = el.dataset.role;
+    if (role === "import" || role === "cols" || role === "rows") return; // not a coalesced draft edit
+    if (el === this.lastEditTarget) return; // same control → same undo entry
+    this.snapshotDraft();
+    this.lastEditTarget = el;
   }
 
   private undo(): void {
@@ -544,6 +571,7 @@ export class EditorScene extends Phaser.Scene {
   private restoreDraft(d: EditorDraft): void {
     this.draft = d;
     this.selection = null;
+    this.lastEditTarget = null; // a restore is an edit boundary
     this.cancelShape();
     this.afterBoardEdit();
   }
@@ -656,10 +684,11 @@ export class EditorScene extends Phaser.Scene {
   // --- DOM palette (position:fixed, the debug-menu.ts idiom) ----------------
 
   private mountPanel(): void {
-    // Keyboard shortcuts (brush hotkeys · Esc · undo/redo) on window, so they survive an import remount
-    // (which unmount+remounts the panel) and work regardless of canvas focus. onKeyDown ignores keys
-    // while a form field is focused so typing an id never switches brush. Paired with unmountPanel's off.
+    // Keyboard shortcuts (brush hotkeys · Esc · undo/redo) + the capture-phase form-edit hook (undo for
+    // inspector/objective/reward edits), on window so they survive an import remount (which unmount+
+    // remounts the panel) and work regardless of canvas focus. Paired with unmountPanel's off.
     window.addEventListener("keydown", this.hKeyDown);
+    for (const type of ["input", "change", "focusout"]) window.addEventListener(type, this.hPanelEdit, true);
     // The slab tray (D98 placement): a full-width dock in normal flow BELOW the canvas, with a
     // resize grip. Growing the dock shrinks #app and Scale.FIT scales the board down (never
     // clips). NOTE: this pass relocates + resizes the chrome; the thumbnail-gallery restyle of
@@ -1082,7 +1111,7 @@ export class EditorScene extends Phaser.Scene {
     add.onclick = () => this.addObjective();
     const derive = document.createElement("button");
     derive.textContent = "Derive from board"; derive.dataset.role = "derive-objectives"; derive.style.cursor = "pointer"; derive.style.marginLeft = "4px";
-    derive.onclick = () => { this.draft.objectives = standardObjectives(this.draft.exit, this.draft.captives.length > 0); this.afterObjectiveEdit(); };
+    derive.onclick = () => { this.pushHistory(); this.draft.objectives = standardObjectives(this.draft.exit, this.draft.captives.length > 0); this.afterObjectiveEdit(); };
     objHead.append(add, derive);
     d.appendChild(objHead);
 
@@ -1098,6 +1127,7 @@ export class EditorScene extends Phaser.Scene {
 
   /** Append a fresh eliminate-all objective and re-render the list. */
   private addObjective(): void {
+    this.pushHistory();
     (this.draft.objectives ??= []).push({ id: this.uniqueObjectiveId(), kind: "eliminate-all", required: true, label: "New objective" });
     this.afterObjectiveEdit();
   }
@@ -1157,6 +1187,7 @@ export class EditorScene extends Phaser.Scene {
     rm.textContent = "✕"; rm.title = "remove objective"; rm.dataset.role = "remove-objective";
     Object.assign(rm.style, { marginLeft: "auto", cursor: "pointer" } as CSSStyleDeclaration);
     rm.onclick = () => {
+      this.pushHistory();
       this.draft.objectives!.splice(i, 1);
       if (!this.draft.objectives!.length) delete this.draft.objectives;
       this.afterObjectiveEdit();
@@ -1579,6 +1610,7 @@ export class EditorScene extends Phaser.Scene {
 
   private unmountPanel(): void {
     window.removeEventListener("keydown", this.hKeyDown);
+    for (const type of ["input", "change", "focusout"]) window.removeEventListener(type, this.hPanelEdit, true);
     this.dock?.remove();
     this.dock = undefined;
     this.sideDrawer?.remove();

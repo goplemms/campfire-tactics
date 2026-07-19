@@ -4445,10 +4445,21 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
     quirks: a stroke that leaves the board and re-enters draws a connecting line (Photoshop-like, expected);
     the cursor's grab-hand can stick if Shift is released off-window (cosmetic — the pan gate reads the
     pointer event, not the tracked key, so panning stays correct).
-- **Guards:** tsc · build · vitest **1215** · e2e (editor **94**, deploy-battle **73**) · visual-audit (14)
+- **Undo-gap closure (the challenge's deferred item, 2026-07-19).** Inspector / objective / reward **form
+  edits** are now undoable too. All such edits funnel through the shared controls (`field`/`numInput`/
+  `selectRow`/`checkboxRow`, and `statGrid` → `numInput`), whose own handlers run in the **target phase** —
+  so a **capture-phase** `input`/`change` listener on `window` (`onPanelEdit`) snapshots the **pre-edit**
+  draft *before* the control mutates it. **Coalesced per control** (`lastEditTarget`): a field's keystrokes
+  + its input/change pair collapse to one undo entry; a blur (`focusout`) or a move to another control opens
+  the next. The size inputs (own snapshot via `resize`) and the import box (not a draft edit) are excluded
+  by `data-role`; the button-driven objective add/remove/derive get an explicit `pushHistory` (they aren't
+  form controls). `pushHistory` split into `snapshotDraft` (raw) + the board-edit variant (also clears the
+  coalescing latch). Regression test: edit an enemy's maxHp → Ctrl+Z reverts it (proving the snapshot is
+  pre-mutation — a post-mutation snapshot would revert to nothing).
+- **Guards:** tsc · build · vitest **1215** · e2e (editor **97**, deploy-battle **73**) · visual-audit (14)
   · challenge (7). **Reuses:** **D109/D110** (the editor · `BoardCamera` · the shift/ctrl modifier path).
-  **Deferred / next:** undo coverage for inspector form edits; drag-to-place for *entity* brushes (a row
-  of enemies) if it's ever wanted. **Superseded by:** —
+  **Deferred / next:** drag-to-place for *entity* brushes (a row of enemies) if it's ever wanted.
+  **Superseded by:** —
 
 ---
 

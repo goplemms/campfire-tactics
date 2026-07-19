@@ -88,6 +88,12 @@ async function main() {
     async (g) => {
       try {
         await sleep(900);
+        // A tile's on-screen point from its live board-world coord (recenter- + FIT-safe): the
+        // board now centres in the FULL canvas width (D98), so pixel-hardcoded clicks would miss.
+        // Valid only at the default camera (scroll 0, zoom 1) — true at boot and after Recenter.
+        const tileScreen = (col, row) =>
+          g.eval(`(() => { const p = window.game.scene.getScene("EditorScene").view.tileToWorld({col:${col},row:${row}}); return { x: Math.round(p.x), y: Math.round(p.y) }; })()`);
+        const clickTile = async (col, row) => { const p = await tileScreen(col, row); await g.clickScene(p.x, p.y); await sleep(80); };
         let st = await g.eval(STATE);
         console.log("• #editor boots with the brush palette");
         check("the editor scene is active", st.active === true);
@@ -96,20 +102,37 @@ async function main() {
         check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));
 
-        // Wall brush (default): real clicks place walls.
-        for (const [x, y] of [[200, 300], [250, 320]]) { await g.clickScene(x, y); await sleep(80); }
+        // D98 placement geometry: the slab dock sits BELOW the canvas, and the FIT-scaled board must
+        // never overflow into it — not even on a short viewport (the challenge's clip failure mode).
+        console.log("• the slab dock sits below the canvas (no bleed / no clip)");
+        const fits = () => g.eval(`(() => {
+          const c = document.querySelector("canvas").getBoundingClientRect();
+          const dockTop = document.querySelector('[data-role="dock-grip"]').parentElement.getBoundingClientRect().top;
+          const app = document.getElementById("app").getBoundingClientRect();
+          return { overflow: Math.round(c.bottom - dockTop), inApp: c.bottom <= app.bottom + 1, dockPresent: !!document.querySelector('[data-role="dock-grip"]') };
+        })()`);
+        let fit = await fits();
+        check("the resize grip / dock is present below the board", fit.dockPresent === true);
+        check("the board sits above the dock at the default viewport (no bleed)", fit.overflow <= 1 && fit.inApp);
+        await g.page.setViewport({ width: 900, height: 600 }); await sleep(300);
+        fit = await fits();
+        check("the board still fits above the dock on a short viewport (no clip)", fit.overflow <= 1 && fit.inApp);
+        await g.page.setViewport({ width: 820, height: 680 }); await sleep(300);
+
+        // Wall brush (default): real clicks place walls. (Blank draft is 9×6 — cols 0-8, rows 0-5.)
+        for (const [c, r] of [[2, 2], [3, 2]]) await clickTile(c, r);
         st = await g.eval(STATE);
         check("wall brush + clicks place walls (click-pick works)", st.walls === 2);
 
         // Spawn brush.
         await g.eval(setBrush("spawn"));
-        for (const [x, y] of [[120, 280], [120, 320]]) { await g.clickScene(x, y); await sleep(80); }
+        for (const [c, r] of [[0, 4], [1, 4]]) await clickTile(c, r);
         // Enemy brush.
         await g.eval(setBrush("enemy"));
-        for (const [x, y] of [[340, 300], [380, 320]]) { await g.clickScene(x, y); await sleep(80); }
+        for (const [c, r] of [[5, 2], [6, 2]]) await clickTile(c, r);
         // Exit brush.
         await g.eval(setBrush("exit"));
-        for (const [x, y] of [[100, 260], [100, 300]]) { await g.clickScene(x, y); await sleep(80); }
+        for (const [c, r] of [[8, 0], [8, 1]]) await clickTile(c, r);
 
         st = await g.eval(STATE);
         console.log("• the palette paints spawns / enemies / exit tiles");
@@ -120,9 +143,9 @@ async function main() {
         check("the draft validates as a playable level", st.valid === true);
         await g.screenshot(path.join(OUT, "02-painted.png"));
 
-        // Erase brush removes an entity at a clicked tile.
+        // Erase brush removes an entity at a clicked tile (one of the enemies placed above, (5,2)).
         await g.eval(setBrush("erase"));
-        await g.clickScene(340, 300); await sleep(80);
+        await clickTile(5, 2);
         const st2 = await g.eval(STATE);
         console.log("• erase brush removes a placed entity");
         check("erasing an enemy tile decrements the enemies", st2.enemies === 1);
@@ -181,7 +204,7 @@ async function main() {
         await sleep(80);
         const camReset = await g.eval(CAM);
         check("Recenter restored the default framing", camReset.sx === 0 && camReset.sy === 0 && camReset.zoom === 1);
-        await g.clickScene(448, 262); // a plain tap on the empty tile (5,0)
+        { const p = await tileScreen(5, 0); await g.clickScene(p.x, p.y); } // a plain tap on the empty tile (5,0)
         await sleep(100);
         const stTap = await g.eval(STATE);
         check("a tap after recenter still paints (walls incremented)", stTap.walls === wallsBeforeDrag + 1);
@@ -189,8 +212,6 @@ async function main() {
         // Structural wall tools (M-D): two-click line + rectangle, plus the live coordinate readout.
         // Camera is recentered (scroll 0, zoom 1), so a tile's board-world point equals its screen point.
         console.log("• line / rectangle wall tools + coordinate readout (structural authoring)");
-        const tileScreen = (col, row) =>
-          g.eval(`(() => { const p = window.game.scene.getScene("EditorScene").view.tileToWorld({col:${col},row:${row}}); return { x: Math.round(p.x), y: Math.round(p.y) }; })()`);
         const coordText = () => g.eval(`document.querySelector('[data-role="coord"]').textContent`);
         const blocked = async () => (await g.eval(STATE)).walls;
 

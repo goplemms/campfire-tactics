@@ -4306,6 +4306,46 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D109 — Editor placement: the slab tray below the canvas (Scale.FIT on the editor route) — slice 1
+
+- **Status:** In progress (2026-07-19, branch `claude/level-editor-placement-ni924o`). **Slice 1** of
+  the editor placement pass (owner-directed, TaleSpire slab-tray direction). Geometry + relocation
+  landed; the thumbnail gallery + bar/drawer split is **slice 2**.
+- **Why:** the D98 editor's chrome was a fixed **right-hand column** eating ~40% of the canvas width —
+  wrong for the owner's stated next direction (bigger 20×20 boards, richer maps). Owner ask: run the
+  editor along the **bottom, edge-to-edge, below the map**, reclaiming the unused space — **without
+  bleeding onto game space**. A `memento:challenge` pass surfaced that on a fixed, unscaled 800×600
+  canvas "below the canvas + no bleed + reclaim the unused band" are **mutually exclusive**; chosen
+  resolution **(A)**: chrome is a DOM sibling **below** `#app` + an **editor-route-only `Scale.FIT`**
+  so the board never clips, **top-aligned** so the reclaimed slack pools by the tray.
+- **What landed (slice 1 — geometry + relocation):**
+  - **`config.ts`** — an `editorScale` (`Scale.FIT` + `CENTER_HORIZONTALLY`, 800×600) applied **only on
+    the `#editor` route**; every other scene keeps the fixed 1:1 Scale.NONE canvas.
+  - **`index.html`** — `body.editor-mode`: hide the guild run-bar, `#app` → `display:block` so Phaser
+    owns sizing and the canvas top-aligns.
+  - **`EditorScene`** — the DOM panel moved from the `position:fixed` right column into an **in-flow
+    slab dock below the canvas** with a **drag-resize grip** (`[data-role="dock-grip"]`); the board now
+    centres in the **full** canvas width. Two refit gotchas fixed: Phaser sizes the FIT canvas against
+    the full-height `#app` **at boot before the dock exists** → a deferred `scale.refresh()` after
+    mount; and a same-tick refresh during a drag measures a **stale (unflushed) `#app`** → the grip
+    coalesces refits into a `requestAnimationFrame` (kills an 820×615 overflow + a white repaint strip).
+  - **`harness.mjs`** — `clickScene`/`hover`/`drag` are now **scale-aware** (map logical scene coords
+    through `box.width / gameSize.width`); the ratio is exactly 1 for every Scale.NONE scene, so it only
+    engages under the editor's FIT. Required because the harness had **hard-assumed** a 1:1 canvas.
+  - **`e2e-editor.mjs`** — early pixel-hardcoded board clicks → **tile-based** (`view.tileToWorld`,
+    recenter-safe, since the board moved to the full-width centre) + a new **no-bleed / short-viewport
+    no-clip guard** (asserts the FIT board never overflows into the dock, including at 900×600).
+- **Guards:** tsc · build · vitest **1215** · sim · e2e (editor **49**, deploy-battle, level, scenario,
+  arc, second-battle, micro, repro) · visual-audit (14) · challenge — all green. Stepped through in the
+  real scene (default + grip-grown screenshots): board full-width, top-aligned, scales down gracefully
+  on resize, never bleeds onto the dock.
+- **Reuses:** **D98** (editor + content pipeline). **Next (slice 2):** the palette → a horizontally-
+  scrolling **thumbnail gallery of placeables** (enemy templates unrolled from the dropdown into cards),
+  the **bar (painting) / drawer (tall forms) split**, and Select-a-token → open the drawer.
+  **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

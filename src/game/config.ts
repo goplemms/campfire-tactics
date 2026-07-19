@@ -55,6 +55,18 @@ const isEditor = base === "editor";
 // level standalone (reusing the scenario one-node-run); bare `#level` lists every loaded level.
 const isLevel = base === "level" || base.startsWith("level=");
 
+// The editor (D98 placement pass) runs its chrome as an in-flow **slab tray below the canvas**
+// (see EditorScene). For that to never clip the board on a short viewport, the editor route —
+// and ONLY the editor route — scales the fixed 800×600 game to fit its shrunken #app box, and
+// top-aligns (CENTER_HORIZONTALLY, no vertical centre) so the reclaimed slack pools at the
+// bottom by the tray. Every other scene keeps the fixed 1:1 800×600 canvas (Scale.NONE default).
+const editorScale: Phaser.Types.Core.ScaleConfig = {
+  mode: Phaser.Scale.FIT,
+  autoCenter: Phaser.Scale.CENTER_HORIZONTALLY,
+  width: 800,
+  height: 600,
+};
+
 /** Phaser game configuration for the web build. */
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -62,6 +74,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   width: 800,
   height: 600,
   backgroundColor: COLOR.bg,
+  ...(isEditor ? { scale: editorScale } : {}),
   scene: isEditor
     ? [EditorScene]
     : isLevel

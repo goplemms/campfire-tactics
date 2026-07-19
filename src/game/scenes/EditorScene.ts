@@ -41,7 +41,6 @@ type TabName = (typeof TAB_NAMES)[number];
  */
 
 const BOARD_SCALE = 1.3;
-const PANEL_W = 320;
 
 /** Every enemy template the palette offers (authored archetypes first, then the procedural pool). */
 const ENEMY_IDS = [...Object.keys(BANDIT_TEMPLATES), ...ENEMY_TEMPLATES.map((t) => t.id)];
@@ -80,8 +79,11 @@ export class EditorScene extends Phaser.Scene {
   /** Auto-increment counters for object ids (gate-1, lever-1, …). */
   private objectSeq = 0;
 
-  // DOM overlay (the D95 panel idiom).
+  // DOM overlay (the D95 panel idiom). The panel now mounts in-flow inside {@link dock}, a
+  // full-width slab tray BELOW the canvas (D98 placement pass), instead of the old fixed
+  // top-right column — so the board keeps full canvas width and the chrome never overlaps it.
   private panel?: HTMLDivElement;
+  private dock?: HTMLDivElement;
   private exportPre?: HTMLPreElement;
   private validLine?: HTMLDivElement;
   private coordEl?: HTMLDivElement; // live "tile (col,row)" readout under the cursor
@@ -98,6 +100,9 @@ export class EditorScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Editor-only page layout (D98): top-align the canvas + hide the guild run-bar + swap #app
+    // off grid-centring so Phaser's Scale.FIT owns sizing. Paired with the editorScale in config.ts.
+    document.body.classList.add("editor-mode");
     this.cameras.main.setBackgroundColor(COLOR.bg);
     this.view = new CombatView(this);
     this.view.boardScale = BOARD_SCALE;
@@ -124,8 +129,9 @@ export class EditorScene extends Phaser.Scene {
   private renderBoard(): void {
     this.grid = new TileGrid(this.draft.cols, this.draft.rows, this.draft.blocked);
     // The shared board-centering (CombatView.centerOrigin) — same formula as the battle, so a
-    // grid/tile change propagates here for free. Centre in the area left of the panel.
-    this.view.centerOrigin(this.draft.rows, this.scale.height, (this.scale.width - PANEL_W) / 2);
+    // grid/tile change propagates here for free. The chrome now lives in the slab tray BELOW the
+    // canvas (not a right column), so the board centres in the FULL canvas width (D98).
+    this.view.centerOrigin(this.draft.rows, this.scale.height, this.scale.width / 2);
 
     this.gridGfx.clear();
     this.view.drawGrid(this.gridGfx, this.grid);
@@ -323,11 +329,21 @@ export class EditorScene extends Phaser.Scene {
   // --- DOM palette (position:fixed, the debug-menu.ts idiom) ----------------
 
   private mountPanel(): void {
+    // The slab tray (D98 placement): a full-width dock in normal flow BELOW the canvas, with a
+    // resize grip. Growing the dock shrinks #app and Scale.FIT scales the board down (never
+    // clips). NOTE: this pass relocates + resizes the chrome; the thumbnail-gallery restyle of
+    // the palette (and the bar/drawer split) is the next slice — the controls below are unchanged.
+    const dock = document.createElement("div");
+    Object.assign(dock.style, {
+      flex: "0 0 auto", height: "210px", display: "flex", flexDirection: "column",
+      background: "#16110d", borderTop: "1px solid #5a4630", boxSizing: "border-box",
+    } as CSSStyleDeclaration);
+    dock.appendChild(this.buildDockGrip());
+
     const panel = document.createElement("div");
     Object.assign(panel.style, {
-      position: "fixed", top: "8px", right: "8px", width: `${PANEL_W - 24}px`, maxHeight: "94vh", overflow: "auto",
-      background: "rgba(20,18,16,0.95)", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace",
-      border: "1px solid #4a423a", borderRadius: "6px", padding: "10px", zIndex: "1000",
+      flex: "1 1 auto", minHeight: "0", overflow: "auto", width: "100%", boxSizing: "border-box",
+      background: "transparent", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace", padding: "8px 12px 12px",
     } as CSSStyleDeclaration);
 
     // Panel header — the title (moved off the canvas so the scene pans/zooms cleanly) + the
@@ -401,8 +417,14 @@ export class EditorScene extends Phaser.Scene {
     panel.appendChild(valid);
     this.validLine = valid;
 
-    document.body.appendChild(panel);
+    dock.appendChild(panel);
+    document.body.appendChild(dock);
+    this.dock = dock;
     this.panel = panel;
+    // Phaser sized the FIT canvas against the full-height #app at boot — BEFORE this dock existed.
+    // Appending the dock shrinks #app but fires no resize, so re-fit once layout has flushed, else
+    // the canvas overflows its box (820×615 into a 470-tall #app). rAF so #app's new height is live.
+    requestAnimationFrame(() => this.scale.refresh());
     this.showTab(this.activeTab);
     this.highlightBrush();
     this.renderUnitList();
@@ -943,7 +965,64 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * The slab tray's resize grip (D98). Dragging it changes the dock height; a taller dock shrinks
+   * #app, and `this.scale.refresh()` re-fits the FIT-scaled canvas into the smaller box — so the
+   * board scales down smoothly instead of clipping. Clamped so neither the board nor the tray can
+   * collapse to nothing.
+   */
+  private buildDockGrip(): HTMLDivElement {
+    const grip = document.createElement("div");
+    grip.dataset.role = "dock-grip";
+    grip.textContent = "⣿ ⣿ ⣿";
+    grip.title = "drag to resize the tray";
+    Object.assign(grip.style, {
+      flex: "0 0 auto", height: "13px", display: "flex", alignItems: "center", justifyContent: "center",
+      cursor: "ns-resize", color: "#80766a", letterSpacing: "3px", fontSize: "10px",
+      background: "#241b10", borderBottom: "1px solid #2c2117", userSelect: "none", touchAction: "none",
+    } as CSSStyleDeclaration);
+    let startY = 0;
+    let startH = 0;
+    let dragging = false;
+    // Re-fit on the NEXT frame, coalesced: setting dock.style.height doesn't flush flexbox
+    // synchronously, so a same-tick scale.refresh() would measure a stale (too-tall) #app and
+    // leave the canvas overflowing by a sliver (a white repaint strip). rAF defers the refit
+    // past layout, and running it in a frame guarantees a render clears the resized backing store.
+    let pending = 0;
+    const refit = (): void => {
+      pending = 0;
+      this.scale.refresh();
+    };
+    const scheduleRefit = (): void => {
+      if (!pending) pending = requestAnimationFrame(refit);
+    };
+    const onMove = (e: PointerEvent): void => {
+      if (!dragging) return;
+      const h = Math.max(120, Math.min(window.innerHeight - 160, startH + (startY - e.clientY)));
+      if (this.dock) this.dock.style.height = `${h}px`;
+      scheduleRefit();
+    };
+    const onUp = (): void => {
+      dragging = false;
+      scheduleRefit(); // settle-fit against the final, flushed layout
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    grip.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      startY = e.clientY;
+      startH = this.dock?.offsetHeight ?? 210;
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      e.preventDefault();
+    });
+    return grip;
+  }
+
   private unmountPanel(): void {
+    this.dock?.remove();
+    this.dock = undefined;
+    document.body.classList.remove("editor-mode");
     this.panel?.remove();
     this.panel = undefined;
     this.exportPre = undefined;

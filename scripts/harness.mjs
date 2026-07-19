@@ -133,9 +133,18 @@ export async function withGame(fn, opts = {}) {
     await page.goto(`${url}${opts.hash ?? "#demo"}`, { waitUntil: "load", timeout: 30000 });
     await page.waitForSelector("canvas", { timeout: 15000 });
 
-    // Canvas page-offset, so scene coords can be turned into real click points
-    // (the game is a fixed 800×600 Scale.NONE canvas → 1:1 with scene coords).
+    // Canvas page-offset, so scene coords can be turned into real click points. Most scenes are a
+    // fixed 800×600 Scale.NONE canvas (1:1 with scene coords), but the editor route (#editor) runs
+    // Scale.FIT — its canvas is scaled to fit a shrunken #app. So map a *logical* scene coord to a
+    // real page point through the display ratio (box.width / logical game width); ratio is exactly
+    // 1 for every Scale.NONE scene, so this is a no-op there and only kicks in under FIT.
     const canvasBox = async () => (await (await page.$("canvas")).boundingBox());
+    const scenePoint = async (x, y) => {
+      const box = await canvasBox();
+      const gw = await page.evaluate(() => (window.game?.scale?.gameSize?.width ?? 800));
+      const r = box.width / gw;
+      return { px: box.x + x * r, py: box.y + y * r };
+    };
 
     const session = {
       page,
@@ -178,13 +187,13 @@ export async function withGame(fn, opts = {}) {
         );
       },
       async clickScene(x, y) {
-        const box = await canvasBox();
-        await page.mouse.click(box.x + x, box.y + y);
+        const { px, py } = await scenePoint(x, y);
+        await page.mouse.click(px, py);
       },
       // Move the pointer to scene coords without clicking (fires pointermove — for hover readouts/previews).
       async hover(x, y) {
-        const box = await canvasBox();
-        await page.mouse.move(box.x + x, box.y + y);
+        const { px, py } = await scenePoint(x, y);
+        await page.mouse.move(px, py);
       },
       async clickTile(coord) {
         const w = await page.evaluate(bs(`const p=s.tileToWorld(${JSON.stringify(coord)});return {x:p.x,y:p.y};`));
@@ -193,10 +202,11 @@ export async function withGame(fn, opts = {}) {
       // A **real** press-move-release drag from (x1,y1) to (x2,y2) in scene coords. Steps the
       // move so intermediate pointermove events fire (a scene's drag threshold needs them).
       async drag(x1, y1, x2, y2, steps = 10) {
-        const box = await canvasBox();
-        await page.mouse.move(box.x + x1, box.y + y1);
+        const a = await scenePoint(x1, y1);
+        const b = await scenePoint(x2, y2);
+        await page.mouse.move(a.px, a.py);
         await page.mouse.down();
-        await page.mouse.move(box.x + x2, box.y + y2, { steps });
+        await page.mouse.move(b.px, b.py, { steps });
         await page.mouse.up();
       },
       async key(name) {

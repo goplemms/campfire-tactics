@@ -48,6 +48,32 @@ const ENEMY_IDS = [...Object.keys(BANDIT_TEMPLATES), ...ENEMY_TEMPLATES.map((t) 
 /** A short board label for a placed enemy token. */
 const abbrev = (id: string) => (id.split("-").pop() || id).slice(0, 3);
 
+/** A template's base combat stats for a card face (looks up either roster map). */
+function enemyStat(id: string): { hp: number; atk: number } {
+  const t = (BANDIT_TEMPLATES as Record<string, { maxHp: number; attack: number }>)[id] ?? ENEMY_TEMPLATES.find((e) => e.id === id);
+  return t ? { hp: t.maxHp, atk: t.attack } : { hp: 0, atk: 0 };
+}
+/** A display name for an enemy card ("bandit-thug" → "Bandit Thug", "sapper" → "Sapper"). */
+function enemyLabel(id: string): string {
+  return id.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+/** Slab-tray thumbnails (D109 slice 2) — mirror the board's markers so a card reads as the tile it paints. */
+function tokenThumb(glyph: string, fill: string, ring: string, ink: string): string {
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><ellipse cx="15" cy="24" rx="10" ry="4" fill="#00000055"/><circle cx="15" cy="14" r="10" fill="${fill}" stroke="${ring}" stroke-width="2.5"/><text x="15" y="18" text-anchor="middle" font-size="10" font-family="monospace" font-weight="700" fill="${ink}">${glyph}</text></svg>`;
+}
+function glyphThumb(g: string, color: string): string {
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><text x="15" y="22" text-anchor="middle" font-size="20" font-weight="700" fill="${color}">${g}</text></svg>`;
+}
+function blockThumb(): string {
+  return `<svg width="34" height="30" viewBox="0 0 34 30"><polygon points="17,3 32,11 17,19 2,11" fill="#7a6450" stroke="#1c130c"/><polygon points="2,11 17,19 17,27 2,19" fill="#382b1e" stroke="#1c130c"/><polygon points="32,11 17,19 17,27 32,19" fill="#52412f" stroke="#1c130c"/></svg>`;
+}
+function lineThumb(): string {
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><line x1="5" y1="24" x2="25" y2="6" stroke="#c8a24a" stroke-width="3" stroke-linecap="round"/></svg>`;
+}
+function rectThumb(): string {
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><rect x="6" y="8" width="18" height="14" fill="none" stroke="#c8a24a" stroke-width="2.5"/></svg>`;
+}
+
 export class EditorScene extends Phaser.Scene {
   private view!: CombatView;
   private boardCam!: BoardCamera;
@@ -91,6 +117,9 @@ export class EditorScene extends Phaser.Scene {
   private unitListEl?: HTMLDivElement;
   private objectivesEl?: HTMLDivElement; // the M-C objectives editor list
   private brushButtons: HTMLButtonElement[] = [];
+  /** Slab-tray placeable cards (D109 slice 2) — a thumbnail per brush; enemy templates are unrolled
+   *  one card each. `template`/`release` ride the click so a card sets the brush AND its variant. */
+  private paletteCards: { el: HTMLButtonElement; brush: Brush; template?: string; release?: "reach" | "lockpick" }[] = [];
   private tabButtons: HTMLButtonElement[] = [];
   private drawers: Partial<Record<TabName, HTMLDivElement>> = {};
   private activeTab: TabName = "Terrain";
@@ -443,6 +472,63 @@ export class EditorScene extends Phaser.Scene {
     return btn;
   }
 
+  /**
+   * A slab-tray placeable **card** (D109 slice 2) — a thumbnail + label wired to select its brush,
+   * and (for the unrolled enemy roster / captive variants) the template or release it carries. Keeps
+   * the same `data-brush` hook the e2e drives; enemy cards additionally tag `data-template`.
+   */
+  private paletteCard(opts: { brush: Brush; label: string; thumb: string; template?: string; release?: "reach" | "lockpick"; stat?: string }): HTMLButtonElement {
+    const card = document.createElement("button");
+    card.dataset.brush = opts.brush;
+    if (opts.template) card.dataset.template = opts.template;
+    Object.assign(card.style, {
+      flex: "0 0 auto", width: "78px", padding: "5px 4px 4px", cursor: "pointer", textAlign: "center",
+      background: "#1a140d", border: "1px solid #4a423a", borderRadius: "5px", boxSizing: "border-box",
+      font: "10px/1.25 ui-monospace, monospace", color: "#ddd3c2",
+    } as CSSStyleDeclaration);
+    const thumb = document.createElement("div");
+    Object.assign(thumb.style, { height: "38px", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "3px" } as CSSStyleDeclaration);
+    thumb.innerHTML = opts.thumb;
+    const name = document.createElement("div");
+    name.textContent = opts.label;
+    Object.assign(name.style, { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as CSSStyleDeclaration);
+    card.append(thumb, name);
+    if (opts.stat) {
+      const s = document.createElement("div");
+      s.textContent = opts.stat;
+      Object.assign(s.style, { fontSize: "9px", color: "#b2a48b", fontVariantNumeric: "tabular-nums" } as CSSStyleDeclaration);
+      card.appendChild(s);
+    }
+    card.title = opts.label;
+    card.onclick = () => {
+      this.brush = opts.brush;
+      if (opts.template) this.enemyTemplate = opts.template;
+      if (opts.release) this.captiveRelease = opts.release;
+      this.cancelShape();
+      this.highlightBrush();
+    };
+    this.paletteCards.push({ el: card, brush: opts.brush, template: opts.template, release: opts.release });
+    return card;
+  }
+
+  /** A horizontal, scrollable strip of placeable cards — the slab-tray row for a category. */
+  private cardStrip(cards: HTMLElement[]): HTMLDivElement {
+    const strip = document.createElement("div");
+    Object.assign(strip.style, { display: "flex", gap: "6px", overflowX: "auto", overflowY: "hidden", padding: "2px 2px 6px", margin: "4px 0" } as CSSStyleDeclaration);
+    for (const c of cards) strip.appendChild(c);
+    return strip;
+  }
+
+  /** The enemy-template cards (the roster unrolled from the old dropdown) + a captive card per release. */
+  private unitCards(): HTMLElement[] {
+    const enemyCards = ENEMY_IDS.map((id) => {
+      const t = enemyStat(id);
+      return this.paletteCard({ brush: "enemy", template: id, label: enemyLabel(id), thumb: tokenThumb(abbrev(id), "#e06b6b", "#6b1c1c", "#2a0d0d"), stat: `HP ${t.hp} · ATK ${t.atk}` });
+    });
+    const captive = this.paletteCard({ brush: "captive", release: "lockpick", label: "Captive", thumb: tokenThumb("⚿", "#9a6bd0", "#4a2c6b", "#fff") });
+    return [...enemyCards, captive];
+  }
+
   /** Show one drawer, hide the rest, highlight the active tab. */
   private showTab(name: TabName): void {
     this.activeTab = name;
@@ -470,10 +556,11 @@ export class EditorScene extends Phaser.Scene {
     size.append(" × ");
     size.appendChild(this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n)));
     d.appendChild(size);
-    const row = document.createElement("div");
-    row.style.margin = "4px 0";
-    row.append(this.brushButton("wall"), this.brushButton("line"), this.brushButton("rect"));
-    d.appendChild(row);
+    d.appendChild(this.cardStrip([
+      this.paletteCard({ brush: "wall", label: "Wall", thumb: blockThumb() }),
+      this.paletteCard({ brush: "line", label: "Line", thumb: lineThumb() }),
+      this.paletteCard({ brush: "rect", label: "Rect", thumb: rectThumb() }),
+    ]));
 
     // Rectangle mode: an outline (a room/cell ring) vs a solid fill. Toggled live.
     const rectMode = document.createElement("div");
@@ -497,19 +584,20 @@ export class EditorScene extends Phaser.Scene {
    * unwired; the persistent inspector edits either (a gate's `openBy`/`locked`, a lever's targets).
    */
   private buildObjectsDrawer(d: HTMLDivElement): void {
-    const row = document.createElement("div");
-    row.style.margin = "4px 0";
-    row.append(this.brushButton("gate"), this.brushButton("lever"), this.brushButton("trap"));
-    d.appendChild(row);
+    d.appendChild(this.cardStrip([
+      this.paletteCard({ brush: "gate", label: "Gate", thumb: glyphThumb("▦", "#f2b65a") }),
+      this.paletteCard({ brush: "lever", label: "Lever", thumb: glyphThumb("⎇", "#62c6d6") }),
+      this.paletteCard({ brush: "trap", label: "Trap", thumb: glyphThumb("▲", "#f2b65a") }),
+    ]));
     d.appendChild(this.hint("gate = a locked cell/door (default: lockpick) · lever = a pull-switch · trap = a hazard"));
     d.appendChild(this.hint("place one, then Select it → the inspector sets a gate's opens / a lever's target gates"));
   }
 
   private buildEventsDrawer(d: HTMLDivElement): void {
-    const row = document.createElement("div");
-    row.style.margin = "4px 0";
-    row.append(this.brushButton("spawn"), this.brushButton("exit"));
-    d.appendChild(row);
+    d.appendChild(this.cardStrip([
+      this.paletteCard({ brush: "spawn", label: "Spawn", thumb: tokenThumb("P", "#ffcf6b", "#57b07a", "#1a1410") }),
+      this.paletteCard({ brush: "exit", label: "Exit", thumb: glyphThumb("⚑", "#46a6c8") }),
+    ]));
     d.appendChild(this.hint("deploy spawns · extraction exit tiles (the extraction span)"));
 
     // Objectives editor (M-C) — win/lose conditions as data. label + required + kind-specific fields.
@@ -645,27 +733,10 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private buildUnitsDrawer(d: HTMLDivElement): void {
-    const row = document.createElement("div");
-    row.style.margin = "4px 0";
-    row.append(this.brushButton("enemy"), this.brushButton("captive"));
-    d.appendChild(row);
-
-    // Place-time defaults for the enemy/captive brushes.
-    const ctx = document.createElement("div");
-    ctx.style.margin = "4px 0";
-    ctx.append("enemy ");
-    const tmpl = document.createElement("select");
-    for (const id of ENEMY_IDS) { const o = document.createElement("option"); o.value = id; o.textContent = id; tmpl.appendChild(o); }
-    tmpl.value = this.enemyTemplate;
-    tmpl.onchange = () => (this.enemyTemplate = tmpl.value);
-    ctx.appendChild(tmpl);
-    ctx.append("  captive ");
-    const rel = document.createElement("select");
-    for (const r of ["lockpick", "reach"]) { const o = document.createElement("option"); o.value = r; o.textContent = r; rel.appendChild(o); }
-    rel.value = this.captiveRelease;
-    rel.onchange = () => (this.captiveRelease = rel.value as "reach" | "lockpick");
-    ctx.appendChild(rel);
-    d.appendChild(ctx);
+    // The enemy roster, unrolled from the old dropdown into one card each (D109 slice 2) + a captive
+    // card. Each enemy card sets the brush AND its template; the captive card its release.
+    d.appendChild(this.cardStrip(this.unitCards()));
+    d.appendChild(this.hint("pick an archetype → click the board to place · Captive drops a lockpick prisoner"));
 
     // The unit list — click a row to select (reaches units occluded by the panel / off a wide board).
     const list = document.createElement("div");
@@ -954,6 +1025,16 @@ export class EditorScene extends Phaser.Scene {
       b.style.color = active ? "#1a1206" : "";
       b.style.fontWeight = active ? "700" : "";
     }
+    // Slab-tray cards: active when the brush matches AND (for the unrolled variants) its template /
+    // release is the selected one, so exactly one enemy archetype card lights up.
+    for (const c of this.paletteCards) {
+      const active = c.brush === this.brush
+        && (c.template === undefined || c.template === this.enemyTemplate)
+        && (c.release === undefined || c.release === this.captiveRelease);
+      c.el.style.borderColor = active ? "#f2b65a" : "#4a423a";
+      c.el.style.background = active ? "#271e16" : "#1a140d";
+      c.el.style.boxShadow = active ? "0 0 0 1px #f2b65a" : "";
+    }
   }
 
   private updateExport(): void {
@@ -1032,6 +1113,7 @@ export class EditorScene extends Phaser.Scene {
     this.unitListEl = undefined;
     this.objectivesEl = undefined;
     this.brushButtons = [];
+    this.paletteCards = [];
     this.tabButtons = [];
     this.drawers = {};
   }

@@ -31,6 +31,8 @@ const STATE = `(() => {
   return {
     active: !!(sc && sc.scene.isActive("EditorScene")),
     brushButtons: document.querySelectorAll("button[data-brush]").length,
+    enemyCards: document.querySelectorAll('button[data-brush="enemy"]').length,
+    essentialBrushes: ["wall","line","rect","gate","lever","trap","spawn","exit","enemy","captive","select","erase"].every((b) => !!document.querySelector('button[data-brush="' + b + '"]')),
     tabs: document.querySelectorAll("button[data-tab]").length,
     unitRows: document.querySelectorAll("[data-unit-row]").length,
     walls: d.blocked?.length ?? null,
@@ -97,7 +99,8 @@ async function main() {
         let st = await g.eval(STATE);
         console.log("• #editor boots with the brush palette");
         check("the editor scene is active", st.active === true);
-        check("the brush palette is present (12 brushes incl. gate + lever)", st.brushButtons === 12);
+        check("the placeable gallery has every essential brush (incl. gate + lever)", st.essentialBrushes === true);
+        check("the enemy roster is unrolled into cards (not a dropdown)", st.enemyCards >= 6);
         check("the drawer tab bar is present (5 tabs incl. Objects)", st.tabs === 5);
         check("the draft starts empty", st.walls === 0 && st.spawns === 0 && st.enemies === 0);
         await g.screenshot(path.join(OUT, "01-empty.png"));

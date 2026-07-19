@@ -4306,11 +4306,12 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
-## D109 — Editor placement: the slab tray below the canvas (Scale.FIT on the editor route) — slice 1
+## D109 — Editor placement: the slab tray below the canvas (Scale.FIT on the editor route)
 
-- **Status:** In progress (2026-07-19, branch `claude/level-editor-placement-ni924o`). **Slice 1** of
-  the editor placement pass (owner-directed, TaleSpire slab-tray direction). Geometry + relocation
-  landed; the thumbnail gallery + bar/drawer split is **slice 2**.
+- **Status:** Slices 1 + 2 landed (2026-07-19, branch `claude/level-editor-placement-ni924o`).
+  Owner-directed, TaleSpire slab-tray direction, worked interactively (mock → `memento:challenge` →
+  build → real-scene screenshot per step). **Slice 1** = geometry/relocation; **slice 2** = the
+  thumbnail gallery, live display options, and the bar/side-drawer split. Editor e2e now **59** green.
 - **Why:** the D98 editor's chrome was a fixed **right-hand column** eating ~40% of the canvas width —
   wrong for the owner's stated next direction (bigger 20×20 boards, richer maps). Owner ask: run the
   editor along the **bottom, edge-to-edge, below the map**, reclaiming the unused space — **without
@@ -4339,10 +4340,27 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   arc, second-battle, micro, repro) · visual-audit (14) · challenge — all green. Stepped through in the
   real scene (default + grip-grown screenshots): board full-width, top-aligned, scales down gracefully
   on resize, never bleeds onto the dock.
-- **Reuses:** **D98** (editor + content pipeline). **Next (slice 2):** the palette → a horizontally-
-  scrolling **thumbnail gallery of placeables** (enemy templates unrolled from the dropdown into cards),
-  the **bar (painting) / drawer (tall forms) split**, and Select-a-token → open the drawer.
-  **Superseded by:** —
+- **What landed (slice 2 — the gallery + options + the split):**
+  - **Thumbnail gallery** — the per-tab text brush palette became horizontally-scrolling **placeable
+    cards** (inline-SVG thumbnails mirroring the board markers); the **enemy roster is unrolled** from
+    the old `<select>` into one card each (HP/ATK on the face). Cards keep the `data-brush` hook (enemy
+    cards add `data-template`); `fillPalette()` (re)builds the strips from the current prefs.
+  - **Live display options** (a persisted `EditorPrefs` row) — the three card tweaks made **choosable**:
+    **size** (S/M/L) · enemy **tint** (uniform danger-red ring vs an archetype **role** ring, applied to
+    **both** cards and board tokens so red=enemy holds — `mark()` gained an optional ring colour) ·
+    **captive** variants (1 / 2). Persist to `localStorage`, apply in place (no remount).
+  - **Bar / side-drawer split** — the dock is now a short **painting bar** (tabs · gallery · tools ·
+    coord · validation · options · grip); a **non-modal side drawer** (fixed right, `[data-role="side-drawer"]`)
+    is the **edit-a-placed-object** surface (unit list + inspector). Board stays **full-size** behind it
+    (the owner's chosen trade — the drawer overlays the right rather than shrinking the board); a
+    **Details** toggle opens/closes it and a board/list **Select auto-opens** it. **Scenario** stays a
+    tab but its body is the **level as a whole** — id/name · reward · the level-wide **Objectives**
+    (moved here from Events) · JSON import/export — the future home for **cross-expedition tools & checks**.
+- **Reuses:** **D98** (editor + content pipeline). **Deferred / next:** the bar/side-drawer overlaps the
+  board's right while open (inherent to the side-drawer choice — close to paint); the Scenario tab's
+  cross-expedition tooling (arc-linking · cross-level checks · playtest); a proper editor test rung was
+  weighed (`memento:challenge`) and **declined for now** — screenshots-as-bandaid, formal editor tests
+  later. **Superseded by:** —
 
 ---
 

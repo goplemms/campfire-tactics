@@ -4364,14 +4364,15 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
-## D110 — Editor QoL: board panning is gated behind Shift (a plain drag no longer steals the paint)
+## D110 — Editor input QoL: keyboard-modified board gestures (Shift-pan · Ctrl-select)
 
 - **Status:** Decided + built (2026-07-19, branch `claude/editor-drag-key-modifier-hjs0qa`).
 - **Why:** the D109 editor makes the **whole scene** a click target (chrome is DOM), so painting is a
   drag-heavy gesture — but `BoardCamera` treated **any** drag as a pan, so a sweep across the board
   moved the camera instead of the brush. The owner asked to put panning **behind a key** (Shift) so the
-  drag stops fighting the paint.
-- **What:** `BoardCamera` gained a **`panModifier`** option (`"shift" | "alt" | "ctrl"`) + an
+  drag stops fighting the paint, then for a matching **Ctrl-click quick-select** so any brush can pick an
+  object without a trip to the Select tool.
+- **What — Shift-pan:** `BoardCamera` gained a **`panModifier`** option (`"shift" | "alt" | "ctrl"`) + an
   **`idleCursor`**. When set, the drag→pan transition only fires while the modifier is held (read
   authoritatively off `pointer.event.shiftKey/altKey/ctrlKey` at the threshold crossing); a plain drag
   falls through to the existing **tap** at release, so the brush still paints. Cursor affordance: the
@@ -4380,12 +4381,18 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   **re-anchors** to the current point so it begins smoothly (no threshold jump, no lurch if Shift is
   pressed mid-gesture). Default (no `panModifier`) is byte-for-byte the old behavior — the shared
   battle-board adopter path is untouched. The **`EditorScene`** passes `{ panModifier: "shift",
-  idleCursor: "crosshair" }` and its hint reads **"shift-drag to pan"**.
+  idleCursor: "crosshair" }`.
+- **What — Ctrl-select:** the Select brush's pick logic was extracted to `EditorScene.selectAt(t)`;
+  `onTap` now routes to it when the tap's `pointer.event.ctrlKey` (or `metaKey`, ⌘ on macOS) is set —
+  from **any** brush, without switching tools — and skips the active brush's paint. An unoccupied tile
+  clears the selection, same as the Select brush. The hint reads
+  **"shift-drag to pan · ctrl-click to select · scroll to zoom · Recenter resets"**.
 - **Render (D92 rule — a player-facing interaction change).** Stepped through the real `#editor` scene;
-  `e2e-editor.mjs`'s camera section now proves the **gated** behavior in headless Chrome: a plain drag
-  does **not** pan, a **Shift-drag** (puppeteer holds Shift → the modifier rides the mouse events) pans
-  and does not paint, Recenter still resets, and a post-recenter tap still paints.
-- **Guards:** tsc · build · vitest **1215** · e2e (editor **60**). **Reuses:** **D98/D109** (the editor +
+  `e2e-editor.mjs` now proves both in headless Chrome (puppeteer holds the modifier so it rides the mouse
+  events): a plain drag does **not** pan while a **Shift-drag** pans without painting (Recenter resets, a
+  post-recenter tap still paints); and a **Ctrl-click** over a placed gate selects it + opens the drawer
+  **without** painting the active Wall brush, while a Ctrl-click on an empty tile clears the selection.
+- **Guards:** tsc · build · vitest **1215** · e2e (editor **65**). **Reuses:** **D98/D109** (the editor +
   `BoardCamera`). **Deferred / next:** true **drag-to-paint** (a plain sweep painting every tile it
   crosses, not just the release tile) is a larger brush-loop change — not in scope here. **Superseded by:** —
 

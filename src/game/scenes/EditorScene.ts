@@ -251,7 +251,11 @@ export class EditorScene extends Phaser.Scene {
   private onTap(pointer: Phaser.Input.Pointer): void {
     const t = this.view.worldToTile(pointer.worldX, pointer.worldY);
     if (!this.grid.inBounds(t)) return;
-    if (this.brush === "line" || this.brush === "rect") this.shapeTap(t);
+    // Ctrl-click (⌘ on macOS) is a quick-select from ANY brush — pick the object under the cursor
+    // without switching to the Select tool (a QoL companion to shift-pan). Else the active brush runs.
+    const ev = pointer.event as (Event & { ctrlKey?: boolean; metaKey?: boolean }) | undefined;
+    if (ev?.ctrlKey || ev?.metaKey) this.selectAt(t);
+    else if (this.brush === "line" || this.brush === "rect") this.shapeTap(t);
     else this.paint(t);
     this.renderBoard();
     this.renderInspector();
@@ -315,22 +319,28 @@ export class EditorScene extends Phaser.Scene {
     this.coordEl.textContent = `tile ${t ? `(${t.col},${t.row})` : "—"}${anchor}`;
   }
 
+  /**
+   * Pick the object under a tile into the inspector — the Select brush's action, also reachable as a
+   * Ctrl-click quick-select from any brush. Rings the object gold + opens the drawer; an empty tile clears.
+   */
+  private selectAt(t: GridCoord): void {
+    const d = this.draft;
+    const en = d.enemies.find((e) => same(e.pos, t));
+    const cap = d.captives.find((c) => same(c.pos, t));
+    const gate = d.gates.find((g) => same(g.pos, t));
+    const lever = d.levers.find((l) => same(l.pos, t));
+    if (en) this.selection = { kind: "enemy", ref: en };
+    else if (cap) this.selection = { kind: "captive", ref: this.materializeCaptive(cap) };
+    else if (gate) this.selection = { kind: "gate", ref: gate };
+    else if (lever) this.selection = { kind: "lever", ref: lever };
+    else this.selection = null;
+    if (this.selection) this.openDrawer(); // reveal the inspector on the selected object (board stays full-size)
+  }
+
   private paint(t: GridCoord): void {
     const d = this.draft;
     switch (this.brush) {
-      case "select": {
-        const en = d.enemies.find((e) => same(e.pos, t));
-        const cap = d.captives.find((c) => same(c.pos, t));
-        const gate = d.gates.find((g) => same(g.pos, t));
-        const lever = d.levers.find((l) => same(l.pos, t));
-        if (en) this.selection = { kind: "enemy", ref: en };
-        else if (cap) this.selection = { kind: "captive", ref: this.materializeCaptive(cap) };
-        else if (gate) this.selection = { kind: "gate", ref: gate };
-        else if (lever) this.selection = { kind: "lever", ref: lever };
-        else this.selection = null;
-        if (this.selection) this.openDrawer(); // reveal the inspector on the selected object (board stays full-size)
-        return;
-      }
+      case "select": return void this.selectAt(t);
       case "wall": return void this.toggleCoord(d.blocked, t);
       case "spawn": return void this.toggleCoord(d.playerSpawns, t);
       case "exit": return void this.toggleCoord(d.exit, t);
@@ -441,7 +451,7 @@ export class EditorScene extends Phaser.Scene {
     title.textContent = "Level Editor — pick a brush, click tiles";
     Object.assign(title.style, { fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
     header.appendChild(title);
-    header.appendChild(this.hint("shift-drag to pan · scroll to zoom · Recenter resets the view"));
+    header.appendChild(this.hint("shift-drag to pan · ctrl-click to select · scroll to zoom · Recenter resets"));
     // Live tile-coordinate readout (M-D) — structural work needs precise alignment of cells/doorways.
     const coord = document.createElement("div");
     coord.dataset.role = "coord";

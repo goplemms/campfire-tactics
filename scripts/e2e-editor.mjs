@@ -369,6 +369,37 @@ async function main() {
         check("the level still validates with gates + a lever placed", (await g.eval(STATE)).valid === true);
         await g.screenshot(path.join(OUT, "08-objects.png"));
 
+        // Ctrl-click quick-select (QoL companion to shift-pan): from ANY brush, Ctrl-click picks the
+        // object under the cursor into the inspector without switching to the Select tool — and it does
+        // NOT run the active brush. Prove it with the Wall brush active over the placed gate at (1,3).
+        console.log("• ctrl-click quick-selects an object from any brush (no paint)");
+        await g.eval(`document.querySelector('[data-role="drawer-close"]').click()`); await sleep(60);
+        const sel = () => g.eval(`window.game.scene.getScene("EditorScene").selection?.kind ?? null`);
+        await g.eval(setBrush("wall")); // a non-select brush active
+        const wallsBeforeQuickSel = (await g.eval(STATE)).walls;
+        const qg = await tileScreen(1, 3); // the gate placed above
+        await g.page.keyboard.down("Control");
+        await g.clickScene(qg.x, qg.y);
+        await g.page.keyboard.up("Control");
+        await sleep(120);
+        check("ctrl-click selected the gate under the cursor", (await sel()) === "gate");
+        check("ctrl-click did not paint a wall (select, not brush)", (await g.eval(STATE)).walls === wallsBeforeQuickSel);
+        check("ctrl-click opened the inspector drawer", (await g.eval(`document.querySelector('[data-role="side-drawer"]').style.transform === "none"`)) === true);
+        // Ctrl-click an unoccupied tile clears the selection (still no paint). Compute a tile with no
+        // enemy/captive/gate/lever from the live draft so this doesn't depend on the-rescue's layout.
+        const qe = await g.eval(`(() => {
+          const sc = window.game.scene.getScene("EditorScene"), d = sc.draft;
+          const occ = (t) => [...d.enemies, ...d.captives, ...d.gates, ...d.levers].some((o) => o.pos.col === t.col && o.pos.row === t.row);
+          for (let r = 0; r < d.rows; r++) for (let c = 0; c < d.cols; c++) { const t = { col: c, row: r }; if (!occ(t)) { const p = sc.view.tileToWorld(t); return { x: Math.round(p.x), y: Math.round(p.y) }; } }
+          return null;
+        })()`);
+        await g.page.keyboard.down("Control");
+        await g.clickScene(qe.x, qe.y);
+        await g.page.keyboard.up("Control");
+        await sleep(100);
+        check("ctrl-click on an unoccupied tile clears the selection", (await sel()) === null);
+        check("ctrl-click on empty still did not paint", (await g.eval(STATE)).walls === wallsBeforeQuickSel);
+
         assertNoProblems(g.problems);
       } catch (err) {
         await g.screenshot(path.join(OUT, "zz-failure.png")).catch(() => {});

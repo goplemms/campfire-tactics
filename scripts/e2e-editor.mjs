@@ -188,11 +188,17 @@ async function main() {
         check("the imported finale validates", st3.valid === true);
         await g.screenshot(path.join(OUT, "03-imported.png"));
 
-        // Switch to the Units drawer — the list reaches every placed unit (occlusion fix).
-        await g.eval(clickTab("Units"));
-        await sleep(120);
+        // The side drawer (D109 slice 2) — the "edit a placed object" surface (unit list + inspector),
+        // opened by the Details toggle; the board stays full-size behind it.
+        console.log("• the Details side drawer reveals the edit surface");
+        const drawerShown = () => g.eval(`(() => { const d = document.querySelector('[data-role="side-drawer"]'); return d && d.style.transform === "none"; })()`);
+        check("the side drawer starts closed", (await drawerShown()) === false);
+        check("the Details toggle is present", (await g.eval(`!!document.querySelector('[data-role="details-toggle"]')`)) === true);
+        await g.eval(`document.querySelector('[data-role="details-toggle"]').click()`); await sleep(150);
+        check("the Details toggle opens the drawer", (await drawerShown()) === true);
+        // The unit list lives in the drawer now — it reaches every placed unit (occlusion fix).
         const stU = await g.eval(STATE);
-        console.log("• the Units drawer lists every placed unit");
+        console.log("• the drawer's unit list lists every placed unit");
         check("the unit list shows all 11 units (8 enemies + 3 captives)", stU.unitRows === 11);
 
         // Inspector: select the warden via its list row, rename it + bump its maxHp (freeze-catch).
@@ -205,6 +211,8 @@ async function main() {
         check("the id rename + maxHp override flow to the export", st4.wardenEditedHp === 99);
         check("the level still validates after the edit", st4.valid === true);
         await g.screenshot(path.join(OUT, "04-inspected.png"));
+        // Close the drawer so it stops overlaying the right of the board for the board-click sections below.
+        await g.eval(`document.querySelector('[data-role="drawer-close"]').click()`); await sleep(80);
 
         // Camera controls (large-map fix): drag pans the board, a drag does NOT paint, and
         // Recenter restores the default framing — so a 20×20 level is reachable on the fixed canvas.
@@ -263,7 +271,7 @@ async function main() {
         // Objectives editor + reward (M-C): the-rescue imported with 2 objectives — tune label/required,
         // add one, set the reward — the gaps the visual editor couldn't reach before.
         console.log("• objectives editor + reward controls (M-C)");
-        await g.eval(clickTab("Events"));
+        await g.eval(clickTab("Scenario")); // objectives are level-wide → the Scenario tab body now (D109 slice 2)
         await sleep(80);
         const objCount = () => g.eval(`document.querySelectorAll('[data-role="objective"]').length`);
         const expObj = () => g.eval(`JSON.parse(document.querySelector("pre").textContent).objectives`);
@@ -316,9 +324,13 @@ async function main() {
         let oe = await objExp();
         check("a gate lands as a default lockpick cell + a lever lands unwired", oe.gates === 1 && oe.levers === 1 && oe.openBy.join() === "lockpick" && oe.targets.length === 0);
 
-        // Select the gate → inspector; add a destructible condition (a batter-able door).
+        // Select the gate → inspector; add a destructible condition (a batter-able door). Close the
+        // drawer first so we can prove Select auto-reopens it (the board stays full-size behind it).
+        await g.eval(`document.querySelector('[data-role="drawer-close"]').click()`); await sleep(80);
+        check("the drawer closed via its ✕", (await g.eval(`document.querySelector('[data-role="side-drawer"]').style.transform !== "none"`)) === true);
         await g.eval(setBrush("select"));
         gp = await tileScreen(1, 3); await g.clickScene(gp.x, gp.y); await sleep(120);
+        check("selecting a placed object on the board auto-opens the drawer", (await g.eval(`document.querySelector('[data-role="side-drawer"]').style.transform === "none"`)) === true);
         await g.eval(`(() => {
           const insp = document.querySelector('[data-role="inspector"]');
           const box = [...insp.querySelectorAll('input[type=checkbox]')].find((b) => (b.parentElement.textContent || "").includes("destructible"));

@@ -141,6 +141,10 @@ export class EditorScene extends Phaser.Scene {
   // top-right column — so the board keeps full canvas width and the chrome never overlaps it.
   private panel?: HTMLDivElement;
   private dock?: HTMLDivElement;
+  /** The slide-in side drawer (D109 slice 2) — the "edit a placed object" surface (unit list +
+   *  inspector). Board stays full-size while it's open; auto-opens on Select, toggled by "Details". */
+  private sideDrawer?: HTMLDivElement;
+  private drawerOpen = false;
   private exportPre?: HTMLPreElement;
   private validLine?: HTMLDivElement;
   private coordEl?: HTMLDivElement; // live "tile (col,row)" readout under the cursor
@@ -316,6 +320,7 @@ export class EditorScene extends Phaser.Scene {
         else if (gate) this.selection = { kind: "gate", ref: gate };
         else if (lever) this.selection = { kind: "lever", ref: lever };
         else this.selection = null;
+        if (this.selection) this.openDrawer(); // reveal the inspector on the selected object (board stays full-size)
         return;
       }
       case "wall": return void this.toggleCoord(d.blocked, t);
@@ -464,6 +469,13 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(recenter.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
     recenter.onclick = () => this.boardCam.recenter();
     tabBar.appendChild(recenter);
+    // "Details" toggle — opens/closes the side drawer (unit list + inspector). Board stays full-size.
+    const details = document.createElement("button");
+    details.textContent = "⋯ Details";
+    details.dataset.role = "details-toggle";
+    Object.assign(details.style, { margin: "2px", marginLeft: "8px", cursor: "pointer", color: "#f2b65a" } as CSSStyleDeclaration);
+    details.onclick = () => this.toggleDrawer();
+    tabBar.appendChild(details);
     panel.appendChild(tabBar);
 
     // Drawers — one per tab, shown/hidden by showTab.
@@ -480,15 +492,7 @@ export class EditorScene extends Phaser.Scene {
     this.buildEventsDrawer(this.drawers.Events!);
     this.buildScenarioDrawer(this.drawers.Scenario!);
 
-    // Persistent inspector (M-B → M-D2): edits whatever object is selected — a unit, gate, or lever —
-    // regardless of the open drawer, so "Select an object → tweak it" works everywhere.
-    const inspector = document.createElement("div");
-    inspector.dataset.role = "inspector";
-    Object.assign(inspector.style, { margin: "8px 0 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
-    panel.appendChild(inspector);
-    this.inspectorEl = inspector;
-
-    // Persistent ✓/⚠ status bar (outside the drawers, so live guards never hide).
+    // Persistent ✓/⚠ status bar in the bar (outside the drawers, so live guards never hide).
     const valid = document.createElement("div");
     valid.style.margin = "8px 0 0";
     panel.appendChild(valid);
@@ -498,6 +502,9 @@ export class EditorScene extends Phaser.Scene {
     document.body.appendChild(dock);
     this.dock = dock;
     this.panel = panel;
+    // The side drawer (the "edit a placed object" surface: unit list + inspector). Fixed to the right,
+    // non-modal (the board stays interactive), slides in on Select / the Details toggle.
+    this.buildSideDrawer();
     // Phaser sized the FIT canvas against the full-height #app at boot — BEFORE this dock existed.
     // Appending the dock shrinks #app but fires no resize, so re-fit once layout has flushed, else
     // the canvas overflows its box (820×615 into a 470-tall #app). rAF so #app's new height is live.
@@ -666,6 +673,69 @@ export class EditorScene extends Phaser.Scene {
     for (const paint of this.optionButtons) paint();
   }
 
+  /**
+   * The side drawer (D109 slice 2) — the "edit a placed object" surface: the unit list (find/select)
+   * + the Inspector (tweak the selected unit / gate / lever). Fixed to the right, non-modal so the
+   * board stays interactive and full-size while you edit; slides in on Select or the Details toggle.
+   */
+  private buildSideDrawer(): void {
+    const drawer = document.createElement("div");
+    drawer.dataset.role = "side-drawer";
+    Object.assign(drawer.style, {
+      position: "fixed", top: "0", right: "0", height: "100vh", width: "270px", zIndex: "1001",
+      background: "rgba(22,17,13,0.97)", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace",
+      borderLeft: "1px solid #76583a", boxShadow: "-20px 0 50px -30px #000", padding: "12px 13px 20px",
+      overflow: "auto", boxSizing: "border-box", transform: "translateX(102%)", transition: "transform .2s ease",
+    } as CSSStyleDeclaration);
+
+    const head = document.createElement("div");
+    Object.assign(head.style, { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 8px" } as CSSStyleDeclaration);
+    const title = document.createElement("div");
+    title.textContent = "Details — edit a placed object";
+    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a", fontSize: "12px" } as CSSStyleDeclaration);
+    const close = document.createElement("button");
+    close.textContent = "✕"; close.dataset.role = "drawer-close"; close.style.cursor = "pointer";
+    close.onclick = () => this.closeDrawer();
+    head.append(title, close);
+    drawer.appendChild(head);
+
+    // The unit list — click a row to select (reaches units occluded / off a wide board).
+    const list = document.createElement("div");
+    list.dataset.role = "unit-list";
+    Object.assign(list.style, { margin: "4px 0", maxHeight: "180px", overflow: "auto", border: "1px solid #3a332c", borderRadius: "4px" } as CSSStyleDeclaration);
+    drawer.appendChild(list);
+    this.unitListEl = list;
+
+    // The inspector — edits whatever object is selected (unit / gate / lever).
+    const inspector = document.createElement("div");
+    inspector.dataset.role = "inspector";
+    Object.assign(inspector.style, { margin: "8px 0 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
+    drawer.appendChild(inspector);
+    this.inspectorEl = inspector;
+
+    document.body.appendChild(drawer);
+    this.sideDrawer = drawer;
+  }
+
+  private openDrawer(): void {
+    this.drawerOpen = true;
+    if (this.sideDrawer) this.sideDrawer.style.transform = "none";
+    this.syncDrawerToggle();
+  }
+  private closeDrawer(): void {
+    this.drawerOpen = false;
+    if (this.sideDrawer) this.sideDrawer.style.transform = "translateX(102%)";
+    this.syncDrawerToggle();
+  }
+  private toggleDrawer(): void {
+    if (this.drawerOpen) this.closeDrawer();
+    else this.openDrawer();
+  }
+  private syncDrawerToggle(): void {
+    const t = this.panel?.querySelector('[data-role="details-toggle"]') as HTMLButtonElement | null;
+    if (t) t.textContent = this.drawerOpen ? "⋯ Details ✕" : "⋯ Details";
+  }
+
   /** Show one drawer, hide the rest, highlight the active tab. */
   private showTab(name: TabName): void {
     this.activeTab = name;
@@ -728,8 +798,14 @@ export class EditorScene extends Phaser.Scene {
     this.paletteStrips.Events = this.cardStrip([]);
     d.appendChild(this.paletteStrips.Events);
     d.appendChild(this.hint("deploy spawns · extraction exit tiles (the extraction span)"));
+    d.appendChild(this.hint("win/lose objectives live under the Scenario tab (they're level-wide, not a placeable)"));
+  }
 
-    // Objectives editor (M-C) — win/lose conditions as data. label + required + kind-specific fields.
+  /**
+   * The **Objectives** editor (M-C) — win/lose conditions as data. Level-wide (not a placeable), so it
+   * lives in the Scenario tab body (D109 slice 2, moved out of Events). label + required + kind fields.
+   */
+  private buildObjectivesEditor(d: HTMLDivElement): void {
     const objHead = document.createElement("div");
     Object.assign(objHead.style, { margin: "8px 0 2px", fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
     objHead.append("Objectives ");
@@ -867,16 +943,14 @@ export class EditorScene extends Phaser.Scene {
     // fillPalette so a display-pref change (size/tint/captive-variants) re-renders it in place.
     this.paletteStrips.Units = this.cardStrip([]);
     d.appendChild(this.paletteStrips.Units);
-    d.appendChild(this.hint("pick an archetype → click the board to place · Captive drops a lockpick prisoner"));
-
-    // The unit list — click a row to select (reaches units occluded by the panel / off a wide board).
-    const list = document.createElement("div");
-    list.dataset.role = "unit-list";
-    Object.assign(list.style, { margin: "4px 0", maxHeight: "112px", overflow: "auto", border: "1px solid #3a332c", borderRadius: "4px" } as CSSStyleDeclaration);
-    d.appendChild(list);
-    this.unitListEl = list;
+    d.appendChild(this.hint("pick an archetype → click the board to place · placed units are edited in the Details drawer"));
   }
 
+  /**
+   * The **Scenario** tab body (D109 slice 2) — the level as a whole, not a placeable: identity, reward,
+   * the level-wide objectives, and JSON import/export. The natural home for the future cross-expedition
+   * tools & checks (arc-linking, cross-level validation, playtest).
+   */
   private buildScenarioDrawer(d: HTMLDivElement): void {
     d.appendChild(this.field("id", this.draft.id, (v) => { this.draft.id = v; this.updateExport(); }));
     d.appendChild(this.field("name", this.draft.name, (v) => { this.draft.name = v; this.updateExport(); }));
@@ -893,6 +967,9 @@ export class EditorScene extends Phaser.Scene {
     xp.dataset.role = "reward-xp";
     reward.appendChild(xp);
     d.appendChild(reward);
+
+    // Level-wide win/lose objectives (moved here from Events — they're scenario-level, D109 slice 2).
+    this.buildObjectivesEditor(d);
 
     // Import (the M-A round-trip inverse).
     const imp = document.createElement("div");
@@ -1234,6 +1311,9 @@ export class EditorScene extends Phaser.Scene {
   private unmountPanel(): void {
     this.dock?.remove();
     this.dock = undefined;
+    this.sideDrawer?.remove();
+    this.sideDrawer = undefined;
+    this.drawerOpen = false;
     document.body.classList.remove("editor-mode");
     this.panel?.remove();
     this.panel = undefined;

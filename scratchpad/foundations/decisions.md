@@ -4463,6 +4463,52 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D112 — Editor **soft play**: playtest the draft in the real BattleScene, return with it intact
+
+- **Status:** Decided + built (2026-07-19, branch `claude/level-editor-soft-play-7yuirj`). Owner ask —
+  a way to **functionally** test an encounter from the editor: "is the gate too far from the lever, do
+  enemy behaviours work like I expect, is this design too crowded to field a squad".
+- **Why:** the D98 pipeline could only test a level via the full **export → drop in `content/levels/` →
+  commit → reload → `#level=<id>`** loop — too heavy for the tight iterate-while-authoring feedback the
+  owner wanted. Data-only checks (vitest/sim) can't answer *spatial/behavioural* questions; only the
+  rendered, playable scene can. Soft play closes that loop **in-scene**.
+- **Decision — boot the draft into the real `BattleScene`, no round-trip.** A **▶ Playtest** control in
+  the editor's Scenario tab serializes the live draft (`draftToEncounter`), gates it on the same
+  `validateLevel` the export shows (fail-loud in the status line, never a mid-boot crash), and hands
+  `buildScenarioRun` a `{ run, loop }` straight to the `BattleScene` — the **exact path `#level` already
+  uses**, so deploy/AI/spacing are the genuine article, not a preview. Reuses the D91 one-node scenario
+  boot; **zero** new combat surface.
+- **Decision — a generic `returnTo` handoff, not editor coupling.** `RunHandoff` gains an optional
+  `returnTo?: string` (a **scene key**). When set, `BattleScene.returnToOverworld` short-circuits to
+  `scene.start(returnTo)` instead of the stub one-node "overworld", and a persistent **"✎ Exit Playtest"**
+  button (top-centre, depth above every overlay) lets the author bail at *any* phase — the whole point of
+  a functional test is to iterate, not to fight the level to a finish. `BattleScene` never imports the
+  editor; the seam is reusable by any host.
+- **Decision — the draft rides the scene instance (no persistence layer).** Phaser keeps the `EditorScene`
+  instance across `scene.start`, so `this.draft` (and the undo history) survive the round-trip untouched;
+  `unmountPanel` (on `SHUTDOWN`) already resets every panel array and `BoardCamera` self-tears-down, so
+  re-entering `create()` is clean — proven by the e2e's second-playtest + validate-after-return checks.
+  The editor route's scene list grew from `[EditorScene]` to `[EditorScene, GuildScene, OverworldScene,
+  BattleScene]` (EditorScene still boots first); the battle renders under the editor's `Scale.FIT` fine.
+- **Decision — flexible party selection (owner ask), default a small trio.** Some levels are tailored to
+  a class/squad, so *which* party you field matters. A small **squad registry** (`game/playtest.ts`
+  `PLAYTEST_PARTIES`: Standard-3 · Vanguard-5 · Skirmishers-4 · Infiltration-3 · Solo-1) surfaced as a
+  Scenario-tab **picker**, mapped straight onto the scenario **party matrix** (`ScenarioConfig.parties`) —
+  adding a squad is one registry entry, no plumbing. Default = the small standard trio (the `#level`
+  cast). The picker is the seam an author uses to field the right cast for a class-specific board.
+- **Scoped (JIT):** standalone **soft play** only — not saved/wired into the arc (that stays the deliberate
+  promotion step, D99); the party registry is a handful of presets, not a full roster/loadout builder
+  (the seam is there when wanted). No change to combat, the pipeline, or the JSON shape.
+- **Guards:** tsc · build · vitest **1215** · sim · **`test:e2e:editor:playtest`** (new — 14 assertions:
+  paint → Playtest → BattleScene deploy with the chosen 5-body squad → Exit → editor active with the draft
+  intact + re-validated → a second playtest still boots; **no page errors** = the freeze catch, D92) ·
+  editor (97) · deploy-battle (73) · level (11) · scenario (34) · visual-audit (14) · challenge (7), all
+  green. New code is `game/playtest.ts` + editor/BattleScene wiring; `core/` untouched. **Reuses:** **D98**
+  (editor + pipeline), **D91** (scenario one-node boot + `#level`/`#scene` path), **D109** (the Scenario
+  drawer). **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

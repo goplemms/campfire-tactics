@@ -76,7 +76,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   backgroundColor: COLOR.bg,
   ...(isEditor ? { scale: editorScale } : {}),
   scene: isEditor
-    ? [EditorScene]
+    ? [EditorScene, GuildScene, OverworldScene, BattleScene]
     : isLevel
     ? [LevelBootScene, GuildScene, OverworldScene, BattleScene]
     : isRepro

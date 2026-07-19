@@ -140,6 +140,8 @@ export class BattleScene extends Phaser.Scene {
   /** The owning guild + caravan (M9) — threaded back to the overworld/hall. */
   private guild?: RunHandoff["guild"];
   private caravanId?: string;
+  /** A scene key to return to instead of the overworld (editor soft-play → `"EditorScene"`). */
+  private returnTo?: string;
   private grid!: TileGrid;
   private battle!: Battle;
 
@@ -334,6 +336,7 @@ export class BattleScene extends Phaser.Scene {
     this.loop = data.loop;
     this.guild = data.guild;
     this.caravanId = data.caravanId;
+    this.returnTo = data.returnTo;
   }
 
   create(): void {
@@ -403,7 +406,28 @@ export class BattleScene extends Phaser.Scene {
     // Legend (L) for the full list. The harness sets __SHOT__ for headless captures.
     this.input.keyboard?.on("keydown", (e: KeyboardEvent) => this.onKey(e));
 
+    // Soft-play only: a persistent "Exit Playtest" affordance so an author can bail back to the
+    // editor at any phase (deploy/battle/resolution) without having to fight the level to a finish
+    // — the whole point of a functional test is to iterate. Depth above every overlay/dimmer so it
+    // stays clickable on the after-action screen too. Absent in the normal run flow.
+    if (this.returnTo) this.buildExitButton();
+
     this.startCombatNode();
+  }
+
+  /** The dev-only top-center "Exit Playtest" button (soft-play, when {@link returnTo} is set). */
+  private buildExitButton(): void {
+    const btn = new Button(this, this.scale.width / 2, 18, {
+      text: "✎ Exit Playtest",
+      w: 132,
+      h: 26,
+      fill: COLOR.surfaceRaised,
+      stroke: COLOR.gold,
+      color: INK.bright,
+      fontSize: FONT.caption,
+      onClick: () => this.returnToOverworld(),
+    });
+    this.add.existing(btn).setDepth(40);
   }
 
   // --- Combat node lifecycle (one chosen mission) ---------------------------
@@ -2456,6 +2480,9 @@ export class BattleScene extends Phaser.Scene {
 
   /** Hand the run back to the overworld so the player can pick the next node. */
   private returnToOverworld(): void {
+    // Soft-play (editor playtest): a `returnTo` scene key short-circuits the overworld — this run
+    // is a throwaway one-node scenario, so return to the authoring surface, not a stub map (D-editor).
+    if (this.returnTo) return void this.scene.start(this.returnTo);
     this.scene.start("OverworldScene", { run: this.run, loop: this.loop, guild: this.guild, caravanId: this.caravanId } as RunHandoff);
   }
 

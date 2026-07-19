@@ -97,6 +97,13 @@ export interface RunHandoff {
   /** Show the one-time Expedition-demo intro overlay before the map (M13 demo). */
   demoIntro?: boolean;
   /**
+   * Where the BattleScene returns on a terminal (or an explicit exit) instead of the overworld.
+   * A scene **key** — set to `"EditorScene"` by the editor's soft-play (playtest) so a fought
+   * draft bounces back to the editor, not into a nonsensical one-node "overworld". Generic on
+   * purpose (any scene can host a run this way); absent ⇒ the normal return-to-map/hall path.
+   */
+  returnTo?: string;
+  /**
    * Repro-restore only (debug): open the prep camp for this node id straight on boot, so a
    * restored dump lands on the exact pre-Begin screen ({@link "../repro-capture".restoreAndBoot}).
    * The run is already positioned there — this renders the camp without re-choosing/arriving.

@@ -726,6 +726,12 @@ States: `todo` → `in-progress` → `testable` → `done`
   D97's `PRISON_ASSAULT`. **Read [`finale-authoring-handoff.md`](finale-authoring-handoff.md) + D97–D99
   before changing the finale.** Guards green: tsc · vitest **1166** · build · e2e (`test:e2e:level`,
   `:editor`, + the D97 scenario/arc/second-battle suites).
+- **Editor soft-play (D112, 2026-07-19 — branch `claude/level-editor-soft-play-7yuirj`):** a **▶ Playtest**
+  control in the editor's Scenario tab boots the live draft into the **real BattleScene** (deploy the squad,
+  watch the AI, feel the spacing) and returns to the editor with the draft intact — no export→drop-in→reload
+  loop. Generic `RunHandoff.returnTo` scene-key + a persistent "✎ Exit Playtest" button; a flexible
+  **squad picker** (`game/playtest.ts` `PLAYTEST_PARTIES`, default the small standard trio) so a
+  class-tailored board can be fielded with the right cast. Guard: `test:e2e:editor:playtest`.
 - **Deferred / next (see the handoff doc):** rename the placeholder captives into named characters; the
   **flank / repositioning session** (the Intel deploy-side that makes extraction viable — red-teamed,
   kept-not-replaced, C5-lite); the **map-creation expansion** (bigger/richer boards + more of the

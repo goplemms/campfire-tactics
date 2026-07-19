@@ -4364,6 +4364,33 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D110 — Editor QoL: board panning is gated behind Shift (a plain drag no longer steals the paint)
+
+- **Status:** Decided + built (2026-07-19, branch `claude/editor-drag-key-modifier-hjs0qa`).
+- **Why:** the D109 editor makes the **whole scene** a click target (chrome is DOM), so painting is a
+  drag-heavy gesture — but `BoardCamera` treated **any** drag as a pan, so a sweep across the board
+  moved the camera instead of the brush. The owner asked to put panning **behind a key** (Shift) so the
+  drag stops fighting the paint.
+- **What:** `BoardCamera` gained a **`panModifier`** option (`"shift" | "alt" | "ctrl"`) + an
+  **`idleCursor`**. When set, the drag→pan transition only fires while the modifier is held (read
+  authoritatively off `pointer.event.shiftKey/altKey/ctrlKey` at the threshold crossing); a plain drag
+  falls through to the existing **tap** at release, so the brush still paints. Cursor affordance: the
+  resting cursor is `idleCursor` and flips to the **grab hand** while the key is held (driven by
+  `keydown/keyup-SHIFT` listeners, cursor-only — the pan gate never trusts them). Pan-start now
+  **re-anchors** to the current point so it begins smoothly (no threshold jump, no lurch if Shift is
+  pressed mid-gesture). Default (no `panModifier`) is byte-for-byte the old behavior — the shared
+  battle-board adopter path is untouched. The **`EditorScene`** passes `{ panModifier: "shift",
+  idleCursor: "crosshair" }` and its hint reads **"shift-drag to pan"**.
+- **Render (D92 rule — a player-facing interaction change).** Stepped through the real `#editor` scene;
+  `e2e-editor.mjs`'s camera section now proves the **gated** behavior in headless Chrome: a plain drag
+  does **not** pan, a **Shift-drag** (puppeteer holds Shift → the modifier rides the mouse events) pans
+  and does not paint, Recenter still resets, and a post-recenter tap still paints.
+- **Guards:** tsc · build · vitest **1215** · e2e (editor **60**). **Reuses:** **D98/D109** (the editor +
+  `BoardCamera`). **Deferred / next:** true **drag-to-paint** (a plain sweep painting every tile it
+  crosses, not just the release tile) is a larger brush-loop change — not in scope here. **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

@@ -189,10 +189,11 @@ export class EditorScene extends Phaser.Scene {
 
     this.renderBoard();
     // Grab-and-drag panning + wheel zoom so a big board (a 20×20 level) is reachable on the
-    // fixed 800×600 canvas; a genuine tap still paints via onTap (a drag only moves the camera).
-    // All the editor's chrome lives in the DOM panel, so the whole scene is board content and
-    // pans/zooms cleanly — the title line moved to the panel header.
-    this.boardCam = new BoardCamera(this, { onTap: (p) => this.onTap(p) });
+    // fixed 800×600 canvas; a genuine tap still paints via onTap. Panning is gated behind Shift
+    // (a QoL ask) so a plain drag no longer steals the gesture from painting — hold Shift to pan,
+    // and the cursor flips from the crosshair to the grab hand to show it. All the editor's chrome
+    // lives in the DOM panel, so the whole scene is board content and pans/zooms cleanly.
+    this.boardCam = new BoardCamera(this, { onTap: (p) => this.onTap(p), panModifier: "shift", idleCursor: "crosshair" });
     // Hover drives the coordinate readout + the live line/rect preview (the shape tools are two-click,
     // so the pending run/box is shown between the anchor and the tile under the cursor).
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onHover, this);
@@ -440,7 +441,7 @@ export class EditorScene extends Phaser.Scene {
     title.textContent = "Level Editor — pick a brush, click tiles";
     Object.assign(title.style, { fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
     header.appendChild(title);
-    header.appendChild(this.hint("drag to pan · scroll to zoom · Recenter resets the view"));
+    header.appendChild(this.hint("shift-drag to pan · scroll to zoom · Recenter resets the view"));
     // Live tile-coordinate readout (M-D) — structural work needs precise alignment of cells/doorways.
     const coord = document.createElement("div");
     coord.dataset.role = "coord";

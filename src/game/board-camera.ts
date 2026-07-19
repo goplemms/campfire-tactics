@@ -1,5 +1,17 @@
 import Phaser from "phaser";
 
+/** A held key that arms grab-and-drag panning — see {@link BoardCameraOptions.panModifier}. */
+export type PanModifier = "shift" | "alt" | "ctrl";
+
+/** The DOM event flag each modifier sets — the authoritative gate, read off the live pointer event. */
+const MOD_FLAG: Record<PanModifier, "shiftKey" | "altKey" | "ctrlKey"> = {
+  shift: "shiftKey",
+  alt: "altKey",
+  ctrl: "ctrlKey",
+};
+/** The Phaser key-event suffix for each modifier — drives the cursor-affordance listeners only. */
+const MOD_KEY: Record<PanModifier, string> = { shift: "SHIFT", alt: "ALT", ctrl: "CTRL" };
+
 /** Tuning + the tap callback for {@link BoardCamera}. */
 export interface BoardCameraOptions {
   /**
@@ -15,9 +27,24 @@ export interface BoardCameraOptions {
   dragThreshold?: number;
   /** Wire scroll-wheel zoom-around-cursor (default true). */
   wheelZoom?: boolean;
+  /**
+   * Gate grab-and-drag panning behind a held modifier key. When set, a plain drag no
+   * longer pans — it falls through to a {@link onTap} at release — and panning engages
+   * only while this key is held. Lets a paint-heavy surface (the editor) keep the whole
+   * board as its click target without a stray drag stealing the gesture as a pan; the
+   * cursor shows {@link idleCursor} and flips to the grab hand only while the key is down.
+   * Unset (default) → any drag pans, as before.
+   */
+  panModifier?: PanModifier;
+  /**
+   * The resting cursor when a press won't pan — i.e. always when {@link panModifier} is
+   * set and its key isn't held. Default "grab" (the whole board is grabbable). The editor
+   * passes "crosshair" since its primary gesture is painting a tile, not panning.
+   */
+  idleCursor?: string;
 }
 
-const DEFAULTS = { minZoom: 0.35, maxZoom: 2, dragThreshold: 6, wheelZoom: true } as const;
+const DEFAULTS = { minZoom: 0.35, maxZoom: 2, dragThreshold: 6, wheelZoom: true, idleCursor: "grab" } as const;
 
 /**
  * **Grab-and-drag panning + wheel zoom** for a board scene — the shared "the map is
@@ -38,7 +65,8 @@ const DEFAULTS = { minZoom: 0.35, maxZoom: 2, dragThreshold: 6, wheelZoom: true 
  * chrome in the DOM panel, so its whole scene is board content and pans cleanly.
  */
 export class BoardCamera {
-  private readonly cfg: Required<Omit<BoardCameraOptions, "onTap">> & Pick<BoardCameraOptions, "onTap">;
+  private readonly cfg: Required<Omit<BoardCameraOptions, "onTap" | "panModifier">> &
+    Pick<BoardCameraOptions, "onTap" | "panModifier">;
 
   private pressed = false;
   private dragging = false;
@@ -46,12 +74,16 @@ export class BoardCamera {
   private downY = 0;
   private scrollX0 = 0;
   private scrollY0 = 0;
+  /** Live modifier-key state — drives the cursor affordance only; the pan gate reads the pointer event. */
+  private modifierHeld = false;
 
   // Bound handlers, kept so {@link destroy} can detach them.
   private readonly hDown = (p: Phaser.Input.Pointer) => this.onDown(p);
   private readonly hMove = (p: Phaser.Input.Pointer) => this.onMove(p);
   private readonly hUp = (p: Phaser.Input.Pointer) => this.onUp(p);
   private readonly hUpOutside = () => this.cancel();
+  private readonly hModDown = () => this.setModifier(true);
+  private readonly hModUp = () => this.setModifier(false);
   private readonly hWheel = (
     p: Phaser.Input.Pointer,
     _over: Phaser.GameObjects.GameObject[],
@@ -67,9 +99,38 @@ export class BoardCamera {
     input.on(Phaser.Input.Events.POINTER_UP, this.hUp);
     input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.hUpOutside);
     if (this.cfg.wheelZoom) input.on(Phaser.Input.Events.POINTER_WHEEL, this.hWheel);
-    input.setDefaultCursor("grab");
+    // When panning is gated behind a modifier, track its key so the cursor can flip to the
+    // grab hand while it's held (a plain hover then reads as "click to paint", not "grab").
+    const mod = this.cfg.panModifier;
+    if (mod && input.keyboard) {
+      input.keyboard.on(`keydown-${MOD_KEY[mod]}`, this.hModDown);
+      input.keyboard.on(`keyup-${MOD_KEY[mod]}`, this.hModUp);
+    }
+    input.setDefaultCursor(this.restCursor());
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
     scene.events.once(Phaser.Scenes.Events.DESTROY, () => this.destroy());
+  }
+
+  /** Whether a drag right now would pan: no modifier is required, or its key is held (per the pointer event). */
+  private panArmed(pointer?: Phaser.Input.Pointer): boolean {
+    const mod = this.cfg.panModifier;
+    if (!mod) return true;
+    if (pointer) {
+      const ev = pointer.event as (Event & { shiftKey?: boolean; altKey?: boolean; ctrlKey?: boolean }) | undefined;
+      return !!ev?.[MOD_FLAG[mod]];
+    }
+    return this.modifierHeld;
+  }
+
+  /** The resting cursor: the grab hand when panning is armed, else the configured idle cursor. */
+  private restCursor(): string {
+    return this.panArmed() ? "grab" : this.cfg.idleCursor;
+  }
+
+  /** Modifier keydown/keyup → keep the resting cursor honest (only when not mid-press). */
+  private setModifier(held: boolean): void {
+    this.modifierHeld = held;
+    if (!this.pressed) this.scene.input.setDefaultCursor(this.restCursor());
   }
 
   /** Whether the current press has crossed the drag threshold (a scene can gate hover FX on this). */
@@ -96,22 +157,33 @@ export class BoardCamera {
 
   private onMove(pointer: Phaser.Input.Pointer): void {
     if (!this.pressed) return;
-    const dx = pointer.x - this.downX;
-    const dy = pointer.y - this.downY;
-    if (!this.dragging && Math.hypot(dx, dy) >= this.cfg.dragThreshold) {
-      this.dragging = true;
-      this.scene.input.setDefaultCursor("grabbing");
+    if (!this.dragging) {
+      if (Math.hypot(pointer.x - this.downX, pointer.y - this.downY) < this.cfg.dragThreshold) return;
+      // Threshold crossed. A drag only pans when panning is armed; without the modifier the
+      // press stays a (moved) tap, so a paint-heavy surface can sweep freely without panning.
+      if (!this.panArmed(pointer)) return;
+      this.beginDrag(pointer);
     }
-    if (!this.dragging) return;
     // One screen pixel spans 1/zoom world units — so the grabbed point tracks the cursor.
     const cam = this.scene.cameras.main;
-    cam.setScroll(this.scrollX0 - dx / cam.zoom, this.scrollY0 - dy / cam.zoom);
+    cam.setScroll(this.scrollX0 - (pointer.x - this.downX) / cam.zoom, this.scrollY0 - (pointer.y - this.downY) / cam.zoom);
+  }
+
+  /** Enter the pan gesture, re-anchoring to *here* so it starts smoothly (no threshold jump, no mid-gesture lurch). */
+  private beginDrag(pointer: Phaser.Input.Pointer): void {
+    this.dragging = true;
+    this.downX = pointer.x;
+    this.downY = pointer.y;
+    const cam = this.scene.cameras.main;
+    this.scrollX0 = cam.scrollX;
+    this.scrollY0 = cam.scrollY;
+    this.scene.input.setDefaultCursor("grabbing");
   }
 
   private onUp(pointer: Phaser.Input.Pointer): void {
     if (!this.pressed) return;
     this.pressed = false;
-    this.scene.input.setDefaultCursor("grab");
+    this.scene.input.setDefaultCursor(this.restCursor());
     if (!this.dragging) this.cfg.onTap?.(pointer);
     this.dragging = false;
   }
@@ -120,7 +192,7 @@ export class BoardCamera {
   private cancel(): void {
     this.pressed = false;
     this.dragging = false;
-    this.scene.input.setDefaultCursor("grab");
+    this.scene.input.setDefaultCursor(this.restCursor());
   }
 
   private onWheel(pointer: Phaser.Input.Pointer, deltaY: number): void {
@@ -144,6 +216,11 @@ export class BoardCamera {
     input.off(Phaser.Input.Events.POINTER_UP, this.hUp);
     input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.hUpOutside);
     input.off(Phaser.Input.Events.POINTER_WHEEL, this.hWheel);
+    const mod = this.cfg.panModifier;
+    if (mod && input.keyboard) {
+      input.keyboard.off(`keydown-${MOD_KEY[mod]}`, this.hModDown);
+      input.keyboard.off(`keyup-${MOD_KEY[mod]}`, this.hModUp);
+    }
     input.setDefaultCursor("default");
   }
 }

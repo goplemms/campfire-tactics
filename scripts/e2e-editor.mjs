@@ -214,19 +214,35 @@ async function main() {
         // Close the drawer so it stops overlaying the right of the board for the board-click sections below.
         await g.eval(`document.querySelector('[data-role="drawer-close"]').click()`); await sleep(80);
 
-        // Camera controls (large-map fix): drag pans the board, a drag does NOT paint, and
-        // Recenter restores the default framing — so a 20×20 level is reachable on the fixed canvas.
-        console.log("• grab-and-drag pans the board (large-map reachability)");
+        // Camera controls (large-map fix + QoL): panning is now gated behind Shift so a plain drag
+        // stops stealing the gesture from painting — Shift-drag pans, a plain drag does not, and
+        // Recenter restores the default framing — so a 20×20 level stays reachable on the fixed canvas.
+        console.log("• Shift-drag pans the board; a plain drag does not (pan gated behind Shift)");
         const camBefore = await g.eval(CAM);
         check("camera starts at the default framing", camBefore.sx === 0 && camBefore.sy === 0 && camBefore.zoom === 1);
+
+        // A plain drag (no modifier) must NOT pan — it falls through to a tap. Use the Select brush so
+        // that release-tap only (de)selects, never mutating the board's counts.
+        await g.eval(setBrush("select"));
+        await g.drag(430, 300, 250, 300); // plain drag left over the board
+        await sleep(120);
+        const camPlain = await g.eval(CAM);
+        check("a plain drag does not pan (panning is gated behind Shift)", camPlain.sx === 0 && camPlain.sy === 0 && camPlain.zoom === 1);
+        // The release-tap may have selected an entity + opened the drawer — close it so it doesn't overlay later clicks.
+        await g.eval(`(() => { const d = document.querySelector('[data-role="side-drawer"]'); if (d && d.style.transform === "none") document.querySelector('[data-role="drawer-close"]').click(); })()`);
+        await sleep(60);
+
+        // Holding Shift, the same drag pans the camera (and still does not paint).
         const wallsBeforeDrag = (await g.eval(STATE)).walls;
         await g.eval(setBrush("wall"));
-        await g.drag(430, 300, 250, 300); // drag left over the board
+        await g.page.keyboard.down("Shift");
+        await g.drag(430, 300, 250, 300); // shift-drag left over the board
+        await g.page.keyboard.up("Shift");
         await sleep(120);
         const camAfter = await g.eval(CAM);
         const stDrag = await g.eval(STATE);
-        check("dragging scrolled the camera", Math.abs(camAfter.sx) > 30);
-        check("a drag did not paint a tile (click vs drag)", stDrag.walls === wallsBeforeDrag);
+        check("shift-dragging scrolled the camera", Math.abs(camAfter.sx) > 30);
+        check("a shift-drag pans, it does not paint (pan vs click)", stDrag.walls === wallsBeforeDrag);
         await g.screenshot(path.join(OUT, "05-panned.png"));
 
         // Recenter resets scroll+zoom; after it a genuine tap still paints (discrimination intact).

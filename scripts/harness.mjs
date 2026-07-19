@@ -186,9 +186,9 @@ export async function withGame(fn, opts = {}) {
           props,
         );
       },
-      async clickScene(x, y) {
+      async clickScene(x, y, opts = {}) {
         const { px, py } = await scenePoint(x, y);
-        await page.mouse.click(px, py);
+        await page.mouse.click(px, py, opts); // opts.button "right" for a right-click
       },
       // Move the pointer to scene coords without clicking (fires pointermove — for hover readouts/previews).
       async hover(x, y) {
@@ -201,13 +201,13 @@ export async function withGame(fn, opts = {}) {
       },
       // A **real** press-move-release drag from (x1,y1) to (x2,y2) in scene coords. Steps the
       // move so intermediate pointermove events fire (a scene's drag threshold needs them).
-      async drag(x1, y1, x2, y2, steps = 10) {
+      async drag(x1, y1, x2, y2, steps = 10, opts = {}) {
         const a = await scenePoint(x1, y1);
         const b = await scenePoint(x2, y2);
         await page.mouse.move(a.px, a.py);
-        await page.mouse.down();
+        await page.mouse.down(opts); // opts.button "right" for a right-drag
         await page.mouse.move(b.px, b.py, { steps });
-        await page.mouse.up();
+        await page.mouse.up(opts);
       },
       async key(name) {
         await page.keyboard.press(name === " " ? "Space" : name);

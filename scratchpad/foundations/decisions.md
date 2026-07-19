@@ -4364,6 +4364,105 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D110 — Editor input QoL: keyboard-modified board gestures (Shift-pan · Ctrl-select)
+
+- **Status:** Decided + built (2026-07-19, branch `claude/editor-drag-key-modifier-hjs0qa`).
+- **Why:** the D109 editor makes the **whole scene** a click target (chrome is DOM), so painting is a
+  drag-heavy gesture — but `BoardCamera` treated **any** drag as a pan, so a sweep across the board
+  moved the camera instead of the brush. The owner asked to put panning **behind a key** (Shift) so the
+  drag stops fighting the paint, then for a matching **Ctrl-click quick-select** so any brush can pick an
+  object without a trip to the Select tool.
+- **What — Shift-pan:** `BoardCamera` gained a **`panModifier`** option (`"shift" | "alt" | "ctrl"`) + an
+  **`idleCursor`**. When set, the drag→pan transition only fires while the modifier is held (read
+  authoritatively off `pointer.event.shiftKey/altKey/ctrlKey` at the threshold crossing); a plain drag
+  falls through to the existing **tap** at release, so the brush still paints. Cursor affordance: the
+  resting cursor is `idleCursor` and flips to the **grab hand** while the key is held (driven by
+  `keydown/keyup-SHIFT` listeners, cursor-only — the pan gate never trusts them). Pan-start now
+  **re-anchors** to the current point so it begins smoothly (no threshold jump, no lurch if Shift is
+  pressed mid-gesture). Default (no `panModifier`) is byte-for-byte the old behavior — the shared
+  battle-board adopter path is untouched. The **`EditorScene`** passes `{ panModifier: "shift",
+  idleCursor: "crosshair" }`.
+- **What — Ctrl-select:** the Select brush's pick logic was extracted to `EditorScene.selectAt(t)`;
+  `onTap` now routes to it when the tap's `pointer.event.ctrlKey` (or `metaKey`, ⌘ on macOS) is set —
+  from **any** brush, without switching tools — and skips the active brush's paint. An unoccupied tile
+  clears the selection, same as the Select brush. The hint reads
+  **"shift-drag to pan · ctrl-click to select · scroll to zoom · Recenter resets"**.
+- **Render (D92 rule — a player-facing interaction change).** Stepped through the real `#editor` scene;
+  `e2e-editor.mjs` now proves both in headless Chrome (puppeteer holds the modifier so it rides the mouse
+  events): a plain drag does **not** pan while a **Shift-drag** pans without painting (Recenter resets, a
+  post-recenter tap still paints); and a **Ctrl-click** over a placed gate selects it + opens the drawer
+  **without** painting the active Wall brush, while a Ctrl-click on an empty tile clears the selection.
+- **Guards:** tsc · build · vitest **1215** · e2e (editor **65**). **Reuses:** **D98/D109** (the editor +
+  `BoardCamera`). **Deferred / next:** true **drag-to-paint** (a plain sweep painting every tile it
+  crosses, not just the release tile) is a larger brush-loop change — not in scope here. **Superseded by:** —
+
+---
+
+## D111 — Editor input QoL, part 2: drag-to-paint · right-click erase · alt eyedropper · hotkeys · undo/redo
+
+- **Status:** Decided + built (2026-07-19, branch `claude/editor-drag-key-modifier-hjs0qa`).
+- **Why:** with panning moved behind Shift (D110) the plain drag gesture was freed up; the owner asked
+  for a batch of ergonomics improvements "in theme" with the modifier work. Five landed together because
+  they all funnel through the same press/tap/keyboard path.
+- **What:**
+  - **Drag-to-paint.** A press on a toggle-terrain brush (wall/spawn/exit/trap) or a right-click opens a
+    **stroke**: the first tile's state fixes the op (empty→**add**, occupied→**remove**; right-click / the
+    Erase brush →**erase all**), and every tile the cursor sweeps applies it once — gap-filled with
+    `lineTiles` so a fast drag lays a continuous run. The board redraws per-tile; the heavy DOM/export
+    refresh waits for release. Entity/shape/select brushes stay click-driven. `BoardCamera.onDown` now
+    ignores non-left buttons so a right-drag never pans or fires a stray tap.
+  - **Right-click / right-drag erase** from any brush (context menu suppressed via `input.mouse.disableContextMenu()`).
+  - **Alt-click eyedropper** — adopt the brush that would recreate the object under the cursor (enemy →
+    its archetype, captive → its release, gate/lever/trap/terrain) and jump to its home tab. Rounds out the
+    modifier set: **Shift** pan · **Ctrl** select · **Alt** pick · **right-button** erase.
+  - **Brush hotkeys** (`W/L/R G/V/T N/C P/X S/E`) + **Esc** (cancel a pending shape + deselect), on a
+    `window` keydown listener **paired with mountPanel/unmountPanel** (so it survives the import remount)
+    and **ignored while a form field is focused** (typing an id never switches brush). A hotkey jumps to
+    the brush's home tab so the picked card is visible.
+  - **Undo / redo** (`Ctrl/⌘+Z` · `Ctrl/⌘+Shift+Z` / `Ctrl+Y` · **↶/↷ buttons**) over whole-draft JSON
+    snapshots — one entry per committed edit (a whole stroke = one undo). Covers board/placement/shape
+    edits; inspector/objective/reward form fields are direct-manipulation and off the stack.
+- **Render (D92 rule — player-facing interactions).** `e2e-editor.mjs` grew to **88** assertions, all
+  driven in real headless Chrome: drag-paint a run + re-drag to erase; alt-click eyedrop; right-click +
+  right-drag erase; the hotkeys (incl. the home-tab jump and the input-focus suppression); Esc clearing a
+  shape anchor + a selection; and undo/redo via both the keyboard and the buttons. The shared harness'
+  `clickScene`/`drag` gained an optional mouse-button arg (right-click). The `cautionary tale` footgun
+  (an import that remounts the panel silently dropping a listener) bit once here and is now covered.
+- **Challenge pass (`memento:challenge`, 2026-07-19).** Traced the paths the happy-path e2e never hit;
+  three real defects found + fixed (each now has a regression test):
+  - **(A, correctness) dangling stroke painted on a bare hover.** `onHover` advanced the stroke gated only
+    on `this.stroke` being set — never on the button still being down. A *missed* pointer-up (focus loss /
+    pointercancel — the `POINTER_UP`/`_OUTSIDE` handlers don't cover it) left the stroke live, and then
+    merely moving the mouse painted every tile it crossed. **Confirmed** by injecting the dangling state
+    and hovering (walls climbed). Fix: `onHover` terminates the stroke when `!pointer.isDown`.
+  - **(B, data-loss) a board shrink was silent, irreversible data loss.** `resize` dropped off-board
+    entities without a history snapshot → not undoable. Fix: `pushHistory()` in `resize` (the size inputs
+    are `onchange`, so one snapshot per resize).
+  - **(C, gap) an import wasn't undoable.** `importJson` replaced the whole draft with no snapshot. Fix:
+    `pushHistory()` before the swap — the undo stack survives the panel remount the import triggers.
+  - Also: `pushHistory` now refreshes the ↶/↷ button enabled-state, and the size inputs got
+    `data-role="cols"/"rows"` (test-targetable). Findings judged **not worth fixing** and left as noted
+    quirks: a stroke that leaves the board and re-enters draws a connecting line (Photoshop-like, expected);
+    the cursor's grab-hand can stick if Shift is released off-window (cosmetic — the pan gate reads the
+    pointer event, not the tracked key, so panning stays correct).
+- **Undo-gap closure (the challenge's deferred item, 2026-07-19).** Inspector / objective / reward **form
+  edits** are now undoable too. All such edits funnel through the shared controls (`field`/`numInput`/
+  `selectRow`/`checkboxRow`, and `statGrid` → `numInput`), whose own handlers run in the **target phase** —
+  so a **capture-phase** `input`/`change` listener on `window` (`onPanelEdit`) snapshots the **pre-edit**
+  draft *before* the control mutates it. **Coalesced per control** (`lastEditTarget`): a field's keystrokes
+  + its input/change pair collapse to one undo entry; a blur (`focusout`) or a move to another control opens
+  the next. The size inputs (own snapshot via `resize`) and the import box (not a draft edit) are excluded
+  by `data-role`; the button-driven objective add/remove/derive get an explicit `pushHistory` (they aren't
+  form controls). `pushHistory` split into `snapshotDraft` (raw) + the board-edit variant (also clears the
+  coalescing latch). Regression test: edit an enemy's maxHp → Ctrl+Z reverts it (proving the snapshot is
+  pre-mutation — a post-mutation snapshot would revert to nothing).
+- **Guards:** tsc · build · vitest **1215** · e2e (editor **97**, deploy-battle **73**) · visual-audit (14)
+  · challenge (7). **Reuses:** **D109/D110** (the editor · `BoardCamera` · the shift/ctrl modifier path).
+  **Deferred / next:** drag-to-place for *entity* brushes (a row of enemies) if it's ever wanted.
+  **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

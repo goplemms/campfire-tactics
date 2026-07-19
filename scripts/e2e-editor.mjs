@@ -146,6 +146,22 @@ async function main() {
         st = await g.eval(STATE);
         check("wall brush + clicks place walls (click-pick works)", st.walls === 2);
 
+        // Drag-to-paint (blank board, so the later import resets it): a plain left drag lays a continuous
+        // run, and re-dragging the same run erases it (the first tile's state fixes the whole stroke).
+        console.log("• drag-to-paint lays a continuous run; a re-drag erases it");
+        const run = [[3, 5], [4, 5], [5, 5], [6, 5]].map(([c, r]) => ({ col: c, row: r }));
+        const blockedHas = (tiles) => g.eval(`(() => { const b = window.game.scene.getScene("EditorScene").draft.blocked; return ${JSON.stringify(tiles)}.filter((t) => b.some((c) => c.col === t.col && c.row === t.row)).length; })()`);
+        const ra = await tileScreen(3, 5), rz = await tileScreen(6, 5);
+        const wPreDrag = (await g.eval(STATE)).walls;
+        await g.drag(ra.x, ra.y, rz.x, rz.y); // plain left drag over an empty row → paints
+        await sleep(120);
+        check("a left drag painted the whole 4-tile run", (await blockedHas(run)) === 4);
+        check("the run is a continuous stroke, not one release tile", (await g.eval(STATE)).walls >= wPreDrag + 4);
+        await g.drag(ra.x, ra.y, rz.x, rz.y); // re-drag: first tile is now a wall → the stroke removes
+        await sleep(120);
+        check("re-dragging the painted run clears it", (await blockedHas(run)) === 0);
+        check("the original two walls are untouched", (await g.eval(STATE)).walls === wPreDrag);
+
         // Spawn brush.
         await g.eval(setBrush("spawn"));
         for (const [c, r] of [[0, 4], [1, 4]]) await clickTile(c, r);
@@ -214,19 +230,35 @@ async function main() {
         // Close the drawer so it stops overlaying the right of the board for the board-click sections below.
         await g.eval(`document.querySelector('[data-role="drawer-close"]').click()`); await sleep(80);
 
-        // Camera controls (large-map fix): drag pans the board, a drag does NOT paint, and
-        // Recenter restores the default framing — so a 20×20 level is reachable on the fixed canvas.
-        console.log("• grab-and-drag pans the board (large-map reachability)");
+        // Camera controls (large-map fix + QoL): panning is now gated behind Shift so a plain drag
+        // stops stealing the gesture from painting — Shift-drag pans, a plain drag does not, and
+        // Recenter restores the default framing — so a 20×20 level stays reachable on the fixed canvas.
+        console.log("• Shift-drag pans the board; a plain drag does not (pan gated behind Shift)");
         const camBefore = await g.eval(CAM);
         check("camera starts at the default framing", camBefore.sx === 0 && camBefore.sy === 0 && camBefore.zoom === 1);
+
+        // A plain drag (no modifier) must NOT pan — it falls through to a tap. Use the Select brush so
+        // that release-tap only (de)selects, never mutating the board's counts.
+        await g.eval(setBrush("select"));
+        await g.drag(430, 300, 250, 300); // plain drag left over the board
+        await sleep(120);
+        const camPlain = await g.eval(CAM);
+        check("a plain drag does not pan (panning is gated behind Shift)", camPlain.sx === 0 && camPlain.sy === 0 && camPlain.zoom === 1);
+        // The release-tap may have selected an entity + opened the drawer — close it so it doesn't overlay later clicks.
+        await g.eval(`(() => { const d = document.querySelector('[data-role="side-drawer"]'); if (d && d.style.transform === "none") document.querySelector('[data-role="drawer-close"]').click(); })()`);
+        await sleep(60);
+
+        // Holding Shift, the same drag pans the camera (and still does not paint).
         const wallsBeforeDrag = (await g.eval(STATE)).walls;
         await g.eval(setBrush("wall"));
-        await g.drag(430, 300, 250, 300); // drag left over the board
+        await g.page.keyboard.down("Shift");
+        await g.drag(430, 300, 250, 300); // shift-drag left over the board
+        await g.page.keyboard.up("Shift");
         await sleep(120);
         const camAfter = await g.eval(CAM);
         const stDrag = await g.eval(STATE);
-        check("dragging scrolled the camera", Math.abs(camAfter.sx) > 30);
-        check("a drag did not paint a tile (click vs drag)", stDrag.walls === wallsBeforeDrag);
+        check("shift-dragging scrolled the camera", Math.abs(camAfter.sx) > 30);
+        check("a shift-drag pans, it does not paint (pan vs click)", stDrag.walls === wallsBeforeDrag);
         await g.screenshot(path.join(OUT, "05-panned.png"));
 
         // Recenter resets scroll+zoom; after it a genuine tap still paints (discrimination intact).
@@ -352,6 +384,208 @@ async function main() {
         check("wiring the lever targets the gate in the export", oe.targets.length === 1);
         check("the level still validates with gates + a lever placed", (await g.eval(STATE)).valid === true);
         await g.screenshot(path.join(OUT, "08-objects.png"));
+
+        // Ctrl-click quick-select (QoL companion to shift-pan): from ANY brush, Ctrl-click picks the
+        // object under the cursor into the inspector without switching to the Select tool — and it does
+        // NOT run the active brush. Prove it with the Wall brush active over the placed gate at (1,3).
+        console.log("• ctrl-click quick-selects an object from any brush (no paint)");
+        await g.eval(`document.querySelector('[data-role="drawer-close"]').click()`); await sleep(60);
+        const sel = () => g.eval(`window.game.scene.getScene("EditorScene").selection?.kind ?? null`);
+        await g.eval(setBrush("wall")); // a non-select brush active
+        const wallsBeforeQuickSel = (await g.eval(STATE)).walls;
+        const qg = await tileScreen(1, 3); // the gate placed above
+        await g.page.keyboard.down("Control");
+        await g.clickScene(qg.x, qg.y);
+        await g.page.keyboard.up("Control");
+        await sleep(120);
+        check("ctrl-click selected the gate under the cursor", (await sel()) === "gate");
+        check("ctrl-click did not paint a wall (select, not brush)", (await g.eval(STATE)).walls === wallsBeforeQuickSel);
+        check("ctrl-click opened the inspector drawer", (await g.eval(`document.querySelector('[data-role="side-drawer"]').style.transform === "none"`)) === true);
+        // Ctrl-click an unoccupied tile clears the selection (still no paint). Compute a tile with no
+        // enemy/captive/gate/lever from the live draft so this doesn't depend on the-rescue's layout.
+        const qe = await g.eval(`(() => {
+          const sc = window.game.scene.getScene("EditorScene"), d = sc.draft;
+          const occ = (t) => [...d.enemies, ...d.captives, ...d.gates, ...d.levers].some((o) => o.pos.col === t.col && o.pos.row === t.row);
+          for (let r = 0; r < d.rows; r++) for (let c = 0; c < d.cols; c++) { const t = { col: c, row: r }; if (!occ(t)) { const p = sc.view.tileToWorld(t); return { x: Math.round(p.x), y: Math.round(p.y) }; } }
+          return null;
+        })()`);
+        await g.page.keyboard.down("Control");
+        await g.clickScene(qe.x, qe.y);
+        await g.page.keyboard.up("Control");
+        await sleep(100);
+        check("ctrl-click on an unoccupied tile clears the selection", (await sel()) === null);
+        check("ctrl-click on empty still did not paint", (await g.eval(STATE)).walls === wallsBeforeQuickSel);
+
+        // Close the side drawer so it doesn't overlay the right of the board for the gesture tests below.
+        const closeDrawerIfOpen = () => g.eval(`(() => { const d = document.querySelector('[data-role="side-drawer"]'); if (d && d.style.transform === "none") document.querySelector('[data-role="drawer-close"]').click(); })()`);
+        await closeDrawerIfOpen(); await sleep(60);
+
+        // Alt-click eyedropper: adopt the brush under the cursor from any other brush. Alt-click the gate.
+        console.log("• alt-click eyedropper adopts the brush under the cursor");
+        const brush = () => g.eval(`window.game.scene.getScene("EditorScene").brush`);
+        await g.eval(setBrush("wall"));
+        await g.page.keyboard.down("Alt");
+        await g.clickScene(qg.x, qg.y); // the gate tile
+        await g.page.keyboard.up("Alt");
+        await sleep(100);
+        check("alt-click over the gate switched the brush to gate", (await brush()) === "gate");
+        check("alt-click did not paint a wall", (await g.eval(STATE)).walls === wallsBeforeQuickSel);
+
+        // Right-click / right-drag erases from any brush (no context menu). Erase an enemy with the Wall
+        // brush active, then paint a computed-empty run and right-drag it away.
+        console.log("• right-click / right-drag erases from any brush");
+        await g.eval(setBrush("wall"));
+        const enemiesBeforeErase = (await g.eval(STATE)).enemies;
+        const et = await g.eval(`(() => { const sc = window.game.scene.getScene("EditorScene"), e = sc.draft.enemies[0], p = sc.view.tileToWorld(e.pos); return { x: Math.round(p.x), y: Math.round(p.y) }; })()`);
+        await g.clickScene(et.x, et.y, { button: "right" });
+        await sleep(120);
+        check("right-click erased the enemy under the cursor", (await g.eval(STATE)).enemies === enemiesBeforeErase - 1);
+        check("right-click did not paint a wall (erase, not brush)", (await g.eval(STATE)).walls === wallsBeforeQuickSel);
+        // A computed empty 3-wide run: paint it with a left drag, then right-drag to erase it. The-rescue's
+        // board is wider than the 800px canvas, so restrict the scan to tiles whose world point is on-screen
+        // (default camera → world == screen); an off-canvas run would sit under the DOM, not the board.
+        const er = await g.eval(`(() => {
+          const sc = window.game.scene.getScene("EditorScene"), d = sc.draft;
+          const occ = (c, r) => [...d.blocked, ...d.playerSpawns, ...d.exit, ...d.traps, ...d.enemies.map((e) => e.pos), ...d.captives.map((x) => x.pos), ...d.gates.map((g) => g.pos), ...d.levers.map((l) => l.pos)].some((p) => p.col === c && p.row === r);
+          const on = (p) => p.x > 60 && p.x < 740 && p.y > 60 && p.y < 540;
+          for (let r = 0; r < d.rows; r++) for (let c = 0; c + 2 < d.cols; c++) {
+            if (occ(c, r) || occ(c + 1, r) || occ(c + 2, r)) continue;
+            const a = sc.view.tileToWorld({ col: c, row: r }), z = sc.view.tileToWorld({ col: c + 2, row: r });
+            if (!on(a) || !on(z)) continue;
+            return { a: { x: Math.round(a.x), y: Math.round(a.y) }, z: { x: Math.round(z.x), y: Math.round(z.y) }, tiles: [[c, r], [c + 1, r], [c + 2, r]].map(([cc, rr]) => ({ col: cc, row: rr })) };
+          }
+          return null;
+        })()`);
+        await g.eval(setBrush("wall"));
+        await g.drag(er.a.x, er.a.y, er.z.x, er.z.y); // left drag paints the run
+        await sleep(120);
+        check("a left drag painted the empty run", (await blockedHas(er.tiles)) === 3);
+        await g.drag(er.a.x, er.a.y, er.z.x, er.z.y, 10, { button: "right" }); // right drag erases it
+        await sleep(120);
+        check("a right-drag erased the whole run", (await blockedHas(er.tiles)) === 0);
+
+        // Keyboard: brush hotkeys (input-focus-safe) + their home-tab jump.
+        console.log("• keyboard: brush hotkeys · esc · undo / redo");
+        await g.eval(`document.activeElement && document.activeElement.blur && document.activeElement.blur()`);
+        await g.eval(setBrush("wall"));
+        await g.page.keyboard.press("KeyG");
+        check("hotkey G selects the gate brush", (await brush()) === "gate");
+        await g.page.keyboard.press("KeyN");
+        check("hotkey N selects enemy and jumps to its Units tab", (await brush()) === "enemy" && (await g.eval(`window.game.scene.getScene("EditorScene").activeTab`)) === "Units");
+        await g.page.keyboard.press("KeyW");
+        check("hotkey W selects the wall brush", (await brush()) === "wall");
+        // Hotkeys are suppressed while a text field is focused (typing an id must not switch brush). The
+        // import box lives in the Scenario tab — show it first so the focus actually lands (a hidden
+        // element can't be focused).
+        await g.eval(clickTab("Scenario")); await sleep(60);
+        await g.eval(`document.querySelector('textarea[data-role="import"]').focus()`);
+        check("the import box is focused", (await g.eval(`document.activeElement.tagName`)) === "TEXTAREA");
+        await g.page.keyboard.press("KeyG");
+        check("a hotkey is ignored while a text field is focused", (await brush()) === "wall");
+        await g.eval(`document.activeElement.blur()`);
+
+        // Esc cancels a pending shape anchor and clears the selection.
+        const anchor = () => g.eval(`window.game.scene.getScene("EditorScene").shapeAnchor`);
+        await g.eval(setBrush("line"));
+        const st00 = await tileScreen(0, 0);
+        await g.clickScene(st00.x, st00.y); await sleep(80);
+        check("a line click sets a pending shape anchor", (await anchor()) !== null);
+        await g.page.keyboard.press("Escape");
+        check("esc clears the pending shape anchor", (await anchor()) === null);
+        await g.eval(setBrush("select"));
+        const en0 = await g.eval(`(() => { const sc = window.game.scene.getScene("EditorScene"), e = sc.draft.enemies[0], p = sc.view.tileToWorld(e.pos); return { x: Math.round(p.x), y: Math.round(p.y) }; })()`);
+        await g.clickScene(en0.x, en0.y); await sleep(80);
+        check("selecting an enemy sets the selection", (await sel()) === "enemy");
+        await g.page.keyboard.press("Escape");
+        check("esc clears the selection", (await sel()) === null);
+
+        // Undo / redo (Ctrl+Z · Ctrl+Shift+Z · the buttons) reverses a board edit.
+        await closeDrawerIfOpen(); await sleep(60); // the select above reopened the drawer
+        await g.eval(`document.activeElement && document.activeElement.blur && document.activeElement.blur()`);
+        await g.eval(setBrush("wall"));
+        const wUndo = (await g.eval(STATE)).walls;
+        const emptyT = await g.eval(`(() => {
+          const sc = window.game.scene.getScene("EditorScene"), d = sc.draft;
+          const occ = (c, r) => [...d.blocked, ...d.playerSpawns, ...d.exit, ...d.traps, ...d.enemies.map((e) => e.pos), ...d.captives.map((x) => x.pos), ...d.gates.map((g) => g.pos), ...d.levers.map((l) => l.pos)].some((p) => p.col === c && p.row === r);
+          for (let r = 0; r < d.rows; r++) for (let c = 0; c < d.cols; c++) if (!occ(c, r)) { const p = sc.view.tileToWorld({ col: c, row: r }); if (p.x > 60 && p.x < 740 && p.y > 60 && p.y < 540) return { x: Math.round(p.x), y: Math.round(p.y) }; }
+          return null;
+        })()`);
+        await g.clickScene(emptyT.x, emptyT.y); await sleep(100);
+        check("painting adds a wall", (await g.eval(STATE)).walls === wUndo + 1);
+        await g.page.keyboard.down("Control"); await g.page.keyboard.press("KeyZ"); await g.page.keyboard.up("Control"); await sleep(100);
+        check("Ctrl+Z undoes the paint", (await g.eval(STATE)).walls === wUndo);
+        await g.page.keyboard.down("Control"); await g.page.keyboard.down("Shift"); await g.page.keyboard.press("KeyZ"); await g.page.keyboard.up("Shift"); await g.page.keyboard.up("Control"); await sleep(100);
+        check("Ctrl+Shift+Z redoes the paint", (await g.eval(STATE)).walls === wUndo + 1);
+        await g.eval(`document.querySelector('button[data-role="undo"]').click()`); await sleep(100);
+        check("the Undo button reverses the paint too", (await g.eval(STATE)).walls === wUndo);
+        await g.screenshot(path.join(OUT, "09-gestures.png"));
+
+        // Robustness: a stroke abandoned by a MISSED pointer-up (focus loss / pointercancel — cases the
+        // harness can't emit) must not keep painting on a bare hover. Simulate the dangling state, then
+        // hover (no button held) over another tile: it must paint nothing and terminate the stroke.
+        console.log("• a dangling stroke (missed pointer-up) does not paint on a bare hover");
+        await g.eval(setBrush("wall"));
+        const dg = await g.eval(`(() => {
+          const sc = window.game.scene.getScene("EditorScene"), d = sc.draft;
+          const occ = (c, r) => [...d.blocked, ...d.playerSpawns, ...d.exit, ...d.traps, ...d.enemies.map((e) => e.pos), ...d.captives.map((x) => x.pos), ...d.gates.map((g) => g.pos), ...d.levers.map((l) => l.pos)].some((p) => p.col === c && p.row === r);
+          const on = (p) => p.x > 60 && p.x < 740 && p.y > 60 && p.y < 540;
+          for (let r = 0; r < d.rows; r++) for (let c = 0; c + 3 < d.cols; c++) {
+            if (occ(c, r) || occ(c + 3, r)) continue;
+            const a = sc.view.tileToWorld({ col: c, row: r }), z = sc.view.tileToWorld({ col: c + 3, row: r });
+            if (!on(a) || !on(z)) continue;
+            return { last: { col: c, row: r }, hover: { x: Math.round(z.x), y: Math.round(z.y) } };
+          }
+          return null;
+        })()`);
+        const wDangle = (await g.eval(STATE)).walls;
+        await g.eval(`(() => { window.game.scene.getScene("EditorScene").stroke = { op: "add", last: ${JSON.stringify(dg.last)}, painted: new Set() }; })()`);
+        await g.hover(dg.hover.x, dg.hover.y); // move with NO button pressed
+        await sleep(100);
+        check("a bare hover with a dangling stroke paints nothing", (await g.eval(STATE)).walls === wDangle);
+        check("the dangling stroke was terminated", (await g.eval(`window.game.scene.getScene("EditorScene").stroke`)) === null);
+
+        // Undo covers the destructive whole-draft ops, not just paints: a board shrink drops off-board
+        // entities — that must be recoverable, not silent data loss.
+        console.log("• undo recovers a resize shrink (dropped entities) and an import");
+        await g.eval(clickTab("Scenario")); await sleep(60);
+        const dims = () => g.eval(`(() => { const d = window.game.scene.getScene("EditorScene").draft; return { cols: d.cols, rows: d.rows, enemies: d.enemies.length }; })()`);
+        const before = await dims();
+        // Shrink to 3×3 via the size inputs (onchange) — this drops most of the-rescue's entities.
+        await g.eval(`(() => { const w = document.querySelector('input[data-role="cols"]'), h = document.querySelector('input[data-role="rows"]'); w.value = "3"; w.dispatchEvent(new Event("change")); h.value = "3"; h.dispatchEvent(new Event("change")); })()`);
+        await sleep(80);
+        const shrunk = await dims();
+        check("shrinking the board dropped entities", shrunk.cols === 3 && shrunk.enemies < before.enemies);
+        await g.eval(`document.querySelector('button[data-role="undo"]').click()`); await sleep(80);
+        await g.eval(`document.querySelector('button[data-role="undo"]').click()`); await sleep(80); // two dims = two snapshots
+        const restored = await dims();
+        check("undo recovers the dropped entities + dimensions", restored.enemies === before.enemies && restored.cols === before.cols);
+
+        // Import is undoable too (the stack survives the panel remount the import triggers).
+        const enemiesPreImport = (await dims()).enemies;
+        await g.eval(IMPORT); await sleep(150);
+        check("re-importing the-rescue loads its 8 enemies", (await dims()).enemies === 8);
+        await g.eval(`document.querySelector('button[data-role="undo"]').click()`); await sleep(100);
+        check("undo reverses the import (draft restored)", (await dims()).enemies === enemiesPreImport);
+
+        // Undo also covers inspector FORM edits (id / stats / objectives / reward), coalesced per field —
+        // the gap the challenge flagged. Edit an enemy's maxHp through the inspector, then undo it.
+        console.log("• undo reverts an inspector stat edit (coalesced form-edit history)");
+        await closeDrawerIfOpen(); await sleep(60);
+        const enemyPt = await g.eval(`(() => {
+          const sc = window.game.scene.getScene("EditorScene"), d = sc.draft;
+          const on = (p) => p.x > 60 && p.x < 740 && p.y > 60 && p.y < 540;
+          for (const e of d.enemies) { const p = sc.view.tileToWorld(e.pos); if (on(p)) return { x: Math.round(p.x), y: Math.round(p.y) }; }
+          return null;
+        })()`);
+        await g.eval(setBrush("select"));
+        await g.clickScene(enemyPt.x, enemyPt.y); await sleep(120);
+        check("selecting an enemy shows the stat grid", (await g.eval(`document.querySelectorAll('input[data-stat]').length`)) >= 7);
+        const has77 = () => g.eval(`JSON.parse(document.querySelector("pre").textContent).enemies.some((e) => e.overrides && e.overrides.maxHp === 77)`);
+        await g.eval(`(() => { const hp = document.querySelector('input[data-stat="maxHp"]'); hp.value = "77"; hp.dispatchEvent(new Event("change")); })()`);
+        await sleep(100);
+        check("editing maxHp to 77 flows to the export", (await has77()) === true);
+        await g.page.keyboard.down("Control"); await g.page.keyboard.press("KeyZ"); await g.page.keyboard.up("Control"); await sleep(100);
+        check("Ctrl+Z reverts the inspector stat edit", (await has77()) === false);
 
         assertNoProblems(g.problems);
       } catch (err) {

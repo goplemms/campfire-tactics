@@ -26,6 +26,24 @@ const JOB_IDS = Object.keys(JOBS);
 const TAB_NAMES = ["Terrain", "Objects", "Units", "Events", "Scenario"] as const;
 type TabName = (typeof TAB_NAMES)[number];
 
+/** Single-key brush shortcuts (lower-cased key → brush). Mnemonic where it can be; ignored while typing. */
+const BRUSH_HOTKEYS: Record<string, Brush> = {
+  w: "wall", l: "line", r: "rect", // Terrain
+  g: "gate", v: "lever", t: "trap", // Objects (v = leVer/valve)
+  n: "enemy", c: "captive", // Units (n = eNemy)
+  p: "spawn", x: "exit", // Events (p = Player spawn, x = eXit)
+  s: "select", e: "erase", // cross-cutting tools
+};
+/** A brush's home tab — a hotkey jumps to it so the just-picked card is visible. Tools (select/erase) stay put. */
+const BRUSH_TAB: Partial<Record<Brush, TabName>> = {
+  wall: "Terrain", line: "Terrain", rect: "Terrain",
+  gate: "Objects", lever: "Objects", trap: "Objects",
+  enemy: "Units", captive: "Units",
+  spawn: "Events", exit: "Events",
+};
+/** Cap the undo history so a long editing session can't grow the snapshot stacks without bound. */
+const HISTORY_MAX = 60;
+
 /**
  * The **visual level editor** (D98) — `#editor`.
  *
@@ -143,6 +161,24 @@ export class EditorScene extends Phaser.Scene {
   /** Auto-increment counters for object ids (gate-1, lever-1, …). */
   private objectSeq = 0;
 
+  /**
+   * The in-progress paint/erase stroke (drag-to-paint). A press on a paint brush (or a right-click
+   * from any brush) opens one; each tile the cursor sweeps applies the same `op` once — so a drag
+   * lays a continuous run. `op`: "add"/"remove" set/clear the active terrain brush; "erase" clears
+   * everything on the tile. Null when no press is painting (a hover, a pan, a click-only brush).
+   */
+  private stroke: { op: "add" | "remove" | "erase"; last: GridCoord; painted: Set<string> } | null = null;
+  /** Whole-draft undo/redo stacks (a snapshot per committed edit; a whole stroke is one entry). */
+  private undoStack: EditorDraft[] = [];
+  private redoStack: EditorDraft[] = [];
+  private undoBtn?: HTMLButtonElement;
+  private redoBtn?: HTMLButtonElement;
+  /** The form control whose edits are coalescing into one undo entry (null between edits). See {@link onPanelEdit}. */
+  private lastEditTarget: EventTarget | null = null;
+  /** Bound so the same reference detaches on teardown. Keyboard + form-edit hooks live on `window`. */
+  private readonly hKeyDown = (ev: KeyboardEvent) => this.onKeyDown(ev);
+  private readonly hPanelEdit = (ev: Event) => this.onPanelEdit(ev);
+
   // DOM overlay (the D95 panel idiom). The panel now mounts in-flow inside {@link dock}, a
   // full-width slab tray BELOW the canvas (D98 placement pass), instead of the old fixed
   // top-right column — so the board keeps full canvas width and the chrome never overlaps it.
@@ -189,13 +225,22 @@ export class EditorScene extends Phaser.Scene {
 
     this.renderBoard();
     // Grab-and-drag panning + wheel zoom so a big board (a 20×20 level) is reachable on the
-    // fixed 800×600 canvas; a genuine tap still paints via onTap (a drag only moves the camera).
-    // All the editor's chrome lives in the DOM panel, so the whole scene is board content and
-    // pans/zooms cleanly — the title line moved to the panel header.
-    this.boardCam = new BoardCamera(this, { onTap: (p) => this.onTap(p) });
+    // fixed 800×600 canvas; a genuine tap still paints via onTap. Panning is gated behind Shift
+    // (a QoL ask) so a plain drag no longer steals the gesture from painting — hold Shift to pan,
+    // and the cursor flips from the crosshair to the grab hand to show it. All the editor's chrome
+    // lives in the DOM panel, so the whole scene is board content and pans/zooms cleanly.
+    this.boardCam = new BoardCamera(this, { onTap: (p) => this.onTap(p), panModifier: "shift", idleCursor: "crosshair" });
     // Hover drives the coordinate readout + the live line/rect preview (the shape tools are two-click,
-    // so the pending run/box is shown between the anchor and the tile under the cursor).
+    // so the pending run/box is shown between the anchor and the tile under the cursor). The same move
+    // stream also advances an in-progress paint/erase stroke (drag-to-paint).
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.onHover, this);
+    // Press-drag painting: a press opens a stroke (paint brushes) or a right-click erases; the release
+    // ends it. BoardCamera already owns left-button pan/tap, so these coexist (left-no-modifier drags
+    // paint, shift-drags pan, right-drags erase). Right-click needs the browser context menu off.
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
+    this.input.on(Phaser.Input.Events.POINTER_UP, this.onPointerUp, this);
+    this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.onPointerUp, this);
+    this.input.mouse?.disableContextMenu();
     this.mountPanel();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unmountPanel());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.unmountPanel());
@@ -246,19 +291,24 @@ export class EditorScene extends Phaser.Scene {
 
   // --- Click → paint --------------------------------------------------------
 
-  /** A genuine tap (not a camera drag) — dispatched by {@link BoardCamera}. worldX/worldY fold in camera scroll+zoom. */
+  /**
+   * A genuine tap (or a click-only brush's click) — dispatched by {@link BoardCamera}. A drag-paint /
+   * right-click stroke owns its own gesture, so if one is active this release is only its terminator:
+   * skip. worldX/worldY fold in camera scroll+zoom. Modifier-clicks override the active brush: Ctrl/⌘ =
+   * quick-select, Alt = eyedropper (adopt the brush under the cursor).
+   */
   private onTap(pointer: Phaser.Input.Pointer): void {
+    if (this.stroke) return;
     const t = this.view.worldToTile(pointer.worldX, pointer.worldY);
     if (!this.grid.inBounds(t)) return;
-    if (this.brush === "line" || this.brush === "rect") this.shapeTap(t);
-    else this.paint(t);
-    this.renderBoard();
-    this.renderInspector();
-    this.renderUnitList();
-    this.renderObjectives(); // keep an extraction row's "span = N exit tiles" note fresh as exit is painted
-    this.updateExport();
+    const ev = pointer.event as (Event & { ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }) | undefined;
+    if (ev?.ctrlKey || ev?.metaKey) this.selectAt(t);
+    else if (ev?.altKey) this.eyedropAt(t);
+    else if (this.brush === "line" || this.brush === "rect") this.shapeTap(t); // snapshots on commit
+    else if (this.brush === "select") this.selectAt(t);
+    else { this.pushHistory(); this.paint(t); } // entity placement (or a terrain click begun off-board)
+    this.afterBoardEdit();
     this.drawShapePreview(); // reflect a just-set anchor before the next mouse move
-    this.updateCoord();
   }
 
   /**
@@ -267,11 +317,100 @@ export class EditorScene extends Phaser.Scene {
    * stays correct at any pan/zoom. Skipped mid-pan (a drag isn't aiming a shape).
    */
   private onHover(pointer: Phaser.Input.Pointer): void {
-    if (this.boardCam?.isDragging) return;
+    if (this.boardCam?.isDragging) return; // a shift-pan is moving the camera, not aiming a tile
     const t = this.view.worldToTile(pointer.worldX, pointer.worldY);
     this.hoveredTile = this.grid.inBounds(t) ? t : null;
     this.updateCoord();
     this.drawShapePreview();
+    // Advance an in-progress stroke: apply its op to every tile between the last painted one and here,
+    // so a fast drag lays a continuous run rather than dotting only the sampled points.
+    if (this.stroke) {
+      // A stroke only advances while the button is still down. If a pointer-up was missed (focus loss,
+      // pointercancel), terminate it here — otherwise a bare hover would paint every tile it crosses.
+      if (!pointer.isDown) { this.onPointerUp(); return; }
+      if (this.hoveredTile) {
+        for (const c of lineTiles(this.stroke.last, this.hoveredTile)) {
+          const k = `${c.col},${c.row}`;
+          if (!this.stroke.painted.has(k)) { this.applyStroke(c); this.stroke.painted.add(k); }
+        }
+        this.stroke.last = this.hoveredTile;
+        this.renderBoard(); // cheap per-tile canvas redraw; the heavy DOM/export refresh waits for pointer-up
+      }
+    }
+  }
+
+  // --- Drag-to-paint (press-drag strokes) -----------------------------------
+
+  /** Open a stroke on a press: a paint brush adds/clears along a left drag; a right-click erases from any brush. */
+  private onPointerDown(pointer: Phaser.Input.Pointer): void {
+    const right = pointer.button === 2;
+    if (pointer.button !== 0 && !right) return; // only left / right open a stroke
+    const ev = pointer.event as (Event & { shiftKey?: boolean; ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean }) | undefined;
+    // A modified left press is a pan / select / eyedrop gesture (handled elsewhere) — never a paint stroke.
+    if (!right && (ev?.shiftKey || ev?.ctrlKey || ev?.altKey || ev?.metaKey)) return;
+    const t = this.view.worldToTile(pointer.worldX, pointer.worldY);
+    if (!this.grid.inBounds(t)) return;
+    const arr = this.brushArrayFor(this.brush);
+    let op: "add" | "remove" | "erase" | null;
+    if (right || this.brush === "erase") op = "erase";
+    else if (arr) op = arr.some((c) => same(c, t)) ? "remove" : "add"; // first tile's state fixes the whole stroke
+    else op = null; // select / line / rect / entity brushes stay click-driven (onTap)
+    if (!op) return;
+    this.pushHistory();
+    this.stroke = { op, last: t, painted: new Set([`${t.col},${t.row}`]) };
+    this.applyStroke(t);
+    this.renderBoard();
+  }
+
+  /** Close the active stroke and flush the one full (DOM-heavy) refresh on release. */
+  private onPointerUp(): void {
+    if (!this.stroke) return;
+    this.stroke = null;
+    this.afterBoardEdit();
+  }
+
+  /** Apply one tile of the current stroke: set/clear the brush's terrain, or erase everything on it. */
+  private applyStroke(t: GridCoord): void {
+    if (!this.stroke) return;
+    if (this.stroke.op === "erase") return void this.eraseAt(t);
+    const arr = this.brushArrayFor(this.brush);
+    if (!arr) return;
+    if (this.stroke.op === "add") { if (!arr.some((c) => same(c, t))) arr.push({ col: t.col, row: t.row }); }
+    else this.removeCoord(arr, t);
+  }
+
+  /** The coord array a toggle-terrain brush paints into (null for shape / entity / tool brushes). */
+  private brushArrayFor(brush: Brush): GridCoord[] | null {
+    const d = this.draft;
+    switch (brush) {
+      case "wall": return d.blocked;
+      case "spawn": return d.playerSpawns;
+      case "exit": return d.exit;
+      case "trap": return d.traps;
+      default: return null;
+    }
+  }
+
+  /** Clear every placeable off a tile — the Erase brush's action, shared by right-click / right-drag erase. */
+  private eraseAt(t: GridCoord): void {
+    const d = this.draft;
+    this.removeCoord(d.blocked, t); this.removeCoord(d.playerSpawns, t);
+    this.removeCoord(d.exit, t); this.removeCoord(d.traps, t);
+    d.enemies = d.enemies.filter((e) => !same(e.pos, t));
+    d.captives = d.captives.filter((c) => !same(c.pos, t));
+    d.gates = d.gates.filter((g) => !same(g.pos, t));
+    d.levers = d.levers.filter((l) => !same(l.pos, t));
+  }
+
+  /** The full post-edit refresh — rebuild the board + every dependent panel + export + history buttons. */
+  private afterBoardEdit(): void {
+    this.renderBoard();
+    this.renderInspector();
+    this.renderUnitList();
+    this.renderObjectives(); // keep an extraction row's "span = N exit tiles" note fresh as exit changes
+    this.updateExport();
+    this.updateCoord();
+    this.refreshHistoryButtons();
   }
 
   /**
@@ -284,6 +423,7 @@ export class EditorScene extends Phaser.Scene {
       this.shapeAnchor = t;
       return;
     }
+    this.pushHistory(); // the commit (second click) is the undoable edit; dropping the anchor isn't
     const tiles = this.brush === "line" ? lineTiles(this.shapeAnchor, t) : rectTiles(this.shapeAnchor, t, this.rectFill);
     for (const c of tiles) if (!this.draft.blocked.some((b) => same(b, c))) this.draft.blocked.push(c);
     this.shapeAnchor = null;
@@ -314,22 +454,158 @@ export class EditorScene extends Phaser.Scene {
     this.coordEl.textContent = `tile ${t ? `(${t.col},${t.row})` : "—"}${anchor}`;
   }
 
+  /**
+   * Pick the object under a tile into the inspector — the Select brush's action, also reachable as a
+   * Ctrl-click quick-select from any brush. Rings the object gold + opens the drawer; an empty tile clears.
+   */
+  private selectAt(t: GridCoord): void {
+    const d = this.draft;
+    const en = d.enemies.find((e) => same(e.pos, t));
+    const cap = d.captives.find((c) => same(c.pos, t));
+    const gate = d.gates.find((g) => same(g.pos, t));
+    const lever = d.levers.find((l) => same(l.pos, t));
+    if (en) this.selection = { kind: "enemy", ref: en };
+    else if (cap) this.selection = { kind: "captive", ref: this.materializeCaptive(cap) };
+    else if (gate) this.selection = { kind: "gate", ref: gate };
+    else if (lever) this.selection = { kind: "lever", ref: lever };
+    else this.selection = null;
+    if (this.selection) this.openDrawer(); // reveal the inspector on the selected object (board stays full-size)
+  }
+
+  /**
+   * Alt-click eyedropper: adopt the brush that would (re)create the object under the cursor — an enemy →
+   * its archetype, a captive → its release, a gate/lever/trap, or a terrain marker — and jump to its tab.
+   * An empty tile keeps the current brush.
+   */
+  private eyedropAt(t: GridCoord): void {
+    const d = this.draft;
+    const en = d.enemies.find((e) => same(e.pos, t));
+    const cap = d.captives.find((c) => same(c.pos, t));
+    if (en) { this.enemyTemplate = en.templateId; return void this.pickBrush("enemy"); }
+    if (cap) { this.captiveRelease = cap.release; return void this.pickBrush("captive"); }
+    if (d.gates.some((g) => same(g.pos, t))) return void this.pickBrush("gate");
+    if (d.levers.some((l) => same(l.pos, t))) return void this.pickBrush("lever");
+    if (d.traps.some((c) => same(c, t))) return void this.pickBrush("trap");
+    if (d.playerSpawns.some((c) => same(c, t))) return void this.pickBrush("spawn");
+    if (d.exit.some((c) => same(c, t))) return void this.pickBrush("exit");
+    if (d.blocked.some((c) => same(c, t))) return void this.pickBrush("wall");
+  }
+
+  /** Set the active brush + drop any pending shape + refresh the palette highlight (the one entry point). */
+  private setBrush(b: Brush): void {
+    this.brush = b;
+    this.cancelShape();
+    this.highlightBrush();
+  }
+
+  /** Pick a brush AND jump to its home tab so the chosen card is visible (hotkeys + eyedropper). */
+  private pickBrush(b: Brush): void {
+    const tab = BRUSH_TAB[b];
+    if (tab) this.showTab(tab);
+    this.setBrush(b);
+  }
+
+  /** Drop the current inspector selection (Esc) — clears the gold ring + empties the inspector. */
+  private clearSelection(): void {
+    if (!this.selection) return;
+    this.selection = null;
+    this.renderBoard();
+    this.renderInspector();
+    this.renderUnitList();
+  }
+
+  // --- Undo / redo ----------------------------------------------------------
+
+  /** A deep copy of the draft (pure JSON data) — the unit of the undo/redo stacks. */
+  private cloneDraft(): EditorDraft {
+    return JSON.parse(JSON.stringify(this.draft)) as EditorDraft;
+  }
+
+  /** Push a pre-edit snapshot onto the undo stack + drop the redo future. The raw primitive (no coalescing reset). */
+  private snapshotDraft(): void {
+    this.undoStack.push(this.cloneDraft());
+    if (this.undoStack.length > HISTORY_MAX) this.undoStack.shift();
+    this.redoStack = [];
+    this.refreshHistoryButtons();
+  }
+
+  /** Snapshot for a board / destructive edit — also ends any in-progress field-edit coalescing. Call *before* the mutation. */
+  private pushHistory(): void {
+    this.snapshotDraft();
+    this.lastEditTarget = null;
+  }
+
+  /**
+   * Capture-phase form-edit hook (mounted on window). An inspector / objective / reward edit mutates the
+   * draft through the control's *own* (target-phase) handler; this runs first — in the capture phase — so
+   * it can snapshot the **pre-edit** draft. Coalesced per control: a field's keystrokes (and its input+
+   * change pair) collapse to one undo entry, and a blur or a move to another control opens the next. The
+   * size inputs (already snapshot via {@link resize}) and the import box (not a draft edit) are excluded.
+   */
+  private onPanelEdit(ev: Event): void {
+    if (ev.type === "focusout") { this.lastEditTarget = null; return; }
+    const el = ev.target as HTMLElement | null;
+    if (!el || (el.tagName !== "INPUT" && el.tagName !== "SELECT" && el.tagName !== "TEXTAREA")) return;
+    const role = el.dataset.role;
+    if (role === "import" || role === "cols" || role === "rows") return; // not a coalesced draft edit
+    if (el === this.lastEditTarget) return; // same control → same undo entry
+    this.snapshotDraft();
+    this.lastEditTarget = el;
+  }
+
+  private undo(): void {
+    const prev = this.undoStack.pop();
+    if (!prev) return;
+    this.redoStack.push(this.cloneDraft());
+    this.restoreDraft(prev);
+  }
+
+  private redo(): void {
+    const next = this.redoStack.pop();
+    if (!next) return;
+    this.undoStack.push(this.cloneDraft());
+    this.restoreDraft(next);
+  }
+
+  /** Swap in a snapshot draft + fully re-render. Selection is dropped (its refs point at the old objects). */
+  private restoreDraft(d: EditorDraft): void {
+    this.draft = d;
+    this.selection = null;
+    this.lastEditTarget = null; // a restore is an edit boundary
+    this.cancelShape();
+    this.afterBoardEdit();
+  }
+
+  /** Dim the Undo/Redo buttons when their stack is empty (kept honest after every edit). */
+  private refreshHistoryButtons(): void {
+    if (this.undoBtn) this.undoBtn.disabled = this.undoStack.length === 0;
+    if (this.redoBtn) this.redoBtn.disabled = this.redoStack.length === 0;
+  }
+
+  /**
+   * Window-level keyboard shortcuts. Ignored while a form field is focused (so typing an id/label never
+   * switches brush). Ctrl/⌘+Z = undo · Ctrl/⌘+Shift+Z or Ctrl+Y = redo · Esc cancels a pending shape +
+   * deselects · a bare letter picks a brush (see {@link BRUSH_HOTKEYS}).
+   */
+  private onKeyDown(ev: KeyboardEvent): void {
+    const el = document.activeElement as HTMLElement | null;
+    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+    if (ev.ctrlKey || ev.metaKey) {
+      const k = ev.key.toLowerCase();
+      if (k === "z") { ev.preventDefault(); if (ev.shiftKey) this.redo(); else this.undo(); }
+      else if (k === "y") { ev.preventDefault(); this.redo(); }
+      return; // leave every other Ctrl/⌘ combo to the browser
+    }
+    if (ev.altKey) return;
+    if (ev.key === "Escape") { this.cancelShape(); this.clearSelection(); return; }
+    const b = BRUSH_HOTKEYS[ev.key.toLowerCase()];
+    if (b) { ev.preventDefault(); this.pickBrush(b); }
+  }
+
   private paint(t: GridCoord): void {
     const d = this.draft;
     switch (this.brush) {
-      case "select": {
-        const en = d.enemies.find((e) => same(e.pos, t));
-        const cap = d.captives.find((c) => same(c.pos, t));
-        const gate = d.gates.find((g) => same(g.pos, t));
-        const lever = d.levers.find((l) => same(l.pos, t));
-        if (en) this.selection = { kind: "enemy", ref: en };
-        else if (cap) this.selection = { kind: "captive", ref: this.materializeCaptive(cap) };
-        else if (gate) this.selection = { kind: "gate", ref: gate };
-        else if (lever) this.selection = { kind: "lever", ref: lever };
-        else this.selection = null;
-        if (this.selection) this.openDrawer(); // reveal the inspector on the selected object (board stays full-size)
-        return;
-      }
+      case "select": return void this.selectAt(t);
       case "wall": return void this.toggleCoord(d.blocked, t);
       case "spawn": return void this.toggleCoord(d.playerSpawns, t);
       case "exit": return void this.toggleCoord(d.exit, t);
@@ -359,15 +635,7 @@ export class EditorScene extends Phaser.Scene {
         else d.levers.push({ id: `lever-${++this.objectSeq}`, pos: { col: t.col, row: t.row }, targets: [] });
         return;
       }
-      case "erase": {
-        this.removeCoord(d.blocked, t); this.removeCoord(d.playerSpawns, t);
-        this.removeCoord(d.exit, t); this.removeCoord(d.traps, t);
-        d.enemies = d.enemies.filter((e) => !same(e.pos, t));
-        d.captives = d.captives.filter((c) => !same(c.pos, t));
-        d.gates = d.gates.filter((g) => !same(g.pos, t));
-        d.levers = d.levers.filter((l) => !same(l.pos, t));
-        return;
-      }
+      case "erase": return void this.eraseAt(t);
     }
   }
 
@@ -382,6 +650,7 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private resize(cols: number, rows: number): void {
+    this.pushHistory(); // a shrink drops off-board entities — make that recoverable (it was silent data loss)
     this.draft.cols = Math.max(1, Math.min(20, cols || 1));
     this.draft.rows = Math.max(1, Math.min(20, rows || 1));
     // Drop anything now off the board.
@@ -415,6 +684,11 @@ export class EditorScene extends Phaser.Scene {
   // --- DOM palette (position:fixed, the debug-menu.ts idiom) ----------------
 
   private mountPanel(): void {
+    // Keyboard shortcuts (brush hotkeys · Esc · undo/redo) + the capture-phase form-edit hook (undo for
+    // inspector/objective/reward edits), on window so they survive an import remount (which unmount+
+    // remounts the panel) and work regardless of canvas focus. Paired with unmountPanel's off.
+    window.addEventListener("keydown", this.hKeyDown);
+    for (const type of ["input", "change", "focusout"]) window.addEventListener(type, this.hPanelEdit, true);
     // The slab tray (D98 placement): a full-width dock in normal flow BELOW the canvas, with a
     // resize grip. Growing the dock shrinks #app and Scale.FIT scales the board down (never
     // clips). NOTE: this pass relocates + resizes the chrome; the thumbnail-gallery restyle of
@@ -440,7 +714,8 @@ export class EditorScene extends Phaser.Scene {
     title.textContent = "Level Editor — pick a brush, click tiles";
     Object.assign(title.style, { fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
     header.appendChild(title);
-    header.appendChild(this.hint("drag to pan · scroll to zoom · Recenter resets the view"));
+    header.appendChild(this.hint("drag paints · shift-drag pans · right-click erases · scroll zooms · Recenter resets"));
+    header.appendChild(this.hint("ctrl-click select · alt-click pick · esc cancel · ctrl+z undo · keys: W/L/R G/V/T N/C P/X S/E"));
     // Live tile-coordinate readout (M-D) — structural work needs precise alignment of cells/doorways.
     const coord = document.createElement("div");
     coord.dataset.role = "coord";
@@ -476,6 +751,19 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(recenter.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
     recenter.onclick = () => this.boardCam.recenter();
     tabBar.appendChild(recenter);
+    // Undo / redo buttons — the clickable twin of Ctrl+Z / Ctrl+Shift+Z (a whole stroke is one step).
+    const histBtn = (label: string, role: string, run: () => void): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.dataset.role = role;
+      Object.assign(b.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
+      b.onclick = () => run();
+      return b;
+    };
+    this.undoBtn = histBtn("↶ Undo", "undo", () => this.undo());
+    this.redoBtn = histBtn("↷ Redo", "redo", () => this.redo());
+    tabBar.append(this.undoBtn, this.redoBtn);
+    this.refreshHistoryButtons();
     // "Details" toggle — opens/closes the side drawer (unit list + inspector). Board stays full-size.
     const details = document.createElement("button");
     details.textContent = "⋯ Details";
@@ -531,7 +819,7 @@ export class EditorScene extends Phaser.Scene {
     btn.textContent = b;
     btn.dataset.brush = b;
     Object.assign(btn.style, { margin: "2px", cursor: "pointer", textTransform: "capitalize" } as CSSStyleDeclaration);
-    btn.onclick = () => { this.brush = b; this.cancelShape(); this.highlightBrush(); };
+    btn.onclick = () => this.setBrush(b);
     this.brushButtons.push(btn);
     return btn;
   }
@@ -567,11 +855,9 @@ export class EditorScene extends Phaser.Scene {
     }
     card.title = opts.label;
     card.onclick = () => {
-      this.brush = opts.brush;
       if (opts.template) this.enemyTemplate = opts.template;
       if (opts.release) this.captiveRelease = opts.release;
-      this.cancelShape();
-      this.highlightBrush();
+      this.setBrush(opts.brush);
     };
     this.paletteCards.push({ el: card, brush: opts.brush, template: opts.template, release: opts.release });
     return card;
@@ -766,9 +1052,13 @@ export class EditorScene extends Phaser.Scene {
     const size = document.createElement("div");
     size.style.margin = "4px 0";
     size.append("size ");
-    size.appendChild(this.numInput(this.draft.cols, (n) => this.resize(n, this.draft.rows)));
+    const colsIn = this.numInput(this.draft.cols, (n) => this.resize(n, this.draft.rows));
+    colsIn.dataset.role = "cols";
+    size.appendChild(colsIn);
     size.append(" × ");
-    size.appendChild(this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n)));
+    const rowsIn = this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n));
+    rowsIn.dataset.role = "rows";
+    size.appendChild(rowsIn);
     d.appendChild(size);
     this.paletteStrips.Terrain = this.cardStrip([]);
     d.appendChild(this.paletteStrips.Terrain);
@@ -821,7 +1111,7 @@ export class EditorScene extends Phaser.Scene {
     add.onclick = () => this.addObjective();
     const derive = document.createElement("button");
     derive.textContent = "Derive from board"; derive.dataset.role = "derive-objectives"; derive.style.cursor = "pointer"; derive.style.marginLeft = "4px";
-    derive.onclick = () => { this.draft.objectives = standardObjectives(this.draft.exit, this.draft.captives.length > 0); this.afterObjectiveEdit(); };
+    derive.onclick = () => { this.pushHistory(); this.draft.objectives = standardObjectives(this.draft.exit, this.draft.captives.length > 0); this.afterObjectiveEdit(); };
     objHead.append(add, derive);
     d.appendChild(objHead);
 
@@ -837,6 +1127,7 @@ export class EditorScene extends Phaser.Scene {
 
   /** Append a fresh eliminate-all objective and re-render the list. */
   private addObjective(): void {
+    this.pushHistory();
     (this.draft.objectives ??= []).push({ id: this.uniqueObjectiveId(), kind: "eliminate-all", required: true, label: "New objective" });
     this.afterObjectiveEdit();
   }
@@ -896,6 +1187,7 @@ export class EditorScene extends Phaser.Scene {
     rm.textContent = "✕"; rm.title = "remove objective"; rm.dataset.role = "remove-objective";
     Object.assign(rm.style, { marginLeft: "auto", cursor: "pointer" } as CSSStyleDeclaration);
     rm.onclick = () => {
+      this.pushHistory();
       this.draft.objectives!.splice(i, 1);
       if (!this.draft.objectives!.length) delete this.draft.objectives;
       this.afterObjectiveEdit();
@@ -1052,6 +1344,7 @@ export class EditorScene extends Phaser.Scene {
       }
       return;
     }
+    this.pushHistory(); // an import replaces the whole draft — make it undoable (the stack survives the remount)
     this.draft = next;
     this.selection = null;
     this.cancelShape();
@@ -1316,6 +1609,8 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private unmountPanel(): void {
+    window.removeEventListener("keydown", this.hKeyDown);
+    for (const type of ["input", "change", "focusout"]) window.removeEventListener(type, this.hPanelEdit, true);
     this.dock?.remove();
     this.dock = undefined;
     this.sideDrawer?.remove();

@@ -934,7 +934,60 @@ export class EditorScene extends Phaser.Scene {
     header.appendChild(this.optionsRow());
     panel.appendChild(header);
 
-    // Tab bar + the persistent cross-cutting Erase tool and the view-reset control.
+    // --- Utility band (D103 grouping pass): a row ABOVE the navigation tabs holding the two kinds of
+    // control that are NOT category navigation, so they stop reading as "more tabs". Cross-cutting brush
+    // tools (Select/Erase — they work in any category) sit on the left; fire-once view/history/panel
+    // actions (Recenter · Undo · Redo · Details) push to the right. A hairline rule under the band sets it
+    // apart from the full-width tab strip below (which the owner wanted on its own line — it's the widest).
+    const utilityRow = document.createElement("div");
+    Object.assign(utilityRow.style, {
+      display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap",
+      gap: "6px", margin: "0 0 7px", paddingBottom: "7px", borderBottom: `1px solid ${ED.cardBorder}`,
+    } as CSSStyleDeclaration);
+
+    // Left cluster — the cross-cutting tools. A small muted label names the group so it reads as "tools",
+    // not tabs: Select picks/edits any placed object, Erase removes whatever's on a tile.
+    const tools = document.createElement("div");
+    Object.assign(tools.style, { display: "flex", alignItems: "center", gap: "2px" } as CSSStyleDeclaration);
+    const toolsLabel = document.createElement("span");
+    toolsLabel.textContent = "tools";
+    Object.assign(toolsLabel.style, { color: ED.muted, fontSize: "11px", marginRight: "5px" } as CSSStyleDeclaration);
+    tools.append(toolsLabel, this.brushButton("select"), this.brushButton("erase"));
+
+    // Right cluster — view + history + the Details panel toggle. None of these are brushes (they never
+    // change what a click paints), so they live apart from the tools, on the far edge of the band.
+    const actions = document.createElement("div");
+    Object.assign(actions.style, { display: "flex", alignItems: "center", gap: "2px" } as CSSStyleDeclaration);
+    const recenter = document.createElement("button");
+    recenter.textContent = "⟳ Recenter";
+    recenter.dataset.role = "recenter";
+    Object.assign(recenter.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
+    recenter.onclick = () => this.boardCam.recenter();
+    // Undo / redo buttons — the clickable twin of Ctrl+Z / Ctrl+Shift+Z (a whole stroke is one step).
+    const histBtn = (label: string, role: string, run: () => void): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.dataset.role = role;
+      Object.assign(b.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
+      b.onclick = () => run();
+      return b;
+    };
+    this.undoBtn = histBtn("↶ Undo", "undo", () => this.undo());
+    this.redoBtn = histBtn("↷ Redo", "redo", () => this.redo());
+    // "Details" toggle — opens/closes the side drawer (unit list + inspector). Board stays full-size.
+    const details = document.createElement("button");
+    details.textContent = "⋯ Details";
+    details.dataset.role = "details-toggle";
+    Object.assign(details.style, { margin: "2px", marginLeft: "8px", cursor: "pointer", color: ED.ember } as CSSStyleDeclaration);
+    details.onclick = () => this.toggleDrawer();
+    actions.append(recenter, this.undoBtn, this.redoBtn, details);
+    this.refreshHistoryButtons();
+
+    utilityRow.append(tools, actions);
+    panel.appendChild(utilityRow);
+
+    // --- Navigation (row 2): the category tabs on their own full-width line, directly above the palette
+    // drawer they switch. The "what am I authoring" layer — Terrain/Objects/Units/Events/Scenario.
     const tabBar = document.createElement("div");
     tabBar.style.margin = "0 0 6px";
     this.tabButtons = [];
@@ -947,36 +1000,6 @@ export class EditorScene extends Phaser.Scene {
       this.tabButtons.push(t);
       tabBar.appendChild(t);
     }
-    tabBar.append(" ");
-    // Cross-cutting tools, reachable from any drawer: Select picks/edits any placed object, Erase removes.
-    tabBar.appendChild(this.brushButton("select"));
-    tabBar.appendChild(this.brushButton("erase"));
-    const recenter = document.createElement("button");
-    recenter.textContent = "Recenter";
-    recenter.dataset.role = "recenter";
-    Object.assign(recenter.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
-    recenter.onclick = () => this.boardCam.recenter();
-    tabBar.appendChild(recenter);
-    // Undo / redo buttons — the clickable twin of Ctrl+Z / Ctrl+Shift+Z (a whole stroke is one step).
-    const histBtn = (label: string, role: string, run: () => void): HTMLButtonElement => {
-      const b = document.createElement("button");
-      b.textContent = label;
-      b.dataset.role = role;
-      Object.assign(b.style, { margin: "2px", cursor: "pointer" } as CSSStyleDeclaration);
-      b.onclick = () => run();
-      return b;
-    };
-    this.undoBtn = histBtn("↶ Undo", "undo", () => this.undo());
-    this.redoBtn = histBtn("↷ Redo", "redo", () => this.redo());
-    tabBar.append(this.undoBtn, this.redoBtn);
-    this.refreshHistoryButtons();
-    // "Details" toggle — opens/closes the side drawer (unit list + inspector). Board stays full-size.
-    const details = document.createElement("button");
-    details.textContent = "⋯ Details";
-    details.dataset.role = "details-toggle";
-    Object.assign(details.style, { margin: "2px", marginLeft: "8px", cursor: "pointer", color: ED.ember } as CSSStyleDeclaration);
-    details.onclick = () => this.toggleDrawer();
-    tabBar.appendChild(details);
     panel.appendChild(tabBar);
 
     // Drawers — one per tab, shown/hidden by showTab.

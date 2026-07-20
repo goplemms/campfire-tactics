@@ -6,6 +6,7 @@ import { clearLayer } from "../ui";
 import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
 import { validateLevel } from "../../content/levels";
 import { buildPlaytest, playtestPartyNames, DEFAULT_PLAYTEST_PARTY } from "../playtest";
+import { loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
 import type { RunHandoff } from "./OverworldScene";
 import {
   blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec, standardObjectives,
@@ -132,6 +133,16 @@ function rectThumb(): string {
   return `<svg width="30" height="30" viewBox="0 0 30 30"><rect x="6" y="8" width="18" height="14" fill="none" stroke="#c8a24a" stroke-width="2.5"/></svg>`;
 }
 
+/** A coarse "saved N ago" label for the library list (ms since a save → just now / Nm / Nh / Nd). */
+function relTime(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 60_000) return "just now";
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 export class EditorScene extends Phaser.Scene {
   private view!: CombatView;
   private boardCam!: BoardCamera;
@@ -142,6 +153,8 @@ export class EditorScene extends Phaser.Scene {
   private markers: Phaser.GameObjects.GameObject[] = [];
 
   private draft: EditorDraft = blankDraft();
+  /** One-shot: restore the autosaved working draft on the FIRST boot only, not on a playtest return. */
+  private restored = false;
   /** The squad the next soft-play (Playtest) will field — chosen in the Scenario tab's picker. */
   private playtestParty: string = DEFAULT_PLAYTEST_PARTY;
   private brush: Brush = "wall";
@@ -198,6 +211,8 @@ export class EditorScene extends Phaser.Scene {
   private inspectorEl?: HTMLDivElement;
   private unitListEl?: HTMLDivElement;
   private objectivesEl?: HTMLDivElement; // the M-C objectives editor list
+  private libraryEl?: HTMLDivElement; // the saved-maps list (D-editor local persistence)
+  private libNameInput?: HTMLInputElement; // the explicit "save as" name (defaults to the draft id)
   private brushButtons: HTMLButtonElement[] = [];
   /** Slab-tray placeable cards (D109 slice 2) — a thumbnail per brush; enemy templates are unrolled
    *  one card each. `template`/`release` ride the click so a card sets the brush AND its variant. */
@@ -220,6 +235,14 @@ export class EditorScene extends Phaser.Scene {
     // Editor-only page layout (D98): top-align the canvas + hide the guild run-bar + swap #app
     // off grid-centring so Phaser's Scale.FIT owns sizing. Paired with the editorScale in config.ts.
     document.body.classList.add("editor-mode");
+    // Autosave restore (D-editor): on the FIRST boot only, pick up the last working draft from
+    // localStorage so a reload never loses in-progress work. Guarded by `restored` so returning
+    // from a playtest (which re-runs create on the same instance) keeps the in-memory draft.
+    if (!this.restored) {
+      this.restored = true;
+      const working = loadWorking();
+      if (working) this.draft = working;
+    }
     this.cameras.main.setBackgroundColor(COLOR.bg);
     this.view = new CombatView(this);
     this.view.boardScale = BOARD_SCALE;
@@ -1346,6 +1369,11 @@ export class EditorScene extends Phaser.Scene {
     play.append(squad, playBtn);
     d.appendChild(play);
 
+    // Local maps (D-editor): browser-local persistence. The working draft autosaves + restores on
+    // reload; here you Save the current map into a named library and Load/Delete previous attempts —
+    // so test maps survive across sessions. All browser-local (Download .json commits a keeper).
+    this.buildLibrarySection(d);
+
     const btns = document.createElement("div");
     const copy = document.createElement("button"); copy.textContent = "Copy"; copy.style.cursor = "pointer";
     copy.onclick = () => navigator.clipboard?.writeText(this.exportJson());
@@ -1358,6 +1386,114 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(pre.style, { margin: "6px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "220px", overflow: "auto" } as CSSStyleDeclaration);
     d.appendChild(pre);
     this.exportPre = pre;
+  }
+
+  // --- Local map library (D-editor persistence) -----------------------------
+
+  /** Build the "local maps" block — a Save/New header over the live saved-maps list. */
+  private buildLibrarySection(d: HTMLDivElement): void {
+    const wrap = document.createElement("div");
+    wrap.style.margin = "6px 0";
+    wrap.dataset.role = "library";
+
+    const head = document.createElement("div");
+    head.style.marginBottom = "3px";
+    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" } as CSSStyleDeclaration);
+    head.append("local maps");
+    // An explicit, visible "save as" name (defaults to the draft id) so two attempts left at the
+    // default id can't silently clobber each other — type a fresh name to keep a separate copy.
+    const nameInput = document.createElement("input");
+    nameInput.type = "text"; nameInput.value = this.draft.id || "untitled"; nameInput.dataset.role = "lib-name";
+    Object.assign(nameInput.style, { width: "110px", font: "inherit" } as CSSStyleDeclaration);
+    nameInput.title = "The name to save under (defaults to the map id) — change it to keep a separate attempt";
+    this.libNameInput = nameInput;
+    head.appendChild(nameInput);
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = "＋ Save"; saveBtn.style.cursor = "pointer"; saveBtn.dataset.role = "lib-save";
+    saveBtn.title = "Save the current map into the browser library under the name shown";
+    saveBtn.onclick = () => this.saveCurrentToLibrary();
+    const newBtn = document.createElement("button");
+    newBtn.textContent = "New"; newBtn.style.cursor = "pointer"; newBtn.style.marginLeft = "6px"; newBtn.dataset.role = "lib-new";
+    newBtn.title = "Start a fresh blank map (undoable)";
+    newBtn.onclick = () => this.newBlankMap();
+    head.append(saveBtn, newBtn);
+    wrap.appendChild(head);
+
+    const list = document.createElement("div");
+    list.dataset.role = "lib-list";
+    this.libraryEl = list;
+    wrap.appendChild(list);
+    d.appendChild(wrap);
+    this.renderLibrary();
+  }
+
+  /** Render the saved-maps list — a Load/Delete row per stored map, newest first. */
+  private renderLibrary(): void {
+    const host = this.libraryEl;
+    if (!host) return;
+    host.innerHTML = "";
+    const maps = loadLibrary();
+    if (!maps.length) {
+      host.textContent = "· none saved yet — Save keeps a map here across sessions";
+      host.style.opacity = "0.55";
+      return;
+    }
+    host.style.opacity = "1";
+    const now = Date.now();
+    for (const m of maps) {
+      const row = document.createElement("div");
+      row.dataset.libRow = m.name;
+      Object.assign(row.style, { display: "flex", alignItems: "center", gap: "5px", padding: "2px 4px" } as CSSStyleDeclaration);
+      const label = document.createElement("span");
+      label.textContent = `${m.name} · ${relTime(now - m.savedAt)}`;
+      Object.assign(label.style, { flex: "1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as CSSStyleDeclaration);
+      const load = document.createElement("button");
+      load.textContent = "Load"; load.style.cursor = "pointer"; load.dataset.role = "lib-load";
+      load.onclick = () => this.loadMapFromLibrary(m);
+      const del = document.createElement("button");
+      del.textContent = "✕"; del.style.cursor = "pointer"; del.title = "Delete this saved map"; del.dataset.role = "lib-del";
+      del.onclick = () => { deleteFromLibrary(m.name); this.renderLibrary(); };
+      row.append(label, load, del);
+      host.appendChild(row);
+    }
+  }
+
+  /** Save the current draft into the browser library under the name field — overwrites a same-name entry. */
+  private saveCurrentToLibrary(): void {
+    const name = (this.libNameInput?.value ?? this.draft.id).trim() || this.draft.id || "untitled";
+    const saved = saveToLibrary(name, this.draft, Date.now());
+    this.renderLibrary();
+    if (!this.validLine) return;
+    if (saved) {
+      this.validLine.textContent = `✓ saved "${saved.name}" to the browser library`;
+      this.validLine.style.color = "#9ff0bf";
+    } else {
+      // The write was refused (quota / denied) — don't claim a save that didn't happen.
+      this.validLine.textContent = "⚠ couldn't save — browser storage is full or blocked";
+      this.validLine.style.color = "#f0a0a0";
+    }
+  }
+
+  /** Replace the current draft with a saved map (undoable). Mirrors the import swap + remount. */
+  private loadMapFromLibrary(m: SavedMap): void {
+    this.pushHistory(); // adopting a saved map replaces the whole draft — make it undoable
+    this.draft = m.draft; // a fresh object from loadLibrary's parse (not aliased to storage)
+    this.selection = null;
+    this.cancelShape();
+    this.renderBoard();
+    this.unmountPanel();
+    this.mountPanel();
+  }
+
+  /** Start a fresh blank map (undoable) — the escape hatch from an autosaved-restored draft. */
+  private newBlankMap(): void {
+    this.pushHistory();
+    this.draft = blankDraft();
+    this.selection = null;
+    this.cancelShape();
+    this.renderBoard();
+    this.unmountPanel();
+    this.mountPanel();
   }
 
   /** Render the Units-drawer list — a clickable row per placed enemy/captive (the occlusion fix). */
@@ -1609,6 +1745,10 @@ export class EditorScene extends Phaser.Scene {
   }
 
   private updateExport(): void {
+    // Autosave (D-editor): every draft mutation funnels through here (afterBoardEdit + all form
+    // callbacks call it), so this is the one chokepoint to persist the working draft. Raw + lossless;
+    // a full/denied localStorage degrades to no-op inside saveWorking.
+    saveWorking(this.draft);
     if (this.exportPre) this.exportPre.textContent = this.exportJson();
     if (this.validLine) {
       const issues = validateLevel(draftToEncounter(this.draft));
@@ -1688,6 +1828,8 @@ export class EditorScene extends Phaser.Scene {
     this.inspectorEl = undefined;
     this.unitListEl = undefined;
     this.objectivesEl = undefined;
+    this.libraryEl = undefined;
+    this.libNameInput = undefined;
     this.brushButtons = [];
     this.paletteCards = [];
     this.paletteStrips = {};

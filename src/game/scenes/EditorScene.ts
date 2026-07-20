@@ -63,6 +63,13 @@ const HISTORY_MAX = 60;
 
 const BOARD_SCALE = 1.3;
 
+/**
+ * The slab tray's starting height in px (D98 dock). Sized so the palette cards + tab bar + status
+ * line read comfortably on boot instead of the cramped strip the first pass shipped; the grip still
+ * drags it anywhere in [120, innerHeight-160].
+ */
+const DOCK_HEIGHT = 320;
+
 /** Every enemy template the palette offers (authored archetypes first, then the procedural pool). */
 const ENEMY_IDS = [...Object.keys(BANDIT_TEMPLATES), ...ENEMY_TEMPLATES.map((t) => t.id)];
 
@@ -757,7 +764,7 @@ export class EditorScene extends Phaser.Scene {
     // the palette (and the bar/drawer split) is the next slice — the controls below are unchanged.
     const dock = document.createElement("div");
     Object.assign(dock.style, {
-      flex: "0 0 auto", height: "210px", display: "flex", flexDirection: "column",
+      flex: "0 0 auto", height: `${DOCK_HEIGHT}px`, display: "flex", flexDirection: "column",
       background: "#16110d", borderTop: "1px solid #5a4630", boxSizing: "border-box",
     } as CSSStyleDeclaration);
     dock.appendChild(this.buildDockGrip());
@@ -1803,7 +1810,7 @@ export class EditorScene extends Phaser.Scene {
     grip.addEventListener("pointerdown", (e) => {
       dragging = true;
       startY = e.clientY;
-      startH = this.dock?.offsetHeight ?? 210;
+      startH = this.dock?.offsetHeight ?? DOCK_HEIGHT;
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
       e.preventDefault();

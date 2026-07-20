@@ -736,8 +736,10 @@ States: `todo` → `in-progress` → `testable` → `done`
   `localStorage` on every edit and **restores on reload** (a `restored` flag skips re-restoring on a
   playtest return), plus a **named library** in the Scenario tab (Save/Load/Delete · New blank) so previous
   attempts survive across sessions. Raw-draft storage (lossless, incl. in-progress), `sanitizeDraft` fail-
-  safe so a corrupt/stale blob boots blank, Load is undoable. `game/editor-storage.ts`; guards
-  `editor-storage.test` (+6) + `test:e2e:editor:persist`. Browser-local — Download .json still commits keepers.
+  safe so a corrupt/stale blob boots blank, Load is undoable. A `memento:challenge` pass caught + fixed a
+  boot-freeze on a parseable-garbage blob (objectives/reward now deep-sanitized) and same-id save clobber
+  (explicit "save as" name). `game/editor-storage.ts`; guards `editor-storage.test` (+9) +
+  `test:e2e:editor:persist` (18). Browser-local — Download .json still commits keepers.
 - **Deferred / next (see the handoff doc):** rename the placeholder captives into named characters; the
   **flank / repositioning session** (the Intel deploy-side that makes extraction viable — red-teamed,
   kept-not-replaced, C5-lite); the **map-creation expansion** (bigger/richer boards + more of the

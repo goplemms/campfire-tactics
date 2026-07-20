@@ -212,6 +212,7 @@ export class EditorScene extends Phaser.Scene {
   private unitListEl?: HTMLDivElement;
   private objectivesEl?: HTMLDivElement; // the M-C objectives editor list
   private libraryEl?: HTMLDivElement; // the saved-maps list (D-editor local persistence)
+  private libNameInput?: HTMLInputElement; // the explicit "save as" name (defaults to the draft id)
   private brushButtons: HTMLButtonElement[] = [];
   /** Slab-tray placeable cards (D109 slice 2) — a thumbnail per brush; enemy templates are unrolled
    *  one card each. `template`/`release` ride the click so a card sets the brush AND its variant. */
@@ -1397,10 +1398,19 @@ export class EditorScene extends Phaser.Scene {
 
     const head = document.createElement("div");
     head.style.marginBottom = "3px";
-    head.append("local maps ");
+    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" } as CSSStyleDeclaration);
+    head.append("local maps");
+    // An explicit, visible "save as" name (defaults to the draft id) so two attempts left at the
+    // default id can't silently clobber each other — type a fresh name to keep a separate copy.
+    const nameInput = document.createElement("input");
+    nameInput.type = "text"; nameInput.value = this.draft.id || "untitled"; nameInput.dataset.role = "lib-name";
+    Object.assign(nameInput.style, { width: "110px", font: "inherit" } as CSSStyleDeclaration);
+    nameInput.title = "The name to save under (defaults to the map id) — change it to keep a separate attempt";
+    this.libNameInput = nameInput;
+    head.appendChild(nameInput);
     const saveBtn = document.createElement("button");
     saveBtn.textContent = "＋ Save"; saveBtn.style.cursor = "pointer"; saveBtn.dataset.role = "lib-save";
-    saveBtn.title = "Save the current map into the browser library (keyed by its id)";
+    saveBtn.title = "Save the current map into the browser library under the name shown";
     saveBtn.onclick = () => this.saveCurrentToLibrary();
     const newBtn = document.createElement("button");
     newBtn.textContent = "New"; newBtn.style.cursor = "pointer"; newBtn.style.marginLeft = "6px"; newBtn.dataset.role = "lib-new";
@@ -1448,9 +1458,10 @@ export class EditorScene extends Phaser.Scene {
     }
   }
 
-  /** Save the current draft into the browser library (under its id) — overwrites a same-id entry. */
+  /** Save the current draft into the browser library under the name field — overwrites a same-name entry. */
   private saveCurrentToLibrary(): void {
-    const saved = saveToLibrary(this.draft.id, this.draft, Date.now());
+    const name = (this.libNameInput?.value ?? this.draft.id).trim() || this.draft.id || "untitled";
+    const saved = saveToLibrary(name, this.draft, Date.now());
     this.renderLibrary();
     if (!this.validLine) return;
     if (saved) {
@@ -1818,6 +1829,7 @@ export class EditorScene extends Phaser.Scene {
     this.unitListEl = undefined;
     this.objectivesEl = undefined;
     this.libraryEl = undefined;
+    this.libNameInput = undefined;
     this.brushButtons = [];
     this.paletteCards = [];
     this.paletteStrips = {};

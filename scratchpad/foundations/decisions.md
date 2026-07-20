@@ -4546,17 +4546,29 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   D109 "sanitize persisted prefs" discipline, generalized). All reads/writes are wrapped, so a
   denied/absent/**full** `localStorage` degrades to "no persistence" — and a quota-refused **Save** now
   reports "couldn't save — storage full/blocked" instead of a false ✓ (a challenge fix).
-- **Challenge pass (before commit).** Ran the reload round-trip + corruption in real Chrome (all survived):
-  autosave restores across a genuine page reload; the library survives a reload (Save→reload→Load→Delete);
-  Load is undo/redo-able; a corrupt `working`/`maps` blob boots to a blank editor. Two gaps found + fixed:
-  the **quota-refused-Save lie** (now truthful), and confirmed the **playtest-return doesn't re-restore**
-  (the `restored` flag). **Known/accepted:** Save is keyed by `id`, so distinct attempts want distinct ids
-  (a shared default `id` overwrites — rename via the id field; prompt-to-name is a future nicety).
-- **Guards:** tsc · build · vitest **1221** (+6 — `editor-storage.test` pins `sanitizeDraft`) ·
-  **`test:e2e:editor:persist`** (new — 13 assertions across a real reload) · editor (97) · playtest (19),
-  all green + wired into CI. New code is `game/editor-storage.ts` + editor wiring; `core/` untouched.
-  **Reuses:** **D98/D109** (editor + the prefs-sanitize discipline), **D111** (the undo/import swap-remount).
-  **Superseded by:** —
+- **Challenge pass (`memento:challenge`, owner-requested before the PR).** Hunted the untested cases and
+  *ran* them — two real defects fell out, both fixed + now guarded:
+  - **A parseable-but-garbage `working` blob froze the editor.** The first corrupt-store check only fed
+    *unparseable* JSON (→ `null` → blank). A **parseable** blob with malformed `objectives`
+    (`[42, null, {…}]`) survived `sanitizeDraft` (which trusted the array wholesale) and then crashed
+    `buildObjectivesEditor`, which dereferences `o.kind`/`o.label` **unguarded** — a boot freeze, exactly
+    what sanitize exists to prevent. **Fix:** `sanitizeDraft` now deep-sanitizes `objectives` (drop
+    non-object/kind-less entries, coerce `id`/`label`/`required`, filter a bad `span`) and `reward`
+    (finite gold/xp + materials array). Guarded by 3 unit cases + an e2e that boots the garbage blob and
+    opens Scenario clean.
+  - **Same-`id` saves silently clobbered — data loss of the very "previous attempts" the feature promises.**
+    Two maps left at the default `id` overwrote to one library entry. **Fix:** Save now takes an
+    **explicit, visible "save as" name** (defaults to the id) — distinct names keep separate attempts, a
+    same name updates (the file-save convention), and the name is on-screen so it's never a silent loss.
+  - Also fixed earlier in the round: a **quota-refused Save** now reports the failure instead of a false ✓.
+    Confirmed surviving: autosave restore across a real reload, the library reload round-trip, undo/redo of
+    a Load, and the **playtest return not re-restoring** (the `restored` flag).
+- **Guards:** tsc · build · vitest **1224** (+9 — `editor-storage.test` pins `sanitizeDraft` incl. the
+  malformed-objective/reward drops) · **`test:e2e:editor:persist`** (18 assertions: reload autosave, the
+  library round-trip, the named distinct-attempts contract, and both corrupt + parseable-garbage boots) ·
+  editor (97) · playtest (19), all green + wired into CI. New code is `game/editor-storage.ts` + editor
+  wiring; `core/` untouched. **Reuses:** **D98/D109** (editor + the prefs-sanitize discipline), **D111**
+  (the undo/import swap-remount). **Superseded by:** —
 
 ---
 

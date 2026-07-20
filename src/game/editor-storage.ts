@@ -18,7 +18,7 @@
  */
 
 import { blankDraft, type EditorDraft, type DraftEnemy, type DraftCaptive } from "./editor-draft";
-import type { GridCoord, AuthoredGate, AuthoredLever } from "../core";
+import type { GridCoord, AuthoredGate, AuthoredLever, ObjectiveSpec, ObjectiveKind, EncounterReward } from "../core";
 
 const WORKING_KEY = "campfire-editor-working";
 const LIBRARY_KEY = "campfire-editor-maps";
@@ -43,6 +43,51 @@ function writeLS(key: string, val: string): boolean {
 
 const clampInt = (v: unknown, lo: number, hi: number, dflt: number): number =>
   Number.isInteger(v) ? Math.max(lo, Math.min(hi, v as number)) : dflt;
+
+const isCoord = (c: unknown): c is GridCoord => {
+  const g = c as GridCoord | undefined;
+  return !!g && typeof g === "object" && Number.isInteger(g.col) && Number.isInteger(g.row);
+};
+
+/**
+ * Sanitize a stored `objectives` array. The objectives editor + `draftToEncounter` dereference an
+ * objective's `kind`/`label`/`required` **unguarded** — so a `null`, a number, or a `{}` in the array
+ * (a tampered / version-drifted blob) would crash the panel build (a freeze). Drop any non-object /
+ * kind-less entry and coerce the bare fields to safe types; kind-specific fields (`speed`/`driver`/
+ * `escort`) are read defensively by the editor, and a bad `span` is filtered to a coord list.
+ */
+function sanitizeObjectives(v: unknown): ObjectiveSpec[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: ObjectiveSpec[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") continue;
+    const o = raw as Record<string, unknown>;
+    if (typeof o.kind !== "string") continue;
+    const obj: ObjectiveSpec = {
+      id: typeof o.id === "string" && o.id ? o.id : `obj-${out.length + 1}`,
+      kind: o.kind as ObjectiveKind,
+      required: o.required !== false, // default to required unless explicitly false
+      label: typeof o.label === "string" ? o.label : "",
+    };
+    if (Number.isFinite(o.speed)) obj.speed = o.speed as number;
+    if (Array.isArray(o.span)) obj.span = (o.span as unknown[]).filter(isCoord).map((c) => ({ col: c.col, row: c.row }));
+    if (o.driver && typeof o.driver === "object") obj.driver = o.driver as ObjectiveSpec["driver"];
+    if (o.escort && typeof o.escort === "object") obj.escort = o.escort as ObjectiveSpec["escort"];
+    out.push(obj);
+  }
+  return out.length ? out : undefined;
+}
+
+/** Sanitize a stored `reward` to finite gold/xp + a materials array (garbage numbers → the tidy default). */
+function sanitizeReward(v: unknown): EncounterReward | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const r = v as Record<string, unknown>;
+  return {
+    gold: Number.isFinite(r.gold) ? (r.gold as number) : 50,
+    xp: Number.isFinite(r.xp) ? (r.xp as number) : 40,
+    materials: Array.isArray(r.materials) ? (r.materials as EncounterReward["materials"]) : [],
+  };
+}
 
 /**
  * Coerce an arbitrary parsed blob into a **known-good** {@link EditorDraft}, or `null` if it isn't
@@ -82,8 +127,10 @@ export function sanitizeDraft(raw: unknown): EditorDraft | null {
   out.levers = Array.isArray(r.levers)
     ? (r.levers as AuthoredLever[]).filter((l) => l && inB(l.pos) && Array.isArray(l.targets))
     : [];
-  if (Array.isArray(r.objectives)) out.objectives = r.objectives as EditorDraft["objectives"];
-  if (r.reward && typeof r.reward === "object") out.reward = r.reward as EditorDraft["reward"];
+  const objectives = sanitizeObjectives(r.objectives);
+  if (objectives) out.objectives = objectives;
+  const reward = sanitizeReward(r.reward);
+  if (reward) out.reward = reward;
   if (r._passthrough && typeof r._passthrough === "object") out._passthrough = r._passthrough as EditorDraft["_passthrough"];
   return out;
 }

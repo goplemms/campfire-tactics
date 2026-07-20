@@ -65,8 +65,8 @@ async function main() {
         console.log("• the named library survives a reload (Save → reload → Load → Delete)");
         await openScenario(g);
         await sleep(80);
-        // Name it, then Save into the library.
-        await g.eval(`window.game.scene.getScene("EditorScene").draft.id = "attempt-a"; window.game.scene.getScene("EditorScene").updateExport();`);
+        // Name it (the explicit save-as field drives the name now), then Save into the library.
+        await g.eval(`(() => { const s = window.game.scene.getScene("EditorScene"); s.draft.id = "attempt-a"; s.updateExport(); document.querySelector('input[data-role="lib-name"]').value = "attempt-a"; })()`);
         await g.eval(`document.querySelector('button[data-role="lib-save"]').click()`);
         await sleep(120);
         st = await g.eval(STATE);
@@ -107,12 +107,47 @@ async function main() {
         await sleep(120);
         check("Delete removed the map from the library", (await g.eval(STATE)).libRows === 0);
 
-        // ── Corrupt-store resilience: a garbage working blob must not wedge the editor ──
-        console.log("• a corrupt localStorage blob degrades to a blank draft (no freeze)");
+        // ── Named distinct attempts are kept; same name updates (the id-collision fix) ──
+        console.log("• distinct save names keep separate attempts; a same-name save updates");
+        await g.eval(`try{localStorage.clear()}catch{}`);
+        await boot(g);
+        await g.eval(setBrush("wall"));
+        await clickTile(2, 2);
+        await openScenario(g); await sleep(60);
+        const saveAs = async (name) => {
+          await g.eval(`(() => { const el = document.querySelector('input[data-role="lib-name"]'); el.value = ${JSON.stringify(name)}; })()`);
+          await g.eval(`document.querySelector('button[data-role="lib-save"]').click()`);
+          await sleep(120);
+        };
+        await saveAs("attempt-one");
+        await clickTile(3, 2); // change the map a bit
+        await openScenario(g); await sleep(40);
+        await saveAs("attempt-two");
+        check("two DIFFERENT names keep both attempts", (await g.eval(STATE)).libRows === 2);
+        await saveAs("attempt-two"); // same name again → update, not a dupe
+        check("re-saving the SAME name updates (no duplicate)", (await g.eval(STATE)).libRows === 2);
+
+        // ── Corrupt-store resilience: unparseable AND parseable-garbage blobs must not wedge the editor ──
+        console.log("• corrupt / garbage localStorage blobs degrade to a safe editor (no freeze)");
         await g.eval(`try { localStorage.setItem("campfire-editor-working", "{not valid json"); localStorage.setItem("campfire-editor-maps", "garbage"); } catch {}`);
         await boot(g);
         st = await g.eval(STATE);
-        check("a corrupt store falls back to a blank, active editor", st.active && st.walls === 0);
+        check("an unparseable store falls back to a blank, active editor", st.active && st.walls === 0);
+
+        // A PARSEABLE but structurally-garbage blob (bad objectives/reward) is the freeze the challenge
+        // caught — the objectives editor dereferences kind/label unguarded. Must boot + open Scenario clean.
+        await g.eval(`try { localStorage.setItem("campfire-editor-working", JSON.stringify({
+          id: "junk", name: "Junk", cols: 6, rows: 6, blocked: [{col:1,row:1}], playerSpawns: [{col:0,row:0}],
+          enemies: [{ templateId: "bandit-thug", pos: {col:3,row:3} }],
+          objectives: [42, null, { kind: "extraction", span: "not-an-array" }],
+          reward: { gold: "lots", xp: {} }, gates: [{ pos: {col:2,row:2} }], captives: "corrupt",
+        })); } catch {}`);
+        await boot(g);
+        st = await g.eval(STATE);
+        check("a parseable-garbage blob booted an active editor (no freeze)", st.active === true);
+        await openScenario(g); await sleep(150);
+        check("opening Scenario over garbage objectives did not freeze", (await g.eval(STATE)).active === true);
+        check("the malformed (openBy-less) gate was dropped by sanitize", (await g.eval(`window.game.scene.getScene("EditorScene").draft.gates.length`)) === 0);
 
         assertNoProblems(g.problems);
       } catch (err) {

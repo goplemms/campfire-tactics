@@ -66,4 +66,30 @@ describe("sanitizeDraft", () => {
     expect(out.enemies).toEqual([]);
     expect(out.captives).toEqual([]);
   });
+
+  it("drops malformed objectives that would crash the panel build (the challenge freeze)", () => {
+    // A tampered store: null / a number / a kind-less object among the objectives. The editor
+    // dereferences o.kind/o.label unguarded, so these must be dropped, not passed through.
+    const out = sanitizeDraft({
+      cols: 6, rows: 6,
+      objectives: [42, null, { label: "no kind" }, { kind: "eliminate-all", label: "ok", required: true }],
+    })!;
+    expect(out.objectives).toHaveLength(1);
+    expect(out.objectives![0].kind).toBe("eliminate-all");
+    expect(out.objectives![0].label).toBe("ok");
+  });
+
+  it("coerces objective fields + a bad span to safe types", () => {
+    const out = sanitizeDraft({ cols: 6, rows: 6, objectives: [{ kind: "extraction", span: "not-an-array" }] })!;
+    expect(out.objectives![0].span).toBeUndefined(); // bad span dropped, not left as a string
+    expect(typeof out.objectives![0].label).toBe("string"); // missing label → ""
+    expect(out.objectives![0].required).toBe(true); // missing → default required
+    // a non-array objectives value is dropped entirely
+    expect(sanitizeDraft({ cols: 6, rows: 6, objectives: "garbage" })!.objectives).toBeUndefined();
+  });
+
+  it("coerces a garbage reward to finite gold/xp + a materials array", () => {
+    const out = sanitizeDraft({ cols: 6, rows: 6, reward: { gold: "lots", xp: {} } })!;
+    expect(out.reward).toEqual({ gold: 50, xp: 40, materials: [] });
+  });
 });

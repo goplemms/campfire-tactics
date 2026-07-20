@@ -4522,6 +4522,44 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 
 ---
 
+## D113 — Editor **local persistence**: autosave the working map + a named library across sessions
+
+- **Status:** Decided + built (2026-07-20, branch `claude/level-editor-soft-play-7yuirj`). Owner ask —
+  "persist maps across editor sessions … having previous attempts to test the new editor on helps a bit".
+- **Why:** the editor's draft lived only in memory (a reload → `blankDraft`), so testing the editor meant
+  re-painting from scratch each session and previous attempts were gone. A browser editor **can't write
+  repo files** (D98), so the persistence layer is browser-local `localStorage` — beside, not replacing,
+  Download `.json` (which stays the path to commit a keeper into `content/levels/`).
+- **Decision — two stores, both browser-local, both fail-safe on load.** (1) **Working autosave**
+  (`campfire-editor-working`): the current draft is written on **every edit** — `updateExport()` is the one
+  chokepoint every board + form mutation already funnels through — and **restored on the FIRST boot only**
+  (an instance `restored` flag, so returning from a playtest keeps the in-memory draft rather than reloading
+  it). (2) **Named library** (`campfire-editor-maps`): `Save` (keyed by the draft's `id`, overwrite =
+  update), a `Load`/`Delete` row per saved map (newest-first, "saved …" hint), and a `New` blank escape
+  hatch — so several attempts survive to pick from. Both stored as the **raw `EditorDraft`** (lossless — it
+  *is* the editor's state, incl. in-progress/invalid drafts), Load/New are **undoable** (same swap-then-
+  remount as import). Chosen over storing the serialized `AuthoredEncounter` so an *incomplete* draft (no
+  spawns yet) round-trips too — the whole point of autosave is not to lose in-progress work.
+- **No store can wedge the editor.** `sanitizeDraft` coerces any parsed blob to a known-good draft (clamp
+  dims to 1..20, bounds-filter every coord, drop entities missing a template-id/in-bounds-pos, default
+  every field) or drops it — a tampered / truncated / version-drifted blob boots blank, never crashes (the
+  D109 "sanitize persisted prefs" discipline, generalized). All reads/writes are wrapped, so a
+  denied/absent/**full** `localStorage` degrades to "no persistence" — and a quota-refused **Save** now
+  reports "couldn't save — storage full/blocked" instead of a false ✓ (a challenge fix).
+- **Challenge pass (before commit).** Ran the reload round-trip + corruption in real Chrome (all survived):
+  autosave restores across a genuine page reload; the library survives a reload (Save→reload→Load→Delete);
+  Load is undo/redo-able; a corrupt `working`/`maps` blob boots to a blank editor. Two gaps found + fixed:
+  the **quota-refused-Save lie** (now truthful), and confirmed the **playtest-return doesn't re-restore**
+  (the `restored` flag). **Known/accepted:** Save is keyed by `id`, so distinct attempts want distinct ids
+  (a shared default `id` overwrites — rename via the id field; prompt-to-name is a future nicety).
+- **Guards:** tsc · build · vitest **1221** (+6 — `editor-storage.test` pins `sanitizeDraft`) ·
+  **`test:e2e:editor:persist`** (new — 13 assertions across a real reload) · editor (97) · playtest (19),
+  all green + wired into CI. New code is `game/editor-storage.ts` + editor wiring; `core/` untouched.
+  **Reuses:** **D98/D109** (editor + the prefs-sanitize discipline), **D111** (the undo/import swap-remount).
+  **Superseded by:** —
+
+---
+
 ## Roadmap — queued (not yet authored decisions)
 
 > Forward pointer so a fresh session knows what comes next. These are **not** decided

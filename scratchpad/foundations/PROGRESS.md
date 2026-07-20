@@ -732,6 +732,12 @@ States: `todo` → `in-progress` → `testable` → `done`
   loop. Generic `RunHandoff.returnTo` scene-key + a persistent "✎ Exit Playtest" button; a flexible
   **squad picker** (`game/playtest.ts` `PLAYTEST_PARTIES`, default the small standard trio) so a
   class-tailored board can be fielded with the right cast. Guard: `test:e2e:editor:playtest`.
+- **Editor local persistence (D113, 2026-07-20 — same branch):** the working map **autosaves** to
+  `localStorage` on every edit and **restores on reload** (a `restored` flag skips re-restoring on a
+  playtest return), plus a **named library** in the Scenario tab (Save/Load/Delete · New blank) so previous
+  attempts survive across sessions. Raw-draft storage (lossless, incl. in-progress), `sanitizeDraft` fail-
+  safe so a corrupt/stale blob boots blank, Load is undoable. `game/editor-storage.ts`; guards
+  `editor-storage.test` (+6) + `test:e2e:editor:persist`. Browser-local — Download .json still commits keepers.
 - **Deferred / next (see the handoff doc):** rename the placeholder captives into named characters; the
   **flank / repositioning session** (the Intel deploy-side that makes extraction viable — red-teamed,
   kept-not-replaced, C5-lite); the **map-creation expansion** (bigger/richer boards + more of the

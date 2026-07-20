@@ -336,11 +336,13 @@ export function bankerBorrow(run: RunState, amount: number): BankerBorrowResult 
  * the debt (auto-repaid from incoming run gold). Assumes a positive, sanitized amount (the caller
  * gates `amount <= 0`). Pure of the cost gate.
  */
-export function applyBorrowEffect(run: RunState, amount: number): { detail: string; borrowed: number; debt: number } {
+export function applyBorrowEffect(run: RunState, amount: number): { ok: true; detail: string; borrowed: number; debt: number } {
   const borrowed = nonNegInt(amount);
   earn(run.camp, borrowed, "banker", "Banker loan", { nodeId: run.mapNodeId, night: run.night });
   run.overworld.debt += borrowed;
-  return { borrowed, debt: run.overworld.debt, detail: `Borrowed ${borrowed}g against future loot.` };
+  // `ok: true` is the contract, not a check: this core cannot refuse (the caller gates) —
+  // the literal type states it, matching the refusal-capable sibling cores (D114).
+  return { ok: true, borrowed, debt: run.overworld.debt, detail: `Borrowed ${borrowed}g against future loot.` };
 }
 
 /** What buying theft protection produced. */
@@ -375,9 +377,9 @@ export function bankerProtect(run: RunState): BankerProtectResult {
  * the Banker's level (never lowering an already-higher protection). Pure of the cost gate (the
  * gold price rides {@link checkOverworldCost}).
  */
-export function applyGuardPurseEffect(run: RunState): { detail: string; protection: number } {
+export function applyGuardPurseEffect(run: RunState): { ok: true; detail: string; protection: number } {
   run.overworld.protection = Math.max(run.overworld.protection, ECONOMY.banker.protectionLevel);
-  return { protection: run.overworld.protection, detail: `Theft protection engaged.` };
+  return { ok: true, protection: run.overworld.protection, detail: `Theft protection engaged.` };
 }
 
 // --- Noble — INFLUENCE (a walled-off, per-expedition currency, D62) ----------
@@ -496,10 +498,10 @@ export function patronize(run: RunState): PatronizeResult {
  * Influence yield (gold → standing). Pure of the cost gate (the gold price rides
  * {@link checkOverworldCost}).
  */
-export function applyPatronizeEffect(run: RunState): { detail: string; gained: number } {
+export function applyPatronizeEffect(run: RunState): { ok: true; detail: string; gained: number } {
   const yield_ = ECONOMY.noble.patronizeYield;
   addInfluence(run.overworld, yield_);
-  return { gained: yield_, detail: `Patronized for ${yield_} Influence (${ECONOMY.noble.patronizeCost}g).` };
+  return { ok: true, gained: yield_, detail: `Patronized for ${yield_} Influence (${ECONOMY.noble.patronizeCost}g).` };
 }
 
 /** What a bribe attempt produced. */

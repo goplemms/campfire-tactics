@@ -3,7 +3,7 @@ import { CombatView } from "../combat-view";
 import { BoardCamera } from "../board-camera";
 import { COLOR, INK, FONT, cssHex, cssRgba } from "../theme";
 import { clearLayer } from "../ui";
-import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
+import { clamp, TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
 import { validateLevel } from "../../content/levels";
 import { buildPlaytest, playtestPartyNames, DEFAULT_PLAYTEST_PARTY } from "../playtest";
 import { loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
@@ -817,8 +817,8 @@ export class EditorScene extends Phaser.Scene {
 
   private resize(cols: number, rows: number): void {
     this.pushHistory(); // a shrink drops off-board entities — make that recoverable (it was silent data loss)
-    this.draft.cols = Math.max(1, Math.min(20, cols || 1));
-    this.draft.rows = Math.max(1, Math.min(20, rows || 1));
+    this.draft.cols = clamp(cols || 1, 1, 20);
+    this.draft.rows = clamp(rows || 1, 1, 20);
     // Drop anything now off the board.
     const ok = (c: GridCoord) => c.col < this.draft.cols && c.row < this.draft.rows;
     const d = this.draft;

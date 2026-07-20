@@ -22,7 +22,7 @@
  */
 
 import type { Unit } from "./units";
-import { bandFor } from "./num";
+import { bandFor, clamp } from "./num";
 import { getEnemyTemplate, type EncounterType } from "./generation";
 import { getNode, type NodeKind } from "./overworld";
 import { eventForNode } from "./node-events";
@@ -112,7 +112,7 @@ export function intelFloor(party: readonly Unit[]): IntelTier {
 
 /** Clamp any number into a valid {@link IntelTier}. */
 export function clampTier(t: number): IntelTier {
-  return Math.max(0, Math.min(MAX_TIER, Math.round(t))) as IntelTier;
+  return clamp(Math.round(t), 0, MAX_TIER) as IntelTier;
 }
 
 /**

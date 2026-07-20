@@ -32,6 +32,7 @@ import {
   traverseRoute,
   type TraverseOpts,
 } from "./expedition-sim";
+import { clamp01 } from "./num";
 import { activeRoster, type RunState } from "./run";
 import { jobLevelOf } from "./leveling";
 import { primaryJobOf, type Unit } from "./units";
@@ -159,11 +160,6 @@ const MORALE_REF = 3; // Inspired
  */
 const FATIGUE_TIER_MAX = 3; // Exhausted
 
-/** Clamp a value to `[0, 1]` — the shared saturation the normalization leans on. */
-function unit01(x: number): number {
-  return Math.max(0, Math.min(1, x));
-}
-
 /**
  * Σ(character level + primary-job level) over a roster — the **levels fold** shared
  * by {@link scoreArrival} (normalized against {@link LEVELS_REF}) and
@@ -219,36 +215,36 @@ export function scoreArrival(
   const roster = activeRoster(run);
 
   // levels — character + primary-job level, summed over the active roster.
-  const levelsMag = unit01(levelTotalOf(roster) / LEVELS_REF);
+  const levelsMag = clamp01(levelTotalOf(roster) / LEVELS_REF);
 
   // health — mean current-HP fraction (0 for an empty/wiped roster).
-  const healthMag = unit01(avgHpFraction(roster));
+  const healthMag = clamp01(avgHpFraction(roster));
 
   // roster — active roster size (recruits gained ⇒ stronger).
-  const rosterMag = unit01(roster.length / ROSTER_REF);
+  const rosterMag = clamp01(roster.length / ROSTER_REF);
 
   // gold — the run purse.
-  const goldMag = unit01(run.camp.gold / GOLD_REF);
+  const goldMag = clamp01(run.camp.gold / GOLD_REF);
 
   // supplies — used inventory slots (provisioning depth).
-  const suppliesMag = unit01(slotsUsed(run.inventory) / SUPPLIES_REF);
+  const suppliesMag = clamp01(slotsUsed(run.inventory) / SUPPLIES_REF);
 
   // fatigue — summed per-unit tier fraction (a penalty via a negative weight).
   const fatigueSum = roster.reduce(
     (acc, u) => acc + Math.min(fatigueTierIndex(u.fatigue), FATIGUE_TIER_MAX) / FATIGUE_TIER_MAX,
     0,
   );
-  const fatigueMag = unit01(fatigueSum / FATIGUE_REF);
+  const fatigueMag = clamp01(fatigueSum / FATIGUE_REF);
 
   // morale — the camp morale tier.
-  const moraleMag = unit01(moraleTierIndex(run.camp.morale) / MORALE_REF);
+  const moraleMag = clamp01(moraleTierIndex(run.camp.morale) / MORALE_REF);
 
   // relics/flags — set flags + carried relic/unique items (a build-progress proxy).
   const setFlags = Object.values(run.flags).filter(Boolean).length;
   const relicItems = Object.entries(run.inventory.counts).filter(
     ([id, n]) => n > 0 && isRelicItem(id),
   ).length;
-  const relicsMag = unit01((setFlags + relicItems) / RELICS_REF);
+  const relicsMag = clamp01((setFlags + relicItems) / RELICS_REF);
 
   const parts: Record<string, number> = {
     levels: weights.levels * levelsMag,

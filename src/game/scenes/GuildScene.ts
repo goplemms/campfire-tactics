@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { COLOR, FONT, INK } from "../theme";
-import {
+import { clamp,
   createStarterGuild,
   buyArmoryGear,
   dispatch,
@@ -12,7 +12,7 @@ import {
   getQuest,
   runFor,
   GUILD,
-  getVessel,
+  mustGetVessel,
   createCaravan,
   assignMember,
   unassignMember,
@@ -169,7 +169,7 @@ export class GuildScene extends Phaser.Scene {
       this.text(x, y + 26, "No caravan selected.", INK.muted, FONT.label, 0);
       return;
     }
-    const vessel = getVessel(caravan.vesselId);
+    const vessel = mustGetVessel(caravan.vesselId);
     const dispatched = caravan.dispatched;
     this.text(x, y, `Assembly — ${vessel.label}`, INK.success, FONT.body, 0);
     this.text(x, y + 20, `Slots ${caravan.party.length}/${caravanCapacity(caravan)}  ·  Storage ${caravan.storageCap}  ·  Purse ${caravan.purse}g${dispatched ? "  ·  DISPATCHED" : ""}`, INK.secondary, FONT.label, 0);
@@ -306,7 +306,7 @@ export class GuildScene extends Phaser.Scene {
     let xx = x;
     for (const c of this.guild.caravans) {
       const gr = runFor(this.guild, c.id);
-      const vessel = getVessel(c.vesselId);
+      const vessel = mustGetVessel(c.vesselId);
       const status = gr ? "IN FLIGHT" : c.party.length ? "assembling" : "empty";
       const selected = c.id === this.selectedCaravanId;
       const lines = `${vessel.label}\n[${status}]  ${c.party.length}/${caravanCapacity(c)} party`;
@@ -382,7 +382,7 @@ export class GuildScene extends Phaser.Scene {
   private adjustPurse(caravan: Caravan, delta: number): void {
     // The treasury still holds the gold until dispatch debits it (D34), so the
     // purse can be loaded up to the whole live vault.
-    const next = Math.max(0, Math.min(this.guild.treasury, caravan.purse + delta));
+    const next = clamp(caravan.purse + delta, 0, this.guild.treasury);
     loadPurse(caravan, next);
     this.render();
   }

@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { INK } from "./theme";
 import { ICON } from "./icons";
 import { MiniCard, type CardRow } from "./info-cards";
-import {
+import { pct,
   type Unit,
   type GridCoord,
   type AbilityForecast,
@@ -162,7 +162,7 @@ export class PreviewCardController {
     });
     const band = protectedHere ? "Safe core" : inNet ? "In the net" : "Open ground";
     this.showPreview("If moved here", [
-      { label: "Capture risk", value: protectedHere ? "none" : `${Math.round(risk * 100)}%`, color: protectedHere ? INK.success : inNet ? INK.danger : INK.ember, emphasize: true },
+      { label: "Capture risk", value: protectedHere ? "none" : pct(risk), color: protectedHere ? INK.success : inNet ? INK.danger : INK.ember, emphasize: true },
       { label: "Zone", value: band, color: protectedHere ? INK.success : inNet ? INK.danger : INK.muted },
     ]);
   }

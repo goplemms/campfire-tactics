@@ -4,7 +4,7 @@ import { PartyDossierView } from "../party-dossier-view";
 
 /** The Captain's Tent tabs (D58) — the run's deep-info hub, one verb to open. */
 type TentTab = "party" | "stores" | "ledger" | "map";
-import {
+import { pct,
   RunLoop,
   countOf,
   removeItem,
@@ -21,7 +21,7 @@ import {
   attentionCount,
   captainsJournal,
   projectManifest,
-  getVessel,
+  mustGetVessel,
   availableSkills,
   // R4/B (#112) — the one overworld-action projection the camp verb surfaces render.
   availableActions,
@@ -797,7 +797,7 @@ export class OverworldScene extends Phaser.Scene {
     const bank: string[] = [];
     if (eco.interestPerStep > 0) bank.push(`Interest +${eco.interestPerStep}g/step`);
     if (eco.debt > 0) bank.push(`Debt ${eco.debt}g`);
-    if (eco.protection > 0) bank.push(`Protection ${Math.round(eco.protection * 100)}%`);
+    if (eco.protection > 0) bank.push(`Protection ${pct(eco.protection)}`);
     if (eco.influence > 0 || noble) bank.push(`Influence ${eco.influence} (${influenceTier(eco.influence)})`);
     if (bank.length) {
       this.campObjects.push(this.add.text(childX, y, bank.join("   ·   "), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11));
@@ -1001,11 +1001,17 @@ export class OverworldScene extends Phaser.Scene {
       onClose: () => this.closeTent(),
       onEquip: (unitId, itemId) => {
         const unit = this.run.party.find((u) => u.id === unitId);
-        if (unit && equip(this.run.inventory, unit, itemId, { party: this.run.party })) this.renderTent();
+        if (!unit) return;
+        const res = equip(this.run.inventory, unit, itemId, { party: this.run.party });
+        if (res.ok) this.renderTent();
+        else this.setHint(`Can't equip: ${res.reason}`);
       },
       onUnequip: (unitId, slot: EquipSlot) => {
         const unit = this.run.party.find((u) => u.id === unitId);
-        if (unit && unequip(this.run.inventory, unit, slot)) this.renderTent();
+        if (!unit) return;
+        const res = unequip(this.run.inventory, unit, slot);
+        if (res.ok) this.renderTent();
+        else this.setHint(`Can't unequip: ${res.reason}`);
       },
     });
   }
@@ -1258,7 +1264,7 @@ export class OverworldScene extends Phaser.Scene {
     if (stolen > 0) {
       lines.push(`A thief skimmed ${stolen}g off the purse on the road.`);
       const eco = this.run.overworld;
-      if (eco.protection > 0) lines.push(`The Banker's protection blunted the loss (${Math.round(eco.protection * 100)}%).`);
+      if (eco.protection > 0) lines.push(`The Banker's protection blunted the loss (${pct(eco.protection)}).`);
       else lines.push("Buy the Banker's theft protection to blunt the next one.");
     } else {
       lines.push("The road was clear — the purse is intact.");
@@ -1622,7 +1628,7 @@ export class OverworldScene extends Phaser.Scene {
     if (!this.guild || !this.caravanId) return {};
     const caravan = this.guild.caravans.find((c) => c.id === this.caravanId);
     if (!caravan) return {};
-    const vessel = getVessel(caravan.vesselId);
+    const vessel = mustGetVessel(caravan.vesselId);
     return { vesselLabel: vessel.label, partyCapacity: vessel.capacity };
   }
 

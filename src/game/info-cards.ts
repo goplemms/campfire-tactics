@@ -1,3 +1,4 @@
+import { clamp01 } from "../core";
 import Phaser from "phaser";
 import { COLOR, FONT, INK, WEIGHT } from "./theme";
 import { hpColor, hex } from "./unit-readout";
@@ -67,7 +68,7 @@ export class MiniCard extends Phaser.GameObjects.Container {
       this.hpBarBg.setVisible(show);
       this.hpBarFill.setVisible(show);
       if (show) {
-        const frac = Math.max(0, Math.min(1, hp.frac));
+        const frac = clamp01(hp.frac);
         this.hpBarBg.setPosition(8, y);
         this.hpBarFill.setPosition(8, y).setSize((this.cardW - 16) * frac, 4).setFillStyle(hpColor(frac));
         y += 10;

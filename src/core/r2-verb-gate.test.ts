@@ -36,7 +36,7 @@ import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import { createRun, breakCamp, type RunState } from "./run";
 import type { JobId } from "./jobs";
-import { getEvent } from "./node-events";
+import { mustGetEvent } from "./node-events";
 import type { MapNode } from "./overworld";
 import { bankerBorrow, bankerEngageInterest } from "./economy-actions";
 import {
@@ -75,7 +75,7 @@ describe("R2 witness (a) — a captured Cook is NOT offered the stew choice (fix
     const run = newRun("r2-w-a", [member("Rook", "soldier"), cook]);
     const node: MapNode = { id: "n2-0", layer: 2, index: 0, kind: "event", edges: [] };
 
-    const choices = getEvent("provision-choice").choices!(run, node);
+    const choices = mustGetEvent("provision-choice").choices!(run, node);
     // FIXED (increment 2, the brief's one named behavior change): the Cook check now
     // rides `fieldsJob`, which requires `!u.captured` — before this it read only
     // `primaryJobOf(u) === "cook" && u.alive`, so a captured Cook still offered stew.
@@ -85,9 +85,9 @@ describe("R2 witness (a) — a captured Cook is NOT offered the stew choice (fix
   it("(control) an un-captured Cook is offered it, and no Cook at all is not", () => {
     const node: MapNode = { id: "n2-0", layer: 2, index: 0, kind: "event", edges: [] };
     const withCook = newRun("r2-w-a2", [member("Rook", "soldier"), member("Pip", "cook")]);
-    expect(getEvent("provision-choice").choices!(withCook, node).some((c) => c.id === "cook-stew")).toBe(true);
+    expect(mustGetEvent("provision-choice").choices!(withCook, node).some((c) => c.id === "cook-stew")).toBe(true);
     const noCook = newRun("r2-w-a3", [member("Rook", "soldier")]);
-    expect(getEvent("provision-choice").choices!(noCook, node).some((c) => c.id === "cook-stew")).toBe(false);
+    expect(mustGetEvent("provision-choice").choices!(noCook, node).some((c) => c.id === "cook-stew")).toBe(false);
   });
 });
 

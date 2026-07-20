@@ -257,7 +257,7 @@ describe("equip / unequip", () => {
   it("moves an item from the stash into its slot, freeing the slot", () => {
     const inv = createInventory(6, { "iron-sword": 1 });
     const u = mkUnit();
-    expect(equip(inv, u, "iron-sword")).toBe(true);
+    expect(equip(inv, u, "iron-sword").ok).toBe(true);
     expect(u.equipment.weapon).toBe("iron-sword");
     expect(countOf(inv, "iron-sword")).toBe(0); // left the stash
   });
@@ -265,21 +265,21 @@ describe("equip / unequip", () => {
   it("refuses to equip an item not carried in the stash", () => {
     const inv = createInventory(6);
     const u = mkUnit();
-    expect(equip(inv, u, "iron-sword")).toBe(false);
+    expect(equip(inv, u, "iron-sword").ok).toBe(false);
     expect(u.equipment.weapon).toBeUndefined();
   });
 
   it("refuses an unknown equipment id", () => {
     const inv = createInventory(6, { "ghost-axe": 1 });
     const u = mkUnit();
-    expect(equip(inv, u, "ghost-axe")).toBe(false);
+    expect(equip(inv, u, "ghost-axe").ok).toBe(false);
   });
 
   it("swaps: a new item enters the slot and the displaced one returns to the stash", () => {
     const inv = createInventory(6, { "iron-sword": 1, "relic-blade": 1 });
     const u = mkUnit();
     equip(inv, u, "iron-sword");
-    expect(equip(inv, u, "relic-blade")).toBe(true);
+    expect(equip(inv, u, "relic-blade").ok).toBe(true);
     expect(u.equipment.weapon).toBe("relic-blade");
     expect(countOf(inv, "iron-sword")).toBe(1); // displaced back to the stash
     expect(countOf(inv, "relic-blade")).toBe(0);
@@ -289,7 +289,7 @@ describe("equip / unequip", () => {
     const inv = createInventory(6, { "iron-sword": 1 });
     const u = mkUnit();
     equip(inv, u, "iron-sword");
-    expect(unequip(inv, u, "weapon")).toBe(true);
+    expect(unequip(inv, u, "weapon").ok).toBe(true);
     expect(u.equipment.weapon).toBeUndefined();
     expect(countOf(inv, "iron-sword")).toBe(1);
   });
@@ -297,7 +297,7 @@ describe("equip / unequip", () => {
   it("unequip fails on an empty slot", () => {
     const inv = createInventory(6);
     const u = mkUnit();
-    expect(unequip(inv, u, "weapon")).toBe(false);
+    expect(unequip(inv, u, "weapon").ok).toBe(false);
   });
 
   it("a unique cannot be fielded on a second unit (D25 'one good sword')", () => {
@@ -305,8 +305,8 @@ describe("equip / unequip", () => {
     const a = mkUnit({ id: "a" });
     const b = mkUnit({ id: "b" });
     const party = [a, b];
-    expect(equip(inv, a, "relic-blade", { party })).toBe(true);
-    expect(equip(inv, b, "relic-blade", { party })).toBe(false); // ...still can't double-field it
+    expect(equip(inv, a, "relic-blade", { party }).ok).toBe(true);
+    expect(equip(inv, b, "relic-blade", { party }).ok).toBe(false); // ...still can't double-field it
     expect(b.equipment.weapon).toBeUndefined();
   });
 });

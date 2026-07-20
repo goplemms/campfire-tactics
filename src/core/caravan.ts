@@ -60,7 +60,7 @@ export const VESSELS: Record<string, VesselType> = {
 } as const;
 
 /** Look up a vessel type by id (throws on an unknown id — vessels are data). */
-export function getVessel(id: string): VesselType {
+export function mustGetVessel(id: string): VesselType {
   const v = VESSELS[id];
   if (!v) throw new Error(`caravan: unknown vessel type "${id}"`);
   return v;
@@ -91,7 +91,7 @@ export interface Caravan {
 
 /** Create a fresh, empty caravan on a given vessel (storage from the vessel). */
 export function createCaravan(id: string, vesselId: string): Caravan {
-  const vessel = getVessel(vesselId);
+  const vessel = mustGetVessel(vesselId);
   return {
     id,
     vesselId,
@@ -106,7 +106,7 @@ export function createCaravan(id: string, vesselId: string): Caravan {
 
 /** The caravan's party-slot capacity (its vessel's, uniform — D25). */
 export function caravanCapacity(caravan: Caravan): number {
-  return getVessel(caravan.vesselId).capacity;
+  return mustGetVessel(caravan.vesselId).capacity;
 }
 
 /** Free party slots remaining on the caravan. */

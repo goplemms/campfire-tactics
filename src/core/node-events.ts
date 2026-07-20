@@ -118,6 +118,13 @@ export interface EventOutcome {
   fatigueDelta: number;
   /** Material ids added to storage (a shop buy / a story reward). */
   materials: string[];
+  /**
+   * Set when the interaction was **refused** (can't afford / already hired / no
+   * stock) — nothing was applied and {@link summary} carries the reason. Absent on
+   * every applied outcome (D114: refusals used to be detectable only by reading
+   * the summary prose).
+   */
+  refused?: true;
   /** A body recruited into `run.party` (recruiter), if any. */
   recruited?: Unit;
   /** Theft only: gold skimmed off the purse (blunted by Banker protection, D30). */
@@ -244,6 +251,7 @@ export function shopBuy(run: RunState, _node: MapNode, materialId: string): Even
   const res = merchantBuy(run, materialId, SHOP_MARKET_TIER);
   const out = emptyOutcome("shop");
   if (!res.applied) {
+    out.refused = true;
     out.summary = res.reason ?? "Can't buy that.";
     return out;
   }
@@ -284,10 +292,12 @@ export function recruiterOffer(seed: string | number, node: MapNode): RecruiterO
 export function hireRecruit(run: RunState, offer: RecruiterOffer): EventOutcome {
   const out = emptyOutcome("recruiter");
   if (run.party.some((u) => u.id === offer.unit.id)) {
+    out.refused = true;
     out.summary = `${offer.unit.name} already rides with the caravan.`;
     return out;
   }
   if (run.camp.gold < offer.price) {
+    out.refused = true;
     out.summary = `Not enough purse gold (${offer.price}g) to hire ${offer.unit.name}.`;
     return out;
   }
@@ -495,7 +505,7 @@ function pinnedStoryEvent(id: string, name: string, teaser: string, story: () =>
 }
 
 /** Look up an event def by id (M11). */
-export function getEvent(id: string): EventDef {
+export function mustGetEvent(id: string): EventDef {
   const def = EVENTS.find((e) => e.id === id);
   if (!def) throw new Error(`node-events: no event "${id}"`);
   return def;

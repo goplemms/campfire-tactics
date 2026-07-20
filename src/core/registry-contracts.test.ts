@@ -16,7 +16,7 @@
  *    equality here is what turns that silent shadowing into a red test.
  */
 import { describe, it, expect } from "vitest";
-import { EVENTS, getEvent } from "./node-events";
+import { EVENTS, mustGetEvent } from "./node-events";
 import { HOLLOW_MILL_EVENTS } from "./hollow-mill-events";
 import { EQUIPMENT } from "./equipment";
 import { MATERIALS } from "./inventory";
@@ -79,8 +79,8 @@ describe("registry contracts — event registration completeness", () => {
   });
 
   it("the pinned guild-arc story events resolve to their own records", () => {
-    expect(getEvent("guild-contact").name).toBe("The Fence's Token");
-    expect(getEvent("guild-rite").name).toBe("The Guild's Rite");
+    expect(mustGetEvent("guild-contact").name).toBe("The Fence's Token");
+    expect(mustGetEvent("guild-rite").name).toBe("The Guild's Rite");
   });
 
   it("EVENTS ids are unique", () => {

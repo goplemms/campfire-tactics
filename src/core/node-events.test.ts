@@ -7,7 +7,7 @@ import { countOf, slotsOver } from "./inventory";
 import { merchantPrice } from "./economy-actions";
 import {
   EVENTS,
-  getEvent,
+  mustGetEvent,
   eventForNode,
   eventWeightAt,
   resolveEvent,
@@ -93,9 +93,9 @@ describe("node-events — the registry is data (D4)", () => {
     }
   });
 
-  it("getEvent looks an event up by id (throws if absent)", () => {
-    expect(getEvent("thief").kind).toBe("thief");
-    expect(() => getEvent("nope")).toThrow();
+  it("mustGetEvent looks an event up by id (throws if absent)", () => {
+    expect(mustGetEvent("thief").kind).toBe("thief");
+    expect(() => mustGetEvent("nope")).toThrow();
   });
 });
 
@@ -344,12 +344,12 @@ describe("node-events — story applies a deterministic outcome (D23)", () => {
 describe("node-events — story events surface the full authored prompt (#179)", () => {
   it("the seeded story event's prompt resolves the drawn StorySpec's prompt", () => {
     const seed = seedFor("story");
-    const body = getEvent("story").prompt!(newRun(seed), NODE);
+    const body = mustGetEvent("story").prompt!(newRun(seed), NODE);
     expect(body).toBe(storyForNode(seed, NODE).prompt);
   });
 
   it("a pinned guild event surfaces its StorySpec prompt, not the short map teaser", () => {
-    const contact = getEvent("guild-contact");
+    const contact = mustGetEvent("guild-contact");
     const body = contact.prompt!(newRun("guild"), NODE);
     expect(body).toBe(THIEVES_GUILD_CONTACT.prompt);
     expect(body).not.toBe(contact.teaser); // the fix: full flavour, not the banded teaser
@@ -468,14 +468,14 @@ describe("node-events — standing gates event quality (D62)", () => {
   });
 
   it("a boon grows likelier and a bane rarer as standing rises", () => {
-    const shop = getEvent("shop"); // boon
-    const thief = getEvent("thief"); // bane
+    const shop = mustGetEvent("shop"); // boon
+    const thief = mustGetEvent("thief"); // bane
     expect(eventWeightAt(shop, "renowned")).toBeGreaterThan(eventWeightAt(shop, "unknown"));
     expect(eventWeightAt(thief, "renowned")).toBeLessThan(eventWeightAt(thief, "unknown"));
   });
 
   it("the premium Patron's Welcome is gated below 'favored' standing", () => {
-    const patron = getEvent("patron-welcome");
+    const patron = mustGetEvent("patron-welcome");
     expect(patron.minInfluence).toBe("favored");
     expect(eventWeightAt(patron, "respected")).toBe(0); // gated out
     expect(eventWeightAt(patron, "favored")).toBeGreaterThan(0); // unlocked
@@ -499,7 +499,7 @@ describe("node-events — standing gates event quality (D62)", () => {
     const moraleBefore = run.camp.morale;
     const infBefore = run.overworld.influence;
     const goldBefore = run.camp.gold;
-    const out = getEvent("patron-welcome").autoResolve(run, NODE);
+    const out = mustGetEvent("patron-welcome").autoResolve(run, NODE);
     expect(out.kind).toBe("patron");
     expect(run.camp.morale).toBe(moraleBefore + out.moraleDelta);
     expect(out.moraleDelta).toBeGreaterThan(0);

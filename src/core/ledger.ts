@@ -21,6 +21,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
+import { pct } from "./num";
 import type { RunState } from "./run";
 import { computeUpkeep, foodFirst } from "./upkeep";
 import { projectForecast, type RouteForecast } from "./forecast";
@@ -137,7 +138,7 @@ export function buildLedger(run: RunState, opts: BuildLedgerOptions = {}): Ledge
   const bankerLines: LedgerLine[] = [];
   if (eco.interestPerStep > 0) bankerLines.push({ id: "banker:interest", label: "Interest / step", amount: eco.interestPerStep, note: "faucet" });
   if (eco.debt > 0) bankerLines.push({ id: "banker:debt", label: "Outstanding debt", amount: -eco.debt, note: "auto-repaid from loot" });
-  if (eco.protection > 0) bankerLines.push({ id: "banker:protection", label: "Theft protection", amount: 0, note: `${Math.round(eco.protection * 100)}%` });
+  if (eco.protection > 0) bankerLines.push({ id: "banker:protection", label: "Theft protection", amount: 0, note: pct(eco.protection) });
 
   const categories: LedgerCategory[] = [
     // Carried purse — a lump-sum header (no itemized lines): the caravan *is* the field, so

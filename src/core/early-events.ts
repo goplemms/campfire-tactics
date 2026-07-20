@@ -5,7 +5,7 @@
  * node's main encounter, decoupled from node-kind, plus the tailored node-bound
  * events (The Blockade) and the bypass economy. Pure code motion: behaviour
  * unchanged. The random pool reuses the node-event registry records by id
- * ({@link "./node-events".getEvent}); the standing weighting rides the same
+ * ({@link "./node-events".mustGetEvent}); the standing weighting rides the same
  * {@link "./node-events".eventWeightAt} the node pick uses.
  *
  * Pure logic: no Phaser, no DOM.
@@ -20,7 +20,7 @@ import { spend } from "./purse-journal";
 import { rankOf } from "./num";
 import {
   emptyOutcome,
-  getEvent,
+  mustGetEvent,
   eventWeightAt,
   INFLUENCE_ORDER,
   type EventDef,
@@ -62,7 +62,7 @@ export function earlyEventForNode(run: RunState, node: MapNode): EventDef | null
   const rng = streamFor(run.seed, Labels.early(node.id));
   if (!rng.chance(EARLY_EVENT.chance)) return null; // the common case — a quiet road
   const tier = influenceTier(run.overworld.influence);
-  const pool = EARLY_EVENT.pool.map(getEvent).filter((e) => eventWeightAt(e, tier) > 0);
+  const pool = EARLY_EVENT.pool.map(mustGetEvent).filter((e) => eventWeightAt(e, tier) > 0);
   if (pool.length === 0) return null;
   return rng.pickWeighted(pool, (e) => eventWeightAt(e, tier));
 }

@@ -13,7 +13,7 @@
 import { healUnit, type Unit } from "./units";
 import type { EventBus } from "./event-bus";
 import type { SkillDef } from "./skills";
-import { bandFor } from "./num";
+import { bandFor, rankOf } from "./num";
 import { openingPurseLog, type PurseEntry } from "./purse-journal";
 
 /** Mutable camp / meta state. */
@@ -121,7 +121,7 @@ export const MORALE_TIERS: readonly MoraleTier[] = ["Low", "Neutral", "High", "I
  * of re-keying its own string table that a renamed tier label would silently `NaN`.
  */
 export function moraleTierIndex(morale: number): number {
-  return MORALE_TIERS.indexOf(moraleTier(morale));
+  return rankOf(MORALE_TIERS, moraleTier(morale));
 }
 
 /** What a camp skill changed, for the render layer to report. */

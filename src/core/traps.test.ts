@@ -188,7 +188,7 @@ describe("disarming — Survivalist-only, harvests the kit (the lever payoff)", 
     expect(canDisarm(surv)).toBe(true);
     const res = disarmTrap(r, "t", surv, inv);
     expect(res.ok).toBe(true);
-    expect(res.harvested).toBe("trap-kit");
+    if (res.ok) expect(res.harvested).toBe("trap-kit");
     expect(countOf(inv, "trap-kit")).toBe(1);
     expect(r.all()).toHaveLength(0); // removed from the field
   });
@@ -248,7 +248,7 @@ describe("player trap placement — the pure Set Trap resolver (D11)", () => {
     expect(placePlayerTrap(inv, r, actor, { col: 1, row: 1 }, trap, "b").ok).toBe(true);
     const dup = placePlayerTrap(inv, r, actor, { col: 1, row: 1 }, trap, "c");
     expect(dup.ok).toBe(false);
-    expect(dup.reason).toMatch(/already a trap/i);
+    if (!dup.ok) expect(dup.reason).toMatch(/already a trap/i);
     expect(countOf(inv, "trap-kit")).toBe(2); // the resolver never spends — kits consumed commit-side (#113)
   });
 

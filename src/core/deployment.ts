@@ -15,6 +15,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
+import { clamp01 } from "./num";
 import { isActive, type Unit, type ReleaseRequirement } from "./units";
 import { unitHasCapability } from "./jobs";
 import type { Rng } from "./rng";
@@ -245,7 +246,7 @@ export function captureChanceAt(
   let chance = base;
   if (opts.dugIn) chance *= DIG_IN_CAPTURE_FACTOR;
   if (opts.evasion !== undefined) chance *= opts.evasion;
-  return Math.max(0, Math.min(1, chance));
+  return clamp01(chance);
 }
 
 /**

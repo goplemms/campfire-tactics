@@ -184,21 +184,26 @@ function playerTrapAt(entities: EntityRegistry, tile: GridCoord): RecoverableEnt
  * carried, and the tile must be clear of an already-placed player trap. Pure check —
  * spends nothing; pair a pass with {@link placePlayerTrap}.
  */
-export function canPlacePlayerTrap(inv: Inventory, entities: EntityRegistry, tile: GridCoord): { ok: boolean; reason?: string } {
+export function canPlacePlayerTrap(
+  inv: Inventory,
+  entities: EntityRegistry,
+  tile: GridCoord,
+): { ok: true } | { ok: false; reason: string } {
   if (countOf(inv, "trap-kit") <= 0) return { ok: false, reason: "No trap kits carried — load some in camp first." };
   if (playerTrapAt(entities, tile)) return { ok: false, reason: "There's already a trap here — move first." };
   return { ok: true };
 }
 
-/** What a player trap placement produced. */
-export interface PlaceTrapResult {
-  ok: boolean;
-  reason?: string;
-  /** The registered trap entity (so the render can key its marker by `trap.id`). */
-  trap?: RecoverableEntity;
-  /** Character levels the placing actor gained (the signature-action use-XP, D32/D53). */
-  levels?: number;
-}
+/** What a player trap placement produced (the core-layer `ok` union, D114). */
+export type PlaceTrapResult =
+  | {
+      ok: true;
+      /** The registered trap entity (so the render can key its marker by `trap.id`). */
+      trap: RecoverableEntity;
+      /** Character levels the placing actor gained (the signature-action use-XP, D32/D53). */
+      levels: number;
+    }
+  | { ok: false; reason: string };
 
 /**
  * **Place a player trap** (D11/D13) — the pure resolver behind the Deployment Set
@@ -229,13 +234,14 @@ export function placePlayerTrap(
   return { ok: true, trap, levels };
 }
 
-/** The outcome of a disarm attempt. */
-export interface DisarmResult {
-  ok: boolean;
-  reason?: string;
-  /** The material id pocketed on success (omitted if storage was full). */
-  harvested?: string;
-}
+/** The outcome of a disarm attempt (the core-layer `ok` union, D114). */
+export type DisarmResult =
+  | {
+      ok: true;
+      /** The material id pocketed (lands unconditionally — overflow resolves at discard, D75). */
+      harvested: string;
+    }
+  | { ok: false; reason: string };
 
 /**
  * Disarm a spotted concealed trap and pocket its kit. Requires a trap-trained unit

@@ -105,14 +105,31 @@ const CHROME_CSS = `
 .editor-chrome button:disabled { opacity: .4; cursor: default; }
 .editor-chrome input:not([type=checkbox]), .editor-chrome select, .editor-chrome textarea {
   font: 13px/1.4 ${CHROME_FONT};
-  color: #f2ead9; background: #211a12; border: 1px solid #76583a;
-  border-radius: 4px; padding: 4px 7px; box-sizing: border-box;
+  color: #f2ead9; background: #1c150e; border: 1px solid #6b4f34;
+  border-radius: 4px; padding: 4px 8px; box-sizing: border-box;
+  /* Recessed into the leather — an inset shadow reads the field as carved, not a raised box. */
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.5);
+  caret-color: #f2b65a;
 }
+.editor-chrome input::placeholder, .editor-chrome textarea::placeholder { color: #8a7c66; font-style: italic; }
 .editor-chrome input:focus, .editor-chrome select:focus, .editor-chrome textarea:focus {
   outline: none; border-color: #f2b65a;
+  /* A warm ember glow on focus rather than the OS blue focus ring. */
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.5), 0 0 0 2px rgba(242,182,90,.22);
 }
-.editor-chrome input[type=checkbox] { width: 15px; height: 15px; vertical-align: -2px; cursor: pointer; }
-.editor-chrome select { cursor: pointer; }
+/* Tame the native number spinners — they render as bright system chrome that fights the leather look. */
+.editor-chrome input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+.editor-chrome input[type=number]::-webkit-outer-spin-button,
+.editor-chrome input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* Replace the OS dropdown chrome with a custom warm caret so a select matches the rest of the chrome. */
+.editor-chrome select {
+  cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  padding-right: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath d='M1 1.2l4 4 4-4' fill='none' stroke='%23c8a24a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center;
+}
+/* Ember-tinted checkbox instead of the default system blue. */
+.editor-chrome input[type=checkbox] { width: 15px; height: 15px; vertical-align: -2px; cursor: pointer; accent-color: #c8892e; }
 `;
 
 /** Every enemy template the palette offers (authored archetypes first, then the procedural pool). */

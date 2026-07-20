@@ -1111,28 +1111,56 @@ export class EditorScene extends Phaser.Scene {
     return card;
   }
 
-  /** A horizontal, scrollable strip of placeable cards — the slab-tray row for a category. */
+  /**
+   * A **wrapping** strip of placeable cards — the slab-tray band for a category. Cards flow left-to-right
+   * and wrap onto new rows as width allows (was a single horizontal-scroll row) so a tall/portrait window
+   * fills the vertical space with more visible cards instead of hiding them behind a sideways scroll. The
+   * few-card tabs (Terrain/Objects/Events) are unaffected; the Units tab now shows its whole roster in
+   * rows. Vertical overflow (if any) falls to the panel's own scroll — nothing clips.
+   */
   private cardStrip(cards: HTMLElement[]): HTMLDivElement {
     const strip = document.createElement("div");
-    Object.assign(strip.style, { display: "flex", gap: "6px", overflowX: "auto", overflowY: "hidden", padding: "2px 2px 6px", margin: "4px 0" } as CSSStyleDeclaration);
+    Object.assign(strip.style, { display: "flex", flexWrap: "wrap", gap: "6px", alignContent: "flex-start", padding: "2px 2px 6px", margin: "4px 0" } as CSSStyleDeclaration);
     for (const c of cards) strip.appendChild(c);
     return strip;
   }
 
-  /** The enemy-template cards (the roster unrolled from the old dropdown) + a captive card per release. */
+  /** A full-width row-break label inside a wrapping strip — starts a new row and titles the band below
+   *  it (the Units palette's BANDITS · WILD · CAPTIVES groups). Not a card, so the highlight loop skips it. */
+  private paletteGroupLabel(text: string): HTMLDivElement {
+    const el = document.createElement("div");
+    el.textContent = text;
+    Object.assign(el.style, {
+      flexBasis: "100%", width: "100%", margin: "3px 0 0", color: ED.gold,
+      fontSize: "10px", fontWeight: "700", letterSpacing: "1px", textTransform: "uppercase",
+    } as CSSStyleDeclaration);
+    return el;
+  }
+
+  /**
+   * The Units palette — the enemy roster (unrolled from the old dropdown, one card each) + captive cards,
+   * grouped into labeled bands: **Bandits** (the authored {@link BANDIT_TEMPLATES} archetypes) · **Wild**
+   * (the procedural {@link ENEMY_TEMPLATES} pool) · **Captives**. The group labels are full-width row
+   * breaks in the wrapping strip, so each band starts a fresh row. Each enemy card sets the brush AND its
+   * template; the captive card its release.
+   */
   private unitCards(): HTMLElement[] {
     const tint = this.prefs.enemyTint;
-    const enemyCards = ENEMY_IDS.map((id) => {
+    const enemyCard = (id: string): HTMLElement => {
       const t = enemyStat(id);
       return this.paletteCard({ brush: "enemy", template: id, label: enemyLabel(id), thumb: tokenThumb(abbrev(id), "#e06b6b", enemyRing(id, tint), "#2a0d0d"), stat: `HP ${t.hp}\nATK ${t.atk}` });
-    });
+    };
     const captives = this.prefs.captiveVariants === 2
       ? [
           this.paletteCard({ brush: "captive", release: "lockpick", label: "Captive · pick", thumb: tokenThumb("⚿", "#9a6bd0", "#4a2c6b", "#fff") }),
           this.paletteCard({ brush: "captive", release: "reach", label: "Captive · reach", thumb: tokenThumb("○", "#9a6bd0", "#4a2c6b", "#fff") }),
         ]
       : [this.paletteCard({ brush: "captive", release: "lockpick", label: "Captive", thumb: tokenThumb("⚿", "#9a6bd0", "#4a2c6b", "#fff") })];
-    return [...enemyCards, ...captives];
+    return [
+      this.paletteGroupLabel("Bandits"), ...Object.keys(BANDIT_TEMPLATES).map(enemyCard),
+      this.paletteGroupLabel("Wild"), ...ENEMY_TEMPLATES.map((t) => enemyCard(t.id)),
+      this.paletteGroupLabel("Captives"), ...captives,
+    ];
   }
 
   /** (Re)build every category's card strip from the current display prefs — on mount and on any options

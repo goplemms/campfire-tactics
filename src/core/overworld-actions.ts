@@ -239,8 +239,8 @@ export interface CampSkillResult extends OverworldActionResult {
 /**
  * Use an **overworld / camp skill** at the current node (D35/D61/D72) — the **single
  * interpreter** every between-nodes action routes through (A2): Survey, Cook Stew, the
- * non-combat triad's verbs, the fixtures. One path replaces both the old registry
- * interpreter (`takeOverworldAction`) and the camp-skill path (`useCampSkillAtNode`):
+ * non-combat triad's verbs, the fixtures. One path (it replaced two historical
+ * entry points, both long deleted — the names are retired vocabulary, don't revive them):
  *
  * 1. **Class gate** is implicit — the skill came off the actor's job via {@link
  *    "./leveling".availableSkills}; **Capability gate** (D72) is the explicit `requires`.

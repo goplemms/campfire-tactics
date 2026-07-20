@@ -6,7 +6,7 @@ import {
   resolveDowned,
   resolveCaptured,
   isDying,
-  tickDyingClocks,
+  advanceDyingClocksOneNight,
   DYING_COUNTER,
 } from "./mortality";
 
@@ -69,9 +69,9 @@ describe("mortality — dying clock", () => {
   it("ticks down over nights and reports permadeath when it runs out", () => {
     const u = downed();
     resolveDowned(DIFFICULTIES.hard, u); // 3 nights
-    expect(tickDyingClocks([u])).toEqual([]); // 2 left
-    expect(tickDyingClocks([u])).toEqual([]); // 1 left
-    const lost = tickDyingClocks([u]); // 0 → lost
+    expect(advanceDyingClocksOneNight([u])).toEqual([]); // 2 left
+    expect(advanceDyingClocksOneNight([u])).toEqual([]); // 1 left
+    const lost = advanceDyingClocksOneNight([u]); // 0 → lost
     expect(lost).toContain(u);
   });
 });

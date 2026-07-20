@@ -17,7 +17,7 @@ import {
   declaredFaucetInfluence,
   accrueDeclaredFaucets,
   bribeEnemy,
-  bribeCost,
+  bribePrice,
   bribeChance,
   triage,
   ECONOMY,
@@ -329,7 +329,7 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
     const lowIntel: NodePreview = { nodeId: "n1-0", kind: "combat", layer: 1, intel: { tier: 0, grantsVision: false } };
     const highIntel: NodePreview = { nodeId: "n1-0", kind: "combat", layer: 1, intel: { tier: 3, grantsVision: true } };
     // Knowing the field is leverage: a higher-intel preview makes the sway cheaper.
-    expect(bribeCost(highIntel)).toBeLessThan(bribeCost(lowIntel));
+    expect(bribePrice(highIntel)).toBeLessThan(bribePrice(lowIntel));
 
     const infBefore = run.overworld.influence;
     const res = bribeEnemy(run, generic, highIntel);
@@ -361,7 +361,7 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
 
   it("standing makes a bribe cheaper and likelier (D62)", () => {
     // Cost falls as standing rises; the success chance is monotonic across bands.
-    expect(bribeCost(undefined, "renowned")).toBeLessThanOrEqual(bribeCost(undefined, "known"));
+    expect(bribePrice(undefined, "renowned")).toBeLessThanOrEqual(bribePrice(undefined, "known"));
     expect(bribeChance("known")).toBeLessThan(bribeChance("respected"));
     expect(bribeChance("respected")).toBeLessThan(bribeChance("renowned"));
     expect(bribeChance("renowned")).toBe(1);

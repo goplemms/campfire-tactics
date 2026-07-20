@@ -522,7 +522,7 @@ export interface BribeResult extends ActionOutcome {
  * reveals (knowing the field is leverage) *and* the higher the briber's **standing**
  * (`tier` — a renowned Noble sways cheaply). Never below 1.
  */
-export function bribeCost(preview?: NodePreview, tier: InfluenceTier = "unknown"): number {
+export function bribePrice(preview?: NodePreview, tier: InfluenceTier = "unknown"): number {
   const intel = preview?.intel?.tier ?? 0;
   return Math.max(1, ECONOMY.noble.bribeBase - intel - ECONOMY.noble.bribeDiscount[tier]);
 }
@@ -545,7 +545,7 @@ export function bribeChance(tier: InfluenceTier): number {
  *
  * **On-gate (#112, R4/A):** the Influence spend now rides the shared **influence knob** of
  * {@link "./overworld-cost".checkOverworldCost} — the price is still computed per target from
- * intel + standing ({@link bribeCost}), passed as the gate's inline `influence` cost, so the
+ * intel + standing ({@link bribePrice}), passed as the gate's inline `influence` cost, so the
  * refusal is **standard-shaped** and the spend rides the same check→commit closure as every
  * verb (the failed-roll gamble commits too). No {@link VERB_COSTS} row (its price is per-target,
  * not static); the D88 guard classifies it in GATED_ELSEWHERE with this where.
@@ -557,7 +557,7 @@ export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | 
     return { applied: false, reason: "No Noble in the party to broker a bribe." };
   }
   const tier = influenceTier(run.overworld.influence);
-  const cost = bribeCost(preview, tier);
+  const cost = bribePrice(preview, tier);
   // The Influence price rides the shared gate's reserved `influence` knob (R4/A): a pure check
   // (spends nothing) whose commit closure spends exactly `cost` — called on both branches below,
   // since a failed sway still spends the Influence (the gamble). Actorless (no fatigue).

@@ -333,7 +333,7 @@ export class MapView {
     ];
     // An authored node has no procedural *shape* to ever reveal (D85), so the Type
     // lane would read a permanent `???` — omit it rather than dangle phantom intel.
-    if (!p.authored) fields.unshift({ label: "Type", ...hide(p.encounterType, INK.secondary) });
+    if (!p.authored) fields.unshift({ label: "Type", ...hide(p.encounterKind, INK.secondary) });
     return fields;
   }
 

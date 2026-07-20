@@ -107,13 +107,13 @@ describe("intel — node preview for the overworld (D24)", () => {
     const combatId = firstCombatNodeId(run);
     const combat = previewNode(run, combatId);
     expect(combat.kind).toBe("combat");
-    expect(combat.encounterType).toBeDefined();
+    expect(combat.encounterKind).toBeDefined();
 
     const restId = run.map.order.map((id) => getNode(run.map, id)).find((n) => n.kind === "rest")!.id;
     const rest = previewNode(run, restId);
     expect(rest.kind).toBe("rest");
     expect(rest.restHint).toBeTruthy();
-    expect(rest.encounterType).toBeUndefined();
+    expect(rest.encounterKind).toBeUndefined();
   });
 
   it("is banded by the party's intel floor and reveals more at higher tiers", () => {
@@ -256,7 +256,7 @@ describe("intel — the fully-read terminal + authored-shape omission (D85)", ()
   it("an authored node is flagged authored with no procedural type to reveal", () => {
     const p = previewNode(run, "snares");
     expect(p.authored).toBe(true);
-    expect(p.encounterType).toBeUndefined(); // never a phantom `???` Type lane
+    expect(p.encounterKind).toBeUndefined(); // never a phantom `???` Type lane
   });
 
   it("intelComplete is false below MAX_TIER and true once read to the deepest tier", () => {

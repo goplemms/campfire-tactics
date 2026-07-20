@@ -88,7 +88,7 @@ describe("generation — content", () => {
 
   it("assigns a valid encounter type", () => {
     const types = new Set<string>();
-    for (let i = 0; i < 20; i++) types.add(gen("types", i).type);
+    for (let i = 0; i < 20; i++) types.add(gen("types", i).kind);
     for (const t of types) expect(["open-field", "fortified"]).toContain(t);
   });
 });

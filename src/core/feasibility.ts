@@ -44,7 +44,7 @@ import {
   type PopulationOpts,
 } from "./arrivals";
 import {
-  activeRoster,
+  activeParty,
   currentNode,
   reachableNodes,
   isFinalRunNode,
@@ -376,7 +376,7 @@ export const DEFAULT_MAX_NODES = 64;
 function terminalDigest(out: TerminalOutcome): string {
   const run = out.run;
   const gold = run ? run.camp.gold : 0;
-  const roster = run ? activeRoster(run).map((u) => u.id).sort().join(",") : "";
+  const roster = run ? activeParty(run).map((u) => u.id).sort().join(",") : "";
   const flags = run
     ? Object.keys(run.flags).filter((k) => run.flags[k]).sort().join(",")
     : "";

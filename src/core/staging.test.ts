@@ -21,7 +21,7 @@ function player(id: string, over: Partial<UnitSpec> = {}): Unit {
 
 const PROCEDURAL: EncounterDef = {
   index: 0,
-  type: "open-field",
+  kind: "open-field",
   cols: 8,
   rows: 6,
   blocked: [],

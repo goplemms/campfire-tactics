@@ -124,7 +124,7 @@ export class SituationCard {
     if (!r) return void this.card.set("", [{ label: "Intel", value: "—" }]);
     const battle = ctx.phase === "battle";
     const def = currentEncounter(ctx.run);
-    const shape = !battle && !isAuthoredEncounter(def) ? def.type : undefined;
+    const shape = !battle && !isAuthoredEncounter(def) ? def.kind : undefined;
     const rows: CardRow[] = [];
     if (r.count !== undefined) rows.push({ label: "Foes", value: `${r.count}` });
     rows.push({ label: "Intel", value: `T${r.tier}` });

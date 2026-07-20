@@ -23,7 +23,7 @@
 
 import type { Unit } from "./units";
 import { bandFor, clamp } from "./num";
-import { getEnemyTemplate, type EncounterType } from "./generation";
+import { getEnemyTemplate, type EncounterKind } from "./generation";
 import { getNode, type NodeKind } from "./overworld";
 import { eventForNode } from "./node-events";
 import { earlyEventForNode } from "./early-events";
@@ -247,7 +247,7 @@ export interface NodePreview {
   kind: NodeKind;
   layer: number;
   /** Combat only: the encounter shape — **always** shown (D24). */
-  encounterType?: EncounterType;
+  encounterKind?: EncounterKind;
   /** Combat only: the banded intel read at the party's floor (+ any bump). */
   intel?: IntelReport;
   /** Combat only: a banded reward hint (see {@link rewardHint}). */
@@ -314,7 +314,7 @@ export function previewNode(run: RunState, nodeId: string, extraTier = 0): NodeP
   // An authored encounter has no procedural shape (D49); leave the type unshown.
   const authored = isAuthoredEncounter(def);
   preview.authored = authored;
-  preview.encounterType = authored ? undefined : def.type;
+  preview.encounterKind = authored ? undefined : def.kind;
   // Depth-capped read (D86): a shallow node reveals less, whatever the party's floor.
   const depth = intelDepthOf(def);
   const tier = effectiveIntelTier(intelFloor(run.party) + extraTier, def);

@@ -14,12 +14,12 @@ import { healUnit, woundedBySeverity, type Unit } from "./units";
 import {
   type RunState,
   runDifficulty,
-  combatRoster,
+  combatParty,
   removeFromRoster,
   breakCamp,
 } from "./run";
 import { nudgeMorale } from "./camp";
-import { tickDyingClocks } from "./mortality";
+import { advanceDyingClocksOneNight } from "./mortality";
 import { rpPerNight, payUpkeep, restHeal, computeUpkeep, accrueRp, spendRp, RECOVERY, type UpkeepResult } from "./upkeep";
 import { restoreFatigue, nightlyFatigue, isFatigueTier0 } from "./fatigue";
 import type { InPlaceRestResult } from "./runloop";
@@ -97,7 +97,7 @@ export function deepRest(run: RunState): DeepRestOutcome {
   // units to a Clearing *at Tier 0* to bank the full recovery ("rest the hurt, work the healthy").
   const healed: { unitId: string; hp: number }[] = [];
   const chipHealed: { unitId: string; hp: number }[] = [];
-  const wounded = woundedBySeverity(combatRoster(run));
+  const wounded = woundedBySeverity(combatParty(run));
   for (const u of wounded) {
     if (bigHealEligible.has(u.id) && run.rp >= policy.rpPerChunk) {
       const res = restHeal(u, run.rp, policy);
@@ -120,7 +120,7 @@ export function deepRest(run: RunState): DeepRestOutcome {
   run.camp.gearWear = 0;
   run.camp.skippedUpkeep = [];
 
-  const lost = tickDyingClocks(run.party);
+  const lost = advanceDyingClocksOneNight(run.party);
   for (const u of lost) removeFromRoster(run, u);
   return { upkeep, rpAdded, healed, chipHealed, moraleGained: REST.moraleGain, fatigueRestored, debtCleared, lost };
 }
@@ -149,7 +149,7 @@ export function inPlaceRest(run: RunState): InPlaceRestResult {
   });
 
   // Refuse at full health (no empty drain, D47) — only wounded fighters count.
-  const wounded = woundedBySeverity(combatRoster(run));
+  const wounded = woundedBySeverity(combatParty(run));
   if (wounded.length === 0) return refuse("The party is already at full health.");
 
   // Soft cap (D80): if a max consecutive-nights cap is set, refuse past it (uncapped by default).
@@ -186,7 +186,7 @@ export function inPlaceRest(run: RunState): InPlaceRestResult {
   // The **RP accelerator** (D80): spend banked Rest Points to heal the wounded *beyond* the floor,
   // worst-first. RP banks per night and is boosted by support roles (Cook/Medic) — bringing
   // support heals the party faster. No Clearing bonus RP here, so it stays slower than a Clearing.
-  for (const u of woundedBySeverity(combatRoster(run))) {
+  for (const u of woundedBySeverity(combatParty(run))) {
     if (run.rp < policy.rpPerChunk) break;
     const res = restHeal(u, run.rp, policy);
     if (res.rpSpent > 0) {

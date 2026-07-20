@@ -63,9 +63,9 @@ export interface UpkeepDigest {
 
 /** A logged step, discriminated by `at` (the run-loop seam it came from). */
 export type PlaytestEvent =
-  | { at: "camp"; snapshot: LeverSnapshot; upkeep: UpkeepDigest }
+  | { kind: "camp"; snapshot: LeverSnapshot; upkeep: UpkeepDigest }
   | {
-      at: "encounter";
+      kind: "encounter";
       snapshot: LeverSnapshot;
       result: EncounterResult;
       goldEarned: number;
@@ -78,7 +78,7 @@ export type PlaytestEvent =
       traps: TrapEngagement;
     }
   | {
-      at: "rest-node";
+      kind: "rest-node";
       snapshot: LeverSnapshot;
       upkeep: UpkeepDigest;
       goldSpent: number;
@@ -87,8 +87,8 @@ export type PlaytestEvent =
       fatigueRestored: number;
       debtCleared: number;
     }
-  | { at: "in-place-rest"; snapshot: LeverSnapshot; applied: boolean; goldSpent: number; hpHealed: number }
-  | { at: "event-node"; snapshot: LeverSnapshot; goldDelta: number };
+  | { kind: "in-place-rest"; snapshot: LeverSnapshot; applied: boolean; goldSpent: number; hpHealed: number }
+  | { kind: "event-node"; snapshot: LeverSnapshot; goldDelta: number };
 
 /** A captured playtest session: an ordered timeline of lever steps. */
 export interface PlaytestLog {
@@ -144,7 +144,7 @@ function digestUpkeep(upkeep: CampResult["upkeep"]): UpkeepDigest {
 /** Record the nightly camp upkeep (where the skip-food / under-fund lever lands). */
 export function recordCamp(log: PlaytestLog | undefined, run: RunState, res: CampResult): void {
   if (!log) return;
-  log.events.push({ at: "camp", snapshot: snapshot(log, run), upkeep: digestUpkeep(res.upkeep) });
+  log.events.push({ kind: "camp", snapshot: snapshot(log, run), upkeep: digestUpkeep(res.upkeep) });
 }
 
 /** Record an encounter's graded resolution (gold, captures, leveling). */
@@ -154,7 +154,7 @@ export function recordEncounter(log: PlaytestLog | undefined, run: RunState, res
     .filter(([, l]) => l.charLevels > 0 || l.jobLevels > 0)
     .map(([id]) => id);
   log.events.push({
-    at: "encounter",
+    kind: "encounter",
     snapshot: snapshot(log, run),
     result: res.result,
     goldEarned: res.goldEarned,
@@ -171,7 +171,7 @@ export function recordEncounter(log: PlaytestLog | undefined, run: RunState, res
 export function recordRestNode(log: PlaytestLog | undefined, run: RunState, res: RestResult): void {
   if (!log) return;
   log.events.push({
-    at: "rest-node",
+    kind: "rest-node",
     snapshot: snapshot(log, run),
     upkeep: digestUpkeep(res.upkeep),
     goldSpent: res.upkeep.paid,
@@ -186,7 +186,7 @@ export function recordRestNode(log: PlaytestLog | undefined, run: RunState, res:
 export function recordInPlaceRest(log: PlaytestLog | undefined, run: RunState, res: InPlaceRestResult): void {
   if (!log) return;
   log.events.push({
-    at: "in-place-rest",
+    kind: "in-place-rest",
     snapshot: snapshot(log, run),
     applied: res.applied,
     goldSpent: res.goldSpent,
@@ -197,7 +197,7 @@ export function recordInPlaceRest(log: PlaytestLog | undefined, run: RunState, r
 /** Record an event node's gold swing. */
 export function recordEventNode(log: PlaytestLog | undefined, run: RunState, res: EventResolution): void {
   if (!log) return;
-  log.events.push({ at: "event-node", snapshot: snapshot(log, run), goldDelta: res.outcome.goldDelta });
+  log.events.push({ kind: "event-node", snapshot: snapshot(log, run), goldDelta: res.outcome.goldDelta });
 }
 
 // --- The summary: did each lever come into play, and did it bite? -----------
@@ -285,12 +285,12 @@ export function summarizePlaytest(log: PlaytestLog): PlaytestSummary {
     for (const u of s.party) peakFatigue = Math.max(peakFatigue, u.fatigue);
     if (s.storageFree === 0) storagePressure = true;
 
-    if (ev.at === "camp" || ev.at === "rest-node") {
+    if (ev.kind === "camp" || ev.kind === "rest-node") {
       goldSpentUpkeep += ev.upkeep.paid;
       if (ev.upkeep.skipped.includes("food")) foodSkips++;
       if (ev.upkeep.underfunded.length > 0) underfundedNights++;
     }
-    if (ev.at === "encounter") {
+    if (ev.kind === "encounter") {
       outcomes[ev.result]++;
       goldEarned += ev.goldEarned;
       captures += ev.captured.length;
@@ -302,7 +302,7 @@ export function summarizePlaytest(log: PlaytestLog): PlaytestSummary {
       traps.disarmed += ev.traps.disarmed;
       traps.salvaged += ev.traps.salvaged;
     }
-    if (ev.at === "in-place-rest" && ev.applied) restedInPlace = true;
+    if (ev.kind === "in-place-rest" && ev.applied) restedInPlace = true;
   }
 
   const encounters = outcomes.win + outcomes["objective-failure"] + outcomes.wipe;

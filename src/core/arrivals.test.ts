@@ -11,7 +11,7 @@ import {
   type Population,
   type Sample,
 } from "./arrivals";
-import { activeRoster, type RunState } from "./run";
+import { activeParty, type RunState } from "./run";
 
 const EXP = THE_HOLLOW_MILL;
 
@@ -130,7 +130,7 @@ describe("arrivalDigest (Phase 5)", () => {
     expect(d.avgHpPct).toBeLessThanOrEqual(100);
 
     // The roster ids match the run's active roster, and this route freed Sela the Medic.
-    expect(d.rosterIds).toEqual(activeRoster(run).map((u) => u.id));
+    expect(d.rosterIds).toEqual(activeParty(run).map((u) => u.id));
     expect(d.rosterIds).toContain("sela");
     expect(d.flags).toContain("medic-freed");
 

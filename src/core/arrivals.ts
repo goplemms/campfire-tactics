@@ -33,7 +33,7 @@ import {
   type TraverseOpts,
 } from "./expedition-sim";
 import { clamp01 } from "./num";
-import { activeRoster, type RunState } from "./run";
+import { activeParty, type RunState } from "./run";
 import { jobLevelOf } from "./leveling";
 import { primaryJobOf, type Unit } from "./units";
 import { slotsUsed, getMaterial } from "./inventory";
@@ -196,7 +196,7 @@ function isRelicItem(id: string): boolean {
  * multiplied by its {@link ScoreWeights} weight to give the component's `parts` entry;
  * `total` is their sum. Components:
  *
- * - **levels** — `sum(level + primaryJobLevel)` over {@link activeRoster}, / {@link LEVELS_REF}.
+ * - **levels** — `sum(level + primaryJobLevel)` over {@link activeParty}, / {@link LEVELS_REF}.
  * - **health** — mean `hp/maxHp` over the active roster (already 0..1; 0 for an empty roster).
  * - **roster** — active roster size / {@link ROSTER_REF}.
  * - **gold** — `run.camp.gold` / {@link GOLD_REF}.
@@ -212,7 +212,7 @@ export function scoreArrival(
   run: RunState,
   weights: ScoreWeights = DEFAULT_SCORE_WEIGHTS,
 ): ArrivalScore {
-  const roster = activeRoster(run);
+  const roster = activeParty(run);
 
   // levels — character + primary-job level, summed over the active roster.
   const levelsMag = clamp01(levelTotalOf(roster) / LEVELS_REF);
@@ -273,7 +273,7 @@ export function scoreArrival(
  * the totals a developer eyeballs to recognize "is this the arrival I wanted".
  */
 export interface ArrivalDigest {
-  /** Σ(character level + primary-job level) over the {@link activeRoster}. */
+  /** Σ(character level + primary-job level) over the {@link activeParty}. */
   levelTotal: number;
   /** Mean current-HP fraction (`hp/maxHp`) over the active roster, as a 0..100 percent (rounded). 0 for an empty roster. */
   avgHpPct: number;
@@ -290,14 +290,14 @@ export interface ArrivalDigest {
  * formats into a one-line preview. Reads the run, never mutates it; deterministic
  * (the same run yields the same digest).
  *
- * - **levelTotal** — `Σ(level + primaryJobLevel)` over {@link activeRoster}.
+ * - **levelTotal** — `Σ(level + primaryJobLevel)` over {@link activeParty}.
  * - **avgHpPct** — mean `hp/maxHp` over the active roster, ×100 rounded (0 for an empty roster).
  * - **gold** — `run.camp.gold`.
  * - **rosterIds** — the active roster's unit ids, in roster order.
  * - **flags** — the keys of the run's **set** flags.
  */
 export function arrivalDigest(run: RunState): ArrivalDigest {
-  const roster = activeRoster(run);
+  const roster = activeParty(run);
   const avgHpPct = Math.round(avgHpFraction(roster) * 100);
   return {
     levelTotal: levelTotalOf(roster),

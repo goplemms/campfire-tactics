@@ -25,7 +25,7 @@ import { pct,
   availableSkills,
   // R4/B (#112) — the one overworld-action projection the camp verb surfaces render.
   availableActions,
-  combatRoster,
+  combatParty,
   // M10 — the gold economy verbs (D30/D34) + theft (D30)
   merchantBuy,
   // D61 — market access + the Merchant buy/sell faucet
@@ -661,7 +661,7 @@ export class OverworldScene extends Phaser.Scene {
     if (!found) return undefined;
     const { unit, skill } = found;
     const full = skill.id === "triage"; // the Medic's full-strength Triage (vs the universal fallback)
-    const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
+    const someoneWounded = combatParty(this.run).some((u) => u.hp < u.maxHp);
     const tip = !someoneWounded
       ? "No wounded fighter to triage."
       : full
@@ -1483,7 +1483,7 @@ export class OverworldScene extends Phaser.Scene {
   /** The in-place-rest button's label/availability (cost/heal, greys at full/broke). */
   private inPlaceRestReadout(): { label: string; detail: string; enabled: boolean } {
     const bill = computeUpkeep(this.run.party);
-    const wounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
+    const wounded = combatParty(this.run).some((u) => u.hp < u.maxHp);
     const affordable = this.run.camp.gold >= bill.total;
     const enabled = wounded && affordable;
     const label = !wounded ? "party at full HP" : !affordable ? `need ${bill.total}g (broke)` : `pay ${bill.total}g`;

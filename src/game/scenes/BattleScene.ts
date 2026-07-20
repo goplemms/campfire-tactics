@@ -74,7 +74,7 @@ import { pct,
   type PlaceTrapEffect,
   type MaterialCost,
   bribeEnemy,
-  bribeCost,
+  bribePrice,
   bribeChance,
   influenceTier,
   recruitToRoster,
@@ -1709,7 +1709,7 @@ export class BattleScene extends Phaser.Scene {
       const noble = this.run.party.find((u) => u.alive && !u.captured && primaryJobOf(u) === "noble");
       if (this.guild && noble && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
         const tier = influenceTier(this.run.overworld.influence);
-        const cost = bribeCost(this.currentPreview(), tier);
+        const cost = bribePrice(this.currentPreview(), tier);
         const chance = pct(bribeChance(tier));
         const affordable = this.run.overworld.influence >= cost;
         // Tag the verb with the Noble: unlike the other Acts this isn't the *active* unit's

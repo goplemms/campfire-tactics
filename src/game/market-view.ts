@@ -96,7 +96,7 @@ export function drawMarket(
     if (!mat) continue;
     const owned = countOf(run.inventory, id);
     const room = canAdd(run.inventory, id);
-    const affordable = Math.floor(run.camp.gold / price);
+    const affordable = Math.floor(run.camp.purse / price);
     const buyable = room && affordable >= 1;
     layer.push(
       scene.add.text(leftX, y, mat.name, { color: buyable ? INK.bright : INK.disabled, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(DEPTH.sheetContent),

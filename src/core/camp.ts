@@ -23,7 +23,7 @@ export interface Camp {
    * ({@link "./economy-actions".merchantSell}); Upkeep, buys, and bribes drain it.
    * (D61 retired the Merchant's old gold-*mint* — it trades, it doesn't print.)
    */
-  gold: number;
+  purse: number;
   /** Party morale, a banded value (D8); higher is better. */
   morale: number;
   /** HP the Cook has banked to heal each unit at the next battle's start. */
@@ -55,7 +55,7 @@ export interface Camp {
    */
   satisfiedUpkeep: ("food" | "repairs")[];
   /**
-   * The **purse journal** (`camp.gold`'s transaction log) — every gold movement,
+   * The **purse journal** (`camp.purse`'s transaction log) — every gold movement,
    * tagged by {@link "./purse-journal".PurseSource}, in order. Mutated only through
    * the {@link "./purse-journal".earn}/{@link "./purse-journal".spend} chokepoint, so
    * `sum(deltas) === gold` by construction. Seeded with the carried-purse opening
@@ -66,9 +66,9 @@ export interface Camp {
 
 /** A fresh camp with sensible starting values (the purse log seeded with the opening gold). */
 export function createCamp(init: Partial<Camp> = {}): Camp {
-  const gold = init.gold ?? 0;
+  const gold = init.purse ?? 0;
   return {
-    gold,
+    purse: gold,
     morale: init.morale ?? 0,
     pendingHeal: init.pendingHeal ?? 0,
     skippedUpkeep: init.skippedUpkeep ?? [],

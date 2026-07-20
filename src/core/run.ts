@@ -183,7 +183,7 @@ export function createRun(seed: string | number, opts: CreateRunOptions): RunSta
     path: [map.startId],
     party: opts.party,
     inventory: createInventory(storageCap, opts.inventory ?? {}),
-    camp: createCamp({ gold: opts.gold ?? 0, morale: opts.morale ?? 0 }),
+    camp: createCamp({ purse: opts.gold ?? 0, morale: opts.morale ?? 0 }),
     rp: 0,
     overworld: createOverworldEconomy(),
     night: 0,
@@ -202,7 +202,7 @@ export function createRun(seed: string | number, opts: CreateRunOptions): RunSta
  * from its bundle: the caravan's **party** (a copy, so permadeath can splice it
  * without touching the assembled caravan), its per-caravan **storage cap**, its
  * **loaded supplies** (the starting inventory), and its **purse** (the run's gold
- * — `camp.gold` *is* the purse; the treasury is new on the guild, D34). The `seed`
+ * — `camp.purse` is the run purse; the treasury lives on the guild, D34). The `seed`
  * is the **quest's** seed, so the same guild seed + same dispatch choices
  * reproduce each caravan's map + outcomes exactly (D22). The existing
  * {@link createRun} options overload stays for tests.

@@ -75,7 +75,7 @@ describe("runloop — rest node recovery (D23)", () => {
     run.path.push(node.id);
     const loop = new RunLoop(run);
 
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
     const nightBefore = run.night;
     const xpBefore = run.party.map((u) => u.xp);
 
@@ -86,7 +86,7 @@ describe("runloop — rest node recovery (D23)", () => {
     expect(res.xpEach).toBe(bypassXp(node));
     run.party.forEach((u, i) => expect(u.xp).toBeGreaterThan(xpBefore[i]));
     // The loot is forgone — bypassEncounter grants no purse gold…
-    expect(run.camp.gold).toBe(goldBefore);
+    expect(run.camp.purse).toBe(goldBefore);
     // …and the night advanced + recorded with no gold earned.
     expect(run.night).toBe(nightBefore + 1);
     expect(last(run.history)).toMatchObject({ nodeId: node.id, kind: "combat", goldEarned: 0 });
@@ -117,14 +117,14 @@ describe("runloop — the two-tier recovery economy (D47)", () => {
     const loop = new RunLoop(run);
     const rook = run.party.find((u) => u.id === "Rook")!;
     rook.hp = 4;
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
 
     const res = loop.inPlaceRest();
     expect(res.applied).toBe(true);
     expect(res.hpHealed).toBeGreaterThanOrEqual(1); // the floor (D47)
     expect(rook.hp).toBeGreaterThan(4);
     expect(res.goldSpent).toBeGreaterThan(0);
-    expect(run.camp.gold).toBeLessThan(goldBefore); // a night's rations paid
+    expect(run.camp.purse).toBeLessThan(goldBefore); // a night's rations paid
   });
 
   it("in-place rest heals the whole wounded party, worst-first (D80)", () => {
@@ -189,12 +189,12 @@ describe("runloop — the two-tier recovery economy (D47)", () => {
     const run = newRun("inplace-full");
     const loop = new RunLoop(run);
     for (const u of run.party) u.hp = u.maxHp; // already topped up
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
 
     const res = loop.inPlaceRest();
     expect(res.applied).toBe(false);
     expect(res.goldSpent).toBe(0);
-    expect(run.camp.gold).toBe(goldBefore); // nothing spent
+    expect(run.camp.purse).toBe(goldBefore); // nothing spent
   });
 
   it("in-place rest is a full node-step — it ticks ability cooldowns (D47)", () => {
@@ -223,7 +223,7 @@ describe("runloop — the two-tier recovery economy (D47)", () => {
     }
     expect(rests).toBeGreaterThan(0);
     // It stopped because the purse can't cover another night's rations.
-    expect(run.camp.gold).toBeLessThan(computeUpkeep(run.party).total);
+    expect(run.camp.purse).toBeLessThan(computeUpkeep(run.party).total);
   });
 
   it("the rest node is the premium tier: big heal (Tier 0) + Deep Rest wipe + debt clear (D47/D80)", () => {

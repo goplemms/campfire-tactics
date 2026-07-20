@@ -88,9 +88,9 @@ export function thiefSteal(
   label: string,
   protection = run.overworld.protection,
 ): TheftAttempt {
-  const stolen = rollSkim(run.seed, label, run.camp.gold, protection);
+  const stolen = rollSkim(run.seed, label, run.camp.purse, protection);
   spend(run.camp, stolen, "theft", "Purse skimmed by thief", { nodeId: run.mapNodeId, night: run.night });
-  return { stolen, purseAfter: run.camp.gold, protection, resolved: false };
+  return { stolen, purseAfter: run.camp.purse, protection, resolved: false };
 }
 
 /**

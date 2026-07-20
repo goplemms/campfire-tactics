@@ -134,7 +134,7 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     const run = createRunFromExpedition(THE_HOLLOW_MILL);
     expect(run.party).toHaveLength(3);
     expect(run.party.map((u) => u.id).sort()).toEqual(["edrin", "rook", "vale"]);
-    expect(run.camp.gold).toBe(120);
+    expect(run.camp.purse).toBe(120);
     expect(run.expeditionId).toBe("hollow-mill");
   });
 

@@ -749,8 +749,9 @@ States: `todo` → `in-progress` → `testable` → `done`
   registration completeness), the GuildScene banner migrated to `showModal` with its **first e2e**
   (`test:e2e:guild-banner`, in CI — proves the backdrop blocks the hall), and the conventions canon
   doc'd at [`docs/design/implementation/conventions.md`](../../docs/design/implementation/conventions.md)
-  (living exemplars + guards; wired into CLAUDE.md/glossary/agent briefs). Waves 2–4 (num.ts adoption,
-  result-shape stragglers, render extraction, renames incl. `Camp.gold`→`purse`) queued in the audit doc.
+  (living exemplars + guards; wired into CLAUDE.md/glossary/agent briefs). Waves 2–4 shipped same-day (num.ts + `pct()` adoption; result-shape stragglers; `showModal`
+  completion + `DEPTH`/`pushHpBar`/`onEscClose`; the rename batch incl. `Camp.gold`→`purse` with a
+  repro-dump v1→v2 migration). Open owner calls: story short-pay vs refuse; bribe tri-state enum.
 - **Deferred / next (see the handoff doc):** rename the placeholder captives into named characters; the
   **flank / repositioning session** (the Intel deploy-side that makes extraction viable — red-teamed,
   kept-not-replaced, C5-lite); the **map-creation expansion** (bigger/richer boards + more of the

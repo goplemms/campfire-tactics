@@ -33,8 +33,8 @@ stopped being executed.
 
 ## Code diction (the audit's terminology canon)
 
-- **`kind`** is the discriminant field on tagged unions and defs. (`type` survives
-  only in the pre-canon `EncounterType` sub-dialect — don't extend it.)
+- **`kind`** is the discriminant field on tagged unions and defs. (the last `type` holdout,
+  the encounter shape, renamed to `EncounterKind`/`kind` in Wave 4.)
 - **`*Def`** for authored registry records. `*Policy` for rule-knob bundles.
   Don't mint new `*Template`/`*Spec` names for registry records.
 - Verb ladder: **`resolve*`** computes an outcome from rules+state · **`apply*`**
@@ -44,9 +44,9 @@ stopped being executed.
   **`node-step`** (the departure-fired pacing clock) are related but **not** the
   same seam — see `run.ts` `recordNight` vs `breakCamp`.
 - Banded stats: **`*Tier`** is the named band, **`band`/`bandFor`** the quantizer.
-- Money: **treasury** (guild vault) · **purse** (run spending money — the field
-  `Camp.gold` *is* the purse; a Wave-4 rename is queued) · **payout** (quest
-  reward, treasury-bound).
+- Money: **treasury** (guild vault) · **purse** (run spending money — `Camp.purse`;
+  the repro-dump v1→v2 migration covers the old `gold` spelling) · **payout**
+  (quest reward, treasury-bound). `*Price` is the resolved number the player pays.
 - Unit collections: **`party`** (run-scoped fielded group) · **`roster`**
   (guild-scoped stable) · **`pool`** (hire candidates).
 

@@ -416,7 +416,7 @@ export class OverworldScene extends Phaser.Scene {
       renderChoicePanel(this, this.overlay, {
         title: `On the road — ${def.name}`,
         body: def.teaser,
-        gold: this.run.camp.gold,
+        gold: this.run.camp.purse,
         choices,
         onPick: (c) => this.onEarlyChoice(node, def, c),
         btnW: 380,
@@ -443,7 +443,7 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.overlay);
     if (out.bypass) {
       const res = this.loop.bypassEncounter();
-      const lines = [out.summary, "", `Each fighter keeps ${res.xpEach} EXP — the plunder's forgone.`, `Purse now ${this.run.camp.gold}g.`];
+      const lines = [out.summary, "", `Each fighter keeps ${res.xpEach} EXP — the plunder's forgone.`, `Purse now ${this.run.camp.purse}g.`];
       this.showOverlay(`On the road — ${def.name}`, lines.join("\n"), true, 540, 230, () => this.afterNode());
     } else {
       // Declined the bypass — the encounter stands; drop into the prep camp and Begin as normal.
@@ -877,7 +877,7 @@ export class OverworldScene extends Phaser.Scene {
     if (cd > 0) return `On cooldown — ${cd} more night${cd === 1 ? "" : "s"}.`;
     // D73: fatigue never refuses an action (no lock) — over-extension is paid via consequences.
     const gold = resolveKnob(cost.gold, this.run);
-    if (gold > 0 && this.run.camp.gold < gold) return `Not enough gold (${gold}g).`;
+    if (gold > 0 && this.run.camp.purse < gold) return `Not enough gold (${gold}g).`;
     return null;
   }
 
@@ -1269,7 +1269,7 @@ export class OverworldScene extends Phaser.Scene {
     } else {
       lines.push("The road was clear — the purse is intact.");
     }
-    lines.push(`Purse now ${this.run.camp.gold}g.`);
+    lines.push(`Purse now ${this.run.camp.purse}g.`);
     this.showOverlay(res.def.name, lines.join("\n"), stolen === 0, 520, 200, () => this.afterNode());
   }
 
@@ -1320,7 +1320,7 @@ export class OverworldScene extends Phaser.Scene {
     renderChoicePanel(this, this.overlay, {
       title,
       body,
-      gold: this.run.camp.gold,
+      gold: this.run.camp.purse,
       choices: this.loop.eventChoices(),
       onPick: (c) => this.onEventChoice(c),
       btnW: 360,
@@ -1345,7 +1345,7 @@ export class OverworldScene extends Phaser.Scene {
 
     // Recruiter / story: a terminal pick — record the step and report the outcome.
     clearLayer(this.overlay);
-    const lines = [out.summary, "", `Purse now ${this.run.camp.gold}g.`];
+    const lines = [out.summary, "", `Purse now ${this.run.camp.purse}g.`];
     if (out.recruited) lines.push(`${out.recruited.name} now rides with the caravan.`);
     this.loop.recordEventNight(out.goldDelta);
     const good = out.goldDelta >= 0 && out.moraleDelta >= 0;
@@ -1484,7 +1484,7 @@ export class OverworldScene extends Phaser.Scene {
   private inPlaceRestReadout(): { label: string; detail: string; enabled: boolean } {
     const bill = computeUpkeep(this.run.party);
     const wounded = combatParty(this.run).some((u) => u.hp < u.maxHp);
-    const affordable = this.run.camp.gold >= bill.total;
+    const affordable = this.run.camp.purse >= bill.total;
     const enabled = wounded && affordable;
     const label = !wounded ? "party at full HP" : !affordable ? `need ${bill.total}g (broke)` : `pay ${bill.total}g`;
     const streak = this.run.overworld.restStreak;
@@ -1651,7 +1651,7 @@ export class OverworldScene extends Phaser.Scene {
       "The caravan cleared its final mission — the quest is complete!",
       "",
       `Survived ${this.run.night} night(s), won ${won} encounter(s).`,
-      `Surviving purse ${this.run.camp.gold}g (flows back to the treasury).`,
+      `Surviving purse ${this.run.camp.purse}g (flows back to the treasury).`,
       "",
       toHall ? "Return to the guild hall — survivors, gear and purse come home." : `Seed:  ${this.run.seed}`,
     ];

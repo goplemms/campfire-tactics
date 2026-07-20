@@ -30,12 +30,12 @@ describe("Cook kit (D71) — food → recovery", () => {
   it("Cook Stew — priced at the night's Food value, banks RP, satisfies the Food line (no double-charge)", () => {
     const run = newRun("stew", [cook(), fighter("r")]);
     const foodCost = computeUpkeep(run.party).lines.find((l) => l.id === "food")!.cost;
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
     const rpBefore = run.rp;
 
     const res = useOverworldSkill(run, run.party[0], COOK_STEW);
     expect(res.applied).toBe(true);
-    expect(run.camp.gold).toBe(goldBefore - foodCost); // the dynamic price = the night's food value
+    expect(run.camp.purse).toBe(goldBefore - foodCost); // the dynamic price = the night's food value
     expect(run.rp).toBe(rpBefore + COOK_KIT.stewRp); // RP banked
 
     // End the Night bills upkeep — Food is already satisfied, so it isn't charged again.
@@ -56,10 +56,10 @@ describe("Cook kit (D71) — food → recovery", () => {
   it("Feast — a paid, once-per-node morale lift (the dedicated morale lever)", () => {
     const run = newRun("feast", [cook()]);
     const moraleBefore = run.camp.morale;
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
     const res = useOverworldSkill(run, run.party[0], FEAST);
     expect(res.applied).toBe(true);
     expect(run.camp.morale).toBe(moraleBefore + COOK_KIT.feastMorale);
-    expect(run.camp.gold).toBe(goldBefore - COOK_KIT.feastGold);
+    expect(run.camp.purse).toBe(goldBefore - COOK_KIT.feastGold);
   });
 });

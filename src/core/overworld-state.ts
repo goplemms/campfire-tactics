@@ -176,7 +176,7 @@ export function tickCooldowns(eco: OverworldState): void {
 
 /**
  * Accrue the **Banker's** flat purse interest one node-step (M10, D30/D34): credit
- * `interestPerStep` to the carried purse (`camp.gold`). Called once per node played
+ * `interestPerStep` to the carried purse (`camp.purse`). Called once per node played
  * from {@link "./run".recordNight}, right alongside {@link tickCooldowns}. A pure
  * **purse** faucet — it **never** touches the guild treasury (D34). Returns the
  * gold credited (0 when no Banker interest is engaged).

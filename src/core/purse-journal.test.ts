@@ -8,38 +8,38 @@ import { earn, spend, openingPurseLog, purseFromLog, purseTotalBySource } from "
 
 describe("purse journal — the earn/spend chokepoint (substrate)", () => {
   it("earn/spend mutate the purse and log a signed, sourced entry", () => {
-    const camp = createCamp({ gold: 50 }); // seeds an opening entry
+    const camp = createCamp({ purse: 50 }); // seeds an opening entry
     expect(camp.purseLog).toEqual([{ delta: 50, source: "opening", label: "Carried into the field" }]);
 
     earn(camp, 30, "loot", "Loot @ wolf-den", { nodeId: "wolf-den", night: 1 });
     spend(camp, 8, "action", "Buy Trap Kit");
 
-    expect(camp.gold).toBe(72);
+    expect(camp.purse).toBe(72);
     expect(camp.purseLog).toHaveLength(3);
     expect(camp.purseLog[1]).toMatchObject({ delta: 30, source: "loot", nodeId: "wolf-den", night: 1 });
     expect(camp.purseLog[2]).toMatchObject({ delta: -8, source: "action" });
   });
 
   it("the log reconciles to the balance, and totals group by source", () => {
-    const camp = createCamp({ gold: 100 });
+    const camp = createCamp({ purse: 100 });
     earn(camp, 40, "loot", "Loot");
     earn(camp, 25, "loot", "Loot");
     spend(camp, 10, "upkeep", "Food");
     spend(camp, 6, "toll", "Toll");
 
-    expect(purseFromLog(camp)).toBe(camp.gold); // the invariant, by construction
+    expect(purseFromLog(camp)).toBe(camp.purse); // the invariant, by construction
     expect(purseTotalBySource(camp, "loot")).toBe(65);
     expect(purseTotalBySource(camp, "upkeep")).toBe(-10);
     expect(purseTotalBySource(camp, "opening")).toBe(100);
   });
 
   it("non-positive movements are no-ops (no entry, no mutation)", () => {
-    const camp = createCamp({ gold: 0 }); // no opening entry at 0
+    const camp = createCamp({ purse: 0 }); // no opening entry at 0
     expect(camp.purseLog).toEqual([]);
     expect(earn(camp, 0, "loot", "nothing")).toBe(0);
     expect(spend(camp, -5, "toll", "nothing")).toBe(0);
     expect(camp.purseLog).toEqual([]);
-    expect(camp.gold).toBe(0);
+    expect(camp.purse).toBe(0);
   });
 
   it("openingPurseLog seeds only when carrying gold", () => {
@@ -69,11 +69,11 @@ describe("purse journal — invariant across a full real run (no site missed)", 
   // mutation that bypassed earn/spend (a missed site) would break the reconcile.
   const seeds = ["sim-1", "sim-7", "sim-23", "sim-42", "sim-58"];
 
-  it("sum(purse log) === camp.gold after each run", () => {
+  it("sum(purse log) === camp.purse after each run", () => {
     for (const seed of seeds) {
       const run = createRun(seed, { party: starterParty(), gold: 140 });
       simulateRun(() => run);
-      expect(purseFromLog(run.camp)).toBe(run.camp.gold);
+      expect(purseFromLog(run.camp)).toBe(run.camp.purse);
     }
   });
 

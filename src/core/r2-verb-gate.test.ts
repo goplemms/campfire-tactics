@@ -106,7 +106,7 @@ describe("R2 witness (b) — bankerBorrow / bankerEngageInterest are paced throu
     expect(second.applied).toBe(false);
     expect(second.reason).toMatch(/spent for tonight/i);
     expect(run.overworld.debt).toBe(40);
-    expect(run.camp.gold).toBe(50 + 40);
+    expect(run.camp.purse).toBe(50 + 40);
     // The pacing is per-node: the node-step re-arms the verb.
     breakCamp(run);
     expect(bankerBorrow(run, 40).applied).toBe(true);
@@ -154,9 +154,9 @@ describe("R2 witness (c) — the commit closure spends the price captured at che
     // The effect applies between check and commit — and captures a member.
     run.party[2].captured = true;
 
-    const before = run.camp.gold;
+    const before = run.camp.purse;
     check.commit();
-    const committedPrice = before - run.camp.gold;
+    const committedPrice = before - run.camp.purse;
 
     // FIXED (increment 5, #126): the commit closure spends the captured 30g — NOT the
     // 20g a post-effect re-resolution would have charged. The committed spend equals

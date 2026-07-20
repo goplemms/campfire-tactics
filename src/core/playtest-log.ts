@@ -112,7 +112,7 @@ export function snapshot(log: PlaytestLog, run: RunState): LeverSnapshot {
     nodeId: node.id,
     layer: node.layer,
     kind: node.kind,
-    purse: run.camp.gold,
+    purse: run.camp.purse,
     morale: run.camp.morale,
     moraleTier: moraleTier(run.camp.morale),
     rp: run.rp,

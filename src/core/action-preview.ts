@@ -94,7 +94,7 @@ export function inPlaceRestPreview(run: RunState): PreviewChange[] {
 
 /** Banker — engage flat purse interest per node-step (`ceil(purse × rate)`, ≥1). */
 export function bankerInterestPreview(run: RunState): PreviewChange[] {
-  const perStep = run.camp.gold > 0 ? Math.max(1, Math.ceil(run.camp.gold * ECONOMY.banker.interestRate)) : 0;
+  const perStep = run.camp.purse > 0 ? Math.max(1, Math.ceil(run.camp.purse * ECONOMY.banker.interestRate)) : 0;
   return [{ label: "Interest", text: `+${perStep}g/step`, good: true }];
 }
 

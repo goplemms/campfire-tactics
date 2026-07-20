@@ -117,7 +117,7 @@ export const BLOCKADE: EventDef = {
   },
   choices(run, node) {
     const fee = bypassFee(node);
-    const canAfford = run.camp.gold >= fee;
+    const canAfford = run.camp.purse >= fee;
     const standing = influenceTier(run.overworld.influence);
     const earned = rankOf(INFLUENCE_ORDER, standing) >= rankOf(INFLUENCE_ORDER, BYPASS.floor);
     return [

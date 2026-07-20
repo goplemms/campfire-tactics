@@ -60,12 +60,12 @@ describe("scoreArrival (Phase 3)", () => {
       u.level += 5;
       u.hp = u.maxHp; // full health
     }
-    strong.camp.gold += 200;
+    strong.camp.purse += 200;
     strong.inventory.counts.salve = (strong.inventory.counts.salve ?? 0) + 4;
 
     // And `weak` strictly weaker (wounded, broke).
     for (const u of weak.party) u.hp = Math.max(1, Math.floor(u.maxHp * 0.1));
-    weak.camp.gold = 0;
+    weak.camp.purse = 0;
 
     expect(scoreArrival(strong).total).toBeGreaterThan(scoreArrival(weak).total);
   });
@@ -135,7 +135,7 @@ describe("arrivalDigest (Phase 5)", () => {
     expect(d.flags).toContain("medic-freed");
 
     // gold mirrors the purse.
-    expect(d.gold).toBe(run.camp.gold);
+    expect(d.gold).toBe(run.camp.purse);
   });
 
   it("monotonic-ish — a stronger/healthier/richer run reads higher across the fields", () => {
@@ -147,7 +147,7 @@ describe("arrivalDigest (Phase 5)", () => {
       u.level += 5;
       u.hp = u.maxHp; // full health → avgHpPct 100
     }
-    strong.camp.gold += 250;
+    strong.camp.purse += 250;
     const strongDigest = arrivalDigest(strong);
 
     expect(strongDigest.levelTotal).toBeGreaterThan(base.levelTotal);

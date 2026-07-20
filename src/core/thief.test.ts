@@ -89,10 +89,10 @@ describe("Thief — Deft Hands node skim (D68)", () => {
     const busy = Object.values(viaWalk.map.nodes).find((n) => n.kind === "combat" || n.kind === "event")!;
     viaWalk.mapNodeId = busy.id;
     viaDirect.mapNodeId = busy.id;
-    const before = viaWalk.camp.gold;
+    const before = viaWalk.camp.purse;
     accrueDeclaredFaucets(viaWalk);
     const skimmed = deftHandsSkim(viaDirect);
-    expect(viaWalk.camp.gold - before).toBe(skimmed); // the walk skimmed exactly what the resolver reports
+    expect(viaWalk.camp.purse - before).toBe(skimmed); // the walk skimmed exactly what the resolver reports
     expect([0, DEFT_HANDS.gold]).toContain(skimmed);
   });
 
@@ -113,7 +113,7 @@ describe("Thief — Deft Hands node skim (D68)", () => {
     let fired = 0, total = 0;
     for (let night = 0; night < 30; night++) {
       run.night = night;
-      run.camp.gold = 0;
+      run.camp.purse = 0;
       const got = deftHandsSkim(run);
       expect([0, DEFT_HANDS.gold]).toContain(got);
       if (got > 0) { fired++; total += got; }

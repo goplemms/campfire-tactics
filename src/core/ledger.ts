@@ -100,7 +100,7 @@ export interface BuildLedgerOptions {
  * summed into gold (D34).
  */
 export function buildLedger(run: RunState, opts: BuildLedgerOptions = {}): Ledger {
-  const balance = run.camp.gold;
+  const balance = run.camp.purse;
 
   // Realized flows from the run history (purse-scoped): a positive node gold is
   // loot in; a negative one is a field spend (tolls, thief skims, shop/recruiter).
@@ -195,7 +195,7 @@ export function nightEndGate(run: RunState): NightEndGate {
   }
 
   // A line you can't afford — but only nag *non-voluntary* breaches (intent, D45).
-  let gold = run.camp.gold;
+  let gold = run.camp.purse;
   for (const line of foodFirst(computeUpkeep(run.party).lines)) {
     if (skip.has(line.id)) continue; // deliberate skip — you meant it, no nag
     if (gold >= line.cost) gold -= line.cost;

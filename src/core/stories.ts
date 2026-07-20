@@ -295,7 +295,7 @@ export function applyStoryChoice(run: RunState, node: MapNode, story: StorySpec,
   }
   if (gold !== 0) {
     // A pay can never drive the purse negative.
-    const applied = gold < 0 ? -Math.min(run.camp.gold, -gold) : gold;
+    const applied = gold < 0 ? -Math.min(run.camp.purse, -gold) : gold;
     const ctx = { nodeId: run.mapNodeId, night: run.night };
     if (applied > 0) earn(run.camp, applied, "event", "Story payout", ctx);
     else if (applied < 0) spend(run.camp, -applied, "event", "Story cost", ctx);

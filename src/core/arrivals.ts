@@ -61,7 +61,7 @@ export interface ScoreWeights {
   health: number;
   /** Party breadth: active roster size (recruits gained ⇒ a stronger run). */
   roster: number;
-  /** Coffers: the run purse (`camp.gold`). */
+  /** Coffers: the run purse (`camp.purse`). */
   gold: number;
   /** Logistics: used inventory slots (provisioning depth). */
   supplies: number;
@@ -199,7 +199,7 @@ function isRelicItem(id: string): boolean {
  * - **levels** — `sum(level + primaryJobLevel)` over {@link activeParty}, / {@link LEVELS_REF}.
  * - **health** — mean `hp/maxHp` over the active roster (already 0..1; 0 for an empty roster).
  * - **roster** — active roster size / {@link ROSTER_REF}.
- * - **gold** — `run.camp.gold` / {@link GOLD_REF}.
+ * - **gold** — `run.camp.purse` / {@link GOLD_REF}.
  * - **supplies** — {@link slotsUsed} / {@link SUPPLIES_REF}.
  * - **fatigue** — a **penalty**: summed per-unit fatigue-tier fraction / {@link FATIGUE_REF}
  *   (with the default *negative* `fatigue` weight this lowers the score; lower fatigue ⇒ higher score).
@@ -224,7 +224,7 @@ export function scoreArrival(
   const rosterMag = clamp01(roster.length / ROSTER_REF);
 
   // gold — the run purse.
-  const goldMag = clamp01(run.camp.gold / GOLD_REF);
+  const goldMag = clamp01(run.camp.purse / GOLD_REF);
 
   // supplies — used inventory slots (provisioning depth).
   const suppliesMag = clamp01(slotsUsed(run.inventory) / SUPPLIES_REF);
@@ -277,7 +277,7 @@ export interface ArrivalDigest {
   levelTotal: number;
   /** Mean current-HP fraction (`hp/maxHp`) over the active roster, as a 0..100 percent (rounded). 0 for an empty roster. */
   avgHpPct: number;
-  /** The run purse (`camp.gold`). */
+  /** The run purse (`camp.purse`). */
   gold: number;
   /** The active roster's unit ids (alive, uncaptured), in roster order. */
   rosterIds: string[];
@@ -292,7 +292,7 @@ export interface ArrivalDigest {
  *
  * - **levelTotal** — `Σ(level + primaryJobLevel)` over {@link activeParty}.
  * - **avgHpPct** — mean `hp/maxHp` over the active roster, ×100 rounded (0 for an empty roster).
- * - **gold** — `run.camp.gold`.
+ * - **gold** — `run.camp.purse`.
  * - **rosterIds** — the active roster's unit ids, in roster order.
  * - **flags** — the keys of the run's **set** flags.
  */
@@ -302,7 +302,7 @@ export function arrivalDigest(run: RunState): ArrivalDigest {
   return {
     levelTotal: levelTotalOf(roster),
     avgHpPct,
-    gold: run.camp.gold,
+    gold: run.camp.purse,
     rosterIds: roster.map((u) => u.id),
     flags: Object.entries(run.flags)
       .filter(([, set]) => set)

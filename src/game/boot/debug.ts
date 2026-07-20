@@ -108,7 +108,7 @@ export function buildDebugOverworld(): RunHandoff {
   const run = handoff.run;
   run.mapNodeId = run.map.startId;
   run.path = [run.map.startId];
-  run.camp.gold = 180;
+  run.camp.purse = 180;
   return handoff;
 }
 

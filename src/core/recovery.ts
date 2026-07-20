@@ -161,7 +161,7 @@ export function inPlaceRest(run: RunState): InPlaceRestResult {
   // Gold cap (D47): refuse if the purse can't cover a full night's rations — no
   // breach, no morale teeth; the in-place rest only proceeds when fully funded.
   const bill = computeUpkeep(run.party);
-  if (run.camp.gold < bill.total) {
+  if (run.camp.purse < bill.total) {
     return refuse(`Not enough gold for a night's rations (${bill.total}g).`);
   }
 

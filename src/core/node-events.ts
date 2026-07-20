@@ -110,7 +110,7 @@ export function nodeFee(seed: string | number, node: MapNode): number {
  */
 export interface EventOutcome {
   kind: EventKind;
-  /** Net purse (`run.camp.gold`) delta — negative for a skim/spend, positive for a find. */
+  /** Net purse (`run.camp.purse`) delta — negative for a skim/spend, positive for a find. */
   goldDelta: number;
   /** Net camp morale delta (story). */
   moraleDelta: number;
@@ -247,7 +247,7 @@ export function shopStock(seed: string | number, node: MapNode): ShopOffer[] {
  * (`goldDelta < 0` on a buy; `summary` carries any refusal).
  */
 export function shopBuy(run: RunState, _node: MapNode, materialId: string): EventOutcome {
-  const before = run.camp.gold;
+  const before = run.camp.purse;
   const res = merchantBuy(run, materialId, SHOP_MARKET_TIER);
   const out = emptyOutcome("shop");
   if (!res.applied) {
@@ -255,7 +255,7 @@ export function shopBuy(run: RunState, _node: MapNode, materialId: string): Even
     out.summary = res.reason ?? "Can't buy that.";
     return out;
   }
-  out.goldDelta = run.camp.gold - before; // negative (spent)
+  out.goldDelta = run.camp.purse - before; // negative (spent)
   out.materials = [materialId];
   out.summary = res.detail ?? `Bought ${MATERIALS[materialId]?.name ?? materialId}.`;
   return out;
@@ -296,7 +296,7 @@ export function hireRecruit(run: RunState, offer: RecruiterOffer): EventOutcome 
     out.summary = `${offer.unit.name} already rides with the caravan.`;
     return out;
   }
-  if (run.camp.gold < offer.price) {
+  if (run.camp.purse < offer.price) {
     out.refused = true;
     out.summary = `Not enough purse gold (${offer.price}g) to hire ${offer.unit.name}.`;
     return out;
@@ -355,7 +355,7 @@ export const EVENTS: EventDef[] = [
     choices(run, node) {
       return shopStock(run.seed, node).map((offer) => {
         const room = canStoreMore(run, offer.materialId);
-        const affordable = run.camp.gold >= offer.price;
+        const affordable = run.camp.purse >= offer.price;
         return {
           id: `buy:${offer.materialId}`,
           label: `Buy ${offer.name} (${offer.price}g purse)`,
@@ -383,7 +383,7 @@ export const EVENTS: EventDef[] = [
     },
     choices(run, node) {
       const offer = recruiterOffer(run.seed, node);
-      const affordable = run.camp.gold >= offer.price;
+      const affordable = run.camp.purse >= offer.price;
       return [
         {
           id: "hire",
@@ -433,7 +433,7 @@ export const EVENTS: EventDef[] = [
       // A known, announced fee (D48): pay it from the purse to pass. Never drives
       // the purse negative; the pay-or-fight-the-guards choice is deferred (D23/D30).
       const fee = tollFee(run.seed, node);
-      const paid = Math.min(run.camp.gold, fee);
+      const paid = Math.min(run.camp.purse, fee);
       spend(run.camp, paid, "toll", `Toll @ ${node.id}`, { nodeId: node.id, night: run.night });
       const out = emptyOutcome("toll");
       out.goldDelta = -paid;

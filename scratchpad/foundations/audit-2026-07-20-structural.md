@@ -213,6 +213,23 @@ core+game guard globs (now scanning `saltSeed(` too) · `registry-contracts.test
 drift found; tripwire keeps it) · GuildScene banner on `showModal` + `test:e2e:guild-banner`
 in CI (the hall's first e2e) · stale docs fixed (`turn.ts` salt claim, D73 surcharge remnant).
 
+## Waves 2–4 — SHIPPED (2026-07-20, same branch)
+
+- **Wave 2:** num.ts adoption (arrivals `unit01` twin deleted; inline clamps routed;
+  the two flagged hazards preserved), `pct()` under one rounding law (12 sites),
+  traps/equip result unions (+reasons surfaced in the tent), always-ok cores typed,
+  `EventOutcome.refused`, `mustGetVessel`/`mustGetEvent` contract renames.
+- **Wave 3:** market + ledger transition onto `showModal` (new `titleAlign:"left"`),
+  `DEPTH` tokens at today's exact values, `pushHpBar` (dossier pair), `onEscClose`.
+  Scope calls: retained-mode HP bars deliberately keep their create/update split;
+  `campButton` was already a sanctioned Button style-wrapper (audit §E overstated).
+- **Wave 4:** activeParty/combatParty · EnemyDef · EncounterKind/`kind` (NightRecord's
+  copy = `encounterKind`; `NightRecord.kind` was taken by the node kind) · bribePrice ·
+  advanceDyingClocksOneNight · PlaytestEvent.kind · fatigue params · doc fixes ·
+  **Camp.gold → Camp.purse** with a repro-dump v1→v2 migration in `parseDump`
+  (+ regression test) so old saved dumps keep restoring.
+- **Still open (owner design calls):** story short-pay vs refuse; bribe tri-state enum.
+
 ## Suggested sequencing
 
 Each wave keeps all guards green (`build` · `test` · `sim` · e2e suites · `audit:visual`);

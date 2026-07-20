@@ -93,11 +93,11 @@ function guildWith(seed: string, treasury = 500): Guild {
 describe("economy-actions — Merchant ACCESS (purse, market-tier price) (D30/D61)", () => {
   it("buys a supply from the PURSE at the market-tier price", () => {
     const run = newRun("merchant", 100);
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
     const res = merchantBuy(run, "trap-kit", "poor");
     expect(res.applied).toBe(true);
     expect(res.price).toBe(ECONOMY.merchant.buyPrice.poor);
-    expect(run.camp.gold).toBe(goldBefore - ECONOMY.merchant.buyPrice.poor);
+    expect(run.camp.purse).toBe(goldBefore - ECONOMY.merchant.buyPrice.poor);
     expect(countOf(run.inventory, "trap-kit")).toBe(1);
   });
 
@@ -118,7 +118,7 @@ describe("economy-actions — Merchant ACCESS (purse, market-tier price) (D30/D6
     const run = newRun("merchant-broke", 1);
     const res = merchantBuy(run, "trap-kit", "basic");
     expect(res.applied).toBe(false);
-    expect(run.camp.gold).toBe(1);
+    expect(run.camp.purse).toBe(1);
     expect(countOf(run.inventory, "trap-kit")).toBe(0);
   });
 });
@@ -136,12 +136,12 @@ describe("economy-actions — Merchant SELL (goods -> gold, market-gated) (D61)"
   it("sells a carried good for purse gold at the start node's market", () => {
     const run = newRun("sell-happy"); // start node is a `rest` (a real market)
     addItem(run.inventory, "valuables", 2);
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
     const expected = sellPrice(getMaterial("valuables")!, currentNode(run).market!);
     const res = merchantSell(run, "valuables");
     expect(res.applied).toBe(true);
     expect(res.earned).toBe(expected);
-    expect(run.camp.gold).toBe(goldBefore + expected);
+    expect(run.camp.purse).toBe(goldBefore + expected);
     expect(countOf(run.inventory, "valuables")).toBe(1); // one sold
   });
 
@@ -194,31 +194,31 @@ describe("economy-actions — Banker TIME-SHIFT + SECURE (purse only) (D30/D34)"
     expect(perStep).toBeGreaterThan(0);
     expect(run.overworld.interestPerStep).toBe(perStep);
 
-    const purseBefore = run.camp.gold;
+    const purseBefore = run.camp.purse;
     breakCamp(run); // the node-step tick at departure (D46) accrues interest
-    expect(run.camp.gold).toBe(purseBefore + perStep);
+    expect(run.camp.purse).toBe(purseBefore + perStep);
   });
 
   it("buy-on-debt advances the purse and auto-repays from incoming run gold", () => {
     const run = newRun("banker-debt", 0);
     const res = bankerBorrow(run, 40);
     expect(res.applied).toBe(true);
-    expect(run.camp.gold).toBe(40);
+    expect(run.camp.purse).toBe(40);
     expect(run.overworld.debt).toBe(40);
 
     // Incoming loot repays the debt before topping the purse.
     const credit = gainRunGold(run, 50);
     expect(credit.debtRepaid).toBe(40);
     expect(run.overworld.debt).toBe(0);
-    expect(run.camp.gold).toBe(50); // 40 advanced + 10 net loot
+    expect(run.camp.purse).toBe(50); // 40 advanced + 10 net loot
   });
 
   it("theft protection is bought from the purse and engages a skim reduction", () => {
     const run = newRun("banker-protect", 200);
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
     const res = bankerProtect(run);
     expect(res.applied).toBe(true);
-    expect(run.camp.gold).toBe(goldBefore - ECONOMY.banker.protectionCost);
+    expect(run.camp.purse).toBe(goldBefore - ECONOMY.banker.protectionCost);
     expect(run.overworld.protection).toBeGreaterThan(0);
   });
 
@@ -245,12 +245,12 @@ describe("economy-actions — Banker TIME-SHIFT + SECURE (purse only) (D30/D34)"
     const borrow = bankerBorrow(run, 40);
     expect(borrow.applied).toBe(false);
     expect(run.overworld.debt).toBe(0);
-    expect(run.camp.gold).toBe(200);
+    expect(run.camp.purse).toBe(200);
     // Guard the Purse: refuses, spending nothing and engaging no protection.
     const protect = bankerProtect(run);
     expect(protect.applied).toBe(false);
     expect(run.overworld.protection).toBe(0);
-    expect(run.camp.gold).toBe(200);
+    expect(run.camp.purse).toBe(200);
 
     // Field a Banker → the same verbs now work.
     run.party.push(banker());
@@ -286,11 +286,11 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
 
   it("Patronize converts purse gold into Influence, once per node (the two-axis gate, D61)", () => {
     const run = newRun("noble-patronize", 100);
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
     const first = patronize(run);
     expect(first.applied).toBe(true);
     expect(run.overworld.influence).toBe(ECONOMY.noble.patronizeYield);
-    expect(run.camp.gold).toBe(goldBefore - ECONOMY.noble.patronizeCost);
+    expect(run.camp.purse).toBe(goldBefore - ECONOMY.noble.patronizeCost);
     // Spent for the node — a second Patronize refuses until Break Camp.
     const second = patronize(run);
     expect(second.applied).toBe(false);
@@ -416,13 +416,13 @@ describe("economy-verb effect handlers mirror the legacy verb cores (R4/A inc 5)
   it("sell: the handler credits the purse + removes one good exactly like merchantSell's effect", () => {
     const legacy = newRun("h-sell"); addItem(legacy.inventory, "valuables", 2);
     const viaHandler = newRun("h-sell"); addItem(viaHandler.inventory, "valuables", 2);
-    const goldBefore = legacy.camp.gold;
+    const goldBefore = legacy.camp.purse;
     const a = merchantSell(legacy, "valuables");
     expect(a.applied).toBe(true);
     const res = applyOverworldEffect({ kind: "sell" }, { run: viaHandler, unit: viaHandler.party[0], opts: { materialId: "valuables" } });
     expect(res.ok).toBe(true);
-    expect(viaHandler.camp.gold).toBe(legacy.camp.gold); // identical purse credit
-    expect(viaHandler.camp.gold).toBeGreaterThan(goldBefore);
+    expect(viaHandler.camp.purse).toBe(legacy.camp.purse); // identical purse credit
+    expect(viaHandler.camp.purse).toBeGreaterThan(goldBefore);
     expect(countOf(viaHandler.inventory, "valuables")).toBe(countOf(legacy.inventory, "valuables"));
   });
 
@@ -433,7 +433,7 @@ describe("economy-verb effect handlers mirror the legacy verb cores (R4/A inc 5)
     expect(a.applied).toBe(true);
     const res = applyOverworldEffect({ kind: "borrow" }, { run: viaHandler, unit: viaHandler.party[0], opts: { amount: 40 } });
     expect(res.ok).toBe(true);
-    expect(viaHandler.camp.gold).toBe(legacy.camp.gold);
+    expect(viaHandler.camp.purse).toBe(legacy.camp.purse);
     expect(viaHandler.overworld.debt).toBe(legacy.overworld.debt);
     // a non-positive amount refuses (nothing to borrow), advancing nothing
     const zero = applyOverworldEffect({ kind: "borrow" }, { run: viaHandler, unit: viaHandler.party[0], opts: { amount: 0 } });

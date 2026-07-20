@@ -157,7 +157,7 @@ export const SURFACES = [
     minMs: 700,
     waitScene: ["OverworldScene", ["run", "loop"]],
     note: "the stores/inventory tent — stash contents + caps",
-    drive: (g) => g.eval(ov(`s.enterCamp(s.loop.reachable()[0]);s.run.inventory.storageCap=8;s.run.inventory.counts={"trap-kit":2,salve:3,antidote:1,"rune-reagent":1};s.run.camp.gold=180;s.openTent(()=>s.renderCamp(),"stores");`)),
+    drive: (g) => g.eval(ov(`s.enterCamp(s.loop.reachable()[0]);s.run.inventory.storageCap=8;s.run.inventory.counts={"trap-kit":2,salve:3,antidote:1,"rune-reagent":1};s.run.camp.purse=180;s.openTent(()=>s.renderCamp(),"stores");`)),
     expect: { desc: "the stores tent is open", eval: seesText(String.raw`/\(free \d/i`) },
   },
   {

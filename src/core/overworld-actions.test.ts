@@ -486,14 +486,14 @@ describe("computed (provider) costs (D72)", () => {
     expect(foodValue).toBeGreaterThan(0);
     const cost: OverworldCost = { usesPerNode: 1, gold: (r) => computeUpkeep(r.party).total };
 
-    const before = run.camp.gold;
+    const before = run.camp.purse;
     const check = checkOverworldCost(run, "stew-fixture", cost, "Cook Stew");
     expect(check.ok).toBe(true);
     if (check.ok) {
       expect(check.prices.gold).toBe(foodValue); // the check captured the resolved price (#126)
       check.commit();
     }
-    expect(run.camp.gold).toBe(before - foodValue); // the dynamic price was billed, not a static guess
+    expect(run.camp.purse).toBe(before - foodValue); // the dynamic price was billed, not a static guess
   });
 });
 
@@ -635,12 +635,12 @@ describe("the overworld-effect registry (D72)", () => {
     // Cook the meal: it pays its own (dynamic) cost elsewhere and marks Food satisfied.
     applyOverworldEffect({ kind: "provisionMeal", rp: 2 }, { run, unit: actor(run), opts: {} });
 
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
     const moraleBefore = run.camp.morale;
     const result = payUpkeep(run.camp, run.party, { skip: [] });
 
     expect(result.paid).toBe(bill.total - foodCost); // Repairs billed, Food was already covered
-    expect(run.camp.gold).toBe(goldBefore - (bill.total - foodCost)); // Food not double-charged
+    expect(run.camp.purse).toBe(goldBefore - (bill.total - foodCost)); // Food not double-charged
     expect(result.underfunded).not.toContain("food");
     expect(result.skipped).not.toContain("food");
     expect(run.camp.morale).toBe(moraleBefore); // no hunger morale hit — Food was provisioned, not breached

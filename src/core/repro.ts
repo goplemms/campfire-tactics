@@ -28,8 +28,12 @@ import { type OverworldMap } from "./overworld";
 import { type OverworldState } from "./overworld-state";
 import type { RunState, NightRecord } from "./run";
 
-/** The current dump schema version — bumped when the shape changes so a stale paste is rejected loudly. */
-export const REPRO_DUMP_VERSION = 1 as const;
+/**
+ * The current dump schema version — bumped when the shape changes so a stale paste is
+ * rejected loudly (v1 → v2: `camp.gold` renamed `camp.purse`, D114 — v1 dumps migrate
+ * in {@link parseDump} instead of rejecting).
+ */
+export const REPRO_DUMP_VERSION = 2 as const;
 
 /**
  * A complete, serializable snapshot of a run's live state (see the module doc). Every field
@@ -137,8 +141,15 @@ export function parseDump(text: string): ReproDump {
   } catch (e) {
     throw new Error(`Repro dump: not valid JSON (${(e as Error).message})`);
   }
-  const dump = raw as Partial<ReproDump>;
+  const dump = raw as Omit<Partial<ReproDump>, "v"> & { v?: number };
   if (!dump || typeof dump !== "object") throw new Error("Repro dump: expected a JSON object");
+  // v1 → v2 migration (D114): the purse field renamed `camp.gold` → `camp.purse`.
+  if (dump.v === 1 && dump.camp && typeof dump.camp === "object") {
+    const legacy = dump.camp as Camp & { gold?: number };
+    if (legacy.purse === undefined && typeof legacy.gold === "number") legacy.purse = legacy.gold;
+    delete legacy.gold;
+    dump.v = REPRO_DUMP_VERSION;
+  }
   if (dump.v !== REPRO_DUMP_VERSION) {
     throw new Error(`Repro dump: version ${String(dump.v)} not supported (this build reads v${REPRO_DUMP_VERSION})`);
   }

@@ -340,7 +340,7 @@ export interface CaravanResolution {
  *
  * - **Return** (the run completed, not over): mid-run permadeaths leave the roster;
  *   survivors stay in the pool; locked gear unlocks back to the armory; the
- *   **surviving purse** (`run.camp.gold`) flows home to the treasury.
+ *   **surviving purse** (`run.camp.purse`) flows home to the treasury.
  * - **Wipe** ({@link isRunOver}): the caravan's **people leave the roster**
  *   (permadeath), its **locked gear is lost**, and the **purse is lost** — but the
  *   **guild survives** (rebuild via {@link hireMercenary}). A named **lord** aboard
@@ -395,7 +395,7 @@ export function resolveReturn(guild: Guild, caravan: Caravan, run: RunState): Ca
   if (wiped) {
     purseLost = caravan.purse;
   } else {
-    purseReturned = Math.max(0, run.camp.gold);
+    purseReturned = Math.max(0, run.camp.purse);
     guild.treasury += purseReturned;
   }
 

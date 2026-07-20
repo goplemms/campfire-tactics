@@ -121,7 +121,7 @@ export interface MerchantBuyResult extends ActionOutcome {
 }
 
 /**
- * **Merchant ACCESS** (D30/D61): spend **run-gold** (the purse, `camp.gold`) to buy
+ * **Merchant ACCESS** (D30/D61): spend **run-gold** (the purse, `camp.purse`) to buy
  * one of a supply into caravan **storage**, at a **market-tier price** (`tier` is the
  * node's {@link "./overworld".effectiveMarketTier}, so a better market — or a Merchant
  * raising the floor — buys cheaper). Refuses (without spending) when there's **no
@@ -297,8 +297,8 @@ export function bankerEngageInterest(run: RunState): BankerInterestResult {
 export function applyEngageInterestEffect(
   run: RunState,
 ): { ok: true; detail: string; perStep: number } | { ok: false; reason: string } {
-  if (run.camp.gold <= 0) return { ok: false, reason: "No purse to earn interest on." };
-  const perStep = Math.max(1, Math.ceil(run.camp.gold * ECONOMY.banker.interestRate));
+  if (run.camp.purse <= 0) return { ok: false, reason: "No purse to earn interest on." };
+  const perStep = Math.max(1, Math.ceil(run.camp.purse * ECONOMY.banker.interestRate));
   run.overworld.interestPerStep = perStep;
   return { ok: true, detail: `Purse interest engaged — +${perStep}g per node-step.`, perStep };
 }

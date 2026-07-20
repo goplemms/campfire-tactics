@@ -103,7 +103,7 @@ describe("forecast — the warning fires on the floor and clears with intel (D48
     );
     const edge0 = projectForecast(run).perEdge.find((e) => e.nodeId === "c1")!;
     // Set the purse so the pessimistic floor (tier 0 loot = 0) is just negative.
-    run.camp.gold = edge0.costKnown - 5;
+    run.camp.purse = edge0.costKnown - 5;
 
     const before = projectForecast(run).perEdge.find((e) => e.nodeId === "c1")!;
     expect(before.purseAfter.floor).toBeLessThan(0);

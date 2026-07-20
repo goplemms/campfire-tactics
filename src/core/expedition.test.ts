@@ -98,7 +98,7 @@ describe("createRunFromExpedition + runEncounter (D49/D52)", () => {
     expect(run.map).toBe(exp.map);
     expect(run.expeditionId).toBe("test-exp");
     expect(run.mapNodeId).toBe("start");
-    expect(run.camp.gold).toBe(100);
+    expect(run.camp.purse).toBe(100);
     expect(run.party).toHaveLength(1);
   });
 

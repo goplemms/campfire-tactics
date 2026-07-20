@@ -3,7 +3,7 @@
  * treasury and the run purse.
  *
  * M9 left the two pools as plumbing: `guild.treasury` (the pure vault) and
- * `run.camp.gold` (the carried purse). M10 fills that plumbing with **directional
+ * `run.camp.purse` (the carried purse). M10 fills that plumbing with **directional
  * routing** so each pool has exactly one kind of inflow:
  *
  * - **Loot → the PURSE** (D34): field winnings land in the carried purse — the
@@ -47,7 +47,7 @@ export interface RunGoldResult {
 }
 
 /**
- * Credit gold to the **run purse** (`camp.gold`) — the field faucet (D34). Loot
+ * Credit gold to the **run purse** (`camp.purse`) — the field faucet (D34). Loot
  * routes here, never to the treasury. If the Banker's **buy-on-debt** ledger
  * carries a balance ({@link "./overworld-actions".OverworldState.debt}), the
  * incoming gold **auto-repays it first** (D30), and only the remainder lands in the

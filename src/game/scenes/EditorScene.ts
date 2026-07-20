@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { CombatView } from "../combat-view";
 import { BoardCamera } from "../board-camera";
-import { COLOR, FONT } from "../theme";
+import { COLOR, INK, FONT, cssHex, cssRgba } from "../theme";
 import { clearLayer } from "../ui";
 import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
 import { validateLevel } from "../../content/levels";
@@ -75,6 +75,129 @@ const MIN_BOARD = 240;
 /** The fixed game canvas is 800×600 (see config.ts) — a full-width board is this fraction as tall. */
 const BOARD_ASPECT = 600 / 800;
 
+/**
+ * The editor's UI typeface — the game's own {@link FONT.family} (Courier Prime) rather than the plain
+ * system `ui-monospace` the chrome used to default to. A warmer, more distinctive face that ties the
+ * authoring surface to the game's look, and reads as "thicker" when set bold on the controls below.
+ */
+const CHROME_FONT = '"Courier Prime", "Courier New", Courier, monospace';
+
+/**
+ * The editor chrome's **palette** — the one home for every UI colour the panel repeats, referenced by
+ * both {@link CHROME_CSS} and the inline `Object.assign` styles (each value used to be typed ~a dozen
+ * times). Two groups:
+ *
+ *  - **Bridged** — colours that are genuinely the game's, sourced straight from the {@link COLOR}/
+ *    {@link INK} ladder in theme.ts via {@link cssHex} (so the editor is no longer a second copy of
+ *    those hexes; retuning the game's accent/surface/button retunes the editor too).
+ *  - **Editor tints** — warm leather/ember shades the editor introduces for its dense chrome that have
+ *    no equivalent on the game's board ladder; kept explicit here (defined once) rather than pushed
+ *    into theme.ts, which no game scene would use.
+ */
+const ED = {
+  // Bridged from the game's ladder (theme.ts is the source of truth for these).
+  ember: cssHex(COLOR.accent), //          bright-firelight accent — hover / focus / active card ring
+  cardActiveBg: cssHex(COLOR.surfaceRaised), // selected card / row fill
+  btnFill: cssHex(COLOR.btnFill), //       button rest fill
+  btnStroke: cssHex(COLOR.btnStroke), //   button rest border
+  btnInk: INK.bright, //                   button label
+  text: INK.secondary, //                  body-label ink
+  muted: INK.muted, //                     hints / secondary captions
+  glow: cssRgba(COLOR.accent, 0.22), //    translucent ember focus-glow ring
+  // Editor-specific chrome tints (no base-ladder equivalent).
+  gold: "#c8a24a", //        active-selection highlight (tabs / brushes / options) + section headers
+  goldInk: "#1a1206", //     text on a gold highlight
+  cardBg: "#1a140d", //      resting card / small-control fill
+  cardBorder: "#4a423a", //  resting card / box border
+  btnHover: "#4a3d2b", //    button hover fill (a lifted btnFill)
+  inputBg: "#1c150e", //     recessed field fill
+  inputBorder: "#6b4f34", // field border
+  inputInk: "#f2ead9", //    field text
+  placeholder: "#8a7c66", // in-field placeholder
+  stepBg: "#332a1e", //      stepper ± rest fill
+  stepInk: "#d8c9a8", //     stepper ± glyph
+  stepHoverBg: "#473a27", // stepper ± hover fill
+  stepHoverInk: "#f6ecd8", //stepper ± hover glyph
+  stepActiveBg: "#2a2318", //stepper ± press fill
+  checkAccent: "#c8892e", // ember-tinted checkbox
+} as const;
+
+/**
+ * Editor chrome **spacing rhythm** — one small scale so every row / hint / block shares a single
+ * vertical beat instead of the ad-hoc 2/3/4/6/8px margins the panel grew. Sections get a heavier
+ * gap + a hairline rule ({@link EditorScene.sectionHead}) so the dense Scenario tab reads as grouped
+ * blocks rather than one undifferentiated run.
+ */
+const SP = {
+  row: "6px 0", //      a label+control row (was a cramped 3px)
+  hint: "3px 0 9px", // a hint closing a group — extra space below sets the next block off
+  group: "8px 0", //    a self-contained sub-block (import / playtest / export)
+} as const;
+
+/**
+ * Scoped chrome stylesheet (the readability pass). The editor is a DOM overlay of **native** controls,
+ * and form elements (`button`/`input`/`select`/`textarea`) **don't inherit** font from their container —
+ * so by default they render as the browser's tiny system-font widgets (the "basic inputs" that make the
+ * editor cramped to read and fiddly to click). This styles them **once**, scoped to the `.editor-chrome`
+ * containers (the dock + the side drawer), into larger, bolder, firelit-leather controls that match the
+ * game — without editing the per-element inline styles (which still win for the active-highlight state:
+ * an active tab / brush / option sets its own inline background + weight, and inline beats a stylesheet).
+ * Palette cards and option toggles set their own inline `font`/background, so they're untouched here.
+ */
+const CHROME_STYLE_ID = "editor-chrome-style";
+const CHROME_CSS = `
+.editor-chrome { font-family: ${CHROME_FONT}; }
+.editor-chrome button {
+  font: 700 13px/1.2 ${CHROME_FONT};
+  color: ${ED.btnInk}; background: ${ED.btnFill}; border: 1px solid ${ED.btnStroke};
+  border-radius: 5px; padding: 5px 11px; cursor: pointer;
+}
+.editor-chrome button:hover { background: ${ED.btnHover}; border-color: ${ED.ember}; }
+.editor-chrome button:active { transform: translateY(1px); }
+.editor-chrome button:disabled { opacity: .4; cursor: default; }
+.editor-chrome input:not([type=checkbox]), .editor-chrome select, .editor-chrome textarea {
+  font: 13px/1.4 ${CHROME_FONT};
+  color: ${ED.inputInk}; background: ${ED.inputBg}; border: 1px solid ${ED.inputBorder};
+  border-radius: 4px; padding: 4px 8px; box-sizing: border-box;
+  /* Recessed into the leather — an inset shadow reads the field as carved, not a raised box. */
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.5);
+  caret-color: ${ED.ember};
+}
+.editor-chrome input::placeholder, .editor-chrome textarea::placeholder { color: ${ED.placeholder}; font-style: italic; }
+.editor-chrome input:focus, .editor-chrome select:focus, .editor-chrome textarea:focus {
+  outline: none; border-color: ${ED.ember};
+  /* A warm ember glow on focus rather than the OS blue focus ring. */
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.5), 0 0 0 2px ${ED.glow};
+}
+/* Tame the native number spinners — they render as bright system chrome that fights the leather look. */
+.editor-chrome input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+.editor-chrome input[type=number]::-webkit-outer-spin-button,
+.editor-chrome input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* Replace the OS dropdown chrome with a custom warm caret so a select matches the rest of the chrome. */
+.editor-chrome select {
+  cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  padding-right: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath d='M1 1.2l4 4 4-4' fill='none' stroke='${ED.gold.replace("#", "%23")}' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center;
+}
+/* Ember-tinted checkbox instead of the default system blue. */
+.editor-chrome input[type=checkbox] { width: 15px; height: 15px; vertical-align: -2px; cursor: pointer; accent-color: ${ED.checkAccent}; }
+/* Number stepper — a flush [− value +] segmented control replacing the removed native spinners.
+   The two-class selectors outrank the general \`.editor-chrome button\` rule, so the ± stay compact. */
+.editor-chrome .stepper { display: inline-flex; align-items: stretch; vertical-align: -3px; }
+.editor-chrome .stepper-btn {
+  font: 700 14px/1 ${CHROME_FONT};
+  width: 21px; padding: 0; color: ${ED.stepInk}; background: ${ED.stepBg}; border: 1px solid ${ED.inputBorder};
+  cursor: pointer; box-shadow: none; display: flex; align-items: center; justify-content: center; user-select: none;
+}
+.editor-chrome .stepper-btn:hover { background: ${ED.stepHoverBg}; border-color: ${ED.ember}; color: ${ED.stepHoverInk}; }
+.editor-chrome .stepper-btn:active { background: ${ED.stepActiveBg}; }
+.editor-chrome .stepper-btn:first-child { border-radius: 4px 0 0 4px; border-right: none; }
+.editor-chrome .stepper-btn:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+.editor-chrome .stepper input { border-radius: 0; box-shadow: none; text-align: center; padding: 4px 3px; }
+.editor-chrome .stepper input:focus { box-shadow: 0 0 0 2px ${ED.glow}; }
+`;
+
 /** Every enemy template the palette offers (authored archetypes first, then the procedural pool). */
 const ENEMY_IDS = [...Object.keys(BANDIT_TEMPLATES), ...ENEMY_TEMPLATES.map((t) => t.id)];
 
@@ -139,10 +262,10 @@ function blockThumb(): string {
   return `<svg width="34" height="30" viewBox="0 0 34 30"><polygon points="17,3 32,11 17,19 2,11" fill="#7a6450" stroke="#1c130c"/><polygon points="2,11 17,19 17,27 2,19" fill="#382b1e" stroke="#1c130c"/><polygon points="32,11 17,19 17,27 32,19" fill="#52412f" stroke="#1c130c"/></svg>`;
 }
 function lineThumb(): string {
-  return `<svg width="30" height="30" viewBox="0 0 30 30"><line x1="5" y1="24" x2="25" y2="6" stroke="#c8a24a" stroke-width="3" stroke-linecap="round"/></svg>`;
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><line x1="5" y1="24" x2="25" y2="6" stroke="${ED.gold}" stroke-width="3" stroke-linecap="round"/></svg>`;
 }
 function rectThumb(): string {
-  return `<svg width="30" height="30" viewBox="0 0 30 30"><rect x="6" y="8" width="18" height="14" fill="none" stroke="#c8a24a" stroke-width="2.5"/></svg>`;
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><rect x="6" y="8" width="18" height="14" fill="none" stroke="${ED.gold}" stroke-width="2.5"/></svg>`;
 }
 
 /** A coarse "saved N ago" label for the library list (ms since a save → just now / Nm / Nh / Nd). */
@@ -774,7 +897,9 @@ export class EditorScene extends Phaser.Scene {
     // resize grip. Growing the dock shrinks #app and Scale.FIT scales the board down (never
     // clips). NOTE: this pass relocates + resizes the chrome; the thumbnail-gallery restyle of
     // the palette (and the bar/drawer split) is the next slice — the controls below are unchanged.
+    this.injectChromeStyles(); // scoped restyle of the native controls (the readability pass)
     const dock = document.createElement("div");
+    dock.classList.add("editor-chrome");
     Object.assign(dock.style, {
       flex: "0 0 auto", height: `${this.autoDockHeight()}px`, display: "flex", flexDirection: "column",
       background: "#16110d", borderTop: "1px solid #5a4630", boxSizing: "border-box",
@@ -784,7 +909,7 @@ export class EditorScene extends Phaser.Scene {
     const panel = document.createElement("div");
     Object.assign(panel.style, {
       flex: "1 1 auto", minHeight: "0", overflow: "auto", width: "100%", boxSizing: "border-box",
-      background: "transparent", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace", padding: "8px 12px 12px",
+      background: "transparent", color: "#e8e0d0", font: `13.5px/1.55 ${CHROME_FONT}`, padding: "10px 14px 14px",
     } as CSSStyleDeclaration);
 
     // Panel header — the title (moved off the canvas so the scene pans/zooms cleanly) + the
@@ -793,7 +918,7 @@ export class EditorScene extends Phaser.Scene {
     header.style.margin = "0 0 6px";
     const title = document.createElement("div");
     title.textContent = "Level Editor — pick a brush, click tiles";
-    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    Object.assign(title.style, { fontWeight: "700", fontSize: "16px", color: ED.gold } as CSSStyleDeclaration);
     header.appendChild(title);
     header.appendChild(this.hint("drag paints · shift-drag pans · right-click erases · scroll zooms · Recenter resets"));
     header.appendChild(this.hint("ctrl-click select · alt-click pick · esc cancel · ctrl+z undo · keys: W/L/R G/V/T N/C P/X S/E"));
@@ -849,7 +974,7 @@ export class EditorScene extends Phaser.Scene {
     const details = document.createElement("button");
     details.textContent = "⋯ Details";
     details.dataset.role = "details-toggle";
-    Object.assign(details.style, { margin: "2px", marginLeft: "8px", cursor: "pointer", color: "#f2b65a" } as CSSStyleDeclaration);
+    Object.assign(details.style, { margin: "2px", marginLeft: "8px", cursor: "pointer", color: ED.ember } as CSSStyleDeclaration);
     details.onclick = () => this.toggleDrawer();
     tabBar.appendChild(details);
     panel.appendChild(tabBar);
@@ -917,8 +1042,8 @@ export class EditorScene extends Phaser.Scene {
     if (opts.template) card.dataset.template = opts.template;
     Object.assign(card.style, {
       flex: "0 0 auto", width: `${size}px`, padding: "5px 4px 4px", cursor: "pointer", textAlign: "center",
-      background: "#1a140d", border: "1px solid #4a423a", borderRadius: "5px", boxSizing: "border-box",
-      font: "10px/1.25 ui-monospace, monospace", color: "#ddd3c2",
+      background: ED.cardBg, border: `1px solid ${ED.cardBorder}`, borderRadius: "5px", boxSizing: "border-box",
+      font: `10px/1.25 ${CHROME_FONT}`, color: ED.text,
     } as CSSStyleDeclaration);
     const thumb = document.createElement("div");
     const thumbH = size <= 66 ? 32 : size >= 90 ? 46 : 38;
@@ -931,7 +1056,10 @@ export class EditorScene extends Phaser.Scene {
     if (opts.stat) {
       const s = document.createElement("div");
       s.textContent = opts.stat;
-      Object.assign(s.style, { fontSize: "9px", color: "#b2a48b", fontVariantNumeric: "tabular-nums" } as CSSStyleDeclaration);
+      // `pre-line` honours the newline the stat carries (HP / ATK on their own short lines) and never
+      // wraps mid-value — so a wide readout shows BOTH numbers cleanly instead of orphaning or
+      // ellipsis-hiding the second one on a compact card.
+      Object.assign(s.style, { fontSize: "9px", lineHeight: "1.35", color: ED.muted, fontVariantNumeric: "tabular-nums", whiteSpace: "pre-line" } as CSSStyleDeclaration);
       card.appendChild(s);
     }
     card.title = opts.label;
@@ -957,7 +1085,7 @@ export class EditorScene extends Phaser.Scene {
     const tint = this.prefs.enemyTint;
     const enemyCards = ENEMY_IDS.map((id) => {
       const t = enemyStat(id);
-      return this.paletteCard({ brush: "enemy", template: id, label: enemyLabel(id), thumb: tokenThumb(abbrev(id), "#e06b6b", enemyRing(id, tint), "#2a0d0d"), stat: `HP ${t.hp} · ATK ${t.atk}` });
+      return this.paletteCard({ brush: "enemy", template: id, label: enemyLabel(id), thumb: tokenThumb(abbrev(id), "#e06b6b", enemyRing(id, tint), "#2a0d0d"), stat: `HP ${t.hp}\nATK ${t.atk}` });
     });
     const captives = this.prefs.captiveVariants === 2
       ? [
@@ -984,9 +1112,9 @@ export class EditorScene extends Phaser.Scene {
       this.paletteCard({ brush: "rect", label: "Rect", thumb: rectThumb() }),
     ]);
     put("Objects", [
-      this.paletteCard({ brush: "gate", label: "Gate", thumb: glyphThumb("▦", "#f2b65a") }),
+      this.paletteCard({ brush: "gate", label: "Gate", thumb: glyphThumb("▦", ED.ember) }),
       this.paletteCard({ brush: "lever", label: "Lever", thumb: glyphThumb("⎇", "#62c6d6") }),
-      this.paletteCard({ brush: "trap", label: "Trap", thumb: glyphThumb("▲", "#f2b65a") }),
+      this.paletteCard({ brush: "trap", label: "Trap", thumb: glyphThumb("▲", ED.ember) }),
     ]);
     put("Units", this.unitCards());
     put("Events", [
@@ -1004,7 +1132,7 @@ export class EditorScene extends Phaser.Scene {
   private optionsRow(): HTMLDivElement {
     const wrap = document.createElement("div");
     wrap.dataset.role = "editor-options";
-    Object.assign(wrap.style, { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px", margin: "4px 0 2px", fontSize: "11px", color: "#b2a48b" } as CSSStyleDeclaration);
+    Object.assign(wrap.style, { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px", margin: "4px 0 2px", fontSize: "12px", color: ED.muted } as CSSStyleDeclaration);
     const group = (label: string, choices: { text: string; on: () => boolean; set: () => void }[]): HTMLSpanElement => {
       const g = document.createElement("span");
       Object.assign(g.style, { display: "inline-flex", alignItems: "center", gap: "3px" } as CSSStyleDeclaration);
@@ -1013,8 +1141,8 @@ export class EditorScene extends Phaser.Scene {
         const b = document.createElement("button");
         b.textContent = c.text;
         b.dataset.opt = `${label}:${c.text}`;
-        Object.assign(b.style, { cursor: "pointer", padding: "2px 7px", borderRadius: "3px", border: "1px solid #4a423a", background: "#1a140d", color: "#ddd3c2", font: "11px ui-monospace, monospace" } as CSSStyleDeclaration);
-        const paint = (): void => { const on = c.on(); b.style.background = on ? "#c8a24a" : "#1a140d"; b.style.color = on ? "#1a1206" : "#ddd3c2"; b.style.fontWeight = on ? "700" : "400"; };
+        Object.assign(b.style, { cursor: "pointer", padding: "3px 8px", borderRadius: "3px", border: `1px solid ${ED.cardBorder}`, background: ED.cardBg, color: ED.text, font: `12px ${CHROME_FONT}` } as CSSStyleDeclaration);
+        const paint = (): void => { const on = c.on(); b.style.background = on ? ED.gold : ED.cardBg; b.style.color = on ? ED.goldInk : ED.text; b.style.fontWeight = on ? "700" : "400"; };
         b.onclick = () => { c.set(); this.applyPrefs(); };
         this.optionButtons.push(paint);
         g.appendChild(b);
@@ -1055,10 +1183,11 @@ export class EditorScene extends Phaser.Scene {
   private buildSideDrawer(): void {
     const drawer = document.createElement("div");
     drawer.dataset.role = "side-drawer";
+    drawer.classList.add("editor-chrome");
     Object.assign(drawer.style, {
       position: "fixed", top: "0", right: "0", height: "100vh", width: "270px", zIndex: "1001",
-      background: "rgba(22,17,13,0.97)", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace",
-      borderLeft: "1px solid #76583a", boxShadow: "-20px 0 50px -30px #000", padding: "12px 13px 20px",
+      background: "rgba(22,17,13,0.97)", color: "#e8e0d0", font: `13.5px/1.5 ${CHROME_FONT}`,
+      borderLeft: "1px solid #76583a", boxShadow: "-20px 0 50px -30px #000", padding: "13px 14px 20px",
       overflow: "auto", boxSizing: "border-box", transform: "translateX(102%)", transition: "transform .2s ease",
     } as CSSStyleDeclaration);
 
@@ -1066,7 +1195,7 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(head.style, { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 8px" } as CSSStyleDeclaration);
     const title = document.createElement("div");
     title.textContent = "Details — edit a placed object";
-    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a", fontSize: "12px" } as CSSStyleDeclaration);
+    Object.assign(title.style, { fontWeight: "700", color: ED.gold, fontSize: "14px" } as CSSStyleDeclaration);
     const close = document.createElement("button");
     close.textContent = "✕"; close.dataset.role = "drawer-close"; close.style.cursor = "pointer";
     close.onclick = () => this.closeDrawer();
@@ -1083,7 +1212,7 @@ export class EditorScene extends Phaser.Scene {
     // The inspector — edits whatever object is selected (unit / gate / lever).
     const inspector = document.createElement("div");
     inspector.dataset.role = "inspector";
-    Object.assign(inspector.style, { margin: "8px 0 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
+    Object.assign(inspector.style, { margin: "8px 0 0", padding: "6px", border: `1px solid ${ED.cardBorder}`, borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
     drawer.appendChild(inspector);
     this.inspectorEl = inspector;
 
@@ -1116,8 +1245,8 @@ export class EditorScene extends Phaser.Scene {
     for (const key of TAB_NAMES) { const d = this.drawers[key]; if (d) d.style.display = key === name ? "" : "none"; }
     for (const b of this.tabButtons) {
       const active = b.dataset.tab === name;
-      b.style.background = active ? "#c8a24a" : "";
-      b.style.color = active ? "#1a1206" : "";
+      b.style.background = active ? ED.gold : "";
+      b.style.color = active ? ED.goldInk : "";
       b.style.fontWeight = active ? "700" : "";
     }
   }
@@ -1125,28 +1254,49 @@ export class EditorScene extends Phaser.Scene {
   private hint(text: string): HTMLDivElement {
     const h = document.createElement("div");
     h.textContent = text;
-    Object.assign(h.style, { opacity: "0.55", margin: "2px 0 4px" } as CSSStyleDeclaration);
+    Object.assign(h.style, { opacity: "0.55", margin: SP.hint } as CSSStyleDeclaration);
     return h;
+  }
+
+  /**
+   * A **section header** row — a small-caps gold label over a hairline rule, so a tab body reads as
+   * grouped blocks (Identity · Reward · Objectives …) instead of one undifferentiated run. Returns the
+   * flex row so a caller can append the section's own actions (＋ add, Save) to the right of the label.
+   * `first` skips the top rule + heavy gap for the block that opens a drawer (nothing to divide from).
+   */
+  private sectionHead(label: string, opts: { first?: boolean } = {}): HTMLDivElement {
+    const row = document.createElement("div");
+    Object.assign(row.style, {
+      display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap",
+      margin: opts.first ? "2px 0 6px" : "15px 0 7px",
+      paddingTop: opts.first ? "0" : "10px",
+      borderTop: opts.first ? "none" : `1px solid ${ED.cardBorder}`,
+    } as CSSStyleDeclaration);
+    const lab = document.createElement("span");
+    lab.textContent = label;
+    Object.assign(lab.style, { fontWeight: "700", fontSize: "11px", letterSpacing: "0.09em", textTransform: "uppercase", color: ED.gold } as CSSStyleDeclaration);
+    row.appendChild(lab);
+    return row;
   }
 
   private buildTerrainDrawer(d: HTMLDivElement): void {
     const size = document.createElement("div");
-    size.style.margin = "4px 0";
+    Object.assign(size.style, { display: "flex", alignItems: "center", gap: "6px", margin: SP.row } as CSSStyleDeclaration);
     size.append("size ");
-    const colsIn = this.numInput(this.draft.cols, (n) => this.resize(n, this.draft.rows));
-    colsIn.dataset.role = "cols";
-    size.appendChild(colsIn);
-    size.append(" × ");
-    const rowsIn = this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n));
-    rowsIn.dataset.role = "rows";
-    size.appendChild(rowsIn);
+    const cols = this.stepper(this.draft.cols, (n) => this.resize(n, this.draft.rows), { min: 1, max: 20 });
+    cols.input.dataset.role = "cols";
+    size.appendChild(cols.wrap);
+    size.append("×");
+    const rows = this.stepper(this.draft.rows, (n) => this.resize(this.draft.cols, n), { min: 1, max: 20 });
+    rows.input.dataset.role = "rows";
+    size.appendChild(rows.wrap);
     d.appendChild(size);
     this.paletteStrips.Terrain = this.cardStrip([]);
     d.appendChild(this.paletteStrips.Terrain);
 
     // Rectangle mode: an outline (a room/cell ring) vs a solid fill. Toggled live.
     const rectMode = document.createElement("div");
-    rectMode.style.margin = "4px 0";
+    rectMode.style.margin = SP.row;
     const modeBtn = document.createElement("button");
     modeBtn.dataset.role = "rect-mode";
     modeBtn.style.cursor = "pointer";
@@ -1184,21 +1334,20 @@ export class EditorScene extends Phaser.Scene {
    * lives in the Scenario tab body (D109 slice 2, moved out of Events). label + required + kind fields.
    */
   private buildObjectivesEditor(d: HTMLDivElement): void {
-    const objHead = document.createElement("div");
-    Object.assign(objHead.style, { margin: "8px 0 2px", fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
-    objHead.append("Objectives ");
+    // The section header row carries the ＋ add / Derive actions to the right of the "Objectives" label.
+    const objHead = this.sectionHead("Objectives");
     const add = document.createElement("button");
-    add.textContent = "＋ add"; add.dataset.role = "add-objective"; add.style.cursor = "pointer";
+    add.textContent = "＋ add"; add.dataset.role = "add-objective";
     add.onclick = () => this.addObjective();
     const derive = document.createElement("button");
-    derive.textContent = "Derive from board"; derive.dataset.role = "derive-objectives"; derive.style.cursor = "pointer"; derive.style.marginLeft = "4px";
+    derive.textContent = "Derive from board"; derive.dataset.role = "derive-objectives";
     derive.onclick = () => { this.pushHistory(); this.draft.objectives = standardObjectives(this.draft.exit, this.draft.captives.length > 0); this.afterObjectiveEdit(); };
     objHead.append(add, derive);
     d.appendChild(objHead);
 
     const list = document.createElement("div");
     list.dataset.role = "objective-list";
-    list.style.margin = "2px 0";
+    list.style.margin = SP.row;
     d.appendChild(list);
     this.objectivesEl = list;
 
@@ -1246,7 +1395,7 @@ export class EditorScene extends Phaser.Scene {
   private objectiveRow(o: ObjectiveSpec, i: number): HTMLDivElement {
     const box = document.createElement("div");
     box.dataset.role = "objective";
-    Object.assign(box.style, { margin: "4px 0", padding: "5px", border: "1px solid #4a423a", borderRadius: "4px" } as CSSStyleDeclaration);
+    Object.assign(box.style, { margin: "4px 0", padding: "5px", border: `1px solid ${ED.cardBorder}`, borderRadius: "4px" } as CSSStyleDeclaration);
 
     const head = document.createElement("div");
     Object.assign(head.style, { display: "flex", alignItems: "center", gap: "6px" } as CSSStyleDeclaration);
@@ -1281,15 +1430,15 @@ export class EditorScene extends Phaser.Scene {
     if (o.kind === "closing-gate") {
       // A timed gauge (fails the constraint at 100). driver = the unit whose death/immobilize stops it.
       const cg = document.createElement("div");
-      cg.style.margin = "3px 0";
+      Object.assign(cg.style, { display: "flex", alignItems: "center", gap: "6px", margin: SP.row } as CSSStyleDeclaration);
       cg.append("speed ");
-      cg.appendChild(this.numInput(o.speed ?? 10, (n) => { if (Number.isFinite(n)) { o.speed = n; this.updateExport(); } }));
+      cg.appendChild(this.stepper(o.speed ?? 10, (n) => { if (Number.isFinite(n)) { o.speed = n; this.updateExport(); } }, { min: 1 }).wrap);
       box.appendChild(cg);
       box.appendChild(this.selectRow("driver", ["", "sapper", "captain"], o.driver?.role ?? "", (v) => { if (v) o.driver = { role: v }; else delete o.driver; this.updateExport(); }));
       box.appendChild(this.hint("swept-tiles span isn't paintable yet — a pure timer for now"));
     } else if (o.kind === "extraction") {
       const ex = document.createElement("div");
-      ex.style.margin = "3px 0";
+      ex.style.margin = SP.row;
       ex.append("escort role ");
       const role = document.createElement("input");
       role.value = o.escort?.role ?? "prisoner"; role.style.width = "90px"; role.dataset.field = "escort";
@@ -1332,48 +1481,41 @@ export class EditorScene extends Phaser.Scene {
    * tools & checks (arc-linking, cross-level validation, playtest).
    */
   private buildScenarioDrawer(d: HTMLDivElement): void {
+    // Grouped into divided sections (spacing pass) so the tab reads as distinct blocks — Identity,
+    // Reward, Objectives, Playtest, Local Maps, and JSON I/O — instead of one undifferentiated run.
+    // Import + export are co-located in the trailing JSON section (they were split top-and-bottom).
+
+    // — Identity —
+    d.appendChild(this.sectionHead("Identity", { first: true }));
     d.appendChild(this.field("id", this.draft.id, (v) => { this.draft.id = v; this.updateExport(); }));
     d.appendChild(this.field("name", this.draft.name, (v) => { this.draft.name = v; this.updateExport(); }));
 
-    // Win reward (M-C) — gold + xp. materials round-trip verbatim (no picker yet).
+    // — Reward — (M-C) gold + xp; materials round-trip verbatim (no picker yet).
+    d.appendChild(this.sectionHead("Reward"));
     const reward = document.createElement("div");
-    reward.style.margin = "3px 0";
-    reward.append("reward — gold ");
-    const gold = this.numInput(this.draft.reward?.gold ?? 50, (n) => { if (Number.isFinite(n)) { this.ensureReward().gold = n; this.updateExport(); } });
-    gold.dataset.role = "reward-gold";
-    reward.appendChild(gold);
-    reward.append(" xp ");
-    const xp = this.numInput(this.draft.reward?.xp ?? 40, (n) => { if (Number.isFinite(n)) { this.ensureReward().xp = n; this.updateExport(); } });
-    xp.dataset.role = "reward-xp";
-    reward.appendChild(xp);
+    Object.assign(reward.style, { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", margin: SP.row } as CSSStyleDeclaration);
+    reward.append("gold");
+    const gold = this.stepper(this.draft.reward?.gold ?? 50, (n) => { if (Number.isFinite(n)) { this.ensureReward().gold = n; this.updateExport(); } }, { min: 0, step: 10 });
+    gold.input.dataset.role = "reward-gold";
+    reward.appendChild(gold.wrap);
+    reward.append("xp");
+    const xp = this.stepper(this.draft.reward?.xp ?? 40, (n) => { if (Number.isFinite(n)) { this.ensureReward().xp = n; this.updateExport(); } }, { min: 0, step: 5 });
+    xp.input.dataset.role = "reward-xp";
+    reward.appendChild(xp.wrap);
     d.appendChild(reward);
 
-    // Level-wide win/lose objectives (moved here from Events — they're scenario-level, D109 slice 2).
+    // — Objectives — level-wide win/lose (buildObjectivesEditor prepends its own section head).
     this.buildObjectivesEditor(d);
 
-    // Import (the M-A round-trip inverse).
-    const imp = document.createElement("div");
-    imp.style.margin = "6px 0";
-    const impArea = document.createElement("textarea");
-    Object.assign(impArea.style, { width: "100%", height: "46px", font: "11px/1.3 ui-monospace, monospace", boxSizing: "border-box" } as CSSStyleDeclaration);
-    impArea.placeholder = "paste level JSON to import…";
-    impArea.dataset.role = "import";
-    const impBtn = document.createElement("button");
-    impBtn.textContent = "Import JSON"; impBtn.style.cursor = "pointer"; impBtn.dataset.role = "import-btn";
-    impBtn.onclick = () => this.importJson(impArea.value);
-    imp.append(impArea, impBtn);
-    d.appendChild(imp);
-
-    // Soft play (D-editor): pick a squad, then ▶ Playtest boots the draft into the real BattleScene
-    // and returns here — a functional test (deploy/spacing, gate↔lever reach, enemy behaviour) with
-    // no export→drop-in→reload loop. The squad picker maps onto the scenario party matrix, so a
-    // level tailored to a class can be fielded with the right cast (owner ask). Default = small trio.
+    // — Playtest — soft play (D-editor): pick a squad, then ▶ Playtest boots the draft into the real
+    // BattleScene and returns here — a functional test (deploy/spacing, gate↔lever reach, enemy
+    // behaviour) with no export→drop-in→reload loop. The picker maps onto the scenario party matrix.
+    d.appendChild(this.sectionHead("Playtest"));
     const play = document.createElement("div");
-    play.style.margin = "6px 0";
-    play.append("playtest squad ");
+    Object.assign(play.style, { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", margin: SP.row } as CSSStyleDeclaration);
+    play.append("squad");
     const squad = document.createElement("select");
     squad.dataset.role = "playtest-party";
-    squad.style.cursor = "pointer";
     for (const name of playtestPartyNames()) {
       const opt = document.createElement("option");
       opt.value = name; opt.textContent = name; opt.selected = name === this.playtestParty;
@@ -1381,24 +1523,34 @@ export class EditorScene extends Phaser.Scene {
     }
     squad.onchange = () => { this.playtestParty = squad.value; };
     const playBtn = document.createElement("button");
-    playBtn.textContent = "▶ Playtest"; playBtn.style.cursor = "pointer"; playBtn.style.marginLeft = "6px";
-    playBtn.dataset.role = "playtest";
+    playBtn.textContent = "▶ Playtest"; playBtn.dataset.role = "playtest";
     playBtn.title = "Boot the draft in the real battle scene to test it, then return here";
     playBtn.onclick = () => this.playtest();
     play.append(squad, playBtn);
     d.appendChild(play);
 
-    // Local maps (D-editor): browser-local persistence. The working draft autosaves + restores on
-    // reload; here you Save the current map into a named library and Load/Delete previous attempts —
-    // so test maps survive across sessions. All browser-local (Download .json commits a keeper).
+    // — Local Maps — browser-local persistence (buildLibrarySection prepends its own section head).
     this.buildLibrarySection(d);
 
+    // — JSON — import + export together (the round-trip pair). Paste to import; Copy / Download to
+    // export a keeper; the live preview mirrors the draft.
+    d.appendChild(this.sectionHead("JSON"));
+    const impArea = document.createElement("textarea");
+    Object.assign(impArea.style, { width: "100%", height: "52px", font: `12.5px/1.4 ${CHROME_FONT}`, boxSizing: "border-box", margin: "0 0 6px" } as CSSStyleDeclaration);
+    impArea.placeholder = "paste level JSON to import…";
+    impArea.dataset.role = "import";
+    d.appendChild(impArea);
+
     const btns = document.createElement("div");
-    const copy = document.createElement("button"); copy.textContent = "Copy"; copy.style.cursor = "pointer";
+    Object.assign(btns.style, { display: "flex", gap: "6px", flexWrap: "wrap", margin: SP.row } as CSSStyleDeclaration);
+    const impBtn = document.createElement("button");
+    impBtn.textContent = "Import JSON"; impBtn.dataset.role = "import-btn";
+    impBtn.onclick = () => this.importJson(impArea.value);
+    const copy = document.createElement("button"); copy.textContent = "Copy";
     copy.onclick = () => navigator.clipboard?.writeText(this.exportJson());
-    const dl = document.createElement("button"); dl.textContent = "Download .json"; dl.style.cursor = "pointer"; dl.style.marginLeft = "6px";
+    const dl = document.createElement("button"); dl.textContent = "Download .json";
     dl.onclick = () => this.download();
-    btns.append(copy, dl);
+    btns.append(impBtn, copy, dl);
     d.appendChild(btns);
 
     const pre = document.createElement("pre");
@@ -1412,27 +1564,24 @@ export class EditorScene extends Phaser.Scene {
   /** Build the "local maps" block — a Save/New header over the live saved-maps list. */
   private buildLibrarySection(d: HTMLDivElement): void {
     const wrap = document.createElement("div");
-    wrap.style.margin = "6px 0";
     wrap.dataset.role = "library";
 
-    const head = document.createElement("div");
-    head.style.marginBottom = "3px";
-    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" } as CSSStyleDeclaration);
-    head.append("local maps");
+    // The section header row carries the save-name field + Save / New actions.
+    const head = this.sectionHead("Local Maps");
     // An explicit, visible "save as" name (defaults to the draft id) so two attempts left at the
     // default id can't silently clobber each other — type a fresh name to keep a separate copy.
     const nameInput = document.createElement("input");
     nameInput.type = "text"; nameInput.value = this.draft.id || "untitled"; nameInput.dataset.role = "lib-name";
-    Object.assign(nameInput.style, { width: "110px", font: "inherit" } as CSSStyleDeclaration);
+    nameInput.style.width = "110px";
     nameInput.title = "The name to save under (defaults to the map id) — change it to keep a separate attempt";
     this.libNameInput = nameInput;
     head.appendChild(nameInput);
     const saveBtn = document.createElement("button");
-    saveBtn.textContent = "＋ Save"; saveBtn.style.cursor = "pointer"; saveBtn.dataset.role = "lib-save";
+    saveBtn.textContent = "＋ Save"; saveBtn.dataset.role = "lib-save";
     saveBtn.title = "Save the current map into the browser library under the name shown";
     saveBtn.onclick = () => this.saveCurrentToLibrary();
     const newBtn = document.createElement("button");
-    newBtn.textContent = "New"; newBtn.style.cursor = "pointer"; newBtn.style.marginLeft = "6px"; newBtn.dataset.role = "lib-new";
+    newBtn.textContent = "New"; newBtn.dataset.role = "lib-new";
     newBtn.title = "Start a fresh blank map (undoable)";
     newBtn.onclick = () => this.newBlankMap();
     head.append(saveBtn, newBtn);
@@ -1440,6 +1589,7 @@ export class EditorScene extends Phaser.Scene {
 
     const list = document.createElement("div");
     list.dataset.role = "lib-list";
+    list.style.margin = "2px 0 0";
     this.libraryEl = list;
     wrap.appendChild(list);
     d.appendChild(wrap);
@@ -1622,9 +1772,9 @@ export class EditorScene extends Phaser.Scene {
     const dest = g.openBy.find((c) => c.kind === "destructible");
     if (dest && dest.kind === "destructible") {
       const row = document.createElement("div");
-      row.style.margin = "3px 0";
+      Object.assign(row.style, { display: "flex", alignItems: "center", gap: "6px", margin: SP.row } as CSSStyleDeclaration);
       row.append("door hp ");
-      row.appendChild(this.numInput(dest.hp, (n) => { if (Number.isFinite(n)) { dest.hp = n; this.afterInspect(); } }));
+      row.appendChild(this.stepper(dest.hp, (n) => { if (Number.isFinite(n)) { dest.hp = n; this.afterInspect(); } }, { min: 1, step: 5 }).wrap);
       host.appendChild(row);
     }
   }
@@ -1648,7 +1798,7 @@ export class EditorScene extends Phaser.Scene {
   /** A labelled checkbox row. */
   private checkboxRow(label: string, checked: boolean, onChange: (on: boolean) => void): HTMLElement {
     const wrap = document.createElement("label");
-    Object.assign(wrap.style, { display: "block", margin: "3px 0", cursor: "pointer" } as CSSStyleDeclaration);
+    Object.assign(wrap.style, { display: "block", margin: SP.row, cursor: "pointer" } as CSSStyleDeclaration);
     const box = document.createElement("input");
     box.type = "checkbox"; box.checked = checked;
     box.onchange = () => onChange(box.checked);
@@ -1685,14 +1835,14 @@ export class EditorScene extends Phaser.Scene {
   private inspectorHeader(text: string): HTMLDivElement {
     const h = document.createElement("div");
     h.textContent = text;
-    Object.assign(h.style, { margin: "2px 0 4px", fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    Object.assign(h.style, { margin: "2px 0 4px", fontWeight: "700", color: ED.gold } as CSSStyleDeclaration);
     return h;
   }
 
   /** A labelled `<select>` row. */
   private selectRow(label: string, options: string[], value: string, onChange: (v: string) => void): HTMLDivElement {
     const wrap = document.createElement("div");
-    wrap.style.margin = "3px 0";
+    wrap.style.margin = SP.row;
     wrap.append(`${label} `);
     const sel = document.createElement("select");
     sel.dataset.field = label;
@@ -1703,18 +1853,27 @@ export class EditorScene extends Phaser.Scene {
     return wrap;
   }
 
-  /** The 7-field combat stat grid (M-B), driven by the core-typed {@link STAT_FIELDS}. */
+  /**
+   * The 7-field combat stat grid (M-B), driven by the core-typed {@link STAT_FIELDS}. A **labels-above**
+   * layout — each field is a small cell (name over a {@link stepper}) tiled in an auto-fitting grid — so
+   * the block scans at a glance instead of a run of `label input` pairs that wrapped mid-name. Each cell's
+   * inner input keeps its `data-stat` tag (the e2e reads/sets it), and the ± dispatch a `change` on it.
+   */
   private statGrid(get: (f: StatField) => number, set: (f: StatField, v: number) => void): HTMLDivElement {
     const wrap = document.createElement("div");
-    wrap.style.margin = "4px 0";
+    Object.assign(wrap.style, {
+      display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: "7px 10px", margin: "6px 0 2px",
+    } as CSSStyleDeclaration);
     for (const f of STAT_FIELDS) {
-      const cell = document.createElement("span");
-      Object.assign(cell.style, { display: "inline-block", marginRight: "6px" } as CSSStyleDeclaration);
-      cell.append(`${f} `);
-      const inp = this.numInput(get(f), (n) => { if (Number.isFinite(n)) set(f, n); }); // ignore an emptied field (NaN)
-      inp.style.width = "44px";
-      inp.dataset.stat = f;
-      cell.appendChild(inp);
+      const cell = document.createElement("div");
+      const label = document.createElement("div");
+      label.textContent = f;
+      Object.assign(label.style, {
+        fontSize: "10.5px", color: ED.muted, marginBottom: "3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+      } as CSSStyleDeclaration);
+      const { wrap: sc, input } = this.stepper(get(f), (n) => { if (Number.isFinite(n)) set(f, n); }, { min: 0, width: 42 }); // ignore an emptied field (NaN)
+      input.dataset.stat = f;
+      cell.append(label, sc);
       wrap.appendChild(cell);
     }
     return wrap;
@@ -1729,26 +1888,59 @@ export class EditorScene extends Phaser.Scene {
 
   private field(label: string, value: string, onChange: (v: string) => void): HTMLDivElement {
     const wrap = document.createElement("div");
-    wrap.style.margin = "3px 0";
+    wrap.style.margin = SP.row;
     wrap.append(`${label} `);
     const input = document.createElement("input");
     input.value = value;
-    input.style.width = "180px";
+    input.style.width = "200px";
     input.oninput = () => onChange(input.value);
     wrap.appendChild(input);
     return wrap;
   }
-  private numInput(value: number, onChange: (n: number) => void): HTMLInputElement {
+  /**
+   * A themed **number stepper** — a flush `[−  value  +]` segmented control that replaces the native
+   * spinner arrows we hid (they rendered as bright system chrome). The ± buttons nudge the value by
+   * `step`, clamped to `[min,max]`, then **dispatch a real `change` on the inner input** — so every
+   * downstream hook (the input's own `onchange`, the live export, and the capture-phase undo snapshot)
+   * fires through the exact same path as typing, with no special-casing. Returns the wrap to append
+   * plus the inner input, so a caller can still tag it (`data-stat` / `data-role`) for the e2e + resize.
+   */
+  private stepper(
+    value: number,
+    onChange: (n: number) => void,
+    opts: { min?: number; max?: number; step?: number; width?: number } = {},
+  ): { wrap: HTMLDivElement; input: HTMLInputElement } {
+    const { min, max, step = 1, width = 46 } = opts;
+    const wrap = document.createElement("div");
+    wrap.className = "stepper";
     const input = document.createElement("input");
-    input.type = "number"; input.value = String(value); input.style.width = "48px";
+    input.type = "number"; input.value = String(value); input.style.width = `${width}px`;
     input.onchange = () => onChange(parseInt(input.value, 10));
-    return input;
+    const nudge = (delta: number): void => {
+      let n = parseInt(input.value, 10);
+      if (!Number.isFinite(n)) n = 0;
+      n += delta;
+      if (min !== undefined) n = Math.max(min, n);
+      if (max !== undefined) n = Math.min(max, n);
+      input.value = String(n);
+      input.dispatchEvent(new Event("change")); // one path for typed + stepped edits (export + undo)
+    };
+    const btn = (label: string, delta: number): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = label; b.tabIndex = -1; b.className = "stepper-btn";
+      b.dataset.role = "stepper";
+      b.title = delta < 0 ? "decrease" : "increase";
+      b.onclick = () => nudge(delta);
+      return b;
+    };
+    wrap.append(btn("−", -step), input, btn("+", step));
+    return { wrap, input };
   }
   private highlightBrush(): void {
     for (const b of this.brushButtons) {
       const active = b.dataset.brush === this.brush;
-      b.style.background = active ? "#c8a24a" : "";
-      b.style.color = active ? "#1a1206" : "";
+      b.style.background = active ? ED.gold : "";
+      b.style.color = active ? ED.goldInk : "";
       b.style.fontWeight = active ? "700" : "";
     }
     // Slab-tray cards: active when the brush matches AND (for the unrolled variants) its template /
@@ -1757,9 +1949,9 @@ export class EditorScene extends Phaser.Scene {
       const active = c.brush === this.brush
         && (c.template === undefined || c.template === this.enemyTemplate)
         && (c.release === undefined || c.release === this.captiveRelease);
-      c.el.style.borderColor = active ? "#f2b65a" : "#4a423a";
-      c.el.style.background = active ? "#271e16" : "#1a140d";
-      c.el.style.boxShadow = active ? "0 0 0 1px #f2b65a" : "";
+      c.el.style.borderColor = active ? ED.ember : ED.cardBorder;
+      c.el.style.background = active ? ED.cardActiveBg : ED.cardBg;
+      c.el.style.boxShadow = active ? `0 0 0 1px ${ED.ember}` : "";
     }
   }
 
@@ -1857,7 +2049,17 @@ export class EditorScene extends Phaser.Scene {
     requestAnimationFrame(() => this.scale.refresh());
   }
 
+  /** Inject the scoped chrome stylesheet once (id-guarded so a remount doesn't duplicate it). */
+  private injectChromeStyles(): void {
+    if (document.getElementById(CHROME_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = CHROME_STYLE_ID;
+    style.textContent = CHROME_CSS;
+    document.head.appendChild(style);
+  }
+
   private unmountPanel(): void {
+    document.getElementById(CHROME_STYLE_ID)?.remove();
     window.removeEventListener("keydown", this.hKeyDown);
     for (const type of ["input", "change", "focusout"]) window.removeEventListener(type, this.hPanelEdit, true);
     window.removeEventListener("resize", this.hResize);

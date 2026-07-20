@@ -141,6 +141,17 @@ export const COLOR = {
 } as const;
 
 /**
+ * Bridge the numeric board palette ({@link COLOR}) into the CSS strings a DOM-overlay needs — the
+ * editor chrome and debug menus render real HTML controls, which can't take a Phaser `0xRRGGBB`. This
+ * keeps those surfaces single-sourced from the same ladder the scenes tune, instead of re-typing hexes.
+ *
+ * `cssHex(COLOR.accent)` → `"#f2b65a"`; `cssRgba(COLOR.accent, 0.22)` → `"rgba(242, 182, 90, 0.22)"`.
+ */
+export const cssHex = (color: number): string => `#${(color & 0xffffff).toString(16).padStart(6, "0")}`;
+export const cssRgba = (color: number, alpha: number): string =>
+  `rgba(${(color >> 16) & 0xff}, ${(color >> 8) & 0xff}, ${color & 0xff}, ${alpha})`;
+
+/**
  * Text colours as CSS strings for Phaser `Text`. Fills and strokes live in
  * {@link COLOR}; these stay strings because that's what `TextStyle.color` wants.
  */

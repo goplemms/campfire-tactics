@@ -24,7 +24,11 @@ stopped being executed.
 | Verbs | A verb is a `SkillDef` resolved by the one interpreter through the effect registry (the Verb Cell, D89) | `src/core/overworld-actions.ts` | `r2-verb-gate.test.ts`, `overworld-actions.test.ts` |
 | Result shapes | Verb layer: `ActionOutcome { applied, reason?, detail? }` · core/effect layer: `{ ok: true; … } \| { ok: false; reason }` discriminated | `src/core/overworld-actions.ts:ActionOutcome`, `src/core/combat-actions.ts:BattleActionResult` | (Wave-2: straggler migration; no mechanical guard yet) |
 | Numeric helpers | `clamp`/`clamp01`/`bandFor`/`rankOf`/`clampUp` from `src/core/num.ts` — no hand-rolled clamps or tier tables | `src/core/num.ts` | (Wave-2 adoption pass) |
-| Modals / overlays | `showModal` from `src/game/overlay-card.ts` — never a hand-rolled rect+title+backdrop | `src/game/overlay-card.ts` header (the D75 bug class it kills) | `test:e2e:guild-banner` (backdrop input-blocking, both banner variants) |
+| Modals / overlays | `showModal` from `src/game/overlay-card.ts` — never a hand-rolled rect+title+backdrop; sheet-style surfaces use `titleAlign: "left"` (market/ledger ride it) | `src/game/overlay-card.ts` header (the D75 bug class it kills) | `test:e2e:guild-banner` (backdrop input-blocking, both banner variants) |
+| Depth bands | cross-surface z-coordinates come from `DEPTH` (`theme.ts`) — hud / modal / sheet / banner; per-surface internals may offset from their band | `src/game/theme.ts` `DEPTH` | (visual: `audit:visual` sweep) |
+| HP bars | immediate-mode bars via `pushHpBar` (`unit-readout.ts`); retained-mode bars (token nameplates, the rail) keep their create/update split and share only `hpColor` | `src/game/party-dossier-view.ts` `wideHpBar`/`miniHpBar` | (visual: `audit:visual`) |
+| ESC-to-close | `onEscClose(scene, fn)` (`ui.ts`) — never inline `keyboard?.once("keydown-ESC", …)` | `src/game/scenes/OverworldScene.ts` tent/market | — |
+| Buttons | `Button` (`button.ts`) with `enabled` passed through; a per-surface *style wrapper* over Button (campButton, listButton) is fine — hand-wired rect+pointerdown is not, for new work | `src/game/camp-panel.ts` `campButton` | — |
 | Combat log | Every in-battle mutation flows through `Battle.apply`; skills log by id (D87) | `src/core/combat-actions.ts` | `r1-log-totality.test.ts`, `snapshot-drift.test.ts` |
 
 ## Code diction (the audit's terminology canon)

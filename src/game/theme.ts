@@ -147,6 +147,27 @@ export const COLOR = {
  *
  * `cssHex(COLOR.accent)` → `"#f2b65a"`; `cssRgba(COLOR.accent, 0.22)` → `"rgba(242, 182, 90, 0.22)"`.
  */
+/**
+ * The cross-surface **depth bands** (D114). Values match the pre-token layout exactly —
+ * naming them is the change, so two surfaces stacking (a modal over the ledger sheet,
+ * the areas-nav straddling a transition) coordinate through one table instead of
+ * per-file magic numbers. Per-surface *internal* layering may still offset from its band.
+ */
+export const DEPTH = {
+  /** Scene HUD band (readouts, rails, markers). */
+  hud: 10,
+  /** The overlay-card modal frame's default (backdrop sits at modal − 1). */
+  modal: 20,
+  /** Full-screen sheet overlays (tent / market / ledger): backdrop + frame here… */
+  sheet: 22,
+  /** …their text/content band… */
+  sheetContent: 25,
+  /** …and their top controls (Close, Continue, the nav straddle). */
+  sheetTop: 26,
+  /** The hall's result banner (above every hall surface; its Dismiss rides +2). */
+  banner: 30,
+} as const;
+
 export const cssHex = (color: number): string => `#${(color & 0xffffff).toString(16).padStart(6, "0")}`;
 export const cssRgba = (color: number, alpha: number): string =>
   `rgba(${(color >> 16) & 0xff}, ${(color >> 8) & 0xff}, ${color & 0xff}, ${alpha})`;

@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { COLOR, FONT, INK } from "../theme";
+import { COLOR, DEPTH, FONT, INK } from "../theme";
 import { clamp,
   createStarterGuild,
   buyArmoryGear,
@@ -352,15 +352,15 @@ export class GuildScene extends Phaser.Scene {
     showModal(this, this.ui, {
       title: wiped ? "Caravan Lost" : "Caravan Home",
       tone: wiped ? "bad" : "good",
-      w, h, cy, depth: 30,
+      w, h, cy, depth: DEPTH.banner,
       boxAlpha: 0.97,
       titleOffset: 18,
       titleSize: FONT.title,
       body: { text: lines.join("\n"), offset: h / 2 + 6, color: INK.secondary, lineSpacing: 4 },
     });
-    // Above the box (30) and its backdrop (29) — the scene's default button depth (2)
+    // Above the box and its backdrop — the scene's default button depth (2)
     // would be swallowed by the backdrop.
-    this.addButton(cx, cy + h / 2 - 4, 32, {
+    this.addButton(cx, cy + h / 2 - 4, DEPTH.banner + 2, {
       text: "Dismiss", w: 100, h: 26, fill: COLOR.successDeep, stroke: COLOR.success, strokeWidth: 1,
       color: INK.onSuccess, fontSize: FONT.label, pad: 12,
       onClick: () => {

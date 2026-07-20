@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { COLOR, FONT, INK } from "../theme";
+import { COLOR, DEPTH, FONT, INK } from "../theme";
 import { PartyDossierView } from "../party-dossier-view";
 
 /** The Captain's Tent tabs (D58) — the run's deep-info hub, one verb to open. */
@@ -75,10 +75,10 @@ import { pct,
   type JournalConcern,
   type EquipSlot,
 } from "../../core";
-import { clearLayer } from "../ui";
+import { clearLayer, onEscClose } from "../ui";
 import { captureRepro } from "../repro-capture";
 import { Button, probeWidth } from "../button";
-import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
+import { showModal, renderChoiceStack } from "../overlay-card";
 import { drawLedgerSheet } from "../ledger-sheet";
 import { MapView, NODE_KIND_VISUALS } from "../map-view";
 import { CampPanel, type CampAction, type ActionCost, type ActionPreview } from "../camp-panel";
@@ -968,7 +968,7 @@ export class OverworldScene extends Phaser.Scene {
       this.titleText.setText(`Route Map — Night ${this.run.night + 1} · reviewing`);
       this.renderAreaNav("map", returnTo, this.overlay, colX, navY);
       this.setHint("Route Map — hover a node to preview it. Switch pages above, or return to Camp (Esc).");
-      this.input.keyboard?.once("keydown-ESC", () => this.closeTent());
+      onEscClose(this, () => this.closeTent());
       return;
     }
 
@@ -988,7 +988,7 @@ export class OverworldScene extends Phaser.Scene {
     else this.drawTentLedger(bounds);
 
     this.setHint("Captain's Tent — switch pages above, or return to Camp (Esc).");
-    this.input.keyboard?.once("keydown-ESC", () => this.closeTent());
+    onEscClose(this, () => this.closeTent());
   }
 
   /** Party tab — the bounds-driven dossier view, embedded (the Tent owns the chrome).
@@ -1123,7 +1123,7 @@ export class OverworldScene extends Phaser.Scene {
     this.marketReturn = returnTo;
     this.marketQty = {};
     this.setHint("Market — buy supplies & sell salvage. Stock up: you may not pass a market again soon. Close (or Esc) returns.");
-    this.input.keyboard?.once("keydown-ESC", () => this.closeMarket());
+    onEscClose(this, () => this.closeMarket());
     this.renderMarket();
   }
 
@@ -1728,14 +1728,17 @@ export class OverworldScene extends Phaser.Scene {
     const left = cx - w / 2;
     const top = cy - h / 2;
 
-    // Full-screen backdrop (dims + swallows clicks behind) + the framed sheet.
-    installBackdrop(this, this.overlay, 22);
+    // The shared modal frame (#133/D114): backdrop + box + the left-pinned sheet title;
+    // the subtitle / rule / ledger sheet / Continue stay caller-side content.
+    showModal(this, this.overlay, {
+      title, tone: "gold", titleAlign: "left", titleOffset: 22,
+      w, h, cy, depth: DEPTH.sheet + 1,
+      boxFill: COLOR.surface, boxAlpha: 0.98,
+    });
     this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
-      this.add.text(left + 24, top + 22, title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(left + w - 24, top + 22, "The night's tab — what camp spends before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+      this.add.text(left + w - 24, top + 22, "The night's tab — what camp spends before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(DEPTH.sheetContent),
     );
-    const rule = this.add.graphics().setDepth(24);
+    const rule = this.add.graphics().setDepth(DEPTH.sheet + 2);
     rule.lineStyle(1, COLOR.borderSoft, 0.9);
     rule.lineBetween(left + 16, top + 44, left + w - 16, top + 44);
     this.overlay.push(rule);
@@ -1754,7 +1757,7 @@ export class OverworldScene extends Phaser.Scene {
       clearLayer(this.overlay);
       onContinue();
     });
-    this.overlay.push(btn.setDepth(26));
+    this.overlay.push(btn.setDepth(DEPTH.sheetTop));
     this.setHint(interactive
       ? "Tonight's tab. Cross an Upkeep line off to free its gold (you'll take the consequence). Continue to rest for the night."
       : "Tonight's tab — what this rest will spend. Continue to proceed.");

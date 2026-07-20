@@ -78,6 +78,15 @@ export function clearLayer(objs: Phaser.GameObjects.GameObject[]): void {
   objs.length = 0;
 }
 
+/**
+ * Arm a one-shot ESC-to-close on a scene — the standard dismiss affordance every
+ * closable surface (tent, market, pickers) wires. One home for the
+ * `keyboard?.once("keydown-ESC", …)` spelling (D114).
+ */
+export function onEscClose(scene: Phaser.Scene, close: () => void): void {
+  scene.input.keyboard?.once("keydown-ESC", close);
+}
+
 /** True under the Vite dev server / tests, false in the production build. */
 function isDev(): boolean {
   // `import.meta.env` is Vite-injected; guard so this is safe if ever run outside it.

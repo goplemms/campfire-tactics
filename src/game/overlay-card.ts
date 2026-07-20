@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { COLOR, FONT, INK } from "./theme";
+import { COLOR, DEPTH, FONT, INK } from "./theme";
 import type { Button } from "./button";
 
 /**
@@ -89,6 +89,9 @@ export interface ModalOptions {
   /** Title Y from the box top edge (default 24). */
   titleOffset?: number;
   titleSize?: string;
+  /** Title alignment: "left" pins it to the box's left edge (inset 24, the sheet-header
+   *  style — market/ledger); default centres at cx. */
+  titleAlign?: "center" | "left";
   /** Base depth: box sits here, backdrop at depth−1, title/body at depth+1. Default 20. */
   depth?: number;
   /** Install the full-screen input-swallowing backdrop. Default **true** (#133's fix). */
@@ -130,20 +133,22 @@ export function showModal(scene: Phaser.Scene, layer: Phaser.GameObjects.GameObj
   const { w, h } = o;
   const top = cy - h / 2;
   const left = cx - w / 2;
-  const depth = o.depth ?? 20;
+  const depth = o.depth ?? DEPTH.modal;
   const tone = MODAL_TONE[o.tone ?? "neutral"];
 
   if (o.backdrop !== false) installBackdrop(scene, layer, depth - 1);
 
+  const title = scene.add
+    .text(cx, top + (o.titleOffset ?? 24), o.title, { color: tone.title, fontFamily: FONT.family, fontSize: o.titleSize ?? FONT.display })
+    .setOrigin(0.5)
+    .setDepth(depth + 1);
+  if (o.titleAlign === "left") title.setOrigin(0, 0.5).setX(left + 24);
   layer.push(
     scene.add
       .rectangle(cx, cy, w, h, o.boxFill ?? COLOR.bg, o.boxAlpha ?? 0.96)
       .setStrokeStyle(2, tone.stroke)
       .setDepth(depth),
-    scene.add
-      .text(cx, top + (o.titleOffset ?? 24), o.title, { color: tone.title, fontFamily: FONT.family, fontSize: o.titleSize ?? FONT.display })
-      .setOrigin(0.5)
-      .setDepth(depth + 1),
+    title,
   );
 
   const b = o.body;

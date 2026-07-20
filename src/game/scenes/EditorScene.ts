@@ -63,6 +63,18 @@ const HISTORY_MAX = 60;
 
 const BOARD_SCALE = 1.3;
 
+/**
+ * The slab tray's **minimum** height in px (D98 dock). The dock auto-sizes to fill whatever vertical
+ * space a full-width board leaves beneath it ({@link EditorScene.autoDockHeight}), but never collapses
+ * below this — so on a wide window (where a full-width board is taller than the screen and the dead
+ * space is on the *sides*, not below) the tray still reads comfortably instead of shrinking to a strip.
+ */
+const MIN_DOCK = 320;
+/** The board never scales below this height — the ceiling on how tall the auto-sized dock may grow. */
+const MIN_BOARD = 240;
+/** The fixed game canvas is 800×600 (see config.ts) — a full-width board is this fraction as tall. */
+const BOARD_ASPECT = 600 / 800;
+
 /** Every enemy template the palette offers (authored archetypes first, then the procedural pool). */
 const ENEMY_IDS = [...Object.keys(BANDIT_TEMPLATES), ...ENEMY_TEMPLATES.map((t) => t.id)];
 
@@ -195,6 +207,10 @@ export class EditorScene extends Phaser.Scene {
   /** Bound so the same reference detaches on teardown. Keyboard + form-edit hooks live on `window`. */
   private readonly hKeyDown = (ev: KeyboardEvent) => this.onKeyDown(ev);
   private readonly hPanelEdit = (ev: Event) => this.onPanelEdit(ev);
+  /** Recompute the auto-fill dock height when the viewport changes (no-op once the grip is dragged). */
+  private readonly hResize = () => this.applyAutoDockHeight();
+  /** True once the user hand-sizes the tray with the grip — freezes the auto-fill so a drag sticks. */
+  private dockUserSized = false;
 
   // DOM overlay (the D95 panel idiom). The panel now mounts in-flow inside {@link dock}, a
   // full-width slab tray BELOW the canvas (D98 placement pass), instead of the old fixed
@@ -751,13 +767,16 @@ export class EditorScene extends Phaser.Scene {
     // remounts the panel) and work regardless of canvas focus. Paired with unmountPanel's off.
     window.addEventListener("keydown", this.hKeyDown);
     for (const type of ["input", "change", "focusout"]) window.addEventListener(type, this.hPanelEdit, true);
+    // Re-run the auto-fill layout when the window resizes so the tray keeps hugging the board's bottom
+    // edge (until the grip is dragged, which pins a manual height). Paired with unmountPanel's remove.
+    window.addEventListener("resize", this.hResize);
     // The slab tray (D98 placement): a full-width dock in normal flow BELOW the canvas, with a
     // resize grip. Growing the dock shrinks #app and Scale.FIT scales the board down (never
     // clips). NOTE: this pass relocates + resizes the chrome; the thumbnail-gallery restyle of
     // the palette (and the bar/drawer split) is the next slice — the controls below are unchanged.
     const dock = document.createElement("div");
     Object.assign(dock.style, {
-      flex: "0 0 auto", height: "210px", display: "flex", flexDirection: "column",
+      flex: "0 0 auto", height: `${this.autoDockHeight()}px`, display: "flex", flexDirection: "column",
       background: "#16110d", borderTop: "1px solid #5a4630", boxSizing: "border-box",
     } as CSSStyleDeclaration);
     dock.appendChild(this.buildDockGrip());
@@ -863,9 +882,9 @@ export class EditorScene extends Phaser.Scene {
     // non-modal (the board stays interactive), slides in on Select / the Details toggle.
     this.buildSideDrawer();
     // Phaser sized the FIT canvas against the full-height #app at boot — BEFORE this dock existed.
-    // Appending the dock shrinks #app but fires no resize, so re-fit once layout has flushed, else
-    // the canvas overflows its box (820×615 into a 470-tall #app). rAF so #app's new height is live.
-    requestAnimationFrame(() => this.scale.refresh());
+    // Size the tray to hug the board (auto-fill) + re-fit once layout has flushed, else the canvas
+    // overflows its box (820×615 into a 470-tall #app). applyAutoDockHeight rAF-defers the refit.
+    this.applyAutoDockHeight();
     this.fillPalette(); // build the card strips from the current display prefs
     for (const paint of this.optionButtons) paint(); // light the active size/tint/captive toggles
     this.showTab(this.activeTab);
@@ -1802,8 +1821,9 @@ export class EditorScene extends Phaser.Scene {
     };
     grip.addEventListener("pointerdown", (e) => {
       dragging = true;
+      this.dockUserSized = true; // a hand-drag pins the tray — stop the resize auto-fill from fighting it
       startY = e.clientY;
-      startH = this.dock?.offsetHeight ?? 210;
+      startH = this.dock?.offsetHeight ?? MIN_DOCK;
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
       e.preventDefault();
@@ -1811,9 +1831,37 @@ export class EditorScene extends Phaser.Scene {
     return grip;
   }
 
+  /**
+   * The auto-fill tray height (the "fill the gap, keep a min bar" layout): the vertical space a
+   * **full-width** board would leave beneath it — so the tray hugs the board's bottom edge with no
+   * dead gap — floored at {@link MIN_DOCK} (a wide window's dead space is on the *sides*, which a
+   * bottom bar can't reclaim, so the tray just stays comfortable there) and capped so the board keeps
+   * at least {@link MIN_BOARD} of height. A full-width board is `width × BOARD_ASPECT` tall.
+   */
+  private autoDockHeight(): number {
+    const vw = document.body.clientWidth || window.innerWidth;
+    const vh = window.innerHeight;
+    const fullWidthBoardH = vw * BOARD_ASPECT; // board height if scaled to the full page width
+    const hi = Math.max(MIN_DOCK, vh - MIN_BOARD); // never starve the board below MIN_BOARD
+    return Math.round(Math.min(hi, Math.max(MIN_DOCK, vh - fullWidthBoardH)));
+  }
+
+  /**
+   * Apply {@link autoDockHeight} to the tray + re-fit the FIT canvas — unless the grip pinned a manual
+   * height. The refit is deferred to the next frame: setting `dock.style.height` doesn't flush flexbox
+   * synchronously, so a same-tick `scale.refresh()` would measure a stale (too-tall) #app (the same
+   * sliver-overflow the grip's drag handler guards against).
+   */
+  private applyAutoDockHeight(): void {
+    if (!this.dockUserSized && this.dock) this.dock.style.height = `${this.autoDockHeight()}px`;
+    requestAnimationFrame(() => this.scale.refresh());
+  }
+
   private unmountPanel(): void {
     window.removeEventListener("keydown", this.hKeyDown);
     for (const type of ["input", "change", "focusout"]) window.removeEventListener(type, this.hPanelEdit, true);
+    window.removeEventListener("resize", this.hResize);
+    this.dockUserSized = false; // a playtest round-trip remounts fresh → auto-fill owns the height again
     this.dock?.remove();
     this.dock = undefined;
     this.sideDrawer?.remove();

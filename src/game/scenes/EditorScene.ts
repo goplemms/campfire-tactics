@@ -945,14 +945,12 @@ export class EditorScene extends Phaser.Scene {
       gap: "6px", margin: "0 0 7px", paddingBottom: "7px", borderBottom: `1px solid ${ED.cardBorder}`,
     } as CSSStyleDeclaration);
 
-    // Left cluster — the cross-cutting tools. A small muted label names the group so it reads as "tools",
-    // not tabs: Select picks/edits any placed object, Erase removes whatever's on a tile.
+    // Left cluster — the cross-cutting tools as a distinct **segmented control** ({@link toolSegment}):
+    // icon-led, joined, and styled UNLIKE the category tabs so Select/Erase never read as "more tabs".
+    // They stay persistently visible (never nested under a tab) — they apply in every category.
     const tools = document.createElement("div");
-    Object.assign(tools.style, { display: "flex", alignItems: "center", gap: "2px" } as CSSStyleDeclaration);
-    const toolsLabel = document.createElement("span");
-    toolsLabel.textContent = "tools";
-    Object.assign(toolsLabel.style, { color: ED.muted, fontSize: "11px", marginRight: "5px" } as CSSStyleDeclaration);
-    tools.append(toolsLabel, this.brushButton("select"), this.brushButton("erase"));
+    Object.assign(tools.style, { display: "flex", alignItems: "center", gap: "6px" } as CSSStyleDeclaration);
+    tools.append(this.toolSegment());
 
     // Right cluster — view + history + the Details panel toggle. None of these are brushes (they never
     // change what a click paints), so they live apart from the tools, on the far edge of the band.
@@ -1042,15 +1040,33 @@ export class EditorScene extends Phaser.Scene {
     this.updateExport();
   }
 
-  /** A brush toggle button (registered for highlight). */
-  private brushButton(b: Brush): HTMLButtonElement {
-    const btn = document.createElement("button");
-    btn.textContent = b;
-    btn.dataset.brush = b;
-    Object.assign(btn.style, { margin: "2px", cursor: "pointer", textTransform: "capitalize" } as CSSStyleDeclaration);
-    btn.onclick = () => this.setBrush(b);
-    this.brushButtons.push(btn);
-    return btn;
+  /**
+   * The cross-cutting tools as a **segmented control** (D103 grouping pass) — a joined, icon-led
+   * Select/Erase pair styled deliberately UNLIKE the category tabs (separate gold pills), so the two
+   * never read as the same kind of control. The active tool shows an ember "engaged" underline on a
+   * raised fill — a different visual language from a tab's flat gold fill (see {@link highlightBrush}).
+   * Both buttons keep `data-brush` (the highlight + e2e hook) and route through the same {@link setBrush}.
+   */
+  private toolSegment(): HTMLDivElement {
+    const seg = document.createElement("div");
+    Object.assign(seg.style, {
+      display: "inline-flex", alignItems: "stretch", borderRadius: "5px",
+      border: `1px solid ${ED.inputBorder}`, overflow: "hidden",
+    } as CSSStyleDeclaration);
+    const mk = (b: Brush, icon: string, label: string, divider: boolean): HTMLButtonElement => {
+      const btn = document.createElement("button");
+      btn.innerHTML = `<span style="font-size:14px;vertical-align:-1px">${icon}</span> ${label}`;
+      btn.dataset.brush = b;
+      Object.assign(btn.style, {
+        margin: "0", borderRadius: "0", border: "none", cursor: "pointer",
+        borderLeft: divider ? `1px solid ${ED.inputBorder}` : "none",
+      } as CSSStyleDeclaration);
+      btn.onclick = () => this.setBrush(b);
+      this.brushButtons.push(btn);
+      return btn;
+    };
+    seg.append(mk("select", "⌖", "Select", false), mk("erase", "⌫", "Erase", true));
+    return seg;
   }
 
   /**
@@ -1960,11 +1976,15 @@ export class EditorScene extends Phaser.Scene {
     return { wrap, input };
   }
   private highlightBrush(): void {
+    // The cross-cutting tools (Select/Erase) use a "tool" active language — an ember underline on a
+    // raised fill — NOT the tabs' flat gold pill, so the two kinds of control never look alike (D103).
+    // Rest state is left to the chrome stylesheet (so the native hover still reads).
     for (const b of this.brushButtons) {
       const active = b.dataset.brush === this.brush;
-      b.style.background = active ? ED.gold : "";
-      b.style.color = active ? ED.goldInk : "";
+      b.style.background = active ? ED.cardActiveBg : "";
+      b.style.color = active ? ED.ember : "";
       b.style.fontWeight = active ? "700" : "";
+      b.style.boxShadow = active ? `inset 0 -2px 0 ${ED.ember}` : "";
     }
     // Slab-tray cards: active when the brush matches AND (for the unrolled variants) its template /
     // release is the selected one, so exactly one enemy archetype card lights up.

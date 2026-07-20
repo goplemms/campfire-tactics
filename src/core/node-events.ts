@@ -37,7 +37,7 @@ import type { RunState } from "./run";
 import type { MapNode } from "./overworld";
 import { type Unit } from "./units";
 import { describeUnit } from "./dossier";
-import { streamFor } from "./rng";
+import { streamFor, saltSeed } from "./rng";
 import { Labels } from "./rng-labels";
 import { MATERIALS, grantItem, canAdd } from "./inventory";
 import { getEquipment } from "./equipment";
@@ -270,7 +270,7 @@ export interface RecruiterOffer {
  * id is node-scoped so two recruiter nodes never collide.
  */
 export function recruiterOffer(seed: string | number, node: MapNode): RecruiterOffer {
-  const base = rollMercenary(`${seed}#recruit:${node.id}`, 0);
+  const base = rollMercenary(saltSeed(seed, Labels.recruit(node.id)), 0);
   const unit: Unit = { ...base, id: `recruit-${node.id}` };
   return { unit, price: NODE_EVENTS.recruiterHireCost, classify: recruitClassify(unit) };
 }

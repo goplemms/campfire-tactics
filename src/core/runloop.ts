@@ -15,6 +15,8 @@
 
 import { createUnit, type Unit } from "./units";
 import type { SkillDef } from "./skills";
+import { saltSeed } from "./rng";
+import { Labels } from "./rng-labels";
 import { Battle } from "./turn";
 import {
   type RunState,
@@ -434,7 +436,9 @@ export class RunLoop {
       revealHidden: tier >= MAX_TIER,
       // The tier-3 trap-lane read (D83): the survey marks the careless snares.
       markTrapsUpTo: tier >= TRAP_INTEL.markTier ? TRAP_INTEL.markConcealmentMax : undefined,
-      seed: this.run.seed,
+      // Per-encounter salt (node + night): an unsalted run.seed replayed the identical
+      // deploy/trap-spot streams in every battle of the run (audit 2026-07-20 / D114).
+      seed: saltSeed(this.run.seed, Labels.battle(node.id, this.run.night)),
     });
     this.source = source;
     this.staged = staged;

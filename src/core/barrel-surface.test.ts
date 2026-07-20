@@ -101,6 +101,10 @@
  *     with its module-load walk; the D88 guard inverts to prove the absence of standalone verbs.
  *     (type-only, not runtime surface) (→ 616).
  *
+ * Structural-audit delta (D114 — 2026-07-20): +1 — `saltSeed` (`rng.ts`), the one home for
+ *   the `seed#label` child-seed join (battle salt, quest/recruit seeds); the four hand-rolled
+ *   joins migrated onto it byte-identically. Sim digest unchanged.
+ *
  * Scenario-harness deltas (#170 — the visual scenario harness):
  *   - increment 1 (buildScenarioRun + the registry): +7 — `buildScenarioRun` and
  *     `DEFAULT_SCENARIO_GOLD` (`scenario.ts`, the synthetic-one-node-run builder), the
@@ -775,6 +779,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "runFor",
   "safeGroundRemains",
   "saleValueOf",
+  "saltSeed",
   "samplePopulation",
   "satisfyUpkeepLine",
   "scoreArrival",

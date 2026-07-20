@@ -156,5 +156,15 @@ export class Rng {
  * X. (A re-seed-by-label fork; see {@link Rng.fork} for the in-stream variant.)
  */
 export function streamFor(seed: string | number, label: string): Rng {
-  return new Rng(`${seed}#${label}`);
+  return new Rng(saltSeed(seed, label));
+}
+
+/**
+ * Compose a labelled **child seed** — the `seed#label` join `streamFor` uses,
+ * exposed for the sites that need the *seed string* rather than a live stream
+ * (a quest's dispatch seed, a battle's encounter seed). One home for the join
+ * so the `#` convention is never hand-encoded at a call site.
+ */
+export function saltSeed(seed: string | number, label: string): string {
+  return `${seed}#${label}`;
 }

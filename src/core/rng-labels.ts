@@ -72,6 +72,10 @@ export const Labels = {
   // --- Guild (guild-seed streams, D31/D33) -----------------------------------
   /** A generated sidequest — keyed by the guild's monotonic quest counter. */
   quest: (n: number): string => `quest:${n}`,
+  /** The main quest's dispatch seed (a seed salt via `saltSeed`, not a live stream). */
+  questMain: (): string => "quest:main",
+  /** A recruiter node's rolled body — node-scoped so two recruiters never collide. */
+  recruit: (nodeId: string): string => `recruit:${nodeId}`,
   /** A rolled mercenary — keyed by hiring-board slot index. */
   merc: (index: number): string => `merc:${index}`,
 
@@ -94,4 +98,16 @@ export const Labels = {
   deploy: (): string => "deploy",
   /** The deployment trap-spotting stream (render-only reveals; a replay never re-rolls them). */
   trapSpot: (): string => "trap-spot",
+  /**
+   * One staged battle's **encounter seed salt** (`saltSeed(run.seed, …)`): node + night
+   * are load-bearing (the D73 lesson at the battle tier) — an unsalted `run.seed` made
+   * every encounter's `deploy`/`trap-spot` streams byte-identical across the whole run.
+   */
+  battle: (nodeId: string, night: number): string => `battle:${nodeId}:${night}`,
+  /**
+   * An expedition-sim sample run's seed salt — the **bare** sample index, kept
+   * byte-identical to the historical `` `${seed}#${salt}` `` join so the
+   * feasibility digests don't shift. (New salts should carry a domain prefix.)
+   */
+  expeditionSalt: (salt: number): string => `${salt}`,
 } as const;

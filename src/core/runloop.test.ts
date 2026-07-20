@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
+import { Labels } from "./rng-labels";
 import { createRun, currentNode, reachableNodes, chooseNode, type RunState } from "./run";
 import { RunLoop } from "./runloop";
 import { REST } from "./recovery";
@@ -538,5 +539,39 @@ describe("runloop — the skittish straggler bolts off-map (D84, the Node-3 beat
     // Vale is standing, so the abandoned field sweeps in full (D82) — no snare
     // sprang in this run.
     expect(res.traps.salvaged).toBe(5);
+  });
+});
+
+describe("runloop — per-encounter battle seed (audit 2026-07-20 / D114)", () => {
+  /** First few draws of a staged battle's deployment stream, as a comparable trace. */
+  function deployTrace(run: RunState): number[] {
+    const loop = new RunLoop(run);
+    const battle = loop.startEncounter();
+    const rng = battle.stream(Labels.deploy());
+    return [rng.int(1_000_000), rng.int(1_000_000), rng.int(1_000_000), rng.int(1_000_000)];
+  }
+
+  it("two combat nodes of one run derive different deploy/trap-spot streams", () => {
+    const run = newRun("battle-salt");
+    const combats = run.map.order
+      .map((id) => getNode(run.map, id))
+      .filter((n) => n.kind === "combat");
+    expect(combats.length).toBeGreaterThan(1);
+
+    run.mapNodeId = combats[0].id;
+    const a = deployTrace(run);
+    run.night += 1; // a later visit, as the run would have advanced
+    run.mapNodeId = combats[1].id;
+    const b = deployTrace(run);
+    expect(a).not.toEqual(b);
+  });
+
+  it("the same node + night reproduces the identical stream (determinism kept)", () => {
+    const runA = newRun("battle-salt");
+    const runB = newRun("battle-salt");
+    const combat = runA.map.order.map((id) => getNode(runA.map, id)).find((n) => n.kind === "combat")!;
+    runA.mapNodeId = combat.id;
+    runB.mapNodeId = combat.id;
+    expect(deployTrace(runA)).toEqual(deployTrace(runB));
   });
 });

@@ -627,7 +627,7 @@ export interface TriageResult extends ActionOutcome {
   healed?: number;
   /** The treated unit's id. */
   targetId?: string;
-  /** Fatigue spent on the healer (base + any over-extension surcharge). */
+  /** Fatigue spent on the healer (the declared cost — no surcharge exists, D73). */
   fatigueSpent?: number;
 }
 

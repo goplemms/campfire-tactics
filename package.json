@@ -20,6 +20,7 @@
     "test:e2e:editor:persist": "node scripts/e2e-editor-persist.mjs",
     "test:e2e:level": "node scripts/e2e-level.mjs",
     "test:e2e:micro": "node scripts/e2e-micro.mjs",
+    "test:e2e:guild-banner": "node scripts/e2e-guild-banner.mjs",
     "audit:visual": "node scripts/visual-audit.mjs",
     "audit:challenge": "node scripts/visual-audit-challenge.mjs",
     "shots": "node scripts/shots-overworld.mjs",

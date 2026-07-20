@@ -435,7 +435,7 @@ export class EditorScene extends Phaser.Scene {
       const ring = this.prefs.enemyTint === "role" ? hexToNum(enemyRing(e.templateId, "role")) : undefined;
       this.mark(e.pos, abbrev(e.templateId), COLOR.danger, "#fff", ring);
     }
-    for (const c of this.draft.captives) this.mark(c.pos, c.release === "lockpick" ? "⚿" : "○", 0x9a6bc0, "#fff");
+    for (const c of this.draft.captives) this.mark(c.pos, c.release === "lockpick" ? "⚿" : "○", COLOR.captive, "#fff");
     for (const t of this.draft.traps) this.mark(t, "▲", COLOR.accent, "#1a1206");
     // Gates (▦) tagged with a letter per open-condition (L/K/D); a selected object rings gold.
     for (const g of this.draft.gates) this.mark(g.pos, `▦${gateTag(g)}`, this.selection?.ref === g ? COLOR.gold : COLOR.accent, "#1a1206");
@@ -448,7 +448,7 @@ export class EditorScene extends Phaser.Scene {
     const cy = y - this.view.halfH() * 0.25;
     const circle = this.add.circle(x, cy, 12, fill).setDepth(2);
     if (ring !== undefined) circle.setStrokeStyle(2.5, ring, 1); // role-tinted archetype ring (D109)
-    else circle.setStrokeStyle(1, 0x000000, 0.5);
+    else circle.setStrokeStyle(1, COLOR.black, 0.5);
     this.markers.push(
       circle,
       this.add.text(x, cy, label, { color: textColor, fontFamily: FONT.family, fontSize: "12px", fontStyle: "bold" }).setOrigin(0.5).setDepth(3),

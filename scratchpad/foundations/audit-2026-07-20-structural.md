@@ -191,6 +191,28 @@ Renames, ranked:
 
 ---
 
+## Wave 1 — SHIPPED (2026-07-20, D114) with challenge revisions
+
+A `memento:challenge` pass ran before build; three plan claims were revised by it:
+- **A1 upgraded:** `variance` defaults to 0 and nothing in the production path sets it, so
+  `Battle.roll` never draws headlessly — the salt fix is *provably* sim/vitest-invisible
+  (the "maybe re-pin sim" hedge was unnecessary). Verified: digest byte-identical.
+- **A4c reversed:** `registerEvent`'s idempotency-by-id is deliberate (double-load safety);
+  making it throw would break that. Landed instead as a reference-equality completeness
+  test that catches the silent-shadowing case the idempotency hides.
+- **A4a narrowed:** the captive `0x9a6bc0` was a token typo (fixed → `COLOR.captive`); the
+  lever `0x62c6d6` is a distinct shade from `INK.cyan`, not a typo — left alone.
+- **Owner's "perfect model file" suggestion revised to *point, don't create*:** a synthetic
+  exemplar is a drift surface nothing executes (this audit's own exhibits: two stale doc
+  comments contradicting shipped design) and would trip the export-surface guards. The
+  conventions doc (`docs/design/implementation/conventions.md`) cites living, guard-covered
+  exemplars instead; CLAUDE.md, the glossary, and the level-author brief now point at it.
+
+Landed: the battle salt + divergence guard · `saltSeed` + 4 registered labels + recursive
+core+game guard globs (now scanning `saltSeed(` too) · `registry-contracts.test.ts` (zero
+drift found; tripwire keeps it) · GuildScene banner on `showModal` + `test:e2e:guild-banner`
+in CI (the hall's first e2e) · stale docs fixed (`turn.ts` salt claim, D73 surcharge remnant).
+
 ## Suggested sequencing
 
 Each wave keeps all guards green (`build` · `test` · `sim` · e2e suites · `audit:visual`);

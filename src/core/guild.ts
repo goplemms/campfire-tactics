@@ -32,7 +32,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { Rng, streamFor } from "./rng";
+import { Rng, streamFor, saltSeed } from "./rng";
 import { Labels } from "./rng-labels";
 import { createUnit, type Unit } from "./units";
 import type { JobId } from "./jobs";
@@ -201,7 +201,7 @@ export function createGuild(seed: string | number, opts: CreateGuildOptions = {}
     label: opts.mainQuestLabel ?? "The Main Quest",
     kind: "main",
     generated: false,
-    seed: `${seed}#quest:main`,
+    seed: saltSeed(seed, Labels.questMain()),
     payout: GUILD.mainPayout,
   });
   refillBoard(guild);
@@ -221,7 +221,7 @@ function generateSidequest(guild: Guild): Quest {
     label,
     kind: "side",
     generated: true,
-    seed: `${guild.seed}#quest:${n}`,
+    seed: saltSeed(guild.seed, Labels.quest(n)),
     payout: rng.range(GUILD.sidePayoutMin, GUILD.sidePayoutMax),
   };
 }

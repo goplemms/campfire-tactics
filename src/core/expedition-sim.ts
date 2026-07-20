@@ -27,6 +27,8 @@
  * different combat tie-breaks) for the future sampling pass.
  */
 
+import { saltSeed } from "./rng";
+import { Labels } from "./rng-labels";
 import { createRun, createRunFromExpedition, type RunState } from "./run";
 import { createUnit } from "./units";
 import { RunLoop } from "./runloop";
@@ -118,7 +120,7 @@ export interface TraverseOpts {
  */
 function bootRun(exp: AuthoredExpedition, salt?: number): RunState {
   if (salt === undefined) return createRunFromExpedition(exp);
-  return createRun(`${exp.seed}#${salt}`, {
+  return createRun(saltSeed(exp.seed, Labels.expeditionSalt(salt)), {
     party: exp.bundle.party.map(createUnit),
     storageCap: exp.bundle.storageCap,
     inventory: { ...exp.bundle.supplies },

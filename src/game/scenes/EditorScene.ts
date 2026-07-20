@@ -75,6 +75,46 @@ const MIN_BOARD = 240;
 /** The fixed game canvas is 800×600 (see config.ts) — a full-width board is this fraction as tall. */
 const BOARD_ASPECT = 600 / 800;
 
+/**
+ * The editor's UI typeface — the game's own {@link FONT.family} (Courier Prime) rather than the plain
+ * system `ui-monospace` the chrome used to default to. A warmer, more distinctive face that ties the
+ * authoring surface to the game's look, and reads as "thicker" when set bold on the controls below.
+ */
+const CHROME_FONT = '"Courier Prime", "Courier New", Courier, monospace';
+
+/**
+ * Scoped chrome stylesheet (the readability pass). The editor is a DOM overlay of **native** controls,
+ * and form elements (`button`/`input`/`select`/`textarea`) **don't inherit** font from their container —
+ * so by default they render as the browser's tiny system-font widgets (the "basic inputs" that make the
+ * editor cramped to read and fiddly to click). This styles them **once**, scoped to the `.editor-chrome`
+ * containers (the dock + the side drawer), into larger, bolder, firelit-leather controls that match the
+ * game — without editing the per-element inline styles (which still win for the active-highlight state:
+ * an active tab / brush / option sets its own inline background + weight, and inline beats a stylesheet).
+ * Palette cards and option toggles set their own inline `font`/background, so they're untouched here.
+ */
+const CHROME_STYLE_ID = "editor-chrome-style";
+const CHROME_CSS = `
+.editor-chrome { font-family: ${CHROME_FONT}; }
+.editor-chrome button {
+  font: 700 13px/1.2 ${CHROME_FONT};
+  color: #ece3d2; background: #3d3325; border: 1px solid #97774a;
+  border-radius: 5px; padding: 5px 11px; cursor: pointer;
+}
+.editor-chrome button:hover { background: #4a3d2b; border-color: #f2b65a; }
+.editor-chrome button:active { transform: translateY(1px); }
+.editor-chrome button:disabled { opacity: .4; cursor: default; }
+.editor-chrome input:not([type=checkbox]), .editor-chrome select, .editor-chrome textarea {
+  font: 13px/1.4 ${CHROME_FONT};
+  color: #f2ead9; background: #211a12; border: 1px solid #76583a;
+  border-radius: 4px; padding: 4px 7px; box-sizing: border-box;
+}
+.editor-chrome input:focus, .editor-chrome select:focus, .editor-chrome textarea:focus {
+  outline: none; border-color: #f2b65a;
+}
+.editor-chrome input[type=checkbox] { width: 15px; height: 15px; vertical-align: -2px; cursor: pointer; }
+.editor-chrome select { cursor: pointer; }
+`;
+
 /** Every enemy template the palette offers (authored archetypes first, then the procedural pool). */
 const ENEMY_IDS = [...Object.keys(BANDIT_TEMPLATES), ...ENEMY_TEMPLATES.map((t) => t.id)];
 
@@ -774,7 +814,9 @@ export class EditorScene extends Phaser.Scene {
     // resize grip. Growing the dock shrinks #app and Scale.FIT scales the board down (never
     // clips). NOTE: this pass relocates + resizes the chrome; the thumbnail-gallery restyle of
     // the palette (and the bar/drawer split) is the next slice — the controls below are unchanged.
+    this.injectChromeStyles(); // scoped restyle of the native controls (the readability pass)
     const dock = document.createElement("div");
+    dock.classList.add("editor-chrome");
     Object.assign(dock.style, {
       flex: "0 0 auto", height: `${this.autoDockHeight()}px`, display: "flex", flexDirection: "column",
       background: "#16110d", borderTop: "1px solid #5a4630", boxSizing: "border-box",
@@ -784,7 +826,7 @@ export class EditorScene extends Phaser.Scene {
     const panel = document.createElement("div");
     Object.assign(panel.style, {
       flex: "1 1 auto", minHeight: "0", overflow: "auto", width: "100%", boxSizing: "border-box",
-      background: "transparent", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace", padding: "8px 12px 12px",
+      background: "transparent", color: "#e8e0d0", font: `13.5px/1.55 ${CHROME_FONT}`, padding: "10px 14px 14px",
     } as CSSStyleDeclaration);
 
     // Panel header — the title (moved off the canvas so the scene pans/zooms cleanly) + the
@@ -793,7 +835,7 @@ export class EditorScene extends Phaser.Scene {
     header.style.margin = "0 0 6px";
     const title = document.createElement("div");
     title.textContent = "Level Editor — pick a brush, click tiles";
-    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    Object.assign(title.style, { fontWeight: "700", fontSize: "16px", color: "#c8a24a" } as CSSStyleDeclaration);
     header.appendChild(title);
     header.appendChild(this.hint("drag paints · shift-drag pans · right-click erases · scroll zooms · Recenter resets"));
     header.appendChild(this.hint("ctrl-click select · alt-click pick · esc cancel · ctrl+z undo · keys: W/L/R G/V/T N/C P/X S/E"));
@@ -1004,7 +1046,7 @@ export class EditorScene extends Phaser.Scene {
   private optionsRow(): HTMLDivElement {
     const wrap = document.createElement("div");
     wrap.dataset.role = "editor-options";
-    Object.assign(wrap.style, { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px", margin: "4px 0 2px", fontSize: "11px", color: "#b2a48b" } as CSSStyleDeclaration);
+    Object.assign(wrap.style, { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px", margin: "4px 0 2px", fontSize: "12px", color: "#b2a48b" } as CSSStyleDeclaration);
     const group = (label: string, choices: { text: string; on: () => boolean; set: () => void }[]): HTMLSpanElement => {
       const g = document.createElement("span");
       Object.assign(g.style, { display: "inline-flex", alignItems: "center", gap: "3px" } as CSSStyleDeclaration);
@@ -1013,7 +1055,7 @@ export class EditorScene extends Phaser.Scene {
         const b = document.createElement("button");
         b.textContent = c.text;
         b.dataset.opt = `${label}:${c.text}`;
-        Object.assign(b.style, { cursor: "pointer", padding: "2px 7px", borderRadius: "3px", border: "1px solid #4a423a", background: "#1a140d", color: "#ddd3c2", font: "11px ui-monospace, monospace" } as CSSStyleDeclaration);
+        Object.assign(b.style, { cursor: "pointer", padding: "3px 8px", borderRadius: "3px", border: "1px solid #4a423a", background: "#1a140d", color: "#ddd3c2", font: `12px ${CHROME_FONT}` } as CSSStyleDeclaration);
         const paint = (): void => { const on = c.on(); b.style.background = on ? "#c8a24a" : "#1a140d"; b.style.color = on ? "#1a1206" : "#ddd3c2"; b.style.fontWeight = on ? "700" : "400"; };
         b.onclick = () => { c.set(); this.applyPrefs(); };
         this.optionButtons.push(paint);
@@ -1055,10 +1097,11 @@ export class EditorScene extends Phaser.Scene {
   private buildSideDrawer(): void {
     const drawer = document.createElement("div");
     drawer.dataset.role = "side-drawer";
+    drawer.classList.add("editor-chrome");
     Object.assign(drawer.style, {
       position: "fixed", top: "0", right: "0", height: "100vh", width: "270px", zIndex: "1001",
-      background: "rgba(22,17,13,0.97)", color: "#e8e0d0", font: "12px/1.4 ui-monospace, monospace",
-      borderLeft: "1px solid #76583a", boxShadow: "-20px 0 50px -30px #000", padding: "12px 13px 20px",
+      background: "rgba(22,17,13,0.97)", color: "#e8e0d0", font: `13.5px/1.5 ${CHROME_FONT}`,
+      borderLeft: "1px solid #76583a", boxShadow: "-20px 0 50px -30px #000", padding: "13px 14px 20px",
       overflow: "auto", boxSizing: "border-box", transform: "translateX(102%)", transition: "transform .2s ease",
     } as CSSStyleDeclaration);
 
@@ -1066,7 +1109,7 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(head.style, { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 8px" } as CSSStyleDeclaration);
     const title = document.createElement("div");
     title.textContent = "Details — edit a placed object";
-    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a", fontSize: "12px" } as CSSStyleDeclaration);
+    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a", fontSize: "14px" } as CSSStyleDeclaration);
     const close = document.createElement("button");
     close.textContent = "✕"; close.dataset.role = "drawer-close"; close.style.cursor = "pointer";
     close.onclick = () => this.closeDrawer();
@@ -1355,7 +1398,7 @@ export class EditorScene extends Phaser.Scene {
     const imp = document.createElement("div");
     imp.style.margin = "6px 0";
     const impArea = document.createElement("textarea");
-    Object.assign(impArea.style, { width: "100%", height: "46px", font: "11px/1.3 ui-monospace, monospace", boxSizing: "border-box" } as CSSStyleDeclaration);
+    Object.assign(impArea.style, { width: "100%", height: "52px", font: `12.5px/1.4 ${CHROME_FONT}`, boxSizing: "border-box" } as CSSStyleDeclaration);
     impArea.placeholder = "paste level JSON to import…";
     impArea.dataset.role = "import";
     const impBtn = document.createElement("button");
@@ -1712,7 +1755,7 @@ export class EditorScene extends Phaser.Scene {
       Object.assign(cell.style, { display: "inline-block", marginRight: "6px" } as CSSStyleDeclaration);
       cell.append(`${f} `);
       const inp = this.numInput(get(f), (n) => { if (Number.isFinite(n)) set(f, n); }); // ignore an emptied field (NaN)
-      inp.style.width = "44px";
+      inp.style.width = "54px";
       inp.dataset.stat = f;
       cell.appendChild(inp);
       wrap.appendChild(cell);
@@ -1733,14 +1776,14 @@ export class EditorScene extends Phaser.Scene {
     wrap.append(`${label} `);
     const input = document.createElement("input");
     input.value = value;
-    input.style.width = "180px";
+    input.style.width = "200px";
     input.oninput = () => onChange(input.value);
     wrap.appendChild(input);
     return wrap;
   }
   private numInput(value: number, onChange: (n: number) => void): HTMLInputElement {
     const input = document.createElement("input");
-    input.type = "number"; input.value = String(value); input.style.width = "48px";
+    input.type = "number"; input.value = String(value); input.style.width = "58px";
     input.onchange = () => onChange(parseInt(input.value, 10));
     return input;
   }
@@ -1857,7 +1900,17 @@ export class EditorScene extends Phaser.Scene {
     requestAnimationFrame(() => this.scale.refresh());
   }
 
+  /** Inject the scoped chrome stylesheet once (id-guarded so a remount doesn't duplicate it). */
+  private injectChromeStyles(): void {
+    if (document.getElementById(CHROME_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = CHROME_STYLE_ID;
+    style.textContent = CHROME_CSS;
+    document.head.appendChild(style);
+  }
+
   private unmountPanel(): void {
+    document.getElementById(CHROME_STYLE_ID)?.remove();
     window.removeEventListener("keydown", this.hKeyDown);
     for (const type of ["input", "change", "focusout"]) window.removeEventListener(type, this.hPanelEdit, true);
     window.removeEventListener("resize", this.hResize);

@@ -130,6 +130,20 @@ const CHROME_CSS = `
 }
 /* Ember-tinted checkbox instead of the default system blue. */
 .editor-chrome input[type=checkbox] { width: 15px; height: 15px; vertical-align: -2px; cursor: pointer; accent-color: #c8892e; }
+/* Number stepper — a flush [− value +] segmented control replacing the removed native spinners.
+   The two-class selectors outrank the general \`.editor-chrome button\` rule, so the ± stay compact. */
+.editor-chrome .stepper { display: inline-flex; align-items: stretch; vertical-align: -3px; }
+.editor-chrome .stepper-btn {
+  font: 700 14px/1 ${CHROME_FONT};
+  width: 21px; padding: 0; color: #d8c9a8; background: #332a1e; border: 1px solid #6b4f34;
+  cursor: pointer; box-shadow: none; display: flex; align-items: center; justify-content: center; user-select: none;
+}
+.editor-chrome .stepper-btn:hover { background: #473a27; border-color: #f2b65a; color: #f6ecd8; }
+.editor-chrome .stepper-btn:active { background: #2a2318; }
+.editor-chrome .stepper-btn:first-child { border-radius: 4px 0 0 4px; border-right: none; }
+.editor-chrome .stepper-btn:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+.editor-chrome .stepper input { border-radius: 0; box-shadow: none; text-align: center; padding: 4px 3px; }
+.editor-chrome .stepper input:focus { box-shadow: 0 0 0 2px rgba(242,182,90,.22); }
 `;
 
 /** Every enemy template the palette offers (authored archetypes first, then the procedural pool). */
@@ -1191,15 +1205,15 @@ export class EditorScene extends Phaser.Scene {
 
   private buildTerrainDrawer(d: HTMLDivElement): void {
     const size = document.createElement("div");
-    size.style.margin = "4px 0";
+    Object.assign(size.style, { display: "flex", alignItems: "center", gap: "6px", margin: "4px 0" } as CSSStyleDeclaration);
     size.append("size ");
-    const colsIn = this.numInput(this.draft.cols, (n) => this.resize(n, this.draft.rows));
-    colsIn.dataset.role = "cols";
-    size.appendChild(colsIn);
-    size.append(" × ");
-    const rowsIn = this.numInput(this.draft.rows, (n) => this.resize(this.draft.cols, n));
-    rowsIn.dataset.role = "rows";
-    size.appendChild(rowsIn);
+    const cols = this.stepper(this.draft.cols, (n) => this.resize(n, this.draft.rows), { min: 1, max: 20 });
+    cols.input.dataset.role = "cols";
+    size.appendChild(cols.wrap);
+    size.append("×");
+    const rows = this.stepper(this.draft.rows, (n) => this.resize(this.draft.cols, n), { min: 1, max: 20 });
+    rows.input.dataset.role = "rows";
+    size.appendChild(rows.wrap);
     d.appendChild(size);
     this.paletteStrips.Terrain = this.cardStrip([]);
     d.appendChild(this.paletteStrips.Terrain);
@@ -1341,9 +1355,9 @@ export class EditorScene extends Phaser.Scene {
     if (o.kind === "closing-gate") {
       // A timed gauge (fails the constraint at 100). driver = the unit whose death/immobilize stops it.
       const cg = document.createElement("div");
-      cg.style.margin = "3px 0";
+      Object.assign(cg.style, { display: "flex", alignItems: "center", gap: "6px", margin: "3px 0" } as CSSStyleDeclaration);
       cg.append("speed ");
-      cg.appendChild(this.numInput(o.speed ?? 10, (n) => { if (Number.isFinite(n)) { o.speed = n; this.updateExport(); } }));
+      cg.appendChild(this.stepper(o.speed ?? 10, (n) => { if (Number.isFinite(n)) { o.speed = n; this.updateExport(); } }, { min: 1 }).wrap);
       box.appendChild(cg);
       box.appendChild(this.selectRow("driver", ["", "sapper", "captain"], o.driver?.role ?? "", (v) => { if (v) o.driver = { role: v }; else delete o.driver; this.updateExport(); }));
       box.appendChild(this.hint("swept-tiles span isn't paintable yet — a pure timer for now"));
@@ -1397,15 +1411,15 @@ export class EditorScene extends Phaser.Scene {
 
     // Win reward (M-C) — gold + xp. materials round-trip verbatim (no picker yet).
     const reward = document.createElement("div");
-    reward.style.margin = "3px 0";
-    reward.append("reward — gold ");
-    const gold = this.numInput(this.draft.reward?.gold ?? 50, (n) => { if (Number.isFinite(n)) { this.ensureReward().gold = n; this.updateExport(); } });
-    gold.dataset.role = "reward-gold";
-    reward.appendChild(gold);
-    reward.append(" xp ");
-    const xp = this.numInput(this.draft.reward?.xp ?? 40, (n) => { if (Number.isFinite(n)) { this.ensureReward().xp = n; this.updateExport(); } });
-    xp.dataset.role = "reward-xp";
-    reward.appendChild(xp);
+    Object.assign(reward.style, { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", margin: "3px 0" } as CSSStyleDeclaration);
+    reward.append("reward — gold");
+    const gold = this.stepper(this.draft.reward?.gold ?? 50, (n) => { if (Number.isFinite(n)) { this.ensureReward().gold = n; this.updateExport(); } }, { min: 0, step: 10 });
+    gold.input.dataset.role = "reward-gold";
+    reward.appendChild(gold.wrap);
+    reward.append("xp");
+    const xp = this.stepper(this.draft.reward?.xp ?? 40, (n) => { if (Number.isFinite(n)) { this.ensureReward().xp = n; this.updateExport(); } }, { min: 0, step: 5 });
+    xp.input.dataset.role = "reward-xp";
+    reward.appendChild(xp.wrap);
     d.appendChild(reward);
 
     // Level-wide win/lose objectives (moved here from Events — they're scenario-level, D109 slice 2).
@@ -1682,9 +1696,9 @@ export class EditorScene extends Phaser.Scene {
     const dest = g.openBy.find((c) => c.kind === "destructible");
     if (dest && dest.kind === "destructible") {
       const row = document.createElement("div");
-      row.style.margin = "3px 0";
+      Object.assign(row.style, { display: "flex", alignItems: "center", gap: "6px", margin: "3px 0" } as CSSStyleDeclaration);
       row.append("door hp ");
-      row.appendChild(this.numInput(dest.hp, (n) => { if (Number.isFinite(n)) { dest.hp = n; this.afterInspect(); } }));
+      row.appendChild(this.stepper(dest.hp, (n) => { if (Number.isFinite(n)) { dest.hp = n; this.afterInspect(); } }, { min: 1, step: 5 }).wrap);
       host.appendChild(row);
     }
   }
@@ -1763,18 +1777,27 @@ export class EditorScene extends Phaser.Scene {
     return wrap;
   }
 
-  /** The 7-field combat stat grid (M-B), driven by the core-typed {@link STAT_FIELDS}. */
+  /**
+   * The 7-field combat stat grid (M-B), driven by the core-typed {@link STAT_FIELDS}. A **labels-above**
+   * layout — each field is a small cell (name over a {@link stepper}) tiled in an auto-fitting grid — so
+   * the block scans at a glance instead of a run of `label input` pairs that wrapped mid-name. Each cell's
+   * inner input keeps its `data-stat` tag (the e2e reads/sets it), and the ± dispatch a `change` on it.
+   */
   private statGrid(get: (f: StatField) => number, set: (f: StatField, v: number) => void): HTMLDivElement {
     const wrap = document.createElement("div");
-    wrap.style.margin = "4px 0";
+    Object.assign(wrap.style, {
+      display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: "7px 10px", margin: "6px 0 2px",
+    } as CSSStyleDeclaration);
     for (const f of STAT_FIELDS) {
-      const cell = document.createElement("span");
-      Object.assign(cell.style, { display: "inline-block", marginRight: "6px" } as CSSStyleDeclaration);
-      cell.append(`${f} `);
-      const inp = this.numInput(get(f), (n) => { if (Number.isFinite(n)) set(f, n); }); // ignore an emptied field (NaN)
-      inp.style.width = "54px";
-      inp.dataset.stat = f;
-      cell.appendChild(inp);
+      const cell = document.createElement("div");
+      const label = document.createElement("div");
+      label.textContent = f;
+      Object.assign(label.style, {
+        fontSize: "10.5px", color: "#b2a48b", marginBottom: "3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+      } as CSSStyleDeclaration);
+      const { wrap: sc, input } = this.stepper(get(f), (n) => { if (Number.isFinite(n)) set(f, n); }, { min: 0, width: 42 }); // ignore an emptied field (NaN)
+      input.dataset.stat = f;
+      cell.append(label, sc);
       wrap.appendChild(cell);
     }
     return wrap;
@@ -1798,11 +1821,44 @@ export class EditorScene extends Phaser.Scene {
     wrap.appendChild(input);
     return wrap;
   }
-  private numInput(value: number, onChange: (n: number) => void): HTMLInputElement {
+  /**
+   * A themed **number stepper** — a flush `[−  value  +]` segmented control that replaces the native
+   * spinner arrows we hid (they rendered as bright system chrome). The ± buttons nudge the value by
+   * `step`, clamped to `[min,max]`, then **dispatch a real `change` on the inner input** — so every
+   * downstream hook (the input's own `onchange`, the live export, and the capture-phase undo snapshot)
+   * fires through the exact same path as typing, with no special-casing. Returns the wrap to append
+   * plus the inner input, so a caller can still tag it (`data-stat` / `data-role`) for the e2e + resize.
+   */
+  private stepper(
+    value: number,
+    onChange: (n: number) => void,
+    opts: { min?: number; max?: number; step?: number; width?: number } = {},
+  ): { wrap: HTMLDivElement; input: HTMLInputElement } {
+    const { min, max, step = 1, width = 46 } = opts;
+    const wrap = document.createElement("div");
+    wrap.className = "stepper";
     const input = document.createElement("input");
-    input.type = "number"; input.value = String(value); input.style.width = "58px";
+    input.type = "number"; input.value = String(value); input.style.width = `${width}px`;
     input.onchange = () => onChange(parseInt(input.value, 10));
-    return input;
+    const nudge = (delta: number): void => {
+      let n = parseInt(input.value, 10);
+      if (!Number.isFinite(n)) n = 0;
+      n += delta;
+      if (min !== undefined) n = Math.max(min, n);
+      if (max !== undefined) n = Math.min(max, n);
+      input.value = String(n);
+      input.dispatchEvent(new Event("change")); // one path for typed + stepped edits (export + undo)
+    };
+    const btn = (label: string, delta: number): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = label; b.tabIndex = -1; b.className = "stepper-btn";
+      b.dataset.role = "stepper";
+      b.title = delta < 0 ? "decrease" : "increase";
+      b.onclick = () => nudge(delta);
+      return b;
+    };
+    wrap.append(btn("−", -step), input, btn("+", step));
+    return { wrap, input };
   }
   private highlightBrush(): void {
     for (const b of this.brushButtons) {

@@ -123,6 +123,18 @@ const ED = {
 } as const;
 
 /**
+ * Editor chrome **spacing rhythm** — one small scale so every row / hint / block shares a single
+ * vertical beat instead of the ad-hoc 2/3/4/6/8px margins the panel grew. Sections get a heavier
+ * gap + a hairline rule ({@link EditorScene.sectionHead}) so the dense Scenario tab reads as grouped
+ * blocks rather than one undifferentiated run.
+ */
+const SP = {
+  row: "6px 0", //      a label+control row (was a cramped 3px)
+  hint: "3px 0 9px", // a hint closing a group — extra space below sets the next block off
+  group: "8px 0", //    a self-contained sub-block (import / playtest / export)
+} as const;
+
+/**
  * Scoped chrome stylesheet (the readability pass). The editor is a DOM overlay of **native** controls,
  * and form elements (`button`/`input`/`select`/`textarea`) **don't inherit** font from their container —
  * so by default they render as the browser's tiny system-font widgets (the "basic inputs" that make the
@@ -1242,13 +1254,34 @@ export class EditorScene extends Phaser.Scene {
   private hint(text: string): HTMLDivElement {
     const h = document.createElement("div");
     h.textContent = text;
-    Object.assign(h.style, { opacity: "0.55", margin: "2px 0 4px" } as CSSStyleDeclaration);
+    Object.assign(h.style, { opacity: "0.55", margin: SP.hint } as CSSStyleDeclaration);
     return h;
+  }
+
+  /**
+   * A **section header** row — a small-caps gold label over a hairline rule, so a tab body reads as
+   * grouped blocks (Identity · Reward · Objectives …) instead of one undifferentiated run. Returns the
+   * flex row so a caller can append the section's own actions (＋ add, Save) to the right of the label.
+   * `first` skips the top rule + heavy gap for the block that opens a drawer (nothing to divide from).
+   */
+  private sectionHead(label: string, opts: { first?: boolean } = {}): HTMLDivElement {
+    const row = document.createElement("div");
+    Object.assign(row.style, {
+      display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap",
+      margin: opts.first ? "2px 0 6px" : "15px 0 7px",
+      paddingTop: opts.first ? "0" : "10px",
+      borderTop: opts.first ? "none" : `1px solid ${ED.cardBorder}`,
+    } as CSSStyleDeclaration);
+    const lab = document.createElement("span");
+    lab.textContent = label;
+    Object.assign(lab.style, { fontWeight: "700", fontSize: "11px", letterSpacing: "0.09em", textTransform: "uppercase", color: ED.gold } as CSSStyleDeclaration);
+    row.appendChild(lab);
+    return row;
   }
 
   private buildTerrainDrawer(d: HTMLDivElement): void {
     const size = document.createElement("div");
-    Object.assign(size.style, { display: "flex", alignItems: "center", gap: "6px", margin: "4px 0" } as CSSStyleDeclaration);
+    Object.assign(size.style, { display: "flex", alignItems: "center", gap: "6px", margin: SP.row } as CSSStyleDeclaration);
     size.append("size ");
     const cols = this.stepper(this.draft.cols, (n) => this.resize(n, this.draft.rows), { min: 1, max: 20 });
     cols.input.dataset.role = "cols";
@@ -1263,7 +1296,7 @@ export class EditorScene extends Phaser.Scene {
 
     // Rectangle mode: an outline (a room/cell ring) vs a solid fill. Toggled live.
     const rectMode = document.createElement("div");
-    rectMode.style.margin = "4px 0";
+    rectMode.style.margin = SP.row;
     const modeBtn = document.createElement("button");
     modeBtn.dataset.role = "rect-mode";
     modeBtn.style.cursor = "pointer";
@@ -1301,21 +1334,20 @@ export class EditorScene extends Phaser.Scene {
    * lives in the Scenario tab body (D109 slice 2, moved out of Events). label + required + kind fields.
    */
   private buildObjectivesEditor(d: HTMLDivElement): void {
-    const objHead = document.createElement("div");
-    Object.assign(objHead.style, { margin: "8px 0 2px", fontWeight: "700", color: ED.gold } as CSSStyleDeclaration);
-    objHead.append("Objectives ");
+    // The section header row carries the ＋ add / Derive actions to the right of the "Objectives" label.
+    const objHead = this.sectionHead("Objectives");
     const add = document.createElement("button");
-    add.textContent = "＋ add"; add.dataset.role = "add-objective"; add.style.cursor = "pointer";
+    add.textContent = "＋ add"; add.dataset.role = "add-objective";
     add.onclick = () => this.addObjective();
     const derive = document.createElement("button");
-    derive.textContent = "Derive from board"; derive.dataset.role = "derive-objectives"; derive.style.cursor = "pointer"; derive.style.marginLeft = "4px";
+    derive.textContent = "Derive from board"; derive.dataset.role = "derive-objectives";
     derive.onclick = () => { this.pushHistory(); this.draft.objectives = standardObjectives(this.draft.exit, this.draft.captives.length > 0); this.afterObjectiveEdit(); };
     objHead.append(add, derive);
     d.appendChild(objHead);
 
     const list = document.createElement("div");
     list.dataset.role = "objective-list";
-    list.style.margin = "2px 0";
+    list.style.margin = SP.row;
     d.appendChild(list);
     this.objectivesEl = list;
 
@@ -1398,7 +1430,7 @@ export class EditorScene extends Phaser.Scene {
     if (o.kind === "closing-gate") {
       // A timed gauge (fails the constraint at 100). driver = the unit whose death/immobilize stops it.
       const cg = document.createElement("div");
-      Object.assign(cg.style, { display: "flex", alignItems: "center", gap: "6px", margin: "3px 0" } as CSSStyleDeclaration);
+      Object.assign(cg.style, { display: "flex", alignItems: "center", gap: "6px", margin: SP.row } as CSSStyleDeclaration);
       cg.append("speed ");
       cg.appendChild(this.stepper(o.speed ?? 10, (n) => { if (Number.isFinite(n)) { o.speed = n; this.updateExport(); } }, { min: 1 }).wrap);
       box.appendChild(cg);
@@ -1406,7 +1438,7 @@ export class EditorScene extends Phaser.Scene {
       box.appendChild(this.hint("swept-tiles span isn't paintable yet — a pure timer for now"));
     } else if (o.kind === "extraction") {
       const ex = document.createElement("div");
-      ex.style.margin = "3px 0";
+      ex.style.margin = SP.row;
       ex.append("escort role ");
       const role = document.createElement("input");
       role.value = o.escort?.role ?? "prisoner"; role.style.width = "90px"; role.dataset.field = "escort";
@@ -1449,13 +1481,20 @@ export class EditorScene extends Phaser.Scene {
    * tools & checks (arc-linking, cross-level validation, playtest).
    */
   private buildScenarioDrawer(d: HTMLDivElement): void {
+    // Grouped into divided sections (spacing pass) so the tab reads as distinct blocks — Identity,
+    // Reward, Objectives, Playtest, Local Maps, and JSON I/O — instead of one undifferentiated run.
+    // Import + export are co-located in the trailing JSON section (they were split top-and-bottom).
+
+    // — Identity —
+    d.appendChild(this.sectionHead("Identity", { first: true }));
     d.appendChild(this.field("id", this.draft.id, (v) => { this.draft.id = v; this.updateExport(); }));
     d.appendChild(this.field("name", this.draft.name, (v) => { this.draft.name = v; this.updateExport(); }));
 
-    // Win reward (M-C) — gold + xp. materials round-trip verbatim (no picker yet).
+    // — Reward — (M-C) gold + xp; materials round-trip verbatim (no picker yet).
+    d.appendChild(this.sectionHead("Reward"));
     const reward = document.createElement("div");
-    Object.assign(reward.style, { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", margin: "3px 0" } as CSSStyleDeclaration);
-    reward.append("reward — gold");
+    Object.assign(reward.style, { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", margin: SP.row } as CSSStyleDeclaration);
+    reward.append("gold");
     const gold = this.stepper(this.draft.reward?.gold ?? 50, (n) => { if (Number.isFinite(n)) { this.ensureReward().gold = n; this.updateExport(); } }, { min: 0, step: 10 });
     gold.input.dataset.role = "reward-gold";
     reward.appendChild(gold.wrap);
@@ -1465,32 +1504,18 @@ export class EditorScene extends Phaser.Scene {
     reward.appendChild(xp.wrap);
     d.appendChild(reward);
 
-    // Level-wide win/lose objectives (moved here from Events — they're scenario-level, D109 slice 2).
+    // — Objectives — level-wide win/lose (buildObjectivesEditor prepends its own section head).
     this.buildObjectivesEditor(d);
 
-    // Import (the M-A round-trip inverse).
-    const imp = document.createElement("div");
-    imp.style.margin = "6px 0";
-    const impArea = document.createElement("textarea");
-    Object.assign(impArea.style, { width: "100%", height: "52px", font: `12.5px/1.4 ${CHROME_FONT}`, boxSizing: "border-box" } as CSSStyleDeclaration);
-    impArea.placeholder = "paste level JSON to import…";
-    impArea.dataset.role = "import";
-    const impBtn = document.createElement("button");
-    impBtn.textContent = "Import JSON"; impBtn.style.cursor = "pointer"; impBtn.dataset.role = "import-btn";
-    impBtn.onclick = () => this.importJson(impArea.value);
-    imp.append(impArea, impBtn);
-    d.appendChild(imp);
-
-    // Soft play (D-editor): pick a squad, then ▶ Playtest boots the draft into the real BattleScene
-    // and returns here — a functional test (deploy/spacing, gate↔lever reach, enemy behaviour) with
-    // no export→drop-in→reload loop. The squad picker maps onto the scenario party matrix, so a
-    // level tailored to a class can be fielded with the right cast (owner ask). Default = small trio.
+    // — Playtest — soft play (D-editor): pick a squad, then ▶ Playtest boots the draft into the real
+    // BattleScene and returns here — a functional test (deploy/spacing, gate↔lever reach, enemy
+    // behaviour) with no export→drop-in→reload loop. The picker maps onto the scenario party matrix.
+    d.appendChild(this.sectionHead("Playtest"));
     const play = document.createElement("div");
-    play.style.margin = "6px 0";
-    play.append("playtest squad ");
+    Object.assign(play.style, { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", margin: SP.row } as CSSStyleDeclaration);
+    play.append("squad");
     const squad = document.createElement("select");
     squad.dataset.role = "playtest-party";
-    squad.style.cursor = "pointer";
     for (const name of playtestPartyNames()) {
       const opt = document.createElement("option");
       opt.value = name; opt.textContent = name; opt.selected = name === this.playtestParty;
@@ -1498,24 +1523,34 @@ export class EditorScene extends Phaser.Scene {
     }
     squad.onchange = () => { this.playtestParty = squad.value; };
     const playBtn = document.createElement("button");
-    playBtn.textContent = "▶ Playtest"; playBtn.style.cursor = "pointer"; playBtn.style.marginLeft = "6px";
-    playBtn.dataset.role = "playtest";
+    playBtn.textContent = "▶ Playtest"; playBtn.dataset.role = "playtest";
     playBtn.title = "Boot the draft in the real battle scene to test it, then return here";
     playBtn.onclick = () => this.playtest();
     play.append(squad, playBtn);
     d.appendChild(play);
 
-    // Local maps (D-editor): browser-local persistence. The working draft autosaves + restores on
-    // reload; here you Save the current map into a named library and Load/Delete previous attempts —
-    // so test maps survive across sessions. All browser-local (Download .json commits a keeper).
+    // — Local Maps — browser-local persistence (buildLibrarySection prepends its own section head).
     this.buildLibrarySection(d);
 
+    // — JSON — import + export together (the round-trip pair). Paste to import; Copy / Download to
+    // export a keeper; the live preview mirrors the draft.
+    d.appendChild(this.sectionHead("JSON"));
+    const impArea = document.createElement("textarea");
+    Object.assign(impArea.style, { width: "100%", height: "52px", font: `12.5px/1.4 ${CHROME_FONT}`, boxSizing: "border-box", margin: "0 0 6px" } as CSSStyleDeclaration);
+    impArea.placeholder = "paste level JSON to import…";
+    impArea.dataset.role = "import";
+    d.appendChild(impArea);
+
     const btns = document.createElement("div");
-    const copy = document.createElement("button"); copy.textContent = "Copy"; copy.style.cursor = "pointer";
+    Object.assign(btns.style, { display: "flex", gap: "6px", flexWrap: "wrap", margin: SP.row } as CSSStyleDeclaration);
+    const impBtn = document.createElement("button");
+    impBtn.textContent = "Import JSON"; impBtn.dataset.role = "import-btn";
+    impBtn.onclick = () => this.importJson(impArea.value);
+    const copy = document.createElement("button"); copy.textContent = "Copy";
     copy.onclick = () => navigator.clipboard?.writeText(this.exportJson());
-    const dl = document.createElement("button"); dl.textContent = "Download .json"; dl.style.cursor = "pointer"; dl.style.marginLeft = "6px";
+    const dl = document.createElement("button"); dl.textContent = "Download .json";
     dl.onclick = () => this.download();
-    btns.append(copy, dl);
+    btns.append(impBtn, copy, dl);
     d.appendChild(btns);
 
     const pre = document.createElement("pre");
@@ -1529,27 +1564,24 @@ export class EditorScene extends Phaser.Scene {
   /** Build the "local maps" block — a Save/New header over the live saved-maps list. */
   private buildLibrarySection(d: HTMLDivElement): void {
     const wrap = document.createElement("div");
-    wrap.style.margin = "6px 0";
     wrap.dataset.role = "library";
 
-    const head = document.createElement("div");
-    head.style.marginBottom = "3px";
-    Object.assign(head.style, { display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" } as CSSStyleDeclaration);
-    head.append("local maps");
+    // The section header row carries the save-name field + Save / New actions.
+    const head = this.sectionHead("Local Maps");
     // An explicit, visible "save as" name (defaults to the draft id) so two attempts left at the
     // default id can't silently clobber each other — type a fresh name to keep a separate copy.
     const nameInput = document.createElement("input");
     nameInput.type = "text"; nameInput.value = this.draft.id || "untitled"; nameInput.dataset.role = "lib-name";
-    Object.assign(nameInput.style, { width: "110px", font: "inherit" } as CSSStyleDeclaration);
+    nameInput.style.width = "110px";
     nameInput.title = "The name to save under (defaults to the map id) — change it to keep a separate attempt";
     this.libNameInput = nameInput;
     head.appendChild(nameInput);
     const saveBtn = document.createElement("button");
-    saveBtn.textContent = "＋ Save"; saveBtn.style.cursor = "pointer"; saveBtn.dataset.role = "lib-save";
+    saveBtn.textContent = "＋ Save"; saveBtn.dataset.role = "lib-save";
     saveBtn.title = "Save the current map into the browser library under the name shown";
     saveBtn.onclick = () => this.saveCurrentToLibrary();
     const newBtn = document.createElement("button");
-    newBtn.textContent = "New"; newBtn.style.cursor = "pointer"; newBtn.style.marginLeft = "6px"; newBtn.dataset.role = "lib-new";
+    newBtn.textContent = "New"; newBtn.dataset.role = "lib-new";
     newBtn.title = "Start a fresh blank map (undoable)";
     newBtn.onclick = () => this.newBlankMap();
     head.append(saveBtn, newBtn);
@@ -1557,6 +1589,7 @@ export class EditorScene extends Phaser.Scene {
 
     const list = document.createElement("div");
     list.dataset.role = "lib-list";
+    list.style.margin = "2px 0 0";
     this.libraryEl = list;
     wrap.appendChild(list);
     d.appendChild(wrap);
@@ -1739,7 +1772,7 @@ export class EditorScene extends Phaser.Scene {
     const dest = g.openBy.find((c) => c.kind === "destructible");
     if (dest && dest.kind === "destructible") {
       const row = document.createElement("div");
-      Object.assign(row.style, { display: "flex", alignItems: "center", gap: "6px", margin: "3px 0" } as CSSStyleDeclaration);
+      Object.assign(row.style, { display: "flex", alignItems: "center", gap: "6px", margin: SP.row } as CSSStyleDeclaration);
       row.append("door hp ");
       row.appendChild(this.stepper(dest.hp, (n) => { if (Number.isFinite(n)) { dest.hp = n; this.afterInspect(); } }, { min: 1, step: 5 }).wrap);
       host.appendChild(row);
@@ -1765,7 +1798,7 @@ export class EditorScene extends Phaser.Scene {
   /** A labelled checkbox row. */
   private checkboxRow(label: string, checked: boolean, onChange: (on: boolean) => void): HTMLElement {
     const wrap = document.createElement("label");
-    Object.assign(wrap.style, { display: "block", margin: "3px 0", cursor: "pointer" } as CSSStyleDeclaration);
+    Object.assign(wrap.style, { display: "block", margin: SP.row, cursor: "pointer" } as CSSStyleDeclaration);
     const box = document.createElement("input");
     box.type = "checkbox"; box.checked = checked;
     box.onchange = () => onChange(box.checked);
@@ -1809,7 +1842,7 @@ export class EditorScene extends Phaser.Scene {
   /** A labelled `<select>` row. */
   private selectRow(label: string, options: string[], value: string, onChange: (v: string) => void): HTMLDivElement {
     const wrap = document.createElement("div");
-    wrap.style.margin = "3px 0";
+    wrap.style.margin = SP.row;
     wrap.append(`${label} `);
     const sel = document.createElement("select");
     sel.dataset.field = label;
@@ -1855,7 +1888,7 @@ export class EditorScene extends Phaser.Scene {
 
   private field(label: string, value: string, onChange: (v: string) => void): HTMLDivElement {
     const wrap = document.createElement("div");
-    wrap.style.margin = "3px 0";
+    wrap.style.margin = SP.row;
     wrap.append(`${label} `);
     const input = document.createElement("input");
     input.value = value;

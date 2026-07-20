@@ -1736,7 +1736,10 @@ export class OverworldScene extends Phaser.Scene {
       boxFill: COLOR.surface, boxAlpha: 0.98,
     });
     this.overlay.push(
-      this.add.text(left + w - 24, top + 22, "The night's tab — what camp spends before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(DEPTH.sheetContent),
+      // Short on purpose (D114): the long explainer sentence overlapped the title on this
+      // shared line (a pre-existing collision the visual audit caught) — the full "what
+      // camp spends before you move on" wording is the hint bar's job below.
+      this.add.text(left + w - 24, top + 22, "the night's tab", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(DEPTH.sheetContent),
     );
     const rule = this.add.graphics().setDepth(DEPTH.sheet + 2);
     rule.lineStyle(1, COLOR.borderSoft, 0.9);

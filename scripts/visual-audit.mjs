@@ -112,7 +112,9 @@ export const SURFACES = [
   { name: "camp", minMs: 500, eval: ov(`s.enterCamp(s.loop.reachable()[0]);`), note: "the make-camp screen (camp action row)",
     expect: { desc: "the camp screen is entered", eval: ov(`return !!s.campNode;`) } },
   { name: "ledger", minMs: 500, eval: ov(`s.openTent(()=>s.renderCamp(),"ledger");`), note: "the Captain's Tent ledger + forecast",
-    expect: { desc: "the ledger sheet is open", eval: seesText("/forecasted balance/i") } },
+    // A state gate, not text: the sheet's own text is legitimately shared with the
+    // ledger-transition surface, so no text regex can be specific to this tab (D114).
+    expect: { desc: "the tent is open on the Ledger tab", eval: ov(`return s.tentReturn!==null&&s.tentTab==="ledger";`) } },
   { name: "deploy", minMs: 1100, eval: navTo("e1"), note: "the E1 skirmish deployment board",
     expect: { desc: "the deployment board is up", eval: bs(`return s.phase==="deployment";`) } },
   { name: "battle", minMs: 700, drive: driveBattle, note: "mid-battle: action row, CT rail, combat log",
@@ -177,6 +179,15 @@ export const SURFACES = [
     note: "the Node-2 traveler-gift event panel (D79)",
     drive: (g) => g.eval(ov(`for(const o of s.overlay)o.destroy();s.overlay=[];s.run.mapNodeId="e1";s.run.path=["start","e1"];s.enterCamp(s.run.map.nodes["camp2"]);s.commit();`)),
     expect: { desc: "the traveler-gift panel is open", eval: seesText("/a traveler on the road/i") },
+  },
+  {
+    name: "ledger-transition",
+    boot: "#overworld",
+    minMs: 600,
+    waitScene: ["OverworldScene", ["run", "loop"]],
+    note: "the night-end Break Camp / rest ledger transition (D45/D114 — its title+subtitle line once collided)",
+    drive: (g) => g.eval(ov(`s.enterCamp(s.loop.reachable()[0]);s.setOutToMap();`)),
+    expect: { desc: "the transition sheet is open", eval: seesText("/before resting for the night/i") },
   },
 ];
 

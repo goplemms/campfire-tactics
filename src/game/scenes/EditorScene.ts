@@ -83,6 +83,24 @@ const BOARD_ASPECT = 600 / 800;
 const CHROME_FONT = '"Courier Prime", "Courier New", Courier, monospace';
 
 /**
+ * The editor chrome's **palette** — one home for the handful of UI colours the panel repeats, so the
+ * look retunes from here instead of hunting literals across the scene's inline styles + the stylesheet
+ * below (they used to be typed ~a dozen times each). Values match the game's warm firelit ladder
+ * ({@link COLOR}/{@link INK} in theme.ts, which are Phaser numerics / different roles — kept as CSS
+ * strings here). Referenced by both {@link CHROME_CSS} and the inline `Object.assign` styles.
+ */
+const ED = {
+  gold: "#c8a24a", //        active-selection highlight (tabs / brushes / options) + section headers
+  goldInk: "#1a1206", //     text on a gold highlight
+  ember: "#f2b65a", //       bright-firelight accent — hover / focus / active card ring
+  cardBg: "#1a140d", //      resting card / small-control fill
+  cardBorder: "#4a423a", //  resting card / box border
+  cardActiveBg: "#271e16", // selected card fill
+  text: "#ddd3c2", //        body-label ink
+  muted: "#b2a48b", //       hints / secondary captions
+} as const;
+
+/**
  * Scoped chrome stylesheet (the readability pass). The editor is a DOM overlay of **native** controls,
  * and form elements (`button`/`input`/`select`/`textarea`) **don't inherit** font from their container —
  * so by default they render as the browser's tiny system-font widgets (the "basic inputs" that make the
@@ -100,7 +118,7 @@ const CHROME_CSS = `
   color: #ece3d2; background: #3d3325; border: 1px solid #97774a;
   border-radius: 5px; padding: 5px 11px; cursor: pointer;
 }
-.editor-chrome button:hover { background: #4a3d2b; border-color: #f2b65a; }
+.editor-chrome button:hover { background: #4a3d2b; border-color: ${ED.ember}; }
 .editor-chrome button:active { transform: translateY(1px); }
 .editor-chrome button:disabled { opacity: .4; cursor: default; }
 .editor-chrome input:not([type=checkbox]), .editor-chrome select, .editor-chrome textarea {
@@ -109,11 +127,11 @@ const CHROME_CSS = `
   border-radius: 4px; padding: 4px 8px; box-sizing: border-box;
   /* Recessed into the leather — an inset shadow reads the field as carved, not a raised box. */
   box-shadow: inset 0 1px 2px rgba(0,0,0,.5);
-  caret-color: #f2b65a;
+  caret-color: ${ED.ember};
 }
 .editor-chrome input::placeholder, .editor-chrome textarea::placeholder { color: #8a7c66; font-style: italic; }
 .editor-chrome input:focus, .editor-chrome select:focus, .editor-chrome textarea:focus {
-  outline: none; border-color: #f2b65a;
+  outline: none; border-color: ${ED.ember};
   /* A warm ember glow on focus rather than the OS blue focus ring. */
   box-shadow: inset 0 1px 2px rgba(0,0,0,.5), 0 0 0 2px rgba(242,182,90,.22);
 }
@@ -125,7 +143,7 @@ const CHROME_CSS = `
 .editor-chrome select {
   cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none;
   padding-right: 22px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath d='M1 1.2l4 4 4-4' fill='none' stroke='%23c8a24a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 10 7'%3E%3Cpath d='M1 1.2l4 4 4-4' fill='none' stroke='${ED.gold.replace("#", "%23")}' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 8px center;
 }
 /* Ember-tinted checkbox instead of the default system blue. */
@@ -138,7 +156,7 @@ const CHROME_CSS = `
   width: 21px; padding: 0; color: #d8c9a8; background: #332a1e; border: 1px solid #6b4f34;
   cursor: pointer; box-shadow: none; display: flex; align-items: center; justify-content: center; user-select: none;
 }
-.editor-chrome .stepper-btn:hover { background: #473a27; border-color: #f2b65a; color: #f6ecd8; }
+.editor-chrome .stepper-btn:hover { background: #473a27; border-color: ${ED.ember}; color: #f6ecd8; }
 .editor-chrome .stepper-btn:active { background: #2a2318; }
 .editor-chrome .stepper-btn:first-child { border-radius: 4px 0 0 4px; border-right: none; }
 .editor-chrome .stepper-btn:last-child { border-radius: 0 4px 4px 0; border-left: none; }
@@ -210,10 +228,10 @@ function blockThumb(): string {
   return `<svg width="34" height="30" viewBox="0 0 34 30"><polygon points="17,3 32,11 17,19 2,11" fill="#7a6450" stroke="#1c130c"/><polygon points="2,11 17,19 17,27 2,19" fill="#382b1e" stroke="#1c130c"/><polygon points="32,11 17,19 17,27 32,19" fill="#52412f" stroke="#1c130c"/></svg>`;
 }
 function lineThumb(): string {
-  return `<svg width="30" height="30" viewBox="0 0 30 30"><line x1="5" y1="24" x2="25" y2="6" stroke="#c8a24a" stroke-width="3" stroke-linecap="round"/></svg>`;
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><line x1="5" y1="24" x2="25" y2="6" stroke="${ED.gold}" stroke-width="3" stroke-linecap="round"/></svg>`;
 }
 function rectThumb(): string {
-  return `<svg width="30" height="30" viewBox="0 0 30 30"><rect x="6" y="8" width="18" height="14" fill="none" stroke="#c8a24a" stroke-width="2.5"/></svg>`;
+  return `<svg width="30" height="30" viewBox="0 0 30 30"><rect x="6" y="8" width="18" height="14" fill="none" stroke="${ED.gold}" stroke-width="2.5"/></svg>`;
 }
 
 /** A coarse "saved N ago" label for the library list (ms since a save → just now / Nm / Nh / Nd). */
@@ -866,7 +884,7 @@ export class EditorScene extends Phaser.Scene {
     header.style.margin = "0 0 6px";
     const title = document.createElement("div");
     title.textContent = "Level Editor — pick a brush, click tiles";
-    Object.assign(title.style, { fontWeight: "700", fontSize: "16px", color: "#c8a24a" } as CSSStyleDeclaration);
+    Object.assign(title.style, { fontWeight: "700", fontSize: "16px", color: ED.gold } as CSSStyleDeclaration);
     header.appendChild(title);
     header.appendChild(this.hint("drag paints · shift-drag pans · right-click erases · scroll zooms · Recenter resets"));
     header.appendChild(this.hint("ctrl-click select · alt-click pick · esc cancel · ctrl+z undo · keys: W/L/R G/V/T N/C P/X S/E"));
@@ -922,7 +940,7 @@ export class EditorScene extends Phaser.Scene {
     const details = document.createElement("button");
     details.textContent = "⋯ Details";
     details.dataset.role = "details-toggle";
-    Object.assign(details.style, { margin: "2px", marginLeft: "8px", cursor: "pointer", color: "#f2b65a" } as CSSStyleDeclaration);
+    Object.assign(details.style, { margin: "2px", marginLeft: "8px", cursor: "pointer", color: ED.ember } as CSSStyleDeclaration);
     details.onclick = () => this.toggleDrawer();
     tabBar.appendChild(details);
     panel.appendChild(tabBar);
@@ -990,8 +1008,8 @@ export class EditorScene extends Phaser.Scene {
     if (opts.template) card.dataset.template = opts.template;
     Object.assign(card.style, {
       flex: "0 0 auto", width: `${size}px`, padding: "5px 4px 4px", cursor: "pointer", textAlign: "center",
-      background: "#1a140d", border: "1px solid #4a423a", borderRadius: "5px", boxSizing: "border-box",
-      font: "10px/1.25 ui-monospace, monospace", color: "#ddd3c2",
+      background: ED.cardBg, border: `1px solid ${ED.cardBorder}`, borderRadius: "5px", boxSizing: "border-box",
+      font: `10px/1.25 ${CHROME_FONT}`, color: ED.text,
     } as CSSStyleDeclaration);
     const thumb = document.createElement("div");
     const thumbH = size <= 66 ? 32 : size >= 90 ? 46 : 38;
@@ -1004,7 +1022,10 @@ export class EditorScene extends Phaser.Scene {
     if (opts.stat) {
       const s = document.createElement("div");
       s.textContent = opts.stat;
-      Object.assign(s.style, { fontSize: "9px", color: "#b2a48b", fontVariantNumeric: "tabular-nums" } as CSSStyleDeclaration);
+      // `pre-line` honours the newline the stat carries (HP / ATK on their own short lines) and never
+      // wraps mid-value — so a wide readout shows BOTH numbers cleanly instead of orphaning or
+      // ellipsis-hiding the second one on a compact card.
+      Object.assign(s.style, { fontSize: "9px", lineHeight: "1.35", color: ED.muted, fontVariantNumeric: "tabular-nums", whiteSpace: "pre-line" } as CSSStyleDeclaration);
       card.appendChild(s);
     }
     card.title = opts.label;
@@ -1030,7 +1051,7 @@ export class EditorScene extends Phaser.Scene {
     const tint = this.prefs.enemyTint;
     const enemyCards = ENEMY_IDS.map((id) => {
       const t = enemyStat(id);
-      return this.paletteCard({ brush: "enemy", template: id, label: enemyLabel(id), thumb: tokenThumb(abbrev(id), "#e06b6b", enemyRing(id, tint), "#2a0d0d"), stat: `HP ${t.hp} · ATK ${t.atk}` });
+      return this.paletteCard({ brush: "enemy", template: id, label: enemyLabel(id), thumb: tokenThumb(abbrev(id), "#e06b6b", enemyRing(id, tint), "#2a0d0d"), stat: `HP ${t.hp}\nATK ${t.atk}` });
     });
     const captives = this.prefs.captiveVariants === 2
       ? [
@@ -1057,9 +1078,9 @@ export class EditorScene extends Phaser.Scene {
       this.paletteCard({ brush: "rect", label: "Rect", thumb: rectThumb() }),
     ]);
     put("Objects", [
-      this.paletteCard({ brush: "gate", label: "Gate", thumb: glyphThumb("▦", "#f2b65a") }),
+      this.paletteCard({ brush: "gate", label: "Gate", thumb: glyphThumb("▦", ED.ember) }),
       this.paletteCard({ brush: "lever", label: "Lever", thumb: glyphThumb("⎇", "#62c6d6") }),
-      this.paletteCard({ brush: "trap", label: "Trap", thumb: glyphThumb("▲", "#f2b65a") }),
+      this.paletteCard({ brush: "trap", label: "Trap", thumb: glyphThumb("▲", ED.ember) }),
     ]);
     put("Units", this.unitCards());
     put("Events", [
@@ -1077,7 +1098,7 @@ export class EditorScene extends Phaser.Scene {
   private optionsRow(): HTMLDivElement {
     const wrap = document.createElement("div");
     wrap.dataset.role = "editor-options";
-    Object.assign(wrap.style, { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px", margin: "4px 0 2px", fontSize: "12px", color: "#b2a48b" } as CSSStyleDeclaration);
+    Object.assign(wrap.style, { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px", margin: "4px 0 2px", fontSize: "12px", color: ED.muted } as CSSStyleDeclaration);
     const group = (label: string, choices: { text: string; on: () => boolean; set: () => void }[]): HTMLSpanElement => {
       const g = document.createElement("span");
       Object.assign(g.style, { display: "inline-flex", alignItems: "center", gap: "3px" } as CSSStyleDeclaration);
@@ -1086,8 +1107,8 @@ export class EditorScene extends Phaser.Scene {
         const b = document.createElement("button");
         b.textContent = c.text;
         b.dataset.opt = `${label}:${c.text}`;
-        Object.assign(b.style, { cursor: "pointer", padding: "3px 8px", borderRadius: "3px", border: "1px solid #4a423a", background: "#1a140d", color: "#ddd3c2", font: `12px ${CHROME_FONT}` } as CSSStyleDeclaration);
-        const paint = (): void => { const on = c.on(); b.style.background = on ? "#c8a24a" : "#1a140d"; b.style.color = on ? "#1a1206" : "#ddd3c2"; b.style.fontWeight = on ? "700" : "400"; };
+        Object.assign(b.style, { cursor: "pointer", padding: "3px 8px", borderRadius: "3px", border: `1px solid ${ED.cardBorder}`, background: ED.cardBg, color: ED.text, font: `12px ${CHROME_FONT}` } as CSSStyleDeclaration);
+        const paint = (): void => { const on = c.on(); b.style.background = on ? ED.gold : ED.cardBg; b.style.color = on ? ED.goldInk : ED.text; b.style.fontWeight = on ? "700" : "400"; };
         b.onclick = () => { c.set(); this.applyPrefs(); };
         this.optionButtons.push(paint);
         g.appendChild(b);
@@ -1140,7 +1161,7 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(head.style, { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 8px" } as CSSStyleDeclaration);
     const title = document.createElement("div");
     title.textContent = "Details — edit a placed object";
-    Object.assign(title.style, { fontWeight: "700", color: "#c8a24a", fontSize: "14px" } as CSSStyleDeclaration);
+    Object.assign(title.style, { fontWeight: "700", color: ED.gold, fontSize: "14px" } as CSSStyleDeclaration);
     const close = document.createElement("button");
     close.textContent = "✕"; close.dataset.role = "drawer-close"; close.style.cursor = "pointer";
     close.onclick = () => this.closeDrawer();
@@ -1157,7 +1178,7 @@ export class EditorScene extends Phaser.Scene {
     // The inspector — edits whatever object is selected (unit / gate / lever).
     const inspector = document.createElement("div");
     inspector.dataset.role = "inspector";
-    Object.assign(inspector.style, { margin: "8px 0 0", padding: "6px", border: "1px solid #4a423a", borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
+    Object.assign(inspector.style, { margin: "8px 0 0", padding: "6px", border: `1px solid ${ED.cardBorder}`, borderRadius: "4px", minHeight: "18px" } as CSSStyleDeclaration);
     drawer.appendChild(inspector);
     this.inspectorEl = inspector;
 
@@ -1190,8 +1211,8 @@ export class EditorScene extends Phaser.Scene {
     for (const key of TAB_NAMES) { const d = this.drawers[key]; if (d) d.style.display = key === name ? "" : "none"; }
     for (const b of this.tabButtons) {
       const active = b.dataset.tab === name;
-      b.style.background = active ? "#c8a24a" : "";
-      b.style.color = active ? "#1a1206" : "";
+      b.style.background = active ? ED.gold : "";
+      b.style.color = active ? ED.goldInk : "";
       b.style.fontWeight = active ? "700" : "";
     }
   }
@@ -1259,7 +1280,7 @@ export class EditorScene extends Phaser.Scene {
    */
   private buildObjectivesEditor(d: HTMLDivElement): void {
     const objHead = document.createElement("div");
-    Object.assign(objHead.style, { margin: "8px 0 2px", fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    Object.assign(objHead.style, { margin: "8px 0 2px", fontWeight: "700", color: ED.gold } as CSSStyleDeclaration);
     objHead.append("Objectives ");
     const add = document.createElement("button");
     add.textContent = "＋ add"; add.dataset.role = "add-objective"; add.style.cursor = "pointer";
@@ -1320,7 +1341,7 @@ export class EditorScene extends Phaser.Scene {
   private objectiveRow(o: ObjectiveSpec, i: number): HTMLDivElement {
     const box = document.createElement("div");
     box.dataset.role = "objective";
-    Object.assign(box.style, { margin: "4px 0", padding: "5px", border: "1px solid #4a423a", borderRadius: "4px" } as CSSStyleDeclaration);
+    Object.assign(box.style, { margin: "4px 0", padding: "5px", border: `1px solid ${ED.cardBorder}`, borderRadius: "4px" } as CSSStyleDeclaration);
 
     const head = document.createElement("div");
     Object.assign(head.style, { display: "flex", alignItems: "center", gap: "6px" } as CSSStyleDeclaration);
@@ -1759,7 +1780,7 @@ export class EditorScene extends Phaser.Scene {
   private inspectorHeader(text: string): HTMLDivElement {
     const h = document.createElement("div");
     h.textContent = text;
-    Object.assign(h.style, { margin: "2px 0 4px", fontWeight: "700", color: "#c8a24a" } as CSSStyleDeclaration);
+    Object.assign(h.style, { margin: "2px 0 4px", fontWeight: "700", color: ED.gold } as CSSStyleDeclaration);
     return h;
   }
 
@@ -1793,7 +1814,7 @@ export class EditorScene extends Phaser.Scene {
       const label = document.createElement("div");
       label.textContent = f;
       Object.assign(label.style, {
-        fontSize: "10.5px", color: "#b2a48b", marginBottom: "3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        fontSize: "10.5px", color: ED.muted, marginBottom: "3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
       } as CSSStyleDeclaration);
       const { wrap: sc, input } = this.stepper(get(f), (n) => { if (Number.isFinite(n)) set(f, n); }, { min: 0, width: 42 }); // ignore an emptied field (NaN)
       input.dataset.stat = f;
@@ -1863,8 +1884,8 @@ export class EditorScene extends Phaser.Scene {
   private highlightBrush(): void {
     for (const b of this.brushButtons) {
       const active = b.dataset.brush === this.brush;
-      b.style.background = active ? "#c8a24a" : "";
-      b.style.color = active ? "#1a1206" : "";
+      b.style.background = active ? ED.gold : "";
+      b.style.color = active ? ED.goldInk : "";
       b.style.fontWeight = active ? "700" : "";
     }
     // Slab-tray cards: active when the brush matches AND (for the unrolled variants) its template /
@@ -1873,9 +1894,9 @@ export class EditorScene extends Phaser.Scene {
       const active = c.brush === this.brush
         && (c.template === undefined || c.template === this.enemyTemplate)
         && (c.release === undefined || c.release === this.captiveRelease);
-      c.el.style.borderColor = active ? "#f2b65a" : "#4a423a";
-      c.el.style.background = active ? "#271e16" : "#1a140d";
-      c.el.style.boxShadow = active ? "0 0 0 1px #f2b65a" : "";
+      c.el.style.borderColor = active ? ED.ember : ED.cardBorder;
+      c.el.style.background = active ? ED.cardActiveBg : ED.cardBg;
+      c.el.style.boxShadow = active ? `0 0 0 1px ${ED.ember}` : "";
     }
   }
 

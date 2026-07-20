@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { CombatView } from "../combat-view";
 import { BoardCamera } from "../board-camera";
-import { COLOR, FONT } from "../theme";
+import { COLOR, INK, FONT, cssHex, cssRgba } from "../theme";
 import { clearLayer } from "../ui";
 import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
 import { validateLevel } from "../../content/levels";
@@ -83,21 +83,43 @@ const BOARD_ASPECT = 600 / 800;
 const CHROME_FONT = '"Courier Prime", "Courier New", Courier, monospace';
 
 /**
- * The editor chrome's **palette** — one home for the handful of UI colours the panel repeats, so the
- * look retunes from here instead of hunting literals across the scene's inline styles + the stylesheet
- * below (they used to be typed ~a dozen times each). Values match the game's warm firelit ladder
- * ({@link COLOR}/{@link INK} in theme.ts, which are Phaser numerics / different roles — kept as CSS
- * strings here). Referenced by both {@link CHROME_CSS} and the inline `Object.assign` styles.
+ * The editor chrome's **palette** — the one home for every UI colour the panel repeats, referenced by
+ * both {@link CHROME_CSS} and the inline `Object.assign` styles (each value used to be typed ~a dozen
+ * times). Two groups:
+ *
+ *  - **Bridged** — colours that are genuinely the game's, sourced straight from the {@link COLOR}/
+ *    {@link INK} ladder in theme.ts via {@link cssHex} (so the editor is no longer a second copy of
+ *    those hexes; retuning the game's accent/surface/button retunes the editor too).
+ *  - **Editor tints** — warm leather/ember shades the editor introduces for its dense chrome that have
+ *    no equivalent on the game's board ladder; kept explicit here (defined once) rather than pushed
+ *    into theme.ts, which no game scene would use.
  */
 const ED = {
+  // Bridged from the game's ladder (theme.ts is the source of truth for these).
+  ember: cssHex(COLOR.accent), //          bright-firelight accent — hover / focus / active card ring
+  cardActiveBg: cssHex(COLOR.surfaceRaised), // selected card / row fill
+  btnFill: cssHex(COLOR.btnFill), //       button rest fill
+  btnStroke: cssHex(COLOR.btnStroke), //   button rest border
+  btnInk: INK.bright, //                   button label
+  text: INK.secondary, //                  body-label ink
+  muted: INK.muted, //                     hints / secondary captions
+  glow: cssRgba(COLOR.accent, 0.22), //    translucent ember focus-glow ring
+  // Editor-specific chrome tints (no base-ladder equivalent).
   gold: "#c8a24a", //        active-selection highlight (tabs / brushes / options) + section headers
   goldInk: "#1a1206", //     text on a gold highlight
-  ember: "#f2b65a", //       bright-firelight accent — hover / focus / active card ring
   cardBg: "#1a140d", //      resting card / small-control fill
   cardBorder: "#4a423a", //  resting card / box border
-  cardActiveBg: "#271e16", // selected card fill
-  text: "#ddd3c2", //        body-label ink
-  muted: "#b2a48b", //       hints / secondary captions
+  btnHover: "#4a3d2b", //    button hover fill (a lifted btnFill)
+  inputBg: "#1c150e", //     recessed field fill
+  inputBorder: "#6b4f34", // field border
+  inputInk: "#f2ead9", //    field text
+  placeholder: "#8a7c66", // in-field placeholder
+  stepBg: "#332a1e", //      stepper ± rest fill
+  stepInk: "#d8c9a8", //     stepper ± glyph
+  stepHoverBg: "#473a27", // stepper ± hover fill
+  stepHoverInk: "#f6ecd8", //stepper ± hover glyph
+  stepActiveBg: "#2a2318", //stepper ± press fill
+  checkAccent: "#c8892e", // ember-tinted checkbox
 } as const;
 
 /**
@@ -115,25 +137,25 @@ const CHROME_CSS = `
 .editor-chrome { font-family: ${CHROME_FONT}; }
 .editor-chrome button {
   font: 700 13px/1.2 ${CHROME_FONT};
-  color: #ece3d2; background: #3d3325; border: 1px solid #97774a;
+  color: ${ED.btnInk}; background: ${ED.btnFill}; border: 1px solid ${ED.btnStroke};
   border-radius: 5px; padding: 5px 11px; cursor: pointer;
 }
-.editor-chrome button:hover { background: #4a3d2b; border-color: ${ED.ember}; }
+.editor-chrome button:hover { background: ${ED.btnHover}; border-color: ${ED.ember}; }
 .editor-chrome button:active { transform: translateY(1px); }
 .editor-chrome button:disabled { opacity: .4; cursor: default; }
 .editor-chrome input:not([type=checkbox]), .editor-chrome select, .editor-chrome textarea {
   font: 13px/1.4 ${CHROME_FONT};
-  color: #f2ead9; background: #1c150e; border: 1px solid #6b4f34;
+  color: ${ED.inputInk}; background: ${ED.inputBg}; border: 1px solid ${ED.inputBorder};
   border-radius: 4px; padding: 4px 8px; box-sizing: border-box;
   /* Recessed into the leather — an inset shadow reads the field as carved, not a raised box. */
   box-shadow: inset 0 1px 2px rgba(0,0,0,.5);
   caret-color: ${ED.ember};
 }
-.editor-chrome input::placeholder, .editor-chrome textarea::placeholder { color: #8a7c66; font-style: italic; }
+.editor-chrome input::placeholder, .editor-chrome textarea::placeholder { color: ${ED.placeholder}; font-style: italic; }
 .editor-chrome input:focus, .editor-chrome select:focus, .editor-chrome textarea:focus {
   outline: none; border-color: ${ED.ember};
   /* A warm ember glow on focus rather than the OS blue focus ring. */
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.5), 0 0 0 2px rgba(242,182,90,.22);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.5), 0 0 0 2px ${ED.glow};
 }
 /* Tame the native number spinners — they render as bright system chrome that fights the leather look. */
 .editor-chrome input[type=number] { appearance: textfield; -moz-appearance: textfield; }
@@ -147,21 +169,21 @@ const CHROME_CSS = `
   background-repeat: no-repeat; background-position: right 8px center;
 }
 /* Ember-tinted checkbox instead of the default system blue. */
-.editor-chrome input[type=checkbox] { width: 15px; height: 15px; vertical-align: -2px; cursor: pointer; accent-color: #c8892e; }
+.editor-chrome input[type=checkbox] { width: 15px; height: 15px; vertical-align: -2px; cursor: pointer; accent-color: ${ED.checkAccent}; }
 /* Number stepper — a flush [− value +] segmented control replacing the removed native spinners.
    The two-class selectors outrank the general \`.editor-chrome button\` rule, so the ± stay compact. */
 .editor-chrome .stepper { display: inline-flex; align-items: stretch; vertical-align: -3px; }
 .editor-chrome .stepper-btn {
   font: 700 14px/1 ${CHROME_FONT};
-  width: 21px; padding: 0; color: #d8c9a8; background: #332a1e; border: 1px solid #6b4f34;
+  width: 21px; padding: 0; color: ${ED.stepInk}; background: ${ED.stepBg}; border: 1px solid ${ED.inputBorder};
   cursor: pointer; box-shadow: none; display: flex; align-items: center; justify-content: center; user-select: none;
 }
-.editor-chrome .stepper-btn:hover { background: #473a27; border-color: ${ED.ember}; color: #f6ecd8; }
-.editor-chrome .stepper-btn:active { background: #2a2318; }
+.editor-chrome .stepper-btn:hover { background: ${ED.stepHoverBg}; border-color: ${ED.ember}; color: ${ED.stepHoverInk}; }
+.editor-chrome .stepper-btn:active { background: ${ED.stepActiveBg}; }
 .editor-chrome .stepper-btn:first-child { border-radius: 4px 0 0 4px; border-right: none; }
 .editor-chrome .stepper-btn:last-child { border-radius: 0 4px 4px 0; border-left: none; }
 .editor-chrome .stepper input { border-radius: 0; box-shadow: none; text-align: center; padding: 4px 3px; }
-.editor-chrome .stepper input:focus { box-shadow: 0 0 0 2px rgba(242,182,90,.22); }
+.editor-chrome .stepper input:focus { box-shadow: 0 0 0 2px ${ED.glow}; }
 `;
 
 /** Every enemy template the palette offers (authored archetypes first, then the procedural pool). */

@@ -157,7 +157,7 @@ export function projectForecast(run: RunState): RouteForecast {
   const visible = visibleNodes(run);
   const visibleIds = new Set(visible.map((n) => n.id));
   const burnPerStep = computeUpkeep(run.party).total;
-  const purse = run.camp.gold;
+  const purse = run.camp.purse;
 
   const perEdge: EdgeForecast[] = reachableFrom(run.map, run.mapNodeId).map((node) => {
     const fee = nodeFee(run.seed, node);

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import {
   VESSELS,
-  getVessel,
+  mustGetVessel,
   createCaravan,
   caravanCapacity,
   slotsRemaining,
@@ -62,8 +62,8 @@ describe("caravan — uniform slots capped at vessel capacity (D25)", () => {
   it("storage is a per-caravan property drawn from the vessel", () => {
     const cart = createCaravan("c1", "scout-cart");
     const train = createCaravan("c2", "supply-train");
-    expect(cart.storageCap).toBe(getVessel("scout-cart").storageCap);
-    expect(train.storageCap).toBe(getVessel("supply-train").storageCap);
+    expect(cart.storageCap).toBe(mustGetVessel("scout-cart").storageCap);
+    expect(train.storageCap).toBe(mustGetVessel("supply-train").storageCap);
     expect(train.storageCap).toBeGreaterThan(cart.storageCap);
   });
 });

@@ -38,8 +38,8 @@ describe("playtest-log — the logistics-integrity instrument", () => {
     });
 
     // The authored arc pays upkeep at camp and resolves authored fights.
-    expect(log.events.some((e) => e.at === "camp")).toBe(true);
-    expect(log.events.some((e) => e.at === "encounter")).toBe(true);
+    expect(log.events.some((e) => e.kind === "camp")).toBe(true);
+    expect(log.events.some((e) => e.kind === "encounter")).toBe(true);
   });
 
   it("summarizes a real traversal into per-lever engagement flags", () => {
@@ -87,12 +87,12 @@ describe("summarizePlaytest — derives lever engagement from a timeline", () =>
       seq: 0,
       events: [
         {
-          at: "camp",
+          kind: "camp",
           snapshot: snap({ purse: 5, gearWear: 2 }),
           upkeep: { paid: 4, skipped: ["food"], underfunded: [], moraleDelta: -3 },
         },
         {
-          at: "encounter",
+          kind: "encounter",
           snapshot: snap({ purse: 45, moraleTier: "High", morale: 2 }),
           result: "win",
           goldEarned: 40,
@@ -128,12 +128,12 @@ describe("summarizePlaytest — derives lever engagement from a timeline", () =>
       seq: 0,
       events: [
         {
-          at: "camp",
+          kind: "camp",
           snapshot: snap({ purse: 200 }),
           upkeep: { paid: 6, skipped: [], underfunded: [], moraleDelta: 0 },
         },
         {
-          at: "encounter",
+          kind: "encounter",
           snapshot: snap({ purse: 240 }),
           result: "win",
           goldEarned: 40,

@@ -18,7 +18,10 @@ same `AuthoredEncounter` data the editor exports, run it through the same valida
 it. Same format, same guarantees, no mouse.
 
 Read `scratchpad/foundations/decisions.md` **D97** (the dual-OR finale) and **D98** (the editor +
-content pipeline) before authoring — they are the spec you build against.
+content pipeline) before authoring — they are the spec you build against. When your work touches
+code (a new registry entry, a random draw, a result type), follow
+`docs/design/implementation/conventions.md` (D114) — one spelling per structure, copied from the
+living exemplar it names, and keep its guard tests green.
 
 ## The format (author against the type, never guess)
 

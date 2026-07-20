@@ -121,7 +121,7 @@ export interface MerchantBuyResult extends ActionOutcome {
 }
 
 /**
- * **Merchant ACCESS** (D30/D61): spend **run-gold** (the purse, `camp.gold`) to buy
+ * **Merchant ACCESS** (D30/D61): spend **run-gold** (the purse, `camp.purse`) to buy
  * one of a supply into caravan **storage**, at a **market-tier price** (`tier` is the
  * node's {@link "./overworld".effectiveMarketTier}, so a better market — or a Merchant
  * raising the floor — buys cheaper). Refuses (without spending) when there's **no
@@ -297,8 +297,8 @@ export function bankerEngageInterest(run: RunState): BankerInterestResult {
 export function applyEngageInterestEffect(
   run: RunState,
 ): { ok: true; detail: string; perStep: number } | { ok: false; reason: string } {
-  if (run.camp.gold <= 0) return { ok: false, reason: "No purse to earn interest on." };
-  const perStep = Math.max(1, Math.ceil(run.camp.gold * ECONOMY.banker.interestRate));
+  if (run.camp.purse <= 0) return { ok: false, reason: "No purse to earn interest on." };
+  const perStep = Math.max(1, Math.ceil(run.camp.purse * ECONOMY.banker.interestRate));
   run.overworld.interestPerStep = perStep;
   return { ok: true, detail: `Purse interest engaged — +${perStep}g per node-step.`, perStep };
 }
@@ -336,11 +336,13 @@ export function bankerBorrow(run: RunState, amount: number): BankerBorrowResult 
  * the debt (auto-repaid from incoming run gold). Assumes a positive, sanitized amount (the caller
  * gates `amount <= 0`). Pure of the cost gate.
  */
-export function applyBorrowEffect(run: RunState, amount: number): { detail: string; borrowed: number; debt: number } {
+export function applyBorrowEffect(run: RunState, amount: number): { ok: true; detail: string; borrowed: number; debt: number } {
   const borrowed = nonNegInt(amount);
   earn(run.camp, borrowed, "banker", "Banker loan", { nodeId: run.mapNodeId, night: run.night });
   run.overworld.debt += borrowed;
-  return { borrowed, debt: run.overworld.debt, detail: `Borrowed ${borrowed}g against future loot.` };
+  // `ok: true` is the contract, not a check: this core cannot refuse (the caller gates) —
+  // the literal type states it, matching the refusal-capable sibling cores (D114).
+  return { ok: true, borrowed, debt: run.overworld.debt, detail: `Borrowed ${borrowed}g against future loot.` };
 }
 
 /** What buying theft protection produced. */
@@ -375,9 +377,9 @@ export function bankerProtect(run: RunState): BankerProtectResult {
  * the Banker's level (never lowering an already-higher protection). Pure of the cost gate (the
  * gold price rides {@link checkOverworldCost}).
  */
-export function applyGuardPurseEffect(run: RunState): { detail: string; protection: number } {
+export function applyGuardPurseEffect(run: RunState): { ok: true; detail: string; protection: number } {
   run.overworld.protection = Math.max(run.overworld.protection, ECONOMY.banker.protectionLevel);
-  return { protection: run.overworld.protection, detail: `Theft protection engaged.` };
+  return { ok: true, protection: run.overworld.protection, detail: `Theft protection engaged.` };
 }
 
 // --- Noble — INFLUENCE (a walled-off, per-expedition currency, D62) ----------
@@ -496,10 +498,10 @@ export function patronize(run: RunState): PatronizeResult {
  * Influence yield (gold → standing). Pure of the cost gate (the gold price rides
  * {@link checkOverworldCost}).
  */
-export function applyPatronizeEffect(run: RunState): { detail: string; gained: number } {
+export function applyPatronizeEffect(run: RunState): { ok: true; detail: string; gained: number } {
   const yield_ = ECONOMY.noble.patronizeYield;
   addInfluence(run.overworld, yield_);
-  return { gained: yield_, detail: `Patronized for ${yield_} Influence (${ECONOMY.noble.patronizeCost}g).` };
+  return { ok: true, gained: yield_, detail: `Patronized for ${yield_} Influence (${ECONOMY.noble.patronizeCost}g).` };
 }
 
 /** What a bribe attempt produced. */
@@ -520,7 +522,7 @@ export interface BribeResult extends ActionOutcome {
  * reveals (knowing the field is leverage) *and* the higher the briber's **standing**
  * (`tier` — a renowned Noble sways cheaply). Never below 1.
  */
-export function bribeCost(preview?: NodePreview, tier: InfluenceTier = "unknown"): number {
+export function bribePrice(preview?: NodePreview, tier: InfluenceTier = "unknown"): number {
   const intel = preview?.intel?.tier ?? 0;
   return Math.max(1, ECONOMY.noble.bribeBase - intel - ECONOMY.noble.bribeDiscount[tier]);
 }
@@ -543,7 +545,7 @@ export function bribeChance(tier: InfluenceTier): number {
  *
  * **On-gate (#112, R4/A):** the Influence spend now rides the shared **influence knob** of
  * {@link "./overworld-cost".checkOverworldCost} — the price is still computed per target from
- * intel + standing ({@link bribeCost}), passed as the gate's inline `influence` cost, so the
+ * intel + standing ({@link bribePrice}), passed as the gate's inline `influence` cost, so the
  * refusal is **standard-shaped** and the spend rides the same check→commit closure as every
  * verb (the failed-roll gamble commits too). No {@link VERB_COSTS} row (its price is per-target,
  * not static); the D88 guard classifies it in GATED_ELSEWHERE with this where.
@@ -555,7 +557,7 @@ export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | 
     return { applied: false, reason: "No Noble in the party to broker a bribe." };
   }
   const tier = influenceTier(run.overworld.influence);
-  const cost = bribeCost(preview, tier);
+  const cost = bribePrice(preview, tier);
   // The Influence price rides the shared gate's reserved `influence` knob (R4/A): a pure check
   // (spends nothing) whose commit closure spends exactly `cost` — called on both branches below,
   // since a failed sway still spends the Influence (the gamble). Actorless (no fatigue).
@@ -627,7 +629,7 @@ export interface TriageResult extends ActionOutcome {
   healed?: number;
   /** The treated unit's id. */
   targetId?: string;
-  /** Fatigue spent on the healer (base + any over-extension surcharge). */
+  /** Fatigue spent on the healer (the declared cost — no surcharge exists, D73). */
   fatigueSpent?: number;
 }
 

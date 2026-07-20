@@ -51,12 +51,12 @@ function guildWith(seed: string): Guild {
 }
 
 describe("economy — loot fills the PURSE (D34)", () => {
-  it("gainRunGold credits the run purse (camp.gold), not the treasury", () => {
+  it("gainRunGold credits the run purse (camp.purse), not the treasury", () => {
     const run = newRun("loot", 50);
     const res = gainRunGold(run, 80);
     expect(res.credited).toBe(80);
     expect(res.debtRepaid).toBe(0);
-    expect(run.camp.gold).toBe(130);
+    expect(run.camp.purse).toBe(130);
   });
 
   it("incoming gold auto-repays Banker debt first, then fills the purse (D30)", () => {
@@ -66,7 +66,7 @@ describe("economy — loot fills the PURSE (D34)", () => {
     expect(res.debtRepaid).toBe(30);
     expect(res.credited).toBe(20);
     expect(run.overworld.debt).toBe(0);
-    expect(run.camp.gold).toBe(20);
+    expect(run.camp.purse).toBe(20);
   });
 });
 
@@ -89,7 +89,7 @@ describe("economy — quest payouts fill the TREASURY (D34)", () => {
     const afterDispatch = g.treasury; // treasury already debited the purse
 
     gr.run.complete = true;
-    gr.run.camp.gold = 40; // the surviving purse
+    gr.run.camp.purse = 40; // the surviving purse
     const res = resolveReturn(g, c, gr.run);
 
     expect(res.payout).toBe(quest.payout);
@@ -136,10 +136,10 @@ describe("economy — the treasury has NO passive faucet (D34)", () => {
     const treasuryAfterDispatch = g.treasury;
 
     gr.run.overworld.interestPerStep = 10; // Banker engaged
-    const purseBefore = gr.run.camp.gold;
+    const purseBefore = gr.run.camp.purse;
     breakCamp(gr.run); // the node-step tick at departure (D46) accrues interest
 
-    expect(gr.run.camp.gold).toBe(purseBefore + 10); // purse grew
+    expect(gr.run.camp.purse).toBe(purseBefore + 10); // purse grew
     expect(g.treasury).toBe(treasuryAfterDispatch); // treasury did not
   });
 });

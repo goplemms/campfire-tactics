@@ -7,7 +7,7 @@ import { countOf, slotsOver } from "./inventory";
 import { merchantPrice } from "./economy-actions";
 import {
   EVENTS,
-  getEvent,
+  mustGetEvent,
   eventForNode,
   eventWeightAt,
   resolveEvent,
@@ -93,9 +93,9 @@ describe("node-events — the registry is data (D4)", () => {
     }
   });
 
-  it("getEvent looks an event up by id (throws if absent)", () => {
-    expect(getEvent("thief").kind).toBe("thief");
-    expect(() => getEvent("nope")).toThrow();
+  it("mustGetEvent looks an event up by id (throws if absent)", () => {
+    expect(mustGetEvent("thief").kind).toBe("thief");
+    expect(() => mustGetEvent("nope")).toThrow();
   });
 });
 
@@ -153,7 +153,7 @@ describe("node-events — the event pick is deterministic (D22)", () => {
     const outA = resolveEvent(a, NODE);
     const outB = resolveEvent(b, NODE);
     expect(outA).toEqual(outB);
-    expect(a.camp.gold).toBe(b.camp.gold);
+    expect(a.camp.purse).toBe(b.camp.purse);
     expect(a.camp.morale).toBe(b.camp.morale);
   });
 });
@@ -182,10 +182,10 @@ describe("node-events — shop buys from the purse under the cap (D30/D34)", () 
     const seed = seedFor("shop");
     const run = newRun(seed, 200);
     const offer = shopStock(seed, NODE)[0];
-    const before = run.camp.gold;
+    const before = run.camp.purse;
     const out = shopBuy(run, NODE, offer.materialId);
     expect(out.goldDelta).toBe(-offer.price);
-    expect(run.camp.gold).toBe(before - offer.price);
+    expect(run.camp.purse).toBe(before - offer.price);
     expect(countOf(run.inventory, offer.materialId)).toBe(1);
     expect(out.materials).toEqual([offer.materialId]);
   });
@@ -195,10 +195,10 @@ describe("node-events — shop buys from the purse under the cap (D30/D34)", () 
     const run = newRun(seed, 500, 1); // 1 slot only
     const offer = shopStock(seed, NODE)[0];
     expect(shopBuy(run, NODE, offer.materialId).goldDelta).toBe(-offer.price); // fills the slot
-    const goldAfterFirst = run.camp.gold;
+    const goldAfterFirst = run.camp.purse;
     const second = shopBuy(run, NODE, offer.materialId); // no room now
     expect(second.goldDelta).toBe(0);
-    expect(run.camp.gold).toBe(goldAfterFirst); // nothing spent
+    expect(run.camp.purse).toBe(goldAfterFirst); // nothing spent
   });
 
   it("refuses when the purse can't cover the price", () => {
@@ -215,7 +215,7 @@ describe("node-events — shop buys from the purse under the cap (D30/D34)", () 
     const run = newRun(seed, 200);
     const out = resolveEvent(run, NODE);
     expect(out.kind).toBe("shop");
-    expect(run.camp.gold).toBe(200);
+    expect(run.camp.purse).toBe(200);
   });
 });
 
@@ -238,11 +238,11 @@ describe("node-events — recruiter hires a rolled body for the purse (D33)", ()
     const seed = seedFor("recruiter");
     const run = newRun(seed, 200);
     const offer = recruiterOffer(seed, NODE);
-    const before = run.camp.gold;
+    const before = run.camp.purse;
     const out = hireRecruit(run, offer);
     expect(out.recruited?.id).toBe(offer.unit.id);
     expect(out.goldDelta).toBe(-offer.price);
-    expect(run.camp.gold).toBe(before - offer.price);
+    expect(run.camp.purse).toBe(before - offer.price);
     expect(run.party.some((u) => u.id === offer.unit.id)).toBe(true);
     // Idempotent: a second hire of the same body is a clean no-op.
     expect(hireRecruit(run, offer).recruited).toBeUndefined();
@@ -255,7 +255,7 @@ describe("node-events — recruiter hires a rolled body for the purse (D33)", ()
     const out = chooseEventOption(run, NODE, "decline");
     expect(out.goldDelta).toBe(0);
     expect(run.party.length).toBe(partyBefore);
-    expect(run.camp.gold).toBe(200);
+    expect(run.camp.purse).toBe(200);
   });
 
   it("a poor purse can't hire (spends nothing)", () => {
@@ -263,7 +263,7 @@ describe("node-events — recruiter hires a rolled body for the purse (D33)", ()
     const run = newRun(seed, 5);
     const out = hireRecruit(run, recruiterOffer(seed, NODE));
     expect(out.recruited).toBeUndefined();
-    expect(run.camp.gold).toBe(5);
+    expect(run.camp.purse).toBe(5);
   });
 
   it("honors the temp↔permanent flag (D33): generic temporary, authored permanent", () => {
@@ -288,7 +288,7 @@ describe("node-events — recruiter hires a rolled body for the purse (D33)", ()
     const out = resolveEvent(run, NODE);
     expect(out.kind).toBe("recruiter");
     expect(run.party.length).toBe(before);
-    expect(run.camp.gold).toBe(200);
+    expect(run.camp.purse).toBe(200);
   });
 });
 
@@ -313,7 +313,7 @@ describe("node-events — story applies a deterministic outcome (D23)", () => {
         const outA = applyStoryChoice(a, NODE, story, choice.id);
         const outB = applyStoryChoice(b, NODE, story, choice.id);
         expect(outA).toEqual(outB);
-        expect(a.camp.gold).toBe(b.camp.gold);
+        expect(a.camp.purse).toBe(b.camp.purse);
         expect(a.camp.morale).toBe(b.camp.morale);
         // The recorded deltas match the mutations they describe.
         expect(a.camp.morale).toBe(200 * 0 + outA.moraleDelta); // morale started at 0
@@ -329,14 +329,14 @@ describe("node-events — story applies a deterministic outcome (D23)", () => {
     const outB = applyStoryChoice(b, NODE, shrine, "loot");
     expect(outA.goldDelta).toBe(outB.goldDelta);
     expect(outA.goldDelta).toBeGreaterThan(0);
-    expect(a.camp.gold).toBe(100 + outA.goldDelta);
+    expect(a.camp.purse).toBe(100 + outA.goldDelta);
   });
 
   it("a pay can never drive the purse negative", () => {
     const shrine = getStory("abandoned-shrine")!;
     const run = newRun("broke", 3);
     const out = applyStoryChoice(run, NODE, shrine, "offer"); // -10g
-    expect(run.camp.gold).toBeGreaterThanOrEqual(0);
+    expect(run.camp.purse).toBeGreaterThanOrEqual(0);
     expect(out.goldDelta).toBe(-3); // capped at the purse
   });
 });
@@ -344,12 +344,12 @@ describe("node-events — story applies a deterministic outcome (D23)", () => {
 describe("node-events — story events surface the full authored prompt (#179)", () => {
   it("the seeded story event's prompt resolves the drawn StorySpec's prompt", () => {
     const seed = seedFor("story");
-    const body = getEvent("story").prompt!(newRun(seed), NODE);
+    const body = mustGetEvent("story").prompt!(newRun(seed), NODE);
     expect(body).toBe(storyForNode(seed, NODE).prompt);
   });
 
   it("a pinned guild event surfaces its StorySpec prompt, not the short map teaser", () => {
-    const contact = getEvent("guild-contact");
+    const contact = mustGetEvent("guild-contact");
     const body = contact.prompt!(newRun("guild"), NODE);
     expect(body).toBe(THIEVES_GUILD_CONTACT.prompt);
     expect(body).not.toBe(contact.teaser); // the fix: full flavour, not the banded teaser
@@ -365,7 +365,7 @@ describe("node-events — the thief event still skims, blunted by the Banker (D3
     const out = resolveEvent(run, NODE);
     expect(out.kind).toBe("thief");
     expect(out.stolen).toBeGreaterThan(0);
-    expect(run.camp.gold).toBe(120 - (out.stolen ?? 0));
+    expect(run.camp.purse).toBe(120 - (out.stolen ?? 0));
   });
 
   it("Banker protection blunts the skim", () => {
@@ -405,12 +405,12 @@ describe("node-events — the toll is a visible, known fee (D48)", () => {
     const out = resolveEvent(run, NODE);
     expect(out.kind).toBe("toll");
     expect(out.goldDelta).toBe(-fee);
-    expect(run.camp.gold).toBe(50);
+    expect(run.camp.purse).toBe(50);
 
     // Broke: the toll takes what it can, never driving the purse negative.
     const poor = newRun(seed, 3);
     resolveEvent(poor, NODE);
-    expect(poor.camp.gold).toBe(0);
+    expect(poor.camp.purse).toBe(0);
   });
 });
 
@@ -468,14 +468,14 @@ describe("node-events — standing gates event quality (D62)", () => {
   });
 
   it("a boon grows likelier and a bane rarer as standing rises", () => {
-    const shop = getEvent("shop"); // boon
-    const thief = getEvent("thief"); // bane
+    const shop = mustGetEvent("shop"); // boon
+    const thief = mustGetEvent("thief"); // bane
     expect(eventWeightAt(shop, "renowned")).toBeGreaterThan(eventWeightAt(shop, "unknown"));
     expect(eventWeightAt(thief, "renowned")).toBeLessThan(eventWeightAt(thief, "unknown"));
   });
 
   it("the premium Patron's Welcome is gated below 'favored' standing", () => {
-    const patron = getEvent("patron-welcome");
+    const patron = mustGetEvent("patron-welcome");
     expect(patron.minInfluence).toBe("favored");
     expect(eventWeightAt(patron, "respected")).toBe(0); // gated out
     expect(eventWeightAt(patron, "favored")).toBeGreaterThan(0); // unlocked
@@ -498,15 +498,15 @@ describe("node-events — standing gates event quality (D62)", () => {
     run.overworld.influence = 16; // favored
     const moraleBefore = run.camp.morale;
     const infBefore = run.overworld.influence;
-    const goldBefore = run.camp.gold;
-    const out = getEvent("patron-welcome").autoResolve(run, NODE);
+    const goldBefore = run.camp.purse;
+    const out = mustGetEvent("patron-welcome").autoResolve(run, NODE);
     expect(out.kind).toBe("patron");
     expect(run.camp.morale).toBe(moraleBefore + out.moraleDelta);
     expect(out.moraleDelta).toBeGreaterThan(0);
     expect(countOf(run.inventory, "valuables")).toBeGreaterThan(0); // a sellable gift
     expect(run.overworld.influence).toBeGreaterThan(infBefore); // goodwill compounds
     expect(out.goldDelta).toBe(0); // never mints gold
-    expect(run.camp.gold).toBe(goldBefore);
+    expect(run.camp.purse).toBe(goldBefore);
   });
 });
 
@@ -664,10 +664,10 @@ describe("node-events — tailored events + the gated encounter-bypass (D80)", (
     expect(payRich.available).toBe(true);
 
     // Choosing pay spends the fee and flags a bypass.
-    const goldBefore = rich.camp.gold;
+    const goldBefore = rich.camp.purse;
     const out = BLOCKADE.choose!(rich, node, "pay");
     expect(out.bypass).toBe(true);
-    expect(rich.camp.gold).toBe(goldBefore - fee);
+    expect(rich.camp.purse).toBe(goldBefore - fee);
 
     // Cutting through is always available and never bypasses.
     const cut = BLOCKADE.choose!(rich, node, "fight");

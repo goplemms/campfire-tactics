@@ -200,9 +200,13 @@ export function revertStatDelta(unit: Unit, applied: StatDelta): void {
   if (applied.maxHp && unit.hp > unit.maxHp) unit.hp = unit.maxHp;
 }
 
+/** The stash↔slot verbs' result — the core-layer `ok` union (D114), reason included
+ *  so a refused equip can say *why* without the caller re-deriving the check. */
+export type EquipResult = { ok: true } | { ok: false; reason: string };
+
 /**
  * Equip a carried item onto a unit's matching slot (D76) — the stash → slot move, a
- * Camp/Pre-deployment verb. Fails (returns false) if the id isn't a known
+ * Camp/Pre-deployment verb. Refuses (with the reason) if the id isn't a known
  * `EquipmentDef`, isn't carried in the stash, would field a `unique` already worn by
  * another party member (D25), or — when the slot is occupied — the displaced item
  * can't fit back into the stash. On success the new item leaves the stash, any prior
@@ -213,13 +217,13 @@ export function equip(
   unit: Unit,
   itemId: string,
   opts: { party?: readonly Unit[]; lookup?: EquipLookup } = {},
-): boolean {
+): EquipResult {
   const lookup = opts.lookup ?? getEquipment;
   const def = lookup(itemId);
-  if (!def) return false;
-  if (countOf(inv, itemId) < 1) return false;
+  if (!def) return { ok: false, reason: "That isn't an equippable item." };
+  if (countOf(inv, itemId) < 1) return { ok: false, reason: "None carried in the stash." };
   if (def.unique && (opts.party ?? []).some((u) => u !== unit && equippedIds(u).includes(itemId))) {
-    return false; // can't field one good sword twice (D25)
+    return { ok: false, reason: "Someone else already wears it — one good sword can't be fielded twice." }; // D25
   }
   const prior = unit.equipment[def.slot];
   // A swap must be able to stow the displaced item before we commit (count the
@@ -228,25 +232,25 @@ export function equip(
   if (prior) {
     if (!canAdd(inv, prior)) {
       addItem(inv, itemId); // roll back the removal
-      return false;
+      return { ok: false, reason: "No stash room for the displaced item." };
     }
     addItem(inv, prior);
   }
   unit.equipment[def.slot] = itemId;
-  return true;
+  return { ok: true };
 }
 
 /**
- * Unequip a unit's slot back into the stash (D76) — the slot → stash move. Fails if
+ * Unequip a unit's slot back into the stash (D76) — the slot → stash move. Refuses if
  * the slot is empty or the stash has no room for the returned item. Mutates `inv` + `unit`.
  */
-export function unequip(inv: Inventory, unit: Unit, slot: EquipSlot): boolean {
+export function unequip(inv: Inventory, unit: Unit, slot: EquipSlot): EquipResult {
   const id = unit.equipment[slot];
-  if (!id) return false;
-  if (!canAdd(inv, id)) return false;
+  if (!id) return { ok: false, reason: "Nothing worn in that slot." };
+  if (!canAdd(inv, id)) return { ok: false, reason: "No stash room to stow it." };
   addItem(inv, id);
   delete unit.equipment[slot];
-  return true;
+  return { ok: true };
 }
 
 /** The equipment ids a unit currently wears (D76), in slot order; empty if bare. */

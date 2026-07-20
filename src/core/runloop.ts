@@ -15,13 +15,15 @@
 
 import { createUnit, type Unit } from "./units";
 import type { SkillDef } from "./skills";
+import { saltSeed } from "./rng";
+import { Labels } from "./rng-labels";
 import { Battle } from "./turn";
 import {
   type RunState,
   runDifficulty,
   currentNode,
   currentEncounter,
-  combatRoster,
+  combatParty,
   isRunOver,
   removeFromRoster,
   recordNight,
@@ -50,7 +52,7 @@ import { freeCaptive } from "./deployment";
 import { isConcealedTrap, type ConcealedTrap } from "./entities";
 import { recoverMaterials } from "./resolution";
 import { grantItem } from "./inventory";
-import { resolveDowned, resolveCaptured, tickDyingClocks, type DownedOutcome, type RescueQuest } from "./mortality";
+import { resolveDowned, resolveCaptured, advanceDyingClocksOneNight, type DownedOutcome, type RescueQuest } from "./mortality";
 import { rpPerNight, payUpkeep, accrueRp, type UpkeepResult } from "./upkeep";
 import { intelFloor, readEncounter, effectiveIntelTier, MAX_TIER, TRAP_INTEL, type IntelReport } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
@@ -390,7 +392,7 @@ export class RunLoop {
     const upkeep = payUpkeep(this.run.camp, this.run.party);
     const rpAdded = rpPerNight(this.run.party);
     accrueRp(this.run, rpAdded);
-    const lost = tickDyingClocks(this.run.party);
+    const lost = advanceDyingClocksOneNight(this.run.party);
     const dyingLost = lost.map((u) => u.id);
     for (const u of lost) removeFromRoster(this.run, u);
     this.run.over = isRunOver(this.run);
@@ -419,7 +421,7 @@ export class RunLoop {
    */
   startEncounter(deploymentPenalty = 0): Battle {
     const source = currentEncounter(this.run);
-    const players = combatRoster(this.run);
+    const players = combatParty(this.run);
     // Scouting the node to full positional intel (tier 3) blows any hidden ambush
     // — the bodies stage visible instead of springing a surprise (D10 reveal).
     const node = currentNode(this.run);
@@ -434,7 +436,9 @@ export class RunLoop {
       revealHidden: tier >= MAX_TIER,
       // The tier-3 trap-lane read (D83): the survey marks the careless snares.
       markTrapsUpTo: tier >= TRAP_INTEL.markTier ? TRAP_INTEL.markConcealmentMax : undefined,
-      seed: this.run.seed,
+      // Per-encounter salt (node + night): an unsalted run.seed replayed the identical
+      // deploy/trap-spot streams in every battle of the run (audit 2026-07-20 / D114).
+      seed: saltSeed(this.run.seed, Labels.battle(node.id, this.run.night)),
     });
     this.source = source;
     this.staged = staged;
@@ -531,7 +535,7 @@ export class RunLoop {
       nodeId: node.id,
       layer: node.layer,
       kind: node.kind,
-      type: isAuthoredEncounter(source) ? undefined : source.type,
+      encounterKind: isAuthoredEncounter(source) ? undefined : source.kind,
       winner,
       result,
       goldEarned,
@@ -562,7 +566,7 @@ export class RunLoop {
     const node = currentNode(this.run);
     const xpEach = bypassXp(node);
     const levels: Record<string, number> = {};
-    for (const u of combatRoster(this.run)) {
+    for (const u of combatParty(this.run)) {
       const lv = grantXp(u, xpEach);
       if (lv > 0) levels[u.id] = lv;
     }

@@ -82,8 +82,8 @@ const FATIGUE_BANDS: readonly { min: number; tier: number }[] = FATIGUE_TIER_FLO
  * band; each step up is a narrowing band. This is the spine of both the recovery gate
  * (Tier 0 ⇒ big heal) and the one-tier-per-night step-down.
  */
-export function fatigueTierIndex(level: number): number {
-  return bandFor(level, FATIGUE_BANDS, FATIGUE_BANDS[FATIGUE_BANDS.length - 1]).tier;
+export function fatigueTierIndex(fatigue: number): number {
+  return bandFor(fatigue, FATIGUE_BANDS, FATIGUE_BANDS[FATIGUE_BANDS.length - 1]).tier;
 }
 
 /**
@@ -93,8 +93,8 @@ export function fatigueTierIndex(level: number): number {
  * (Tier 3+) is the deep over-extension (heaviest heal **and** the combat Slow). Most play never
  * leaves Rested/Worn — the first bands are the widest.
  */
-export function fatigueTier(level: number): FatigueTier {
-  const idx = fatigueTierIndex(level);
+export function fatigueTier(fatigue: number): FatigueTier {
+  const idx = fatigueTierIndex(fatigue);
   if (idx <= 0) return "Rested";
   if (idx === 1) return "Worn";
   if (idx === 2) return "Weary";
@@ -107,17 +107,17 @@ export function fatigueTier(level: number): FatigueTier {
  * at the Clearing) is out of Tier 0 and takes the wipe only. A light (~0-effort) action stays
  * within Tier 0 and still cashes the heal — the whole point of negligible effort.
  */
-export function isFatigueTier0(level: number): boolean {
-  return fatigueTierIndex(level) <= 0;
+export function isFatigueTier0(fatigue: number): boolean {
+  return fatigueTierIndex(fatigue) <= 0;
 }
 
 /**
- * Spend `cost` fatigue on a character's current `level`, returning the new level (clamped at the
+ * Spend `cost` fatigue on a character's current magnitude, returning the new value (clamped at the
  * {@link FATIGUE.ceiling}). A skill spends only its **base** effort — there is no over-extension
  * surcharge (D73); the bite is the deferred recovery/combat consequence, not a pricier cast.
  */
-export function spendFatigue(level: number, cost: number): number {
-  return Math.min(FATIGUE.ceiling, Math.max(0, level + Math.max(0, cost)));
+export function spendFatigue(fatigue: number, cost: number): number {
+  return Math.min(FATIGUE.ceiling, Math.max(0, fatigue + Math.max(0, cost)));
 }
 
 /**
@@ -125,7 +125,7 @@ export function spendFatigue(level: number, cost: number): number {
  * everyone (D80/D47). A full reset, not a trickle: you fall into fatigue by spending, and a real
  * rest wipes it clean.
  */
-export function restoreFatigue(_level: number): number {
+export function restoreFatigue(_fatigue: number): number {
   return FATIGUE.rested;
 }
 
@@ -136,29 +136,29 @@ export function restoreFatigue(_level: number): number {
  * by a single night; only **stacking** (→ Tier 2+) lingers, one tier shed per night, so deep
  * over-extension follows the unit until it routes to a Clearing.
  */
-export function nightlyFatigue(level: number, improved: boolean): number {
+export function nightlyFatigue(fatigue: number, improved: boolean): number {
   if (improved) return FATIGUE.rested;
-  const idx = fatigueTierIndex(level);
+  const idx = fatigueTierIndex(fatigue);
   if (idx <= 0) return FATIGUE.rested;
   return FATIGUE_TIER_FLOORS[idx - 1];
 }
 
 /**
- * The **rest-heal RP-cost multiplier** for a fatigue level (D73): an overtaxed unit recovers
+ * The **rest-heal RP-cost multiplier** for a fatigue fatigue (D73): an overtaxed unit recovers
  * poorly, so its heal chunks cost more of the shared RP pool. 1× within Rested/Worn; rises while
  * Weary, rises further while Exhausted. (A Deep Rest wipes fatigue *before* healing, so it always
  * heals at 1× — the penalty is an ordinary-night cost.)
  */
-export function restCostMultiplier(level: number): number {
-  const tier = fatigueTier(level);
+export function restCostMultiplier(fatigue: number): number {
+  const tier = fatigueTier(fatigue);
   if (tier === "Exhausted") return FATIGUE.exhaustedRestMult;
   if (tier === "Weary") return FATIGUE.wearyRestMult;
   return 1;
 }
 
 /** True once a unit is deeply **Exhausted** (≥ {@link FATIGUE.exhausted}) — the band that reaches combat. */
-export function isExhausted(level: number): boolean {
-  return level >= FATIGUE.exhausted;
+export function isExhausted(fatigue: number): boolean {
+  return fatigue >= FATIGUE.exhausted;
 }
 
 /**
@@ -171,6 +171,6 @@ export function exhaustionSlowSpeed(baseSpeed: number): number {
 }
 
 /** Current fatigue as a 0..1 fraction of the way to deep exhaustion (for a meter). */
-export function fatigueRisk(level: number): number {
-  return Math.min(1, Math.max(0, level) / FATIGUE.exhausted);
+export function fatigueRisk(fatigue: number): number {
+  return Math.min(1, Math.max(0, fatigue) / FATIGUE.exhausted);
 }

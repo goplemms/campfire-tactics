@@ -5,6 +5,10 @@ Design canon and status live in the planning workspace — read these first, don
 - **Resume point / status:** `scratchpad/foundations/PROGRESS.md`.
 - **Architecture:** pure logic in `src/core` (headless, deterministic — **no `Math.random`, no Phaser/DOM**);
   the Phaser scenes in `src/game` stay a thin renderer over the core.
+- **Code conventions (D114):** `docs/design/implementation/conventions.md` — the one spelling for each
+  shared structure (RNG labels, registries, result shapes, modals, diction), each pointing at a
+  **living exemplar** to copy and the guard test that enforces it. Read it before adding a registry,
+  a random draw, a result type, or a modal. Player-facing wording lives in `docs/design/glossary.md`.
 
 ## Guards — keep all green on every change
 

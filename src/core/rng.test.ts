@@ -94,7 +94,8 @@ describe("Rng — serialize / restore", () => {
 describe("no Math.random in core/", () => {
   it("grep: no core module calls Math.random", () => {
     // Load every non-test core source as raw text via Vite's glob (no Node fs).
-    const sources = import.meta.glob("./*.ts", {
+    // Recursive: jobs-data/ and scenarios/ are core too (audit 2026-07-20).
+    const sources = import.meta.glob("./**/*.ts", {
       eager: true,
       query: "?raw",
       import: "default",

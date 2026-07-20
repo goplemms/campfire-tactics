@@ -167,7 +167,7 @@ export function isDying(unit: Unit): boolean {
  * Tick every dying unit's cleric clock by one night. Returns the units whose
  * clock ran out (permadeath) — the caller removes them from the roster.
  */
-export function tickDyingClocks(units: readonly Unit[]): Unit[] {
+export function advanceDyingClocksOneNight(units: readonly Unit[]): Unit[] {
   const lost: Unit[] = [];
   for (const u of units) {
     if (!isDying(u)) continue;

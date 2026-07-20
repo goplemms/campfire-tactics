@@ -1,6 +1,6 @@
 import Phaser from "phaser";
-import { COLOR, FONT, INK } from "../theme";
-import {
+import { COLOR, DEPTH, FONT, INK } from "../theme";
+import { clamp,
   createStarterGuild,
   buyArmoryGear,
   dispatch,
@@ -12,7 +12,7 @@ import {
   getQuest,
   runFor,
   GUILD,
-  getVessel,
+  mustGetVessel,
   createCaravan,
   assignMember,
   unassignMember,
@@ -31,6 +31,7 @@ import {
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
 import { clearLayer } from "../ui";
+import { showModal } from "../overlay-card";
 import { Button, type ButtonOptions } from "../button";
 import { HintPanel } from "../hint-panel";
 
@@ -168,7 +169,7 @@ export class GuildScene extends Phaser.Scene {
       this.text(x, y + 26, "No caravan selected.", INK.muted, FONT.label, 0);
       return;
     }
-    const vessel = getVessel(caravan.vesselId);
+    const vessel = mustGetVessel(caravan.vesselId);
     const dispatched = caravan.dispatched;
     this.text(x, y, `Assembly — ${vessel.label}`, INK.success, FONT.body, 0);
     this.text(x, y + 20, `Slots ${caravan.party.length}/${caravanCapacity(caravan)}  ·  Storage ${caravan.storageCap}  ·  Purse ${caravan.purse}g${dispatched ? "  ·  DISPATCHED" : ""}`, INK.secondary, FONT.label, 0);
@@ -305,7 +306,7 @@ export class GuildScene extends Phaser.Scene {
     let xx = x;
     for (const c of this.guild.caravans) {
       const gr = runFor(this.guild, c.id);
-      const vessel = getVessel(c.vesselId);
+      const vessel = mustGetVessel(c.vesselId);
       const status = gr ? "IN FLIGHT" : c.party.length ? "assembling" : "empty";
       const selected = c.id === this.selectedCaravanId;
       const lines = `${vessel.label}\n[${status}]  ${c.party.length}/${caravanCapacity(c)} party`;
@@ -345,13 +346,28 @@ export class GuildScene extends Phaser.Scene {
     const w = 560;
     const h = 40 + lines.length * 20;
     const cy = this.scale.height / 2 - 40;
-    this.ui.push(this.add.rectangle(cx, cy, w, h, COLOR.bg, 0.97).setStrokeStyle(2, wiped ? COLOR.danger : COLOR.success).setDepth(30));
-    this.ui.push(this.add.text(cx, cy - h / 2 + 18, wiped ? "Caravan Lost" : "Caravan Home", { color: wiped ? INK.danger : INK.success, fontFamily: FONT.family, fontSize: FONT.title }).setOrigin(0.5).setDepth(31));
-    this.ui.push(this.add.text(cx, cy + 6, lines.join("\n"), { color: INK.secondary, fontFamily: FONT.family, fontSize: FONT.body, align: "center", lineSpacing: 4 }).setOrigin(0.5).setDepth(31));
-    this.smallButton(cx - 50, cy + h / 2 - 4, 100, "Dismiss", () => {
-      this.banner = undefined;
-      this.render();
-    }, 26, COLOR.successDeep, COLOR.success, 0.5);
+    // The shared modal frame (#133): same box/title/body as the old hand-rolled card,
+    // plus the input-swallowing backdrop the hall was missing (the D75 bug class —
+    // clicks used to bleed through to the roster/pool/stable behind the banner).
+    showModal(this, this.ui, {
+      title: wiped ? "Caravan Lost" : "Caravan Home",
+      tone: wiped ? "bad" : "good",
+      w, h, cy, depth: DEPTH.banner,
+      boxAlpha: 0.97,
+      titleOffset: 18,
+      titleSize: FONT.title,
+      body: { text: lines.join("\n"), offset: h / 2 + 6, color: INK.secondary, lineSpacing: 4 },
+    });
+    // Above the box and its backdrop — the scene's default button depth (2)
+    // would be swallowed by the backdrop.
+    this.addButton(cx, cy + h / 2 - 4, DEPTH.banner + 2, {
+      text: "Dismiss", w: 100, h: 26, fill: COLOR.successDeep, stroke: COLOR.success, strokeWidth: 1,
+      color: INK.onSuccess, fontSize: FONT.label, pad: 12,
+      onClick: () => {
+        this.banner = undefined;
+        this.render();
+      },
+    });
   }
 
   // --- Actions --------------------------------------------------------------
@@ -366,7 +382,7 @@ export class GuildScene extends Phaser.Scene {
   private adjustPurse(caravan: Caravan, delta: number): void {
     // The treasury still holds the gold until dispatch debits it (D34), so the
     // purse can be loaded up to the whole live vault.
-    const next = Math.max(0, Math.min(this.guild.treasury, caravan.purse + delta));
+    const next = clamp(caravan.purse + delta, 0, this.guild.treasury);
     loadPurse(caravan, next);
     this.render();
   }

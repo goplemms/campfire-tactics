@@ -91,7 +91,7 @@ describe("guild — dispatch builds a deterministic run from a caravan (D25/D26)
     // The run mirrors the caravan bundle.
     expect(gr.run.seed).toBe(quest.seed);
     expect(gr.run.party.map((u) => u.id)).toEqual([rook.id, vale.id]);
-    expect(gr.run.camp.gold).toBe(120); // the purse
+    expect(gr.run.camp.purse).toBe(120); // the purse
     expect(gr.run.inventory.storageCap).toBe(c.storageCap);
 
     // Treasury debited by the purse (D34); caravan now locked out of the pool.
@@ -161,7 +161,7 @@ describe("guild — return flows survivors/gear/purse home (D27/D34)", () => {
 
     // Force a clean completion with a surviving purse.
     gr.run.complete = true;
-    gr.run.camp.gold = 140;
+    gr.run.camp.purse = 140;
     const treasuryBefore = g.treasury;
 
     const res = resolveReturn(g, c, gr.run);

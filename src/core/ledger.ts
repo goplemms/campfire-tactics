@@ -21,6 +21,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
+import { pct } from "./num";
 import type { RunState } from "./run";
 import { computeUpkeep, foodFirst } from "./upkeep";
 import { projectForecast, type RouteForecast } from "./forecast";
@@ -99,7 +100,7 @@ export interface BuildLedgerOptions {
  * summed into gold (D34).
  */
 export function buildLedger(run: RunState, opts: BuildLedgerOptions = {}): Ledger {
-  const balance = run.camp.gold;
+  const balance = run.camp.purse;
 
   // Realized flows from the run history (purse-scoped): a positive node gold is
   // loot in; a negative one is a field spend (tolls, thief skims, shop/recruiter).
@@ -137,7 +138,7 @@ export function buildLedger(run: RunState, opts: BuildLedgerOptions = {}): Ledge
   const bankerLines: LedgerLine[] = [];
   if (eco.interestPerStep > 0) bankerLines.push({ id: "banker:interest", label: "Interest / step", amount: eco.interestPerStep, note: "faucet" });
   if (eco.debt > 0) bankerLines.push({ id: "banker:debt", label: "Outstanding debt", amount: -eco.debt, note: "auto-repaid from loot" });
-  if (eco.protection > 0) bankerLines.push({ id: "banker:protection", label: "Theft protection", amount: 0, note: `${Math.round(eco.protection * 100)}%` });
+  if (eco.protection > 0) bankerLines.push({ id: "banker:protection", label: "Theft protection", amount: 0, note: pct(eco.protection) });
 
   const categories: LedgerCategory[] = [
     // Carried purse — a lump-sum header (no itemized lines): the caravan *is* the field, so
@@ -194,7 +195,7 @@ export function nightEndGate(run: RunState): NightEndGate {
   }
 
   // A line you can't afford — but only nag *non-voluntary* breaches (intent, D45).
-  let gold = run.camp.gold;
+  let gold = run.camp.purse;
   for (const line of foodFirst(computeUpkeep(run.party).lines)) {
     if (skip.has(line.id)) continue; // deliberate skip — you meant it, no nag
     if (gold >= line.cost) gold -= line.cost;

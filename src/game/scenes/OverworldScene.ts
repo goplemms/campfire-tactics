@@ -1,10 +1,10 @@
 import Phaser from "phaser";
-import { COLOR, FONT, INK } from "../theme";
+import { COLOR, DEPTH, FONT, INK } from "../theme";
 import { PartyDossierView } from "../party-dossier-view";
 
 /** The Captain's Tent tabs (D58) — the run's deep-info hub, one verb to open. */
 type TentTab = "party" | "stores" | "ledger" | "map";
-import {
+import { pct,
   RunLoop,
   countOf,
   removeItem,
@@ -21,11 +21,11 @@ import {
   attentionCount,
   captainsJournal,
   projectManifest,
-  getVessel,
+  mustGetVessel,
   availableSkills,
   // R4/B (#112) — the one overworld-action projection the camp verb surfaces render.
   availableActions,
-  combatRoster,
+  combatParty,
   // M10 — the gold economy verbs (D30/D34) + theft (D30)
   merchantBuy,
   // D61 — market access + the Merchant buy/sell faucet
@@ -75,10 +75,10 @@ import {
   type JournalConcern,
   type EquipSlot,
 } from "../../core";
-import { clearLayer } from "../ui";
+import { clearLayer, onEscClose } from "../ui";
 import { captureRepro } from "../repro-capture";
 import { Button, probeWidth } from "../button";
-import { showModal, installBackdrop, renderChoiceStack } from "../overlay-card";
+import { showModal, renderChoiceStack } from "../overlay-card";
 import { drawLedgerSheet } from "../ledger-sheet";
 import { MapView, NODE_KIND_VISUALS } from "../map-view";
 import { CampPanel, type CampAction, type ActionCost, type ActionPreview } from "../camp-panel";
@@ -416,7 +416,7 @@ export class OverworldScene extends Phaser.Scene {
       renderChoicePanel(this, this.overlay, {
         title: `On the road — ${def.name}`,
         body: def.teaser,
-        gold: this.run.camp.gold,
+        gold: this.run.camp.purse,
         choices,
         onPick: (c) => this.onEarlyChoice(node, def, c),
         btnW: 380,
@@ -443,7 +443,7 @@ export class OverworldScene extends Phaser.Scene {
     clearLayer(this.overlay);
     if (out.bypass) {
       const res = this.loop.bypassEncounter();
-      const lines = [out.summary, "", `Each fighter keeps ${res.xpEach} EXP — the plunder's forgone.`, `Purse now ${this.run.camp.gold}g.`];
+      const lines = [out.summary, "", `Each fighter keeps ${res.xpEach} EXP — the plunder's forgone.`, `Purse now ${this.run.camp.purse}g.`];
       this.showOverlay(`On the road — ${def.name}`, lines.join("\n"), true, 540, 230, () => this.afterNode());
     } else {
       // Declined the bypass — the encounter stands; drop into the prep camp and Begin as normal.
@@ -661,7 +661,7 @@ export class OverworldScene extends Phaser.Scene {
     if (!found) return undefined;
     const { unit, skill } = found;
     const full = skill.id === "triage"; // the Medic's full-strength Triage (vs the universal fallback)
-    const someoneWounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
+    const someoneWounded = combatParty(this.run).some((u) => u.hp < u.maxHp);
     const tip = !someoneWounded
       ? "No wounded fighter to triage."
       : full
@@ -797,7 +797,7 @@ export class OverworldScene extends Phaser.Scene {
     const bank: string[] = [];
     if (eco.interestPerStep > 0) bank.push(`Interest +${eco.interestPerStep}g/step`);
     if (eco.debt > 0) bank.push(`Debt ${eco.debt}g`);
-    if (eco.protection > 0) bank.push(`Protection ${Math.round(eco.protection * 100)}%`);
+    if (eco.protection > 0) bank.push(`Protection ${pct(eco.protection)}`);
     if (eco.influence > 0 || noble) bank.push(`Influence ${eco.influence} (${influenceTier(eco.influence)})`);
     if (bank.length) {
       this.campObjects.push(this.add.text(childX, y, bank.join("   ·   "), { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(0, 0.5).setDepth(11));
@@ -877,7 +877,7 @@ export class OverworldScene extends Phaser.Scene {
     if (cd > 0) return `On cooldown — ${cd} more night${cd === 1 ? "" : "s"}.`;
     // D73: fatigue never refuses an action (no lock) — over-extension is paid via consequences.
     const gold = resolveKnob(cost.gold, this.run);
-    if (gold > 0 && this.run.camp.gold < gold) return `Not enough gold (${gold}g).`;
+    if (gold > 0 && this.run.camp.purse < gold) return `Not enough gold (${gold}g).`;
     return null;
   }
 
@@ -968,7 +968,7 @@ export class OverworldScene extends Phaser.Scene {
       this.titleText.setText(`Route Map — Night ${this.run.night + 1} · reviewing`);
       this.renderAreaNav("map", returnTo, this.overlay, colX, navY);
       this.setHint("Route Map — hover a node to preview it. Switch pages above, or return to Camp (Esc).");
-      this.input.keyboard?.once("keydown-ESC", () => this.closeTent());
+      onEscClose(this, () => this.closeTent());
       return;
     }
 
@@ -988,7 +988,7 @@ export class OverworldScene extends Phaser.Scene {
     else this.drawTentLedger(bounds);
 
     this.setHint("Captain's Tent — switch pages above, or return to Camp (Esc).");
-    this.input.keyboard?.once("keydown-ESC", () => this.closeTent());
+    onEscClose(this, () => this.closeTent());
   }
 
   /** Party tab — the bounds-driven dossier view, embedded (the Tent owns the chrome).
@@ -1001,11 +1001,17 @@ export class OverworldScene extends Phaser.Scene {
       onClose: () => this.closeTent(),
       onEquip: (unitId, itemId) => {
         const unit = this.run.party.find((u) => u.id === unitId);
-        if (unit && equip(this.run.inventory, unit, itemId, { party: this.run.party })) this.renderTent();
+        if (!unit) return;
+        const res = equip(this.run.inventory, unit, itemId, { party: this.run.party });
+        if (res.ok) this.renderTent();
+        else this.setHint(`Can't equip: ${res.reason}`);
       },
       onUnequip: (unitId, slot: EquipSlot) => {
         const unit = this.run.party.find((u) => u.id === unitId);
-        if (unit && unequip(this.run.inventory, unit, slot)) this.renderTent();
+        if (!unit) return;
+        const res = unequip(this.run.inventory, unit, slot);
+        if (res.ok) this.renderTent();
+        else this.setHint(`Can't unequip: ${res.reason}`);
       },
     });
   }
@@ -1117,7 +1123,7 @@ export class OverworldScene extends Phaser.Scene {
     this.marketReturn = returnTo;
     this.marketQty = {};
     this.setHint("Market — buy supplies & sell salvage. Stock up: you may not pass a market again soon. Close (or Esc) returns.");
-    this.input.keyboard?.once("keydown-ESC", () => this.closeMarket());
+    onEscClose(this, () => this.closeMarket());
     this.renderMarket();
   }
 
@@ -1258,12 +1264,12 @@ export class OverworldScene extends Phaser.Scene {
     if (stolen > 0) {
       lines.push(`A thief skimmed ${stolen}g off the purse on the road.`);
       const eco = this.run.overworld;
-      if (eco.protection > 0) lines.push(`The Banker's protection blunted the loss (${Math.round(eco.protection * 100)}%).`);
+      if (eco.protection > 0) lines.push(`The Banker's protection blunted the loss (${pct(eco.protection)}).`);
       else lines.push("Buy the Banker's theft protection to blunt the next one.");
     } else {
       lines.push("The road was clear — the purse is intact.");
     }
-    lines.push(`Purse now ${this.run.camp.gold}g.`);
+    lines.push(`Purse now ${this.run.camp.purse}g.`);
     this.showOverlay(res.def.name, lines.join("\n"), stolen === 0, 520, 200, () => this.afterNode());
   }
 
@@ -1314,7 +1320,7 @@ export class OverworldScene extends Phaser.Scene {
     renderChoicePanel(this, this.overlay, {
       title,
       body,
-      gold: this.run.camp.gold,
+      gold: this.run.camp.purse,
       choices: this.loop.eventChoices(),
       onPick: (c) => this.onEventChoice(c),
       btnW: 360,
@@ -1339,7 +1345,7 @@ export class OverworldScene extends Phaser.Scene {
 
     // Recruiter / story: a terminal pick — record the step and report the outcome.
     clearLayer(this.overlay);
-    const lines = [out.summary, "", `Purse now ${this.run.camp.gold}g.`];
+    const lines = [out.summary, "", `Purse now ${this.run.camp.purse}g.`];
     if (out.recruited) lines.push(`${out.recruited.name} now rides with the caravan.`);
     this.loop.recordEventNight(out.goldDelta);
     const good = out.goldDelta >= 0 && out.moraleDelta >= 0;
@@ -1477,8 +1483,8 @@ export class OverworldScene extends Phaser.Scene {
   /** The in-place-rest button's label/availability (cost/heal, greys at full/broke). */
   private inPlaceRestReadout(): { label: string; detail: string; enabled: boolean } {
     const bill = computeUpkeep(this.run.party);
-    const wounded = combatRoster(this.run).some((u) => u.hp < u.maxHp);
-    const affordable = this.run.camp.gold >= bill.total;
+    const wounded = combatParty(this.run).some((u) => u.hp < u.maxHp);
+    const affordable = this.run.camp.purse >= bill.total;
     const enabled = wounded && affordable;
     const label = !wounded ? "party at full HP" : !affordable ? `need ${bill.total}g (broke)` : `pay ${bill.total}g`;
     const streak = this.run.overworld.restStreak;
@@ -1622,7 +1628,7 @@ export class OverworldScene extends Phaser.Scene {
     if (!this.guild || !this.caravanId) return {};
     const caravan = this.guild.caravans.find((c) => c.id === this.caravanId);
     if (!caravan) return {};
-    const vessel = getVessel(caravan.vesselId);
+    const vessel = mustGetVessel(caravan.vesselId);
     return { vesselLabel: vessel.label, partyCapacity: vessel.capacity };
   }
 
@@ -1645,7 +1651,7 @@ export class OverworldScene extends Phaser.Scene {
       "The caravan cleared its final mission — the quest is complete!",
       "",
       `Survived ${this.run.night} night(s), won ${won} encounter(s).`,
-      `Surviving purse ${this.run.camp.gold}g (flows back to the treasury).`,
+      `Surviving purse ${this.run.camp.purse}g (flows back to the treasury).`,
       "",
       toHall ? "Return to the guild hall — survivors, gear and purse come home." : `Seed:  ${this.run.seed}`,
     ];
@@ -1722,14 +1728,20 @@ export class OverworldScene extends Phaser.Scene {
     const left = cx - w / 2;
     const top = cy - h / 2;
 
-    // Full-screen backdrop (dims + swallows clicks behind) + the framed sheet.
-    installBackdrop(this, this.overlay, 22);
+    // The shared modal frame (#133/D114): backdrop + box + the left-pinned sheet title;
+    // the subtitle / rule / ledger sheet / Continue stay caller-side content.
+    showModal(this, this.overlay, {
+      title, tone: "gold", titleAlign: "left", titleOffset: 22,
+      w, h, cy, depth: DEPTH.sheet + 1,
+      boxFill: COLOR.surface, boxAlpha: 0.98,
+    });
     this.overlay.push(
-      this.add.rectangle(cx, cy, w, h, COLOR.surface, 0.98).setStrokeStyle(2, COLOR.gold).setDepth(23),
-      this.add.text(left + 24, top + 22, title, { color: INK.gold, fontFamily: FONT.family, fontSize: FONT.display }).setOrigin(0, 0.5).setDepth(25),
-      this.add.text(left + w - 24, top + 22, "The night's tab — what camp spends before you move on.", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(25),
+      // Short on purpose (D114): the long explainer sentence overlapped the title on this
+      // shared line (a pre-existing collision the visual audit caught) — the full "what
+      // camp spends before you move on" wording is the hint bar's job below.
+      this.add.text(left + w - 24, top + 22, "the night's tab", { color: INK.muted, fontFamily: FONT.family, fontSize: FONT.label }).setOrigin(1, 0.5).setDepth(DEPTH.sheetContent),
     );
-    const rule = this.add.graphics().setDepth(24);
+    const rule = this.add.graphics().setDepth(DEPTH.sheet + 2);
     rule.lineStyle(1, COLOR.borderSoft, 0.9);
     rule.lineBetween(left + 16, top + 44, left + w - 16, top + 44);
     this.overlay.push(rule);
@@ -1748,7 +1760,7 @@ export class OverworldScene extends Phaser.Scene {
       clearLayer(this.overlay);
       onContinue();
     });
-    this.overlay.push(btn.setDepth(26));
+    this.overlay.push(btn.setDepth(DEPTH.sheetTop));
     this.setHint(interactive
       ? "Tonight's tab. Cross an Upkeep line off to free its gold (you'll take the consequence). Continue to rest for the night."
       : "Tonight's tab — what this rest will spend. Continue to proceed.");

@@ -39,7 +39,7 @@ function digest(history: NightRecord[]): unknown {
     nodeId: h.nodeId,
     layer: h.layer,
     kind: h.kind,
-    type: h.type,
+    type: h.encounterKind,
     winner: h.winner,
     goldEarned: h.goldEarned,
     fallen: [...h.fallen].sort(),

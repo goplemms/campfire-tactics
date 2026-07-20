@@ -11,6 +11,7 @@
  * Pure logic: no Phaser, no DOM — the render layer only lays these out.
  */
 
+import { pct } from "./num";
 import type { SkillDef } from "./skills";
 import type { RunState } from "./run";
 import { overworldCostOf, resolveKnob } from "./overworld-cost";
@@ -93,7 +94,7 @@ export function inPlaceRestPreview(run: RunState): PreviewChange[] {
 
 /** Banker — engage flat purse interest per node-step (`ceil(purse × rate)`, ≥1). */
 export function bankerInterestPreview(run: RunState): PreviewChange[] {
-  const perStep = run.camp.gold > 0 ? Math.max(1, Math.ceil(run.camp.gold * ECONOMY.banker.interestRate)) : 0;
+  const perStep = run.camp.purse > 0 ? Math.max(1, Math.ceil(run.camp.purse * ECONOMY.banker.interestRate)) : 0;
   return [{ label: "Interest", text: `+${perStep}g/step`, good: true }];
 }
 
@@ -109,7 +110,7 @@ export function bankerBorrowPreview(amount: number): PreviewChange[] {
 export function bankerProtectPreview(): PreviewChange[] {
   return [
     { stat: "purse", label: "Purse", amount: -ECONOMY.banker.protectionCost },
-    { label: "Protection", text: `${Math.round(ECONOMY.banker.protectionLevel * 100)}%`, good: true },
+    { label: "Protection", text: pct(ECONOMY.banker.protectionLevel), good: true },
   ];
 }
 

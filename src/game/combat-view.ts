@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import {
+import { clamp,
   gridToScreen,
   screenToGrid,
   statusVisual,
@@ -583,7 +583,7 @@ export class CombatView {
     liveRows.sort((a, b) => b.ct - a.ct);
     const fallenRows: Row[] = units.filter((u) => base(u) && !u.alive).map((u) => ({ kind: "unit", u, dead: true, ct: u.ct }));
     const rows: Row[] = [...liveRows, ...fallenRows];
-    const shown = limit === undefined ? rows.length : Math.min(rows.length, Math.max(0, limit));
+    const shown = limit === undefined ? rows.length : clamp(limit, 0, rows.length);
     // Bottom-anchored mode: the rail's *bottom* sits at `bottomAnchorY` and grows upward, so a
     // bottom-of-screen rail never runs off as it expands (the top y is derived from the count).
     const topY = bottomAnchorY !== undefined ? bottomAnchorY - shown * CombatView.CHIP_STEP : y;

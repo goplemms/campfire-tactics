@@ -82,11 +82,11 @@ describe("D72 substrate end-to-end — driving each shape through useOverworldSk
     const run = newRun("e2e-cook", [broker(), fighter()]);
     const value = computeUpkeep(run.party).total;
     const rpBefore = run.rp;
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
 
     const res = useOverworldSkill(run, run.party[0], COOK_FIX);
     expect(res.applied).toBe(true);
-    expect(run.camp.gold).toBe(goldBefore - value); // the dynamic price billed once
+    expect(run.camp.purse).toBe(goldBefore - value); // the dynamic price billed once
     expect(run.rp).toBe(rpBefore + 4); // RP banked
 
     // End the Night bills upkeep — Food is already satisfied, so it isn't charged again.
@@ -148,7 +148,7 @@ describe("D72 substrate — determinism + registry hygiene", () => {
     const b = drive("det");
     expect(b.overworld).toEqual(a.overworld);
     expect(b.rp).toBe(a.rp);
-    expect(b.camp.gold).toBe(a.camp.gold);
+    expect(b.camp.purse).toBe(a.camp.purse);
   });
 
   it("no fixture entered the live registries (the deterministic sim is untouched)", () => {

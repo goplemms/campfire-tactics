@@ -11,7 +11,7 @@ function mkUnit(id: string): Unit {
 }
 
 function mkRun(party: Unit[], inv = createInventory(8), gold = 0): RunState {
-  return { party, inventory: inv, camp: createCamp({ gold }) } as unknown as RunState;
+  return { party, inventory: inv, camp: createCamp({ purse: gold }) } as unknown as RunState;
 }
 
 describe("projectManifest (caravan inventory projection — pure read)", () => {

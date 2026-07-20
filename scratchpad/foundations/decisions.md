@@ -4631,3 +4631,66 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   anchor** — a pass would add one).
 - **Next per-class pass** — one at a time (D66 = pass 1 Soldier · D68 = pass 2 Scout · D70 = pass 3
   Merchant · D71 = passes 4–5 Cook & Noble).
+
+---
+
+## D114 — The structural audit: per-encounter battle salt, contract tripwires, and the conventions doc
+
+- **Status:** Decided + built (2026-07-20, branch `claude/codebase-audit-refactor-810l1t`). Owner ask —
+  audit the codebase for uncodified shared structure, fix it, and wire the conventions into the
+  claude docs; every Wave-1 item ran through a `memento:challenge` pass before build.
+- **Context:** a six-lens subagent audit (`scratchpad/foundations/audit-2026-07-20-structural.md`)
+  measured the code against the D87–D89 canon. Verdict: the canon **held wherever a guard enforces
+  it** (banding 100% on `bandFor`; every weighted pick through `rng.pickWeighted`; every literal
+  `streamFor(` in flat core Labels-routed) and **drifted exactly where no guard reaches** — one level
+  above `streamFor`, in `src/game`, and in the registry/result-shape families the campaign never
+  covered. Plus one real determinism gap and one real render hazard, both shipped green for months.
+- **Decision (Wave 1 — correctness + tripwires; waves 2–4 queued in the audit doc):**
+  1. **Battles are salted per encounter.** `runloop.stageBattle` seeds each `Battle` with
+     `saltSeed(run.seed, Labels.battle(node.id, run.night))` — before this, the constant `run.seed`
+     made every encounter's `deploy`/`trap-spot` streams **byte-identical across the whole run**
+     (`turn.ts`'s own doc described a salt that didn't exist). Headless behavior is provably
+     unchanged (`variance` defaults to 0, so `Battle.roll` never draws in the sim path; digest
+     pinned identical). Guarded by a cross-node divergence + same-coordinates determinism test.
+  2. **`saltSeed` is the one home for the `#`-join.** Four sites hand-assembled `` `${seed}#${label}` ``
+     one level above `streamFor` — invisible to the grep guard, two with unregistered labels
+     (`quest:main`, `recruit:<node>`). All four now ride `saltSeed` + registered constructors
+     (`questMain`/`recruit`/`expeditionSalt`), byte-identical strings preserved. The grep guard now
+     scans `saltSeed(` too, **recursively** over core (jobs-data/, scenarios/ were unscanned) **and
+     `src/game`** (clean today, now enforced). 27 labels, all value-pinned.
+  3. **Registry contracts are tripwired.** `registry-contracts.test.ts`: every exported
+     `Record<string,{id}>` registry keys records by their own id (a reflection walk — found zero
+     drift, now keeps it that way); every `EQUIPMENT` entry has its `MATERIALS` twin (the D77
+     dual-registration, previously enforced by comment); every authored event landed in `EVENTS`
+     **as itself** (reference equality — `registerEvent`'s deliberate idempotency-by-id means an id
+     collision silently *drops* the newcomer; challenge pass kept the idempotency, the test catches
+     the shadowing).
+  4. **The guild banner rides `showModal`.** `GuildScene.drawBanner` was the seventh hand-rolled
+     modal — the one site never migrated to overlay-card, and it lacked the input-swallowing
+     backdrop (the D75 bug class: clicks bled through to the quest board behind it). Migrated;
+     Dismiss lifted above the backdrop (the scene's default button depth would be swallowed). New
+     guard `test:e2e:guild-banner` (in CI): both variants render, a real click under the modal
+     changes nothing, Dismiss restores interactivity — GuildScene's **first** e2e coverage.
+  5. **Conventions are doc'd where agents read, enforced where code runs.**
+     `docs/design/implementation/conventions.md` — one spelling per shared structure, each pointing
+     at a **living exemplar** and its enforcing guard; wired into `CLAUDE.md`, the glossary
+     (cross-pointer; player words stay its scope), and the level-author brief. The owner's
+     "perfect model file" idea was challenge-tested and landed as **point, don't create**: a
+     synthetic exemplar is a drift surface nothing executes (the audit's own exhibit: two stale
+     doc comments contradicting shipped design, both fixed here), and it would trip the
+     export-surface guards. Riders: `EditorScene`'s captive marker uses `COLOR.captive` (was a
+     one-digit-off literal), the D73-contradicting fatigue-surcharge comment is gone.
+- **Blast radius (named, intended):** interactive-only — deploy front-capture and trap-spotting
+  rolls now differ between encounters of a run (the fix working). Sim digest byte-identical;
+  1210 vitest green; a fresh label namespace ships under the D87 contract (no saved runs exist).
+- **Reuses / consistent with:** **D87** (label registry + save/replay contract — extended, not
+  reshaped), **D88/D89** (the one-spelling-plus-tripwire playbook, applied to registries/modals),
+  **D75/#133** (the backdrop discipline, completed), **D73** (per-use coordinates, applied at the
+  battle tier), **D2** (core purity — the walk executes core, which is why it can).
+- **Spec:** `src/core/rng.ts` (`saltSeed`), `src/core/rng-labels.ts` (+4 constructors),
+  `src/core/runloop.ts` (the salt), `src/core/guild.ts` / `node-events.ts` / `expedition-sim.ts`
+  (join migration), `src/core/registry-contracts.test.ts`, `src/core/rng-labels.test.ts` /
+  `rng.test.ts` (widened guards), `src/game/scenes/GuildScene.ts` (the modal),
+  `scripts/e2e-guild-banner.mjs` + CI step, `docs/design/implementation/conventions.md`,
+  `scratchpad/foundations/audit-2026-07-20-structural.md` (waves 2–4 queue).
+- **Superseded by:** —

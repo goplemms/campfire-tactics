@@ -34,7 +34,7 @@ const wrap = (body) => `(()=>{const s=${S};${body}})()`;
 const STOCK = wrap(`
   s.run.inventory.storageCap = 8;
   s.run.inventory.counts = { "trap-kit": 2, salve: 3, antidote: 1, "rune-reagent": 1 };
-  s.run.camp.gold = 180;
+  s.run.camp.purse = 180;
 `);
 
 const STEPS = [

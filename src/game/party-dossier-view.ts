@@ -25,7 +25,7 @@ import {
 } from "../core";
 import { COLOR, FONT, INK, WEIGHT } from "./theme";
 import { roleColor } from "./roles";
-import { hpColor, statusPips } from "./unit-readout";
+import { pushHpBar, statusPips } from "./unit-readout";
 
 export interface DossierViewOptions {
   /** The rectangle the dossier lays out inside — the host's frame below its chrome. */
@@ -536,19 +536,11 @@ export class PartyDossierView {
   }
 
   private wideHpBar(x: number, y: number, w: number, m: MemberRow): void {
-    const s = this.scene;
-    this.detail.push(
-      s.add.rectangle(x, y, w, 8, COLOR.surfaceRaised).setOrigin(0, 0.5).setStrokeStyle(1, COLOR.border).setDepth(43),
-      s.add.rectangle(x, y, Math.max(0, w * m.hpFrac), 8, hpColor(m.hpFrac)).setOrigin(0, 0.5).setDepth(44),
-    );
+    pushHpBar(this.scene, this.detail, { x, y, w, h: 8, frac: m.hpFrac, stroke: COLOR.border, depth: 43 });
   }
 
   private miniHpBar(x: number, y: number, w: number, m: MemberRow): void {
-    const s = this.scene;
-    this.objects.push(
-      s.add.rectangle(x, y, w, 4, COLOR.surfaceRaised).setOrigin(0, 0.5).setDepth(43),
-      s.add.rectangle(x, y, Math.max(0, w * m.hpFrac), 4, hpColor(m.hpFrac)).setOrigin(0, 0.5).setDepth(44),
-    );
+    pushHpBar(this.scene, this.objects, { x, y, w, h: 4, frac: m.hpFrac, depth: 43 });
   }
 
   private tabBg(x: number, y: number, w: number, h: number): Phaser.GameObjects.Rectangle {

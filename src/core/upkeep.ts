@@ -173,7 +173,7 @@ export function payUpkeep(
       skipped.push(line.id);
       moraleDelta += line.moraleHit;
       if (line.id === "repairs") gearWorn = true;
-    } else if (camp.gold >= line.cost) {
+    } else if (camp.purse >= line.cost) {
       spend(camp, line.cost, "upkeep", line.name);
       paid += line.cost;
     } else {
@@ -325,7 +325,7 @@ export interface ClericResult {
  */
 export function clericRevive(camp: Camp, unit: Unit, cost = CLERIC_COST): ClericResult {
   const dying = (unit.counters[DYING_COUNTER] ?? 0) > 0 && !unit.alive;
-  if (!dying || camp.gold < cost) return { revived: false, goldSpent: 0 };
+  if (!dying || camp.purse < cost) return { revived: false, goldSpent: 0 };
   spend(camp, cost, "cleric", "Cleric revive");
   delete unit.counters[DYING_COUNTER];
   unit.alive = true;

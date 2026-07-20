@@ -48,7 +48,7 @@ describe("ledger — purse-scoped categories reconcile (D45)", () => {
     const realized = ledger.categories.filter((c) => !c.projected);
     const sum = realized.reduce((s, c) => s + c.total, 0);
     expect(sum).toBe(ledger.balance);
-    expect(ledger.balance).toBe(run.camp.gold);
+    expect(ledger.balance).toBe(run.camp.purse);
   });
 
   it("expanding the Upkeep category exposes the Food/Repairs lines", () => {

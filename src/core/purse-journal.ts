@@ -5,12 +5,12 @@
  * ({@link "./journal"}, the party's concerns) and the {@link "./ledger"} (the derived
  * readout) — this is the **transaction substrate** the latter will eventually fold.
  *
- * The purse (`camp.gold`) is the run's single bottom line, but it used to be mutated
+ * The purse (`camp.purse`) is the run's single bottom line, but it used to be mutated
  * inline in a dozen places while {@link "./ledger".buildLedger} re-derived its flow
  * after the fact. This is the authoritative record instead: every credit/debit goes
  * through the one {@link earn}/{@link spend} chokepoint, which mutates the purse **and**
  * records why — so the realized economy is self-reporting and the invariant
- * `sum(deltas) === camp.gold` holds by construction (see {@link purseFromLog}).
+ * `sum(deltas) === camp.purse` holds by construction (see {@link purseFromLog}).
  *
  * **Purse-scoped only (D34):** the guild **treasury** and **Influence** are separate
  * currencies and are *not* journaled here. Presentation (a ledger fold, a sim report)
@@ -61,12 +61,12 @@ export interface PurseEntry extends PurseContext {
 
 /**
  * Credit the purse `amount` gold from `source` and log it — the single inflow
- * chokepoint. Call this instead of mutating `camp.gold` directly. A non-positive
+ * chokepoint. Call this instead of mutating `camp.purse` directly. A non-positive
  * `amount` is a no-op (no entry). Returns the amount credited.
  */
 export function earn(camp: Camp, amount: number, source: PurseSource, label: string, ctx: PurseContext = {}): number {
   if (amount <= 0) return 0;
-  camp.gold += amount;
+  camp.purse += amount;
   camp.purseLog.push({ delta: amount, source, label, ...ctx });
   return amount;
 }
@@ -78,7 +78,7 @@ export function earn(camp: Camp, amount: number, source: PurseSource, label: str
  */
 export function spend(camp: Camp, amount: number, source: PurseSource, label: string, ctx: PurseContext = {}): number {
   if (amount <= 0) return 0;
-  camp.gold -= amount;
+  camp.purse -= amount;
   camp.purseLog.push({ delta: -amount, source, label, ...ctx });
   return amount;
 }
@@ -88,7 +88,7 @@ export function openingPurseLog(gold: number): PurseEntry[] {
   return gold > 0 ? [{ delta: gold, source: "opening", label: "Carried into the field" }] : [];
 }
 
-/** The purse balance implied by the log — equals `camp.gold` by construction. */
+/** The purse balance implied by the log — equals `camp.purse` by construction. */
 export function purseFromLog(camp: Camp): number {
   return camp.purseLog.reduce((sum, e) => sum + e.delta, 0);
 }

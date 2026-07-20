@@ -22,7 +22,7 @@ function loopAtSnares(): RunLoop {
 /** Stamp interactive state onto a run that a route-replay would NOT reproduce. */
 function scuffState(loop: RunLoop): void {
   const run = loop.run;
-  run.camp.gold = 137; // an odd purse
+  run.camp.purse = 137; // an odd purse
   run.camp.morale = 6; // Inspired
   run.overworld.scouted["snares"] = 3; // surveyed to full tier
   const u = run.party[0];
@@ -50,7 +50,7 @@ describe("Repro Dump — full-fidelity capture + restore (debug tooling)", () =>
     expect(restored.difficultyId).toBe(run.difficultyId);
     expect(restored.expeditionId).toBe(run.expeditionId);
     // Camp + econ.
-    expect(restored.camp.gold).toBe(137);
+    expect(restored.camp.purse).toBe(137);
     expect(restored.camp.morale).toBe(6);
     expect(restored.overworld.scouted["snares"]).toBe(3);
     // Party (deep structural equality — a decoupled clone, not the same references).
@@ -105,11 +105,24 @@ describe("Repro Dump — full-fidelity capture + restore (debug tooling)", () =>
     const loop = loopAtSnares();
     scuffState(loop);
     const dump = dumpRun(loop.run);
-    const goldAtCapture = dump.camp.gold;
-    loop.run.camp.gold = 999; // mutate the live run after the capture
+    const goldAtCapture = dump.camp.purse;
+    loop.run.camp.purse = 999; // mutate the live run after the capture
     loop.run.party[0].hp = 1;
-    expect(dump.camp.gold).toBe(goldAtCapture); // the dump is unmoved
-    expect(restoreRun(dump).camp.gold).toBe(goldAtCapture);
+    expect(dump.camp.purse).toBe(goldAtCapture); // the dump is unmoved
+    expect(restoreRun(dump).camp.purse).toBe(goldAtCapture);
+  });
+
+  it("migrates a v1 dump (camp.gold) to the v2 purse field (D114)", () => {
+    const run = createRunFromExpedition(THE_HOLLOW_MILL);
+    run.camp.purse = 123;
+    const v1 = JSON.parse(serializeDump(dumpRun(run))) as { v: number; camp: { purse?: number; gold?: number } };
+    // Rewind the dump to the v1 wire shape: version 1, purse spelled `gold`.
+    v1.v = 1;
+    v1.camp.gold = v1.camp.purse;
+    delete v1.camp.purse;
+    const parsed = parseDump(JSON.stringify(v1));
+    expect(parsed.v).toBe(REPRO_DUMP_VERSION);
+    expect(restoreRun(parsed).camp.purse).toBe(123);
   });
 
   it("rejects a malformed or wrong-version paste loudly", () => {

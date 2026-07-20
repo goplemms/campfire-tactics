@@ -62,7 +62,7 @@ export interface NightRecord {
   layer: number;
   kind: NodeKind;
   /** Combat only: the encounter shape (open-field/fortified). */
-  type?: EncounterDef["type"];
+  encounterKind?: EncounterDef["kind"];
   winner?: "player" | "enemy";
   /**
    * The graded combat outcome (D50/D51): `win | objective-failure | wipe`. The
@@ -82,7 +82,7 @@ export interface NightRecord {
  * see {@link snapshotRun}); its behaviour is free functions spread by feature
  * across the core, not methods. This file holds the spine — navigation
  * ({@link currentNode}, {@link reachableNodes}, {@link chooseNode}), roster
- * ({@link activeRoster}, {@link combatRoster}, {@link removeFromRoster}), and
+ * ({@link activeParty}, {@link combatParty}, {@link removeFromRoster}), and
  * lifecycle ({@link recordNight}, {@link runDifficulty}, {@link isRunOver},
  * {@link snapshotRun}) — and {@link "./runloop".RunLoop} is the stateful driver
  * that wraps it. The rest of the surface lives with its feature:
@@ -119,7 +119,7 @@ export interface RunState {
   mapNodeId: string;
   /** The route taken so far, oldest → current (starts `[startId]`). */
   path: string[];
-  /** The persistent party roster (units leave it on permadeath). */
+  /** The run's fielded **party** (units leave it on permadeath). The guild-scoped stable is `Guild.roster` — a different pool. */
   party: Unit[];
   inventory: Inventory;
   camp: Camp;
@@ -183,7 +183,7 @@ export function createRun(seed: string | number, opts: CreateRunOptions): RunSta
     path: [map.startId],
     party: opts.party,
     inventory: createInventory(storageCap, opts.inventory ?? {}),
-    camp: createCamp({ gold: opts.gold ?? 0, morale: opts.morale ?? 0 }),
+    camp: createCamp({ purse: opts.gold ?? 0, morale: opts.morale ?? 0 }),
     rp: 0,
     overworld: createOverworldEconomy(),
     night: 0,
@@ -202,7 +202,7 @@ export function createRun(seed: string | number, opts: CreateRunOptions): RunSta
  * from its bundle: the caravan's **party** (a copy, so permadeath can splice it
  * without touching the assembled caravan), its per-caravan **storage cap**, its
  * **loaded supplies** (the starting inventory), and its **purse** (the run's gold
- * — `camp.gold` *is* the purse; the treasury is new on the guild, D34). The `seed`
+ * — `camp.purse` is the run purse; the treasury lives on the guild, D34). The `seed`
  * is the **quest's** seed, so the same guild seed + same dispatch choices
  * reproduce each caravan's map + outcomes exactly (D22). The existing
  * {@link createRun} options overload stays for tests.
@@ -353,17 +353,17 @@ export function currentEncounter(run: RunState): EncounterSource {
 }
 
 /** Roster units that are alive and not captured (incl. camp-only crew) — {@link fieldedUnits}. */
-export function activeRoster(run: RunState): Unit[] {
+export function activeParty(run: RunState): Unit[] {
   return fieldedUnits(run.party);
 }
 
 /**
  * Units that can take the field. The combat/non-combat split is **dissolved**
- * (D38) — any job can field — so this is the {@link activeRoster}; kept as a named
+ * (D38) — any job can field — so this is the {@link activeParty}; kept as a named
  * call so the intent reads at the seams that field a roster.
  */
-export function combatRoster(run: RunState): Unit[] {
-  return activeRoster(run);
+export function combatParty(run: RunState): Unit[] {
+  return activeParty(run);
 }
 
 /**
@@ -383,7 +383,7 @@ export function removeFromRoster(run: RunState, unit: Unit): boolean {
  * nobody left to mount the rescue the run ends).
  */
 export function isRunOver(run: RunState): boolean {
-  return combatRoster(run).length === 0;
+  return combatParty(run).length === 0;
 }
 
 /** True once a final-layer node has been cleared (run-complete, D23). */

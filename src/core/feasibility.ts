@@ -44,7 +44,7 @@ import {
   type PopulationOpts,
 } from "./arrivals";
 import {
-  activeRoster,
+  activeParty,
   currentNode,
   reachableNodes,
   isFinalRunNode,
@@ -208,13 +208,13 @@ export const CORE_INVARIANTS: Invariant[] = [
     id: "negative-gold",
     description: "The run purse must never go below zero.",
     check({ run, node }) {
-      if (run.camp.gold < 0) {
+      if (run.camp.purse < 0) {
         return [
           {
             invariant: "negative-gold",
             severity: "error",
             nodeId: node.id,
-            detail: `run.camp.gold is ${run.camp.gold} (< 0) after playing "${node.id}"`,
+            detail: `run.camp.purse is ${run.camp.purse} (< 0) after playing "${node.id}"`,
           },
         ];
       }
@@ -375,8 +375,8 @@ export const DEFAULT_MAX_NODES = 64;
  */
 function terminalDigest(out: TerminalOutcome): string {
   const run = out.run;
-  const gold = run ? run.camp.gold : 0;
-  const roster = run ? activeRoster(run).map((u) => u.id).sort().join(",") : "";
+  const gold = run ? run.camp.purse : 0;
+  const roster = run ? activeParty(run).map((u) => u.id).sort().join(",") : "";
   const flags = run
     ? Object.keys(run.flags).filter((k) => run.flags[k]).sort().join(",")
     : "";

@@ -30,7 +30,7 @@ describe("the scenario harness — buildScenarioRun (#170)", () => {
     const node = currentNode(run);
     expect(node.kind).toBe("combat");
     expect(node.authoredId).toBe("scene");
-    expect(run.camp.gold).toBe(DEFAULT_SCENARIO_GOLD); // R2 — comfortably above party upkeep
+    expect(run.camp.purse).toBe(DEFAULT_SCENARIO_GOLD); // R2 — comfortably above party upkeep
   });
 
   it("stages the config's encounter — the cuffed captive + garrison, party fielded", () => {

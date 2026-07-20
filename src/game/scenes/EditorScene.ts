@@ -3,7 +3,7 @@ import { CombatView } from "../combat-view";
 import { BoardCamera } from "../board-camera";
 import { COLOR, INK, FONT, cssHex, cssRgba } from "../theme";
 import { clearLayer } from "../ui";
-import { TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
+import { clamp, TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
 import { validateLevel } from "../../content/levels";
 import { buildPlaytest, playtestPartyNames, DEFAULT_PLAYTEST_PARTY } from "../playtest";
 import { loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
@@ -435,7 +435,7 @@ export class EditorScene extends Phaser.Scene {
       const ring = this.prefs.enemyTint === "role" ? hexToNum(enemyRing(e.templateId, "role")) : undefined;
       this.mark(e.pos, abbrev(e.templateId), COLOR.danger, "#fff", ring);
     }
-    for (const c of this.draft.captives) this.mark(c.pos, c.release === "lockpick" ? "⚿" : "○", 0x9a6bc0, "#fff");
+    for (const c of this.draft.captives) this.mark(c.pos, c.release === "lockpick" ? "⚿" : "○", COLOR.captive, "#fff");
     for (const t of this.draft.traps) this.mark(t, "▲", COLOR.accent, "#1a1206");
     // Gates (▦) tagged with a letter per open-condition (L/K/D); a selected object rings gold.
     for (const g of this.draft.gates) this.mark(g.pos, `▦${gateTag(g)}`, this.selection?.ref === g ? COLOR.gold : COLOR.accent, "#1a1206");
@@ -448,7 +448,7 @@ export class EditorScene extends Phaser.Scene {
     const cy = y - this.view.halfH() * 0.25;
     const circle = this.add.circle(x, cy, 12, fill).setDepth(2);
     if (ring !== undefined) circle.setStrokeStyle(2.5, ring, 1); // role-tinted archetype ring (D109)
-    else circle.setStrokeStyle(1, 0x000000, 0.5);
+    else circle.setStrokeStyle(1, COLOR.black, 0.5);
     this.markers.push(
       circle,
       this.add.text(x, cy, label, { color: textColor, fontFamily: FONT.family, fontSize: "12px", fontStyle: "bold" }).setOrigin(0.5).setDepth(3),
@@ -817,8 +817,8 @@ export class EditorScene extends Phaser.Scene {
 
   private resize(cols: number, rows: number): void {
     this.pushHistory(); // a shrink drops off-board entities — make that recoverable (it was silent data loss)
-    this.draft.cols = Math.max(1, Math.min(20, cols || 1));
-    this.draft.rows = Math.max(1, Math.min(20, rows || 1));
+    this.draft.cols = clamp(cols || 1, 1, 20);
+    this.draft.rows = clamp(rows || 1, 1, 20);
     // Drop anything now off the board.
     const ok = (c: GridCoord) => c.col < this.draft.cols && c.row < this.draft.rows;
     const d = this.draft;

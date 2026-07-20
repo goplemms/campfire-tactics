@@ -22,10 +22,10 @@ import type { JobId } from "./jobs";
 import type { Rng } from "./rng";
 
 /** Encounter shape (D12): an open scrap, or a prepped/fortified position. */
-export type EncounterType = "open-field" | "fortified";
+export type EncounterKind = "open-field" | "fortified";
 
 /** An authored enemy kind — pure data the generator draws from. */
-export interface EnemyTemplate {
+export interface EnemyDef {
   id: string;
   name: string;
   speed: number;
@@ -50,7 +50,7 @@ export interface EnemyTemplate {
 }
 
 /** The enemy roster table (D4 ethos: enemies are data). */
-export const ENEMY_TEMPLATES: readonly EnemyTemplate[] = [
+export const ENEMY_TEMPLATES: readonly EnemyDef[] = [
   { id: "goblin", name: "Goblin", speed: 11, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5, awareness: 2, weight: 5 },
   { id: "brute", name: "Brute", speed: 7, maxHp: 30, attack: 9, defense: 3, moveRange: 3, sightRadius: 4, awareness: 2, weight: 3 },
   { id: "archer", name: "Archer", speed: 10, maxHp: 18, attack: 8, defense: 1, moveRange: 4, sightRadius: 6, awareness: 3, weight: 3 },
@@ -67,7 +67,7 @@ export const ENEMY_TEMPLATES: readonly EnemyTemplate[] = [
  * (the Immobilize debuffer — enemy ability use) · Sapper (cuts the bridge) ·
  * Captain (the tough mini-boss brawler).
  */
-export const BANDIT_TEMPLATES: Record<string, EnemyTemplate> = {
+export const BANDIT_TEMPLATES: Record<string, EnemyDef> = {
   "bandit-thug": { id: "bandit-thug", name: "Bandit Thug", speed: 9, maxHp: 22, attack: 8, defense: 2, moveRange: 4, sightRadius: 5, awareness: 2, weight: 0 },
   "bandit-bowman": { id: "bandit-bowman", name: "Bandit Bowman", speed: 11, maxHp: 16, attack: 7, defense: 1, moveRange: 4, sightRadius: 6, awareness: 3, weight: 0, attackRange: 3 },
   "bandit-cutthroat": { id: "bandit-cutthroat", name: "Bandit Cutthroat", speed: 13, maxHp: 18, attack: 9, defense: 1, moveRange: 5, sightRadius: 6, awareness: 3, weight: 0 },
@@ -77,7 +77,7 @@ export const BANDIT_TEMPLATES: Record<string, EnemyTemplate> = {
 };
 
 /** Look up a bandit (or procedural) template by id. */
-export function getEnemyTemplate(id: string): EnemyTemplate | undefined {
+export function getEnemyTemplate(id: string): EnemyDef | undefined {
   return BANDIT_TEMPLATES[id] ?? ENEMY_TEMPLATES.find((t) => t.id === id);
 }
 
@@ -108,7 +108,7 @@ export const REWARD_TABLE: readonly { id: string; weight: number }[] = [
 /** A fully-specified, deterministic encounter. */
 export interface EncounterDef {
   index: number;
-  type: EncounterType;
+  kind: EncounterKind;
   cols: number;
   rows: number;
   blocked: GridCoord[];
@@ -246,13 +246,13 @@ export function generateEncounter(rng: Rng, index: number): EncounterDef {
 
   // Encounter type (D12) — fortified chance creeps up with index.
   const fortChance = GEN.fortifiedBaseChance + GEN.fortifiedPerIndex * index;
-  const type: EncounterType = rng.chance(fortChance) ? "fortified" : "open-field";
+  const kind: EncounterKind = rng.chance(fortChance) ? "fortified" : "open-field";
 
   const blocked = rollBlocked(rng, cols, rows, rng.range(GEN.minBlocked, GEN.maxBlocked));
   const enemies = rollRoster(rng, index, cols, rows, blocked);
   const reward = rollReward(rng, index);
 
-  return { index, type, cols, rows, blocked, enemies, reward };
+  return { index, kind, cols, rows, blocked, enemies, reward };
 }
 
 /** Build a live {@link TileGrid} from an encounter def. */

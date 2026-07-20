@@ -49,7 +49,7 @@ describe("the Wayfarer's Blade — the first dual-registered equippable (D77)", 
     const inv = createInventory(8);
     addItem(inv, BLADE);
     const u = mkUnit("bram");
-    expect(equip(inv, u, BLADE)).toBe(true);
+    expect(equip(inv, u, BLADE).ok).toBe(true);
     expect(u.equipment.weapon).toBe(BLADE);
     expect(inv.counts[BLADE]).toBeUndefined(); // left the stash
   });

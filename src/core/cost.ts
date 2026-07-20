@@ -53,7 +53,7 @@ export interface MaterialCost {
 export interface CostPrice {
   /** Fatigue spent on the acting character — the loose over-extension guardrail (D35/D73). */
   fatigue?: number;
-  /** Run gold spent from the purse (`camp.gold`, D34/D30) — static, or a {@link "./overworld-cost".CostKnob} provider. */
+  /** Run gold spent from the purse (`camp.purse`, D34/D30) — static, or a {@link "./overworld-cost".CostKnob} provider. */
   gold?: CostKnob;
   /**
    * Influence spent — the Noble's walled-off currency (D62; run-scoped). Static or a provider.

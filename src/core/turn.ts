@@ -73,8 +73,9 @@ export { replay } from "./battle-replay";
 export interface BattleOptions {
   /**
    * Seed for this battle's **label-derived** RNG (`streamFor(seed, label)`). Stays
-   * `0` by default; production wires `streamFor(run.seed, \`battle:${node}:${night}\`)`
-   * so the whole run still reproduces from its run seed.
+   * `0` by default; production wires `saltSeed(run.seed, Labels.battle(node.id, night))`
+   * (runloop `stageBattle`) so each encounter draws distinct streams while the whole
+   * run still reproduces from its run seed.
    */
   seed?: string | number;
   /**

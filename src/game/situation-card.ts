@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { COLOR, FONT, INK } from "./theme";
 import { MiniCard, type CardRow } from "./info-cards";
-import {
+import { pct,
   type RunState,
   type IntelReport,
   campReadout,
@@ -106,7 +106,7 @@ export class SituationCard {
     // capture risk on open (neutral) ground, so the otherwise-inert tier reads as
     // "High (−20% open risk)" — its mechanical pull legible where it lands, not a bare stat.
     const em = ctx.openRiskMultiplier;
-    const morale = em < 1 ? `${r.moraleTier} (−${Math.round((1 - em) * 100)}% open risk)` : r.moraleTier;
+    const morale = em < 1 ? `${r.moraleTier} (−${pct(1 - em)} open risk)` : r.moraleTier;
     this.card.set("", [
       { label: "Morale", value: morale },
       { label: "Purse", value: `${r.purse}g` },
@@ -124,7 +124,7 @@ export class SituationCard {
     if (!r) return void this.card.set("", [{ label: "Intel", value: "—" }]);
     const battle = ctx.phase === "battle";
     const def = currentEncounter(ctx.run);
-    const shape = !battle && !isAuthoredEncounter(def) ? def.type : undefined;
+    const shape = !battle && !isAuthoredEncounter(def) ? def.kind : undefined;
     const rows: CardRow[] = [];
     if (r.count !== undefined) rows.push({ label: "Foes", value: `${r.count}` });
     rows.push({ label: "Intel", value: `T${r.tier}` });

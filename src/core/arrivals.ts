@@ -32,7 +32,8 @@ import {
   traverseRoute,
   type TraverseOpts,
 } from "./expedition-sim";
-import { activeRoster, type RunState } from "./run";
+import { clamp01 } from "./num";
+import { activeParty, type RunState } from "./run";
 import { jobLevelOf } from "./leveling";
 import { primaryJobOf, type Unit } from "./units";
 import { slotsUsed, getMaterial } from "./inventory";
@@ -60,7 +61,7 @@ export interface ScoreWeights {
   health: number;
   /** Party breadth: active roster size (recruits gained ⇒ a stronger run). */
   roster: number;
-  /** Coffers: the run purse (`camp.gold`). */
+  /** Coffers: the run purse (`camp.purse`). */
   gold: number;
   /** Logistics: used inventory slots (provisioning depth). */
   supplies: number;
@@ -159,11 +160,6 @@ const MORALE_REF = 3; // Inspired
  */
 const FATIGUE_TIER_MAX = 3; // Exhausted
 
-/** Clamp a value to `[0, 1]` — the shared saturation the normalization leans on. */
-function unit01(x: number): number {
-  return Math.max(0, Math.min(1, x));
-}
-
 /**
  * Σ(character level + primary-job level) over a roster — the **levels fold** shared
  * by {@link scoreArrival} (normalized against {@link LEVELS_REF}) and
@@ -200,10 +196,10 @@ function isRelicItem(id: string): boolean {
  * multiplied by its {@link ScoreWeights} weight to give the component's `parts` entry;
  * `total` is their sum. Components:
  *
- * - **levels** — `sum(level + primaryJobLevel)` over {@link activeRoster}, / {@link LEVELS_REF}.
+ * - **levels** — `sum(level + primaryJobLevel)` over {@link activeParty}, / {@link LEVELS_REF}.
  * - **health** — mean `hp/maxHp` over the active roster (already 0..1; 0 for an empty roster).
  * - **roster** — active roster size / {@link ROSTER_REF}.
- * - **gold** — `run.camp.gold` / {@link GOLD_REF}.
+ * - **gold** — `run.camp.purse` / {@link GOLD_REF}.
  * - **supplies** — {@link slotsUsed} / {@link SUPPLIES_REF}.
  * - **fatigue** — a **penalty**: summed per-unit fatigue-tier fraction / {@link FATIGUE_REF}
  *   (with the default *negative* `fatigue` weight this lowers the score; lower fatigue ⇒ higher score).
@@ -216,39 +212,39 @@ export function scoreArrival(
   run: RunState,
   weights: ScoreWeights = DEFAULT_SCORE_WEIGHTS,
 ): ArrivalScore {
-  const roster = activeRoster(run);
+  const roster = activeParty(run);
 
   // levels — character + primary-job level, summed over the active roster.
-  const levelsMag = unit01(levelTotalOf(roster) / LEVELS_REF);
+  const levelsMag = clamp01(levelTotalOf(roster) / LEVELS_REF);
 
   // health — mean current-HP fraction (0 for an empty/wiped roster).
-  const healthMag = unit01(avgHpFraction(roster));
+  const healthMag = clamp01(avgHpFraction(roster));
 
   // roster — active roster size (recruits gained ⇒ stronger).
-  const rosterMag = unit01(roster.length / ROSTER_REF);
+  const rosterMag = clamp01(roster.length / ROSTER_REF);
 
   // gold — the run purse.
-  const goldMag = unit01(run.camp.gold / GOLD_REF);
+  const goldMag = clamp01(run.camp.purse / GOLD_REF);
 
   // supplies — used inventory slots (provisioning depth).
-  const suppliesMag = unit01(slotsUsed(run.inventory) / SUPPLIES_REF);
+  const suppliesMag = clamp01(slotsUsed(run.inventory) / SUPPLIES_REF);
 
   // fatigue — summed per-unit tier fraction (a penalty via a negative weight).
   const fatigueSum = roster.reduce(
     (acc, u) => acc + Math.min(fatigueTierIndex(u.fatigue), FATIGUE_TIER_MAX) / FATIGUE_TIER_MAX,
     0,
   );
-  const fatigueMag = unit01(fatigueSum / FATIGUE_REF);
+  const fatigueMag = clamp01(fatigueSum / FATIGUE_REF);
 
   // morale — the camp morale tier.
-  const moraleMag = unit01(moraleTierIndex(run.camp.morale) / MORALE_REF);
+  const moraleMag = clamp01(moraleTierIndex(run.camp.morale) / MORALE_REF);
 
   // relics/flags — set flags + carried relic/unique items (a build-progress proxy).
   const setFlags = Object.values(run.flags).filter(Boolean).length;
   const relicItems = Object.entries(run.inventory.counts).filter(
     ([id, n]) => n > 0 && isRelicItem(id),
   ).length;
-  const relicsMag = unit01((setFlags + relicItems) / RELICS_REF);
+  const relicsMag = clamp01((setFlags + relicItems) / RELICS_REF);
 
   const parts: Record<string, number> = {
     levels: weights.levels * levelsMag,
@@ -277,11 +273,11 @@ export function scoreArrival(
  * the totals a developer eyeballs to recognize "is this the arrival I wanted".
  */
 export interface ArrivalDigest {
-  /** Σ(character level + primary-job level) over the {@link activeRoster}. */
+  /** Σ(character level + primary-job level) over the {@link activeParty}. */
   levelTotal: number;
   /** Mean current-HP fraction (`hp/maxHp`) over the active roster, as a 0..100 percent (rounded). 0 for an empty roster. */
   avgHpPct: number;
-  /** The run purse (`camp.gold`). */
+  /** The run purse (`camp.purse`). */
   gold: number;
   /** The active roster's unit ids (alive, uncaptured), in roster order. */
   rosterIds: string[];
@@ -294,19 +290,19 @@ export interface ArrivalDigest {
  * formats into a one-line preview. Reads the run, never mutates it; deterministic
  * (the same run yields the same digest).
  *
- * - **levelTotal** — `Σ(level + primaryJobLevel)` over {@link activeRoster}.
+ * - **levelTotal** — `Σ(level + primaryJobLevel)` over {@link activeParty}.
  * - **avgHpPct** — mean `hp/maxHp` over the active roster, ×100 rounded (0 for an empty roster).
- * - **gold** — `run.camp.gold`.
+ * - **gold** — `run.camp.purse`.
  * - **rosterIds** — the active roster's unit ids, in roster order.
  * - **flags** — the keys of the run's **set** flags.
  */
 export function arrivalDigest(run: RunState): ArrivalDigest {
-  const roster = activeRoster(run);
+  const roster = activeParty(run);
   const avgHpPct = Math.round(avgHpFraction(roster) * 100);
   return {
     levelTotal: levelTotalOf(roster),
     avgHpPct,
-    gold: run.camp.gold,
+    gold: run.camp.purse,
     rosterIds: roster.map((u) => u.id),
     flags: Object.entries(run.flags)
       .filter(([, set]) => set)

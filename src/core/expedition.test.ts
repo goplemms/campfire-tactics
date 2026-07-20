@@ -98,7 +98,7 @@ describe("createRunFromExpedition + runEncounter (D49/D52)", () => {
     expect(run.map).toBe(exp.map);
     expect(run.expeditionId).toBe("test-exp");
     expect(run.mapNodeId).toBe("start");
-    expect(run.camp.gold).toBe(100);
+    expect(run.camp.purse).toBe(100);
     expect(run.party).toHaveLength(1);
   });
 
@@ -123,7 +123,7 @@ describe("createRunFromExpedition + runEncounter (D49/D52)", () => {
     const run = createRunFromExpedition(registerExpedition(expedition()));
     // High-intelligence party → tier 3 reads the exact figure.
     const preview = previewNode(run, "e1", 0);
-    expect(preview.encounterType).toBeUndefined(); // authored has no procedural shape
+    expect(preview.encounterKind).toBeUndefined(); // authored has no procedural shape
     expect(preview.rewardHint).toBe("80g");
     // The forecast surfaces the authored node's loot on its edge.
     const edge = projectForecast(run).perEdge.find((e) => e.nodeId === "e1");

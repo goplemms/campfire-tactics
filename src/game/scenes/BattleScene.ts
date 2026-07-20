@@ -3,7 +3,7 @@ import { COLOR, FONT, INK, WEIGHT } from "../theme";
 import { roleColor } from "../roles";
 import { CombatView } from "../combat-view";
 import { addVignette } from "../vignette";
-import {
+import { pct,
   reachableTiles,
   moveBudget,
   isImmobilized,
@@ -74,7 +74,7 @@ import {
   type PlaceTrapEffect,
   type MaterialCost,
   bribeEnemy,
-  bribeCost,
+  bribePrice,
   bribeChance,
   influenceTier,
   recruitToRoster,
@@ -1709,15 +1709,15 @@ export class BattleScene extends Phaser.Scene {
       const noble = this.run.party.find((u) => u.alive && !u.captured && primaryJobOf(u) === "noble");
       if (this.guild && noble && this.battle.units.some((u) => u.side === "enemy" && u.alive)) {
         const tier = influenceTier(this.run.overworld.influence);
-        const cost = bribeCost(this.currentPreview(), tier);
-        const chance = Math.round(bribeChance(tier) * 100);
+        const cost = bribePrice(this.currentPreview(), tier);
+        const chance = pct(bribeChance(tier));
         const affordable = this.run.overworld.influence >= cost;
         // Tag the verb with the Noble: unlike the other Acts this isn't the *active* unit's
         // own skill — it's brokered by the party's standing-bearer (D62), so name them.
         specs.push({
           text: `Bribe · ${noble.name}`,
           description: affordable
-            ? `${noble.name} (Noble) sways an enemy for ${cost} Influence — ~${chance}% at ${tier} standing (a failed roll still spends the Influence and the Act). A generic turns coat for the fight; an authored one joins the guild permanently.`
+            ? `${noble.name} (Noble) sways an enemy for ${cost} Influence — ~${chance} at ${tier} standing (a failed roll still spends the Influence and the Act). A generic turns coat for the fight; an authored one joins the guild permanently.`
             : `Not enough Influence to bribe (need ${cost}).`,
           onClick: () => {
             if (!affordable) return this.setHint(`Not enough Influence to bribe (need ${cost}).`);
@@ -2610,8 +2610,8 @@ export class BattleScene extends Phaser.Scene {
       const prog = o.progress();
       if (status === "met") return { marker: ICON.check.glyph, color: ICON.check.color, label: o.spec.label };
       if (status === "failed") return { marker: ICON.failed.glyph, color: ICON.failed.color, label: o.spec.label };
-      const pct = prog !== undefined ? `  ${Math.round(prog * 100)}%` : "";
-      return { marker: ICON.open.glyph, color: ICON.open.color, label: o.spec.label + pct };
+      const pctLabel = prog !== undefined ? `  ${pct(prog)}` : "";
+      return { marker: ICON.open.glyph, color: ICON.open.color, label: o.spec.label + pctLabel };
     });
 
     // Far-left, directly under the top-left phase/turn line (x matches the title's 12px inset) —
@@ -2717,7 +2717,6 @@ export class BattleScene extends Phaser.Scene {
         // Repositioning stays on the table while move budget remains this turn.
         const reach = this.moveBudget > 0 ? reachableTiles(actor, this.battle.units, this.grid, this.moveBudget).map((r) => r.tile) : [];
         const fc = deployForecast(actor, this.campfire, this.front, reach, { dugIn: dug, exposureMultiplier: this.deployMods().exposureMultiplier });
-        const pct = (n: number) => `${Math.round(n * 100)}%`;
         rows.push({ label: "Hold", value: pct(fc.hold), color: INK.danger, emphasize: true });
         if (fc.digIn !== null) rows.push({ label: "Dig in", value: pct(fc.digIn), color: INK.success });
         if (fc.move !== null) rows.push({ label: "Move", value: fc.move <= 0 ? "safe" : pct(fc.move), color: INK.success });

@@ -37,7 +37,7 @@ import type { RunState } from "./run";
 import type { MapNode } from "./overworld";
 import { type Unit } from "./units";
 import { describeUnit } from "./dossier";
-import { streamFor } from "./rng";
+import { streamFor, saltSeed } from "./rng";
 import { Labels } from "./rng-labels";
 import { MATERIALS, grantItem, canAdd } from "./inventory";
 import { getEquipment } from "./equipment";
@@ -110,7 +110,7 @@ export function nodeFee(seed: string | number, node: MapNode): number {
  */
 export interface EventOutcome {
   kind: EventKind;
-  /** Net purse (`run.camp.gold`) delta — negative for a skim/spend, positive for a find. */
+  /** Net purse (`run.camp.purse`) delta — negative for a skim/spend, positive for a find. */
   goldDelta: number;
   /** Net camp morale delta (story). */
   moraleDelta: number;
@@ -118,6 +118,13 @@ export interface EventOutcome {
   fatigueDelta: number;
   /** Material ids added to storage (a shop buy / a story reward). */
   materials: string[];
+  /**
+   * Set when the interaction was **refused** (can't afford / already hired / no
+   * stock) — nothing was applied and {@link summary} carries the reason. Absent on
+   * every applied outcome (D114: refusals used to be detectable only by reading
+   * the summary prose).
+   */
+  refused?: true;
   /** A body recruited into `run.party` (recruiter), if any. */
   recruited?: Unit;
   /** Theft only: gold skimmed off the purse (blunted by Banker protection, D30). */
@@ -240,14 +247,15 @@ export function shopStock(seed: string | number, node: MapNode): ShopOffer[] {
  * (`goldDelta < 0` on a buy; `summary` carries any refusal).
  */
 export function shopBuy(run: RunState, _node: MapNode, materialId: string): EventOutcome {
-  const before = run.camp.gold;
+  const before = run.camp.purse;
   const res = merchantBuy(run, materialId, SHOP_MARKET_TIER);
   const out = emptyOutcome("shop");
   if (!res.applied) {
+    out.refused = true;
     out.summary = res.reason ?? "Can't buy that.";
     return out;
   }
-  out.goldDelta = run.camp.gold - before; // negative (spent)
+  out.goldDelta = run.camp.purse - before; // negative (spent)
   out.materials = [materialId];
   out.summary = res.detail ?? `Bought ${MATERIALS[materialId]?.name ?? materialId}.`;
   return out;
@@ -270,7 +278,7 @@ export interface RecruiterOffer {
  * id is node-scoped so two recruiter nodes never collide.
  */
 export function recruiterOffer(seed: string | number, node: MapNode): RecruiterOffer {
-  const base = rollMercenary(`${seed}#recruit:${node.id}`, 0);
+  const base = rollMercenary(saltSeed(seed, Labels.recruit(node.id)), 0);
   const unit: Unit = { ...base, id: `recruit-${node.id}` };
   return { unit, price: NODE_EVENTS.recruiterHireCost, classify: recruitClassify(unit) };
 }
@@ -284,10 +292,12 @@ export function recruiterOffer(seed: string | number, node: MapNode): RecruiterO
 export function hireRecruit(run: RunState, offer: RecruiterOffer): EventOutcome {
   const out = emptyOutcome("recruiter");
   if (run.party.some((u) => u.id === offer.unit.id)) {
+    out.refused = true;
     out.summary = `${offer.unit.name} already rides with the caravan.`;
     return out;
   }
-  if (run.camp.gold < offer.price) {
+  if (run.camp.purse < offer.price) {
+    out.refused = true;
     out.summary = `Not enough purse gold (${offer.price}g) to hire ${offer.unit.name}.`;
     return out;
   }
@@ -345,7 +355,7 @@ export const EVENTS: EventDef[] = [
     choices(run, node) {
       return shopStock(run.seed, node).map((offer) => {
         const room = canStoreMore(run, offer.materialId);
-        const affordable = run.camp.gold >= offer.price;
+        const affordable = run.camp.purse >= offer.price;
         return {
           id: `buy:${offer.materialId}`,
           label: `Buy ${offer.name} (${offer.price}g purse)`,
@@ -373,7 +383,7 @@ export const EVENTS: EventDef[] = [
     },
     choices(run, node) {
       const offer = recruiterOffer(run.seed, node);
-      const affordable = run.camp.gold >= offer.price;
+      const affordable = run.camp.purse >= offer.price;
       return [
         {
           id: "hire",
@@ -423,7 +433,7 @@ export const EVENTS: EventDef[] = [
       // A known, announced fee (D48): pay it from the purse to pass. Never drives
       // the purse negative; the pay-or-fight-the-guards choice is deferred (D23/D30).
       const fee = tollFee(run.seed, node);
-      const paid = Math.min(run.camp.gold, fee);
+      const paid = Math.min(run.camp.purse, fee);
       spend(run.camp, paid, "toll", `Toll @ ${node.id}`, { nodeId: node.id, night: run.night });
       const out = emptyOutcome("toll");
       out.goldDelta = -paid;
@@ -495,7 +505,7 @@ function pinnedStoryEvent(id: string, name: string, teaser: string, story: () =>
 }
 
 /** Look up an event def by id (M11). */
-export function getEvent(id: string): EventDef {
+export function mustGetEvent(id: string): EventDef {
   const def = EVENTS.find((e) => e.id === id);
   if (!def) throw new Error(`node-events: no event "${id}"`);
   return def;

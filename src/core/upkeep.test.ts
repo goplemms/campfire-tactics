@@ -50,16 +50,16 @@ describe("upkeep — the gold figure (D15)", () => {
 
   it("paying in full deducts gold and leaves morale untouched", () => {
     const party = [member("a"), member("b")];
-    const camp = createCamp({ gold: 100, morale: 0 });
+    const camp = createCamp({ purse: 100, morale: 0 });
     const res = payUpkeep(camp, party);
     expect(res.underfunded).toEqual([]);
     expect(res.moraleDelta).toBe(0);
-    expect(camp.gold).toBe(100 - computeUpkeep(party).total);
+    expect(camp.purse).toBe(100 - computeUpkeep(party).total);
   });
 
   it("underfunding food hits morale (the harsh breach, funded last)", () => {
     const party = [member("a"), member("b")];
-    const camp = createCamp({ gold: 0, morale: 0 });
+    const camp = createCamp({ purse: 0, morale: 0 });
     const res = payUpkeep(camp, party);
     expect(res.underfunded).toContain("food");
     expect(res.moraleDelta).toBeLessThan(0);
@@ -70,7 +70,7 @@ describe("upkeep — the gold figure (D15)", () => {
     const party = [member("a"), member("b")];
     const bill = computeUpkeep(party);
     const foodCost = bill.lines.find((l) => l.id === "food")!.cost;
-    const camp = createCamp({ gold: foodCost, morale: 0 }); // enough for food only
+    const camp = createCamp({ purse: foodCost, morale: 0 }); // enough for food only
     const res = payUpkeep(camp, party);
     expect(res.underfunded).toEqual(["repairs"]);
     expect(res.gearWorn).toBe(true);
@@ -83,12 +83,12 @@ describe("upkeep — voluntary underfunding: the ledger as an input (D45)", () =
   it("a voluntary skip frees its gold but still applies the consequence", () => {
     const party = [member("a"), member("b")];
     const bill = computeUpkeep(party);
-    const camp = createCamp({ gold: 100, morale: 0 }); // could afford everything
+    const camp = createCamp({ purse: 100, morale: 0 }); // could afford everything
     const res = payUpkeep(camp, party, { skip: ["food"] });
 
     // The Food gold is freed (only Repairs paid) — that's the point of the skip.
     const repairs = bill.lines.find((l) => l.id === "repairs")!.cost;
-    expect(camp.gold).toBe(100 - repairs);
+    expect(camp.purse).toBe(100 - repairs);
     // It's reported as an *intentional* skip, not a can't-afford breach…
     expect(res.skipped).toEqual(["food"]);
     expect(res.underfunded).toEqual([]);
@@ -99,7 +99,7 @@ describe("upkeep — voluntary underfunding: the ledger as an input (D45)", () =
 
   it("voluntarily skipping repairs compounds the worn-gear debt", () => {
     const party = [member("a")];
-    const camp = createCamp({ gold: 100 });
+    const camp = createCamp({ purse: 100 });
     payUpkeep(camp, party, { skip: ["repairs"] });
     expect(camp.gearWear).toBe(1);
     payUpkeep(camp, party, { skip: ["repairs"] });
@@ -108,7 +108,7 @@ describe("upkeep — voluntary underfunding: the ledger as an input (D45)", () =
 
   it("a can't-afford skip still breaches (intent vs affordability)", () => {
     const party = [member("a"), member("b")];
-    const camp = createCamp({ gold: 0 }); // can't afford anything
+    const camp = createCamp({ purse: 0 }); // can't afford anything
     const res = payUpkeep(camp, party); // no voluntary skips
     // Genuinely unaffordable lines are breaches, not voluntary skips.
     expect(res.underfunded.length).toBeGreaterThan(0);
@@ -117,7 +117,7 @@ describe("upkeep — voluntary underfunding: the ledger as an input (D45)", () =
 
   it("defaults the skip set to the camp's persisted selection (D45 seam)", () => {
     const party = [member("a"), member("b")];
-    const camp = createCamp({ gold: 100, skippedUpkeep: ["food"] });
+    const camp = createCamp({ purse: 100, skippedUpkeep: ["food"] });
     const res = payUpkeep(camp, party); // no explicit skip → reads camp.skippedUpkeep
     expect(res.skipped).toEqual(["food"]);
   });
@@ -182,14 +182,14 @@ describe("recovery — the cleric (D9 economy sink)", () => {
     u.alive = false;
     u.hp = 0;
     u.counters.dyingNights = 2;
-    const camp = createCamp({ gold: CLERIC_COST });
+    const camp = createCamp({ purse: CLERIC_COST });
     const res = clericRevive(camp, u);
     expect(res.revived).toBe(true);
-    expect(camp.gold).toBe(0);
+    expect(camp.purse).toBe(0);
     expect(u.alive).toBe(true);
     expect(u.counters.dyingNights).toBeUndefined();
 
     // A healthy unit can't be revived; a broke camp can't pay.
-    expect(clericRevive(createCamp({ gold: CLERIC_COST }), member("ok")).revived).toBe(false);
+    expect(clericRevive(createCamp({ purse: CLERIC_COST }), member("ok")).revived).toBe(false);
   });
 });

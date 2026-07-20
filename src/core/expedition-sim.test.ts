@@ -136,7 +136,7 @@ describe("traverseRoute (Phase 1)", () => {
     const b = traverseRoute(THE_HOLLOW_MILL, DEN_ROUTE).run;
     expect(a.party.map((u) => u.id)).toEqual(b.party.map((u) => u.id));
     expect(a.party.map((u) => u.hp)).toEqual(b.party.map((u) => u.hp));
-    expect(a.camp.gold).toBe(b.camp.gold);
+    expect(a.camp.purse).toBe(b.camp.purse);
     expect(a.flags).toEqual(b.flags);
   });
 

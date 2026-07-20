@@ -8,7 +8,7 @@ import {
   chooseNode,
   isFinalRunNode,
   isRunComplete,
-  activeRoster,
+  activeParty,
   removeFromRoster,
   isRunOver,
   recordNight,
@@ -96,11 +96,11 @@ describe("run — map position (D22)", () => {
 describe("run — state & permadeath", () => {
   it("active roster excludes captured/fallen; permadeath removes a unit", () => {
     const run = newRun("perma");
-    expect(activeRoster(run).length).toBe(2);
+    expect(activeParty(run).length).toBe(2);
 
     const vale = run.party.find((u) => u.id === "Vale")!;
     vale.alive = false; // fell in combat
-    expect(activeRoster(run).length).toBe(1);
+    expect(activeParty(run).length).toBe(1);
 
     removeFromRoster(run, vale);
     expect(run.party.length).toBe(1);

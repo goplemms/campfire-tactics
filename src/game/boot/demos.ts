@@ -57,7 +57,7 @@ export function buildExpeditionDemo(): RunHandoff {
   if (!gr) throw new Error("expedition-demo: dispatch produced no run");
   // Demo-scoped purse: modest so routing/budget decisions actually bite. (A global
   // gold-scarcity numbers pass is still deferred — D30/D34.)
-  gr.run.camp.gold = 110;
+  gr.run.camp.purse = 110;
   const loop = new RunLoop(gr.run);
   // Instrument the showcase for playtesting (same lever telemetry as the Hollow Mill).
   loop.log = createPlaytestLog(gr.run, EXPEDITION_SEED);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
+import { Labels } from "./rng-labels";
 import { createRun, currentNode, reachableNodes, chooseNode, type RunState } from "./run";
 import { RunLoop } from "./runloop";
 import { REST } from "./recovery";
@@ -74,7 +75,7 @@ describe("runloop — rest node recovery (D23)", () => {
     run.path.push(node.id);
     const loop = new RunLoop(run);
 
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
     const nightBefore = run.night;
     const xpBefore = run.party.map((u) => u.xp);
 
@@ -85,7 +86,7 @@ describe("runloop — rest node recovery (D23)", () => {
     expect(res.xpEach).toBe(bypassXp(node));
     run.party.forEach((u, i) => expect(u.xp).toBeGreaterThan(xpBefore[i]));
     // The loot is forgone — bypassEncounter grants no purse gold…
-    expect(run.camp.gold).toBe(goldBefore);
+    expect(run.camp.purse).toBe(goldBefore);
     // …and the night advanced + recorded with no gold earned.
     expect(run.night).toBe(nightBefore + 1);
     expect(last(run.history)).toMatchObject({ nodeId: node.id, kind: "combat", goldEarned: 0 });
@@ -116,14 +117,14 @@ describe("runloop — the two-tier recovery economy (D47)", () => {
     const loop = new RunLoop(run);
     const rook = run.party.find((u) => u.id === "Rook")!;
     rook.hp = 4;
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
 
     const res = loop.inPlaceRest();
     expect(res.applied).toBe(true);
     expect(res.hpHealed).toBeGreaterThanOrEqual(1); // the floor (D47)
     expect(rook.hp).toBeGreaterThan(4);
     expect(res.goldSpent).toBeGreaterThan(0);
-    expect(run.camp.gold).toBeLessThan(goldBefore); // a night's rations paid
+    expect(run.camp.purse).toBeLessThan(goldBefore); // a night's rations paid
   });
 
   it("in-place rest heals the whole wounded party, worst-first (D80)", () => {
@@ -188,12 +189,12 @@ describe("runloop — the two-tier recovery economy (D47)", () => {
     const run = newRun("inplace-full");
     const loop = new RunLoop(run);
     for (const u of run.party) u.hp = u.maxHp; // already topped up
-    const goldBefore = run.camp.gold;
+    const goldBefore = run.camp.purse;
 
     const res = loop.inPlaceRest();
     expect(res.applied).toBe(false);
     expect(res.goldSpent).toBe(0);
-    expect(run.camp.gold).toBe(goldBefore); // nothing spent
+    expect(run.camp.purse).toBe(goldBefore); // nothing spent
   });
 
   it("in-place rest is a full node-step — it ticks ability cooldowns (D47)", () => {
@@ -222,7 +223,7 @@ describe("runloop — the two-tier recovery economy (D47)", () => {
     }
     expect(rests).toBeGreaterThan(0);
     // It stopped because the purse can't cover another night's rations.
-    expect(run.camp.gold).toBeLessThan(computeUpkeep(run.party).total);
+    expect(run.camp.purse).toBeLessThan(computeUpkeep(run.party).total);
   });
 
   it("the rest node is the premium tier: big heal (Tier 0) + Deep Rest wipe + debt clear (D47/D80)", () => {
@@ -538,5 +539,39 @@ describe("runloop — the skittish straggler bolts off-map (D84, the Node-3 beat
     // Vale is standing, so the abandoned field sweeps in full (D82) — no snare
     // sprang in this run.
     expect(res.traps.salvaged).toBe(5);
+  });
+});
+
+describe("runloop — per-encounter battle seed (audit 2026-07-20 / D114)", () => {
+  /** First few draws of a staged battle's deployment stream, as a comparable trace. */
+  function deployTrace(run: RunState): number[] {
+    const loop = new RunLoop(run);
+    const battle = loop.startEncounter();
+    const rng = battle.stream(Labels.deploy());
+    return [rng.int(1_000_000), rng.int(1_000_000), rng.int(1_000_000), rng.int(1_000_000)];
+  }
+
+  it("two combat nodes of one run derive different deploy/trap-spot streams", () => {
+    const run = newRun("battle-salt");
+    const combats = run.map.order
+      .map((id) => getNode(run.map, id))
+      .filter((n) => n.kind === "combat");
+    expect(combats.length).toBeGreaterThan(1);
+
+    run.mapNodeId = combats[0].id;
+    const a = deployTrace(run);
+    run.night += 1; // a later visit, as the run would have advanced
+    run.mapNodeId = combats[1].id;
+    const b = deployTrace(run);
+    expect(a).not.toEqual(b);
+  });
+
+  it("the same node + night reproduces the identical stream (determinism kept)", () => {
+    const runA = newRun("battle-salt");
+    const runB = newRun("battle-salt");
+    const combat = runA.map.order.map((id) => getNode(runA.map, id)).find((n) => n.kind === "combat")!;
+    runA.mapNodeId = combat.id;
+    runB.mapNodeId = combat.id;
+    expect(deployTrace(runA)).toEqual(deployTrace(runB));
   });
 });

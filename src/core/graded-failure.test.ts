@@ -69,12 +69,12 @@ describe("graded failure in the run loop (D51)", () => {
   it("interior objective-failure: forfeits the reward, party survives, the run continues", () => {
     const loop = new RunLoop(createRunFromExpedition(expedition()));
     chooseNode(loop.run, "mid");
-    const goldBefore = loop.run.camp.gold;
+    const goldBefore = loop.run.camp.purse;
     failGate(loop);
     const res = loop.resolve();
 
     expect(res.result).toBe("objective-failure");
-    expect(loop.run.camp.gold).toBe(goldBefore); // reward forfeited (no gold)
+    expect(loop.run.camp.purse).toBe(goldBefore); // reward forfeited (no gold)
     expect(res.goldEarned).toBe(0);
     expect(loop.run.party.every((u) => u.alive)).toBe(true); // retreats alive
     expect(loop.isTerminal()).toBe(false); // interior node — the run goes on
@@ -108,7 +108,7 @@ describe("graded failure in the run loop (D51)", () => {
 
     expect(res.result).toBe("win");
     expect(loop.isComplete()).toBe(true);
-    expect(loop.run.camp.gold).toBeGreaterThan(100); // the prize landed
+    expect(loop.run.camp.purse).toBeGreaterThan(100); // the prize landed
   });
 
   it("wipe: the whole party down ends the run", () => {

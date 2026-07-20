@@ -71,7 +71,7 @@ export interface CampReadout {
 /** Project a run into the {@link CampReadout} HUD figures (pure). */
 export function campReadout(run: RunState): CampReadout {
   return {
-    purse: run.camp.gold,
+    purse: run.camp.purse,
     moraleTier: moraleTier(run.camp.morale),
     morale: run.camp.morale,
     storageUsed: slotsUsed(run.inventory),
@@ -170,7 +170,7 @@ export function projectManifest(run: RunState, opts: ManifestOptions = {}): Cara
     storageUsed: used,
     storageCap: inv.storageCap,
     storageFree: inv.storageCap - used,
-    purse: run.camp.gold,
+    purse: run.camp.purse,
     groups: STORE_SECTIONS.map((s) => ({
       title: s.title,
       items: all.filter((m) => (m.category ?? "combat") === s.key).map(toItem),

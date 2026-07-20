@@ -3,7 +3,8 @@
 > Referenced by: [Design Overview](README.md), [The overworld](systems/overworld.md)
 > (the node lifecycle / *D46* terminology note this doc lifts and extends).
 > Scope: **the words the player reads** — node menus, buttons, HUD readouts, hints,
-> tooltips, event panels. Not internal identifiers (those are code's business).
+> tooltips, event panels. Not internal identifiers — those have their own canon in
+> [`implementation/conventions.md`](implementation/conventions.md) (D114).
 
 This is the **single source of truth for terminology**. Today every label is
 authored inline at its call site (`OverworldScene.ts`, the `core/*` data records),

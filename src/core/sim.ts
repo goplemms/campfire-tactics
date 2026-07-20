@@ -20,6 +20,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
+import { pct } from "./num";
 import type { RunState } from "./run";
 import { RunLoop } from "./runloop";
 import { createPlaytestLog, summarizePlaytest, type PlaytestSummary } from "./playtest-log";
@@ -170,7 +171,6 @@ export function aggregate(results: ReadonlyArray<RunResult>): SimDigest {
 
 /** Render a {@link SimDigest} as a compact, human-readable block. */
 export function formatDigest(label: string, d: SimDigest): string {
-  const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
   return [
     `── ${label} (${d.runs} runs) ──`,
     `  completed ${d.completed} (${pct(d.completionRate)}) · lost ${d.over} · stalled ${d.stalled} · crashed ${d.crashed}`,

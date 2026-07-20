@@ -32,7 +32,7 @@ async function main() {
         if (n.id !== "snares") s.loop.playCurrentNode();
       }
       // Stamp interactive state a route-replay could never reproduce, then render (→ capture).
-      s.run.camp.gold = 4242;                 // a sentinel purse
+      s.run.camp.purse = 4242;                 // a sentinel purse
       s.run.party[0].hp = 1;                   // a wounded lead
       s.campNode = s.run.map.nodes["snares"];
       s.renderCamp();
@@ -42,7 +42,7 @@ async function main() {
     // The passive capture landed on window.campfire with the right context.
     const cap = await g.eval(`(() => {
       const c = window.campfire && window.campfire.last;
-      return c ? { scene: c.context.scene, phase: c.context.phase, node: c.context.node, gold: c.dump.camp.gold } : null;
+      return c ? { scene: c.context.scene, phase: c.context.phase, node: c.context.node, gold: c.dump.camp.purse } : null;
     })()`);
     console.log("• passive capture on the prep camp");
     check("a capture landed on window.campfire", !!cap);
@@ -56,7 +56,7 @@ async function main() {
 
     // Perturb the live run, THEN restore — proving restore overwrites live state with the dump
     // (not a no-op, and not a replay from the seed).
-    await g.eval(ov(`s.run.camp.gold = 0; s.run.party[0].hp = 99;`));
+    await g.eval(ov(`s.run.camp.purse = 0; s.run.party[0].hp = 99;`));
     await g.eval(`window.campfire.restore(${JSON.stringify(dump)})`);
     await sleep(600);
 
@@ -65,7 +65,7 @@ async function main() {
       return {
         active: s.scene.isActive(),
         node: s.run.mapNodeId,
-        gold: s.run.camp.gold,
+        gold: s.run.camp.purse,
         leadHp: s.run.party[0].hp,
         campOpen: !!s.campNode && s.campNode.id === "snares",
       };
@@ -87,7 +87,7 @@ async function main() {
     const hasToggle = await g.page.$("#repro-save-toggle");
     check("the 💾 Save / Load toggle is mounted", hasToggle !== null);
     // Stamp a fresh sentinel on the live (now BattleScene) run so Export has a known marker.
-    await g.bsEval(`s.run.camp.gold = 5555;`);
+    await g.bsEval(`s.run.camp.purse = 5555;`);
     // The Save/Load toggle lives in the collapsible dev tray, which is collapsed by default
     // so it never occludes the game HUD — open the tray (its corner chevron) before clicking.
     await g.page.click("#dev-tray-toggle");
@@ -114,7 +114,7 @@ async function main() {
       if (b) b.click();
     });
     await sleep(700);
-    const loaded = await g.eval(ov(`return { active: s.scene.isActive(), node: s.run.mapNodeId, gold: s.run.camp.gold };`));
+    const loaded = await g.eval(ov(`return { active: s.scene.isActive(), node: s.run.mapNodeId, gold: s.run.camp.purse };`));
     check("Load from the panel restores into the OverworldScene", loaded.active === true && loaded.node === "snares");
     check("Load applied the edited save (7777g), proving the import path", loaded.gold === 7777);
 

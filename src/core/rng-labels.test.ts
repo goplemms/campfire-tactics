@@ -33,6 +33,8 @@ describe("rng-labels — value pins (renames are save/replay-breaking, #116)", (
     expect(Labels.deft("n1-2", 3)).toBe("deft:n1-2:3");
     expect(Labels.bribe("n1-2", "foe-1")).toBe("bribe:n1-2:foe-1");
     expect(Labels.quest(4)).toBe("quest:4");
+    expect(Labels.questMain()).toBe("quest:main");
+    expect(Labels.recruit("n1-2")).toBe("recruit:n1-2");
     expect(Labels.merc(2)).toBe("merc:2");
     expect(Labels.theft("n1-2")).toBe("theft:n1-2");
     expect(Labels.thief("e1")).toBe("thief:e1");
@@ -40,22 +42,25 @@ describe("rng-labels — value pins (renames are save/replay-breaking, #116)", (
     expect(Labels.dmg("hero", "foe")).toBe("dmg:hero->foe");
     expect(Labels.deploy()).toBe("deploy");
     expect(Labels.trapSpot()).toBe("trap-spot");
+    expect(Labels.battle("n1-2", 3)).toBe("battle:n1-2:3");
+    expect(Labels.expeditionSalt(7)).toBe("7");
   });
 
   it("every constructor is pinned (a new label must add a pin above)", () => {
-    // 23 constructors ⇔ 23 pins — grow both together.
-    expect(Object.keys(Labels).length).toBe(23);
+    // 27 constructors ⇔ 27 pins — grow both together.
+    expect(Object.keys(Labels).length).toBe(27);
   });
 });
 
 describe("rng-labels — grep guard: streamFor call sites use the registry (#116)", () => {
-  it("grep: no core module derives a stream from an ad-hoc label", () => {
-    // Load every non-test core source as raw text via Vite's glob (no Node fs).
-    const sources = import.meta.glob("./*.ts", {
-      eager: true,
-      query: "?raw",
-      import: "default",
-    }) as Record<string, string>;
+  it("grep: no module derives a stream or a child seed from an ad-hoc label", () => {
+    // Load every non-test source as raw text via Vite's glob (no Node fs) —
+    // recursive over core (jobs-data/, scenarios/) AND the game layer, so a
+    // hand-built label can't hide in a subdirectory or a scene (audit 2026-07-20).
+    const sources = {
+      ...import.meta.glob("./**/*.ts", { eager: true, query: "?raw", import: "default" }),
+      ...import.meta.glob("../game/**/*.ts", { eager: true, query: "?raw", import: "default" }),
+    } as Record<string, string>;
     const offenders: string[] = [];
     let sites = 0;
     for (const [path, src] of Object.entries(sources)) {
@@ -63,7 +68,10 @@ describe("rng-labels — grep guard: streamFor call sites use the registry (#116
       if (path === "./rng.ts" || path === "./rng-labels.ts") continue;
       // Strip comments so prose mentions of `streamFor(seed, "…")` don't trip the guard.
       const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-      const call = /streamFor\(([^)]*)/g;
+      // `saltSeed(` (the seed-composition twin) is held to the same contract as
+      // `streamFor(` — a hand-assembled `${seed}#${label}` one level above a
+      // stream was exactly how labels escaped this guard before.
+      const call = /(?:streamFor|saltSeed)\(([^)]*)/g;
       for (let m = call.exec(code); m !== null; m = call.exec(code)) {
         sites++;
         const args = m[1];
@@ -71,7 +79,7 @@ describe("rng-labels — grep guard: streamFor call sites use the registry (#116
         // The sanctioned passthrough seam: second arg is exactly a `label` parameter.
         const isPassthrough = /,\s*label\s*$/.test(args);
         if (!usesRegistry && !isPassthrough) {
-          offenders.push(`${path}: streamFor(${args.trim()}…)`);
+          offenders.push(`${path}: ${m[0].trim()}…)`);
         }
       }
     }

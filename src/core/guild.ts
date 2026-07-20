@@ -32,7 +32,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { Rng, streamFor } from "./rng";
+import { Rng, streamFor, saltSeed } from "./rng";
 import { Labels } from "./rng-labels";
 import { createUnit, type Unit } from "./units";
 import type { JobId } from "./jobs";
@@ -201,7 +201,7 @@ export function createGuild(seed: string | number, opts: CreateGuildOptions = {}
     label: opts.mainQuestLabel ?? "The Main Quest",
     kind: "main",
     generated: false,
-    seed: `${seed}#quest:main`,
+    seed: saltSeed(seed, Labels.questMain()),
     payout: GUILD.mainPayout,
   });
   refillBoard(guild);
@@ -221,7 +221,7 @@ function generateSidequest(guild: Guild): Quest {
     label,
     kind: "side",
     generated: true,
-    seed: `${guild.seed}#quest:${n}`,
+    seed: saltSeed(guild.seed, Labels.quest(n)),
     payout: rng.range(GUILD.sidePayoutMin, GUILD.sidePayoutMax),
   };
 }
@@ -340,7 +340,7 @@ export interface CaravanResolution {
  *
  * - **Return** (the run completed, not over): mid-run permadeaths leave the roster;
  *   survivors stay in the pool; locked gear unlocks back to the armory; the
- *   **surviving purse** (`run.camp.gold`) flows home to the treasury.
+ *   **surviving purse** (`run.camp.purse`) flows home to the treasury.
  * - **Wipe** ({@link isRunOver}): the caravan's **people leave the roster**
  *   (permadeath), its **locked gear is lost**, and the **purse is lost** — but the
  *   **guild survives** (rebuild via {@link hireMercenary}). A named **lord** aboard
@@ -395,7 +395,7 @@ export function resolveReturn(guild: Guild, caravan: Caravan, run: RunState): Ca
   if (wiped) {
     purseLost = caravan.purse;
   } else {
-    purseReturned = Math.max(0, run.camp.gold);
+    purseReturned = Math.max(0, run.camp.purse);
     guild.treasury += purseReturned;
   }
 

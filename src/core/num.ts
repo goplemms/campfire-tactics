@@ -77,6 +77,17 @@ export function clampUp<T>(order: readonly T[], a: T, b: T): T {
 }
 
 /**
+ * A `0..1` fraction as a display percent string (`0.42` → `"42%"`). One rounding
+ * law — `Math.round` — for every readout: the codebase previously mixed
+ * `Math.round(x*100)` and `(x*100).toFixed(0)`, which disagree at `.5`
+ * representation boundaries (D114). Display-only; never feed the result back
+ * into a computation.
+ */
+export function pct(frac: number): string {
+  return `${Math.round(frac * 100)}%`;
+}
+
+/**
  * Exhaustiveness guard for discriminated-union dispatch: unreachable if every
  * variant is handled, so an unhandled one is a **compile error** here; if bad data
  * still reaches it at runtime, it throws rather than failing silently.

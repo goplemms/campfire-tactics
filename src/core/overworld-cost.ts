@@ -167,7 +167,7 @@ export function checkOverworldCost(run: RunState, id: string, cost: OverworldCos
   const fatigueSpend = unit ? (cost.fatigue ?? 0) : 0;
   // Price — gold (the run purse). The knob may be a provider (D72) — resolve it now, once.
   const goldCost = resolveKnob(cost.gold, run);
-  if (goldCost > 0 && run.camp.gold < goldCost) {
+  if (goldCost > 0 && run.camp.purse < goldCost) {
     return { ok: false, reason: `Not enough gold for ${label} (${goldCost}g).` };
   }
   // Price — Influence (the Noble's per-expedition standing, D62).

@@ -49,8 +49,8 @@ describe("theft — a thief skims the purse (D30)", () => {
     const run = newRun("steal", 100);
     const attempt = thiefSteal(run, "thief:e1");
     expect(attempt.stolen).toBeGreaterThan(0);
-    expect(run.camp.gold).toBe(100 - attempt.stolen);
-    expect(attempt.purseAfter).toBe(run.camp.gold);
+    expect(run.camp.purse).toBe(100 - attempt.stolen);
+    expect(attempt.purseAfter).toBe(run.camp.purse);
     expect(attempt.resolved).toBe(false);
   });
 
@@ -58,7 +58,7 @@ describe("theft — a thief skims the purse (D30)", () => {
     const run = newRun("steal-small", 3);
     const attempt = thiefSteal(run, "thief:e1");
     expect(attempt.stolen).toBeLessThanOrEqual(3);
-    expect(run.camp.gold).toBeGreaterThanOrEqual(0);
+    expect(run.camp.purse).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -66,11 +66,11 @@ describe("theft — kill-to-recover vs. escapes-off-map (D13/D21)", () => {
   it("killed before escape → the stolen gold drops back into the purse", () => {
     const run = newRun("recover", 100);
     const attempt = thiefSteal(run, "thief:e1");
-    const purseAfterSkim = run.camp.gold;
+    const purseAfterSkim = run.camp.purse;
     const recovered = recoverStolen(run, attempt);
     expect(recovered).toBe(attempt.stolen);
-    expect(run.camp.gold).toBe(purseAfterSkim + attempt.stolen);
-    expect(run.camp.gold).toBe(100); // whole again
+    expect(run.camp.purse).toBe(purseAfterSkim + attempt.stolen);
+    expect(run.camp.purse).toBe(100); // whole again
     expect(attempt.resolved).toBe(true);
     // Recovery is idempotent once resolved.
     expect(recoverStolen(run, attempt)).toBe(0);
@@ -79,10 +79,10 @@ describe("theft — kill-to-recover vs. escapes-off-map (D13/D21)", () => {
   it("escaped off-map → the gold stays lost (the purse is not credited back)", () => {
     const run = newRun("escape", 100);
     const attempt = thiefSteal(run, "thief:e1");
-    const purseAfterSkim = run.camp.gold;
+    const purseAfterSkim = run.camp.purse;
     const lost = thiefEscapes(attempt);
     expect(lost).toBe(attempt.stolen);
-    expect(run.camp.gold).toBe(purseAfterSkim); // unchanged — gone for good
+    expect(run.camp.purse).toBe(purseAfterSkim); // unchanged — gone for good
     expect(attempt.resolved).toBe(true);
   });
 });
@@ -115,7 +115,7 @@ describe("theft — the thief EVENT node skims on the overworld (D30)", () => {
     const node = getNode(run.map, run.map.order[1]);
     const attempt = thiefEventSkim(run, node);
     expect(attempt.stolen).toBeGreaterThan(0);
-    expect(run.camp.gold).toBe(120 - attempt.stolen);
+    expect(run.camp.purse).toBe(120 - attempt.stolen);
     // Same node + seed reproduces the same skim.
     const run2 = newRun("event", 120);
     const node2 = getNode(run2.map, run2.map.order[1]);
@@ -154,11 +154,11 @@ describe("theft — the thief EVENT node skims on the overworld (D30)", () => {
       loop.playCurrentNode();
     }
     if (run.mapNodeId === eventId) {
-      const purseBefore = run.camp.gold;
+      const purseBefore = run.camp.purse;
       const res = loop.eventNode();
       expect(res.def.kind).toBe("thief");
       expect(res.outcome.stolen).toBeGreaterThanOrEqual(0);
-      expect(run.camp.gold).toBe(purseBefore - (res.outcome.stolen ?? 0));
+      expect(run.camp.purse).toBe(purseBefore - (res.outcome.stolen ?? 0));
     }
   });
 });

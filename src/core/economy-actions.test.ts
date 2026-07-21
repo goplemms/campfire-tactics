@@ -355,7 +355,7 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
     const generic = createUnit({ id: "thug2", side: "enemy", pos: { col: 7, row: 0 }, name: "Thug", speed: 10, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5 });
     const res = bribeEnemy(run, generic);
     expect(res.applied).toBe(false);
-    expect(res.failed).toBeUndefined(); // couldn't afford — *not* a failed roll
+    expect(res.status).toBe("refused"); // couldn't afford — *not* a resisted roll
     expect(run.overworld.influence).toBe(0);
   });
 
@@ -380,11 +380,27 @@ describe("economy-actions — Noble INFLUENCE (per-expedition, D30/D62)", () => 
     const before = run.overworld.influence;
     const res = bribeEnemy(run, foe);
     expect(res.applied).toBe(false);
-    expect(res.failed).toBe(true);
+    expect(res.status).toBe("resisted");
     expect(run.overworld.influence).toBeLessThan(before); // spent for nothing
     // The roll is fixed for this target+node — re-attempting (refunded) resists again.
     run.overworld.influence = before;
-    expect(bribeEnemy(run, foe).failed).toBe(true);
+    expect(bribeEnemy(run, foe).status).toBe("resisted");
+  });
+
+  it("status ⇔ applied never disagree (D115 — the tri-state's invariant)", () => {
+    // All three paths: refused (no Influence), and a sweep that hits both roll ends.
+    const broke = newRun("bribe-inv-broke");
+    broke.overworld.influence = 0;
+    const foe0 = createUnit({ id: "inv-0", side: "enemy", pos: { col: 7, row: 0 }, name: "T", speed: 10, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5 });
+    const results = [bribeEnemy(broke, foe0)];
+    for (let i = 0; i < 20; i++) {
+      const run = newRun("bribe-inv");
+      run.overworld.influence = 8;
+      const foe = createUnit({ id: `inv-${i}`, side: "enemy", pos: { col: 7, row: 0 }, name: "T", speed: 10, maxHp: 16, attack: 6, defense: 1, moveRange: 4, sightRadius: 5 });
+      results.push(bribeEnemy(run, foe));
+    }
+    expect(new Set(results.map((r) => r.status)).size).toBeGreaterThan(1); // the sweep hit ≥2 states
+    for (const r of results) expect(r.applied).toBe(r.status === "swayed");
   });
 });
 

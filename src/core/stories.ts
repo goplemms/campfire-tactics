@@ -86,6 +86,21 @@ export interface StoryChoiceSpec {
   when?: Predicate;
 }
 
+/**
+ * A story choice's resolved **price** (D115): the deterministic purse cost of taking
+ * it — `max(0, −(goldDelta + seeded roll))`. Pure of the run (a projection off the
+ * seed), so the surface can grey an unaffordable option and the headless auto path
+ * can pick among affordable ones. 0 for gain/free options.
+ */
+export function storyChoicePrice(seed: string | number, node: MapNode, choice: StoryChoiceSpec): number {
+  let gold = choice.outcome.goldDelta ?? 0;
+  if (choice.outcome.goldRoll) {
+    const rng = streamFor(seed, Labels.eventStoryChoice(node.id, choice.id));
+    gold += rng.range(choice.outcome.goldRoll[0], choice.outcome.goldRoll[1]);
+  }
+  return gold < 0 ? -gold : 0;
+}
+
 /** An authored story event (M11) — a prompt + a small (2-option) choice set. */
 export interface StorySpec {
   id: string;
@@ -293,13 +308,19 @@ export function applyStoryChoice(run: RunState, node: MapNode, story: StorySpec,
     const rng = streamFor(run.seed, Labels.eventStoryChoice(node.id, choice.id));
     gold += rng.range(spec.goldRoll[0], spec.goldRoll[1]);
   }
+  // Unpaid = not applied (D115): a priced option the purse can't cover REFUSES outright —
+  // no partial spend, no free benefits. (Retired: the old clamp short-paid the price and
+  // granted the full outcome, collapsing every authored price to "whatever you have".)
+  if (gold < 0 && run.camp.purse < -gold) {
+    out.refused = true;
+    out.summary = `Can't afford it — ${-gold}g needed, ${run.camp.purse}g in the purse.`;
+    return out;
+  }
   if (gold !== 0) {
-    // A pay can never drive the purse negative.
-    const applied = gold < 0 ? -Math.min(run.camp.purse, -gold) : gold;
     const ctx = { nodeId: run.mapNodeId, night: run.night };
-    if (applied > 0) earn(run.camp, applied, "event", "Story payout", ctx);
-    else if (applied < 0) spend(run.camp, -applied, "event", "Story cost", ctx);
-    out.goldDelta = applied;
+    if (gold > 0) earn(run.camp, gold, "event", "Story payout", ctx);
+    else spend(run.camp, -gold, "event", "Story cost", ctx);
+    out.goldDelta = gold;
   }
   if (spec.moraleDelta) {
     nudgeMorale(run.camp, spec.moraleDelta);
@@ -347,14 +368,23 @@ export function storyChoices(run: RunState, node: MapNode, story: StorySpec): Ev
   const ctx = { run, node };
   const out: EventChoice[] = [];
   for (const c of story.choices) {
+    // Unpaid = not choosable (D115): a priced option greys when the purse can't cover
+    // its resolved price — the benefits can't be chosen because they aren't paid for.
+    // Same doctrine as the recruiter hire and the toll (D48/D61).
+    const price = storyChoicePrice(run.seed, node, c);
+    const affordable = run.camp.purse >= price;
+    const cost = price > 0 ? price : undefined;
+    // The price rides the label (the toll's "(12g)" convention) so a greyed option
+    // shows exactly why it can't be taken.
+    const priced = cost ? `${c.label} (${cost}g)` : c.label;
     if (c.target === "unit") {
       for (const u of run.party) {
         if (c.when && !evalPredicate(c.when, u, ctx)) continue;
-        out.push({ id: `${c.id}:${u.id}`, label: `${c.label} — ${u.name}`, available: true });
+        out.push({ id: `${c.id}:${u.id}`, label: `${priced} — ${u.name}`, cost, available: affordable });
       }
     } else {
-      const available = c.when ? run.party.some((u) => evalPredicate(c.when!, u, ctx)) : true;
-      out.push({ id: c.id, label: c.label, available });
+      const open = c.when ? run.party.some((u) => evalPredicate(c.when!, u, ctx)) : true;
+      out.push({ id: c.id, label: priced, cost, available: open && affordable });
     }
   }
   return out;

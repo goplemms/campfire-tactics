@@ -1892,10 +1892,10 @@ export class BattleScene extends Phaser.Scene {
     const res = bribeEnemy(this.run, foe, this.currentPreview());
     this.bribeArmed = false;
     // Couldn't afford it (nothing spent) — leave the turn intact so the player can act.
-    if (!res.applied && !res.failed) return this.setHint(`Can't bribe: ${res.reason}`);
+    if (res.status === "refused") return this.setHint(`Can't bribe: ${res.reason}`);
     // On success, flip the enemy to the player's side for the rest of the fight — the logged
     // core `sway` verb (undo/replay see it), which emits `unitSwayed` so the token re-tints on
-    // the bus (below). A failed sway (res.failed) still spent the Influence and the Act.
+    // the bus (below). A resisted sway (status "resisted") still spent the Influence and the Act.
     if (res.applied) {
       this.battle.bribe(foe, actor);
       if (res.outcome?.permanent) this.pendingRecruits.push(foe);

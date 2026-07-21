@@ -49,7 +49,7 @@ import { thiefEventSkim } from "./theft";
 import { spend } from "./purse-journal";
 import { rankOf } from "./num";
 import { nudgeMorale } from "./camp";
-import { storyForNode, storyChoices, applyStoryChoice, THIEVES_GUILD_CONTACT, THIEVES_GUILD_RITE, type StorySpec } from "./stories";
+import { storyForNode, storyChoices, storyChoicePrice, applyStoryChoice, THIEVES_GUILD_CONTACT, THIEVES_GUILD_RITE, type StorySpec } from "./stories";
 import { HOLLOW_MILL_EVENTS } from "./hollow-mill-events";
 
 /**
@@ -409,10 +409,14 @@ export const EVENTS: EventDef[] = [
     weight: 2,
     standingBias: "boon",
     autoResolve(run, node) {
-      // Headless default: take a seed-picked option (deterministic, D22).
+      // Headless default: take a seed-picked option among the AFFORDABLE ones (D22/D115 —
+      // unpaid = not choosable applies to the bot too; every authored story keeps a free
+      // option, so the pool can only be empty if that convention is broken, in which case
+      // the seed-picked option refuses cleanly).
       const story = storyForNode(run.seed, node);
+      const affordable = story.choices.filter((c) => run.camp.purse >= storyChoicePrice(run.seed, node, c));
       const rng = streamFor(run.seed, Labels.eventStoryAuto(node.id));
-      const choice = rng.pick(story.choices);
+      const choice = rng.pick(affordable.length > 0 ? affordable : story.choices);
       return applyStoryChoice(run, node, story, choice.id);
     },
     choices(run, node) {

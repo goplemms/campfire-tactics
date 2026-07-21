@@ -22,7 +22,7 @@ import {
   nodeFee,
   type EventKind,
 } from "./node-events";
-import { storyForNode, applyStoryChoice, STORIES, getStory, THIEVES_GUILD_CONTACT } from "./stories";
+import { storyForNode, storyChoices, applyStoryChoice, STORIES, getStory, THIEVES_GUILD_CONTACT } from "./stories";
 import {
   EARLY_EVENT,
   earlyEventForNode,
@@ -332,12 +332,53 @@ describe("node-events — story applies a deterministic outcome (D23)", () => {
     expect(a.camp.purse).toBe(100 + outA.goldDelta);
   });
 
-  it("a pay can never drive the purse negative", () => {
+  it("an unaffordable pay REFUSES — no short-pay, no free benefits (D115)", () => {
     const shrine = getStory("abandoned-shrine")!;
     const run = newRun("broke", 3);
+    const moraleBefore = run.camp.morale;
+    const out = applyStoryChoice(run, NODE, shrine, "offer"); // -10g, purse 3g
+    expect(out.refused).toBe(true);
+    expect(out.goldDelta).toBe(0);
+    expect(run.camp.purse).toBe(3); // nothing spent…
+    expect(run.camp.morale).toBe(moraleBefore); // …and no benefits granted
+    expect(out.summary).toMatch(/afford/i);
+  });
+
+  it("an affordable pay spends the FULL authored price (D115 — the price is a signal)", () => {
+    const shrine = getStory("abandoned-shrine")!;
+    const run = newRun("flush", 100);
     const out = applyStoryChoice(run, NODE, shrine, "offer"); // -10g
-    expect(run.camp.purse).toBeGreaterThanOrEqual(0);
-    expect(out.goldDelta).toBe(-3); // capped at the purse
+    expect(out.refused).toBeUndefined();
+    expect(out.goldDelta).toBe(-10);
+    expect(run.camp.purse).toBe(90);
+  });
+
+  it("storyChoices greys an unaffordable priced option and shows its price (D115)", () => {
+    const shrine = getStory("abandoned-shrine")!;
+    const broke = newRun("broke", 3);
+    const choices = storyChoices(broke, NODE, shrine);
+    const offer = choices.find((c) => c.id === "offer")!;
+    expect(offer.available).toBe(false);
+    expect(offer.cost).toBe(10);
+    expect(offer.label).toMatch(/\(10g\)/);
+    // The free option stays takeable — a priced gate never dead-ends a story.
+    expect(choices.find((c) => c.id === "loot")!.available).toBe(true);
+    // With a full purse the same option is takeable.
+    const flush = newRun("flush", 100);
+    expect(storyChoices(flush, NODE, shrine).find((c) => c.id === "offer")!.available).toBe(true);
+  });
+
+  it("the headless auto path picks among AFFORDABLE options only (D115)", () => {
+    // Sweep seeds so the seeded auto pick would sometimes have landed on a priced
+    // option: a broke run must never refuse — every authored story keeps a free
+    // option, and the auto path re-routes to it.
+    const storyEvent = mustGetEvent("story");
+    for (let i = 0; i < 12; i++) {
+      const run = newRun(`auto-broke-${i}`, 0);
+      const out = storyEvent.autoResolve(run, NODE);
+      expect(out.refused).toBeUndefined();
+      expect(run.camp.purse).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 

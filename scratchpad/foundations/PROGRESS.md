@@ -751,7 +751,7 @@ States: `todo` → `in-progress` → `testable` → `done`
   doc'd at [`docs/design/implementation/conventions.md`](../../docs/design/implementation/conventions.md)
   (living exemplars + guards; wired into CLAUDE.md/glossary/agent briefs). Waves 2–4 shipped same-day (num.ts + `pct()` adoption; result-shape stragglers; `showModal`
   completion + `DEPTH`/`pushHpBar`/`onEscClose`; the rename batch incl. `Camp.gold`→`purse` with a
-  repro-dump v1→v2 migration). Open owner calls: story short-pay vs refuse; bribe tri-state enum.
+  repro-dump v1→v2 migration). The two owner calls closed as **D115**: story prices refuse (unpaid = not choosable, greyed with the price; auto path picks affordable) and `BribeResult.status` names the refused/resisted/swayed tri-state.
 - **Deferred / next (see the handoff doc):** rename the placeholder captives into named characters; the
   **flank / repositioning session** (the Intel deploy-side that makes extraction viable — red-teamed,
   kept-not-replaced, C5-lite); the **map-creation expansion** (bigger/richer boards + more of the

@@ -506,13 +506,19 @@ export function applyPatronizeEffect(run: RunState): { ok: true; detail: string;
 
 /** What a bribe attempt produced. */
 export interface BribeResult extends ActionOutcome {
-  /** Influence spent (on a success **or** a failed roll — the gamble). */
-  cost?: number;
   /**
-   * True when the Influence was spent but the enemy **resisted** the sway (the roll
-   * failed) — distinct from `applied: false` with no `failed` (couldn't even afford it).
+   * The bribe's explicit tri-state (D115) — the gamble's three genuinely distinct ends,
+   * previously hidden in a two-boolean combination (`applied` × `failed`):
+   * - `"refused"` — couldn't attempt (no Noble / can't afford): **nothing spent**;
+   * - `"resisted"` — the roll failed but the Influence and the Act are **spent** (D62's
+   *   no-save-scum gamble);
+   * - `"swayed"` — the enemy turns.
+   * `applied` stays the {@link ActionOutcome} canon and is true exactly when
+   * `status === "swayed"` (an invariant a test pins).
    */
-  failed?: boolean;
+  status: "refused" | "resisted" | "swayed";
+  /** Influence spent (on a sway **or** a resisted roll — the gamble). */
+  cost?: number;
   /** How the swayed unit resolves after the battle (temp generic / perm authored). */
   outcome?: RecruitOutcome;
 }
@@ -554,7 +560,7 @@ export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | 
   // Job-gated like Patronize (D62): the bribe is the Noble's verb — without a Noble in
   // the party there is no standing-bearer to broker the sway (refuses, spending nothing).
   if (!hasNoble(run.party)) {
-    return { applied: false, reason: "No Noble in the party to broker a bribe." };
+    return { applied: false, status: "refused", reason: "No Noble in the party to broker a bribe." };
   }
   const tier = influenceTier(run.overworld.influence);
   const cost = bribePrice(preview, tier);
@@ -562,19 +568,19 @@ export function bribeEnemy(run: RunState, enemy: Pick<Unit, "id" | "authored" | 
   // (spends nothing) whose commit closure spends exactly `cost` — called on both branches below,
   // since a failed sway still spends the Influence (the gamble). Actorless (no fatigue).
   const check = checkOverworldCost(run, "bribe", { influence: cost }, `bribe ${enemy.name}`);
-  if (!check.ok) return { applied: false, reason: check.reason, cost };
+  if (!check.ok) return { applied: false, status: "refused", reason: check.reason, cost };
   // The sway roll — likelier at higher standing, fixed per target+node (no save-scum).
   const roll = streamFor(run.seed, Labels.bribe(run.mapNodeId, enemy.id));
   if (!roll.chance(bribeChance(tier))) {
-    check.commit(); // the gamble: a failed roll still spends the Influence
-    return { applied: false, failed: true, cost, detail: `${enemy.name} spurns the offer — ${cost} Influence spent for nothing.` };
+    check.commit(); // the gamble: a resisted roll still spends the Influence
+    return { applied: false, status: "resisted", cost, detail: `${enemy.name} spurns the offer — ${cost} Influence spent for nothing.` };
   }
   check.commit();
   const outcome = recruitClassify(enemy);
   const detail = outcome.permanent
     ? `${enemy.name} is swayed — joins permanently after the battle.`
     : `${enemy.name} turns coat for the rest of the battle.`;
-  return { applied: true, cost, outcome, detail };
+  return { applied: true, status: "swayed", cost, outcome, detail };
 }
 
 // --- Triage — the healer's fatigue-fuelled camp heal (the audit pass) --------

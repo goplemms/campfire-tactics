@@ -4694,3 +4694,46 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   `scripts/e2e-guild-banner.mjs` + CI step, `docs/design/implementation/conventions.md`,
   `scratchpad/foundations/audit-2026-07-20-structural.md` (waves 2–4 queue).
 - **Superseded by:** —
+
+---
+
+## D115 — Result semantics ratified post-audit: story prices refuse, the bribe tri-state is named
+
+- **Status:** Decided + built (2026-07-21, branch `claude/codebase-audit-refactor-810l1t` restarted
+  off the merged D114). The two design calls D114 deliberately left to the owner, decided in
+  discussion: **(1)** "if the player can't pay, the benefits of the event can't be chosen (as it's
+  not paid for)"; **(2)** the bribe's explicit status enum.
+- **Decision 1 — story prices refuse (unpaid = not choosable).** `applyStoryChoice`'s clamp
+  (short-pay whatever's in the purse, grant the full outcome — free at 0g) is retired. A priced
+  story option now **greys with its resolved price in the label** (the toll's "(10g)" convention;
+  `storyChoicePrice` is the pure seeded projection) and **refuses** if somehow chosen
+  (`EventOutcome.refused`, nothing spent, no benefits). The headless auto path picks among
+  **affordable** options only. Why: every peer already refuses (recruiter, toll — D48/D61's
+  priced-by-construction doctrine); short-pay collapsed every authored price to "whatever you
+  have," killing the price as a signal and rewarding strategic poverty (D30's scarcity doctrine
+  inverted). The "give what you can" feel is henceforth an **authoring pattern** (write a cheaper
+  second option), not an engine behavior. Every authored story keeps a free option, so no beat
+  dead-ends. Sim digest verified **byte-identical** (the bot is never broke at a story node).
+- **Decision 2 — the bribe tri-state is named.** `BribeResult` gains
+  `status: "refused" | "resisted" | "swayed"` as the explicit discriminant; the ambiguous
+  `failed` boolean retires ("resisted" is the D62 doc's own word — a resisted roll still spends
+  the Influence and the Act, the no-save-scum gamble). `applied` stays the ActionOutcome canon,
+  true exactly on `"swayed"` — an invariant a test pins across a three-state sweep. The one
+  render site that decoded the old two-boolean combination (`!applied && !failed`) now reads
+  `status === "refused"`.
+- **Challenge pass:** peers checked (the toll already refused; hollow-mill beats have no clamp —
+  stories were the only soft price); refusal ordering verified (returns before morale/material/
+  grant effects); the changed surface stepped through the **real scene** (broke → "(10g)" option
+  greyed, free option takeable, panel shows the purse; rich → takeable). No new render branch:
+  the greying rides `renderChoicePanel`'s existing `available` → `Button.enabled` path.
+- **Guards:** vitest 1238/1238 (new: refusal + full-pay + greyed-choice + affordable-auto-path
+  suite; the bribe status⇔applied invariant) · sim byte-identical · build clean. Barrel +1
+  (`storyChoicePrice`).
+- **Reuses / consistent with:** **D48/D61/D88** (priced by construction, now total over stories),
+  **D30** (scarcity), **D22** (the price is a pure seeded projection), **D114** (the `refused`
+  flag + ActionOutcome canon this rides).
+- **Spec:** `src/core/stories.ts` (`storyChoicePrice`, the refusing `applyStoryChoice`, priced
+  labels), `src/core/node-events.ts` (affordable auto path), `src/core/economy-actions.ts`
+  (`BribeResult.status`), `src/game/scenes/BattleScene.ts` (the one render read),
+  `node-events.test.ts` / `economy-actions.test.ts` (the pinned contracts).
+- **Superseded by:** —

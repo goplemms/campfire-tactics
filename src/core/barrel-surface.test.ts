@@ -821,6 +821,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "statusVisual",
   "stealth",
   "stepDistance",
+  "storyChoicePrice",
   "storyChoices",
   "storyForNode",
   "streamFor",

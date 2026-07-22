@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { GuildScene } from "./scenes/GuildScene";
 import { OverworldScene } from "./scenes/OverworldScene";
 import { BattleScene } from "./scenes/BattleScene";
-import { ExpeditionBootScene, HollowMillBootScene } from "./boot/demos";
+import { ExpeditionBootScene, HollowMillBootScene, RescueBootScene } from "./boot/demos";
 import { BattleBootScene, OverworldBootScene, JumpBootScene, DebugBootScene, ScenarioBootScene } from "./boot/debug";
 import { ReproBootScene } from "./boot/repro";
 import { LevelBootScene } from "./boot/level";
@@ -36,6 +36,10 @@ const isOverworld = base === "overworld";
 // OverworldScene — the full expedition loop (fog/ledger/forecast/recovery/lifecycle
 // + real combats) on a hand-picked, deterministic showcase map.
 const isExpedition = base === "expedition";
+// `#rescue` (D116): boot The Rescue — the expedition whose finale body is INJECTED from
+// content JSON (not inline TS). Its boot runs the D116 load pipeline fail-loud (inject →
+// resolve authoredId → validate prerequisites → validate connectivity) before rendering.
+const isRescue = base === "rescue";
 // `#debug` (dev-only): boot a minimal landing scene that mounts the "jump to node"
 // DOM overlay (debug-menu.ts) — the clickable front-end over the jump tooling. The
 // menu mounts ONLY here, so it never appears on `#demo`/`#expedition`/the default.
@@ -87,6 +91,8 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
     ? [ScenarioBootScene, GuildScene, OverworldScene, BattleScene]
     : isJump
     ? [JumpBootScene, GuildScene, OverworldScene, BattleScene]
+    : isRescue
+    ? [RescueBootScene, GuildScene, OverworldScene, BattleScene]
     : isExpedition
       ? [ExpeditionBootScene, GuildScene, OverworldScene, BattleScene]
       : isOverworld

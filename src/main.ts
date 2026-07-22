@@ -23,6 +23,15 @@ if (expeditionBtn) {
   };
 }
 
+// The run-bar "The Rescue" button (D116): boot the injected-finale expedition demo.
+const rescueBtn = document.getElementById("rescuebtn") as HTMLButtonElement | null;
+if (rescueBtn) {
+  rescueBtn.onclick = () => {
+    window.location.hash = "rescue";
+    window.location.reload();
+  };
+}
+
 // The run-bar "Debug: Jump" button (dev-only): set the #debug hash and reload so the
 // game boots the DebugBootScene, which mounts the "jump to any node" DOM overlay. The
 // config reads the hash once at module init, so a reload is required for it to take.

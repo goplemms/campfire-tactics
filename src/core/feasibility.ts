@@ -53,7 +53,7 @@ import {
 import { RunLoop } from "./runloop";
 import { slotsUsed } from "./inventory";
 import type { MapNode } from "./overworld";
-import { validateExpedition, type AuthoredExpedition } from "./expedition";
+import { validateExpedition, resolveAuthored, type AuthoredExpedition } from "./expedition";
 
 // ---------------------------------------------------------------------------
 // playToTerminal — walk a FULL route and resolve the final node
@@ -289,7 +289,7 @@ function nodePayloads(exp: AuthoredExpedition): NodePayload[] {
   for (const nodeId of Object.keys(exp.map.nodes)) {
     const node = exp.map.nodes[nodeId];
     if (!node.authoredId) continue;
-    const enc = exp.encounters[node.authoredId];
+    const enc = resolveAuthored(exp, node.authoredId);
     if (!enc) continue;
     if (enc.grants?.recruit) out.push({ nodeId, payload: `recruit:${enc.grants.recruit.id}` });
     if (enc.grants?.item) out.push({ nodeId, payload: `item:${enc.grants.item}` });

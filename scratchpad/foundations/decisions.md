@@ -4781,3 +4781,42 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 - **Reuses:** **D98** (JSON pipeline + anti-silent-overwrite + `validateLevel` fail-loud ethos), the
   `MapNode.authoredId` seam + `registerExpedition` catalog, **D99** (the flank behavior this makes concrete),
   **D22** (determinism). **Superseded by:** —
+
+### D116 follow-up — the near-term slice is **built** (2026-07-22)
+
+- **Status:** Built + all guards green. Planned, red-teamed (`decision-adversary`), then implemented on branch
+  `claude/authored-node-injection-pipeline-69104t`. `npm run build` clean · `npm test` **1256** (+18) · `npm run sim`
+  green · **`npm run test:e2e:rescue`** (new) green. The D97 arc finale (`PRISON_ASSAULT`) is **untouched**.
+- **What landed:**
+  - **Injected catalog** — `core/authored-catalog.ts`: a module-global `Record<id, AuthoredEncounter>` with
+    `injectAuthoredNodes` (idempotent by reference, **fail-loud on a conflicting body for one id**),
+    `getAuthoredNode`, `injectedNodeIds`, `clearInjectedNodes` (test isolation). Pure — no `content/` import.
+  - **Resolver + optional inline** — `AuthoredExpedition.encounters` is now **optional**; `resolveAuthored(exp, id)`
+    checks inline first (the TS arc), then the injected catalog. `runEncounter`/`feasibility`/`debug-menu` route
+    through it.
+  - **Load pipeline** — `validateExpedition` generalized to resolve via `resolveAuthored`, plus **acyclicity**
+    (`cycleProblems`, added on the red-team's back-edge case) and **prerequisites** (`prerequisiteProblems`:
+    a `provides` node must sit reachable **upstream** of each `requires` node on *some* path — validate-only, never
+    auto-inserted). `loadExpedition(exp)` throws fail-loud with the aggregated problem list; run at boot AND as CI.
+  - **`MapNode.provides?`/`requires?`** — one named string flag each (not a capability engine).
+  - **The Rescue** — `core/the-rescue.ts`: a curated TS expedition (`start → [sideDoor(provides), frontal] →
+    finale`), **no inline bodies** — the finale resolves `authoredId: "the-rescue"` from the injected catalog
+    (`content/levels/the-rescue.json`, reused as-is). `content/authored-nodes.ts` (`injectContentNodes`) is the
+    content→core seam. Booted via `#rescue` (`RescueBootScene`): inject → `loadExpedition` fail-loud → play.
+- **Red-team fixes folded in (from `decision-adversary`):** (1) **the sharpest hole** — `runEncounter` used to fall
+  back to a **procedural** fight when an expedition node's `authoredId` didn't resolve (D98's silent-overwrite
+  hazard resurfacing at *runtime*, off the one boot-guarded path); it now **throws**, so the resume/debug-jump
+  paths fail loud too. (2) the reachability-based prereq check assumed a DAG → added a **cycle guard** so a
+  back-edge can't fake "upstream." (3) documented that the flank is **validated placement only** this session —
+  no `sideDoorIntel` flag is set/read yet, so the finale plays identically on both arms; the e2e fields the Thief
+  bundle and asserts the **injected** finale content staged (named Warden + 3 named captives — a procedural
+  fallback could never produce them), guarding the new scene surface (the D92/#168 doctrine).
+- **Guards added:** `core/expedition-load.test.ts` (catalog, resolver, dangling-id fail-loud, prereq pass/fail for
+  downstream/parallel/absent providers, cycle rejection, `runEncounter` fail-loud), `content/the-rescue-expedition.test.ts`
+  (injection **live**: `loadExpedition(THE_RESCUE)` passes only after `injectContentNodes`; typo'd id + removed
+  provider both fail loud), `scripts/e2e-rescue.mjs` + `test:e2e:rescue` (wired into `ci.yml`).
+- **Deferred (unchanged from D116, explicitly NOT built):** JSON-defined expedition **graphs**; a general
+  provides/requires **vocabulary**; **auto-insertion** of prerequisite nodes; the **runtime `sideDoorIntel` flag**
+  + deploy-time flank (parked with the v4 finale population); populating the v4 finale
+  (enemies/Warden-keyholder/named captives/objectives); the D108 guard doctrine; **promoting The Rescue into the
+  arc** (it stays standalone — the shipped arc finale is untouched).

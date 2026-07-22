@@ -106,7 +106,7 @@ describe("createRunFromExpedition + runEncounter (D49/D52)", () => {
     const exp = registerExpedition(expedition());
     const run = createRunFromExpedition(exp);
     const authored = runEncounter(run, run.map.nodes.e1);
-    expect(authored).toBe(exp.encounters.fight1); // the fixed record, by reference
+    expect(authored).toBe(exp.encounters!.fight1); // the fixed record, by reference
     const generated = runEncounter(run, run.map.nodes.e1b);
     expect(isAuthoredEncounter(generated)).toBe(false); // procedural fallback
     expect((generated as { reward: { gold: number } }).reward.gold).toBeGreaterThan(0);
@@ -116,7 +116,7 @@ describe("createRunFromExpedition + runEncounter (D49/D52)", () => {
     const run = createRunFromExpedition(registerExpedition(expedition()));
     chooseNode(run, "e1");
     expect(currentNode(run).id).toBe("e1");
-    expect(currentEncounter(run)).toBe(getExpedition("test-exp")!.encounters.fight1);
+    expect(currentEncounter(run)).toBe(getExpedition("test-exp")!.encounters!.fight1);
   });
 
   it("the forecast bands the authored reward.gold", () => {

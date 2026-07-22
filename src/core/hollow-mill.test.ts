@@ -122,7 +122,7 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     // primary job (routeCombatXp); the guild-contact grant tops it up. With ZERO combat kill/hit
     // tally (the worst case), this floor alone must reach L5 — else the rite silently omits the
     // prestige and the Thief route evaporates (the red-team's silent-dead-end). Vale starts L1.
-    const den = THE_HOLLOW_MILL.encounters["thieves-den"];
+    const den = THE_HOLLOW_MILL.encounters!["thieves-den"];
     const guaranteedObjXp =
       (E1_SKIRMISH.reward.xp ?? 0) + (TRAP_FIELD.reward.xp ?? 0) + (den.reward.xp ?? 0) + (OUTER_YARD.reward.xp ?? 0);
     const contactGrant = THIEVES_GUILD_CONTACT.choices.find((c) => c.outcome.jobXp)!.outcome.jobXp!.amount;

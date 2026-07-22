@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { gameConfig } from "./game/config";
 import { FONT } from "./game/theme";
 import { installReproDump, installSavePanel } from "./game/repro-capture";
+import { injectContentNodes } from "./content/authored-nodes";
 import "./game/fonts.css";
 
 // The run-bar "Demo" button (M12/D44): set the #demo hash and reload so the game
@@ -62,6 +63,14 @@ async function boot(): Promise<void> {
       new Promise((resolve) => setTimeout(resolve, 1500)),
     ]).catch(() => undefined);
   }
+
+  // Inject the content authored-node bodies into core's catalog ONCE, at app boot, before any
+  // scene runs (D116). It must be per-boot, not per-route: a captured expedition run **restored**
+  // via #repro / the #debug Restore box rebuilds through `getExpedition` + `createRunFromExpedition`
+  // and never re-enters the demo boot scene — so injecting only in RescueBootScene would leave the
+  // restored run's injected-body finale unresolvable (a fail-loud throw at the finale preview).
+  // Idempotent (the boot scene may inject again before its `loadExpedition`); cheap (a small glob).
+  injectContentNodes();
 
   const game = new Phaser.Game(gameConfig);
   // Expose the running game so the screenshot harness (scripts/screenshot.mjs)

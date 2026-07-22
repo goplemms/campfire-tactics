@@ -4815,6 +4815,14 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   downstream/parallel/absent providers, cycle rejection, `runEncounter` fail-loud), `content/the-rescue-expedition.test.ts`
   (injection **live**: `loadExpedition(THE_RESCUE)` passes only after `injectContentNodes`; typo'd id + removed
   provider both fail loud), `scripts/e2e-rescue.mjs` + `test:e2e:rescue` (wired into `ci.yml`).
+- **`/memento:challenge` pass (post-build):** (a) **found a real regression** — injection was wired *per-route*
+  (`RescueBootScene` only), so a captured Rescue run **restored** via `#repro` / the `#debug` Restore box (which
+  rebuilds through `restoreRun` → `getExpedition`, never re-entering the boot scene) hit the new fail-loud throw at
+  the finale preview: a Hollow Mill run resumed but a Rescue run couldn't. **Fixed** by moving injection to the single
+  app-boot seam (`main.ts` `boot()`, before `new Phaser.Game`), idempotent with the boot scene's own call — so every
+  route/restore has the catalog. (b) **Mutation-tested the guards** — reverting each of the five load-bearing pieces
+  (runEncounter throw, prereq validation, `loadExpedition` fail-loud, cycle guard, inject conflict-throw) turns exactly
+  its own guard red and nothing else; the suite is specific, not green-for-the-wrong-reason.
 - **Deferred (unchanged from D116, explicitly NOT built):** JSON-defined expedition **graphs**; a general
   provides/requires **vocabulary**; **auto-insertion** of prerequisite nodes; the **runtime `sideDoorIntel` flag**
   + deploy-time flank (parked with the v4 finale population); populating the v4 finale

@@ -4737,3 +4737,47 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   (`BribeResult.status`), `src/game/scenes/BattleScene.ts` (the one render read),
   `node-events.test.ts` / `economy-actions.test.ts` (the pinned contracts).
 - **Superseded by:** —
+
+---
+
+## D116 — Authored nodes are stored as injected JSON; expeditions resolve + validate at boot (design)
+
+- **Status:** Decided (design) 2026-07-22 — owner-directed design session. **Not yet built.** Handoff:
+  [`finale-storage-and-layout-handoff.md`](finale-storage-and-layout-handoff.md). The finale (The Rescue) was the
+  concrete basis point; its v4 layout polish is captured in the same handoff.
+- **Context (the friction):** authored nodes are **double-homed** — standalone levels as JSON in
+  `content/levels/` (glob-loaded, D98), arc encounters as **hand-written TS consts in `core/hollow-mill.ts`**.
+  "Promotion" is a manual hand-translation; it doesn't scale as authoring grows (the map-creation expansion) and
+  every hand-copy risks drift. **Correction logged:** "core can't glob JSON" is **not** a hard wall — the sim/tests
+  run under vitest (Vite-powered) and core tests already use `import.meta.glob`. The real constraint is the
+  **layering/purity discipline** (core is the pure base; importing `content/` inverts the dependency and ties core
+  to Vite-isms). So the real fork is **"does core *import* its content, or get it *injected*?"**
+- **Decision — injection, not codegen.** Node **bodies** stay **JSON, one file per node**. A resolved **catalog is
+  handed into core's run machinery at boot** (dependency flows content→core; core stays pure/Vite-agnostic; no
+  generated files). The existing **`MapNode.authoredId`** seam carries it unchanged — injection just swaps the
+  inline per-expedition catalog for the shared injected one. Codegen (generate a TS catalog core imports) was
+  considered and rejected as heavier than this case needs.
+- **Decision — an expedition load pipeline**, run at **boot** and reused as a **build-time/CI guard** (a broken
+  expedition fails the build, never the player's session): **resolve** every `authoredId` against the catalog
+  (fail loud on a miss) → **assemble** the DAG → **satisfy prerequisites** → **validate** connectivity
+  (reachable / no dead ends, `MAP_GEN`).
+- **Decision — prerequisites are validated, not auto-inserted, and are two-part.** A node may *declare a need*
+  (finale: "infiltration wants side-door intel"); the loader **validates** a provider node sits reachable upstream
+  — it does **not** splice one in (auto-insertion into a curated arc is exactly D98's silent-overwrite risk). The
+  prereq has two halves: **graph placement** (a provider is on some path) + a **runtime flag** (the player must
+  visit/resolve it to set `sideDoorIntel`; the finale reads it at deploy). A branching DAG can skip it → the
+  consumer must **degrade gracefully** (finale stays fully winnable frontally). The flank is a *reward for
+  scouting*, never a hard gate — the concrete build of D99's parked flank behavior.
+- **Reconciliation:** "curated" = **explicit + fail-loud-validated**, not "must be TS". A hand-authored, validated
+  expedition *file* is still curated whether TS or JSON — so the D98 anti-silent-overwrite guard survives the
+  eventual move to JSON expeditions.
+- **Explicitly INTENT / deferred (owner-flagged, do NOT build yet):** **expeditions as JSON** defining the graph
+  itself (authored nodes by id + generated nodes by spec + their links — the bridge between the curated arc and the
+  procedural `MAP_GEN` overworld); a **general provides/requires vocabulary** (for now one named string flag, not a
+  capability engine); **auto-insertion** of prerequisite nodes.
+- **Near-term buildable slice (next session):** the injected catalog + the load pipeline + **validate-only** prereq
+  checking + the finale wired through it; expedition topology stays curated (TS fine); the flank's runtime flag +
+  graceful fallback stay in the design but build only what the finale needs.
+- **Reuses:** **D98** (JSON pipeline + anti-silent-overwrite + `validateLevel` fail-loud ethos), the
+  `MapNode.authoredId` seam + `registerExpedition` catalog, **D99** (the flank behavior this makes concrete),
+  **D22** (determinism). **Superseded by:** —

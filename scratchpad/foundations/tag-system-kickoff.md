@@ -74,25 +74,26 @@ provides/requires-style capability engine. Keep the registry to the tags actuall
 2. `E` is **targetable**.
 3. `E` is a **combatant** (does **not** hold the `non-combatant` tag).
 4. `E` is **within striking distance**.
+5. `U` is **still capable of dealing damage to `E`** — `U` has a viable attack against `E` that is not
+   nullified (e.g. `E` is not immune to `U`'s damage type). *(R1 refinement — see below.)*
 
 Anchoring the memory window to "since its last turn" is deliberate — it **self-clears on the clock**
-instead of needing an arbitrary tick timer.
+instead of needing an arbitrary tick timer. **Proximity alone never triggers `in-combat`** — an
+exchange must actually have happened *and* `U` must still be able to fight back.
 
-### Open rulings to resolve in-session (with our leanings)
-- **R1 — the four clauses bind to one `E`, so the *first* engagement is "free."** An enemy stepping
-  adjacent with no blows yet traded ⇒ not `in-combat` ⇒ a guard could peel toward the door instead of
-  turning to fight the foe on its doorstep. **Leaning: close the gap** — `in-combat` if *either* (recent
-  damage exchange with a still-valid `E`) *or* (a valid combatant enemy is within striking distance right
-  now). Confirm, or keep the strict "blows must actually be traded" reading if that's the intent.
-- **R2 — the window is Speed-dependent** (CT clock): "since its last turn" is shorter for a fast unit,
-  longer for a slow one. **Leaning: a feature** (fast units re-evaluate more, read as more alert).
-  Confirm we're happy with stickiness being Speed-dependent vs. a fixed duration.
-- **R3 — escortee interaction.** Captives on the extraction path likely carry `non-combatant`, so a guard
-  whose only nearby foe is a fleeing captive is **not** `in-combat` ⇒ it peels to batter the door rather
-  than chase the runner. That's a real lever (raises seal-delay tension, lowers recapture pressure).
-  **Leaning: intended** — `non-combatant` deliberately does **not** confer `in-combat`, so the alarm/door
-  always wins a guard's attention over a runner (captives remain a valid *low-priority* attack target).
-  Confirm.
+### Rulings — ratified 2026-07-23 (owner-confirmed)
+- **R1 — proximity alone does not engage; the exchange must have happened AND `U` must still be able to
+  hurt `E`.** *Not* a straight `OR` with "a foe is adjacent right now." An enemy `U` cannot meaningfully
+  damage (immune to `U`'s damage type, or `U` has no viable attack on it) does **not** pin `U` in combat,
+  even standing adjacent — `U` stays free to peel to the door. Captured as **clause 5** above; the "free
+  first engagement" is intentional, and the guard turns to fight only once blows are actually traded with
+  a foe it can still answer.
+- **R2 — the Speed-dependent window is a *feature*.** "Since its last turn" is a shorter real-time window
+  for a fast unit, longer for a slow one ⇒ **faster units drop out of combat sooner** (re-evaluate more
+  often, read as more alert). Accepted as intended; no fixed-duration timer.
+- **R3 — `non-combatant` does not confer `in-combat`.** A guard whose only nearby foe is a fleeing
+  captive (intrinsic `non-combatant`) is **not** `in-combat` ⇒ the alarm/door wins its attention over the
+  runner. Captives remain a valid **low-priority** attack target (deprioritized, not ignored). Accepted.
 
 ---
 

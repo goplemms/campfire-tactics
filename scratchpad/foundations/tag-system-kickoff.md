@@ -223,3 +223,50 @@ against a real garrison** can catch it. Pin the window semantics + one canonical
 e2e as the gate, *then* build. Adopting (b) makes the ordering trap vanish — the strongest reason to prefer it.
 - **Meta-flag (unclosed):** the adversary could not confirm the **`sim` routes any door-break encounter**.
   If it doesn't, R1's free-hit and R2's fast-guard degeneracy are *also* invisible to the digest — verify.
+
+---
+
+## Decision A RESOLVED + reshaped design (owner-confirmed 2026-07-23)
+
+**The finale distraction loop (owner intent).** Two spawn points (D99/D116 flank, `playerSpawns`):
+intended play is the **infiltrator alone at the side door, the main party at the front door.** The
+**entire garrison, Warden included, shares one drive: get to the doors** — the Warden to **use his key**
+(a fast unlock/re-seal Act), the rank-and-file to **batter, turn over turn.** The player **cannot
+distract everyone**, so they choose *who* to pin:
+- Engage the **Warden** → he is `in-combat` → **cannot key the door** (denies the big prize) → but the
+  unattached guards keep battering.
+- Engage the **guards** → the Warden slips through and keys it.
+A garrison unit **advancing to the objective is choosing NOT to attack**, so it **takes free hits** from
+whoever it walks past — that free hit **is the intended tension of the distraction, not a bug.**
+`in-combat` is the switch that converts "advancing (and eating free hits)" into "pinned, fighting." The
+tension is **force-splitting**: pinning costs bodies you can't use elsewhere.
+
+**Decision A = load-bearing (priority-reorder reading).** `in-combat` is the **sole** off-switch, for the
+**whole garrison** (Warden keys, guards batter). This **inverts the red-team's R1 "peel clamp"** — the
+free hit is wanted, so we do NOT add a "don't peel while an un-engaged foe is adjacent" clamp.
+
+**Substrate sizing (verified 2026-07-23) — two behaviors the loop needs are NOT built:**
+1. **Living keyholder.** Today `keyholder` is a **death-trigger only** (`gates.ts:41`, opens when the
+   tagged unit is *defeated*). The Warden *walking to the gate and keying it as an Act* is D108-designed,
+   unbuilt. (`openGate` **is** a real logged combat Act — `combat-actions.ts:83` — so the Act shape exists.)
+2. **Garrison door-drive as PRIMARY.** Today battering fires only when `wallsOff` (every seen foe
+   unreachable, `ai.ts:310`). The loop needs the garrison to pursue the door **even with reachable foes
+   around**, outranking "attack the adjacent foe," gated off by `in-combat`. The reorder is unbuilt.
+
+Already built: two-spawn `playerSpawns` + `placeParty`; the Warden unit (`prison-warden`, hollow-mill.ts:384);
+keyed/lever gates; the destructible batter; `openGate` Act.
+
+**Agreed scope — full doctrine, milestoned (owner-confirmed).** One session, sequenced so foundations
+land green even if the AI work runs long:
+- **M1 — tag foundations.** `tags.ts` (`TagDef`/`TAGS`/`hasTag`, `getTag`); `in-combat` (derived — **log-
+  derived per Decision B/C**, honest "derived includes the D87 log"); `non-combatant` (intrinsic). Registry
+  guard, glossary, `tags.test.ts`. **Green + tested without any drive change.**
+- **M2 — living Warden key-drive.** Converge-on-keyed-gate → `openGate` Act; gated on `!in-combat`;
+  coexists with the death-trigger keyholder on the same unit. Re-seal interplay with the lever.
+- **M3 — garrison door-drive as primary + `in-combat` gate.** The objective-drive outranks attacking a
+  reachable un-engaged foe (garrison-scoped — must NOT change generic bandit AI); `in-combat` suppresses it.
+- **M4 — the two-spawn distraction e2e** (infiltrator side + party front): assert the garrison eats free
+  hits advancing to the objective, a pinned Warden can't key, unattached guards batter, and pinning splits
+  the player's forces. The only guard that catches the silent-permanent-false failure.
+- Throughout: clock-semantics prose ratified; `non-combatant`+attack invariant (E); the D117 decision
+  record. **Deferred as ever:** the `captured`/`thief`/`lord`/`authored` migration.

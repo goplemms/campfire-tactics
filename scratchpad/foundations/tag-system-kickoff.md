@@ -390,3 +390,29 @@ rank-and-file are the **same `bandit-thug/bowman/cutthroat` templates E1 and fou
   Unit tests per Item 7; the generic-bandit canary (`ai.test.ts:90`) stays green.
 - **M4 — two-spawn distraction e2e + free-casualty ceiling + freeze/seal-fires assertions** → then the
   **D117** decision record. **Deferred as ever:** the `captured`/`thief`/`lord`/`authored` migration.
+
+---
+
+## M1 LANDED (2026-07-23) — tag foundations, green
+
+- **`tags.ts`** — `TagProvenance` (intrinsic/conferred/derived), `TagContext` (the narrow query
+  interface derived tags read — `units` + `exchangedDamageSince`, so `tags.ts` never couples to the
+  `CombatAction` union or the scene), `TagDef`, `TAGS` registry, `getTag`, `hasTag`. Three tags:
+  **`in-combat`** (derived — clauses 1–5, the log-history bit behind `ctx.exchangedDamageSince`),
+  **`non-combatant`** + **`garrison`** (intrinsic). `hasTag` throws on an unknown tag id and on a
+  derived tag with no ctx (fail-loud).
+- **`Unit.tags` / `UnitSpec.tags`** — intrinsic authored classifications; immutable in battle →
+  classified **unsnapshotted** in `snapshot-drift.test.ts`.
+- **Guards:** `tags.test.ts` (registry integrity + `hasTag` resolution + `in-combat` clause-by-clause,
+  each clause independently gating); barrel pin **+6** (`TAGS`/`getTag`/`hasTag`/`IN_COMBAT`/
+  `NON_COMBATANT`/`GARRISON`); conventions.md **Tags row**. `npm run build` clean, **1273/1273** core,
+  **sim digest unchanged**.
+- **DECISION E REVERSED (owed a confirm):** the red-team's "a `non-combatant` may not carry a usable
+  attack" invariant was **NOT built** — it contradicts the brief's own definition (`non-combatant` =
+  "a unit that *can* deal damage but is **deprioritized** as a target — not ignored"). `non-combatant`
+  is a **target-priority + `in-combat`-conferral** classification, not a can't-fight flag. If an
+  attack-carrying non-combatant ever proves a balance problem, the **M4 free-casualty ceiling** is the
+  tuning guard — not an authoring ban.
+- **Glossary deferred:** no tag renders yet (glossary scope = player-facing text); entries land when
+  `in-combat` gets a unit indicator (M4). The internal vocabulary lives in conventions.md now.
+- **Next:** M2 — the living Warden key-drive (logged key-open `CombatAction`, walks through, `!in-combat`).

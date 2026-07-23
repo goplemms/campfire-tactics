@@ -16,6 +16,7 @@ export * from "./pathfinding";
 export * from "./planning";
 export * from "./units";
 export * from "./status";
+export * from "./tags";
 export * from "./event-bus";
 export * from "./clock";
 export * from "./combat";

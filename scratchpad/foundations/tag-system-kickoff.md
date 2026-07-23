@@ -142,3 +142,84 @@ Plan it first (consider the memento discussion-to-plan / orchestrate workflow), 
 (`decision-adversary` — especially the R1–R3 rulings and the status/tag boundary), and keep every guard
 green (`npm run build` / `test` / `sim`, and `test:e2e:*` for any player-facing surface). Log the outcome
 as a new decision record and cross-reference it from the finale checklist (crux C1).
+
+---
+
+## Red-team outcomes (decision-adversary, 2026-07-23) — findings + open decisions
+
+A `decision-adversary` pass, grounded in the code, produced these verdicts. Recorded here; the
+**bold open decisions** need owner calls before build. (Verdicts: HOLDS / HOLDS-WITH-GUARD / REOPEN.)
+
+### The load-bearing finding — `in-combat` is nearly redundant with the current gate
+`ai.ts` only weighs battering when `wallsOff` = **every seen foe is terrain-unreachable** (ai.ts:310–327),
+and any attack on a reachable foe (`actionBase` 1000) outranks door-break (500). You can't trade blows
+with an unreachable foe ⇒ at the moment door-break is scored, `in-combat` is essentially never true ⇒
+**`in-combat` as an added gate is nearly a no-op** on today's AI. It only becomes load-bearing if the
+doctrine is *"a guard abandons a reachable but un-engaged foe to answer the alarm,"* which requires
+**reordering attack-vs-objective priority** (let `doorBreak` outrank attacking a reachable un-engaged
+adjacent foe when `!in-combat`) + dropping the `!post` clause. That is a real re-architecture, not a gate.
+- **OPEN DECISION A (the crux):** is the finale door-doctrine actually the priority-reorder above
+  (⇒ `in-combat` is load-bearing, build the reorder + a "don't peel while an un-engaged foe is adjacent
+  and reachable" clamp), or does the existing `wallsOff` behavior already express the doctrine
+  (⇒ `in-combat` is decorative here, and the honest move is to introduce the *tag vocabulary* on a
+  cleaner first use-site, or accept a thin/among-guards role)?
+
+### Status/tag boundary — **REOPEN the taxonomy** (sharpest item)
+Clause 1 ("damage exchanged **since U's last turn**") is a **history predicate** — NOT derivable from a
+board snapshot (two identical boards with different pasts differ). So the brief's "Derived = pure function
+of battle state" is **false as written** for `in-combat`. Two honest fixes:
+- **OPEN DECISION B:** either **(i)** redefine *derived* as "pure fn of battle state **including the D87
+  combat log**" (legitimizes `in-combat`; points at log-derivation), **or (ii)** concede `in-combat` is a
+  **status**, and the tag layer is a **query facade** over statuses + intrinsics (not a third stateless
+  kind). Shipping it as "derived, stateless" while backing it with stamped per-unit memory is the one
+  framing that is actually false — and it's what the exemplar teaches every future tag. *Lean (i).*
+
+### Engagement memory — **REOPEN; lean (b) log-derived**
+- **(a) new per-unit field:** trips the `snapshot-drift` tripwire (must join `UnitSnapshot`), grows every
+  undo checkpoint, and carries a **set/clear-ordering footgun**: clear at turn-open (the obvious spot next
+  to `tickStatuses`) and it **erases the inter-turn damage it needs ⇒ `in-combat` permanently false ⇒ the
+  seal-delay silently never fires.** Only safe if keyed on `clock.time` (which *is* snapshotted) + a
+  `lastTurnTime` field, both in the snapshot.
+- **(b) log-derived:** no new field, no snapshot growth, replay-free, and the ordering footgun disappears.
+  Costs: couples `hasTag` to the combat-log module + an O(log) backward scan per query (cacheable).
+- **OPEN DECISION C:** adopt **(b)** (recommended, and it's the same move as B(i)), or **(a)** keyed on
+  `clock.time`. Discriminator is the boundary claim + the clear-ordering trap — both favor (b).
+
+### R1 — HOLDS-WITH-GUARD
+Coherent, but the *gate* is unspecified (see Decision A). If door-break may outrank a reachable un-engaged
+foe, you own a visible **free-hit / peel-then-return oscillation** (guard turns its back on a foe that just
+stepped adjacent; eats a free strike; `in-combat` next turn; foe dies; peels again for the next arrival).
+Add a "don't peel while an un-engaged reachable foe is adjacent" clamp, or accept it explicitly.
+
+### R2 — HOLDS-WITH-GUARD (the *framing* is backwards)
+The window ≈ `100 / speed` ticks. So a **faster guard has a SHORTER window ⇒ forgets a fight sooner ⇒ is
+EASIER to distract** — the opposite of "more alert." A fast garrison (speed 20) vs a slow besieger (speed 6)
+**answers the door mid-melee for free**; the besieger can't swing fast enough to keep it pinned, and the
+seal-tension evaporates exactly for high-Speed defenders (an author-set stat).
+- **OPEN DECISION D:** guard the ratio — **floor the window at a minimum number of *unit-turns*** (uniform
+  stickiness, besieger cadence irrelevant), or declare as canon that finale garrisons are tuned
+  guard-Speed ≤ besieger-Speed. Keep the clock anchor either way.
+
+### R3 — HOLDS-WITH-GUARD
+The player CANNOT weaponize non-combatants to pin guards (a non-combatant can't pin — harmless direction).
+The one-directional hazard: an **authored `non-combatant` that carries a real attack** = a griefer the AI
+ignores while it batters (guard never `in-combat`, takes free chip forever).
+- **OPEN DECISION E:** add a D114-style invariant — *a template may not carry `non-combatant` + a usable
+  attack* (or the tag forfeits on first damage dealt). Cheap; keeps the tag honest at its first inhabitant.
+
+### Clock semantics — HOLDS-WITH-GUARD (pin the prose)
+"Since U's last turn (inclusive)" is ambiguous (current-turn vs previous-turn window; "inclusive" invites a
+circular self-justifying read since the plan is computed before the strike). **Ratify the operational
+definition:** window = **(start of U's most-recently-*completed* turn, now]**; U's own current-turn damage
+does **not** count at plan time; first-turn floor = battle open; charge-resolution damage counts as of the
+tick it lands. Under (b) this is exactly "scan the log back to U's previous `endTurn`."
+
+### Highest-risk item to resolve FIRST
+The engagement-window **set/clear/read ordering** (Decision C) compounded by the clock-semantics prose.
+The obvious-but-wrong implementation makes `in-combat` **permanently false** — every guard always peels,
+the seal-delay never triggers — and it is **silent**: `vitest`/`sim` never render a garrison door-fight
+(the bot skips deploy/interactive screens). Only a **purpose-built `test:e2e` that opens a real seal
+against a real garrison** can catch it. Pin the window semantics + one canonical clear-point, write that
+e2e as the gate, *then* build. Adopting (b) makes the ordering trap vanish — the strongest reason to prefer it.
+- **Meta-flag (unclosed):** the adversary could not confirm the **`sim` routes any door-break encounter**.
+  If it doesn't, R1's free-hit and R2's fast-guard degeneracy are *also* invisible to the digest — verify.

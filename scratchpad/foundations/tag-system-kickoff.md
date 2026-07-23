@@ -270,3 +270,78 @@ land green even if the AI work runs long:
   the player's forces. The only guard that catches the silent-permanent-false failure.
 - Throughout: clock-semantics prose ratified; `non-combatant`+attack invariant (E); the D117 decision
   record. **Deferred as ever:** the `captured`/`thief`/`lord`/`authored` migration.
+
+---
+
+## Red-team 2 outcomes (decision-adversary, 2026-07-23) — the doctrine + milestone plan
+
+Grounded pass on the reshaped design. Key **verified** facts: `PRISON_ASSAULT` (hollow-mill.ts:372–413)
+has **no gates/levers/keyed-gate today** and a **single** left-edge spawn cluster; the garrison's
+rank-and-file are the **same `bandit-thug/bowman/cutthroat` templates E1 and four other encounters use**;
+`role:"captain"` is on **three** encounters (not just the Warden); door-break today is gated by `wallsOff`
+**and** `!post`; `openGate` the Act is **lockpick-only**. Verdicts:
+
+### THREE OWNER DECISIONS (fork the build — need calls before M1)
+- **DECISION F — the garrison-scoping marker (highest risk; Item 1 REOPEN).** There is **no data marker**
+  that scopes M3's primary door-drive to the finale garrison: template and `role` are both non-unique, so
+  a global reorder breaks `ai.test.ts:90` + every *future* gated encounter (the day D103's captive→gate
+  migration lands, a plain `bandit-thug` inherits "abandon the fight, run at the door" with **no test
+  flip**), and an incidental "gates-present" scope silently captures encounter 2. Must name a **per-unit
+  marker**. Options: **(F1)** a new `"garrison"` `STANDING_ORDERS` posture authored via
+  `overrides:{standingOrder}`, dispatched in the planner exactly like `hold`/`flee` (D81/D84-consistent;
+  mutually exclusive with `hold`, which also resolves Item 2); **(F2)** an intrinsic `garrison` tag defined
+  in M1 next to `non-combatant`, consumed by M3. *Lean F1* — it's an encounter *role*, not a template
+  identity, and rides the proven order-dispatch path. Either way, **pull its definition into M1** so M3 is
+  purely the planner reorder consuming an existing marker.
+- **DECISION G — does the Warden's keyed gate == the player's lever gate? (Item 3).** A `keyholder` gate is
+  **non-destructible → no ratchet**, so Warden-keys-open ↔ player-levers-shut is an **unbounded, cheap
+  oscillation**: a unit camped on the *remote* lever re-locks the gate every turn and pins the Warden
+  **without engaging him and without `in-combat`** — strictly cheaper than the intended "pinning costs
+  bodies" tension. **(G1)** accept lever-camping as a legit tactic (record it), or **(G2)** author the
+  Warden's keyed gate and the lever-sealed gate as **different doors** so a ranged lever can't trivially
+  undo the key. *Lean G2* (preserves the force-splitting tension).
+- **DECISION H — restore the peel-clamp for the RANGED case? (Item 5, leaning REOPEN).** Clause 4 needs
+  `E` within striking distance; a guard that free-hits then **advances out of a ranged striker's reach** is
+  never `in-combat` against it → **never retaliates**. A Hunter (`attackRange` 3) parks off-lane and **farms
+  the whole garrison at zero risk** — the "free hit is intended tension" reasoning held for *melee* (eats a
+  counter next turn), not ranged. Options: **(H1)** accept ranged free-farm as skill expression; **(H2)**
+  relax the window so *being damaged this window* keeps `U` `in-combat` even when it can't currently strike
+  `E` — then a shot guard **peels off the door to chase the shooter** (a *successful distraction*, not a
+  farm) — but this **reopens ratified clause 5** and needs the in-combat behavior to include "advance on the
+  attacker"; **(H3)** a casualties-taken-while-advancing ceiling asserted in M4 (catch the farm in the
+  digest) without changing the rule. *Lean H2 as the elegant fix, but it edits a ratified clause — owner
+  call.* Regardless, **M4 asserts a free-casualty ceiling.**
+
+### ADOPTED GUARDS (no fork — folding into the plan)
+- **Item 2 (HOLDS-WITH-GUARD):** the drive is a **new posture dispatched like `hold`/`flee`, never a
+  mutation of the order-less default path** — satisfied by F1.
+- **Item 4 (HOLDS-WITH-GUARD):** keep M1 as a **build-order checkpoint**, but D117 must state M1 ships
+  **unconsumed vocabulary** (dead-code until M3); the behavior proof is **M4, not M1**.
+- **Item 6 (HOLDS-WITH-GUARD):** the Warden's key-open is a **first-class logged `CombatAction`** (mirror
+  `attackGate`), lowered from a new `AIPlan` **second gate field** (key-target vs batter-target); add a
+  **replay-equality** test + an **undo-re-locks** test. Without this, replay/save diverges silently.
+- **Item 3 idempotency:** one test that death-trigger + living keyholder on the same unit **don't
+  double-emit `gateOpened`** (both paths already filter `g.locked` — should hold).
+- **Item 7 (HOLDS-WITH-GUARD):** **split the coverage** — unit tests in `ai.test.ts` for the reorder
+  (`garrison` unit + adjacent reachable foe + breakable gate ⇒ `plan.gateTarget` set, not `plan.target`;
+  `in-combat` ⇒ `plan.target` set); reserve the **e2e** for what only a render catches — **no freeze** on
+  the key-open surface + the **silent-permanent-`in-combat`-false** failure (boot finale, leave Warden
+  unengaged, run N turns, assert the keyed gate **opens with a logged key-cause event**; engage him, assert
+  it **stays shut**).
+
+### REVISED SEQUENCE (two changes)
+1. **M1 — tag foundations + the scoping marker.** `tags.ts`/`TAGS`/`hasTag`; `in-combat` (log-derived);
+   `non-combatant` (intrinsic); **+ the Decision-F marker** so M3 consumes, not invents. Registry guard,
+   glossary, `tags.test.ts`, the `non-combatant`+attack invariant (E). Green on unit tests.
+2. **M2 — living Warden key-drive.** Converge-on-keyed-gate → **logged** key-open Act (Item 6); gated on
+   `!in-combat`; coexists with the death-trigger keyholder (idempotency test). Self-scoping (only a
+   keyholder-tagged unit + an authored keyed gate fires it).
+3. **M2.5 — author the finale substrate (NEW; the plan had no step for it).** Into `PRISON_ASSAULT`: the
+   destructible seal (batterers), the keyed gate (Warden, tag `{role:"captain"}`), the lever (Decision G
+   determines same-vs-different door), the keyholder death-trigger, and **split two-cluster `playerSpawns`
+   + deterministic Thief placement**. M3 and M4 have nothing real to test against without this.
+4. **M3 — garrison door-drive as primary + `in-combat` gate.** The planner reorder consuming the
+   Decision-F marker (outranks attacking a reachable un-engaged foe; suppressed by `in-combat`). Unit tests
+   per Item 7; must **not** flip generic-bandit behavior (the `ai.test.ts:90` canary stays green).
+5. **M4 — the two-spawn distraction e2e** + the free-casualty ceiling (Decision H) + freeze/seal-fires
+   assertions. Then the **D117** record. **Deferred as ever:** the boolean migration.

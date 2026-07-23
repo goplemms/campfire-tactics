@@ -22,6 +22,7 @@ import {
   THE_HOLLOW_MILL,
   getNode,
   getExpedition,
+  resolveAuthored,
   enumeratePaths,
   traverseRoute,
   samplePopulation,
@@ -59,7 +60,8 @@ function style(el: HTMLElement, s: Partial<CSSStyleDeclaration>): void {
 function nodeDisplayName(nodeId: string): string | undefined {
   const node = getNode(THE_HOLLOW_MILL.map, nodeId);
   if (node.authoredId) {
-    const enc = getExpedition(THE_HOLLOW_MILL.id)?.encounters[node.authoredId];
+    const exp = getExpedition(THE_HOLLOW_MILL.id);
+    const enc = exp && resolveAuthored(exp, node.authoredId);
     if (enc?.name) return enc.name;
   }
   return undefined;

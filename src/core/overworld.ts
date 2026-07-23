@@ -105,6 +105,25 @@ export interface MapNode {
    * procedural nodes leave it unset.
    */
   blockedWhen?: Predicate;
+  /**
+   * **Prerequisite provider (D116)** — a single named flag this node *offers* upstream:
+   * visiting/resolving it sets that run-state flag (e.g. the side-door intel a scouting
+   * beat yields). The expedition load pipeline validates that a node which
+   * {@link requires} a flag has a `provides` node reachable upstream (the *opportunity*);
+   * the runtime flag itself is set on visit. One named string, not a capability engine
+   * (the deferred general provides/requires vocabulary — D116). Absent ⇒ provides nothing.
+   */
+  provides?: string;
+  /**
+   * **Prerequisite need (D116)** — a single named flag this node's *optional* path wants
+   * (the finale's infiltration flank wants `side-door-intel`). The load pipeline
+   * fails loud unless a {@link provides} node sits reachable **upstream** on some path — a
+   * *validated opportunity*, never auto-inserted (D98's anti-silent-overwrite). A branching
+   * DAG can still skip the provider, so the consumer must **degrade gracefully** (the finale
+   * stays fully winnable frontally); the flank is a reward for scouting, never a hard gate.
+   * Absent ⇒ needs nothing.
+   */
+  requires?: string;
 }
 
 /** A fully-generated, deterministic run map. */

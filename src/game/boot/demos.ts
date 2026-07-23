@@ -9,8 +9,11 @@ import {
   RunLoop,
   createRunFromExpedition,
   createPlaytestLog,
+  loadExpedition,
   THE_HOLLOW_MILL,
+  THE_RESCUE,
 } from "../../core";
+import { injectContentNodes } from "../../content/authored-nodes";
 import type { RunHandoff } from "../scenes/OverworldScene";
 import { installPlaytestLogUI } from "../playtest-log-ui";
 
@@ -103,5 +106,35 @@ export class HollowMillBootScene extends Phaser.Scene {
 
   create(): void {
     this.scene.start("OverworldScene", buildHollowMill());
+  }
+}
+
+/**
+ * Build **The Rescue** (D116) — the expedition whose finale body is **injected from content
+ * JSON**, not hand-written in core. The boot sequence *is* the D116 pipeline in miniature:
+ * inject the content bodies into core's catalog, then run {@link loadExpedition} (resolve every
+ * `authoredId` + validate prerequisites + validate connectivity) **fail-loud** before a single
+ * frame renders — so a dangling id or an unsatisfied flank prerequisite crashes the boot with a
+ * clear message instead of freezing mid-run. Then it inflates the bundle and hands off to the
+ * live OverworldScene → BattleScene path, exactly like the Hollow Mill.
+ */
+export function buildRescue(): RunHandoff {
+  injectContentNodes(); // content bodies flow into core's catalog (the injection seam)
+  const exp = loadExpedition(THE_RESCUE); // resolve + validate prereqs + connectivity, fail-loud
+  const run = createRunFromExpedition(exp);
+  const loop = new RunLoop(run);
+  loop.log = createPlaytestLog(run, exp.id);
+  installPlaytestLogUI(loop.log);
+  return { run, loop, demoIntro: true };
+}
+
+/** A headless boot scene for `#rescue`: hands the injected Rescue expedition to the OverworldScene. */
+export class RescueBootScene extends Phaser.Scene {
+  constructor() {
+    super("RescueBootScene");
+  }
+
+  create(): void {
+    this.scene.start("OverworldScene", buildRescue());
   }
 }

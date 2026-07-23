@@ -31,7 +31,7 @@ import { accrueDeployedXp } from "./leveling";
 import { type EncounterDef } from "./generation";
 import type { EncounterResult } from "./authored";
 import type { EncounterSource } from "./staging";
-import { getExpedition, type AuthoredExpedition } from "./expedition";
+import { getExpedition, resolveAuthored, type AuthoredExpedition } from "./expedition";
 import {
   generateOverworld,
   getNode,
@@ -341,8 +341,18 @@ export function chooseNode(run: RunState, id: string): MapNode {
  */
 export function runEncounter(run: RunState, node: MapNode): EncounterSource {
   if (node.authoredId && run.expeditionId) {
-    const enc = getExpedition(run.expeditionId)?.encounters[node.authoredId];
+    const exp = getExpedition(run.expeditionId);
+    const enc = exp && resolveAuthored(exp, node.authoredId);
     if (enc) return enc;
+    // An expedition node that binds an `authoredId` MUST resolve — inline or from the injected
+    // catalog. A miss here is a dangling id or an un-injected catalog, NOT a cue to silently
+    // fabricate a procedural fight (that would resurface D98's silent-overwrite hazard at
+    // runtime: wrong enemies, no captives, wrong rewards, no error). Fail loud (D116) — this
+    // guards the resume/debug-jump paths that never touch the boot-time `loadExpedition`.
+    throw new Error(
+      `runEncounter: node "${node.id}" binds authoredId "${node.authoredId}" but no body resolved ` +
+        `(expedition "${run.expeditionId}") — a dangling id or an un-injected content catalog`,
+    );
   }
   return nodeEncounter(run.seed, node);
 }

@@ -345,3 +345,48 @@ rank-and-file are the **same `bandit-thug/bowman/cutthroat` templates E1 and fou
    per Item 7; must **not** flip generic-bandit behavior (the `ai.test.ts:90` canary stays green).
 5. **M4 — the two-spawn distraction e2e** + the free-casualty ceiling (Decision H) + freeze/seal-fires
    assertions. Then the **D117** record. **Deferred as ever:** the boolean migration.
+
+---
+
+## Forks F/G/H RESOLVED (owner-confirmed 2026-07-23) — plan locked
+
+- **F → intrinsic `garrison` tag (F2, reconciled).** The finale garrison will be **its own units /
+  modifications of base units**, not E1's shared `bandit-thug/bowman/cutthroat` — so the blast-radius worry
+  dissolves and the marker rides the garrison's own identity. Implemented as an **intrinsic `garrison` tag**
+  on those templates, read by M3's door-drive via `hasTag`. Makes the tag surface carry **three** tags
+  (`in-combat` derived · `non-combatant` intrinsic · `garrison` intrinsic) — a stronger living exemplar.
+  **Composes with `hold`:** an explicit `hold` order still wins (a posted garrison unit holds; an order-less
+  garrison unit runs the door-drive). Generic order-less bandits lack the tag ⇒ never door-driven. This
+  **defuses Item 1** without a global reorder and keeps `ai.test.ts:90` green.
+- **G → same door, and the Warden walks THROUGH it (G1+).** The lever and the Warden's key act on the
+  **same** gate. The Warden doesn't key-and-loiter — he **opens it and advances through to engage the
+  control room.** New requirement: **after a breach, the garrison prioritizes control-room occupants as
+  targets** (the infiltrator working the lever/objective). This is the elegant answer to Item 3's
+  lever-camp degeneracy — camping the lever inside now gets you **attacked**, so it is no longer a free,
+  bodiless pin. *Needs:* the "control room" made identifiable in M2.5 (a region marker, or proximity to the
+  objective/lever) + a target-priority weight in M3.
+- **H → keep ratified clauses 4 & 5; guards don't chase the unreachable (reject H2).** A guard fights back
+  only if the attacker is **within its reach**; a ranged unit plinking from out of reach does **not** pull
+  the guard off the door (it does not focus a target it can't reach). No edit to the ratified spec. If the
+  numbers ever make ranged plinking a genuine farm, the **M4 free-casualty ceiling** catches it in the
+  digest — a tuning tripwire, not a rule change.
+
+### Locked plan (supersedes the M1–M4 sequence above where they differ)
+- **M1 — tag foundations (three tags).** `tags.ts`/`TAGS`/`hasTag`/`getTag`; `in-combat` (log-derived,
+  clauses 1–5 unchanged); `non-combatant` (intrinsic) + the `non-combatant`+attack invariant (E);
+  **`garrison` (intrinsic)**. Registry guard, glossary, `tags.test.ts`. Green on unit tests. D117 notes M1
+  ships vocabulary consumed only from M2/M3 (behavior proof is M4).
+- **M2 — living Warden key-drive.** Converge-on-keyed-gate → **logged** key-open `CombatAction` (mirror
+  `attackGate`; new `AIPlan` key-target field distinct from batter-target) → **advance through** the opened
+  gate; gated on `!in-combat`; coexists with the death-trigger keyholder (idempotency test); replay-equality
+  + undo-re-locks tests. Self-scoping (keyholder-tagged unit + authored keyed gate).
+- **M2.5 — author the finale substrate.** Into `PRISON_ASSAULT`: the destructible seal (batterers), the
+  **single** keyed+lever gate (Decision G), the keyholder death-trigger, an **identifiable control room**
+  (region/objective marker for the G target-priority), and **split two-cluster `playerSpawns` + deterministic
+  Thief (infiltrator) placement**.
+- **M3 — garrison door-drive as primary + gate + control-room targeting.** Planner reorder consuming the
+  `garrison` tag (door-drive outranks attacking a reachable un-engaged foe; suppressed by `in-combat`;
+  `hold` still wins); **post-breach target-priority weight toward control-room occupants** (Decision G).
+  Unit tests per Item 7; the generic-bandit canary (`ai.test.ts:90`) stays green.
+- **M4 — two-spawn distraction e2e + free-casualty ceiling + freeze/seal-fires assertions** → then the
+  **D117** decision record. **Deferred as ever:** the `captured`/`thief`/`lord`/`authored` migration.

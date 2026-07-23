@@ -5,8 +5,9 @@
  * {@link "./status".StatusInstance} has a duration, ticks, and a mechanical effect,
  * a tag has **none of those** — it is simply *evaluated*. This is the line that
  * keeps tags from becoming "statuses again": statuses *do* something over time;
- * tags *answer a question*. Both compose — one of a tag's provenances is *conferred
- * by an active status* — but they are different kinds.
+ * tags *answer a question*. The two are designed to compose — a planned provenance
+ * (*conferred*, below) is a live projection of an active status — but they stay
+ * different kinds.
  *
  * The prize is **consolidation**: the ad-hoc per-unit booleans (`isLord`/`authored`/
  * `thief`/`captured`) and the informal role/`kind` classifiers all want to live
@@ -14,17 +15,25 @@
  * the three tags the prison-break finale forces (D108); migrating the existing
  * booleans onto the surface is a deliberate, guard-covered follow-on (not built here).
  *
- * **Three provenances** — a {@link TagDef} resolves through exactly one:
+ * **Provenances** — a {@link TagDef} resolves through one. Two ship today:
  *  - **intrinsic** — a static authored property, read straight off {@link Unit.tags}
  *    (`non-combatant`, `garrison`). Ignores `ctx`.
- *  - **conferred** — true exactly while the unit carries a named status
- *    ({@link TagDef.conferredBy}). A *live projection* of the status, so it clears when
- *    the status clears — the status stays the single source of truth. (No conferred tag
- *    ships in D117; the branch is the seam for a future `flanked`-status → `flanked`-tag.)
  *  - **derived** — computed at query time from battle state in {@link TagContext}
  *    (`in-combat`). "Derived" reads battle state **including the D87 command log** (the
  *    `in-combat` memory window is a *history* predicate — see {@link TagContext}); it
  *    stores nothing of its own, which is why it has no duration.
+ *
+ * A third provenance — **conferred** (a tag true exactly while a *duration-bearing* status
+ * is active, a live projection of it) — is the **documented seam, deliberately not yet in
+ * code** (rev-2 YAGNI: no status-backed tag has a consumer today). Add it *with* its first
+ * real consumer. Two revisit threads (owner, 2026-07-23), to settle when one pulls:
+ *   1. **conferred's natural debut** is a `captured` tag projecting a future `captured`-status
+ *      (the status-model indicator pass) — the honest first status→tag projection.
+ *   2. **flanked-as-status.** Today flanking is *derived* by deliberate D36 design
+ *      (`combat.isFlanked` is "positional and instantaneous… rather than storing it as a
+ *      status"), so a `flanked` tag would be *derived*, not conferred. But re-examine whether
+ *      materializing flank into a status (⇒ a conferred `flanked` tag) **simplifies later
+ *      behaviors** — a suspected win worth testing before the second AI consumer lands.
  *
  * Pure and deterministic (D2/D22): no `Math.random`, no Phaser/DOM. `hasTag` is a
  * pure read, safe to call inside the AI's scoring loop.
@@ -32,10 +41,9 @@
 
 import { type Unit, isActive } from "./units";
 import { manhattan } from "./combat";
-import { hasStatus } from "./status";
 
-/** Which of the three sources a {@link TagDef} resolves through. */
-export type TagProvenance = "intrinsic" | "conferred" | "derived";
+/** Which of the two shipped sources a {@link TagDef} resolves through (see the module doc for the `conferred` seam). */
+export type TagProvenance = "intrinsic" | "derived";
 
 /**
  * What a **derived** tag reads. Deliberately a *narrow query interface*, not the
@@ -65,11 +73,6 @@ export interface TagDef {
   readonly name: string;
   /** Which source resolves it. */
   readonly provenance: TagProvenance;
-  /**
-   * For a **conferred** tag: the status id whose presence confers it. The tag is
-   * true exactly while {@link "./status".hasStatus} is true for this id.
-   */
-  readonly conferredBy?: string;
   /**
    * For a **derived** tag: the pure predicate over `(unit, ctx)`. Required iff
    * `provenance === "derived"`.
@@ -157,7 +160,6 @@ export function getTag(id: string): TagDef | undefined {
  * The unified query: does `unit` hold `tag`? Resolves through the tag's provenance.
  *
  * - **intrinsic** → reads {@link Unit.tags} (ignores `ctx`).
- * - **conferred** → {@link "./status".hasStatus} for the conferring status.
  * - **derived** → the tag's `derive(unit, ctx)`; **requires `ctx`** and throws without it.
  *
  * An unregistered `tag` id **throws** (fail-loud, D116) — call sites pass the exported
@@ -169,8 +171,6 @@ export function hasTag(unit: Unit, tag: string, ctx?: TagContext): boolean {
   switch (def.provenance) {
     case "intrinsic":
       return unit.tags.includes(def.id);
-    case "conferred":
-      return def.conferredBy !== undefined && hasStatus(unit, def.conferredBy);
     case "derived":
       if (!ctx) throw new Error(`hasTag: derived tag "${tag}" requires a TagContext`);
       return def.derive!(unit, ctx);

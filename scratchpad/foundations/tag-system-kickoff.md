@@ -416,3 +416,32 @@ rank-and-file are the **same `bandit-thug/bowman/cutthroat` templates E1 and fou
 - **Glossary deferred:** no tag renders yet (glossary scope = player-facing text); entries land when
   `in-combat` gets a unit indicator (M4). The internal vocabulary lives in conventions.md now.
 - **Next:** M2 — the living Warden key-drive (logged key-open `CombatAction`, walks through, `!in-combat`).
+
+---
+
+## /challenge outcome (M1 implementation, 2026-07-23)
+
+Adversarial pressure-test of the *landed code* (not the design). **Mutation battery** — each clause
+of `deriveInCombat` and the `TAGS` key⇔id link was deliberately broken and the suite re-run; **every
+mutation turned a test red** (drop clause 1/2/3/5 → 1 test each; clause-4 `<=`→`<` → 3 tests; broken
+`garrison` key → registry-contracts). So the clause-by-clause tests are the preserved guard — a
+dropped clause **cannot** ship green; no separate mutation script is needed.
+
+**Finding acted on — `conferred` dropped (owner-confirmed).** It was unexercised speculative code (a
+mutation there would survive); its design example `flanked` is *derived* not status-shaped
+(`combat.isFlanked` is positional-by-D36-design), so it wasn't a real consumer. Dropped from shipped
+code (`TagProvenance`, `TagDef.conferredBy`, the `hasStatus` import + the `hasTag` branch), keeping the
+three-provenance **model** documented as the seam. **Two revisit threads recorded in `tags.ts`:**
+(1) conferred's honest debut = a `captured` tag projecting a future `captured`-status; (2) **re-examine
+flanked-as-status** — suspected to simplify later behaviors (owner), to test before the 2nd AI consumer.
+
+**Findings carried forward (not fixed at M1 — no substrate yet):**
+- **M2.5:** add a guard that every authored template `tags` entry is a registered `TAGS` id (a designer
+  typo is a silent no-op today; can't fail-loud in `createUnit` without a `units↔tags` import cycle).
+- **M2 test requirements (load-bearing assumptions M1 can't test):**
+  - `exchangedDamageSince(a,b)` is **first-arg-window-anchored, NOT symmetric** — the Battle's log scan
+    must anchor to the first arg's last completed turn; M2 tests must cover the asymmetry + the R2 speed
+    window. (M1's test stub is symmetric for wiring only — a simplification, not the contract.)
+  - clause 2 uses `isActive`, narrower than "targetable" (omits `concealed`/`hidden`); inert today
+    (combat clears `concealed`, no hidden garrison) — M3 must confirm no spurious flip against a veil.
+  - clause 5 `canDamage` = `attack > 0` ignores skill-only damage dealers; no such unit today.

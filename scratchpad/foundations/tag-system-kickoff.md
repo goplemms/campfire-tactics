@@ -511,3 +511,32 @@ no damage amounts — derived by replay); **no persisted combat log exists** for
   un-engaged foe), `garrison`-scoped, `!in-combat`-gated, `hold` still wins; control-room targeting.
 - **M4** — two-spawn distraction e2e + free-casualty ceiling + freeze/seal-fires assertions → D117.
 - **M5** — the droppable key (auto-open → drop-key), required before the finale node is finished.
+
+---
+
+## /challenge the plan (M2(a) event-log foundation, 2026-07-23) — SURVIVED + hardened
+
+Pre-mortem of the "bus-fed event log is replay-reconstructed / undo-truncated" claim, verified in code.
+
+**Held (load-bearing assumptions, now checked, not assumed):**
+- **Replay re-emits:** `replay()` loops `battle.apply(log[i])` (battle-replay.ts:81/91) ⇒ the interpreter
+  re-fires bus events ⇒ the event log reconstructs identically. Replay-safe by construction.
+- **Planning is pure:** `ai.ts` never calls `apply`/`applyDamage` ⇒ hypothetical damage can't pollute it.
+- **Undo:** `BattleCheckpoint` already carries `logLen`/`drawCount`; add one `eventLogLen` scalar (mirror).
+- **Auto-open already exists:** `openKeyholderGates` is wired to `unitDefeated` (turn.ts:195) — architecture
+  A ships today; M2/M3 don't build it.
+
+**Three findings — silent bugs caught, now REQUIRED in M2(a):**
+1. **Filter `amount > 0`.** `applyDamage` emits `unitDamaged` even for 0 damage (combat.ts:~285, no guard),
+   so a 0-damage swing would spuriously engage. `exchangedDamageSince` must require real damage. (This also
+   *justifies* the event log over a command-log scan — the command log can't distinguish a hit from a whiff.)
+2. **Window = `[a's previous `turnEnd` → now]`, NOT `[a's current `turnStart` → now]`** — the red-team item-6
+   boundary; the wrong pick makes `in-combat` **permanently false** (guards always peel). The log's own
+   `turnEnd` entries give it for free (at planning, a's most-recent logged `turnEnd` is its *prior* turn).
+   **Direct guard test required:** a unit hit on a foe's turn reads `in-combat` on its next turn.
+3. **Store IDs, not `Unit` refs** in log entries (`{targetId, sourceId, amount, tick}`) — the D111 /
+   command-log discipline (the bus event carries live `Unit` refs; the persisted log must not).
+
+**Verification gates:** `r1-log-totality` golden replay pin stays green (event log is derived, separate from
+the command log's `replay===state`); **sim digest byte-identical** (passive recording, no RNG, no outcome
+change). No architecture change — the event log is validated (both alternatives are strictly worse).

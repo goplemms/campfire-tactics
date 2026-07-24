@@ -82,6 +82,16 @@ export type CombatAction =
    */
   | { kind: "openGate"; gate: string; unit: UnitId }
   /**
+   * **Turn a key** (D108): `unit` — the living keyholder (matches the gate's `keyholder` tag), adjacent
+   * to the locked `gate` — opens it as a fast Act, clearing its tile's block and announcing `gateOpened`
+   * (cause `keyholder`). The **active** counterpart to the death-trigger (`gatesOpenedByDeath`, same tag):
+   * *alive* the Warden turns his key; *dead* the same tag pops the gate. Logged (mirrors `openGate`) so the
+   * open rides the state graph a replay reconstructs and undo re-locks (the gate's `locked` + its grid tile
+   * are checkpointed). Refused (no-op, unlogged) when the unit isn't the keyholder / not adjacent / the gate
+   * is already open.
+   */
+  | { kind: "keyGate"; gate: string; unit: UnitId }
+  /**
    * **Attack a destructible gate** (D103): `unit` — any unit within attack range — chips the `gate`'s
    * durability by its attack; the door announces `gateDamaged`, and `gateOpened` (cause `destroyed`)
    * when it breaks at 0. Logged (mirrors `attack`) so the chip + break ride the state graph a replay

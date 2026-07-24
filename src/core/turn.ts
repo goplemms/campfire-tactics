@@ -47,7 +47,7 @@ import {
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
 import { captureUnit, freeCaptive, canRelease } from "./deployment";
-import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canPullLever, damageGate, gatesOpenedByDeath, type Gate, type Lever } from "./gates";
+import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canKeyGate, canPullLever, damageGate, gatesOpenedByDeath, type Gate, type Lever } from "./gates";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
@@ -565,6 +565,19 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "keyGate": {
+        // The living-keyholder Act (D108): the Warden turns his key on an adjacent locked gate he holds,
+        // clearing the tile's block — the active counterpart to the death-trigger (openKeyholderGates).
+        // Refused (no-op, unlogged) when not the keyholder / not adjacent / already open — mirrors openGate.
+        const gate = this.gates.find((g) => g.id === action.gate);
+        if (!gate) return { ok: false, reason: "No such gate." };
+        const opener = this.unit(action.unit);
+        if (!canKeyGate(gate, opener)) return { ok: false, reason: "Only the adjacent keyholder can key this gate." };
+        openGateOnGrid(this.grid, gate);
+        this.bus.emit("gateOpened", { gate, by: opener, cause: "keyholder" });
+        this._log.push(action);
+        return { ok: true };
+      }
       case "attackGate": {
         // Break-Gate Act (D103): chip the door's durability by the attacker's attack; it breaks open at
         // 0. Refused (unlogged) when out of range / the gate isn't breakable — mutates nothing.
@@ -736,6 +749,16 @@ export class Battle {
    */
   attackGate(gate: Gate, by: Unit): void {
     this.apply({ kind: "attackGate", gate: gate.id, unit: by.id });
+  }
+
+  /**
+   * **Turn a key** (D108) — the living-keyholder Act. `by` (the adjacent keyholder) opens the locked
+   * `gate` as a fast Act. Lowers to the logged `keyGate` action so the open rides the state graph
+   * (replay reconstructs, undo re-locks — the gate is checkpointed) and announces `gateOpened` (cause
+   * `keyholder`). A refused turn (not the keyholder / not adjacent / already open) mutates nothing.
+   */
+  keyGate(gate: Gate, by: Unit): void {
+    this.apply({ kind: "keyGate", gate: gate.id, unit: by.id });
   }
 
   /**

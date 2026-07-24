@@ -168,6 +168,9 @@
  *   - M2a (combat-log.ts): +1 — `exchangedDamageSince` (the `in-combat` clause-1 window query).
  *     `CombatLogEntry` is type-only; `Battle.eventLog`/`tagContext` are methods; `BattleCheckpoint.
  *     eventLogLen` is a type-only field. The event log is derived/passive → sim digest unchanged.
+ *   - M2b (gates.ts): +3 — `canKeyGate` / `keyableGates` / `gateActFor` (the living-keyholder Act's
+ *     validation + the key-vs-batter selector). `GateAct` + the `keyGate` `CombatAction` are type-only;
+ *     `Battle.keyGate` is a method. No new registration/RNG → sim digest unchanged.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -458,6 +461,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "canAffordMaterial",
   "canAttackGate",
   "canDisarm",
+  "canKeyGate",
   "canLockpickGate",
   "canPlacePlayerTrap",
   "canPullLever",
@@ -573,6 +577,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "frontSpeed",
   "frontTurnStage",
   "gainRunGold",
+  "gateActFor",
   "gatesOpenedByDeath",
   "gearDelta",
   "gearRefusal",
@@ -662,6 +667,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "jeopardyOf",
   "jobLevelOf",
   "jobPresenceSummary",
+  "keyableGates",
   "knobDeclared",
   "listScenarios",
   "loadExpedition",

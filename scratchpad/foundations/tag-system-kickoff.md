@@ -589,3 +589,23 @@ Pre-mortem verified in code; every break-case resolves by mirroring the existing
 batter's many, not zero-cost.**
 **Guards:** keyholder opens (tile unblocks, cause keyholder); non-keyholder/non-adjacent/open/no-keyholder-lock
 refuse (unlogged); replay reconstructs; undo re-locks; keyed-then-dead doesn't double-open. + barrel/sim.
+
+---
+
+## M2(b) LANDED (2026-07-23) — the living-keyholder `keyGate` Act, green
+
+- **`gates.ts`** — `canKeyGate(gate, by)` (mirrors `canLockpickGate`: locked + a keyholder lock whose tag
+  `matchesTag(by)` + adjacent), `keyableGates`, and `gateActFor(gate, by)` (`"key" | "attack" | undefined`
+  — key beats batter). **`combat-actions.ts`** — the `{kind:"keyGate"}` action (non-committing, mirrors
+  `openGate`). **`turn.ts`** — the dispatch arm (validate → `openGateOnGrid` → `gateOpened{cause:"keyholder"}`
+  → log by id) + the `Battle.keyGate(gate, by)` wrapper.
+- **Guards (7):** `gates.test.ts` — `canKeyGate` (adjacent keyholder only; wrong-role / non-adjacent / open /
+  no-keyholder-lock all refuse), `keyableGates` + `gateActFor` (key-beats-batter). `gates-battle.test.ts` —
+  the Warden keys his adjacent cell (tile clears, cause `keyholder`); refuses non-keyholder / non-adjacent /
+  already-open (unlogged); **undo re-locks + re-blocks**; **keyed-then-Warden-dies does NOT double-open**
+  (opened once by key, death pops the *other* cell); **replay reconstructs** the keyed-open gate.
+- **Build clean · 1293/1293 · sim digest byte-identical.** Barrel +3 (`canKeyGate`/`keyableGates`/`gateActFor`).
+- **Not in M2(b) (as planned):** the AI *drive* that walks the Warden to a gate and through it (M2c), and any
+  `in-combat` gating (M3). M2(b) is the mechanic: a keyholder can turn their key as a logged, replay/undo-safe Act.
+- **Next:** M2(c) — the Warden key-drive (walk to a keyable gate → `keyGate` → advance through), under a
+  minimal trigger; then M2.5 (finale substrate) / M3 (doctrine).

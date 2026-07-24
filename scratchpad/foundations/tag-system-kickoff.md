@@ -445,3 +445,32 @@ flanked-as-status** — suspected to simplify later behaviors (owner), to test b
   - clause 2 uses `isActive`, narrower than "targetable" (omits `concealed`/`hidden`); inert today
     (combat clears `concealed`, no hidden garrison) — M3 must confirm no spurious flip against a veil.
   - clause 5 `canDamage` = `attack > 0` ignores skill-only damage dealers; no such unit today.
+
+---
+
+## Parked thread — the droppable key (owner idea, 2026-07-23)
+
+**Idea (owner):** on the Warden's **defeat**, he **drops the key as a physical object** so the player can
+pick it up and open the (possibly-closed) door themselves — instead of the door auto-opening.
+
+**This is D108's explicitly-deferred *transferable in-encounter item system*** ("a guard drops a key,
+another picks it up and uses it" — confirmed no board item-pickup today). Owner independently re-derived
+its motivating use-case.
+
+**Two architectures for the keyholder:**
+- **A — keyholder as a TAG (current / what M2–M3 build).** The Warden *is* the keyholder (tag); alive he
+  walks-and-keys (M2 drive), dead his gates **auto-open** (`gatesOpenedByDeath`). No item object. Ships
+  the finale with no new subsystem.
+- **B — key as an ITEM (owner's proposal).** One key object changes hands: Warden uses it alive → dies →
+  **drops it** → a player unit grabs it → uses it. Unifies the living-key-drive *and* the death-open into
+  one "whoever holds the key can open its doors" rule; adds player agency over when/which door.
+
+**Not from zero:** the nearest substrate is `entities.ts` (field entities on the trigger bus, e.g. traps
+via `onUnitEnterTile`). A dropped key = a field entity; a player stepping on its tile picks it up (a
+**carried-key** state, snapshotted for undo); the **use-key Act reuses M2's `keyGate` Act**. Pieces: key
+field-entity + pickup hook + carried state + the shared Act.
+
+**Decision (lean, to confirm):** ship **A** for the finale now — it **upgrades cleanly to B** (the
+`keyGate` Act is shared, living-key-drive → carries-key-use-drive, death-auto-open → drop-key; nothing
+built now is thrown away). Pull **B** as its own scoped thread/milestone after the finale plays.
+**Open:** does killing the Warden auto-open (A) or drop-a-key-to-fetch (B) for the shipped finale?

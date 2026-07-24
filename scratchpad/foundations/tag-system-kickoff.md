@@ -474,3 +474,40 @@ field-entity + pickup hook + carried state + the shared Act.
 `keyGate` Act is shared, living-key-drive → carries-key-use-drive, death-auto-open → drop-key; nothing
 built now is thrown away). Pull **B** as its own scoped thread/milestone after the finale plays.
 **Open:** does killing the Warden auto-open (A) or drop-a-key-to-fetch (B) for the shipped finale?
+
+---
+
+## Plan refinement (owner-directed 2026-07-23) — the event log + M5 key-drop
+
+**Point 1 — one structured event log for both display and queries (owner).** Grounded in code:
+`event-bus.ts` already emits **`unitDamaged {unit, amount, source}`** (+ healed/defeated/…) but the bus
+is **transient**; the stored `CombatAction[]` is the *command* log (replay source of truth, but carries
+no damage amounts — derived by replay); **no persisted combat log exists** for display or queries.
+- **Build ONE stored, tick-stamped combat *event* log** on `Battle`, populated from the existing bus
+  (append `unitDamaged` etc. with `clock.time` + turn boundaries). **Kept separate from the command log**
+  (command = replay *inputs*, authoritative; event log = derived *outputs*). Replay re-emits events
+  deterministically ⇒ the event log reconstructs identically; **undo truncates it** like the command log
+  (checkpoint records its length). `replay(commandLog) === state` is untouched.
+- **`in-combat`'s `exchangedDamageSince(a,b)`** = filter the event log for damage between `a` and `b`
+  since `a`'s last turn boundary. No re-derivation. **Player-facing combat-log display** reads the same
+  log (a later consumer, not M2).
+
+**Point 4.2 — auto-open now, droppable key required before the finale node is done (owner).**
+- Ship **A** (all doors auto-open on Warden death, tag-based) in M2–M3. ✓
+- **M5 (NEW, required before the finale node is finished):** the **droppable key** — the *specific*
+  key-drop only (a key field-entity via `entities.ts` + a minimal pickup → carried state + the **shared
+  `keyGate` Act**), upgrading death-auto-open → drop-key. **NOT** the general droppable-item system
+  (that stays deferred, D108). The finale node isn't "done" until the key drops.
+
+### Locked plan v2
+- **M1 ✓** — tag foundations (3 tags, `hasTag`, log-derived `in-combat` via `TagContext`).
+- **M2** — (a) the **combat event log** (stored, tick-stamped, bus-fed, replay/undo-safe) + `Battle`'s
+  real `TagContext.exchangedDamageSince` reading it, isolated-tested (first-arg window + R2 + isActive
+  edge); (b) the logged **`keyGate` Act** (key-vs-batter derived from keyholder-match; replay/undo tests);
+  (c) the Warden keys-and-walks-through under a minimal trigger. **No doctrine/gating yet.**
+- **M2.5** — author the finale substrate (seal/lever/keyed gate, control-room region, split spawns) +
+  the tag-id validation guard (every authored `tags` entry ∈ `TAGS`).
+- **M3** — the AI doctrine consuming a proven `in-combat`: primary door-drive (outranks a reachable
+  un-engaged foe), `garrison`-scoped, `!in-combat`-gated, `hold` still wins; control-room targeting.
+- **M4** — two-spawn distraction e2e + free-casualty ceiling + freeze/seal-fires assertions → D117.
+- **M5** — the droppable key (auto-open → drop-key), required before the finale node is finished.

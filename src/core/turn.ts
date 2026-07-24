@@ -52,6 +52,8 @@ import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
 import { captureCheckpoint, restoreCheckpoint, type BattleCheckpoint } from "./battle-undo";
+import { exchangedDamageSince, type CombatLogEntry } from "./combat-log";
+import type { TagContext } from "./tags";
 import {
   resolveShove as resolveShoveEffect,
   resolveGuardAllies as resolveGuardAlliesEffect,
@@ -137,6 +139,14 @@ export class Battle {
   private readonly _log: CombatAction[] = [];
 
   /**
+   * The **event log** (D117) — a *derived*, tick-stamped record of what **happened**
+   * (damage dealt, turn ends), fed from the bus, read by `in-combat` ({@link tagContext})
+   * and (later) the combat-log display. Reconstructed by replay (its events fire only in
+   * `apply`), truncated by undo — see {@link "./combat-log"}. IDs, not `Unit` refs.
+   */
+  private readonly _eventLog: CombatLogEntry[] = [];
+
+  /**
    * Resolves a logged skill id to its def (R1 #111) — the injectable half of the
    * skill-by-id log ({@link "./jobs".getSkill} by default, the D65 pattern).
    */
@@ -184,6 +194,14 @@ export class Battle {
     this.bus = new EventBus();
     this.clock = new CTClock(units, this.bus);
     this.entities = new EntityRegistry(this.bus);
+    // Feed the derived event log (D117) from the bus. Both events fire only inside `apply`,
+    // so a replay re-emits them in order (the log reconstructs) and undo truncates it.
+    this.bus.on("unitDamaged", ({ unit, amount, source }) =>
+      this._eventLog.push({ kind: "damage", time: this.clock.time, targetId: unit.id, sourceId: source?.id, amount }),
+    );
+    this.bus.on("turnEnd", ({ unit }) =>
+      this._eventLog.push({ kind: "turnEnd", time: this.clock.time, unitId: unit.id }),
+    );
     this.rngSeed = opts.seed ?? 0;
     this.variance = opts.variance ?? 0;
     this.skillLookup = opts.skills ?? getSkill;
@@ -251,6 +269,23 @@ export class Battle {
   /** The append-only action log in execution order (read-only to callers). */
   get log(): readonly CombatAction[] {
     return this._log;
+  }
+
+  /** The derived event log in order (read-only) — the combat-log display + `in-combat` read this. */
+  get eventLog(): readonly CombatLogEntry[] {
+    return this._eventLog;
+  }
+
+  /**
+   * A {@link "./tags".TagContext} over this live battle — feeds the *derived* tags
+   * (`in-combat`) their battle state + the log-history query. `exchangedDamageSince` is
+   * **first-arg-anchored**: the window is the *first* unit's last `turnEnd`.
+   */
+  tagContext(): TagContext {
+    return {
+      units: this.units,
+      exchangedDamageSince: (aId, bId) => exchangedDamageSince(this._eventLog, aId, bId),
+    };
   }
 
   /** Wire the shared supply stash the Deployment `placeTrap` verb draws from (D63). */
@@ -331,7 +366,7 @@ export class Battle {
 
   /** Capture the battle's mutable state before an action (a turn-undo checkpoint). */
   private captureCheckpoint(): BattleCheckpoint {
-    return captureCheckpoint(this.units, this._log.length, this.drawCount, this.clock, this.entities, this.stash, this.gates);
+    return captureCheckpoint(this.units, this._log.length, this._eventLog.length, this.drawCount, this.clock, this.entities, this.stash, this.gates);
   }
 
   /**
@@ -350,6 +385,7 @@ export class Battle {
   private restoreCheckpoint(cp: BattleCheckpoint): void {
     this.drawCount = cp.drawCount;
     this._log.length = cp.logLen; // drop the actions taken since the checkpoint
+    this._eventLog.length = cp.eventLogLen; // drop the events recorded since the checkpoint
     // The unit / clock / entity / stash restore + tarpit-aura re-derive live in the
     // battle-undo primitive (over explicit inputs).
     restoreCheckpoint(cp, this.units, this.clock, this.entities, this.stash, this.grid, this.gates);

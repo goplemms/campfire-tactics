@@ -540,3 +540,30 @@ Pre-mortem of the "bus-fed event log is replay-reconstructed / undo-truncated" c
 **Verification gates:** `r1-log-totality` golden replay pin stays green (event log is derived, separate from
 the command log's `replay===state`); **sim digest byte-identical** (passive recording, no RNG, no outcome
 change). No architecture change — the event log is validated (both alternatives are strictly worse).
+
+---
+
+## M2(a) LANDED (2026-07-23) — combat event log + real `in-combat`, green
+
+- **`combat-log.ts`** — a stored, tick-stamped **event log** (`CombatLogEntry`: `damage` + `turnEnd`;
+  IDs not refs) + the pure **`exchangedDamageSince(log, a, b)`** window query. `Battle` (`turn.ts`) feeds
+  it from the bus (`unitDamaged`/`turnEnd`), exposes `eventLog` + **`tagContext()`**; `BattleCheckpoint`
+  gained `eventLogLen` (undo truncates the event log alongside the command log).
+- **Guards:** `combat-log.test.ts` (13) — pure window semantics + a live-`Battle` suite proving bus-fed
+  population, the **finale case** (damage received since last turnEnd ⇒ in-combat), the **self-clearing
+  window**, **replay reconstruction** (`replayed.eventLog` deep-equals), and **undo truncation** (flips
+  in-combat back). Barrel **+1** (`exchangedDamageSince`). **Build clean · 1286/1286 · r1-log-totality
+  green (replay===state intact) · sim digest byte-identical.**
+- **The three /challenge findings, all honored:** filter `amount > 0` (whiffs don't engage); window is
+  `(a's last turnEnd, now]`; entries carry IDs, not `Unit` refs.
+
+- **⚑ WINDOW-BOUNDARY DEVIATION — owner confirm.** The ratified clock-semantics text said the window is
+  `(start of U's most-recently-completed turn, now]`. Implementing that **literally is not replay-safe**:
+  it needs a `turnStart` boundary, but `turnStart` fires outside `apply` (`nextActor`, turn.ts:634) and
+  would **not** reconstruct on replay — only `turnEnd` is apply-reachable. So the shipped window is
+  **`(U's last `turnEnd`, now]`**. Behavioral consequence: a unit is engaged by **receiving** real damage
+  since it last finished a turn (its *own* last-turn swings don't self-pin). This is **finale-aligned** —
+  the player pins a guard by *hitting* it; "the guard takes free hits while advancing and stops when
+  actually struck" falls straight out; a ranged guard plinking while advancing isn't self-pinned (matches
+  the H ruling). **Lean: keep this window** (it's the only replay-safe realization and behaviorally right);
+  flagging because it narrows the ratified wording's "dealt-damage-during-own-last-turn" inclusion.

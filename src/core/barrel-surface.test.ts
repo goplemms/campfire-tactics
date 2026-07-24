@@ -165,6 +165,9 @@
  *     `NON_COMBATANT` / `GARRISON`. `TagDef` / `TagProvenance` / `TagContext` are type-only; the
  *     `deriveInCombat` / `canDamage` predicates are module-private. `Unit.tags` is a type-only
  *     field add (no runtime surface). No registration at import → sim digest unchanged.
+ *   - M2a (combat-log.ts): +1 — `exchangedDamageSince` (the `in-combat` clause-1 window query).
+ *     `CombatLogEntry` is type-only; `Battle.eventLog`/`tagContext` are methods; `BattleCheckpoint.
+ *     eventLogLen` is a type-only field. The event log is derived/passive → sim digest unchanged.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -549,6 +552,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "eventChoices",
   "eventForNode",
   "eventWeightAt",
+  "exchangedDamageSince",
   "exhaustionSlowSpeed",
   "exposed",
   "fatigueRisk",

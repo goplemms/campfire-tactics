@@ -567,3 +567,25 @@ change). No architecture change — the event log is validated (both alternative
   actually struck" falls straight out; a ranged guard plinking while advancing isn't self-pinned (matches
   the H ruling). **Lean: keep this window** (it's the only replay-safe realization and behaviorally right);
   flagging because it narrows the ratified wording's "dealt-damage-during-own-last-turn" inclusion.
+
+---
+
+## /challenge M2(b) (the keyGate Act, 2026-07-23) — SURVIVED
+
+Pre-mortem verified in code; every break-case resolves by mirroring the existing gate-Act pattern.
+- **No replay desync:** `openGate`/`attackGate` are **non-committing** (`commitsTurn` `default:false`) — the
+  turn ends on a separate `endTurn`. `keyGate` is non-committing too (no `commitsTurn` change). Drive:
+  move → `keyGate` → `endTurn`.
+- **Death-trigger idempotent:** `gatesOpenedByDeath` filters `g.locked` (gates.ts:137) — a pre-keyed gate
+  is skipped on the Warden's death ⇒ no double `gateOpened`. (Pinned with a test.)
+- **Validation mirrors `canLockpickGate`:** new **`canKeyGate(gate, by)`** in gates.ts =
+  `locked && openBy.some(keyholder-lock && matchesTag(by, tag)) && adjacent(by.pos, gate.pos)`; reuses
+  `matchesTag` (objectives.ts:142) + `adjacent`. `openGateOnGrid` opens+unblocks; `gateOpened{cause:"keyholder"}`;
+  log by gate **id**; undo re-locks+re-blocks via the existing gate checkpoint (`{locked,hp,broken}`).
+
+**M2(b) build:** `{kind:"keyGate";unit;gate}` action + arm in `Battle.dispatch` (mirror `openGate`);
+`Battle.keyGate(...)` wrapper; `canKeyGate`/`keyableGates` in gates.ts; a thin key-vs-batter selector
+(`canKeyGate ? keyGate : canAttackGate ? attackGate` — real consumer is M2c). **"Fast" = one turn vs the
+batter's many, not zero-cost.**
+**Guards:** keyholder opens (tile unblocks, cause keyholder); non-keyholder/non-adjacent/open/no-keyholder-lock
+refuse (unlogged); replay reconstructs; undo re-locks; keyed-then-dead doesn't double-open. + barrel/sim.

@@ -63,3 +63,48 @@ describe("doctrine harness (M2.5)", () => {
     expect(() => buildAuthoredEnemies(DOCTRINE_HARNESS)).not.toThrow();
   });
 });
+
+// --- M3: the garrison door-drive, driven through the live Battle (D108/D117) ---
+// runPolicyTurn wires `this.tagContext()` into the planner, so `in-combat` is read off the REAL combat
+// event log — the only guard that catches the "silent permanent in-combat=false" failure a stubbed ctx
+// can't (the pre-mortem's highest-risk item). Both directions proven end-to-end against the fixture.
+describe("garrison door-drive (M3, integration)", () => {
+  it("an un-engaged Warden drives to the seal and keys it OPEN, past the reachable infiltrator", () => {
+    const { battle } = stageEncounter(DOCTRINE_HARNESS, party());
+    const warden = enemyOf(battle, "warden");
+    const seal = battle.gates.find((g) => g.id === "seal")!;
+    expect(seal.locked).toBe(true);
+    const plan = battle.runPolicyTurn(warden); // no damage logged yet → !in-combat → the drive fires
+    expect(plan.gateTarget?.id).toBe("seal");
+    expect(plan.gateAct).toBe("key");
+    expect(plan.target).toBeNull(); // ignored the infiltrator to reach the door
+    expect(seal.locked).toBe(false); // keyed open — the route to the front is revealed
+    expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(true);
+  });
+
+  it("the drive is what keys it: the SAME staged Warden, un-tagged, attacks the infiltrator instead (garrison-scoped)", () => {
+    const { battle } = stageEncounter(DOCTRINE_HARNESS, party());
+    const warden = enemyOf(battle, "warden");
+    (warden as { tags: readonly string[] }).tags = []; // strip `garrison` → generic AI, infiltrator reachable
+    const seal = battle.gates.find((g) => g.id === "seal")!;
+    const plan = battle.runPolicyTurn(warden);
+    expect(plan.gateTarget).toBeUndefined(); // no door-drive → it goes for the reachable foe
+    expect(seal.locked).toBe(true); // proves the un-engaged case above keyed *because of* the garrison drive
+  });
+
+  it("a Warden struck this window is `in-combat` → it STOPS and fights, the seal stays shut", () => {
+    const { battle } = stageEncounter(DOCTRINE_HARNESS, party());
+    const warden = enemyOf(battle, "warden");
+    const infil = battle.units.find((u) => u.id === "infil")!;
+    const seal = battle.gates.find((g) => g.id === "seal")!;
+    // Stage a REAL exchange: the infiltrator steps adjacent and strikes the Warden (a logged `unitDamaged`
+    // since the Warden's battle-open window) → `in-combat` reads true off the event log.
+    infil.pos = { col: 1, row: 0 }; // adjacent to the Warden at (1,1)
+    const dealt = battle.attack(infil, warden);
+    expect(dealt).toBeGreaterThan(0);
+    const plan = battle.runPolicyTurn(warden);
+    expect(plan.target?.id).toBe("infil"); // pinned → attacks the engager
+    expect(plan.gateTarget).toBeUndefined(); // did NOT key
+    expect(seal.locked).toBe(true); // the seal stays shut while the Warden is engaged
+  });
+});

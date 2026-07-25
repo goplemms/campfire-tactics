@@ -178,6 +178,78 @@ describe("planEnemyTurn", () => {
     expect(plan.gateTarget?.id).toBe("door");
   });
 
+  // --- M3: the garrison door-drive as PRIMARY, `in-combat`-gated (D108/D117) ---
+  // A garrison unit's objective seal outranks attacking a reachable, un-engaged foe; `in-combat` is the
+  // sole off-switch. Every case here uses the SAME board with/without the `garrison` tag or the engaged
+  // flag, so the branch's scope (garrison-only) and gate (`in-combat`) are pinned by contrast.
+
+  // A hand-built TagContext (tags.ts's narrow query interface): `engaged` stubs clause-1 history.
+  const ctx = (units: Unit[], engaged: boolean) => ({ units, exchangedDamageSince: () => engaged });
+  // The Warden's seal (keyholder), off-lane foe, on a 5×3 board mirroring the harness shape.
+  const driveBoard = () => {
+    const grid = new TileGrid(5, 3);
+    const seal = makeGate("seal", { col: 3, row: 1 }, [{ kind: "keyholder", tag: { role: "captain" } }]);
+    applyGatesToGrid(grid, [seal]); // blocks (3,1)
+    const foe = at("p", "player", 1, 0); // adjacent to the Warden at (1,1), reachable, OFF the seal lane
+    return { grid, seal, foe };
+  };
+  const garrisonWarden = () => ({ ...at("warden", "enemy", 1, 1), role: "captain", tags: ["garrison"] });
+
+  it("a garrison Warden keys its seal PAST a reachable un-engaged foe (primary drive, !in-combat)", () => {
+    const { grid, seal, foe } = driveBoard();
+    const warden = garrisonWarden();
+    const plan = planEnemyTurn(warden, [warden, foe], grid, { gates: [seal], tagContext: ctx([warden, foe], false) });
+    expect(plan.gateTarget?.id).toBe("seal");
+    expect(plan.gateAct).toBe("key"); // drives to the door and turns the key…
+    expect(plan.target).toBeNull(); // …ignoring the adjacent infiltrator (takes a free hit by design)
+    expect(plan.destination).toEqual({ col: 2, row: 1 }); // adjacent to the seal
+  });
+
+  it("the SAME Warden `in-combat` stops and fights the engager (the off-switch)", () => {
+    const { grid, seal, foe } = driveBoard();
+    const warden = garrisonWarden();
+    const plan = planEnemyTurn(warden, [warden, foe], grid, { gates: [seal], tagContext: ctx([warden, foe], true) });
+    expect(plan.target).toBe(foe); // engaged → the normal fighting loop
+    expect(plan.gateTarget).toBeUndefined();
+  });
+
+  it("a NON-garrison unit on the SAME board attacks the foe, ignores the seal (blast radius contained)", () => {
+    const { grid, seal, foe } = driveBoard();
+    const plain = { ...at("g", "enemy", 1, 1), role: "captain" }; // keyholder-role but NOT garrison-tagged
+    const plan = planEnemyTurn(plain, [plain, foe], grid, { gates: [seal], tagContext: ctx([plain, foe], false) });
+    expect(plan.target).toBe(foe); // generic AI: a reachable foe wins (wallsOff false → no gate drive)
+    expect(plan.gateTarget).toBeUndefined();
+  });
+
+  it("a garrison guard BATTERS its breakable seal past a reachable un-engaged foe (gateAct 'attack')", () => {
+    const grid = new TileGrid(5, 3);
+    const door = makeGate("door", { col: 3, row: 1 }, [{ kind: "destructible", hp: 20 }]);
+    applyGatesToGrid(grid, [door]);
+    const guard = { ...at("guard", "enemy", 1, 1), tags: ["garrison"] }; // garrison, non-keyholder
+    const foe = at("p", "player", 1, 0);
+    const plan = planEnemyTurn(guard, [guard, foe], grid, { gates: [door], tagContext: ctx([guard, foe], false) });
+    expect(plan.gateTarget?.id).toBe("door");
+    expect(plan.gateAct).toBe("attack");
+    expect(plan.target).toBeNull();
+  });
+
+  it("an IMMOBILIZED garrison Warden does not idle at the seal — it attacks the adjacent foe (F1 guard)", () => {
+    const { grid, seal, foe } = driveBoard();
+    const warden = garrisonWarden();
+    applyStatus(warden, immobilized(2)); // can't drive → must fall through to the fighting loop
+    const plan = planEnemyTurn(warden, [warden, foe], grid, { gates: [seal], tagContext: ctx([warden, foe], false) });
+    expect(plan.target).toBe(foe);
+    expect(plan.gateTarget).toBeUndefined();
+    expect(plan.path).toEqual([]);
+  });
+
+  it("a garrison Warden under a `hold` order holds — the drive never overrides an explicit post", () => {
+    const { grid, seal, foe } = driveBoard();
+    const warden = { ...garrisonWarden(), standingOrder: "hold", post: { col: 1, row: 1 } };
+    const plan = planEnemyTurn(warden, [warden, foe], grid, { gates: [seal], tagContext: ctx([warden, foe], false) });
+    expect(plan.gateTarget).toBeUndefined(); // hold wins → no seal-drive
+  });
+
   it("does not move while immobilized but still attacks an adjacent foe", () => {
     const grid = new TileGrid(8, 1);
     const enemy = at("e", "enemy", 0, 0);

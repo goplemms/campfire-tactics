@@ -673,3 +673,30 @@ fork (A seal-drive + M3b vs B objective-advance), so it moves to its own focused
 [`tag-system-M3-doctrine-kickoff.md`](tag-system-M3-doctrine-kickoff.md). M4 (e2e + D117 record) and M5
 (droppable key) follow M3. The tag surface + real `in-combat` + `keyGate` Act + key-drive + harness are
 the durable foundation this PR ships; the doctrine that makes `in-combat` load-bearing is M3.
+
+---
+
+## M3 LANDED (2026-07-25) — the garrison door-drive as primary + `in-combat` gate, green
+
+Branch `claude/m3-doctrine-tag-system-3wg55e` (off latest main / PR #201). **Fork resolved: A (seal-drive)
++ M3b** (owner-confirmed) — see the `/challenge` outcome in
+[`tag-system-M3-A-spec.md`](tag-system-M3-A-spec.md) and the decision record **D117**.
+
+- **The change:** `AIOptions.tagContext` (wired from `Battle.runPolicyTurn`, mirroring the `isCharging`/
+  `gates` seams) + a **separate early-return branch** in `planEnemyTurn`: a `garrison && !in-combat &&
+  !immobilized && !hold` unit with an openable, reachable authored seal returns `planSealDrive` (drive to
+  the seal, key/batter it past a reachable un-engaged foe, taking free hits) **before** the generic scoring
+  loop. `driveSealFor` = the nearest openable+reachable seal (no `opensARoute`); `AI.garrisonDrive` (1400,
+  inert under the branch). `in-combat` (read off the real event log) is the sole off-switch → falls through
+  to the fighting loop.
+- **Why the separate branch (not an in-loop score):** the harness infiltrator is *adjacent*, so an in-loop
+  score would need to out-number `actionBase + dmg + lethal`; the early-return never competes with an attack
+  score, killing the tuning-fragility the pre-mortem flagged. Blast radius contained: garrison-gated, generic
+  loop byte-identical → `ai.test:90` + C3 + M2c canaries green; **no sim/gallery encounter is garrison-tagged**
+  → sim digest byte-identical.
+- **`/challenge` findings folded in:** F1 (immobilized garrison → `!isImmobilized` guard), F2 (no-decorative-
+  seals authoring contract), F3 (no-ctx default), F4 (lever oscillation → M3b). All in D117.
+- **Guards:** build clean · **1310** core (+8) · sim byte-identical. No render surface (harness registered +
+  walked in **M4**, per the freeze-catcher doctrine).
+- **Next:** **M3b** (control-room target-priority — Decision G's lever-camp defuser, + the region marker),
+  then **M4** (two-spawn distraction visual e2e + free-casualty ceiling), then **M5** (the droppable key).

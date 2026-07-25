@@ -33,6 +33,7 @@ import { canSeeUnit } from "./vision";
 import { availableSkills } from "./leveling";
 import { orderOf } from "./standing-orders";
 import { isBreakable, keyholderOf, type Gate } from "./gates";
+import { hasTag, GARRISON, IN_COMBAT, type TagContext } from "./tags";
 
 /** Scoring weights — all tunable data, a numbers pass later (D42). */
 export const AI = {
@@ -72,6 +73,14 @@ export const AI = {
    * prefers a reachable foe. Only offered when *no* foe is terrain-reachable (see `planEnemyTurn`).
    */
   doorBreak: 500,
+  /**
+   * Value of a **garrison** unit reaching and opening its objective seal (D108/D117, M3). Above
+   * `actionBase` so the door-drive is **primary** — a `!in-combat` garrison unit keys/batters the seal
+   * *past* a reachable, un-engaged foe (taking free hits by design). Read **only** inside the garrison
+   * seal-drive branch ({@link planSealDrive}), which is a separate early-return that never competes with
+   * an attack score — so this magnitude is inert (kept named for the record + a possible future merge).
+   */
+  garrisonDrive: 1400,
 } as const;
 
 /**
@@ -151,6 +160,14 @@ export interface AIOptions {
    * locked destructible door will batter it down (the control-room seal). Absent ⇒ no door-breaking.
    */
   gates?: readonly Gate[];
+  /**
+   * The live {@link "./tags".TagContext} (D117/M3) — read-only battle state + the combat-log history
+   * query that the *derived* `in-combat` tag needs. Supplied by {@link "./turn".Battle.runPolicyTurn}
+   * (`this.tagContext()`); it is the sole off-switch on the **garrison door-drive**: a garrison unit
+   * reads `hasTag(unit, IN_COMBAT, ctx)` to decide whether to keep driving for the seal or stop and
+   * fight. Absent ⇒ the drive treats the unit as un-engaged (production always supplies it).
+   */
+  tagContext?: TagContext;
 }
 
 /**
@@ -287,6 +304,90 @@ function debuffAbility(unit: Unit): SkillDef | undefined {
 }
 
 /**
+ * A **garrison** unit's objective seal (D108/M3): the nearest authored gate this unit can **open**
+ * (a keyholder → `"key"`, else a breakable → `"attack"`) that has at least one terrain-reachable
+ * *opening tile* (adjacent for a key, within `attackRange` for a batter). Ranked by raw distance from
+ * the unit; ties resolve by array order. Returns `undefined` when no such seal exists (⇒ the caller
+ * falls through to normal scoring — the door-drive is silent when there's nothing to drive to).
+ *
+ * Deliberately **without** the generic `opensARoute` relevance filter: a garrison unit's objective *is*
+ * the seal (direction is authored — place seals between the garrison and its objective), so any openable
+ * reachable seal is a valid drive target. The authoring contract (D117): a garrison encounter carries **no
+ * decorative openable seals** — every one is a real objective. (M3b's control-room region supersedes this
+ * as a relevance filter.) Reachability is a terrain-only `findPath` — the opening tiles sit *off* the
+ * locked gate tile, so it needs no gate-open, and transient unit bodies are handled at execution by
+ * {@link reachableTiles}.
+ */
+function driveSealFor(
+  unit: Unit,
+  grid: TileGrid,
+  gates: readonly Gate[],
+): { gate: Gate; act: "key" | "attack" } | undefined {
+  const candidates = gates
+    .filter((g) => keyholderOf(g, unit) || isBreakable(g))
+    .map((g) => ({ gate: g, act: (keyholderOf(g, unit) ? "key" : "attack") as "key" | "attack" }))
+    .filter(({ gate, act }) => {
+      const reach = act === "key" ? 1 : unit.attackRange;
+      // Some opening tile (off the blocked gate) must be terrain-reachable, or the seal can't be worked.
+      for (let dc = -reach; dc <= reach; dc++) {
+        const rr = reach - Math.abs(dc);
+        for (let dr = -rr; dr <= rr; dr++) {
+          const t = { col: gate.pos.col + dc, row: gate.pos.row + dr };
+          if ((dc !== 0 || dr !== 0) && grid.inBounds(t) && grid.isWalkable(t) && findPath(grid, unit.pos, t) !== null) {
+            return true;
+          }
+        }
+      }
+      return false;
+    })
+    .sort((a, b) => manhattan(unit.pos, a.gate.pos) - manhattan(unit.pos, b.gate.pos));
+  return candidates[0];
+}
+
+/**
+ * Plan a **garrison door-drive** turn (D108/M3): converge on the objective `seal` and **open it**
+ * (key/batter) the moment a destination is in reach, otherwise advance toward it. Deliberately **ignores
+ * foes** — the garrison unit is choosing *not* to attack, so it walks past a reachable, un-engaged foe and
+ * takes free hits (the intended distraction tension). No `isolationPenalty` for the same reason (walking
+ * into danger *is* the plan). The caller only routes here for a `garrison && !in-combat && !immobilized`
+ * unit; the `in-combat` gate (in {@link planEnemyTurn}) is what flips it back to the fighting loop.
+ */
+function planSealDrive(
+  unit: Unit,
+  units: readonly Unit[],
+  grid: TileGrid,
+  drive: { gate: Gate; act: "key" | "attack" },
+): AIPlan {
+  const reach = drive.act === "key" ? 1 : unit.attackRange;
+  let best: { tile: GridCoord; path: GridCoord[]; canOpen: boolean } = {
+    tile: unit.pos,
+    path: [],
+    canOpen: manhattan(unit.pos, drive.gate.pos) <= reach,
+  };
+  let bestScore = -Infinity;
+  for (const d of reachableTiles(unit, units, grid)) {
+    const movePart = -d.cost * AI.movePenalty;
+    const canOpen = manhattan(d.tile, drive.gate.pos) <= reach;
+    // Opening the seal from here wins outright (a new top score, above any attack); otherwise close on it.
+    const score = canOpen
+      ? AI.garrisonDrive + movePart
+      : -manhattan(d.tile, drive.gate.pos) * AI.approachWeight + movePart;
+    if (score > bestScore) {
+      bestScore = score;
+      best = { tile: d.tile, path: d.path, canOpen };
+    }
+  }
+  return {
+    unit,
+    path: best.path,
+    destination: best.tile,
+    target: null,
+    gateTarget: best.canOpen ? drive.gate : undefined,
+    gateAct: best.canOpen ? drive.act : undefined,
+  };
+}
+
+/**
  * Plan a turn for `unit`: enumerate reachable destinations, score the best action
  * (ranged/melee attack, a debuff ability, or pure advance) at each, and pick the
  * highest. Fog-respecting — attacks only **seen** foes; with none seen it
@@ -304,6 +405,20 @@ export function planEnemyTurn(
   // A fleeing unit never fights — it heads for the map edge (D84).
   if (orderOf(unit)?.posture === "flee") return planFlee(unit, units, grid);
   if (foes.length === 0) return stay;
+
+  // --- M3: the garrison door-drive as PRIMARY (D108/D117) --------------------
+  // A `garrison` unit's objective seal outranks attacking a reachable, un-engaged foe — it keys/batters
+  // the seal *past* the distracting infiltrator, taking free hits. The `in-combat` tag is the sole
+  // off-switch: engaged ⇒ fall through to the normal fighting loop. Skipped for a non-garrison unit
+  // (byte-identical generic AI), while `immobilized` (can't drive — let the loop attack an adjacent foe),
+  // and under a `hold` order (a posted garrison unit holds). `flee` already returned above.
+  if (hasTag(unit, GARRISON) && !isImmobilized(unit) && orderOf(unit)?.posture !== "hold") {
+    const engaged = opts.tagContext ? hasTag(unit, IN_COMBAT, opts.tagContext) : false;
+    if (!engaged) {
+      const drive = driveSealFor(unit, grid, opts.gates ?? []);
+      if (drive) return planSealDrive(unit, units, grid, drive);
+    }
+  }
 
   const seen = foes.filter((f) => canSeeUnit(units, side, f));
   const ability = debuffAbility(unit);

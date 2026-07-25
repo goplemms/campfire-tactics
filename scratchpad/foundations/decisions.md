@@ -4828,3 +4828,93 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   + deploy-time flank (parked with the v4 finale population); populating the v4 finale
   (enemies/Warden-keyholder/named captives/objectives); the D108 guard doctrine; **promoting The Rescue into the
   arc** (it stays standalone — the shipped arc finale is untouched).
+
+---
+
+## D117 — The tag system + the garrison door-drive doctrine (`in-combat` made load-bearing)
+
+- **Status:** Designed + built through **M3** (2026-07-25). M1–M2.5 shipped in PR #201 (branch
+  `claude/tag-system-foundations-9k29hd`); **M3** (the door-drive + `in-combat` gate) on branch
+  `claude/m3-doctrine-tag-system-3wg55e`. Full design trail:
+  [`tag-system-kickoff.md`](tag-system-kickoff.md) + [`tag-system-M3-doctrine-kickoff.md`](tag-system-M3-doctrine-kickoff.md)
+  + [`tag-system-M3-A-spec.md`](tag-system-M3-A-spec.md). Makes the **D108** guard doctrine concrete.
+  **Remaining milestones:** M3b (control-room targeting), M4 (two-spawn e2e), M5 (droppable key).
+- **Why a tag system (the consolidation prize):** the core carried a scatter of ad-hoc proto-tags
+  (`isLord`/`authored`/`thief`/`captured` booleans on `units.ts`; the status `kind` classifier, D41). A
+  **tag** is a *classification/predicate* — a queryable label with **no duration or effect** — vs a
+  **status**, a *stateful, effect-bearing* condition. That line is what keeps tags from becoming "statuses
+  again": statuses *do* something over time; tags *answer a question*. One query surface `hasTag(unit, tag,
+  ctx)`; producer and consumer decouple (an ability / the AI / an objective asks `hasTag` and doesn't care
+  where the answer came from).
+- **Three provenances (two shipped).** **intrinsic** (authored on `Unit.tags` — `non-combatant`, `garrison`;
+  ignores ctx) · **derived** (a pure fn of battle state *incl. the D87 combat log* — `in-combat`) ·
+  **conferred** (a live projection of an active status — the **documented seam, deliberately not in code**
+  until a status-backed tag has a real consumer; rev-2 YAGNI). `hasTag` throws on an unknown id and on a
+  derived tag with no ctx (fail-loud). Registry `TAGS` (D114 §Registries, key⇔id walked by
+  `registry-contracts.test.ts`).
+- **`in-combat` — the spec (ratified R1–R3, 2026-07-23).** True iff some enemy `E`: (1) exchanged damage
+  with `U` since `U`'s last completed turn; (2) is targetable; (3) is a **combatant** (not `non-combatant`);
+  (4) is within `U`'s striking distance; (5) `U` can still damage `E`. **R1** — proximity alone never
+  engages; the exchange must have happened *and* `U` must still be able to hit back (a foe `U` can't hurt
+  doesn't pin it). **R2** — the "since its last turn" window is Speed-anchored *by design* (a faster unit
+  drops out sooner). **R3** — a `non-combatant` never confers `in-combat` (a guard whose only nearby foe is
+  a fleeing captive stays free for the door). **Window realization (M2a, owner-confirmed):** the only
+  replay-safe boundary is **`(U's last `turnEnd`, now]`** — `turnStart` fires outside `apply` and wouldn't
+  reconstruct on replay. Behavioural upshot, and it is *finale-aligned*: a unit engages by **receiving**
+  real damage since it last finished a turn ("the guard takes free hits while advancing and stops when
+  actually struck" falls straight out; a ranged plinker out of reach never pins it — the H ruling).
+- **The garrison door-drive doctrine (D108 made concrete).** The whole garrison shares one drive — **get to
+  the doors** (the Warden **keys** his seal, guards **batter** theirs) — and it is **primary**: it outranks
+  attacking a reachable, un-engaged foe. The player pins units by *hitting* them (→ `in-combat` → they stop
+  and fight); the unattached ones keep driving, **taking free hits by design** (the free hit is the intended
+  distraction tension, not a bug — no "peel clamp", inverting the red-team's R1 guard). Force-splitting is
+  the tension: pinning costs bodies.
+- **The M3 fork — A (seal-drive) + M3b, chosen over B (objective-advance).** The pre-mortem killed the
+  generic `opensARoute` relevance filter for garrison (a garrison unit already has a reachable foe, so
+  *any* gate opening keeps a route → trivially true). **A:** a `garrison && !in-combat` unit drives to the
+  **nearest authored seal it can open** (keyholder→key, breakable→batter) that has a terrain-reachable
+  opening tile; direction is **authored** (place seals between garrison and objective). **B** (an authored
+  control-room *region* on `AuthoredEncounter`, plumbed staging→Battle→planner, folding in control-room
+  target-priority) was **rejected for M3**: it front-loads real data-model plumbing and entangles *drive*
+  + *targeting* in the one score reorder the pre-mortem named as the blast-radius danger spot. Control-room
+  targeting (Decision G's lever-camp defuser) is genuinely orthogonal → **M3b**.
+- **Build decision — a separate early-return branch, not an in-loop score.** For a `garrison && !in-combat
+  && !immobilized && !hold` unit with a drive-seal, `planEnemyTurn` **returns `planSealDrive` before the
+  generic scoring loop**. This is the headline safety property: at the harness the infiltrator is *adjacent*
+  (within the Warden's `attackRange`), so an in-loop score would have to out-number `actionBase + dmg·
+  perDamage + priority + lethalBonus` — the exact fragile tuning to avoid. The early-return **never competes
+  with an attack score**, so the new `AI.garrisonDrive` (1400) is behaviourally inert (kept named). **Blast
+  radius contained by construction:** the branch is gated on `hasTag(unit, GARRISON)`; every generic unit
+  (`tags: []`) skips it → the generic loop stays byte-identical → the `ai.test:90` prefer-reachable-foe and
+  C3 no-batter-without-route canaries + all M2c keyholder cases stay green, and **no gallery/sim/production
+  encounter carries the `garrison` tag** (only the not-registered `DOCTRINE_HARNESS`), so the sim digest is
+  byte-identical.
+- **`/challenge` findings folded in (2026-07-25):** **F1 (code)** — an *immobilized* garrison unit would
+  idle at the seal instead of hitting an adjacent foe → the branch is guarded `!isImmobilized`. **F2
+  (authoring contract)** — A drops the relevance filter, so a garrison unit drives to the *nearest* openable
+  seal even if incidental; the contract is **no decorative openable seals in a garrison encounter** (M3b's
+  control-room region later supersedes it as the filter). **F3** — a garrison unit planned without a
+  `tagContext` defaults to un-engaged (drives); production always supplies it via `runPolicyTurn`, and the
+  guard never calls the derived tag without ctx (which would throw). **F4 (known)** — the keyed-seal ↔ lever
+  re-lock oscillation ships **un-defused** in M3; M3b's control-room targeting closes it (Decision G).
+- **What landed (M1–M3):** `tags.ts` (`TAGS`/`hasTag`/`getTag`, `TagContext`, the three tags) · `Unit.tags`
+  (unsnapshotted — immutable in battle) · `combat-log.ts` (the stored, tick-stamped, bus-fed, replay/undo-
+  safe event log + `exchangedDamageSince`) + `Battle.eventLog`/`tagContext()` · the `keyGate` Act
+  (`gates.ts`/`combat-actions.ts`/`turn.ts`) + the M2c walled-off keyholder key-drive · `DOCTRINE_HARNESS`
+  (M2.5 microcosm, not gallery-registered) + the fail-loud authored-tag guard · **M3:** `AIOptions.tagContext`
+  wired from `runPolicyTurn`, the `driveSealFor`/`planSealDrive` garrison branch, `AI.garrisonDrive`.
+- **Guards (M3):** `npm run build` clean · `npm test` **1310** (+8: 6 unit in `ai.test.ts` — key/batter drive
+  past a reachable foe, `in-combat` stops it, the non-garrison contrast, the F1 immobilized guard, `hold`
+  wins; 2+1 integration in `doctrine-harness.test.ts` — un-engaged Warden keys the seal via `runPolicyTurn`,
+  a struck Warden stays shut and fights *off the real event log*, and the un-tagged Warden proves the key
+  is *caused by* the garrison drive) · `npm run sim` **byte-identical**. **No new render surface** (the
+  harness is registered + walked in **M4**, per the D92/#168 freeze-catcher doctrine — the door-drive's
+  visual proof is deliberately M4, not M3).
+- **Scope discipline (D108/D116):** the real **finale ("The Rescue", v4 concentric prison, D97–D99/D116) is
+  a separate owner-directed track** — M3 builds against the harness only; the doctrine drops into the finale
+  when that's populated. The **droppable key** is **M5** (auto-open ships now; the key-drop upgrades it,
+  required before the finale node is "done"). **Deferred as ever:** the `captured`/`thief`/`lord`/`authored`
+  boolean→tag migration; a `conferred` provenance until a consumer pulls it.
+- **Reuses:** **D108** (the doctrine), **D41** (status `kind`), **D42** (the scoring planner), **D84/D81**
+  (postures the branch composes with), **D87** (the command/event log), **D103–D107** (gates/levers/
+  destructible seals), **D114** (registry/guard discipline), **D22** (determinism). **Superseded by:** —

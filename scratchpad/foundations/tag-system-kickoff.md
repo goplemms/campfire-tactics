@@ -662,3 +662,14 @@ testable, decoupled from the v4-population + promotion track (the doctrine drops
   left region with the lever).
 - **Next: M3** — the doctrine: garrison-scoped **primary** door-drive (outranks a reachable un-engaged foe)
   + **`!in-combat`** gate + **control-room targeting**, driven against this harness.
+
+---
+
+## SESSION PAUSE (2026-07-23) — PR M1–M2.5; M3 gets its own session
+
+M1–M2.5 are built, green, and being **PR'd** from `claude/tag-system-foundations-9k29hd`. **M3 (the guard
+doctrine — primary drive + `in-combat` gate + control-room targeting) is larger and carries a real design
+fork (A seal-drive + M3b vs B objective-advance), so it moves to its own focused session** — kickoff:
+[`tag-system-M3-doctrine-kickoff.md`](tag-system-M3-doctrine-kickoff.md). M4 (e2e + D117 record) and M5
+(droppable key) follow M3. The tag surface + real `in-combat` + `keyGate` Act + key-drive + harness are
+the durable foundation this PR ships; the doctrine that makes `in-combat` load-bearing is M3.

@@ -634,3 +634,31 @@ how guards batter. No `in-combat`/priority reorder yet (that's M3).
 
 **M2 COMPLETE (a+b+c).** Next: **M2.5** — author the finale substrate (seal/lever/keyed gate, control-room
 region, split spawns) + the tag-id validation guard; then **M3** (the doctrine).
+
+---
+
+## M2.5 LANDED (2026-07-23) — the doctrine harness (option B) + tag-id guard, green
+
+**Realignment (discovered):** the active finale is **"The Rescue"** (v4 concentric prison, standalone,
+D97–D99), NOT the shipped `PRISON_ASSAULT`; populating the v4 finale is a **separate owner-directed track**.
+Per owner: M2.5 goes with **B (doctrine harness)** — a microcosm to make the doctrine load-bearing and
+testable, decoupled from the v4-population + promotion track (the doctrine drops into the real finale later).
+
+- **`src/core/scenarios/doctrine-harness.ts`** — `DOCTRINE_HARNESS` (`AuthoredEncounter`, exported, **not**
+  gallery-registered): a 6×3 microcosm — a **keyed+lever seal** (Decision G, the sole col-3 chokepoint) +
+  the **Warden** (`bandit-captain`, `role:"captain"`, `tags:["garrison"]`, seal keyholder) + a **garrison
+  guard** (`tags:["garrison"]`) + **two spawns** (infiltrator control-room-side, party front). M3 stages it
+  headlessly; **M4 wraps it in a `ScenarioConfig`, registers it, + adds the e2e walker** (avoids a premature
+  render surface with no walker).
+- **`authored.ts`** — `buildAuthoredEnemies`/`buildAuthoredCaptives` now **fail loud** on an authored `tags`
+  entry not in `TAGS` (`assertRegisteredTags`; `authored.ts→tags.ts` is acyclic, unlike `createUnit`). The
+  M1-deferred silent-typo gap, closed comprehensively — every authored unit stages through it.
+- **Guards (4):** the harness stages; garrison enemies carry `garrison`; the seal is a **real chokepoint**
+  (front unreachable while locked via `findPath`, reachable once keyed — de-risks M3's geometry); the lever
+  **re-locks the keyed seal** (R5 — verified `lockGateOnGrid` is `openBy`-agnostic); the tag guard throws on
+  a bogus tag + passes the harness. **Build clean · 1302/1302 · sim byte-identical · no barrel change.**
+- **Scope moved to M3 (as flagged):** the **control-room region marker + its target-priority** (its
+  representation is coupled to how M3 consumes it); the harness provides the geometry (control room = the
+  left region with the lever).
+- **Next: M3** — the doctrine: garrison-scoped **primary** door-drive (outranks a reachable un-engaged foe)
+  + **`!in-combat`** gate + **control-room targeting**, driven against this harness.

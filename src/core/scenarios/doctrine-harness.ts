@@ -52,5 +52,8 @@ export const DOCTRINE_HARNESS: AuthoredEncounter = {
   // The control-room seal: the Warden's key opens it (D108); the lever re-locks it (Decision G, same door).
   gates: [{ id: "seal", pos: { col: 3, row: 1 }, openBy: [{ kind: "keyholder", tag: { role: "captain" } }] }],
   levers: [{ id: "control", pos: { col: 1, row: 0 }, targets: ["seal"] }],
+  // The control room = the left region (cols 0–2, with the lever + the infiltrator working it). A garrison
+  // unit prioritizes foes inside it as attack targets (D117/M3b, Decision G — the lever-camp defuser).
+  controlRoom: { cols: [0, 2], rows: [0, 2] },
   reward: { gold: 0, materials: [] },
 };

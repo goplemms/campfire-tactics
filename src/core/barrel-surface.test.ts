@@ -632,6 +632,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "inFlightCaravans",
   "inPlaceRest",
   "inPlaceRestPreview",
+  "inRegion",
   "inSafeZone",
   "incrementCounter",
   "influenceTier",

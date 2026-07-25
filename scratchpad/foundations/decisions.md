@@ -4918,3 +4918,30 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
 - **Reuses:** **D108** (the doctrine), **D41** (status `kind`), **D42** (the scoring planner), **D84/D81**
   (postures the branch composes with), **D87** (the command/event log), **D103–D107** (gates/levers/
   destructible seals), **D114** (registry/guard discipline), **D22** (determinism). **Superseded by:** —
+
+### D117 follow-up — M3b: control-room target-priority (Decision G) built (2026-07-25)
+
+- **Status:** Built + green, same branch. The lever-camp defuser Decision G called for — *a region marker +
+  a target-priority weight*.
+- **What & why:** a garrison unit, when it chooses an attack target, adds `AI.controlRoomTarget` (250) to
+  the score of a foe **inside the authored control-room region** — so a foe working the objective/lever gets
+  attacked rather than pinning the garrison bodilessly. The weight sits **above** the `squishy`/`lowHp`/
+  `debuffed` priority deltas (focuses the objective-worker over a frailer bystander) but **below**
+  `lethalBonus` (400) — a guaranteed kill elsewhere still wins.
+- **Plumbing (mirrors gates/levers):** `Region` (an inclusive `{cols,rows}` rectangle) + `inRegion` in
+  `iso.ts`; `AuthoredEncounter.controlRoom?` → `staging` → `Battle.controlRoom` → `AIOptions.controlRoom`
+  via `runPolicyTurn`. The bonus is a plain add in the attack-scoring loop, gated on `hasTag(unit,
+  GARRISON) && opts.controlRoom` — a non-garrison unit or a region-less battle is byte-identical. Harness
+  populated: `controlRoom: {cols:[0,2], rows:[0,2]}` (the left region with the lever + infiltrator).
+- **Honest scope limit (Decision G is a *weight*, not a new drive):** the target-priority makes the camper
+  *attackable* whenever a garrison unit picks a target, but it does **not** fully defuse a *pathological
+  per-turn* lever re-lock — the Warden re-keys from *outside* the seal and never steps through (a same-turn
+  key-and-advance is a separate, unbuilt mechanism). Decision G's stated scope is "make the camper a
+  target"; the **M4 free-casualty ceiling** is the farming tripwire. Recorded so the boundary is explicit.
+- **Guards:** build clean · `npm test` **1315** (+5: 3 unit — a garrison unit picks the in-region foe over
+  an *adjacent* out-of-region one, the same unit with no region picks the adjacent foe (the bonus is
+  load-bearing), a non-garrison unit is unaffected; 1 harness — the region stages onto the Battle and
+  discriminates the two spawns; +1 barrel pin `inRegion`) · sim **byte-identical** (no gallery encounter
+  carries `controlRoom`) · e2e/visual/challenge audits green. No render surface (harness walked in M4).
+- **Next:** **M4** (two-spawn distraction visual e2e + the free-casualty ceiling), then **M5** (the
+  droppable key).

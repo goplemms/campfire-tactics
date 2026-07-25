@@ -12,7 +12,7 @@
  */
 
 import { activeUnits, opposite, type Unit, type Side } from "./units";
-import type { GridCoord } from "./iso";
+import type { GridCoord, Region } from "./iso";
 import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
 import { removeItem } from "./inventory";
@@ -101,6 +101,11 @@ export interface BattleOptions {
   gates?: Gate[];
   /** Interactable **levers** (D103) — pull-switches that toggle their target gates (the control-room seal). */
   levers?: Lever[];
+  /**
+   * The **control-room region** (D117/M3b) — the objective span a garrison unit prioritizes foes inside
+   * as attack targets (Decision G). Handed to the planner via `AIOptions`; absent ⇒ no target tilt.
+   */
+  controlRoom?: Region;
 }
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
@@ -118,6 +123,8 @@ export class Battle {
   readonly gates: Gate[];
   /** The encounter's levers (D103) — pull-switches toggling their target gates (the control-room seal). */
   readonly levers: Lever[];
+  /** The encounter's **control-room region** (D117/M3b) — the garrison's target-priority span (Decision G). */
+  readonly controlRoom?: Region;
 
   /**
    * Which board phase this battle is in (D67): `"deploy"` (pre-combat staging — the
@@ -209,6 +216,7 @@ export class Battle {
     // keyholder-gated cells the instant their keyholder is defeated (the Captain drops the keys).
     this.gates = opts.gates ?? [];
     this.levers = opts.levers ?? [];
+    this.controlRoom = opts.controlRoom;
     applyGatesToGrid(this.grid, this.gates);
     if (this.gates.length) this.bus.on("unitDefeated", ({ unit }) => this.openKeyholderGates(unit));
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
@@ -991,6 +999,7 @@ export class Battle {
       isCharging: (u) => this.clock.isCharging(u),
       gates: this.gates, // D103: a guard walled off by a locked destructible door batters it down
       tagContext: this.tagContext(), // D117/M3: the garrison door-drive reads `in-combat` off this
+      controlRoom: this.controlRoom, // D117/M3b: a garrison unit prioritizes foes in this span (Decision G)
     });
     // Lower the plan to a CombatAction[] and run each through the one interpreter —
     // the AI path now shares the exact execution route with player input (D42/D56).

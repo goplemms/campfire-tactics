@@ -700,3 +700,22 @@ Branch `claude/m3-doctrine-tag-system-3wg55e` (off latest main / PR #201). **For
   walked in **M4**, per the freeze-catcher doctrine).
 - **Next:** **M3b** (control-room target-priority — Decision G's lever-camp defuser, + the region marker),
   then **M4** (two-spawn distraction visual e2e + free-casualty ceiling), then **M5** (the droppable key).
+
+---
+
+## M3b LANDED (2026-07-25) — control-room target-priority (Decision G), green
+
+Same branch. The lever-camp defuser: a region marker + a target-priority weight (exactly Decision G's
+stated scope). See **D117 follow-up** in [`decisions.md`](decisions.md).
+
+- **The change:** `Region` + `inRegion` (`iso.ts`); `AuthoredEncounter.controlRoom?` plumbed
+  staging→`Battle`→`AIOptions`; a garrison unit adds `AI.controlRoomTarget` (250 — above the priority
+  deltas, below `lethalBonus`) to the attack score of a foe **inside** the region. Garrison-scoped +
+  region-gated ⇒ non-garrison / region-less battles byte-identical. Harness gets `controlRoom {cols:[0,2],
+  rows:[0,2]}`.
+- **Scope limit recorded:** a *weight*, not a new drive — it makes a camper attackable but doesn't fully
+  defuse a pathological per-turn re-lock (the Warden re-keys from outside; same-turn key-and-advance is
+  unbuilt). M4's free-casualty ceiling is the farming tripwire.
+- **Guards:** build clean · **1315** core (+5) · sim byte-identical · e2e/visual/challenge green. No render
+  surface (M4).
+- **Next:** **M4** (two-spawn distraction visual e2e + free-casualty ceiling) → **M5** (droppable key).

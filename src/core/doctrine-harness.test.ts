@@ -13,6 +13,7 @@ import { hasTag, GARRISON } from "./tags";
 import { keyholderOf, openGateOnGrid } from "./gates";
 import { findPath } from "./pathfinding";
 import { buildAuthoredEnemies } from "./authored";
+import { inRegion } from "./iso";
 
 const STATS = { speed: 12, maxHp: 24, attack: 9, defense: 2, moveRange: 4, sightRadius: 5 };
 const party = (): Unit[] => [
@@ -106,5 +107,15 @@ describe("garrison door-drive (M3, integration)", () => {
     expect(plan.target?.id).toBe("infil"); // pinned → attacks the engager
     expect(plan.gateTarget).toBeUndefined(); // did NOT key
     expect(seal.locked).toBe(true); // the seal stays shut while the Warden is engaged
+  });
+
+  it("M3b: the control-room region stages onto the Battle and discriminates the two spawns", () => {
+    const { battle } = stageEncounter(DOCTRINE_HARNESS, party());
+    expect(battle.controlRoom).toEqual({ cols: [0, 2], rows: [0, 2] });
+    const players = battle.units.filter((u) => u.side === "player");
+    // The infiltrator spawns inside the control room (near the lever); the front party outside it — so the
+    // M3b target-priority (unit-tested) has a real region to read off the live battle (Decision G plumbing).
+    expect(players.some((p) => inRegion(p.pos, battle.controlRoom!))).toBe(true);
+    expect(players.some((p) => !inRegion(p.pos, battle.controlRoom!))).toBe(true);
   });
 });

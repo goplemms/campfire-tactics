@@ -121,6 +121,16 @@ export function keyableGates(gates: readonly Gate[], by: Unit): Gate[] {
   return gates.filter((g) => canKeyGate(g, by));
 }
 
+/**
+ * Is `by` the keyholder of `gate` — a **position-independent** match (locked + a `keyholder` lock whose
+ * `tag` matches `by`), *without* the adjacency {@link canKeyGate} requires. The AI drive (M2c) uses this
+ * to decide whether a walled-off keyholder should *converge* on a gate (adjacency is then checked at the
+ * candidate destination tile, not the unit's current position).
+ */
+export function keyholderOf(gate: Gate, by: Unit): boolean {
+  return gate.locked && gate.openBy.some((c) => c.kind === "keyholder" && matchesTag(by, c.tag));
+}
+
 /** Whether `gate` can be broken by attacks — still locked (never a smashed remnant), carries a `destructible` condition + durability. */
 export function isBreakable(gate: Gate): boolean {
   return gate.locked && !gate.broken && gate.hp !== undefined && gate.openBy.some((c) => c.kind === "destructible");

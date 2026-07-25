@@ -609,3 +609,28 @@ refuse (unlogged); replay reconstructs; undo re-locks; keyed-then-dead doesn't d
   `in-combat` gating (M3). M2(b) is the mechanic: a keyholder can turn their key as a logged, replay/undo-safe Act.
 - **Next:** M2(c) — the Warden key-drive (walk to a keyable gate → `keyGate` → advance through), under a
   minimal trigger; then M2.5 (finale substrate) / M3 (doctrine).
+
+---
+
+## M2(c) LANDED (2026-07-23) — the Warden key-drive (minimal, wallsOff-triggered), green
+
+The existing door-drive now lets a walled-off **keyholder** converge on and **key** its gate — parallel to
+how guards batter. No `in-combat`/priority reorder yet (that's M3).
+- **`gates.ts`** — `keyholderOf(gate, by)` (position-independent keyholder match, no adjacency — the drive
+  filter). **`ai.ts`** — `breakableDoors` → `driveDoors` (`isBreakable` **or** `keyholderOf`, still
+  `opensARoute`-gated); per-tile reach is **adjacency (≤1) for keying**, **attackRange for battering**;
+  the act is fixed at plan time via new **`AIPlan.gateAct: "key" | "attack"`** (key preferred). **`battle-
+  replay.ts` `planActions`** — lowers `gateTarget` to `keyGate` (gateAct "key") or `attackGate`.
+- **The challenge's real trap, avoided:** `planActions` builds `[move, gateAct, endTurn]` up front, so
+  key-vs-batter is decided at **plan time** (destination fixes the reach), not re-derived from a pre-move
+  position.
+- **Guards (5, ai.test):** keyholder walled off → `gateAct:"key"`, moves adjacent; non-keyholder at a keyed
+  non-breakable gate → **no** drive; keyholder at a breakable gate → `gateAct:"attack"` (batter unchanged);
+  keyholder with a **reachable** foe → attacks it (wallsOff false, no reorder yet); **`runPolicyTurn`
+  integration** — a walled-off Warden drives to the seal and keys it open (route revealed).
+- **Canaries green:** `ai.test:90` (prefer reachable foe over door) + C3 (no batter without a revealed
+  route) untouched — non-keyholders never match `keyholderOf`, and the drive still only fires when `wallsOff`.
+- **Build clean · 1298/1298 · sim byte-identical.** Barrel +1 (`keyholderOf`).
+
+**M2 COMPLETE (a+b+c).** Next: **M2.5** — author the finale substrate (seal/lever/keyed gate, control-room
+region, split spawns) + the tag-id validation guard; then **M3** (the doctrine).

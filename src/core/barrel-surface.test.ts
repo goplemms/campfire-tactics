@@ -171,6 +171,8 @@
  *   - M2b (gates.ts): +3 — `canKeyGate` / `keyableGates` / `gateActFor` (the living-keyholder Act's
  *     validation + the key-vs-batter selector). `GateAct` + the `keyGate` `CombatAction` are type-only;
  *     `Battle.keyGate` is a method. No new registration/RNG → sim digest unchanged.
+ *   - M2c (gates.ts): +1 — `keyholderOf` (position-independent keyholder match; the AI key-drive filter).
+ *     `AIPlan.gateAct` is a type-only field; the planner reorder is behavior. No new registration/RNG.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -668,6 +670,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "jobLevelOf",
   "jobPresenceSummary",
   "keyableGates",
+  "keyholderOf",
   "knobDeclared",
   "listScenarios",
   "loadExpedition",

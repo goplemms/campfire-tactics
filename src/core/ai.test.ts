@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { planEnemyTurn, reachableTiles, forecastEnemyAction, threatenedTiles } from "./ai";
+import { Battle } from "./turn";
 import { TileGrid } from "./grid";
 import { isAdjacent } from "./combat";
 import { applyStatus, immobilized } from "./status";
@@ -78,6 +79,63 @@ describe("planEnemyTurn", () => {
     const player = at("p", "player", 4, 1);
     const plan = planEnemyTurn(enemy, [enemy, player], grid, { gates: [door] });
     expect(plan.gateTarget).toBeUndefined(); // a path around exists → no door-break
+  });
+
+  // --- M2(c): the living-keyholder key-drive (D108) --------------------------
+
+  it("a keyholder walled off from every foe KEYS its gate instead of battering", () => {
+    const grid = new TileGrid(5, 1);
+    const gate = makeGate("cell", { col: 2, row: 0 }, [{ kind: "keyholder", tag: { role: "captain" } }]);
+    applyGatesToGrid(grid, [gate]); // blocks (2,0); the keyed gate isn't breakable
+    const warden = { ...at("warden", "enemy", 0, 0), role: "captain" };
+    const player = at("p", "player", 4, 0);
+    const plan = planEnemyTurn(warden, [warden, player], grid, { gates: [gate] });
+    expect(plan.gateTarget?.id).toBe("cell");
+    expect(plan.gateAct).toBe("key");
+    expect(plan.destination).toEqual({ col: 1, row: 0 }); // moved adjacent to turn the key
+  });
+
+  it("a NON-keyholder walled off by a keyed (non-breakable) gate has no gate drive", () => {
+    const grid = new TileGrid(5, 1);
+    const gate = makeGate("cell", { col: 2, row: 0 }, [{ kind: "keyholder", tag: { role: "captain" } }]);
+    applyGatesToGrid(grid, [gate]);
+    const grunt = at("g", "enemy", 0, 0); // no role → not the keyholder; the gate isn't breakable
+    const player = at("p", "player", 4, 0);
+    const plan = planEnemyTurn(grunt, [grunt, player], grid, { gates: [gate] });
+    expect(plan.gateTarget).toBeUndefined();
+  });
+
+  it("a keyholder still BATTERS a breakable gate (gateAct 'attack')", () => {
+    const grid = new TileGrid(5, 1);
+    const door = makeGate("door", { col: 2, row: 0 }, [{ kind: "destructible", hp: 20 }]);
+    applyGatesToGrid(grid, [door]);
+    const warden = { ...at("warden", "enemy", 0, 0), role: "captain" };
+    const player = at("p", "player", 4, 0);
+    const plan = planEnemyTurn(warden, [warden, player], grid, { gates: [door] });
+    expect(plan.gateTarget?.id).toBe("door");
+    expect(plan.gateAct).toBe("attack"); // breakable + not keyholder-of it → batter, unchanged
+  });
+
+  it("a keyholder with a REACHABLE foe attacks it, not the gate (wallsOff false — no priority reorder yet)", () => {
+    const grid = new TileGrid(5, 1);
+    const gate = makeGate("cell", { col: 3, row: 0 }, [{ kind: "keyholder", tag: { role: "captain" } }]);
+    applyGatesToGrid(grid, [gate]);
+    const warden = { ...at("warden", "enemy", 0, 0), role: "captain" };
+    const player = at("p", "player", 1, 0); // adjacent + reachable (not behind the gate)
+    const plan = planEnemyTurn(warden, [warden, player], grid, { gates: [gate] });
+    expect(plan.gateTarget).toBeUndefined(); // a reachable foe → no gate drive
+    expect(plan.target).toBe(player);
+  });
+
+  it("runPolicyTurn: a walled-off Warden drives to the seal and keys it open (route revealed)", () => {
+    const grid = new TileGrid(5, 1);
+    const gate = makeGate("cell", { col: 2, row: 0 }, [{ kind: "keyholder", tag: { role: "captain" } }]);
+    const warden = { ...at("warden", "enemy", 0, 0), role: "captain" };
+    const player = at("p", "player", 4, 0);
+    const battle = new Battle(grid, [warden, player], { gates: [gate] });
+    battle.runPolicyTurn(warden);
+    expect(gate.locked).toBe(false); // keyed open by the drive
+    expect(grid.isWalkable({ col: 2, row: 0 })).toBe(true); // the route to the infiltrator is revealed
   });
 
   it("prefers attacking a reachable foe over a door (foe > door > advance)", () => {

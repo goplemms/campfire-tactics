@@ -32,9 +32,11 @@ export function planActions(plan: AIPlan): CombatAction[] {
     actions.push({ kind: "skill", unit, skill: plan.ability.id, target: plan.target.id, commitTurn: true });
     return actions; // the skill ends the turn (commitSkill spends the CT)
   }
-  // Batter a destructible door (D103) — the walled-off guard's Act; ends the turn.
+  // Open a gate in the way (D103/D108) — the walled-off unit's Act; ends the turn. A keyholder **keys**
+  // its gate (fast, D108); any unit **batters** a breakable one. `gateAct` was fixed at plan time.
   if (plan.gateTarget) {
-    actions.push({ kind: "attackGate", unit, gate: plan.gateTarget.id });
+    const kind = plan.gateAct === "key" ? "keyGate" : "attackGate";
+    actions.push({ kind, unit, gate: plan.gateTarget.id });
     actions.push({ kind: "endTurn", unit, spend: { moved: plan.path.length > 0, acted: true } });
     return actions;
   }

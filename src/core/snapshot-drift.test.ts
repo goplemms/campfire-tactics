@@ -96,6 +96,8 @@ const UNIT_UNSNAPSHOTTED_KEYS = [
   "thief",
   "post",
   "role",
+  // Intrinsic tags (the tag system, D117) — authored classification, immutable in battle.
+  "tags",
   // A captive's rescue-gate requirement (D52/D69) — set at creation, battle never writes it.
   "release",
   // Loadout — equip/unequip is an overworld verb; the gearStamp is applied at

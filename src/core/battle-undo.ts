@@ -56,6 +56,8 @@ export interface UnitSnapshot {
  */
 export interface BattleCheckpoint {
   logLen: number;
+  /** Length of the derived event log (D117) at checkpoint — undo truncates it back to here. */
+  eventLogLen: number;
   drawCount: number;
   units: Map<UnitId, UnitSnapshot>;
   clock: ClockSnapshot;
@@ -117,6 +119,7 @@ export function restoreUnit(u: Unit, s: UnitSnapshot): void {
 export function captureCheckpoint(
   units: readonly Unit[],
   logLen: number,
+  eventLogLen: number,
   drawCount: number,
   clock: CTClock,
   entities: EntityRegistry,
@@ -127,6 +130,7 @@ export function captureCheckpoint(
   for (const u of units) snaps.set(u.id, snapshotUnit(u));
   return {
     logLen,
+    eventLogLen,
     drawCount,
     units: snaps,
     clock: clock.snapshot(),

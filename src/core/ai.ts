@@ -32,7 +32,7 @@ import { isImmobilized, isDebuffed, hasStatus, EXPOSED } from "./status";
 import { canSeeUnit } from "./vision";
 import { availableSkills } from "./leveling";
 import { orderOf } from "./standing-orders";
-import { isBreakable, type Gate } from "./gates";
+import { isBreakable, keyholderOf, type Gate } from "./gates";
 
 /** Scoring weights — all tunable data, a numbers pass later (D42). */
 export const AI = {
@@ -129,10 +129,17 @@ export interface AIPlan {
   /** An ability to use on `target` instead of a basic attack (D42 enemy abilities). */
   ability?: SkillDef;
   /**
-   * A **destructible door to batter** from the destination (D103) — set only when no foe is a
-   * target (the priority is foe > door > advance). Lowered to an `attackGate` action.
+   * A **gate to act on** from the destination (D103/D108) — set only when no foe is a target (the
+   * priority is foe > door > advance). Lowered per {@link gateAct}: a keyholder **keys** its gate
+   * (fast), any unit **batters** a breakable one.
    */
   gateTarget?: Gate;
+  /**
+   * How to open {@link gateTarget}: `"key"` (the living-keyholder Act, D108 — the Warden turns his key)
+   * or `"attack"` (batter a destructible door). Decided at **plan time** (the destination tile fixes the
+   * reach) so the lowering doesn't re-derive it from a pre-move position. Undefined ⇒ no gate act.
+   */
+  gateAct?: "key" | "attack";
 }
 
 /** Optional planner inputs the {@link "./turn".Battle} can supply (D42). */
@@ -322,8 +329,11 @@ export function planEnemyTurn(
       grid.setWalkable(g.pos, false);
     }
   };
-  const breakableDoors = wallsOff
-    ? (opts.gates ?? []).filter((g) => isBreakable(g) && opensARoute(g))
+  // Gates a walled-off unit should converge on and open (D103/D108): a door it can **batter**
+  // (breakable) or a gate it **keyholds** (the living-keyholder Act, D108) — and only when opening it
+  // reveals a route to a foe (C3). Adjacency/range is checked per candidate tile below, not here.
+  const driveDoors = wallsOff
+    ? (opts.gates ?? []).filter((g) => (isBreakable(g) || keyholderOf(g, unit)) && opensARoute(g))
     : [];
 
   let bestPlan: AIPlan = stay;
@@ -365,15 +375,24 @@ export function planEnemyTurn(
       }
     }
 
-    // A destructible door in attack range from here (only relevant when walled off from every foe,
-    // and never over an actual foe attack — the priority is foe > door > advance).
-    const doorTarget = actTarget ? undefined : breakableDoors.find((g) => manhattan(d.tile, g.pos) <= unit.attackRange);
+    // A gate to act on from here (only when walled off from every foe, never over an actual foe attack —
+    // the priority is foe > door > advance). Prefer **keying** (a keyholder, adjacent) over **battering**
+    // (breakable, within attack range); the act is fixed here so the lowering doesn't re-derive it.
+    let gateHit: { gate: Gate; act: "key" | "attack" } | undefined;
+    if (!actTarget) {
+      const keyG = driveDoors.find((g) => keyholderOf(g, unit) && manhattan(d.tile, g.pos) <= 1);
+      if (keyG) gateHit = { gate: keyG, act: "key" };
+      else {
+        const hitG = driveDoors.find((g) => isBreakable(g) && manhattan(d.tile, g.pos) <= unit.attackRange);
+        if (hitG) gateHit = { gate: hitG, act: "attack" };
+      }
+    }
 
     let score: number;
     if (actTarget) {
       score = actionScore + movePart;
-    } else if (doorTarget) {
-      // Batter the seal in the way — beats advancing (which would only idle against the door).
+    } else if (gateHit) {
+      // Open the seal in the way (key or batter) — beats advancing (which would only idle against it).
       score = AI.doorBreak + movePart;
     } else if (post) {
       // A holder never advances on foes — with no one to fight from the leash,
@@ -389,7 +408,7 @@ export function planEnemyTurn(
 
     if (score > bestScore) {
       bestScore = score;
-      bestPlan = { unit, path: d.path, destination: d.tile, target: actTarget, ability: actAbility, gateTarget: doorTarget };
+      bestPlan = { unit, path: d.path, destination: d.tile, target: actTarget, ability: actAbility, gateTarget: gateHit?.gate, gateAct: gateHit?.act };
     }
   }
 

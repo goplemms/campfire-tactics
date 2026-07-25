@@ -22,6 +22,7 @@ import type { Unit, UnitSpec, ReleaseRequirement } from "./units";
 import { createUnit } from "./units";
 import { TileGrid } from "./grid";
 import { getEnemyTemplate, type EncounterReward } from "./generation";
+import { TAGS } from "./tags";
 import type { ObjectiveSpec } from "./objectives";
 import { makeGate, makeLever, type Gate, type GateLock, type Lever } from "./gates";
 import type { IntelTier } from "./intel"; // type-only (erased) — no runtime cycle
@@ -166,6 +167,17 @@ export function buildAuthoredGrid(enc: AuthoredEncounter): TileGrid {
   return new TileGrid(enc.cols, enc.rows, enc.blocked);
 }
 
+/**
+ * Fail loud (D117) if an authored unit carries an **intrinsic tag not in the {@link TAGS} registry** —
+ * a designer typo (`"garrsion"`) would otherwise be a silent no-op (the tag never matches its constant).
+ * Every authored enemy/captive stages through here, so a bad tag can't reach the board unnoticed.
+ */
+function assertRegisteredTags(u: Unit): void {
+  for (const t of u.tags) {
+    if (!TAGS[t]) throw new Error(`authored unit "${u.id}" carries unregistered tag "${t}" (not in TAGS)`);
+  }
+}
+
 /** Inflate an authored encounter's placements into live enemy {@link Unit}s. */
 export function buildAuthoredEnemies(enc: AuthoredEncounter): Unit[] {
   return enc.enemies.map((p) => {
@@ -190,6 +202,7 @@ export function buildAuthoredEnemies(enc: AuthoredEncounter): Unit[] {
       ...p.overrides,
     });
     u.hidden = p.hidden ?? false;
+    assertRegisteredTags(u);
     return u;
   });
 }
@@ -205,6 +218,7 @@ export function buildAuthoredCaptives(enc: AuthoredEncounter): Unit[] {
   return (enc.captives ?? []).map((c) => {
     const u = createUnit({ ...c.spec, side: "player", pos: c.pos, authored: true, release: c.release });
     u.captured = true;
+    assertRegisteredTags(u);
     return u;
   });
 }

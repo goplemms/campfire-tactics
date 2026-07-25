@@ -101,6 +101,36 @@ export function lockpickableGates(gates: readonly Gate[], by: Unit): Gate[] {
   return gates.filter((g) => canLockpickGate(g, by));
 }
 
+/**
+ * Can `by` open `gate` **right now with their key** — the living-keyholder Act (D108): the gate is
+ * locked, carries a `keyholder` condition whose `tag` matches `by` (the Warden holds these keys), and
+ * `by` is adjacent. The **active** counterpart to {@link gatesOpenedByDeath} (same `tag`): *alive*, the
+ * keyholder walks up and turns the key (a fast Act, no HP grind); *dead*, the same tag pops the gate.
+ * Pure; read by the logged `keyGate` Act so a refusal mutates nothing.
+ */
+export function canKeyGate(gate: Gate, by: Unit): boolean {
+  return (
+    gate.locked &&
+    gate.openBy.some((c) => c.kind === "keyholder" && matchesTag(by, c.tag)) &&
+    adjacent(by.pos, gate.pos)
+  );
+}
+
+/** Every locked gate `by` could key this instant (adjacent keyholder) — for the scene affordance + the drive. */
+export function keyableGates(gates: readonly Gate[], by: Unit): Gate[] {
+  return gates.filter((g) => canKeyGate(g, by));
+}
+
+/**
+ * Is `by` the keyholder of `gate` — a **position-independent** match (locked + a `keyholder` lock whose
+ * `tag` matches `by`), *without* the adjacency {@link canKeyGate} requires. The AI drive (M2c) uses this
+ * to decide whether a walled-off keyholder should *converge* on a gate (adjacency is then checked at the
+ * candidate destination tile, not the unit's current position).
+ */
+export function keyholderOf(gate: Gate, by: Unit): boolean {
+  return gate.locked && gate.openBy.some((c) => c.kind === "keyholder" && matchesTag(by, c.tag));
+}
+
 /** Whether `gate` can be broken by attacks — still locked (never a smashed remnant), carries a `destructible` condition + durability. */
 export function isBreakable(gate: Gate): boolean {
   return gate.locked && !gate.broken && gate.hp !== undefined && gate.openBy.some((c) => c.kind === "destructible");
@@ -114,6 +144,14 @@ export function canAttackGate(gate: Gate, by: Unit): boolean {
 /** Every breakable gate `by` could hit this instant (in attack range) — for the scene's Break-Gate affordance. */
 export function breakableGates(gates: readonly Gate[], by: Unit): Gate[] {
   return gates.filter((g) => canAttackGate(g, by));
+}
+
+/** Which gate Act `by` should take on `gate` right now (D108): prefer the **key** (fast) over the **batter** (grind); `undefined` if neither is possible. */
+export type GateAct = "key" | "attack";
+export function gateActFor(gate: Gate, by: Unit): GateAct | undefined {
+  if (canKeyGate(gate, by)) return "key";
+  if (canAttackGate(gate, by)) return "attack";
+  return undefined;
 }
 
 /**

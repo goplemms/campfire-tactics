@@ -741,3 +741,27 @@ in [`decisions.md`](decisions.md).
   challenge green.
 - **M1–M4 COMPLETE.** **Next:** **M5** — the droppable key (auto-open → drop-key; a field entity + pickup
   reusing the `keyGate` Act), required before the finale node is done.
+
+---
+
+## M5 LANDED (2026-07-25) — the droppable key, green — **M1–M5 COMPLETE**
+
+Same branch. Upgrades death-auto-open → drop-a-key (the specific key-drop, not the general item system).
+See **D117 follow-up** in [`decisions.md`](decisions.md).
+
+- **Mechanic (authored opt-in, non-breaking):** keyholder lock `dropOnDeath?` (default = byte-identical
+  auto-open). On death → a **dropped-key field entity** at his tile (gate stays locked); a **player** steps
+  on it → `unit.carriedKey`; `canKeyGate` gains a carrier clause → the fetcher turns it via the existing
+  `keyGate` Act. Rides the entity registry + checkpoint + Act seams.
+- **Replay/undo-safe (challenged + verified):** the drop→pickup→use chain reconstructs from the command
+  log; undo composes across entity-membership (drop), the `pickedUp` flag (pickup), and the new
+  `carriedKey` UnitSnapshot field (#115 drift tripwire). Both directions tested.
+- **Render (first player-facing keyGate surface):** ⚷ glyph + `markKeys()` layer (redrawn on
+  keyDropped/keyPickedUp), a **Turn Key** verb (carrier-only) + `doKeyGate`, a carried pip. Guarded by
+  `MICRO_KEY_DROP` + an `e2e-micro` block (drop → fetch → Turn Key → open, no freeze).
+- **Guards:** build clean · **1329** core (+9) · sim byte-identical · e2e:micro 32 (+6) · visual/challenge/
+  deploy-battle green.
+- **The tag-system arc (M1–M5) is complete.** The finale node's owner-flagged prerequisite (the key-drop)
+  ships as a proven *capability*; the real finale adopting `dropOnDeath` is a content call on the separate
+  owner-directed track (D97–D99/D116). **Deferred as ever:** the boolean→tag migration; the general
+  droppable-item system; a `conferred` provenance.

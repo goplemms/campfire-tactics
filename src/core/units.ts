@@ -247,6 +247,13 @@ export interface Unit extends UnitStats {
    * **immutable in battle** (so it is not snapshotted for undo). Empty for a plain unit.
    */
   tags: readonly string[];
+  /**
+   * **Carried keys** (D117/M5) — the gate ids this unit can turn with a **dropped key** it picked up off a
+   * fallen keyholder (distinct from the intrinsic keyholder `tag`). Read by {@link "./gates".canKeyGate}.
+   * **Mutable in battle** (set on pickup) → snapshotted for undo ({@link "./battle-undo".UnitSnapshot}).
+   * Absent for a unit carrying no key.
+   */
+  carriedKey?: string[];
   /** Authored ambush body hidden until scouted (D44); a render/fog flag. */
   hidden?: boolean;
   /**

@@ -25,6 +25,7 @@ import { pct,
   canRelease,
   canLockpickGate,
   canAttackGate,
+  canKeyGate,
   canPullLever,
   type Gate,
   type Lever,
@@ -65,6 +66,7 @@ import { pct,
   STANDING_ORDERS,
   // D12 — the enemy trap-field: spot, search, and Survivalist disarm
   isConcealedTrap,
+  isDroppedKey,
   hiddenTraps,
   revealTrapsNear,
   spotWhileMoving,
@@ -243,6 +245,8 @@ export class BattleScene extends Phaser.Scene {
   private gateMarkers: Phaser.GameObjects.GameObject[] = [];
   /** Lever glyphs over each pull-switch (D103) — static, drawn at board setup. */
   private leverMarkers: Phaser.GameObjects.GameObject[] = [];
+  /** Key glyphs over each un-fetched dropped key (D117/M5) — redrawn on keyDropped/keyPickedUp + board setup. */
+  private keyMarkers: Phaser.GameObjects.GameObject[] = [];
   /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
   private deployMoved = false;
   private deployActed = false;
@@ -597,6 +601,17 @@ export class BattleScene extends Phaser.Scene {
       this.markGates(); // re-render the HP readout (hp already decremented on the gate)
       this.view.logLine(`${by?.name ?? "A blow"} batters the door — ${gate.hp}/${gate.maxHp} left`, INK.ember);
     });
+    // A fallen keyholder dropped a key (D117/M5): draw the ⚷ on the board so the player can go fetch it.
+    this.battle.bus.on("keyDropped", () => {
+      this.markKeys();
+      this.view.logLine("The keyholder's key clatters to the ground — fetch it to open the door.", INK.gold);
+    });
+    // A player pocketed a dropped key (D117/M5): clear its board glyph; the carried pip badges the fetcher.
+    this.battle.bus.on("keyPickedUp", ({ unit }) => {
+      this.markKeys();
+      this.refreshUnits();
+      this.view.logLine(`${unit.name} pockets the key.`, INK.gold);
+    });
     // The Noble's bribe (D30/D62): a swayed enemy turns coat — re-tint its token to the ally
     // palette here (a listener, like unitRescued), rather than the call site flipping `side`.
     this.battle.bus.on("unitSwayed", ({ unit }) => {
@@ -668,6 +683,7 @@ export class BattleScene extends Phaser.Scene {
     this.markCuffedCaptives(); // lock glyphs over any cuffed captives (D90)
     this.markGates(); // lock/bar glyphs over any locked interactable gates (D103)
     this.markLevers(); // lever glyphs over any pull-switches (D103)
+    this.markKeys(); // key glyphs over any dropped keys (D117/M5) — usually none until a keyholder falls
     // Trap-field (D12): enemy hazards are live across *both* phases, so the party's
     // opening Awareness scan happens here — at the deploy line, not at combat start.
     // Spotted traps draw now, so positioning is informed; the rest are sensed as units
@@ -1013,6 +1029,16 @@ export class BattleScene extends Phaser.Scene {
         onClick: () => this.doBreakGate(actor, breakable, ctx),
       });
     }
+    // Turn Key — a unit carrying a fetched dropped key (D117/M5) turns an adjacent gate open. `canKeyGate`
+    // passes for a key-carrier (players never hold the keyholder tag), so this only shows for the fetcher.
+    const keyable = this.battle.gates.find((g) => canKeyGate(g, actor));
+    if (keyable) {
+      specs.push({
+        text: "Turn Key",
+        description: `Turn the fetched key in the lock — the gate swings open (spends this unit's ${noun}).`,
+        onClick: () => this.doKeyGate(actor, keyable, ctx),
+      });
+    }
     // Pull Lever — throw an adjacent control-room switch to seal/open its gate (D103 Phase 3).
     const lever = this.battle.levers.find((l) => canPullLever(l, actor));
     if (lever) {
@@ -1022,6 +1048,21 @@ export class BattleScene extends Phaser.Scene {
         onClick: () => this.doPullLever(actor, lever, ctx),
       });
     }
+  }
+
+  /**
+   * Turn a fetched key in an adjacent gate as this unit's Act — the "Turn Key" handler (D117/M5), the first
+   * player-facing `keyGate` surface. Shares {@link commitFieldAct}; `gateOpened` (the bus listener) owns the
+   * grid redraw, the marker teardown, and the log line.
+   */
+  private doKeyGate(actor: Unit, gate: Gate, ctx: BoardCtx): void {
+    if (!this.canFieldAct(actor, ctx)) return;
+    if (!canKeyGate(gate, actor)) {
+      return this.setHint(`Move ${actor.name} next to the gate to turn the key.`);
+    }
+    this.battle.keyGate(gate, actor);
+    const tail = ctx === "deployment" ? " Reposition or End Turn." : "";
+    this.commitFieldAct(actor, ctx, `${actor.name} turns the key — the gate opens!${tail}`);
   }
 
   /**
@@ -1121,6 +1162,16 @@ export class BattleScene extends Phaser.Scene {
     for (const l of this.battle.levers) {
       const { x, y } = this.tileToWorld(l.pos);
       this.leverMarkers.push(placeIcon(this, x, y - this.view.halfH() * 0.9, "lever", { size: FONT.body }).setDepth(5));
+    }
+  }
+
+  /** Draw a key glyph over each un-fetched dropped key (D117/M5) — cleared once a unit pockets it. */
+  private markKeys(): void {
+    clearLayer(this.keyMarkers);
+    for (const e of this.battle.entities.all()) {
+      if (!isDroppedKey(e) || e.pickedUp) continue;
+      const { x, y } = this.tileToWorld(e.pos);
+      this.keyMarkers.push(placeIcon(this, x, y - this.view.halfH() * 0.6, "key", { size: FONT.body }).setDepth(5));
     }
   }
 

@@ -37,8 +37,13 @@ import type { TileGrid } from "./grid";
 export type GateLock =
   /** An adjacent Expert-Lockpick unit (the Thief) spends an Act to pick it. */
   | { kind: "lockpick" }
-  /** Opens the instant a unit matching `tag` (a role or explicit id) is defeated — the keyholder drops the keys. */
-  | { kind: "keyholder"; tag: ObjectiveTag }
+  /**
+   * Opens the instant a unit matching `tag` (a role or explicit id) is defeated — the keyholder drops the
+   * keys. With `dropOnDeath` (D117/M5), the death does **not** auto-open the gate: the keyholder drops a
+   * physical **key** (a field entity) at his tile that a player unit fetches and turns (via `keyGate`) —
+   * an authored opt-in; **default (absent) is the byte-identical auto-open** (cell-pop, unchanged).
+   */
+  | { kind: "keyholder"; tag: ObjectiveTag; dropOnDeath?: boolean }
   /** Has durability `hp`: attacking it (a unit within attack range) chips it down; it breaks open at 0. */
   | { kind: "destructible"; hp: number };
 
@@ -109,11 +114,21 @@ export function lockpickableGates(gates: readonly Gate[], by: Unit): Gate[] {
  * Pure; read by the logged `keyGate` Act so a refusal mutates nothing.
  */
 export function canKeyGate(gate: Gate, by: Unit): boolean {
-  return (
-    gate.locked &&
-    gate.openBy.some((c) => c.kind === "keyholder" && matchesTag(by, c.tag)) &&
-    adjacent(by.pos, gate.pos)
-  );
+  if (!gate.locked || !adjacent(by.pos, gate.pos)) return false;
+  // Two ways to turn the key: `by` IS the tagged keyholder (the living Warden, M2b), or `by` **carries a
+  // dropped key** for this gate (the player who fetched it, D117/M5). Either an adjacent authority opens it.
+  const isKeyholder = gate.openBy.some((c) => c.kind === "keyholder" && matchesTag(by, c.tag));
+  const carriesKey = by.carriedKey?.includes(gate.id) ?? false;
+  return isKeyholder || carriesKey;
+}
+
+/**
+ * Does defeating `dead` **drop a key** for `gate` rather than auto-open it (D117/M5)? True iff `gate` has a
+ * keyholder lock that (a) matches `dead` and (b) is authored `dropOnDeath`. The complement of the auto-open
+ * path — a gate with a plain keyholder lock (no `dropOnDeath`) still pops open on the same death (unchanged).
+ */
+export function dropsKeyOnDeath(gate: Gate, dead: Unit): boolean {
+  return gate.openBy.some((c) => c.kind === "keyholder" && c.dropOnDeath === true && matchesTag(dead, c.tag));
 }
 
 /** Every locked gate `by` could key this instant (adjacent keyholder) — for the scene affordance + the drive. */

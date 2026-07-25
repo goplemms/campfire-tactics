@@ -4977,3 +4977,40 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   control-room targeting + the rendered, freeze-guarded distraction loop all ship. **Next:** **M5** — the
   droppable key (auto-open → drop-key; the specific key-drop reusing the `keyGate` Act via a field entity +
   minimal pickup), required before the finale node is "done" (owner). NOT the general item system (D108).
+
+### D117 follow-up — M5: the droppable key built (2026-07-25)
+
+- **Status:** Built + green, same branch. **M1–M5 COMPLETE** — the tag system arc is done. The specific
+  key-drop only (upgrading death-auto-open → drop-a-key), *not* the general transferable-item system (D108).
+- **The mechanic (authored, opt-in, non-breaking):** the keyholder gate-lock gains `dropOnDeath?: boolean`
+  (default absent = today's **byte-identical auto-open** — cell-pop and every existing keyholder-death
+  encounter untouched). On a `dropOnDeath` keyholder's death, `openKeyholderGates` **registers a dropped-key
+  field entity** at his tile (bound to his drop-gates) instead of opening — the gate stays locked. A
+  **player** unit stepping onto the key (`onUnitEnterTile`, the trap-style hook) stamps `unit.carriedKey`
+  and marks the key `pickedUp`. `canKeyGate` gains one clause — *or* the actor carries a key for that gate —
+  so the fetcher turns it via the **existing `keyGate` Act** (unchanged dispatch). Rides every existing seam.
+- **Replay/undo-safe by construction (the `/challenge` focus, verified):** the drop is a death side-effect
+  that re-fires on replay (like auto-open); the pickup is a side-effect of the logged `move`; the use is the
+  logged `keyGate` — so the whole **drop → pickup → use chain reconstructs from the command log** (tested).
+  Undo composes across three snapshot layers: the key entity is dropped **after** a checkpoint so **entity
+  membership-undo** removes it; `pickedUp` is an **EntitySnapshot flag**; `carriedKey` is a new
+  **UnitSnapshot** field (mutable-in-battle, so the #115 drift tripwire requires it). Both undo directions
+  tested (revert the pickup — carry cleared + key un-pocketed; revert the drop — key vanishes, Warden stands).
+- **Render (the first player-facing `keyGate` surface — keyGate was AI/death-only):** a `key` glyph (⚷) in
+  the icon registry; a `markKeys()` marker layer redrawn on `keyDropped`/`keyPickedUp`; a **"Turn Key"** verb
+  in `pushGateVerbs` (gated on `canKeyGate`, so it shows only for the carrier — players never hold the
+  keyholder tag) + a `doKeyGate` handler; a carried-key **status pip** on the token. Guarded by a
+  `MICRO_KEY_DROP` fixture + an `e2e-micro` block: warden falls → ⚷ drops (cell stays shut) → the fetcher
+  pockets it (glyph clears) → the Turn Key verb surfaces → the cell opens, all with no page error/freeze.
+- **Scope (M5 minimal, D108):** **player-only pickup** (enemy re-pickup + AI-to-fetch is the general item
+  system, deferred); one carried-key state + the shared Act, no inventory/transfer engine. Clean upgrade
+  path to the deferred **B** ("whoever holds the key opens its doors").
+- **Guards:** build clean · `npm test` **1329** (+9 — `key-drop.test.ts`: drop vs auto-open, `dropsKeyOnDeath`,
+  fetch+turn, enemy-no-pickup, non-carrier refused, **replay**, **undo×2**; +4 barrel pins
+  `carriedKey`-family / `MICRO_KEY_DROP`) · sim byte-identical (no shipped encounter authors `dropOnDeath`
+  yet) · `test:e2e:micro` **32** (+6) · visual/challenge/deploy-battle audits green.
+- **The finale node is now "done"-able:** M5 was the owner-flagged prerequisite. The real finale ("The
+  Rescue", D97–D99/D116) adopting `dropOnDeath` on its Warden is a **content call on the separate
+  owner-directed track** — the *capability* ships here, proven on the micro fixture. **Deferred as ever:**
+  the `captured`/`thief`/`lord`/`authored` boolean→tag migration; the general droppable-item system; a
+  `conferred` tag provenance until a consumer pulls it.

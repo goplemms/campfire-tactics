@@ -19,7 +19,7 @@ import { removeItem } from "./inventory";
 import type { MaterialCost } from "./cost";
 import { EventBus } from "./event-bus";
 import { CTClock, type TurnSpend, onSkillCooldown, armSkillCooldown } from "./clock";
-import { EntityRegistry } from "./entities";
+import { EntityRegistry, makeDroppedKey } from "./entities";
 import {
   resolveAttack,
   battleOutcome,
@@ -47,7 +47,7 @@ import {
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
 import { captureUnit, freeCaptive, canRelease } from "./deployment";
-import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canKeyGate, canPullLever, damageGate, gatesOpenedByDeath, type Gate, type Lever } from "./gates";
+import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canKeyGate, canPullLever, damageGate, gatesOpenedByDeath, dropsKeyOnDeath, type Gate, type Lever } from "./gates";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
@@ -785,9 +785,22 @@ export class Battle {
    * side effect of the killing action (replay re-fires it; undo re-locks via the checkpoint).
    */
   private openKeyholderGates(dead: Unit): void {
+    // A fallen keyholder's gates: a plain keyholder lock **pops open** (unchanged); a `dropOnDeath` one
+    // instead **drops a physical key** at his tile (D117/M5) that a player fetches and turns. One key per
+    // fallen keyholder, bound to all his drop-on-death gates.
+    const dropGates: string[] = [];
     for (const g of gatesOpenedByDeath(this.gates, dead)) {
+      if (dropsKeyOnDeath(g, dead)) {
+        dropGates.push(g.id);
+        continue;
+      }
       openGateOnGrid(this.grid, g);
       this.bus.emit("gateOpened", { gate: g, cause: "keyholder" });
+    }
+    if (dropGates.length > 0) {
+      const key = makeDroppedKey(`key:${dead.id}`, dead.pos, dropGates);
+      this.entities.register(key);
+      this.bus.emit("keyDropped", { key: key.id, tile: { col: key.pos.col, row: key.pos.row }, gates: [...dropGates] });
     }
   }
 

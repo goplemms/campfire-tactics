@@ -30,6 +30,7 @@ import { hpColor, statusPips, type Pip } from "./unit-readout";
 
 /** The flank pseudo-status — computed from board position, shown in the status vocabulary. */
 const FLANK_PIP = { glyph: ICON.flank.glyph, color: INK.danger, label: "Flanked" } as const;
+const KEY_PIP = { glyph: ICON.key.glyph, color: ICON.key.color, label: "Carrying a key" } as const;
 
 /** A status badge — the shared {@link Pip} (glyph + colour) the board lays out. */
 type StatusPip = Pip;
@@ -38,6 +39,7 @@ type StatusPip = Pip;
 function statusPipsFor(unit: Unit, units: readonly Unit[]): StatusPip[] {
   const pips: StatusPip[] = statusPips(unit);
   if (unit.alive && !unit.captured && isFlanked(unit, units)) pips.push({ text: FLANK_PIP.glyph, color: FLANK_PIP.color });
+  if (unit.alive && unit.carriedKey?.length) pips.push({ text: KEY_PIP.glyph, color: KEY_PIP.color }); // D117/M5: the fetched key
   return pips;
 }
 

@@ -11,16 +11,19 @@
 import type { ScenarioConfig } from "../scenario";
 import { PICK_THE_CELL } from "./pick-the-cell";
 import { PRISON_ASSAULT_SCENARIO } from "./prison-assault";
+import { DOCTRINE_HARNESS_SCENARIO } from "./doctrine-harness";
 import { MICRO_SCENARIOS } from "./micro";
 
 export * from "./pick-the-cell";
 export * from "./prison-assault";
+export * from "./doctrine-harness";
 export * from "./micro";
 
 /** Every registered scenario, keyed by id — the full-encounter demos plus the micro-interaction gallery. */
 export const SCENARIOS: Record<string, ScenarioConfig> = {
   [PICK_THE_CELL.id]: PICK_THE_CELL,
   [PRISON_ASSAULT_SCENARIO.id]: PRISON_ASSAULT_SCENARIO,
+  [DOCTRINE_HARNESS_SCENARIO.id]: DOCTRINE_HARNESS_SCENARIO,
   ...Object.fromEntries(MICRO_SCENARIOS.map((s) => [s.id, s])),
 };
 

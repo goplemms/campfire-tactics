@@ -719,3 +719,25 @@ stated scope). See **D117 follow-up** in [`decisions.md`](decisions.md).
 - **Guards:** build clean · **1315** core (+5) · sim byte-identical · e2e/visual/challenge green. No render
   surface (M4).
 - **Next:** **M4** (two-spawn distraction visual e2e + free-casualty ceiling) → **M5** (droppable key).
+
+---
+
+## M4 LANDED (2026-07-25) — the door-drive render surface + free-casualty ceiling, green
+
+Same branch. The first render surface for the doctrine + the ranged-farm tripwire. See **D117 follow-up**
+in [`decisions.md`](decisions.md).
+
+- **`DOCTRINE_HARNESS_SCENARIO`** (`#scene=doctrine-harness`) — the harness wrapped as a bootable
+  `ScenarioConfig` (two-mouth party, thief/scout arms), registered in `SCENARIOS`; picker auto-lists it.
+  `scenario.test.ts` proves the full run-path staging (incl. `controlRoom` surviving it + the Warden keying
+  through it).
+- **`scripts/e2e-doctrine.mjs`** (`test:e2e:doctrine`, in ci.yml) — the freeze-catcher: boots the board,
+  drives the Warden → the seal keys **open in the live scene** with no page error, then a pinned Warden
+  fights + the seal holds. 14 assertions; screenshots clean.
+- **Free-casualty ceiling** (headless, mutation-robust) — a garrison keyholder drives a distant seal under a
+  Hunter's plinking, reaches + keys it, survives (casualties 0); `plinks > 0` proves the farm window was
+  real; a `/challenge` mutation (lethal plink) flips it red.
+- **Guards:** build clean · **1320** core (+5) · sim byte-identical · e2e:doctrine 14 · scenario/visual/
+  challenge green.
+- **M1–M4 COMPLETE.** **Next:** **M5** — the droppable key (auto-open → drop-key; a field entity + pickup
+  reusing the `keyGate` Act), required before the finale node is done.

@@ -4945,3 +4945,35 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   carries `controlRoom`) · e2e/visual/challenge audits green. No render surface (harness walked in M4).
 - **Next:** **M4** (two-spawn distraction visual e2e + the free-casualty ceiling), then **M5** (the
   droppable key).
+
+### D117 follow-up — M4: the door-drive render surface + free-casualty ceiling built (2026-07-25)
+
+- **Status:** Built + green, same branch. The first **render surface** for the guard doctrine (M1–M3b were
+  headless), guarded per the D92/#168 freeze-catcher doctrine, plus the ranged-farm tripwire.
+- **The scenario:** `DOCTRINE_HARNESS_SCENARIO` (`#scene=doctrine-harness`) wraps the M2.5 harness as a
+  bootable `ScenarioConfig` — a two-mouth party (infiltrator on the control-room side spawn, anchor at the
+  front), thief/scout arms like `pick-the-cell`. Registered in `SCENARIOS`; the picker lists it
+  automatically. `scenario.test.ts` proves the full `buildScenarioRun → startEncounter` path stages the
+  garrison + party, the door-drive keys the seal, **and the M3b `controlRoom` survives the run-path staging**.
+- **The visual e2e** (`scripts/e2e-doctrine.mjs`, `test:e2e:doctrine`, wired into `ci.yml`): the surface only
+  a render catches — the core suite + sim never render a garrison door-fight, so a scene-render exception on
+  the **seal-key-open** surface would read as a *freeze*. The walker boots the board, asserts it renders (no
+  page error), drives the un-engaged Warden → the seal keys **open in the live scene** (the log reads "The
+  keys drop — a cell springs open!") with zero page errors, then on a fresh board stages a real strike →
+  the pinned Warden fights + the seal stays shut. 14 assertions, screenshots eyeballed (clean two-mouth
+  board, no overlap/spill).
+- **The free-casualty ceiling** (headless, deterministic — `doctrine-harness.test.ts`): the tripwire the H
+  ruling promised (clauses 4 & 5 kept ⇒ a guard doesn't chase an out-of-reach plinker, so a ranged unit can
+  farm the advance *if the numbers allow*). A garrison keyholder drives to a distant seal while a Hunter
+  plinks it every turn; asserts it **reaches + keys** the seal and survives (casualties 0). **Built
+  mutation-robust:** `plinks > 0` proves the farm window was real, and a `/challenge` mutation (Hunter attack
+  9→40) flips `warden.alive` **red** — so it genuinely catches a farm/tuning regression, not green-for-the-
+  wrong-reason. Kept headless (deterministic) rather than in the flaky browser walk, per "reserve the e2e
+  for what only a render catches."
+- **Guards:** build clean · `npm test` **1320** (+5: 4 scenario-staging in `scenario.test.ts`, 1 ceiling in
+  `doctrine-harness.test.ts`; +2 barrel pins `DOCTRINE_HARNESS`/`DOCTRINE_HARNESS_SCENARIO`) · sim
+  byte-identical · `test:e2e:doctrine` 14 · e2e:scenario/visual/challenge audits green.
+- **M1–M4 COMPLETE.** The tag surface + real `in-combat` + the garrison door-drive (primary, gated) +
+  control-room targeting + the rendered, freeze-guarded distraction loop all ship. **Next:** **M5** — the
+  droppable key (auto-open → drop-key; the specific key-drop reusing the `keyGate` Act via a field entity +
+  minimal pickup), required before the finale node is "done" (owner). NOT the general item system (D108).

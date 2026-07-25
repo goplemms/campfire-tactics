@@ -39,7 +39,7 @@ type StatusPip = Pip;
 function statusPipsFor(unit: Unit, units: readonly Unit[]): StatusPip[] {
   const pips: StatusPip[] = statusPips(unit);
   if (unit.alive && !unit.captured && isFlanked(unit, units)) pips.push({ text: FLANK_PIP.glyph, color: FLANK_PIP.color });
-  if (unit.alive && unit.carriedKey?.length) pips.push({ text: KEY_PIP.glyph, color: KEY_PIP.color }); // D117/M5: the fetched key
+  if (unit.alive && !unit.captured && unit.carriedKey?.length) pips.push({ text: KEY_PIP.glyph, color: KEY_PIP.color }); // D117/M5: the fetched key
   return pips;
 }
 

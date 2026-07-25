@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createUnit, type Unit, type Side } from "./units";
 import { Battle, replay } from "./turn";
 import { TileGrid } from "./grid";
-import { makeGate, canKeyGate, dropsKeyOnDeath, type GateLock } from "./gates";
+import { makeGate, canKeyGate, dropsKeyOnDeath, lockGateOnGrid, type GateLock } from "./gates";
 import { isDroppedKey } from "./entities";
 
 /**
@@ -108,6 +108,20 @@ describe("droppable key (M5)", () => {
     expect(fetcher.carriedKey).toBeUndefined(); // the carry rolled back (UnitSnapshot)
     expect(keyOf()!.pickedUp).toBe(false); // the key un-pocketed (EntitySnapshot flag)
     expect(fetcher.pos).toEqual({ col: 0, row: 0 }); // and the fetcher stepped back
+  });
+
+  it("the key is REUSABLE — it persists after use, so the carrier re-opens a re-sealed gate", () => {
+    const { grid, battle, seal, fetcher, warden } = setup();
+    battle.attack(fetcher, warden);
+    battle.moveUnit(fetcher, [{ col: 1, row: 0 }, { col: 2, row: 0 }]);
+    battle.keyGate(seal, fetcher);
+    expect(seal.locked).toBe(false);
+    expect(fetcher.carriedKey).toEqual(["seal"]); // turning the key does NOT consume it (D117/M5)
+    // A lever re-seals the door (the lever-camp) — the carrier still holds the key and turns it again.
+    lockGateOnGrid(grid, seal);
+    expect(canKeyGate(seal, fetcher)).toBe(true);
+    battle.keyGate(seal, fetcher);
+    expect(seal.locked).toBe(false); // re-opened with the same key
   });
 
   it("UNDO reverts the drop — the key entity vanishes and the Warden stands (membership snapshot)", () => {

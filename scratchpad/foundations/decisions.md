@@ -5014,3 +5014,25 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   owner-directed track** — the *capability* ships here, proven on the micro fixture. **Deferred as ever:**
   the `captured`/`thief`/`lord`/`authored` boolean→tag migration; the general droppable-item system; a
   `conferred` tag provenance until a consumer pulls it.
+
+### D117 follow-up — `/code-review` pass on M5, 5 findings fixed (2026-07-25)
+
+Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
+- **F1 (render desync, the sharpest) — undo didn't resync the board.** `undoTurn` resynced tokens but never
+  re-drew the grid / gate / lever / **key** markers, whose forward render rides a bus event `undoAll` does
+  **not** re-emit — so undoing a key drop left a **phantom ⚷ over a revived warden** (and the same latent
+  gap for gate open/lock/batter). Fixed with a `resyncBoardInteractables()` (grid + gates + levers + keys)
+  in `undoTurn`'s shared spine. Guarded by a new `e2e-micro` step (fell → undo → warden revived + glyph
+  cleared) — and the deploy-battle e2e's own undo path confirms no regression.
+- **F2 (guard vacuous) — the #115 snapshot-drift lists missed the new fields.** `carriedKey` (Unit) and
+  `pickedUp` (DroppedKey) were snapshotted but unlisted, so the drift tripwire passed vacuously. Added
+  `carriedKey` to `UNIT_SNAPSHOT_KEYS`/`UNIT_MUTATIONS` + `makeFullUnit`, `pickedUp` to
+  `ENTITY_RESTORED_FLAGS`, `gates` to `ENTITY_FIXED_KEYS`, and a `makeDroppedKey` shape — the guard now
+  covers them by name.
+- **F3 (leak) — `rebuildBoard` cleared every marker layer but `keyMarkers`.** Added the clear (D96 reset).
+- **F4 (consistency) — the carried pip lacked the `!captured` guard** the sibling flank pip uses. Added.
+- **F5 (semantics) — the key persists after use.** Confirmed **intended: the key is reusable** (turning it
+  isn't consumed) — a physical-key counter to a lever re-seal. Documented on `Unit.carriedKey` + a new
+  key-drop test (use → persists → re-lock → re-open). Single-use lands with the general item system (D108).
+- **Guards after the pass:** build clean · `npm test` **1330** · sim byte-identical · `test:e2e:micro` **34**
+  (+2 undo) · deploy-battle/scenario/visual green.

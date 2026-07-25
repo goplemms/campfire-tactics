@@ -226,6 +226,21 @@ const MICROS = [
         return { locked: gate.locked, walkable: s.grid.isWalkable(gate.pos), gateMarks: s.gateMarkers.length };`);
       check("turning the fetched key opens the cell — the tile clears + the marker drops (no freeze)",
         turned.locked === false && turned.walkable === true && turned.gateMarks === 0);
+      // Undo across a key DROP must resync the board (the drop rode a bus event undo doesn't re-emit). Fresh
+      // board: fell the warden under an armed checkpoint, then undoTurn must revive him AND clear the ⚷ glyph.
+      await g.boot("#scene=micro-key-drop");
+      await sleep(1200);
+      const undone = await g.bsEval(`
+        const striker = s.battle.units.find(u => u.id === "striker");
+        const warden = s.battle.units.find(u => u.id === "warden");
+        s.battle.beginUndo();
+        s.battle.attack(striker, warden); // drop the key (glyph via keyDropped) under a checkpoint
+        const midMarks = s.keyMarkers.length;
+        s.undoTurn(striker, "deployment"); // take it back → resyncBoardInteractables clears the stale glyph
+        return { midMarks, wardenAlive: warden.alive, keyMarks: s.keyMarkers.length, locked: s.battle.gates[0].locked };`);
+      check("the drop drew the key glyph under the checkpoint", undone.midMarks === 1);
+      check("undo revives the warden and clears the phantom key glyph — no board desync (F1)",
+        undone.wardenAlive === true && undone.keyMarks === 0 && undone.locked === true);
     },
   },
 ];

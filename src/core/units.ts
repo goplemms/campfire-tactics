@@ -251,7 +251,9 @@ export interface Unit extends UnitStats {
    * **Carried keys** (D117/M5) — the gate ids this unit can turn with a **dropped key** it picked up off a
    * fallen keyholder (distinct from the intrinsic keyholder `tag`). Read by {@link "./gates".canKeyGate}.
    * **Mutable in battle** (set on pickup) → snapshotted for undo ({@link "./battle-undo".UnitSnapshot}).
-   * Absent for a unit carrying no key.
+   * Absent for a unit carrying no key. **Reusable by design** — turning the key is *not* consumed, so a
+   * carrier can re-open its gate if a lever re-seals it (the physical-key counter to the lever-camp);
+   * consuming the key on use is deliberately not modelled (that lands with the general item system, D108).
    */
   carriedKey?: string[];
   /** Authored ambush body hidden until scouted (D44); a render/fog flag. */

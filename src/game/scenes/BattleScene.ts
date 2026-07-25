@@ -510,6 +510,7 @@ export class BattleScene extends Phaser.Scene {
     clearLayer(this.captiveMarkers);
     clearLayer(this.gateMarkers);
     clearLayer(this.leverMarkers);
+    clearLayer(this.keyMarkers);
     this.highlight.clear();
     this.view.clearPreview(this.preview);
     this.threatGfx.clear();
@@ -1173,6 +1174,20 @@ export class BattleScene extends Phaser.Scene {
       const { x, y } = this.tileToWorld(e.pos);
       this.keyMarkers.push(placeIcon(this, x, y - this.view.halfH() * 0.6, "key", { size: FONT.body }).setDepth(5));
     }
+  }
+
+  /**
+   * Resync every board-interactable render layer from the model (D103/D117) — the grid tiles + the gate,
+   * lever, and key glyphs. The forward render for each of these happens on a **bus event** (gateOpened /
+   * gateLocked / gateDamaged / keyDropped / keyPickedUp), but {@link "../../core".Battle.undoAll} restores
+   * state **silently** (no re-emit), so an undo that crosses a gate open/lock/batter or a key drop/pickup
+   * would leave a stale glyph or an out-of-date grid tile. {@link undoTurn} calls this to close that gap.
+   */
+  private resyncBoardInteractables(): void {
+    this.drawGrid();
+    this.markGates();
+    this.markLevers();
+    this.markKeys();
   }
 
   /**
@@ -2408,6 +2423,9 @@ export class BattleScene extends Phaser.Scene {
       this.placeView(u);
       if (u.side === "player") this.tintCaptured(u, u.captured);
     }
+    // …and the board interactables (D103/D117): an undo can cross a gate open/lock/batter or a key
+    // drop/pickup, whose forward render rode a bus event undo does not re-emit (else a stale ▦/⚷/tile).
+    this.resyncBoardInteractables();
     if (ctx === "deployment") {
       this.syncPlayerTrapMarkers(); // drop the board marker for any undone trap (kit refunded in core)
       this.refreshSituationCard();

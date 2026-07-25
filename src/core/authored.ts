@@ -17,7 +17,7 @@
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
 
-import type { GridCoord } from "./iso";
+import type { GridCoord, Region } from "./iso";
 import type { Unit, UnitSpec, ReleaseRequirement } from "./units";
 import { createUnit } from "./units";
 import { TileGrid } from "./grid";
@@ -132,6 +132,13 @@ export interface AuthoredEncounter {
    * distance (the control-room seal). See {@link AuthoredLever}.
    */
   levers?: AuthoredLever[];
+  /**
+   * The **control-room region** (D108/D117, M3b) — the objective span a garrison unit prioritizes foes
+   * *inside* as attack targets (Decision G's lever-camp defuser: a foe working the objective/lever gets
+   * attacked rather than pinning the garrison bodilessly). An inclusive {@link Region} rectangle; absent ⇒
+   * no target-priority tilt (the door-drive alone). Read by the planner via `AIOptions`.
+   */
+  controlRoom?: Region;
   /**
    * **Rumors** (D83) — the free-form info lane of the intel read, tier-banded like the
    * structured lanes: `rumors[i]` is revealed at intel tier `i+1` ("folk around here

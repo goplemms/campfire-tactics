@@ -28,7 +28,7 @@ import {
   cloneOverworldEconomy,
   type OverworldState,
 } from "./overworld-state";
-import { EntityRegistry, makeTrap, makeConcealedTrap } from "./entities";
+import { EntityRegistry, makeTrap, makeConcealedTrap, makeDroppedKey } from "./entities";
 import { EventBus } from "./event-bus";
 
 // --- Unit — snapshotUnit / restoreUnit (battle-undo.ts) ----------------------
@@ -49,6 +49,7 @@ const UNIT_SNAPSHOT_KEYS = [
   "dugIn",
   "hidden",
   "concealed",
+  "carriedKey",
   "statuses",
   "counters",
   "cooldowns",
@@ -142,6 +143,7 @@ function makeFullUnit(): Unit {
   });
   // The one field createUnit leaves unset (stamped later by gear-condition).
   unit.gearStamp = { stats: { attack: 1 } };
+  unit.carriedKey = ["cell-a"]; // set on pickup in-battle (D117/M5) — present so it classifies
   return unit;
 }
 
@@ -162,6 +164,7 @@ const UNIT_MUTATIONS: Record<UnitSnapshotKey, { a: (u: Unit) => void; b: (u: Uni
   dugIn: { a: (u) => (u.dugIn = true), b: (u) => (u.dugIn = false) },
   hidden: { a: (u) => (u.hidden = true), b: (u) => (u.hidden = false) },
   concealed: { a: (u) => (u.concealed = true), b: (u) => (u.concealed = false) },
+  carriedKey: { a: (u) => (u.carriedKey = ["cell-a"]), b: (u) => (u.carriedKey = ["cell-a", "cell-b"]) },
   statuses: {
     a: (u) => (u.statuses = [{ id: "guarded", name: "Guarded", duration: 2, data: { reduction: 4 } }]),
     // In place: edit the nested payload AND push — a shallow snapshot would alias both.
@@ -318,7 +321,7 @@ describe("OverworldState clone tripwire (#115)", () => {
 // --- Field entities — EntityRegistry.snapshot (entities.ts) ------------------
 
 /** The mutable entity flags the registry snapshot captures (`EntityFlags`, entities.ts). */
-const ENTITY_RESTORED_FLAGS = ["sprung", "revealed"] as const;
+const ENTITY_RESTORED_FLAGS = ["sprung", "revealed", "pickedUp"] as const;
 
 /**
  * Entity fields deliberately **not** in the snapshot: fixed at construction
@@ -331,6 +334,7 @@ const ENTITY_FIXED_KEYS = [
   "materialId",
   "recoverable",
   "concealment",
+  "gates", // a dropped key's target gate ids (D117/M5) — fixed at the drop
   "onUnitEnterTile",
   "onUnitLeaveTile",
 ] as const;
@@ -340,6 +344,7 @@ describe("EntityRegistry snapshot tripwire (#115)", () => {
     const shapes = {
       "makeTrap(RecoverableEntity)": makeTrap("t", { col: 1, row: 1 }, "player", 5),
       "makeConcealedTrap(ConcealedTrap)": makeConcealedTrap("c", { col: 2, row: 2 }, "enemy", 5, 3),
+      "makeDroppedKey(DroppedKey)": makeDroppedKey("k", { col: 3, row: 3 }, ["cell-a"]),
     };
     const restored = new Set<string>(ENTITY_RESTORED_FLAGS);
     const fixed = new Set<string>(ENTITY_FIXED_KEYS);
@@ -359,14 +364,17 @@ describe("EntityRegistry snapshot tripwire (#115)", () => {
     const registry = new EntityRegistry(new EventBus());
     const plain = makeTrap("plain", { col: 1, row: 1 }, "player", 5);
     const hidden = makeConcealedTrap("hidden", { col: 2, row: 2 }, "enemy", 5, 3);
+    const key = makeDroppedKey("key", { col: 4, row: 4 }, ["cell-a"]);
     registry.register(plain);
     registry.register(hidden);
+    registry.register(key);
     const snap = registry.snapshot();
 
     // Flip every restored flag, drop one entity, add another.
     plain.sprung = true;
     hidden.sprung = true;
     hidden.revealed = true;
+    key.pickedUp = true;
     registry.remove("plain");
     registry.register(makeTrap("late", { col: 3, row: 3 }, "player", 5));
 
@@ -374,9 +382,10 @@ describe("EntityRegistry snapshot tripwire (#115)", () => {
     expect(
       registry.all().map((e) => e.id).sort(),
       "restore must reconcile membership back to the checkpoint",
-    ).toEqual(["hidden", "plain"]);
+    ).toEqual(["hidden", "key", "plain"]);
     expect(plain.sprung, `restore lost "sprung" (#115)`).toBe(false);
     expect(hidden.sprung, `restore lost "sprung" (#115)`).toBe(false);
     expect(hidden.revealed, `restore lost "revealed" (#115)`).toBe(false);
+    expect(key.pickedUp, `restore lost "pickedUp" (#115)`).toBe(false);
   });
 });

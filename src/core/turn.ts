@@ -12,14 +12,14 @@
  */
 
 import { activeUnits, opposite, type Unit, type Side } from "./units";
-import type { GridCoord } from "./iso";
+import type { GridCoord, Region } from "./iso";
 import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
 import { removeItem } from "./inventory";
 import type { MaterialCost } from "./cost";
 import { EventBus } from "./event-bus";
 import { CTClock, type TurnSpend, onSkillCooldown, armSkillCooldown } from "./clock";
-import { EntityRegistry } from "./entities";
+import { EntityRegistry, makeDroppedKey } from "./entities";
 import {
   resolveAttack,
   battleOutcome,
@@ -47,7 +47,7 @@ import {
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
 import { captureUnit, freeCaptive, canRelease } from "./deployment";
-import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canKeyGate, canPullLever, damageGate, gatesOpenedByDeath, type Gate, type Lever } from "./gates";
+import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canKeyGate, canPullLever, damageGate, gatesOpenedByDeath, dropsKeyOnDeath, type Gate, type Lever } from "./gates";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
@@ -101,6 +101,11 @@ export interface BattleOptions {
   gates?: Gate[];
   /** Interactable **levers** (D103) — pull-switches that toggle their target gates (the control-room seal). */
   levers?: Lever[];
+  /**
+   * The **control-room region** (D117/M3b) — the objective span a garrison unit prioritizes foes inside
+   * as attack targets (Decision G). Handed to the planner via `AIOptions`; absent ⇒ no target tilt.
+   */
+  controlRoom?: Region;
 }
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
@@ -118,6 +123,8 @@ export class Battle {
   readonly gates: Gate[];
   /** The encounter's levers (D103) — pull-switches toggling their target gates (the control-room seal). */
   readonly levers: Lever[];
+  /** The encounter's **control-room region** (D117/M3b) — the garrison's target-priority span (Decision G). */
+  readonly controlRoom?: Region;
 
   /**
    * Which board phase this battle is in (D67): `"deploy"` (pre-combat staging — the
@@ -209,6 +216,7 @@ export class Battle {
     // keyholder-gated cells the instant their keyholder is defeated (the Captain drops the keys).
     this.gates = opts.gates ?? [];
     this.levers = opts.levers ?? [];
+    this.controlRoom = opts.controlRoom;
     applyGatesToGrid(this.grid, this.gates);
     if (this.gates.length) this.bus.on("unitDefeated", ({ unit }) => this.openKeyholderGates(unit));
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
@@ -777,9 +785,22 @@ export class Battle {
    * side effect of the killing action (replay re-fires it; undo re-locks via the checkpoint).
    */
   private openKeyholderGates(dead: Unit): void {
+    // A fallen keyholder's gates: a plain keyholder lock **pops open** (unchanged); a `dropOnDeath` one
+    // instead **drops a physical key** at his tile (D117/M5) that a player fetches and turns. One key per
+    // fallen keyholder, bound to all his drop-on-death gates.
+    const dropGates: string[] = [];
     for (const g of gatesOpenedByDeath(this.gates, dead)) {
+      if (dropsKeyOnDeath(g, dead)) {
+        dropGates.push(g.id);
+        continue;
+      }
       openGateOnGrid(this.grid, g);
       this.bus.emit("gateOpened", { gate: g, cause: "keyholder" });
+    }
+    if (dropGates.length > 0) {
+      const key = makeDroppedKey(`key:${dead.id}`, dead.pos, dropGates);
+      this.entities.register(key);
+      this.bus.emit("keyDropped", { key: key.id, tile: { col: key.pos.col, row: key.pos.row }, gates: [...dropGates] });
     }
   }
 
@@ -990,6 +1011,8 @@ export class Battle {
     const plan = policy.plan(unit, this.units, this.grid, {
       isCharging: (u) => this.clock.isCharging(u),
       gates: this.gates, // D103: a guard walled off by a locked destructible door batters it down
+      tagContext: this.tagContext(), // D117/M3: the garrison door-drive reads `in-combat` off this
+      controlRoom: this.controlRoom, // D117/M3b: a garrison unit prioritizes foes in this span (Decision G)
     });
     // Lower the plan to a CombatAction[] and run each through the one interpreter —
     // the AI path now shares the exact execution route with player input (D42/D56).

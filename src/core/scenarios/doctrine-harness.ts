@@ -19,6 +19,9 @@
  */
 
 import type { AuthoredEncounter } from "../authored";
+import type { JobId } from "../jobs";
+import type { UnitSpec } from "../units";
+import type { ScenarioConfig } from "../scenario";
 
 /**
  * Layout (6×3), col-3 is the chokepoint (walls at rows 0/2, the seal at row 1):
@@ -52,5 +55,40 @@ export const DOCTRINE_HARNESS: AuthoredEncounter = {
   // The control-room seal: the Warden's key opens it (D108); the lever re-locks it (Decision G, same door).
   gates: [{ id: "seal", pos: { col: 3, row: 1 }, openBy: [{ kind: "keyholder", tag: { role: "captain" } }] }],
   levers: [{ id: "control", pos: { col: 1, row: 0 }, targets: ["seal"] }],
+  // The control room = the left region (cols 0–2, with the lever + the infiltrator working it). A garrison
+  // unit prioritizes foes inside it as attack targets (D117/M3b, Decision G — the lever-camp defuser).
+  controlRoom: { cols: [0, 2], rows: [0, 2] },
   reward: { gold: 0, materials: [] },
+};
+
+const PARTY_STATS = { speed: 12, maxHp: 24, attack: 9, defense: 3, moveRange: 4, sightRadius: 5 };
+
+/**
+ * The two-mouth party (D99): the **infiltrator** deploys on the control-room side (spawn 0 → `(2,0)`),
+ * the **anchor** at the front (spawn 1 → `(5,1)`) — `placeParty` maps party[i] → `playerSpawns[i]`, so the
+ * infiltrator is authored first. The arm swaps the infiltrator's job (thief vs scout) exactly like the
+ * `pick-the-cell` taste, giving the visual harness two distraction reads off one board.
+ */
+function partySpecs(infilJob: JobId): UnitSpec[] {
+  return [
+    { id: "infil", side: "player", pos: { col: 0, row: 0 }, jobId: infilJob, primaryJob: infilJob, ...PARTY_STATS },
+    { id: "anchor", side: "player", pos: { col: 0, row: 0 }, jobId: "soldier", primaryJob: "soldier", ...PARTY_STATS },
+  ];
+}
+
+/**
+ * The bootable **`#scene=doctrine-harness`** config (D117/M4) — wraps {@link DOCTRINE_HARNESS} so the guard
+ * doctrine renders in the real scene: the first render surface for the door-drive (the D92/#168
+ * freeze-catcher doctrine — a scene-render exception on this new surface reads as a *freeze*, so
+ * `scripts/e2e-doctrine.mjs` walks it). The config id is independent of the encounter id.
+ */
+export const DOCTRINE_HARNESS_SCENARIO: ScenarioConfig = {
+  id: "doctrine-harness",
+  name: "Guard Doctrine Harness",
+  encounter: DOCTRINE_HARNESS,
+  parties: {
+    thief: partySpecs("thief"),
+    scout: partySpecs("scout"),
+  },
+  defaultParty: "thief",
 };

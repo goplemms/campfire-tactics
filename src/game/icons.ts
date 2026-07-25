@@ -69,6 +69,8 @@ export const ICON = {
   lever: { glyph: "⎇", label: "lever — pull to seal/open its gate", color: INK.cyan },
   // A smashed door (D106): a destructible gate battered to 0 — a passable remnant, permanent (no reseal).
   gateRemnant: { glyph: "▨", label: "smashed door — a passable remnant (permanently breached)", color: INK.disabled },
+  // A dropped key (D117/M5): a fallen keyholder's key on the board — step a unit onto it to carry, then turn the gate.
+  key: { glyph: "⚷", label: "dropped key — step onto it to carry, then turn its gate", color: INK.gold },
 
   // --- UI affordances ---
   expand: { glyph: "▸", label: "expand" },

@@ -44,6 +44,10 @@ jobs:
         run: npm run test:e2e:scenario
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
+      - name: E2E (guard-doctrine harness — door-drive render surface)
+        run: npm run test:e2e:doctrine
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
       - name: E2E (visual level editor — paint + export + import round-trip)
         run: npm run test:e2e:editor
         env:

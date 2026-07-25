@@ -42,6 +42,8 @@ export interface UnitSnapshot {
   dugIn?: boolean;
   hidden?: boolean;
   concealed?: boolean;
+  /** Gate ids this unit carries a dropped key for (D117/M5) — set on pickup, so undo must restore it. */
+  carriedKey?: string[];
   statuses: StatusInstance[];
   counters: Record<string, number>;
   cooldowns: Record<string, number>;
@@ -87,6 +89,7 @@ export function snapshotUnit(u: Unit): UnitSnapshot {
     dugIn: u.dugIn,
     hidden: u.hidden,
     concealed: u.concealed,
+    carriedKey: u.carriedKey ? [...u.carriedKey] : undefined,
     statuses: u.statuses.map((s) => ({ ...s, data: s.data ? { ...s.data } : undefined })),
     counters: { ...u.counters },
     cooldowns: { ...u.cooldowns },
@@ -106,6 +109,7 @@ export function restoreUnit(u: Unit, s: UnitSnapshot): void {
   u.dugIn = s.dugIn;
   u.hidden = s.hidden;
   u.concealed = s.concealed;
+  u.carriedKey = s.carriedKey ? [...s.carriedKey] : undefined;
   u.statuses = s.statuses.map((x) => ({ ...x, data: x.data ? { ...x.data } : undefined }));
   u.counters = { ...s.counters };
   u.cooldowns = { ...s.cooldowns };

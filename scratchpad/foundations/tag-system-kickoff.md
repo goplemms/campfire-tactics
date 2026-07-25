@@ -673,3 +673,95 @@ fork (A seal-drive + M3b vs B objective-advance), so it moves to its own focused
 [`tag-system-M3-doctrine-kickoff.md`](tag-system-M3-doctrine-kickoff.md). M4 (e2e + D117 record) and M5
 (droppable key) follow M3. The tag surface + real `in-combat` + `keyGate` Act + key-drive + harness are
 the durable foundation this PR ships; the doctrine that makes `in-combat` load-bearing is M3.
+
+---
+
+## M3 LANDED (2026-07-25) — the garrison door-drive as primary + `in-combat` gate, green
+
+Branch `claude/m3-doctrine-tag-system-3wg55e` (off latest main / PR #201). **Fork resolved: A (seal-drive)
++ M3b** (owner-confirmed) — see the `/challenge` outcome in
+[`tag-system-M3-A-spec.md`](tag-system-M3-A-spec.md) and the decision record **D117**.
+
+- **The change:** `AIOptions.tagContext` (wired from `Battle.runPolicyTurn`, mirroring the `isCharging`/
+  `gates` seams) + a **separate early-return branch** in `planEnemyTurn`: a `garrison && !in-combat &&
+  !immobilized && !hold` unit with an openable, reachable authored seal returns `planSealDrive` (drive to
+  the seal, key/batter it past a reachable un-engaged foe, taking free hits) **before** the generic scoring
+  loop. `driveSealFor` = the nearest openable+reachable seal (no `opensARoute`); `AI.garrisonDrive` (1400,
+  inert under the branch). `in-combat` (read off the real event log) is the sole off-switch → falls through
+  to the fighting loop.
+- **Why the separate branch (not an in-loop score):** the harness infiltrator is *adjacent*, so an in-loop
+  score would need to out-number `actionBase + dmg + lethal`; the early-return never competes with an attack
+  score, killing the tuning-fragility the pre-mortem flagged. Blast radius contained: garrison-gated, generic
+  loop byte-identical → `ai.test:90` + C3 + M2c canaries green; **no sim/gallery encounter is garrison-tagged**
+  → sim digest byte-identical.
+- **`/challenge` findings folded in:** F1 (immobilized garrison → `!isImmobilized` guard), F2 (no-decorative-
+  seals authoring contract), F3 (no-ctx default), F4 (lever oscillation → M3b). All in D117.
+- **Guards:** build clean · **1310** core (+8) · sim byte-identical. No render surface (harness registered +
+  walked in **M4**, per the freeze-catcher doctrine).
+- **Next:** **M3b** (control-room target-priority — Decision G's lever-camp defuser, + the region marker),
+  then **M4** (two-spawn distraction visual e2e + free-casualty ceiling), then **M5** (the droppable key).
+
+---
+
+## M3b LANDED (2026-07-25) — control-room target-priority (Decision G), green
+
+Same branch. The lever-camp defuser: a region marker + a target-priority weight (exactly Decision G's
+stated scope). See **D117 follow-up** in [`decisions.md`](decisions.md).
+
+- **The change:** `Region` + `inRegion` (`iso.ts`); `AuthoredEncounter.controlRoom?` plumbed
+  staging→`Battle`→`AIOptions`; a garrison unit adds `AI.controlRoomTarget` (250 — above the priority
+  deltas, below `lethalBonus`) to the attack score of a foe **inside** the region. Garrison-scoped +
+  region-gated ⇒ non-garrison / region-less battles byte-identical. Harness gets `controlRoom {cols:[0,2],
+  rows:[0,2]}`.
+- **Scope limit recorded:** a *weight*, not a new drive — it makes a camper attackable but doesn't fully
+  defuse a pathological per-turn re-lock (the Warden re-keys from outside; same-turn key-and-advance is
+  unbuilt). M4's free-casualty ceiling is the farming tripwire.
+- **Guards:** build clean · **1315** core (+5) · sim byte-identical · e2e/visual/challenge green. No render
+  surface (M4).
+- **Next:** **M4** (two-spawn distraction visual e2e + free-casualty ceiling) → **M5** (droppable key).
+
+---
+
+## M4 LANDED (2026-07-25) — the door-drive render surface + free-casualty ceiling, green
+
+Same branch. The first render surface for the doctrine + the ranged-farm tripwire. See **D117 follow-up**
+in [`decisions.md`](decisions.md).
+
+- **`DOCTRINE_HARNESS_SCENARIO`** (`#scene=doctrine-harness`) — the harness wrapped as a bootable
+  `ScenarioConfig` (two-mouth party, thief/scout arms), registered in `SCENARIOS`; picker auto-lists it.
+  `scenario.test.ts` proves the full run-path staging (incl. `controlRoom` surviving it + the Warden keying
+  through it).
+- **`scripts/e2e-doctrine.mjs`** (`test:e2e:doctrine`, in ci.yml) — the freeze-catcher: boots the board,
+  drives the Warden → the seal keys **open in the live scene** with no page error, then a pinned Warden
+  fights + the seal holds. 14 assertions; screenshots clean.
+- **Free-casualty ceiling** (headless, mutation-robust) — a garrison keyholder drives a distant seal under a
+  Hunter's plinking, reaches + keys it, survives (casualties 0); `plinks > 0` proves the farm window was
+  real; a `/challenge` mutation (lethal plink) flips it red.
+- **Guards:** build clean · **1320** core (+5) · sim byte-identical · e2e:doctrine 14 · scenario/visual/
+  challenge green.
+- **M1–M4 COMPLETE.** **Next:** **M5** — the droppable key (auto-open → drop-key; a field entity + pickup
+  reusing the `keyGate` Act), required before the finale node is done.
+
+---
+
+## M5 LANDED (2026-07-25) — the droppable key, green — **M1–M5 COMPLETE**
+
+Same branch. Upgrades death-auto-open → drop-a-key (the specific key-drop, not the general item system).
+See **D117 follow-up** in [`decisions.md`](decisions.md).
+
+- **Mechanic (authored opt-in, non-breaking):** keyholder lock `dropOnDeath?` (default = byte-identical
+  auto-open). On death → a **dropped-key field entity** at his tile (gate stays locked); a **player** steps
+  on it → `unit.carriedKey`; `canKeyGate` gains a carrier clause → the fetcher turns it via the existing
+  `keyGate` Act. Rides the entity registry + checkpoint + Act seams.
+- **Replay/undo-safe (challenged + verified):** the drop→pickup→use chain reconstructs from the command
+  log; undo composes across entity-membership (drop), the `pickedUp` flag (pickup), and the new
+  `carriedKey` UnitSnapshot field (#115 drift tripwire). Both directions tested.
+- **Render (first player-facing keyGate surface):** ⚷ glyph + `markKeys()` layer (redrawn on
+  keyDropped/keyPickedUp), a **Turn Key** verb (carrier-only) + `doKeyGate`, a carried pip. Guarded by
+  `MICRO_KEY_DROP` + an `e2e-micro` block (drop → fetch → Turn Key → open, no freeze).
+- **Guards:** build clean · **1329** core (+9) · sim byte-identical · e2e:micro 32 (+6) · visual/challenge/
+  deploy-battle green.
+- **The tag-system arc (M1–M5) is complete.** The finale node's owner-flagged prerequisite (the key-drop)
+  ships as a proven *capability*; the real finale adopting `dropOnDeath` is a content call on the separate
+  owner-directed track (D97–D99/D116). **Deferred as ever:** the boolean→tag migration; the general
+  droppable-item system; a `conferred` provenance.

@@ -4828,3 +4828,211 @@ Soldier and the Scout's Assassin/Thief both consume, built **once**. This addend
   + deploy-time flank (parked with the v4 finale population); populating the v4 finale
   (enemies/Warden-keyholder/named captives/objectives); the D108 guard doctrine; **promoting The Rescue into the
   arc** (it stays standalone — the shipped arc finale is untouched).
+
+---
+
+## D117 — The tag system + the garrison door-drive doctrine (`in-combat` made load-bearing)
+
+- **Status:** Designed + built through **M3** (2026-07-25). M1–M2.5 shipped in PR #201 (branch
+  `claude/tag-system-foundations-9k29hd`); **M3** (the door-drive + `in-combat` gate) on branch
+  `claude/m3-doctrine-tag-system-3wg55e`. Full design trail:
+  [`tag-system-kickoff.md`](tag-system-kickoff.md) + [`tag-system-M3-doctrine-kickoff.md`](tag-system-M3-doctrine-kickoff.md)
+  + [`tag-system-M3-A-spec.md`](tag-system-M3-A-spec.md). Makes the **D108** guard doctrine concrete.
+  **Remaining milestones:** M3b (control-room targeting), M4 (two-spawn e2e), M5 (droppable key).
+- **Why a tag system (the consolidation prize):** the core carried a scatter of ad-hoc proto-tags
+  (`isLord`/`authored`/`thief`/`captured` booleans on `units.ts`; the status `kind` classifier, D41). A
+  **tag** is a *classification/predicate* — a queryable label with **no duration or effect** — vs a
+  **status**, a *stateful, effect-bearing* condition. That line is what keeps tags from becoming "statuses
+  again": statuses *do* something over time; tags *answer a question*. One query surface `hasTag(unit, tag,
+  ctx)`; producer and consumer decouple (an ability / the AI / an objective asks `hasTag` and doesn't care
+  where the answer came from).
+- **Three provenances (two shipped).** **intrinsic** (authored on `Unit.tags` — `non-combatant`, `garrison`;
+  ignores ctx) · **derived** (a pure fn of battle state *incl. the D87 combat log* — `in-combat`) ·
+  **conferred** (a live projection of an active status — the **documented seam, deliberately not in code**
+  until a status-backed tag has a real consumer; rev-2 YAGNI). `hasTag` throws on an unknown id and on a
+  derived tag with no ctx (fail-loud). Registry `TAGS` (D114 §Registries, key⇔id walked by
+  `registry-contracts.test.ts`).
+- **`in-combat` — the spec (ratified R1–R3, 2026-07-23).** True iff some enemy `E`: (1) exchanged damage
+  with `U` since `U`'s last completed turn; (2) is targetable; (3) is a **combatant** (not `non-combatant`);
+  (4) is within `U`'s striking distance; (5) `U` can still damage `E`. **R1** — proximity alone never
+  engages; the exchange must have happened *and* `U` must still be able to hit back (a foe `U` can't hurt
+  doesn't pin it). **R2** — the "since its last turn" window is Speed-anchored *by design* (a faster unit
+  drops out sooner). **R3** — a `non-combatant` never confers `in-combat` (a guard whose only nearby foe is
+  a fleeing captive stays free for the door). **Window realization (M2a, owner-confirmed):** the only
+  replay-safe boundary is **`(U's last `turnEnd`, now]`** — `turnStart` fires outside `apply` and wouldn't
+  reconstruct on replay. Behavioural upshot, and it is *finale-aligned*: a unit engages by **receiving**
+  real damage since it last finished a turn ("the guard takes free hits while advancing and stops when
+  actually struck" falls straight out; a ranged plinker out of reach never pins it — the H ruling).
+- **The garrison door-drive doctrine (D108 made concrete).** The whole garrison shares one drive — **get to
+  the doors** (the Warden **keys** his seal, guards **batter** theirs) — and it is **primary**: it outranks
+  attacking a reachable, un-engaged foe. The player pins units by *hitting* them (→ `in-combat` → they stop
+  and fight); the unattached ones keep driving, **taking free hits by design** (the free hit is the intended
+  distraction tension, not a bug — no "peel clamp", inverting the red-team's R1 guard). Force-splitting is
+  the tension: pinning costs bodies.
+- **The M3 fork — A (seal-drive) + M3b, chosen over B (objective-advance).** The pre-mortem killed the
+  generic `opensARoute` relevance filter for garrison (a garrison unit already has a reachable foe, so
+  *any* gate opening keeps a route → trivially true). **A:** a `garrison && !in-combat` unit drives to the
+  **nearest authored seal it can open** (keyholder→key, breakable→batter) that has a terrain-reachable
+  opening tile; direction is **authored** (place seals between garrison and objective). **B** (an authored
+  control-room *region* on `AuthoredEncounter`, plumbed staging→Battle→planner, folding in control-room
+  target-priority) was **rejected for M3**: it front-loads real data-model plumbing and entangles *drive*
+  + *targeting* in the one score reorder the pre-mortem named as the blast-radius danger spot. Control-room
+  targeting (Decision G's lever-camp defuser) is genuinely orthogonal → **M3b**.
+- **Build decision — a separate early-return branch, not an in-loop score.** For a `garrison && !in-combat
+  && !immobilized && !hold` unit with a drive-seal, `planEnemyTurn` **returns `planSealDrive` before the
+  generic scoring loop**. This is the headline safety property: at the harness the infiltrator is *adjacent*
+  (within the Warden's `attackRange`), so an in-loop score would have to out-number `actionBase + dmg·
+  perDamage + priority + lethalBonus` — the exact fragile tuning to avoid. The early-return **never competes
+  with an attack score**, so the new `AI.garrisonDrive` (1400) is behaviourally inert (kept named). **Blast
+  radius contained by construction:** the branch is gated on `hasTag(unit, GARRISON)`; every generic unit
+  (`tags: []`) skips it → the generic loop stays byte-identical → the `ai.test:90` prefer-reachable-foe and
+  C3 no-batter-without-route canaries + all M2c keyholder cases stay green, and **no gallery/sim/production
+  encounter carries the `garrison` tag** (only the not-registered `DOCTRINE_HARNESS`), so the sim digest is
+  byte-identical.
+- **`/challenge` findings folded in (2026-07-25):** **F1 (code)** — an *immobilized* garrison unit would
+  idle at the seal instead of hitting an adjacent foe → the branch is guarded `!isImmobilized`. **F2
+  (authoring contract)** — A drops the relevance filter, so a garrison unit drives to the *nearest* openable
+  seal even if incidental; the contract is **no decorative openable seals in a garrison encounter** (M3b's
+  control-room region later supersedes it as the filter). **F3** — a garrison unit planned without a
+  `tagContext` defaults to un-engaged (drives); production always supplies it via `runPolicyTurn`, and the
+  guard never calls the derived tag without ctx (which would throw). **F4 (known)** — the keyed-seal ↔ lever
+  re-lock oscillation ships **un-defused** in M3; M3b's control-room targeting closes it (Decision G).
+- **What landed (M1–M3):** `tags.ts` (`TAGS`/`hasTag`/`getTag`, `TagContext`, the three tags) · `Unit.tags`
+  (unsnapshotted — immutable in battle) · `combat-log.ts` (the stored, tick-stamped, bus-fed, replay/undo-
+  safe event log + `exchangedDamageSince`) + `Battle.eventLog`/`tagContext()` · the `keyGate` Act
+  (`gates.ts`/`combat-actions.ts`/`turn.ts`) + the M2c walled-off keyholder key-drive · `DOCTRINE_HARNESS`
+  (M2.5 microcosm, not gallery-registered) + the fail-loud authored-tag guard · **M3:** `AIOptions.tagContext`
+  wired from `runPolicyTurn`, the `driveSealFor`/`planSealDrive` garrison branch, `AI.garrisonDrive`.
+- **Guards (M3):** `npm run build` clean · `npm test` **1310** (+8: 6 unit in `ai.test.ts` — key/batter drive
+  past a reachable foe, `in-combat` stops it, the non-garrison contrast, the F1 immobilized guard, `hold`
+  wins; 2+1 integration in `doctrine-harness.test.ts` — un-engaged Warden keys the seal via `runPolicyTurn`,
+  a struck Warden stays shut and fights *off the real event log*, and the un-tagged Warden proves the key
+  is *caused by* the garrison drive) · `npm run sim` **byte-identical**. **No new render surface** (the
+  harness is registered + walked in **M4**, per the D92/#168 freeze-catcher doctrine — the door-drive's
+  visual proof is deliberately M4, not M3).
+- **Scope discipline (D108/D116):** the real **finale ("The Rescue", v4 concentric prison, D97–D99/D116) is
+  a separate owner-directed track** — M3 builds against the harness only; the doctrine drops into the finale
+  when that's populated. The **droppable key** is **M5** (auto-open ships now; the key-drop upgrades it,
+  required before the finale node is "done"). **Deferred as ever:** the `captured`/`thief`/`lord`/`authored`
+  boolean→tag migration; a `conferred` provenance until a consumer pulls it.
+- **Reuses:** **D108** (the doctrine), **D41** (status `kind`), **D42** (the scoring planner), **D84/D81**
+  (postures the branch composes with), **D87** (the command/event log), **D103–D107** (gates/levers/
+  destructible seals), **D114** (registry/guard discipline), **D22** (determinism). **Superseded by:** —
+
+### D117 follow-up — M3b: control-room target-priority (Decision G) built (2026-07-25)
+
+- **Status:** Built + green, same branch. The lever-camp defuser Decision G called for — *a region marker +
+  a target-priority weight*.
+- **What & why:** a garrison unit, when it chooses an attack target, adds `AI.controlRoomTarget` (250) to
+  the score of a foe **inside the authored control-room region** — so a foe working the objective/lever gets
+  attacked rather than pinning the garrison bodilessly. The weight sits **above** the `squishy`/`lowHp`/
+  `debuffed` priority deltas (focuses the objective-worker over a frailer bystander) but **below**
+  `lethalBonus` (400) — a guaranteed kill elsewhere still wins.
+- **Plumbing (mirrors gates/levers):** `Region` (an inclusive `{cols,rows}` rectangle) + `inRegion` in
+  `iso.ts`; `AuthoredEncounter.controlRoom?` → `staging` → `Battle.controlRoom` → `AIOptions.controlRoom`
+  via `runPolicyTurn`. The bonus is a plain add in the attack-scoring loop, gated on `hasTag(unit,
+  GARRISON) && opts.controlRoom` — a non-garrison unit or a region-less battle is byte-identical. Harness
+  populated: `controlRoom: {cols:[0,2], rows:[0,2]}` (the left region with the lever + infiltrator).
+- **Honest scope limit (Decision G is a *weight*, not a new drive):** the target-priority makes the camper
+  *attackable* whenever a garrison unit picks a target, but it does **not** fully defuse a *pathological
+  per-turn* lever re-lock — the Warden re-keys from *outside* the seal and never steps through (a same-turn
+  key-and-advance is a separate, unbuilt mechanism). Decision G's stated scope is "make the camper a
+  target"; the **M4 free-casualty ceiling** is the farming tripwire. Recorded so the boundary is explicit.
+- **Guards:** build clean · `npm test` **1315** (+5: 3 unit — a garrison unit picks the in-region foe over
+  an *adjacent* out-of-region one, the same unit with no region picks the adjacent foe (the bonus is
+  load-bearing), a non-garrison unit is unaffected; 1 harness — the region stages onto the Battle and
+  discriminates the two spawns; +1 barrel pin `inRegion`) · sim **byte-identical** (no gallery encounter
+  carries `controlRoom`) · e2e/visual/challenge audits green. No render surface (harness walked in M4).
+- **Next:** **M4** (two-spawn distraction visual e2e + the free-casualty ceiling), then **M5** (the
+  droppable key).
+
+### D117 follow-up — M4: the door-drive render surface + free-casualty ceiling built (2026-07-25)
+
+- **Status:** Built + green, same branch. The first **render surface** for the guard doctrine (M1–M3b were
+  headless), guarded per the D92/#168 freeze-catcher doctrine, plus the ranged-farm tripwire.
+- **The scenario:** `DOCTRINE_HARNESS_SCENARIO` (`#scene=doctrine-harness`) wraps the M2.5 harness as a
+  bootable `ScenarioConfig` — a two-mouth party (infiltrator on the control-room side spawn, anchor at the
+  front), thief/scout arms like `pick-the-cell`. Registered in `SCENARIOS`; the picker lists it
+  automatically. `scenario.test.ts` proves the full `buildScenarioRun → startEncounter` path stages the
+  garrison + party, the door-drive keys the seal, **and the M3b `controlRoom` survives the run-path staging**.
+- **The visual e2e** (`scripts/e2e-doctrine.mjs`, `test:e2e:doctrine`, wired into `ci.yml`): the surface only
+  a render catches — the core suite + sim never render a garrison door-fight, so a scene-render exception on
+  the **seal-key-open** surface would read as a *freeze*. The walker boots the board, asserts it renders (no
+  page error), drives the un-engaged Warden → the seal keys **open in the live scene** (the log reads "The
+  keys drop — a cell springs open!") with zero page errors, then on a fresh board stages a real strike →
+  the pinned Warden fights + the seal stays shut. 14 assertions, screenshots eyeballed (clean two-mouth
+  board, no overlap/spill).
+- **The free-casualty ceiling** (headless, deterministic — `doctrine-harness.test.ts`): the tripwire the H
+  ruling promised (clauses 4 & 5 kept ⇒ a guard doesn't chase an out-of-reach plinker, so a ranged unit can
+  farm the advance *if the numbers allow*). A garrison keyholder drives to a distant seal while a Hunter
+  plinks it every turn; asserts it **reaches + keys** the seal and survives (casualties 0). **Built
+  mutation-robust:** `plinks > 0` proves the farm window was real, and a `/challenge` mutation (Hunter attack
+  9→40) flips `warden.alive` **red** — so it genuinely catches a farm/tuning regression, not green-for-the-
+  wrong-reason. Kept headless (deterministic) rather than in the flaky browser walk, per "reserve the e2e
+  for what only a render catches."
+- **Guards:** build clean · `npm test` **1320** (+5: 4 scenario-staging in `scenario.test.ts`, 1 ceiling in
+  `doctrine-harness.test.ts`; +2 barrel pins `DOCTRINE_HARNESS`/`DOCTRINE_HARNESS_SCENARIO`) · sim
+  byte-identical · `test:e2e:doctrine` 14 · e2e:scenario/visual/challenge audits green.
+- **M1–M4 COMPLETE.** The tag surface + real `in-combat` + the garrison door-drive (primary, gated) +
+  control-room targeting + the rendered, freeze-guarded distraction loop all ship. **Next:** **M5** — the
+  droppable key (auto-open → drop-key; the specific key-drop reusing the `keyGate` Act via a field entity +
+  minimal pickup), required before the finale node is "done" (owner). NOT the general item system (D108).
+
+### D117 follow-up — M5: the droppable key built (2026-07-25)
+
+- **Status:** Built + green, same branch. **M1–M5 COMPLETE** — the tag system arc is done. The specific
+  key-drop only (upgrading death-auto-open → drop-a-key), *not* the general transferable-item system (D108).
+- **The mechanic (authored, opt-in, non-breaking):** the keyholder gate-lock gains `dropOnDeath?: boolean`
+  (default absent = today's **byte-identical auto-open** — cell-pop and every existing keyholder-death
+  encounter untouched). On a `dropOnDeath` keyholder's death, `openKeyholderGates` **registers a dropped-key
+  field entity** at his tile (bound to his drop-gates) instead of opening — the gate stays locked. A
+  **player** unit stepping onto the key (`onUnitEnterTile`, the trap-style hook) stamps `unit.carriedKey`
+  and marks the key `pickedUp`. `canKeyGate` gains one clause — *or* the actor carries a key for that gate —
+  so the fetcher turns it via the **existing `keyGate` Act** (unchanged dispatch). Rides every existing seam.
+- **Replay/undo-safe by construction (the `/challenge` focus, verified):** the drop is a death side-effect
+  that re-fires on replay (like auto-open); the pickup is a side-effect of the logged `move`; the use is the
+  logged `keyGate` — so the whole **drop → pickup → use chain reconstructs from the command log** (tested).
+  Undo composes across three snapshot layers: the key entity is dropped **after** a checkpoint so **entity
+  membership-undo** removes it; `pickedUp` is an **EntitySnapshot flag**; `carriedKey` is a new
+  **UnitSnapshot** field (mutable-in-battle, so the #115 drift tripwire requires it). Both undo directions
+  tested (revert the pickup — carry cleared + key un-pocketed; revert the drop — key vanishes, Warden stands).
+- **Render (the first player-facing `keyGate` surface — keyGate was AI/death-only):** a `key` glyph (⚷) in
+  the icon registry; a `markKeys()` marker layer redrawn on `keyDropped`/`keyPickedUp`; a **"Turn Key"** verb
+  in `pushGateVerbs` (gated on `canKeyGate`, so it shows only for the carrier — players never hold the
+  keyholder tag) + a `doKeyGate` handler; a carried-key **status pip** on the token. Guarded by a
+  `MICRO_KEY_DROP` fixture + an `e2e-micro` block: warden falls → ⚷ drops (cell stays shut) → the fetcher
+  pockets it (glyph clears) → the Turn Key verb surfaces → the cell opens, all with no page error/freeze.
+- **Scope (M5 minimal, D108):** **player-only pickup** (enemy re-pickup + AI-to-fetch is the general item
+  system, deferred); one carried-key state + the shared Act, no inventory/transfer engine. Clean upgrade
+  path to the deferred **B** ("whoever holds the key opens its doors").
+- **Guards:** build clean · `npm test` **1329** (+9 — `key-drop.test.ts`: drop vs auto-open, `dropsKeyOnDeath`,
+  fetch+turn, enemy-no-pickup, non-carrier refused, **replay**, **undo×2**; +4 barrel pins
+  `carriedKey`-family / `MICRO_KEY_DROP`) · sim byte-identical (no shipped encounter authors `dropOnDeath`
+  yet) · `test:e2e:micro` **32** (+6) · visual/challenge/deploy-battle audits green.
+- **The finale node is now "done"-able:** M5 was the owner-flagged prerequisite. The real finale ("The
+  Rescue", D97–D99/D116) adopting `dropOnDeath` on its Warden is a **content call on the separate
+  owner-directed track** — the *capability* ships here, proven on the micro fixture. **Deferred as ever:**
+  the `captured`/`thief`/`lord`/`authored` boolean→tag migration; the general droppable-item system; a
+  `conferred` tag provenance until a consumer pulls it.
+
+### D117 follow-up — `/code-review` pass on M5, 5 findings fixed (2026-07-25)
+
+Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
+- **F1 (render desync, the sharpest) — undo didn't resync the board.** `undoTurn` resynced tokens but never
+  re-drew the grid / gate / lever / **key** markers, whose forward render rides a bus event `undoAll` does
+  **not** re-emit — so undoing a key drop left a **phantom ⚷ over a revived warden** (and the same latent
+  gap for gate open/lock/batter). Fixed with a `resyncBoardInteractables()` (grid + gates + levers + keys)
+  in `undoTurn`'s shared spine. Guarded by a new `e2e-micro` step (fell → undo → warden revived + glyph
+  cleared) — and the deploy-battle e2e's own undo path confirms no regression.
+- **F2 (guard vacuous) — the #115 snapshot-drift lists missed the new fields.** `carriedKey` (Unit) and
+  `pickedUp` (DroppedKey) were snapshotted but unlisted, so the drift tripwire passed vacuously. Added
+  `carriedKey` to `UNIT_SNAPSHOT_KEYS`/`UNIT_MUTATIONS` + `makeFullUnit`, `pickedUp` to
+  `ENTITY_RESTORED_FLAGS`, `gates` to `ENTITY_FIXED_KEYS`, and a `makeDroppedKey` shape — the guard now
+  covers them by name.
+- **F3 (leak) — `rebuildBoard` cleared every marker layer but `keyMarkers`.** Added the clear (D96 reset).
+- **F4 (consistency) — the carried pip lacked the `!captured` guard** the sibling flank pip uses. Added.
+- **F5 (semantics) — the key persists after use.** Confirmed **intended: the key is reusable** (turning it
+  isn't consumed) — a physical-key counter to a lever re-seal. Documented on `Unit.carriedKey` + a new
+  key-drop test (use → persists → re-lock → re-open). Single-use lands with the general item system (D108).
+- **Guards after the pass:** build clean · `npm test` **1330** · sim byte-identical · `test:e2e:micro` **34**
+  (+2 undo) · deploy-battle/scenario/visual green.

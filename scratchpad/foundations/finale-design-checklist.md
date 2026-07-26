@@ -126,9 +126,12 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale-specific work remain
   guard + a decision record when built.
 - ⬜ **G4** — Visual e2e for the **"Go now" control + the left-behind result screen** (new player-facing
   surface — freeze-catcher doctrine).
-- 💬 **G5** — Does the **front/distraction party** exfil through the side mouth too, or does the **main
-  entrance double as a second exfil site**? (Second site = more forgiving, better matches the leeway
-  intent; one shared exfil = a much harsher finale.)
+- ✅ **G5** — **ANSWERED: every mouth is an exfil site.** All exits just represent "away" — a unit is safe
+  on **any** of them. So the distraction party falls back out the **main entrance** (no board-crossing) and
+  the escort takes whichever mouth suits. Matches the leeway intent; no walkover risk since the cells stay
+  deep and far from *every* mouth (D97 challenge-F still respected).
+- ⬜ **G6** — *(from G5)* Author the extraction `span` as the **union of all mouth tiles** (east rows 4–6 ·
+  bottom cols 8–10 · any other mouth), not a single edge — today `the-rescue.json` has one left-edge span.
 
 ### D — Narrative / cast
 - ⬜ **D1** — Name the 3 captives into real campaign characters (currently "Bound Captive I/II/III").

@@ -104,6 +104,19 @@ needs a **"Go now"** call for when they judge someone won't make it and accept t
   This unifies "Go now" with the existing retreat concept: *you called the exfil; whoever's on the pad
   leaves.* One rule, taught once, applies in both cases.
 
+### Exfil sites — every mouth counts (owner, 2026-07-26)
+All exits simply represent **"away"**: a unit is safe on **any** mouth, not a designated one.
+- **Authoring:** the extraction `span` is the **union of every mouth's tiles** (east rows 4–6, bottom
+  cols 8–10, …) — not the single left-edge span `the-rescue.json` carries today.
+- **The distraction party falls back out the main entrance** — they never have to cross the board, which
+  is what makes "an appropriately-levelled party gets everyone out" realistic.
+- **No walkover risk** (D97 challenge-F): cells stay **deep and far from *every* mouth**, so more exits
+  doesn't cheapen the escort — it just removes an artificial routing tax.
+- **Consequence for the corridor invariant (below):** the escort can choose among mouths, so the
+  chokepoint requirement applies to **the viable escort route(s) actually reachable from the cells**, not
+  to one authored corridor. Verify the shortest/likely route is chokepointed — an unchokepointed alternate
+  that's plainly shorter would quietly become *the* route and void the invariant.
+
 ### Two required changes (both are real, both are load-bearing)
 
 1. **Extraction must stop auto-completing on captives-alone.** Today `objectives.ts` marks it **met** the
@@ -153,7 +166,8 @@ D117's shipped patterns (`scenarios/doctrine-harness.ts`, the free-casualty-ceil
    distraction pin* (the full garrison chases); *widening the corridor* past the chokepoint (the swarm gets
    through). If any one of those doesn't break it, the guard is vacuous.
 3. **Geometry-invariant tests** — (a) seal shut ⇒ garrison can't reach the infiltrator/cells; (b) the
-   escort corridor has the chokepoint(s) the rearguard needs.
+   **viable escort route(s)** from the cells to *any* mouth carry the chokepoint(s) the rearguard needs
+   (all mouths are exfil, so check the routes actually competitive from the cells — not one authored one).
 4. **Exfil-semantics tests** (the new rule, per above) — extraction does **not** auto-resolve while a party
    unit is still off-exfil; auto-resolves when everyone is on; **"Go now"** resolves early and **leaves
    off-exfil units behind**; a left-behind unit lands in the **captured** path (**not** auto-rescued — the
@@ -167,11 +181,10 @@ surface, freeze-catcher doctrine); the *numeric* race stays in the headless paci
 ## Open owner decisions (before populating — checklist B)
 
 1. ~~Does the front/distraction party also need to exit?~~ **ANSWERED (2026-07-26):** yes — *everyone*
-   must reach an exfil site to survive; see "Exfil semantics + the Go now call" above. **Follow-on:** does
-   the **front/distraction party** exfil through the **side** mouth too (they must disengage and cross the
-   board — hard, and the pursuit is on them), or does the **main entrance double as a second exfil site**
-   (they fall back the way they came)? A second exfil site is the more forgiving read and better matches
-   "an appropriately-levelled party gets everyone out"; one shared exfil makes the finale much harsher.
+   must reach an exfil site to survive. **And every mouth is an exfil site** — all exits simply represent
+   **"away"**, so a unit is safe on *any* of them. The distraction party therefore **falls back out the
+   main entrance** (no board-crossing), and the escort takes whichever mouth suits. See "Exfil semantics"
+   above; authoring consequence in "Exfil sites" below.
 2. **One seal (the lever-slam) or seals in series?** One is simpler to reason about; series stacks the head
    start but needs geometry where the garrison can't spread across them.
 3. **Lever placement** — reachable by the infiltrator on **turn 1** from the side spawn (the whole play

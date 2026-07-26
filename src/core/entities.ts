@@ -103,6 +103,7 @@ export class EntityRegistry {
       const f: EntityFlags = {};
       if ("sprung" in e) f.sprung = (e as RecoverableEntity).sprung;
       if ("revealed" in e) f.revealed = (e as ConcealedTrap).revealed;
+      if ("pickedUp" in e) f.pickedUp = (e as DroppedKey).pickedUp;
       flags.set(e.id, f);
     }
     return { flags, members };
@@ -123,6 +124,7 @@ export class EntityRegistry {
       if (!f) continue;
       if (f.sprung !== undefined) (e as RecoverableEntity).sprung = f.sprung;
       if (f.revealed !== undefined) (e as ConcealedTrap).revealed = f.revealed;
+      if (f.pickedUp !== undefined) (e as DroppedKey).pickedUp = f.pickedUp;
     }
   }
 }
@@ -131,6 +133,7 @@ export class EntityRegistry {
 interface EntityFlags {
   sprung?: boolean;
   revealed?: boolean;
+  pickedUp?: boolean;
 }
 
 /** A captured set of entity membership + flags, keyed by entity id (a turn-undo checkpoint). */
@@ -210,6 +213,42 @@ export interface ConcealedTrap extends RecoverableEntity {
 /** Type guard for concealed traps. */
 export function isConcealedTrap(e: FieldEntity): e is ConcealedTrap {
   return (e as ConcealedTrap).concealment !== undefined && (e as ConcealedTrap).revealed !== undefined;
+}
+
+/**
+ * A **dropped key** field entity (D117/M5) — the physical key a fallen keyholder leaves at his tile when his
+ * gate is authored `dropOnDeath`. A **player** unit stepping onto its tile picks it up: the gate ids it
+ * opens are stamped onto `unit.carriedKey` (which {@link "./gates".canKeyGate} then honours), and the key is
+ * marked `pickedUp` (a one-shot, snapshot-undoable flag — the board glyph then clears). Deliberately **not**
+ * a general item: one carried-key state + the shared `keyGate` Act, no inventory/transfer engine (D108).
+ */
+export interface DroppedKey extends FieldEntity {
+  /** The gate ids this key turns (its fallen keyholder's `dropOnDeath` gates). */
+  gates: string[];
+  /** True once a unit has pocketed it — then the glyph clears and it can't be picked up again. */
+  pickedUp: boolean;
+}
+
+/** Build a dropped key at `pos` that opens `gates`. Picked up by the first **player** unit to enter its tile. */
+export function makeDroppedKey(id: string, pos: GridCoord, gates: readonly string[]): DroppedKey {
+  const key: DroppedKey = {
+    id,
+    pos: { col: pos.col, row: pos.row },
+    gates: [...gates],
+    pickedUp: false,
+    onUnitEnterTile: ({ unit, bus }) => {
+      if (key.pickedUp || unit.side !== "player") return; // one-shot; the player fetches it (M5 scope)
+      key.pickedUp = true;
+      unit.carriedKey = [...(unit.carriedKey ?? []), ...key.gates];
+      bus.emit("keyPickedUp", { unit, key: key.id, gates: [...key.gates] });
+    },
+  };
+  return key;
+}
+
+/** Type guard for a dropped key. */
+export function isDroppedKey(e: FieldEntity): e is DroppedKey {
+  return Array.isArray((e as DroppedKey).gates) && typeof (e as DroppedKey).pickedUp === "boolean";
 }
 
 /**

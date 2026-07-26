@@ -4,10 +4,14 @@ import { createUnit } from "./units";
 import {
   makeGate, openGate, canLockpickGate, lockpickableGates, gatesOpenedByDeath,
   applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, isBreakable, canAttackGate, damageGate, breakableGates,
+  canKeyGate, keyableGates, gateActFor,
   makeLever, lockGateOnGrid, canPullLever, pullableLevers,
 } from "./gates";
 
 const STATS = { speed: 10, maxHp: 20, attack: 5, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 };
+/** An enemy at a tile with an objective role — the keyholder cases (the Warden = role "captain"). */
+const roled = (id: string, role: string, pos: { col: number; row: number }) =>
+  createUnit({ id, name: id, side: "enemy", pos, role, ...STATS });
 
 /** A Thief carries the Expert Lockpick capability via its job; a plain soldier does not. */
 const thief = (pos = { col: 0, row: 0 }) => createUnit({ id: "thief", name: "Thief", side: "player", pos, jobId: "thief", primaryJob: "thief", ...STATS });
@@ -46,6 +50,30 @@ describe("gates (D103) — the prison-break substrate", () => {
     const far = makeGate("b", { col: 4, row: 4 }, [{ kind: "lockpick" }]);
     const list = lockpickableGates([near, far], thief({ col: 2, row: 2 }));
     expect(list.map((g) => g.id)).toEqual(["a"]);
+  });
+
+  it("canKeyGate (D108): only the adjacent keyholder (the Captain) can turn the key", () => {
+    const gate = makeGate("cell", { col: 2, row: 2 }, [{ kind: "keyholder", tag: { role: "captain" } }]);
+    expect(canKeyGate(gate, roled("warden", "captain", { col: 2, row: 1 }))).toBe(true); // adjacent captain
+    expect(canKeyGate(gate, roled("warden", "captain", { col: 4, row: 4 }))).toBe(false); // captain, not adjacent
+    expect(canKeyGate(gate, roled("grunt", "thug", { col: 2, row: 1 }))).toBe(false); // adjacent, wrong role
+    const open = makeGate("g", { col: 2, row: 2 }, [{ kind: "keyholder", tag: { role: "captain" } }], false);
+    expect(canKeyGate(open, roled("warden", "captain", { col: 2, row: 1 }))).toBe(false); // already open
+    const lockOnly = makeGate("l", { col: 2, row: 2 }, [{ kind: "lockpick" }]);
+    expect(canKeyGate(lockOnly, roled("warden", "captain", { col: 2, row: 1 }))).toBe(false); // no keyholder lock
+  });
+
+  it("keyableGates lists the keyholder's reachable keyed gates; gateActFor prefers key over batter", () => {
+    const near = makeGate("a", { col: 2, row: 1 }, [{ kind: "keyholder", tag: { role: "captain" } }]);
+    const far = makeGate("b", { col: 5, row: 5 }, [{ kind: "keyholder", tag: { role: "captain" } }]);
+    expect(keyableGates([near, far], roled("warden", "captain", { col: 2, row: 2 })).map((g) => g.id)).toEqual(["a"]);
+    // A gate that is BOTH keyed (for the captain) and breakable → the key (fast) beats the batter (grind).
+    const both = makeGate("c", { col: 2, row: 1 }, [{ kind: "keyholder", tag: { role: "captain" } }, { kind: "destructible", hp: 10 }]);
+    expect(gateActFor(both, roled("warden", "captain", { col: 2, row: 2 }))).toBe("key");
+    // A non-keyholder at that same gate can only batter it.
+    expect(gateActFor(both, roled("grunt", "thug", { col: 2, row: 2 }))).toBe("attack");
+    // A non-keyholder at a keyholder-only gate can do neither.
+    expect(gateActFor(near, roled("grunt", "thug", { col: 2, row: 2 }))).toBeUndefined();
   });
 
   it("keyholder: defeating the tagged unit (the Captain) opens every matching locked cell", () => {

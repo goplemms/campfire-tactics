@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { buildScenarioRun, DEFAULT_SCENARIO_GOLD } from "./scenario";
-import { PICK_THE_CELL, PRISON_ASSAULT_SCENARIO, getScenario, listScenarios } from "./scenarios";
+import { PICK_THE_CELL, PRISON_ASSAULT_SCENARIO, DOCTRINE_HARNESS_SCENARIO, getScenario, listScenarios } from "./scenarios";
 import { getExpedition } from "./expedition";
 import { encounterOutcome } from "./staging";
 import { currentNode } from "./run";
 import { unitHasCapability } from "./jobs";
+import { hasTag, GARRISON } from "./tags";
 
 /**
  * The scenario harness (#170) — a synthetic one-node run that boots an arbitrary
@@ -110,5 +111,40 @@ describe("the prison-assault scenario — the dual-OR finale surface (D97)", () 
     // Only eliminate-all can win for this arm.
     for (const u of loop.staged!.battle.units) if (u.side === "enemy") u.alive = false;
     expect(encounterOutcome(loop.staged!)).toBe("win");
+  });
+});
+
+describe("the doctrine-harness scenario — the guard door-drive surface (D117/M4)", () => {
+  it("stages the garrison + the two-mouth party; the M3b control-room region survives the run path", () => {
+    const { loop } = buildScenarioRun(DOCTRINE_HARNESS_SCENARIO);
+    const battle = loop.startEncounter();
+    const warden = battle.units.find((u) => u.id === "warden")!;
+    expect(hasTag(warden, GARRISON, battle.tagContext())).toBe(true);
+    expect(battle.units.filter((u) => u.side === "enemy").length).toBe(2); // Warden + guard
+    expect(battle.units.filter((u) => u.side === "player" && !u.captured).length).toBe(2); // the two-mouth party
+    expect(battle.controlRoom).toEqual({ cols: [0, 2], rows: [0, 2] }); // the M3b region reaches the staged battle
+  });
+
+  it("the door-drive wires through the full run path: an un-engaged Warden keys the seal open", () => {
+    const battle = buildScenarioRun(DOCTRINE_HARNESS_SCENARIO).loop.startEncounter();
+    const warden = battle.units.find((u) => u.id === "warden")!;
+    const seal = battle.gates.find((g) => g.id === "seal")!;
+    expect(seal.locked).toBe(true);
+    const plan = battle.runPolicyTurn(warden); // !in-combat → drives + keys, past the reachable infiltrator
+    expect(plan.gateAct).toBe("key");
+    expect(seal.locked).toBe(false);
+  });
+
+  it("the infiltrator arm swaps job (thief vs scout), infiltrator on the control-room side", () => {
+    const thief = buildScenarioRun(DOCTRINE_HARNESS_SCENARIO).loop.startEncounter().units.find((u) => u.id === "infil")!;
+    expect(unitHasCapability(thief, "lockpick")).toBe(true); // defaultParty === "thief"
+    expect(thief.pos).toEqual({ col: 2, row: 0 }); // spawn 0 = the control-room side (D99 side door)
+    const scout = buildScenarioRun(DOCTRINE_HARNESS_SCENARIO, "scout").loop.startEncounter().units.find((u) => u.id === "infil")!;
+    expect(unitHasCapability(scout, "lockpick")).toBe(false);
+  });
+
+  it("is exposed through the registry lookups", () => {
+    expect(getScenario("doctrine-harness")).toBe(DOCTRINE_HARNESS_SCENARIO);
+    expect(listScenarios()).toContain(DOCTRINE_HARNESS_SCENARIO);
   });
 });

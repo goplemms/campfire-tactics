@@ -159,6 +159,20 @@
  *   - gate re-seal keeps damage (D107): +1 — `MICRO_GATE_RESEAL` (`scenarios/micro.ts`, the batter →
  *     lever-open → lever-reseal render guard proving the HP readout persists, no top-up). The
  *     `lockGateOnGrid` durability change is a method-body edit (not a surface delta).
+ *
+ * Tag system deltas (D117 — the `hasTag` classification surface, M1):
+ *   - M1 (tags.ts): +6 — `TAGS` / `getTag` / `hasTag` + the three tag-id constants `IN_COMBAT` /
+ *     `NON_COMBATANT` / `GARRISON`. `TagDef` / `TagProvenance` / `TagContext` are type-only; the
+ *     `deriveInCombat` / `canDamage` predicates are module-private. `Unit.tags` is a type-only
+ *     field add (no runtime surface). No registration at import → sim digest unchanged.
+ *   - M2a (combat-log.ts): +1 — `exchangedDamageSince` (the `in-combat` clause-1 window query).
+ *     `CombatLogEntry` is type-only; `Battle.eventLog`/`tagContext` are methods; `BattleCheckpoint.
+ *     eventLogLen` is a type-only field. The event log is derived/passive → sim digest unchanged.
+ *   - M2b (gates.ts): +3 — `canKeyGate` / `keyableGates` / `gateActFor` (the living-keyholder Act's
+ *     validation + the key-vs-batter selector). `GateAct` + the `keyGate` `CombatAction` are type-only;
+ *     `Battle.keyGate` is a method. No new registration/RNG → sim digest unchanged.
+ *   - M2c (gates.ts): +1 — `keyholderOf` (position-independent keyholder match; the AI key-drive filter).
+ *     `AIPlan.gateAct` is a type-only field; the planner reorder is behavior. No new registration/RNG.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -207,6 +221,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "DIFFICULTIES",
   "DIG_IN",
   "DIG_IN_CAPTURE_FACTOR",
+  "DOCTRINE_HARNESS",
+  "DOCTRINE_HARNESS_SCENARIO",
   "DYING_COUNTER",
   "E1_SKIRMISH",
   "EARLY_EVENT",
@@ -228,6 +244,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "FRONT_ADVANCE_PER_TURN",
   "FRONT_DANGER",
   "FRONT_SPEED_LEAN",
+  "GARRISON",
   "GEAR_CONDITION",
   "GEAR_WEAR_WARN",
   "GEN",
@@ -243,6 +260,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "INFLUENCE_BANDS",
   "INFLUENCE_ORDER",
   "INTEL_BREAKPOINTS",
+  "IN_COMBAT",
   "JOBS",
   "KIT",
   "LEVELING",
@@ -265,6 +283,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MICRO_GATE_LOCKPICK",
   "MICRO_GATE_REMNANT",
   "MICRO_GATE_RESEAL",
+  "MICRO_KEY_DROP",
   "MICRO_LEVER_SEAL",
   "MICRO_SCENARIOS",
   "MIRA_MERCHANT",
@@ -275,6 +294,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "NOBLE_JOB",
   "NOBLE_PATRONIZE",
   "NODE_EVENTS",
+  "NON_COMBATANT",
   "OBJECTIVE_KINDS",
   "ORTHO_OFFSETS",
   "OUTER_YARD",
@@ -331,6 +351,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "SURVEY",
   "SURVIVALIST_JOB",
   "SWIFT",
+  "TAGS",
   "THEFT",
   "THE_HOLLOW_MILL",
   "THE_RESCUE",
@@ -445,6 +466,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "canAffordMaterial",
   "canAttackGate",
   "canDisarm",
+  "canKeyGate",
   "canLockpickGate",
   "canPlacePlayerTrap",
   "canPullLever",
@@ -515,6 +537,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "disarmTrap",
   "dispatch",
   "dispatchRefusal",
+  "dropsKeyOnDeath",
   "dumpRun",
   "earlyEventForNode",
   "earn",
@@ -539,6 +562,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "eventChoices",
   "eventForNode",
   "eventWeightAt",
+  "exchangedDamageSince",
   "exhaustionSlowSpeed",
   "exposed",
   "fatigueRisk",
@@ -559,6 +583,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "frontSpeed",
   "frontTurnStage",
   "gainRunGold",
+  "gateActFor",
   "gatesOpenedByDeath",
   "gearDelta",
   "gearRefusal",
@@ -577,6 +602,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "getScenario",
   "getSkill",
   "getStory",
+  "getTag",
   "grantAbilityUseXp",
   "grantItem",
   "grantJobXp",
@@ -593,6 +619,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "hasPacing",
   "hasPrice",
   "hasStatus",
+  "hasTag",
   "hasThief",
   "hashSeed",
   "hastened",
@@ -609,6 +636,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "inFlightCaravans",
   "inPlaceRest",
   "inPlaceRestPreview",
+  "inRegion",
   "inSafeZone",
   "incrementCounter",
   "influenceTier",
@@ -624,6 +652,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "isCaptured",
   "isConcealedTrap",
   "isDebuffed",
+  "isDroppedKey",
   "isDying",
   "isExhausted",
   "isFatigueTier0",
@@ -646,6 +675,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "jeopardyOf",
   "jobLevelOf",
   "jobPresenceSummary",
+  "keyableGates",
+  "keyholderOf",
   "knobDeclared",
   "listScenarios",
   "loadExpedition",
@@ -656,6 +687,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "lockpickableGates",
   "lootBandFor",
   "makeConcealedTrap",
+  "makeDroppedKey",
   "makeGate",
   "makeLever",
   "makeTrap",

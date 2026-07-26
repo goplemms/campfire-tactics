@@ -17,11 +17,12 @@
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
 
-import type { GridCoord } from "./iso";
+import type { GridCoord, Region } from "./iso";
 import type { Unit, UnitSpec, ReleaseRequirement } from "./units";
 import { createUnit } from "./units";
 import { TileGrid } from "./grid";
 import { getEnemyTemplate, type EncounterReward } from "./generation";
+import { TAGS } from "./tags";
 import type { ObjectiveSpec } from "./objectives";
 import { makeGate, makeLever, type Gate, type GateLock, type Lever } from "./gates";
 import type { IntelTier } from "./intel"; // type-only (erased) — no runtime cycle
@@ -132,6 +133,13 @@ export interface AuthoredEncounter {
    */
   levers?: AuthoredLever[];
   /**
+   * The **control-room region** (D108/D117, M3b) — the objective span a garrison unit prioritizes foes
+   * *inside* as attack targets (Decision G's lever-camp defuser: a foe working the objective/lever gets
+   * attacked rather than pinning the garrison bodilessly). An inclusive {@link Region} rectangle; absent ⇒
+   * no target-priority tilt (the door-drive alone). Read by the planner via `AIOptions`.
+   */
+  controlRoom?: Region;
+  /**
    * **Rumors** (D83) — the free-form info lane of the intel read, tier-banded like the
    * structured lanes: `rumors[i]` is revealed at intel tier `i+1` ("folk around here
    * say…" at tier 1 → sharper hearsay as the read deepens). Locked lines render as
@@ -166,6 +174,17 @@ export function buildAuthoredGrid(enc: AuthoredEncounter): TileGrid {
   return new TileGrid(enc.cols, enc.rows, enc.blocked);
 }
 
+/**
+ * Fail loud (D117) if an authored unit carries an **intrinsic tag not in the {@link TAGS} registry** —
+ * a designer typo (`"garrsion"`) would otherwise be a silent no-op (the tag never matches its constant).
+ * Every authored enemy/captive stages through here, so a bad tag can't reach the board unnoticed.
+ */
+function assertRegisteredTags(u: Unit): void {
+  for (const t of u.tags) {
+    if (!TAGS[t]) throw new Error(`authored unit "${u.id}" carries unregistered tag "${t}" (not in TAGS)`);
+  }
+}
+
 /** Inflate an authored encounter's placements into live enemy {@link Unit}s. */
 export function buildAuthoredEnemies(enc: AuthoredEncounter): Unit[] {
   return enc.enemies.map((p) => {
@@ -190,6 +209,7 @@ export function buildAuthoredEnemies(enc: AuthoredEncounter): Unit[] {
       ...p.overrides,
     });
     u.hidden = p.hidden ?? false;
+    assertRegisteredTags(u);
     return u;
   });
 }
@@ -205,6 +225,7 @@ export function buildAuthoredCaptives(enc: AuthoredEncounter): Unit[] {
   return (enc.captives ?? []).map((c) => {
     const u = createUnit({ ...c.spec, side: "player", pos: c.pos, authored: true, release: c.release });
     u.captured = true;
+    assertRegisteredTags(u);
     return u;
   });
 }

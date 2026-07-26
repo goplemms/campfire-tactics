@@ -181,5 +181,29 @@ export const MICRO_GATE_RESEAL: ScenarioConfig = {
   defaultParty: "assault",
 };
 
+// --- key · drop — felling a `dropOnDeath` warden drops a key to fetch + turn (D117/M5) ---
+const KEY_DROP_ENCOUNTER: AuthoredEncounter = {
+  id: "micro-key-drop",
+  name: "Micro · Drop the Key",
+  cols: 6,
+  rows: 3,
+  blocked: CELL_WALLS,
+  playerSpawns: [{ col: 1, row: 1 }], // the striker — adjacent to the warden at (2,1)
+  enemies: [{ templateId: "bandit-thug", pos: { col: 2, row: 1 }, id: "warden", role: "captain" }], // the keyholder
+  captives: [{ spec: prisoner, pos: { col: 4, row: 1 } }],
+  // `dropOnDeath`: his fall drops a key at (2,1) instead of popping the cell — the fetch tile is also the
+  // only walkable cell adjacent to the gate, so one step both pockets the key and lines up the Turn Key.
+  gates: [{ id: "cell", pos: { col: 3, row: 1 }, openBy: [{ kind: "keyholder", tag: { role: "captain" }, dropOnDeath: true }] }],
+  reward: { gold: 20, materials: [] },
+};
+
+export const MICRO_KEY_DROP: ScenarioConfig = {
+  id: "micro-key-drop",
+  name: "Micro · Drop the Key",
+  encounter: KEY_DROP_ENCOUNTER,
+  parties: { assault: [{ id: "striker", side: "player", pos: { col: 0, row: 0 }, jobId: "soldier", primaryJob: "soldier", ...STATS, attack: 60 }] },
+  defaultParty: "assault",
+};
+
 /** Every micro-interaction fixture, in gallery order — spread into the scenario registry. */
-export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER, MICRO_GATE_DESTRUCTIBLE, MICRO_GATE_ENEMY_BATTER, MICRO_LEVER_SEAL, MICRO_GATE_REMNANT, MICRO_GATE_RESEAL];
+export const MICRO_SCENARIOS: ScenarioConfig[] = [MICRO_GATE_LOCKPICK, MICRO_GATE_KEYHOLDER, MICRO_GATE_DESTRUCTIBLE, MICRO_GATE_ENEMY_BATTER, MICRO_LEVER_SEAL, MICRO_GATE_REMNANT, MICRO_GATE_RESEAL, MICRO_KEY_DROP];

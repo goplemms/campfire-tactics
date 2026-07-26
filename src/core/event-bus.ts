@@ -78,6 +78,17 @@ export interface BattleEvents {
    */
   gateLocked: { gate: Gate; by?: Unit };
   /**
+   * A fallen keyholder **dropped a key** (D117/M5) — a `dropOnDeath` gate's keys hit the board at `tile`
+   * instead of the gate auto-opening. The render draws the key glyph; a player fetches it. `gates` = the
+   * gate ids it turns.
+   */
+  keyDropped: { key: string; tile: GridCoord; gates: string[] };
+  /**
+   * A player unit **picked up a dropped key** (D117/M5) — `unit.carriedKey` now holds `gates`. The render
+   * clears the board glyph, badges the carrier, and logs the pocket.
+   */
+  keyPickedUp: { unit: Unit; key: string; gates: string[] };
+  /**
    * The deployment phase ended and combat begins (D67 clock fold) — the transition
    * seam. The render reacts by tearing down the staging visuals (the D12 veil, the
    * zone/reach overlays); future "opening of battle" effects can hook the same moment

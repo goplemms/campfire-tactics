@@ -151,6 +151,13 @@ export interface UnitSpec extends UnitStats {
    * this tag or its id, so a generator can emit objectives without hand-wiring.
    */
   role?: string;
+  /**
+   * **Intrinsic tags** (the tag system) — authored classifications queried through
+   * {@link "./tags".hasTag} (e.g. `"non-combatant"`, `"garrison"`). Distinct from
+   * {@link role} (a single objective-binding tag, D50) and from *derived* /
+   * *conferred* tags, which are computed on query, not stored. Defaults to empty.
+   */
+  tags?: readonly string[];
   /** Seed the unit's run-scoped {@link Unit.memory} flag bag (D65); defaults to empty. */
   memory?: Record<string, string | number | boolean>;
   /**
@@ -234,6 +241,21 @@ export interface Unit extends UnitStats {
   post?: GridCoord;
   /** Objective role tag (D50), e.g. the closing-gate `"sapper"`; objectives bind to it. */
   role?: string;
+  /**
+   * **Intrinsic tags** (the tag system) — authored classifications read by
+   * {@link "./tags".hasTag} (`"non-combatant"`, `"garrison"`, …). Set at creation,
+   * **immutable in battle** (so it is not snapshotted for undo). Empty for a plain unit.
+   */
+  tags: readonly string[];
+  /**
+   * **Carried keys** (D117/M5) — the gate ids this unit can turn with a **dropped key** it picked up off a
+   * fallen keyholder (distinct from the intrinsic keyholder `tag`). Read by {@link "./gates".canKeyGate}.
+   * **Mutable in battle** (set on pickup) → snapshotted for undo ({@link "./battle-undo".UnitSnapshot}).
+   * Absent for a unit carrying no key. **Reusable by design** — turning the key is *not* consumed, so a
+   * carrier can re-open its gate if a lever re-seals it (the physical-key counter to the lever-camp);
+   * consuming the key on use is deliberately not modelled (that lands with the general item system, D108).
+   */
+  carriedKey?: string[];
   /** Authored ambush body hidden until scouted (D44); a render/fog flag. */
   hidden?: boolean;
   /**
@@ -341,6 +363,7 @@ export function createUnit(spec: UnitSpec): Unit {
     standingOrder: spec.standingOrder,
     post: spec.standingOrder ? { col: spec.pos.col, row: spec.pos.row } : undefined,
     role: spec.role,
+    tags: spec.tags ? [...spec.tags] : [],
     release: spec.release,
     hidden: false,
     captured: false,

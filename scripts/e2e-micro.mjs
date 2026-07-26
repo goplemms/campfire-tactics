@@ -193,6 +193,56 @@ const MICROS = [
         resealed.locked === true && resealed.hp === 11 && resealed.walkable === false && resealed.hpText === "11/20");
     },
   },
+  {
+    id: "micro-key-drop",
+    title: "key · drop — felling a dropOnDeath warden drops a key to fetch + turn (D117/M5)",
+    async run(g) {
+      const st = await g.bsEval(`return { locked: s.battle.gates[0].locked, gateMarks: s.gateMarkers.length, keyMarks: s.keyMarkers.length };`);
+      check("the cell renders locked, no key on the board yet", st.locked === true && st.gateMarks === 1 && st.keyMarks === 0);
+      // Fell the warden: his gate is dropOnDeath → a key hits the board, the cell stays SHUT (no auto-open).
+      const dropped = await g.bsEval(`
+        const warden = s.battle.units.find(u => u.id === "warden");
+        const striker = s.battle.units.find(u => u.id === "striker");
+        s.battle.attack(striker, warden); // attack 60 one-shots the thug-warden
+        return { wardenAlive: warden.alive, locked: s.battle.gates[0].locked, keyMarks: s.keyMarkers.length,
+                 keyGlyph: s.keyMarkers.length ? (s.keyMarkers[0].text ?? null) : null };`);
+      check("the warden fell", dropped.wardenAlive === false);
+      check("the cell stays LOCKED — no auto-open; a key glyph (⚷) drops on the board (no freeze)",
+        dropped.locked === true && dropped.keyMarks === 1 && dropped.keyGlyph === "⚷");
+      // Fetch it: step the striker onto the key tile (2,1) → the glyph clears, the carried pip appears, and
+      // the tile is also adjacent to the gate, so a menu refresh surfaces the first-ever Turn Key verb.
+      const fetched = await g.bsEval(`
+        const striker = s.battle.units.find(u => u.id === "striker");
+        s.battle.moveUnit(striker, [{ col: 2, row: 1 }]); // walk onto the dropped key → pickup
+        s.refreshDeployButtons();
+        return { carried: striker.carriedKey || null, keyMarks: s.keyMarkers.length,
+                 verbs: s.actionButtons.map(b => b.label && b.label.text).filter(Boolean) };`);
+      check("the striker pockets the key — the board glyph clears", Array.isArray(fetched.carried) && fetched.carried.includes("cell") && fetched.keyMarks === 0);
+      check("the first player-facing Turn Key verb surfaces for the carrier", fetched.verbs.includes("Turn Key"));
+      // Turn it: the carrier opens the cell (gateOpened → grid redraw + marker teardown, no freeze).
+      const turned = await g.bsEval(`
+        const gate = s.battle.gates[0]; const striker = s.battle.units.find(u => u.id === "striker");
+        s.battle.keyGate(gate, striker);
+        return { locked: gate.locked, walkable: s.grid.isWalkable(gate.pos), gateMarks: s.gateMarkers.length };`);
+      check("turning the fetched key opens the cell — the tile clears + the marker drops (no freeze)",
+        turned.locked === false && turned.walkable === true && turned.gateMarks === 0);
+      // Undo across a key DROP must resync the board (the drop rode a bus event undo doesn't re-emit). Fresh
+      // board: fell the warden under an armed checkpoint, then undoTurn must revive him AND clear the ⚷ glyph.
+      await g.boot("#scene=micro-key-drop");
+      await sleep(1200);
+      const undone = await g.bsEval(`
+        const striker = s.battle.units.find(u => u.id === "striker");
+        const warden = s.battle.units.find(u => u.id === "warden");
+        s.battle.beginUndo();
+        s.battle.attack(striker, warden); // drop the key (glyph via keyDropped) under a checkpoint
+        const midMarks = s.keyMarkers.length;
+        s.undoTurn(striker, "deployment"); // take it back → resyncBoardInteractables clears the stale glyph
+        return { midMarks, wardenAlive: warden.alive, keyMarks: s.keyMarkers.length, locked: s.battle.gates[0].locked };`);
+      check("the drop drew the key glyph under the checkpoint", undone.midMarks === 1);
+      check("undo revives the warden and clears the phantom key glyph — no board desync (F1)",
+        undone.wardenAlive === true && undone.keyMarks === 0 && undone.locked === true);
+    },
+  },
 ];
 
 async function main() {

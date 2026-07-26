@@ -16,7 +16,7 @@
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
 
-import type { GridCoord } from "./iso";
+import type { GridCoord, Region } from "./iso";
 import type { Unit } from "./units";
 import { TileGrid } from "./grid";
 import { Battle } from "./turn";
@@ -155,6 +155,7 @@ export function stageEncounter(
   // locked gate's tile, opens keyholder cells on the keyholder's death, and toggles gates on a lever pull.
   let gates: Gate[] = [];
   let levers: Lever[] = [];
+  let controlRoom: Region | undefined;
   let objectiveSpecs;
 
   if (isAuthoredEncounter(source)) {
@@ -163,6 +164,7 @@ export function stageEncounter(
     captives = buildAuthoredCaptives(source);
     gates = buildAuthoredGates(source);
     levers = buildAuthoredLevers(source);
+    controlRoom = source.controlRoom; // D117/M3b: the garrison's target-priority span (authored only)
     // Scouted-to-full intel blows the ambush: hidden bodies start visible (D10).
     if (opts.revealHidden) for (const e of enemies) e.hidden = false;
     placeParty(players, opts.playerSpawns ?? source.playerSpawns);
@@ -178,7 +180,7 @@ export function stageEncounter(
   // Captives ride between the roster and the enemies: player-side and bound, so they're off
   // the clock (the `isActive` participant predicate excludes captured), never an AI target
   // (`activeUnits` foe-lists skip them), and visible in deployment (only enemies are veiled).
-  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed, gates, levers });
+  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed, gates, levers, controlRoom });
 
   // Pre-place the authored concealed enemy traps (the trap-field lever, D12): they
   // ride the same entity registry the player's Set Trap uses, so movement springs

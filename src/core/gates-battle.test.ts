@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import { stageEncounter } from "./staging";
 import type { AuthoredEncounter } from "./authored";
-import type { Gate } from "./gates";
+import { makeGate, type Gate } from "./gates";
+import { Battle, replay } from "./turn";
+import { TileGrid } from "./grid";
 
 /**
  * Gates wired into a real staged {@link Battle} (D103 Phase 2a) — the mechanic end to end:
@@ -81,6 +83,76 @@ describe("gates in a staged battle (D103 Phase 2a)", () => {
     battle.undo();
     expect(cellA.locked).toBe(true); // re-locked
     expect(battle.grid.isWalkable({ col: 4, row: 2 })).toBe(false); // tile re-blocked
+  });
+
+  // --- keyGate: the living-keyholder Act (D108, M2b) -------------------------
+  // The Warden ("warden", role "captain") sits at (5,2), adjacent to the keyed cell-a at (4,2);
+  // cell-b at (4,4) is keyed but out of his reach. The active counterpart to the death-trigger.
+
+  it("the Warden turns his key on the adjacent keyed cell — tile clears, cause 'keyholder'", () => {
+    const { battle } = stageEncounter(PRISON, [thief(), bruiser()]);
+    const cellA = gate(battle, "cell-a");
+    let fired: string | null = null;
+    battle.bus.on("gateOpened", ({ cause }) => (fired = cause));
+    battle.keyGate(cellA, unit(battle.units, "warden"));
+    expect(cellA.locked).toBe(false);
+    expect(battle.grid.isWalkable({ col: 4, row: 2 })).toBe(true);
+    expect(fired).toBe("keyholder");
+    expect(gate(battle, "cell-b").locked).toBe(true); // out of reach — only the adjacent cell opens
+  });
+
+  it("keyGate refuses a non-keyholder, a non-adjacent keyholder, and an already-open gate (no-op, unlogged)", () => {
+    const { battle } = stageEncounter(PRISON, [thief(), bruiser()]);
+    battle.keyGate(gate(battle, "cell-a"), unit(battle.units, "thief")); // adjacent, but not the keyholder
+    expect(gate(battle, "cell-a").locked).toBe(true);
+    battle.keyGate(gate(battle, "cell-b"), unit(battle.units, "warden")); // the keyholder, but not adjacent
+    expect(gate(battle, "cell-b").locked).toBe(true);
+    battle.keyGate(gate(battle, "cell-a"), unit(battle.units, "warden")); // opens it (logged)
+    expect(gate(battle, "cell-a").locked).toBe(false);
+    const logged = battle.log.length;
+    battle.keyGate(gate(battle, "cell-a"), unit(battle.units, "warden")); // already open → refused
+    expect(battle.log.length).toBe(logged); // unlogged no-op
+  });
+
+  it("undo re-locks a keyed gate and re-blocks its tile", () => {
+    const { battle } = stageEncounter(PRISON, [thief(), bruiser()]);
+    const cellA = gate(battle, "cell-a");
+    battle.beginUndo();
+    battle.keyGate(cellA, unit(battle.units, "warden"));
+    expect(cellA.locked).toBe(false);
+    battle.undo();
+    expect(cellA.locked).toBe(true);
+    expect(battle.grid.isWalkable({ col: 4, row: 2 })).toBe(false);
+  });
+
+  it("a keyed-open gate does NOT double-open when the Warden later dies (idempotent)", () => {
+    const { battle } = stageEncounter(PRISON, [thief(), bruiser()]);
+    const opens: string[] = [];
+    battle.bus.on("gateOpened", ({ gate, cause }) => opens.push(`${gate.id}:${cause}`));
+    battle.keyGate(gate(battle, "cell-a"), unit(battle.units, "warden")); // key cell-a open
+    battle.attack(unit(battle.units, "bruiser"), unit(battle.units, "warden")); // Warden dies (maxHp 1)
+    expect(unit(battle.units, "warden").alive).toBe(false);
+    expect(gate(battle, "cell-a").locked).toBe(false);
+    expect(gate(battle, "cell-b").locked).toBe(false); // his death pops the OTHER keyed cell
+    expect(opens.filter((o) => o.startsWith("cell-a")).length).toBe(1); // opened once (by key), not again on death
+    expect(opens).toEqual(expect.arrayContaining(["cell-a:keyholder", "cell-b:keyholder"]));
+  });
+
+  it("replay reconstructs a keyed-open gate (the Act rides the command log)", () => {
+    const build = () => {
+      const grid = new TileGrid(6, 3);
+      const warden = createUnit({ id: "warden", side: "enemy", pos: { col: 2, row: 1 }, role: "captain", speed: 10, maxHp: 10, attack: 5, defense: 1, moveRange: 3, sightRadius: 5, attackRange: 1 });
+      const cell = makeGate("cell", { col: 1, row: 1 }, [{ kind: "keyholder", tag: { role: "captain" } }]);
+      return { grid, warden, cell };
+    };
+    const a = build();
+    const battle = new Battle(a.grid, [a.warden], { gates: [a.cell] });
+    battle.keyGate(a.cell, a.warden);
+    expect(a.cell.locked).toBe(false);
+
+    const b = build();
+    const replayed = replay(b.grid, [b.warden], battle.log, { gates: [b.cell] });
+    expect(replayed.gates.find((g) => g.id === "cell")!.locked).toBe(false); // reconstructed from the log
   });
 
   it("a destructible door chips over hits, breaks open at 0, and undo restores its durability + block", () => {

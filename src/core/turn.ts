@@ -12,14 +12,14 @@
  */
 
 import { activeUnits, opposite, type Unit, type Side } from "./units";
-import type { GridCoord } from "./iso";
+import type { GridCoord, Region } from "./iso";
 import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
 import { removeItem } from "./inventory";
 import type { MaterialCost } from "./cost";
 import { EventBus } from "./event-bus";
 import { CTClock, type TurnSpend, onSkillCooldown, armSkillCooldown } from "./clock";
-import { EntityRegistry } from "./entities";
+import { EntityRegistry, makeDroppedKey } from "./entities";
 import {
   resolveAttack,
   battleOutcome,
@@ -47,11 +47,13 @@ import {
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
 import { captureUnit, freeCaptive, canRelease } from "./deployment";
-import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canPullLever, damageGate, gatesOpenedByDeath, type Gate, type Lever } from "./gates";
+import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canKeyGate, canPullLever, damageGate, gatesOpenedByDeath, dropsKeyOnDeath, type Gate, type Lever } from "./gates";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
 import { Labels } from "./rng-labels";
 import { captureCheckpoint, restoreCheckpoint, type BattleCheckpoint } from "./battle-undo";
+import { exchangedDamageSince, type CombatLogEntry } from "./combat-log";
+import type { TagContext } from "./tags";
 import {
   resolveShove as resolveShoveEffect,
   resolveGuardAllies as resolveGuardAlliesEffect,
@@ -99,6 +101,11 @@ export interface BattleOptions {
   gates?: Gate[];
   /** Interactable **levers** (D103) — pull-switches that toggle their target gates (the control-room seal). */
   levers?: Lever[];
+  /**
+   * The **control-room region** (D117/M3b) — the objective span a garrison unit prioritizes foes inside
+   * as attack targets (Decision G). Handed to the planner via `AIOptions`; absent ⇒ no target tilt.
+   */
+  controlRoom?: Region;
 }
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
@@ -116,6 +123,8 @@ export class Battle {
   readonly gates: Gate[];
   /** The encounter's levers (D103) — pull-switches toggling their target gates (the control-room seal). */
   readonly levers: Lever[];
+  /** The encounter's **control-room region** (D117/M3b) — the garrison's target-priority span (Decision G). */
+  readonly controlRoom?: Region;
 
   /**
    * Which board phase this battle is in (D67): `"deploy"` (pre-combat staging — the
@@ -135,6 +144,14 @@ export class Battle {
    * reconstructs by **replay**, not by summing (`replay(log) === state`).
    */
   private readonly _log: CombatAction[] = [];
+
+  /**
+   * The **event log** (D117) — a *derived*, tick-stamped record of what **happened**
+   * (damage dealt, turn ends), fed from the bus, read by `in-combat` ({@link tagContext})
+   * and (later) the combat-log display. Reconstructed by replay (its events fire only in
+   * `apply`), truncated by undo — see {@link "./combat-log"}. IDs, not `Unit` refs.
+   */
+  private readonly _eventLog: CombatLogEntry[] = [];
 
   /**
    * Resolves a logged skill id to its def (R1 #111) — the injectable half of the
@@ -184,6 +201,14 @@ export class Battle {
     this.bus = new EventBus();
     this.clock = new CTClock(units, this.bus);
     this.entities = new EntityRegistry(this.bus);
+    // Feed the derived event log (D117) from the bus. Both events fire only inside `apply`,
+    // so a replay re-emits them in order (the log reconstructs) and undo truncates it.
+    this.bus.on("unitDamaged", ({ unit, amount, source }) =>
+      this._eventLog.push({ kind: "damage", time: this.clock.time, targetId: unit.id, sourceId: source?.id, amount }),
+    );
+    this.bus.on("turnEnd", ({ unit }) =>
+      this._eventLog.push({ kind: "turnEnd", time: this.clock.time, unitId: unit.id }),
+    );
     this.rngSeed = opts.seed ?? 0;
     this.variance = opts.variance ?? 0;
     this.skillLookup = opts.skills ?? getSkill;
@@ -191,6 +216,7 @@ export class Battle {
     // keyholder-gated cells the instant their keyholder is defeated (the Captain drops the keys).
     this.gates = opts.gates ?? [];
     this.levers = opts.levers ?? [];
+    this.controlRoom = opts.controlRoom;
     applyGatesToGrid(this.grid, this.gates);
     if (this.gates.length) this.bus.on("unitDefeated", ({ unit }) => this.openKeyholderGates(unit));
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).
@@ -251,6 +277,23 @@ export class Battle {
   /** The append-only action log in execution order (read-only to callers). */
   get log(): readonly CombatAction[] {
     return this._log;
+  }
+
+  /** The derived event log in order (read-only) — the combat-log display + `in-combat` read this. */
+  get eventLog(): readonly CombatLogEntry[] {
+    return this._eventLog;
+  }
+
+  /**
+   * A {@link "./tags".TagContext} over this live battle — feeds the *derived* tags
+   * (`in-combat`) their battle state + the log-history query. `exchangedDamageSince` is
+   * **first-arg-anchored**: the window is the *first* unit's last `turnEnd`.
+   */
+  tagContext(): TagContext {
+    return {
+      units: this.units,
+      exchangedDamageSince: (aId, bId) => exchangedDamageSince(this._eventLog, aId, bId),
+    };
   }
 
   /** Wire the shared supply stash the Deployment `placeTrap` verb draws from (D63). */
@@ -331,7 +374,7 @@ export class Battle {
 
   /** Capture the battle's mutable state before an action (a turn-undo checkpoint). */
   private captureCheckpoint(): BattleCheckpoint {
-    return captureCheckpoint(this.units, this._log.length, this.drawCount, this.clock, this.entities, this.stash, this.gates);
+    return captureCheckpoint(this.units, this._log.length, this._eventLog.length, this.drawCount, this.clock, this.entities, this.stash, this.gates);
   }
 
   /**
@@ -350,6 +393,7 @@ export class Battle {
   private restoreCheckpoint(cp: BattleCheckpoint): void {
     this.drawCount = cp.drawCount;
     this._log.length = cp.logLen; // drop the actions taken since the checkpoint
+    this._eventLog.length = cp.eventLogLen; // drop the events recorded since the checkpoint
     // The unit / clock / entity / stash restore + tarpit-aura re-derive live in the
     // battle-undo primitive (over explicit inputs).
     restoreCheckpoint(cp, this.units, this.clock, this.entities, this.stash, this.grid, this.gates);
@@ -529,6 +573,19 @@ export class Battle {
         this._log.push(action);
         return { ok: true };
       }
+      case "keyGate": {
+        // The living-keyholder Act (D108): the Warden turns his key on an adjacent locked gate he holds,
+        // clearing the tile's block — the active counterpart to the death-trigger (openKeyholderGates).
+        // Refused (no-op, unlogged) when not the keyholder / not adjacent / already open — mirrors openGate.
+        const gate = this.gates.find((g) => g.id === action.gate);
+        if (!gate) return { ok: false, reason: "No such gate." };
+        const opener = this.unit(action.unit);
+        if (!canKeyGate(gate, opener)) return { ok: false, reason: "Only the adjacent keyholder can key this gate." };
+        openGateOnGrid(this.grid, gate);
+        this.bus.emit("gateOpened", { gate, by: opener, cause: "keyholder" });
+        this._log.push(action);
+        return { ok: true };
+      }
       case "attackGate": {
         // Break-Gate Act (D103): chip the door's durability by the attacker's attack; it breaks open at
         // 0. Refused (unlogged) when out of range / the gate isn't breakable — mutates nothing.
@@ -703,6 +760,16 @@ export class Battle {
   }
 
   /**
+   * **Turn a key** (D108) — the living-keyholder Act. `by` (the adjacent keyholder) opens the locked
+   * `gate` as a fast Act. Lowers to the logged `keyGate` action so the open rides the state graph
+   * (replay reconstructs, undo re-locks — the gate is checkpointed) and announces `gateOpened` (cause
+   * `keyholder`). A refused turn (not the keyholder / not adjacent / already open) mutates nothing.
+   */
+  keyGate(gate: Gate, by: Unit): void {
+    this.apply({ kind: "keyGate", gate: gate.id, unit: by.id });
+  }
+
+  /**
    * **Pull a lever** (D103) — the control-room seal. `by` (adjacent) toggles the locked state of the
    * lever's target gates: an open door slams shut (sealing the guards out), a locked one reopens.
    * Lowers to the logged `pullLever` action so the toggle rides the state graph (replay reconstructs,
@@ -718,9 +785,22 @@ export class Battle {
    * side effect of the killing action (replay re-fires it; undo re-locks via the checkpoint).
    */
   private openKeyholderGates(dead: Unit): void {
+    // A fallen keyholder's gates: a plain keyholder lock **pops open** (unchanged); a `dropOnDeath` one
+    // instead **drops a physical key** at his tile (D117/M5) that a player fetches and turns. One key per
+    // fallen keyholder, bound to all his drop-on-death gates.
+    const dropGates: string[] = [];
     for (const g of gatesOpenedByDeath(this.gates, dead)) {
+      if (dropsKeyOnDeath(g, dead)) {
+        dropGates.push(g.id);
+        continue;
+      }
       openGateOnGrid(this.grid, g);
       this.bus.emit("gateOpened", { gate: g, cause: "keyholder" });
+    }
+    if (dropGates.length > 0) {
+      const key = makeDroppedKey(`key:${dead.id}`, dead.pos, dropGates);
+      this.entities.register(key);
+      this.bus.emit("keyDropped", { key: key.id, tile: { col: key.pos.col, row: key.pos.row }, gates: [...dropGates] });
     }
   }
 
@@ -931,6 +1011,8 @@ export class Battle {
     const plan = policy.plan(unit, this.units, this.grid, {
       isCharging: (u) => this.clock.isCharging(u),
       gates: this.gates, // D103: a guard walled off by a locked destructible door batters it down
+      tagContext: this.tagContext(), // D117/M3: the garrison door-drive reads `in-combat` off this
+      controlRoom: this.controlRoom, // D117/M3b: a garrison unit prioritizes foes in this span (Decision G)
     });
     // Lower the plan to a CombatAction[] and run each through the one interpreter —
     // the AI path now shares the exact execution route with player input (D42/D56).

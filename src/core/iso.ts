@@ -13,6 +13,27 @@ export interface GridCoord {
   readonly row: number;
 }
 
+/**
+ * An axis-aligned, **inclusive** rectangular span of tiles (D117/M3b) — the shape the
+ * "control-room" objective region takes on an {@link "./authored".AuthoredEncounter}. `cols`/`rows`
+ * are `[min, max]` (both ends inside the region). A rectangle is the smallest thing that identifies a
+ * room; irregular regions can grow to a tile list later if a level needs one (YAGNI).
+ */
+export interface Region {
+  readonly cols: readonly [number, number];
+  readonly rows: readonly [number, number];
+}
+
+/** Is `pos` inside the inclusive {@link Region} span? Pure grid math (no walkability). */
+export function inRegion(pos: GridCoord, region: Region): boolean {
+  return (
+    pos.col >= region.cols[0] &&
+    pos.col <= region.cols[1] &&
+    pos.row >= region.rows[0] &&
+    pos.row <= region.rows[1]
+  );
+}
+
 /** Stable string key for a tile, for use in `Map`/`Set` keys. */
 export function tileKey(c: GridCoord): string {
   return `${c.col},${c.row}`;

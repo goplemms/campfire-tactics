@@ -46,11 +46,14 @@ the Hollow Mill's infiltration arm earns it. Mechanism:
 
 - `provides: "side-door-intel"` (already the `MapNode` seam, D116) rides **one infiltration-arm node**;
   completing it sets `run.flags["side-door-intel"] = true` via the existing grant→flag path.
-- The finale's deploy phase reads the flag: **set** → offer the east-mouth infiltration `playerSpawns`
-  (staging already supports the override) as a deploy-time choice; **unset** → frontal-only. The absence
-  path *is* the graceful degradation — free.
-- This finally makes D97's two topology-exclusive arms **pay off differently at the finale** (the original
-  unfulfilled promise: both arms used to dead-end into the same holdout fight).
+- The finale's deploy phase reads the flag: **set** → the **side entrance opens as a *second* deploy
+  zone** (the player splits their force — bulk at the main entrance, infiltrator(s) at the side);
+  **unset** → main-entrance-only. The absence path *is* the graceful degradation — free.
+- **Not a swap — a split.** Per the owner's split-force intent (see `finale-extraction-viability.md`), the
+  intel unlocks the side zone *in addition to* the main one; the flank is the infiltration half of a
+  two-pronged op, not an all-in alternate spawn. This is what makes the extraction win *possible*, so it
+  finally makes D97's two arms **pay off differently at the finale** (they used to dead-end into the same
+  holdout fight).
 
 **One open sub-choice (owner):** narrative attribution — which beat "hands you" the side door:
 - **`cuffedCell`** (the freed insider, last beat before the finale — my lean; strongest hand-off), or
@@ -69,10 +72,11 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale-specific work remain
 ### A — The special spawn condition / flank (the runtime flag)
 - ⬜ **A1** — Attach `provides: "side-door-intel"` to the chosen infiltration-arm node; set
   `run.flags["side-door-intel"]` on its completion (reuse the grant→flag path, `runloop.ts:635`).
-- 🔨 **A2** — Read the flag at finale deploy → offer the infiltration `playerSpawns` set. *(De-risked: the
-  flag bag round-trips for D22; `opts.playerSpawns` staging override exists; the M4 harness already proves
-  a **two-mouth board renders** cleanly.)*
-- ⬜ **A3** — Deploy-time **choice** UI (frontal vs. flank) when the flag is set; frontal-only when unset.
+- 🔨 **A2** — Read the flag at finale deploy → open the side entrance as a **second** deploy zone
+  (**split-force**, not a swap). *(De-risked: the flag bag round-trips for D22; `opts.playerSpawns` staging
+  override exists; the M4 harness already proves a **two-mouth board renders** cleanly.)*
+- ⬜ **A3** — Split-deploy UI: place *some* units at the side zone + *some* at the main entrance when the
+  flag is set; main-entrance-only when unset.
 - ✅ **A4** — Graceful frontal fallback — *by construction* (flag absent ⇒ no alternate spawns offered).
 - ⬜ **A5** — Visual e2e for the flag-gated deploy surface (the freeze-catcher; extend `e2e-scenario`/a new
   finale walk). *(The two-mouth render itself is already `test:e2e:doctrine`-proven.)*
@@ -88,17 +92,23 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale-specific work remain
 - ⬜ **B5** — Confirm gate types: cell doors lockpick/keyholder; the two chokepoints destructible seals;
   **place seals between garrison and objective** (the doctrine's authoring contract, D117 F2 — no
   *decorative* openable seals in a garrison encounter).
+- ⬜ **B6** — **Split-force geometry (from C2):** a **lever reachable by the infiltrator on turn 1** from
+  the side spawn that slams the garrison seal; the seal **fully walls** the garrison off the infiltration
+  route while shut; and the **escort corridor** (cells → side spawn) is **chokepointed** so a rearguard can
+  hold the pursuit. These are the two C2 geometry invariants made concrete in the layout.
 
 ### C — Fairness cruxes
 - ✅ **C1** — What sets/clears `in-combat` (D108). **DONE** — ratified + built in D117 (R1–R3 + clause 5).
-- 🔨 **C2 — Extraction viability. Design drafted → `finale-extraction-viability.md`.** The flank does
-  *not* shorten the escort (cells canon-far from both mouths); it enables the **seal-and-run**, so
-  viability = **`seal-delay ≥ escort-time`** over a **fully-sealed corridor** (else the D117 doctrine paths
-  around and the delay is fake), *and* a garrison costly enough that extraction is **chosen** over
-  eliminate-all. Key finding: finale seals need **~150+ hp**, not the 15–20 micro default. Guard = scripted
-  scenario + mutation-robust pacing assertion + geometry-invariant test (sim can't drive escort). Numbers
-  pin when B populates. **Open owner calls:** one seal vs. two in series · extraction target mouth ·
-  garrison-strength target · escort-pace floor.
+- 🔨 **C2 — Extraction viability. Design drafted (split-force model) → `finale-extraction-viability.md`.**
+  A two-party op: front **distraction** pins garrison (`in-combat`), infiltrator (the intel-unlocked
+  **second** deploy zone) **slams a lever-seal** for a **head start**, then the escort **outruns the
+  thinned pursuit through a chokepointed corridor** taking pot shots. Viability = **head-start ≥
+  pursuit-close-time**, *not* a seal-hold (the door breaking mid-escape is designed in) — so seals need
+  **~60–70 hp**, not 150. Two geometry invariants: seal fully walls the garrison while shut; escort
+  corridor is chokepointed. Guard = scripted split-force scenario + mutation-robust pacing assertion
+  (halve seal HP / drop the distraction / widen the corridor all flip it red) + geometry-invariant tests.
+  **Open owner calls:** does the distraction party also exit (sacrificial rearguard vs. front exit) · one
+  seal vs. series · lever reachable turn 1 · corridor chokepoints · garrison-strength target.
 
 ### D — Narrative / cast
 - ⬜ **D1** — Name the 3 captives into real campaign characters (currently "Bound Captive I/II/III").

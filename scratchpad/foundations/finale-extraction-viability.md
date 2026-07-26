@@ -1,130 +1,134 @@
 # Finale crux C2 — extraction viability (design note)
 
-**Track:** finale design checklist, crux **C2**. Status: **design drafted 2026-07-26** (no code — the v4
-finale isn't populated yet; this defines the contract + the guard that populating must satisfy).
-Read with `finale-design-checklist.md`, `decisions.md` **D97/D99** (dual-OR / rescue / deferred flank),
-**D117** (the now-built garrison door-drive doctrine this leans on), and the v4 layout in
-`finale-storage-and-layout-handoff.md`.
+**Track:** finale design checklist, crux **C2**. Status: **design drafted 2026-07-26**, model corrected to
+the owner's split-force intent (no code — the v4 finale isn't populated yet; this defines the contract +
+the guard that populating must satisfy). Read with `finale-design-checklist.md`, `decisions.md`
+**D97/D99** (dual-OR / rescue / deferred flank), **D117** (the now-built garrison door-drive doctrine this
+leans on), **D103–D107** (levers/seals), and the v4 layout in `finale-storage-and-layout-handoff.md`.
 
 ---
 
 ## The problem
 
 Extraction (escort every freed captive to an exit span) is the finale's **thematic heart** but a **dead
-win-path**: the sim never takes it, because the full-board escort of a fragile group past a standing
-garrison is too slow and too exposed — you always just eliminate-all instead. D99 designated **the flank**
-as the fix. C2 is: *make extraction a real, chosen win — and prove it.*
+win-path**: the sim never takes it, because escorting a fragile group past a standing garrison is too slow
+and exposed — you always just eliminate-all. D99 designated **the flank** as the fix. C2 is: *make
+extraction a real, chosen win — and prove it.*
 
-## Reframe 1 — the flank does NOT shorten the escort
+## The intended play (the canonical solution the finale is authored around)
 
-It's tempting to assume "deploy near the cells ⇒ shorter escort." **False**, and deliberately so: canon
-keeps the cells **deepest, far from *both* mouths** (D97/D99 — moving cells near an exit re-arms the
-challenge-F walkover). The infiltration spawn is the **east mouth → control-room hub**, which skips the
-*garrison approach*; it does not put you next to the exit.
+Extraction is a **two-party, split-force operation** — this is the owner's design intent:
 
-So the flank's real value is that it lets you run the **seal-and-run**: infiltrate the hub → reach the
-cells → free them → **slam the barracks seals** (locking the garrison in the barracks, rows 9–15) →
-escort the group across the *upper* region (rows 0–7) to the near mouth while the garrison batters
-through. **Extraction viability therefore rests entirely on one inequality:**
+1. **Split deployment.** The **bulk** of the fighting force deploys at the **main entrance**; the
+   **infiltrator** party enters through the **side entrance** (the deploy zone unlocked by the side-door
+   intel — checklist A).
+2. **Slam the seal.** On the infiltrator's first turn they **rush a lever** that toggles a destructible
+   **seal**, walling the garrison off the infiltration route.
+3. **The garrison rushes the seal to batter it down** (the shipped D117 door-drive doctrine — a
+   `garrison && !in-combat` unit drives to and batters the seal in its way).
+4. **Distract.** The front party engages the **Warden + some guards**, pinning a slice of the garrison
+   (`in-combat` → they stop driving/pursuing and fight).
+5. **The sealed door buys the head start** — while the garrison batters, the infiltrator reaches the cells
+   and **frees the prisoners**.
+6. **Run.** The garrison **breaks through — this is expected, not a failure** — and pursues; the freed
+   prisoners make for the **infiltrator's (side) spawn**, the escort party fighting a **running rearguard
+   ("pot shots")** to stay ahead.
+7. **Win** when every captive reaches the side-spawn exit span.
 
-> **seal-delay-budget ≥ escort-time**
+## Two reframes (what this note corrects)
 
-## Reframe 2 — viability (can you) ≠ incentive (why would you)
+**Reframe 1 — the flank is *safer, not faster*, and it's a SECOND deploy zone, not a swap.** Cells stay
+canon-far from both mouths (D97/D99 — no walkover), so infiltration does **not** shorten the escort. Its
+value is (a) reaching the cells **without fighting through the garrison** (a time/safety advantage → a
+head start when pursuit begins) and (b) enabling the **split-force** op. The intel therefore unlocks the
+side entrance as an **additional** deploy zone the player splits their force across — **not** an all-in
+alternate spawn. *No intel ⇒ no side deploy ⇒ the two-pronged play is impossible ⇒ extraction is
+impractical ⇒ you take eliminate-all.* That is the graceful degradation **and** the incentive, in one.
 
-Even a *viable* extraction stays unused if eliminate-all is simply the safer play — and note **both**
-win-paths already "save" the captives (eliminate-all's label is literally *"the captives are safe"*). So
-extraction needs a **strategic niche**: it must be the win available when clearing the garrison is *too
-costly*. That means the garrison must be tuned **genuinely threatening to eliminate** — outnumbering /
-attrition-heavy — so "sneak them out behind a sealed door" is the *smart* play, not a stylistic flourish.
-**Viability is necessary; a costly-enough garrison is what makes it chosen.** Both must be tuned together.
-
----
-
-## The viability inequality (the design contract)
-
-Define, for the shipped v4 finale:
-
-- **escort-time (turns)** ≈ `corridorLen / slowestEscortMove` + `freeCellsTurns`.
-  Slowest escortee dominates: today's captives are `moveRange` **3–4** (Bram the heavy-knight = **3**,
-  `speed` 9). Freed captives are `side:"player"`, uncaptured ⇒ **player-controlled** (escort pace is the
-  player's, not AI RNG). A cells→near-mouth corridor of ~15 tiles at move 3 ≈ **5 turns**, +1–2 to free
-  and marshal ⇒ **~6–7 turns** to budget for.
-- **seal-delay-budget (turns)** ≈ `Σ sealHp / garrisonBatterThroughput`, where throughput ≈
-  `(guards in batter range) × (per-hit damage)`. Garrison units hit for **8–12** (thug 8, cutthroat/brute
-  9, captain 12). Multiple seals **in series** add turns only if the garrison can't split across them.
-
-### Worked example — why the seals must be ~10× the micro-fixture HP
-
-Every destructible seal shipped so far is a **2-hit micro-puzzle**: `hp: 15–20` (`scenarios/micro.ts`).
-Against a garrison of ~3 guards at ~9 damage = **~27/turn**, a 20-hp seal is gone in **one turn** — zero
-delay. For a seal to hold a ~6-turn escort against that throughput you need:
-
-```
-sealHp ≥ escortTurns × guards × perHit  ≈  6 × 3 × 9  ≈  ~160 hp
-```
-
-That's **an order of magnitude above** the existing doors — the concrete shape of D105's parked
-"untuned HP-vs-garrison." Levers that trade against raw HP: **fewer guards reach the seal** (chokepoint
-geometry), **two seals in series** (halve the required HP each *if* the garrison can't spread), or a
-**slower/weaker batter** (but garrison strength is pinned by Reframe 2 — don't weaken it here).
+**Reframe 2 — it's a head-start foot-race with a rearguard, NOT a seal-hold timer.** The seal does **not**
+need to hold for the whole escort; it needs to buy a **head start**, then the escort **outruns the thinned
+pursuit** while taking pot shots. The door breaking mid-escape is **designed in**. (Earlier draft framed
+this as `seal-delay ≥ escort-time` with ~150-hp seals — that over-estimated the seal by ~2–3×; see below.)
 
 ---
 
-## The load-bearing geometry invariant (or the delay is fake)
+## The corrected viability model
 
-The D117 door-drive doctrine only produces a delay if the seal **genuinely walls the garrison off** from
-the escort route. A `garrison && !in-combat` unit drives to *and batters* a seal **only when it's walled
-off from every seen foe / the seal is the route**. If **any** unsealed path exists from the barracks to
-the escort corridor, the garrison **paths around and never batters** — the seal-delay evaporates and the
-escort is caught. So:
+> **Extraction succeeds when:** `head-start` (seal-delay + the turns the garrison spends oriented on the
+> distraction) is large enough that the escort, fighting a **running rearguard through a chokepointed
+> corridor**, reaches the side spawn before the **thinned, pursuing** garrison closes the gap.
 
-> **Invariant:** while the barracks seals are shut, there must be **no** terrain path from a garrison
-> unit to any escortee except *through* a destructible seal.
+Three levers, all now backed by shipped mechanics:
 
-This is now **checkable** (the doctrine ships): a headless test can assert that, with the seals shut, the
-garrison's reachable set excludes the escort corridor. It's also why the escort must commit to **one**
-sealed corridor (e.g. the east mouth), not wander — a second open mouth is a second hole to seal.
+- **Head start** = `sealDelayTurns` + `distractionTurns`. `sealDelayTurns ≈ sealHp / garrisonBatterThroughput`
+  (throughput ≈ guards-in-batter-range × per-hit 8–12). Needs only ~**2–3 turns** (generate a lead), so
+  `sealHp ≈ 2.5 × ~27 ≈ ~60–70 hp` — **3–4× the 15–20 micro-fixture default, not 10×.** The distraction
+  adds turns by pulling the Warden + guards into `in-combat` at the front (they stop pursuing).
+- **Thinned pursuit.** Every garrison unit the front party pins (`in-combat`) or the escort's rearguard
+  bodies at a chokepoint is one fewer chasing the captives. **Pinning costs your bodies** — the D117
+  tension. Captives are `non-combatant` (R3) → they never pin their own pursuers, so **only real
+  combatants screen**; the captives just run.
+- **Corridor + rearguard, not open field.** Captives (`moveRange` 3–4, Bram = 3) are **slower** than fast
+  pursuers (cutthroat 5/spd 13, warg 5/spd 14): in the open a warg closes ~2 tiles/turn and a head start
+  evaporates. So the escort route must be a **corridor with chokepoints** where **one rearguard fighter
+  body-blocks/pot-shots** the pursuit line. That geometry — not a captive speed bump — is what makes
+  "outrun while taking pot shots" hold. (A **freed-and-fleeing move bump** stays the **reserve lever** if
+  playtests run tight.)
+
+## The two geometry invariants (or the play collapses)
+
+1. **Head-start phase — the seal fully walls the garrison off (while shut).** The D117 doctrine only
+   *batters* when the seal is genuinely the route; if any open path exists from the barracks to the
+   infiltration route, the garrison **paths around and never batters** → no head start. Checkable: with the
+   seal shut, the garrison's terrain-reachable set excludes the infiltrator/cell area.
+2. **Outrun phase — the escort corridor is chokepointed.** The route cells→side-spawn must have
+   choke tiles where a single rearguard holds the pursuit line, so the whole remnant can't fan out and
+   swarm the slow captives in the open. This is the concentric prison's corridors-between-rings doing work.
 
 ---
 
 ## The proof / guard design (what "C2 done" means)
 
 The sim **cannot** prove this — the naive bot skips the deploy phase and every interactive screen, so it
-never chooses the flank spawn nor drives an escort. C2 needs three guards, modelled on the patterns D117
-just shipped (`scenarios/doctrine-harness.ts`, the free-casualty-ceiling headless test):
+never splits the deploy, slams the lever, nor drives an escort. C2 needs a scripted proof, modelled on
+D117's shipped patterns (`scenarios/doctrine-harness.ts`, the free-casualty-ceiling headless test):
 
-1. **Scripted extraction scenario** (headless, deterministic) — flank-deploy the party, free the cells,
-   slam the seals, escort to the mouth; **assert win-by-extraction** with the garrison still alive
-   (proves the *distinct* win, not eliminate-all in disguise) **within the escort-turn budget**.
-2. **Pacing assertion** — encode the inequality directly: `escortTurns(corridorLen, slowestMove) ≤
-   sealDelayTurns(Σ sealHp, garrisonThroughput)`. Make it **mutation-robust** (à la the ceiling test:
-   halving a seal's HP must flip it red), so a later tuning change that breaks viability fails loudly.
-3. **Geometry-invariant test** — with the seals shut, the garrison's terrain-reachable set **excludes**
-   every escortee tile (no path around). Guards the invariant above.
+1. **Scripted split-force scenario** (headless, deterministic) — deploy front + side, infiltrator slams
+   the lever, front party pins the Warden + some guards, escort runs the corridor; **assert
+   win-by-extraction with the garrison still alive** (proves the *distinct* win, not eliminate-all in
+   disguise), all captives reaching the side span.
+2. **Mutation-robust pacing assertion** — encode the head-start race: the escort reaches the exit before
+   the pursuit closes. **Mutations that must flip it red:** halving `sealHp` (kills the head start);
+   *removing the distraction pin* (the full garrison chases); *widening the corridor* past the chokepoint
+   (the swarm gets through). If any one of those doesn't break it, the guard is vacuous.
+3. **Geometry-invariant tests** — (a) seal shut ⇒ garrison can't reach the infiltrator/cells; (b) the
+   escort corridor has the chokepoint(s) the rearguard needs.
 
-A **visual e2e** rides on the finale's flank-deploy surface (checklist A5) — the seal-and-run is a new
-player-facing surface, so per the freeze-catcher doctrine it needs a render walk; the *numeric* viability
-stays in the headless pacing test (reserve the browser for what only a render catches).
+A **visual e2e** rides the finale's split-deploy + escape surface (checklist A5 — a new player-facing
+surface, freeze-catcher doctrine); the *numeric* race stays in the headless pacing test.
 
 ---
 
-## Open owner decisions (before populating)
+## Open owner decisions (before populating — checklist B)
 
-1. **One seal or two in series?** Two halves the per-seal HP but needs geometry where the garrison can't
-   split across them. One big seal is simpler to reason about.
-2. **Which mouth is the extraction target on the flank run** — the east mouth (back out the way you
-   infiltrated, shortest sealed corridor) is the natural read. Confirm the frontal path's extraction is
-   *allowed but not the intended* extraction route (it's the eliminate-all texture).
-3. **Garrison strength target** (Reframe 2) — how costly should eliminate-all be, so extraction earns its
-   niche? This is the number that makes the whole win-path *chosen*, not merely *possible*.
-4. **Escort pace** — accept the current `moveRange` 3 heavy-knight as the escort floor, or give captives a
-   freed-and-fleeing move bump? (A bump shortens escort-time, easing the seal-HP requirement.)
+1. **Does the front/distraction party also need to exit?** Extraction is *met* on captives-out regardless
+   of the rest of the party (`objectives.ts`), so the distraction could be a **sacrificial rearguard** — a
+   sharp, permadeath-weighted choice — or there's a **second (front) exit** they retreat through once the
+   captives are clear. Owner call: how poignant/costly is the distraction meant to be?
+2. **One seal (the lever-slam) or seals in series?** One is simpler to reason about; series stacks the head
+   start but needs geometry where the garrison can't spread across them.
+3. **Lever placement** — reachable by the infiltrator on **turn 1** from the side spawn (the whole play
+   keys off this tempo).
+4. **Escort-route chokepoint geometry** — the corridor's choke tiles (the outrun-phase invariant).
+5. **Garrison strength** — costly enough to clear that the sneak-out is the *smart* play (Reframe 2's
+   incentive), while still beatable frontally (eliminate-all stays a real win).
 
 ---
 
 ## One-line status for the checklist
 
-C2 **design drafted**: viability = `seal-delay ≥ escort-time` over a fully-sealed corridor, with a
-costly-enough garrison to make extraction *chosen*; guarded by a scripted scenario + a mutation-robust
-pacing assertion + a geometry-invariant test. Seal HP must land ~150+ (not the 15–20 micro default).
-Numbers pin when the v4 finale is populated (checklist B).
+C2 **design drafted (split-force model)**: extraction is a two-party op — front distraction pins garrison,
+infiltrator (a second, intel-unlocked deploy zone) slams a lever-seal for a **head start**, then the escort
+**outruns the thinned pursuit through a chokepointed corridor** taking pot shots. Viability = head-start ≥
+pursuit-close-time, *not* a seal-hold; seals need ~60–70 hp (not 150). Guarded by a scripted split-force
+scenario + a mutation-robust pacing assertion + two geometry-invariant tests. Numbers pin when B populates.

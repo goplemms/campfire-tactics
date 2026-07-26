@@ -110,8 +110,29 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale-specific work remain
   **Open owner calls:** does the distraction party also exit (sacrificial rearguard vs. front exit) · one
   seal vs. series · lever reachable turn 1 · corridor chokepoints · garrison-strength target.
 
+### G — Exfil semantics + the "Go now" call *(new, owner-directed 2026-07-26)*
+> A unit **survives only if it's on an exfil site** when extraction resolves — captives *and* party.
+> Losing someone is an allowed consequence; an appropriately-levelled party should have leeway to get
+> everyone out. Detail + rationale in `finale-extraction-viability.md`.
+- ⬜ **G1** — **Broaden the extraction met-condition** to captives **+ surviving party** (today it
+  auto-completes on captives-alone → would silently strand a party still crossing). `objectives.ts`.
+- ⬜ **G2** — **The "Go now" call** — resolve extraction on demand; on-exfil units escape, off-exfil are
+  left behind. Outcome computed from what's true: captives out ⇒ **extraction win**; else ⇒ **survivable
+  retreat** (`objective-failure`) — unifying "Go now" with the existing retreat concept.
+- ⬜ **G3** — **Re-gate D21's win-auto-rescue on *field control*, not on `win`.** An extraction win is a
+  *flight*, not a field hold; if left-behind units are auto-rescued (today's `win` behavior,
+  `mortality.ts:193`) the **sacrifice is free and "Go now" is toothless**. Left-behind ⇒ the **captured**
+  path (rescue follow-up / roster removal per D9). ⚠️ Touches shipped resolution semantics — needs its own
+  guard + a decision record when built.
+- ⬜ **G4** — Visual e2e for the **"Go now" control + the left-behind result screen** (new player-facing
+  surface — freeze-catcher doctrine).
+- 💬 **G5** — Does the **front/distraction party** exfil through the side mouth too, or does the **main
+  entrance double as a second exfil site**? (Second site = more forgiving, better matches the leeway
+  intent; one shared exfil = a much harsher finale.)
+
 ### D — Narrative / cast
 - ⬜ **D1** — Name the 3 captives into real campaign characters (currently "Bound Captive I/II/III").
+  *(Partly done in the standalone: Wren / Cass / Bram already named in `the-rescue.json`.)*
 
 ### E — Known residuals to decide on (from D117)
 - 💬 **E1** — The **keyed-seal ↔ lever re-lock oscillation** ships *un-fully-defused*: Decision G's

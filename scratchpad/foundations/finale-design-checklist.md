@@ -55,10 +55,17 @@ the Hollow Mill's infiltration arm earns it. Mechanism:
   finally makes D97's two arms **pay off differently at the finale** (they used to dead-end into the same
   holdout fight).
 
-**One open sub-choice (owner):** narrative attribution — which beat "hands you" the side door:
-- **`cuffedCell`** (the freed insider, last beat before the finale — my lean; strongest hand-off), or
-- **`guildRite`** (initiation into the guild = insider knowledge; ties intel to the prestige moment).
-Mechanically identical on a linear arm; purely a fantasy call.
+**Attribution — settled: `cuffedCell`.** The freed prisoner *is* the insider who knows the side door — the
+strongest hand-off, immediately before the finale. Preferred over `guildRite` because `cuffedCell`'s
+completion is **unconditional** (win the fight), while `guildRite`'s meaningful outcome is **conditional**
+(an under-floor Scout gets D92's "gracious decline"), which would fire the flag for something that
+narratively didn't happen. One-line reversible if playtest disagrees.
+
+**Deploy shape — settled:** the side entrance authors only **1–2 spawn tiles**, so the bulk lands at the
+main entrance *by construction* (a side door fits a couple of people) — this is what makes the distraction
+structurally guaranteed rather than optional. Units are **placed** at their authored spawns (no pre-battle
+capture gauntlet at the side, and **no second campfire** — the full C5 stays parked, honoring D99's **F1**:
+never claim a *safe* informed insert). The flank's risk is **in-battle isolation**, not a dice roll.
 
 **Deferred (unchanged):** the finer **scout-grain** (an optional/missable scout beat sets the flag even
 within an arm) — layerable later as a second source without rework.
@@ -69,18 +76,38 @@ within an arm) — layerable later as a second source without rework.
 
 Legend: ✅ done · 🔨 de-risked (mechanism ships; finale-specific work remains) · ⬜ open · 💬 owner call
 
-### A — The special spawn condition / flank (the runtime flag)
-- ⬜ **A1** — Attach `provides: "side-door-intel"` to the chosen infiltration-arm node; set
-  `run.flags["side-door-intel"]` on its completion (reuse the grant→flag path, `runloop.ts:635`).
-- 🔨 **A2** — Read the flag at finale deploy → open the side entrance as a **second** deploy zone
-  (**split-force**, not a swap). *(De-risked: the flag bag round-trips for D22; `opts.playerSpawns` staging
-  override exists; the M4 harness already proves a **two-mouth board renders** cleanly.)*
-- ⬜ **A3** — Split-deploy UI: place *some* units at the side zone + *some* at the main entrance when the
-  flag is set; main-entrance-only when unset.
-- ✅ **A4** — Graceful frontal fallback — *by construction* (flag absent ⇒ no alternate spawns offered).
-- ⬜ **A5** — Visual e2e for the flag-gated deploy surface (the freeze-catcher; extend `e2e-scenario`/a new
-  finale walk). *(The two-mouth render itself is already `test:e2e:doctrine`-proven.)*
-- 💬 **A6** — Narrative attribution: `cuffedCell` vs. `guildRite` (see above).
+### A — The special spawn condition / flank (the runtime flag) — **design complete**
+- ⬜ **A1 — Provider = `cuffedCell`** (working call; one-line reversible). Attach
+  `provides: "side-door-intel"`; completing it sets `run.flags["side-door-intel"]` via the grant→flag path
+  (`runloop.ts:635`). **Why `cuffedCell` over `guildRite`:** (a) its completion is **unconditional** — you
+  win the fight — whereas `guildRite`'s meaningful outcome is **conditional** (an under-floor Scout gets
+  D92's "gracious decline", so the flag would fire for something that narratively didn't happen);
+  (b) **the freed prisoner *is* the insider** who knows the side door — the strongest hand-off, and it sits
+  immediately before the finale.
+- ⬜ **A2** — Staging reads the flag: the finale's `AuthoredEncounter` carries the main `playerSpawns`
+  **plus an optional second set** (side entrance); staging **unions** them when
+  `run.flags["side-door-intel"]` is set. Minimal addition — one named flag, **no capability engine** (D116
+  discipline). *(De-risked: flags round-trip for D22; `opts.playerSpawns` override exists; the M4 harness
+  proves a two-mouth board renders.)*
+- ⬜ **A3 — Split-deploy, with the side zone deliberately SMALL.** The side entrance authors only **1–2
+  spawn tiles** (a side door fits a couple of people); the bulk therefore lands at the main entrance **by
+  construction**. This is load-bearing, not flavour: if the player could field *everyone* at the side there
+  would be **no distraction**, the whole garrison would converge on the escort, and the two-pronged tension
+  collapses. Capping the slots makes the intended play discoverable and unbreakable.
+- ⬜ **A3b — No deploy-capture gauntlet at the side zone (F1 ruling).** The D63/D67 deploy model anchors
+  **one campfire at the home-edge centre** (`createCampfire`), so a side zone necessarily sits outside its
+  protected radius — precisely D99's **F1** caveat. Ruling: the finale uses **authored placement** (units
+  *start* at their spawn tiles, per the owner's "enter during deployment / setup"), so we **neither** add a
+  second campfire (**the full C5 stays parked**) **nor** subject the infiltrator to pre-battle capture
+  rolls. The flank's risk is **in-battle isolation** — alone, deep, with the garrison waking — not a dice
+  roll before the fight. Honors F1's real point (**never claim a "safe informed insert"**) and the G
+  leeway intent.
+- ✅ **A4** — Graceful main-entrance-only fallback — *by construction* (flag absent ⇒ the side set is never
+  unioned in).
+- ⬜ **A5** — Visual e2e for the flag-gated deploy surface (freeze-catcher): flag **set** ⇒ side tiles are
+  placeable and a unit can be positioned there; flag **unset** ⇒ main-entrance-only; no page error either
+  way. *(The two-mouth render itself is already `test:e2e:doctrine`-proven.)*
+- ✅ **A6** — Narrative attribution **settled: `cuffedCell`** (see A1).
 
 ### B — Populate the v4 concentric-prison layout (today a structural skeleton)
 - 🔨 **B1** — Garrison mass + control-room guards, **tagged `garrison`** (drives the door-doctrine).

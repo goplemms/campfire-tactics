@@ -91,11 +91,14 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale-specific work remain
 
 ### C — Fairness cruxes
 - ✅ **C1** — What sets/clears `in-combat` (D108). **DONE** — ratified + built in D117 (R1–R3 + clause 5).
-- ⬜ **C2 — Extraction viability.** The sim bot skips deploy + interactive screens, so viability **cannot**
-  be a sim re-pin. Prove it with a **scripted scenario** (flank deploy → escort the group → assert
-  win-by-extraction inside the seal-delay budget) **+ a geometry/pacing assertion** (flank-cells→exit
-  escort length vs. garrison converge-through-seal time). *(Templates now exist: the doctrine-harness
-  scenario + the free-casualty-ceiling headless test are the pattern to copy.)*
+- 🔨 **C2 — Extraction viability. Design drafted → `finale-extraction-viability.md`.** The flank does
+  *not* shorten the escort (cells canon-far from both mouths); it enables the **seal-and-run**, so
+  viability = **`seal-delay ≥ escort-time`** over a **fully-sealed corridor** (else the D117 doctrine paths
+  around and the delay is fake), *and* a garrison costly enough that extraction is **chosen** over
+  eliminate-all. Key finding: finale seals need **~150+ hp**, not the 15–20 micro default. Guard = scripted
+  scenario + mutation-robust pacing assertion + geometry-invariant test (sim can't drive escort). Numbers
+  pin when B populates. **Open owner calls:** one seal vs. two in series · extraction target mouth ·
+  garrison-strength target · escort-pace floor.
 
 ### D — Narrative / cast
 - ⬜ **D1** — Name the 3 captives into real campaign characters (currently "Bound Captive I/II/III").

@@ -101,9 +101,19 @@ describe("editor import round-trip (D98 editor M-A — lossless import)", () => 
     // The exact things a naive inverse would silently clobber (the data-loss footgun):
     expect(back.captives?.map((c) => c.spec.id)).toEqual(["wren", "cass", "bram"]);
     expect(back.captives?.map((c) => c.spec.name)).toEqual(["Wren", "Cass", "Bram"]);
-    expect(back.objectives?.find((o) => o.kind === "extraction")?.label).toBe("Free the captives and escort them to the exit");
+    expect(back.objectives?.find((o) => o.kind === "extraction")?.label).toBe("Free Wren, Cass and Bram and escort them to an exit");
     expect(back.enemies.find((e) => e.id === "the-warden")?.role).toBe("captain");
     expect(back.reward).toEqual({ gold: 260, materials: [], xp: 120 });
+    // The v4 finale's doctrine wiring (issue #204 B) — none of it painted by the editor yet, so each
+    // is a live losslessness case: the `garrison` tags ride `overrides`, `controlRoom` rides the
+    // passthrough bag, and the Warden's `dropOnDeath` opt-in rides inside its keyholder lock.
+    expect(back.enemies.every((e) => e.overrides?.tags?.includes("garrison"))).toBe(true);
+    expect(back.controlRoom).toEqual({ cols: [10, 13], rows: [3, 7] });
+    expect(back.gates?.find((g) => g.id === "seal-outer")?.openBy).toContainEqual({
+      kind: "keyholder",
+      tag: { id: "the-warden" },
+      dropOnDeath: true,
+    });
     expect(back).toEqual(level);
   });
 

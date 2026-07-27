@@ -50,20 +50,57 @@ async function main() {
         check("it carries the two OR'd goals", pb.goals === "eliminate-all,extraction");
         await g.screenshot(path.join(OUT, "03-prison-break.png"));
 
-        // The rescue finale — a group dual-OR: a garrison + 3 prisoners + the two OR'd goals.
+        // The rescue finale — the v4 concentric prison (issue #204 B): a 20x20 board, a tagged
+        // garrison, 3 named prisoners, six gates (two lever-toggled destructible seals) and four
+        // levers, on the two OR'd goals. Every one of those is a *rendered* thing — gates, levers,
+        // the exit-span tint and the (much larger) board are all board objects the scene draws, so
+        // this is the freeze-catcher for the layout (CLAUDE.md: a render throw reads as a freeze).
         await g.boot("#level=the-rescue");
-        await sleep(1300);
+        await sleep(1600);
         const tr = await g.bsEval(`return {
           phase: s.phase,
+          cols: s.grid.cols, rows: s.grid.rows,
           enemies: s.battle.units.filter(u => u.side === "enemy").length,
+          garrison: s.battle.units.filter(u => u.tags.includes("garrison")).length,
           prisoners: s.battle.units.filter(u => u.role === "prisoner").length,
+          nonCombatants: s.battle.units.filter(u => u.tags.includes("non-combatant")).length,
+          gates: s.battle.gates.map(x => x.id).sort().join(","),
+          sealsOpen: s.battle.gates.filter(x => /^seal-/.test(x.id)).every(x => !x.locked),
+          sealHp: s.battle.gates.find(x => x.id === "seal-inner").hp,
+          levers: s.battle.levers.map(x => x.id).sort().join(","),
+          exitSpan: s.loop.staged.objectives.find(o => o.spec.kind === "extraction").spec.span.length,
           goals: s.loop.staged.objectives.map(o => o.spec.kind).sort().join(","),
         };`);
-        console.log("• #level=the-rescue boots the group rescue finale");
+        console.log("• #level=the-rescue boots the v4 concentric prison");
         check("the-rescue renders a deployment board", tr.phase === "deployment");
-        check("its garrison + 3 prisoners are staged", tr.enemies === 8 && tr.prisoners === 3);
+        check("it is the 20x20 v4 board", tr.cols === 20 && tr.rows === 20);
+        check("its garrison + 3 prisoners are staged", tr.enemies === 10 && tr.prisoners === 3);
+        check("every enemy carries the `garrison` tag (D117 door-doctrine)", tr.garrison === tr.enemies);
+        check("every captive carries the `non-combatant` tag (D117 R3)", tr.nonCombatants === 3);
+        check("the three cells, the hall door and the two seals are armed",
+          tr.gates === "cell-bram,cell-cass,cell-wren,hall-gate,seal-inner,seal-outer");
+        check("both seals start OPEN and carry head-start durability", tr.sealsOpen === true && tr.sealHp === 64);
+        check("the four winches are armed", tr.levers === "winch-control,winch-hall,winch-staging,winch-wall");
+        check("the exit span is the union of both mouths (6 tiles)", tr.exitSpan === 6);
         check("it carries the two OR'd goals", tr.goals === "eliminate-all,extraction");
         await g.screenshot(path.join(OUT, "04-the-rescue.png"));
+
+        // Drive the load-bearing surface: the infiltrator's turn-1 lever slam. Pulling `winch-wall`
+        // must re-lock `seal-inner` AND re-block its tile through the real scene's lever path — the
+        // one interaction the whole split-force design keys off (C2 / checklist B6).
+        const slam = await g.bsEval(`
+          const lever = s.battle.levers.find(l => l.id === "winch-wall");
+          const infil = s.battle.units.find(u => u.side === "player" && u.pos.col >= 15);
+          if (!infil) return { err: "no infiltrator at the side door" };
+          infil.pos = { col: lever.pos.col, row: lever.pos.row };
+          s.battle.pullLever(lever, infil);
+          const seal = s.battle.gates.find(g => g.id === "seal-inner");
+          return { locked: seal.locked, blocked: !s.grid.isWalkable(seal.pos) };
+        `);
+        console.log("• the turn-1 seal slam drives through the real scene");
+        check("pulling winch-wall re-locks seal-inner", slam.locked === true);
+        check("the slammed seal re-blocks its tile (the garrison must batter through)", slam.blocked === true);
+        await g.screenshot(path.join(OUT, "05-the-rescue-sealed.png"));
 
         // The bare #level picker lists the loaded content levels.
         await g.boot("#level");

@@ -194,11 +194,11 @@ async function main() {
         await sleep(200);
         const st3 = await g.eval(STATE);
         console.log("• importing the-rescue.json loads it into the draft (no freeze)");
-        check("import loaded the-rescue's 8 enemies", st3.enemies === 8);
+        check("import loaded the-rescue's 10-strong garrison", st3.enemies === 10);
         check("import loaded the-rescue's 3 captives", st3.captives === 3);
-        check("import loaded the 7-tile exit span", st3.exit === 7);
+        check("import loaded the 6-tile exit span (both mouths — D118 G5)", st3.exit === 6);
         check("import carried the named captive ids (not clobbered)", st3.expCaptiveIds === "wren,cass,bram");
-        check("import carried the custom extraction label", st3.expExtractLabel === "Free the captives and escort them to the exit");
+        check("import carried the custom extraction label", st3.expExtractLabel === "Free Wren, Cass and Bram and escort them to an exit");
         check("import carried the authored reward (260g, not the 50g default)", st3.expReward === 260);
         check("import carried the warden's role tag", st3.wardenRole === "captain");
         check("the imported finale validates", st3.valid === true);
@@ -215,7 +215,7 @@ async function main() {
         // The unit list lives in the drawer now — it reaches every placed unit (occlusion fix).
         const stU = await g.eval(STATE);
         console.log("• the drawer's unit list lists every placed unit");
-        check("the unit list shows all 11 units (8 enemies + 3 captives)", stU.unitRows === 11);
+        check("the unit list shows all 13 units (10 enemies + 3 captives)", stU.unitRows === 13);
 
         // Inspector: select the warden via its list row, rename it + bump its maxHp (freeze-catch).
         const ed = await g.eval(EDIT);
@@ -266,36 +266,40 @@ async function main() {
         await sleep(80);
         const camReset = await g.eval(CAM);
         check("Recenter restored the default framing", camReset.sx === 0 && camReset.sy === 0 && camReset.zoom === 1);
-        { const p = await tileScreen(5, 0); await g.clickScene(p.x, p.y); } // a plain tap on the empty tile (5,0)
+        // A plain tap on an empty floor tile of the imported v4 prison — (12,4) sits in the control
+        // room (no wall, no entity) and projects well inside the canvas on the 20x20 board.
+        { const p = await tileScreen(12, 4); await g.clickScene(p.x, p.y); }
         await sleep(100);
         const stTap = await g.eval(STATE);
         check("a tap after recenter still paints (walls incremented)", stTap.walls === wallsBeforeDrag + 1);
 
         // Structural wall tools (M-D): two-click line + rectangle, plus the live coordinate readout.
         // Camera is recentered (scroll 0, zoom 1), so a tile's board-world point equals its screen point.
+        // The imported draft is the 20x20 v4 prison, whose top rows project ABOVE the canvas at the
+        // default framing — so every tile below is picked from the mid-board (empty floor, no entity).
         console.log("• line / rectangle wall tools + coordinate readout (structural authoring)");
         const coordText = () => g.eval(`document.querySelector('[data-role="coord"]').textContent`);
         const blocked = async () => (await g.eval(STATE)).walls;
 
         // The coordinate readout tracks the hovered tile.
-        const hb = await tileScreen(2, 0);
+        const hb = await tileScreen(6, 4);
         await g.hover(hb.x, hb.y);
         await sleep(60);
-        check("the coordinate readout shows the hovered tile", (await coordText()).includes("(2,0)"));
+        check("the coordinate readout shows the hovered tile", (await coordText()).includes("(6,4)"));
         check("the rect outline/fill mode toggle is present", (await g.eval(`!!document.querySelector('button[data-role="rect-mode"]')`)) === true);
 
-        // Line tool: anchor (2,0) → far (2,3) lays a 4-tile vertical wall run in two clicks.
+        // Line tool: anchor (6,4) → far (6,7) lays a 4-tile vertical wall run in two clicks.
         const b0 = await blocked();
         await g.eval(setBrush("line"));
-        let p = await tileScreen(2, 0); await g.clickScene(p.x, p.y); await sleep(60);
-        p = await tileScreen(2, 3); await g.clickScene(p.x, p.y); await sleep(60);
+        let p = await tileScreen(6, 4); await g.clickScene(p.x, p.y); await sleep(60);
+        p = await tileScreen(6, 7); await g.clickScene(p.x, p.y); await sleep(60);
         check("line tool laid a 4-tile wall run (two clicks)", (await blocked()) === b0 + 4);
 
-        // Rectangle outline: corners (4,5)–(6,6) → a 6-tile wall ring (a cell/room outline).
+        // Rectangle outline: corners (10,12)–(12,13) → a 6-tile wall ring (a cell/room outline).
         const b1 = await blocked();
         await g.eval(setBrush("rect"));
-        p = await tileScreen(4, 5); await g.clickScene(p.x, p.y); await sleep(60);
-        p = await tileScreen(6, 6); await g.clickScene(p.x, p.y); await sleep(60);
+        p = await tileScreen(10, 12); await g.clickScene(p.x, p.y); await sleep(60);
+        p = await tileScreen(12, 13); await g.clickScene(p.x, p.y); await sleep(60);
         check("rect outline laid a 6-tile wall ring", (await blocked()) === b1 + 6);
         check("the level still validates after the shape tools", (await g.eval(STATE)).valid === true);
         await g.screenshot(path.join(OUT, "06-shapes.png"));
@@ -342,26 +346,36 @@ async function main() {
         console.log("• objects: gate + lever authoring (M-D2)");
         await g.eval(clickTab("Objects"));
         await sleep(60);
+        // The imported prison already ships gates + levers, so read the pair WE place by tile (never by
+        // array index) and assert deltas — layout-independent, so a finale re-author can't fake this green.
+        // The lever sits on the LEFT half of the board: its Select click happens with the inspector
+        // drawer open, which overlays the right of the canvas.
+        const NEW_GATE = { col: 7, row: 5 }, NEW_LEVER = { col: 4, row: 9 };
         const objExp = () => g.eval(`(() => {
           const e = JSON.parse(document.querySelector("pre").textContent);
-          return { gates: (e.gates || []).length, levers: (e.levers || []).length,
-                   openBy: e.gates && e.gates[0] ? e.gates[0].openBy.map((c) => c.kind).sort() : [],
-                   targets: e.levers && e.levers[0] ? e.levers[0].targets : [] };
+          const gates = e.gates || [], levers = e.levers || [];
+          const at = (l, c, r) => l.find((o) => o.pos.col === c && o.pos.row === r);
+          const gg = at(gates, ${NEW_GATE.col}, ${NEW_GATE.row}), ll = at(levers, ${NEW_LEVER.col}, ${NEW_LEVER.row});
+          return { gates: gates.length, levers: levers.length,
+                   openBy: gg ? gg.openBy.map((c) => c.kind).sort() : [],
+                   targets: ll ? ll.targets : null };
         })()`);
         // Place a gate (default lockpick cell) + a lever on empty tiles.
+        const oeBefore = await objExp();
         await g.eval(setBrush("gate"));
-        let gp = await tileScreen(1, 3); await g.clickScene(gp.x, gp.y); await sleep(60);
+        let gp = await tileScreen(NEW_GATE.col, NEW_GATE.row); await g.clickScene(gp.x, gp.y); await sleep(60);
         await g.eval(setBrush("lever"));
-        const lp = await tileScreen(1, 5); await g.clickScene(lp.x, lp.y); await sleep(60);
+        const lp = await tileScreen(NEW_LEVER.col, NEW_LEVER.row); await g.clickScene(lp.x, lp.y); await sleep(60);
         let oe = await objExp();
-        check("a gate lands as a default lockpick cell + a lever lands unwired", oe.gates === 1 && oe.levers === 1 && oe.openBy.join() === "lockpick" && oe.targets.length === 0);
+        check("a gate lands as a default lockpick cell + a lever lands unwired",
+          oe.gates === oeBefore.gates + 1 && oe.levers === oeBefore.levers + 1 && oe.openBy.join() === "lockpick" && oe.targets.length === 0);
 
         // Select the gate → inspector; add a destructible condition (a batter-able door). Close the
         // drawer first so we can prove Select auto-reopens it (the board stays full-size behind it).
         await g.eval(`document.querySelector('[data-role="drawer-close"]').click()`); await sleep(80);
         check("the drawer closed via its ✕", (await g.eval(`document.querySelector('[data-role="side-drawer"]').style.transform !== "none"`)) === true);
         await g.eval(setBrush("select"));
-        gp = await tileScreen(1, 3); await g.clickScene(gp.x, gp.y); await sleep(120);
+        gp = await tileScreen(NEW_GATE.col, NEW_GATE.row); await g.clickScene(gp.x, gp.y); await sleep(120);
         check("selecting a placed object on the board auto-opens the drawer", (await g.eval(`document.querySelector('[data-role="side-drawer"]').style.transform === "none"`)) === true);
         await g.eval(`(() => {
           const insp = document.querySelector('[data-role="inspector"]');
@@ -393,7 +407,7 @@ async function main() {
         const sel = () => g.eval(`window.game.scene.getScene("EditorScene").selection?.kind ?? null`);
         await g.eval(setBrush("wall")); // a non-select brush active
         const wallsBeforeQuickSel = (await g.eval(STATE)).walls;
-        const qg = await tileScreen(1, 3); // the gate placed above
+        const qg = await tileScreen(NEW_GATE.col, NEW_GATE.row); // the gate placed above
         await g.page.keyboard.down("Control");
         await g.clickScene(qg.x, qg.y);
         await g.page.keyboard.up("Control");
@@ -406,7 +420,10 @@ async function main() {
         const qe = await g.eval(`(() => {
           const sc = window.game.scene.getScene("EditorScene"), d = sc.draft;
           const occ = (t) => [...d.enemies, ...d.captives, ...d.gates, ...d.levers].some((o) => o.pos.col === t.col && o.pos.row === t.row);
-          for (let r = 0; r < d.rows; r++) for (let c = 0; c < d.cols; c++) { const t = { col: c, row: r }; if (!occ(t)) { const p = sc.view.tileToWorld(t); return { x: Math.round(p.x), y: Math.round(p.y) }; } }
+          // On-canvas AND clear of the open inspector drawer (which overlays the right of the board):
+          // the v4 draft is bigger than the viewport, so (0,0) projects above it entirely.
+          const on = (p) => p.x > 60 && p.x < 430 && p.y > 60 && p.y < 540;
+          for (let r = 0; r < d.rows; r++) for (let c = 0; c < d.cols; c++) { const t = { col: c, row: r }; if (occ(t)) continue; const p = sc.view.tileToWorld(t); if (on(p)) return { x: Math.round(p.x), y: Math.round(p.y) }; }
           return null;
         })()`);
         await g.page.keyboard.down("Control");
@@ -487,7 +504,7 @@ async function main() {
         // Esc cancels a pending shape anchor and clears the selection.
         const anchor = () => g.eval(`window.game.scene.getScene("EditorScene").shapeAnchor`);
         await g.eval(setBrush("line"));
-        const st00 = await tileScreen(0, 0);
+        const st00 = await tileScreen(9, 9); // mid-board: (0,0) projects above the canvas on the 20x20 draft
         await g.clickScene(st00.x, st00.y); await sleep(80);
         check("a line click sets a pending shape anchor", (await anchor()) !== null);
         await g.page.keyboard.press("Escape");
@@ -563,7 +580,7 @@ async function main() {
         // Import is undoable too (the stack survives the panel remount the import triggers).
         const enemiesPreImport = (await dims()).enemies;
         await g.eval(IMPORT); await sleep(150);
-        check("re-importing the-rescue loads its 8 enemies", (await dims()).enemies === 8);
+        check("re-importing the-rescue loads its 10-strong garrison", (await dims()).enemies === 10);
         await g.eval(`document.querySelector('button[data-role="undo"]').click()`); await sleep(100);
         check("undo reverses the import (draft restored)", (await dims()).enemies === enemiesPreImport);
 

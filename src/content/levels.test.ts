@@ -1,6 +1,24 @@
 import { describe, it, expect } from "vitest";
 import { LEVELS, getLevel, listLevels, validateLevel, levelToScenario } from "./levels";
-import { buildScenarioRun, encounterOutcome, OBJECTIVE_KINDS, TileGrid, findPath } from "../core";
+import {
+  buildScenarioRun,
+  encounterOutcome,
+  OBJECTIVE_KINDS,
+  TileGrid,
+  findPath,
+  buildAuthoredEnemies,
+  buildAuthoredGates,
+  applyGatesToGrid,
+  keyholderOf,
+  isBreakable,
+  hasTag,
+  GARRISON,
+  NON_COMBATANT,
+  inRegion,
+  planEnemyTurn,
+  type Gate,
+  type GridCoord,
+} from "../core";
 
 /**
  * The JSON level content pipeline (D98) — proves a `.json` in `content/levels/` is
@@ -60,10 +78,14 @@ describe("the JSON level content pipeline (D98)", () => {
     // The three named captives are a role-"prisoner" group (distinct classes), cuffed, held far from the exit.
     expect(level.captives?.map((c) => c.spec.id).sort()).toEqual(["bram", "cass", "wren"]);
     expect(level.captives?.map((c) => c.spec.jobId).sort()).toEqual(["heavy-knight", "hunter", "medic"]);
+    const span = level.objectives!.find((o) => o.kind === "extraction")!.span!;
     for (const c of level.captives ?? []) {
       expect(c.spec.role).toBe("prisoner");
       expect(c.release).toEqual({ kind: "lockpick" });
-      expect(c.pos.col).toBeGreaterThanOrEqual(9); // deep in the prison, far from the col-0 exit (challenge-F geometry)
+      // Held deep in the v4 cellblock (top-left, rows 1-2) — far from EVERY mouth, not just one
+      // edge: the D97 challenge-F walkover geometry, now that all mouths are exfil sites (D118 G5).
+      const nearestMouth = Math.min(...span.map((t) => Math.abs(t.col - c.pos.col) + Math.abs(t.row - c.pos.row)));
+      expect(nearestMouth, `captive "${c.spec.id}" is not deep enough`).toBeGreaterThan(12);
     }
 
     // (a) Frontal path: clear the garrison, captives left cuffed → win.
@@ -178,6 +200,226 @@ describe("the-rescue is a properly-connected prison (structured layout)", () => 
     const deepest = level.captives!.reduce((a, b) => (b.pos.col > a.pos.col ? b : a));
     const exit = level.objectives!.find((o) => o.kind === "extraction")!.span![0];
     expect(findPath(grid, deepest.pos, exit), "no escort route from the cells to the exit").not.toBeNull();
+  });
+});
+
+/**
+ * The **v4 concentric prison** (issue #204 group B) — the finale's geometry + doctrine wiring as
+ * executable invariants. These are the guards `finale-extraction-viability.md` (crux C2) names:
+ * the split-force op only holds if the seal is the garrison's *only* route AND the *only* thing it
+ * can open, and if every escort route runs a chokepoint. Data-only tests would stay green through a
+ * wall edit that quietly voids either, so each walks the real grid / the real `ai.ts` predicates.
+ */
+describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
+  const level = () => getLevel("the-rescue")!;
+  /** The battle grid as staged: authored walls + every gate stamped at its authored lock state. */
+  function stagedGrid(gates: readonly Gate[]): TileGrid {
+    const lvl = level();
+    const grid = new TileGrid(lvl.cols, lvl.rows, lvl.blocked);
+    applyGatesToGrid(grid, gates);
+    return grid;
+  }
+  const gateNamed = (gates: readonly Gate[], id: string): Gate => {
+    const g = gates.find((x) => x.id === id);
+    if (!g) throw new Error(`no gate "${id}"`);
+    return g;
+  };
+  const SIDE_SPAWN = { col: 18, row: 5 };
+  const MAIN_SPAWN = { col: 9, row: 18 };
+
+  it("B1/B7 — the whole roster is tagged `garrison`, the captives `non-combatant`", () => {
+    // The two intrinsic tags the D117 doctrine reads. An untagged garrison never drives a door;
+    // an untagged captive would confer `in-combat` and self-screen (R3), voiding the pursuit model.
+    const enemies = buildAuthoredEnemies(level());
+    expect(enemies.length).toBeGreaterThanOrEqual(10);
+    for (const u of enemies) expect(hasTag(u, GARRISON), `${u.id} is not garrison`).toBe(true);
+    for (const c of level().captives ?? []) expect(c.spec.tags).toContain(NON_COMBATANT);
+  });
+
+  it("B2 — the Warden keys the OUTER seal only, and drops the key rather than popping it", () => {
+    const gates = buildAuthoredGates(level());
+    const outer = gateNamed(gates, "seal-outer");
+    const keyLock = outer.openBy.find((c) => c.kind === "keyholder");
+    expect(keyLock).toEqual({ kind: "keyholder", tag: { id: "the-warden" }, dropOnDeath: true });
+    // `dropOnDeath` is the point: seal-outer is only ever LOCKED because the player slammed it, so the
+    // default auto-open would mean "kill the boss ⇒ your own seal pops". Instead a key drops (D117/M5).
+    expect(level().enemies.some((e) => e.id === "the-warden")).toBe(true);
+    // No other gate carries a keyholder lock — the Warden has exactly one door.
+    for (const g of gates) if (g.id !== "seal-outer") expect(g.openBy.some((c) => c.kind === "keyholder")).toBe(false);
+  });
+
+  it("B3 — the control-room Region is authored and holds the control-room levers", () => {
+    const region = level().controlRoom!;
+    expect(region).toBeDefined();
+    for (const id of ["winch-control", "winch-hall"]) {
+      const lever = level().levers!.find((l) => l.id === id)!;
+      expect(inRegion(lever.pos, region), `${id} is outside the control room`).toBe(true);
+    }
+  });
+
+  it("B5/B9 — two destructible seals, lockpick-only cells, and every mouth is an exfil site", () => {
+    const gates = buildAuthoredGates(level());
+    for (const id of ["seal-inner", "seal-outer"]) {
+      const seal = gateNamed(gates, id);
+      const dest = seal.openBy.find((c) => c.kind === "destructible") as { kind: "destructible"; hp: number };
+      // ~60-70hp = a 2-3 turn HEAD START at the garrison's 8-12 per hit (C2), not a full-escort hold.
+      expect(dest.hp).toBeGreaterThanOrEqual(60);
+      expect(dest.hp).toBeLessThanOrEqual(70);
+      expect(seal.locked, `${id} must start OPEN — a locked seal is a turn-1 drive magnet`).toBe(false);
+    }
+    for (const id of ["cell-wren", "cell-cass", "cell-bram", "hall-gate"]) {
+      expect(gateNamed(gates, id).openBy).toEqual([{ kind: "lockpick" }]);
+    }
+    // The extraction span is the UNION of both mouths (D118 G5), not one edge.
+    const span = level().objectives!.find((o) => o.kind === "extraction")!.span!;
+    const key = (c: GridCoord) => `${c.col},${c.row}`;
+    expect(span.map(key).sort()).toEqual(["10,19", "19,4", "19,5", "19,6", "8,19", "9,19"].sort());
+  });
+
+  it("B8 — NO garrison unit can open any gate but the two seals, even with every gate forced shut", () => {
+    // The sharp hazard (C2 / D117 F2): `driveSealFor` picks the NEAREST gate a unit can open
+    // (`keyholderOf(g, unit) || isBreakable(g)`), sorted by manhattan, with **no route-relevance
+    // check** — so a garrison keyholder of a cell would walk over and open the cells for the player.
+    // Forcing every gate LOCKED is the strong form: it holds whatever a lever has toggled mid-fight.
+    const gates = buildAuthoredGates(level());
+    for (const g of gates) g.locked = true;
+    const enemies = buildAuthoredEnemies(level());
+    const SEALS = new Set(["seal-inner", "seal-outer"]);
+    for (const u of enemies) {
+      expect(hasTag(u, GARRISON)).toBe(true);
+      for (const g of gates) {
+        const openable = keyholderOf(g, u) || isBreakable(g);
+        expect(openable, `garrison unit "${u.id}" can open gate "${g.id}"`).toBe(SEALS.has(g.id));
+      }
+    }
+  });
+
+  it("B6a — the shut inner seal FULLY walls the garrison off the infiltration route (no path around)", () => {
+    // If any open path existed the garrison would walk around and never batter — the head start,
+    // and with it the whole split-force op, would silently evaporate.
+    const lvl = level();
+    const gates = buildAuthoredGates(lvl);
+    const seal = gateNamed(gates, "seal-inner");
+    const garrison = lvl.enemies.filter((e) => e.pos.row > 8).map((e) => e.pos);
+    expect(garrison.length).toBeGreaterThanOrEqual(8); // the barracks mass
+
+    // Everything north of row 8 the garrison can reach while the seal stands OPEN. (The cells
+    // themselves sit behind their own locked lockpick doors either way, so they aren't the probe.)
+    const NORTH = [
+      { col: 11, row: 5 }, // the control room
+      { col: 17, row: 6 }, // the wall-walk lever
+      SIDE_SPAWN,
+      { col: 19, row: 5 }, // the east mouth
+    ];
+    // As authored the seal is OPEN — the garrison patrols through (so the wall proven below is the
+    // SEAL doing its job, not an authoring accident that bricks the barracks off permanently).
+    const open = stagedGrid(gates);
+    for (const p of garrison) for (const t of NORTH) expect(findPath(open, p, t)).not.toBeNull();
+
+    // Slam it (the turn-1 lever) — now every barracks body is cut off from every cell, every mouth-side
+    // control-room tile, and the side-door spawn.
+    // Slam it (the turn-1 lever) — now NO barracks body can reach ANY tile north of the row-8 wall.
+    // The whole-region form, not a probe list: a single hole punched anywhere in the shell (letting
+    // the garrison round the seal into the antechamber, say) turns this red.
+    seal.locked = true;
+    const shut = stagedGrid(gates);
+    const northTiles: GridCoord[] = [];
+    for (let row = 0; row < 8; row++)
+      for (let col = 0; col < lvl.cols; col++) if (shut.isWalkable({ col, row })) northTiles.push({ col, row });
+    expect(northTiles.length).toBeGreaterThan(30);
+    for (const p of garrison) {
+      for (const t of northTiles)
+        expect(findPath(shut, p, t), `garrison at ${p.col},${p.row} still reaches ${t.col},${t.row}`).toBeNull();
+    }
+  });
+
+  it("B6b — the turn-1 lever: `winch-wall` toggles the inner seal and sits within one move of the side spawn", () => {
+    const lvl = level();
+    expect(lvl.playerSpawns[0]).toEqual(SIDE_SPAWN); // the side door is spawn[0] (placeParty maps party[i]→spawns[i])
+    const lever = lvl.levers!.find((l) => l.id === "winch-wall")!;
+    expect(lever.targets).toEqual(["seal-inner"]);
+    // A lever is pulled from its tile or one step away, so the infiltrator needs (dist - 1) movement.
+    const dist = Math.abs(lever.pos.col - SIDE_SPAWN.col) + Math.abs(lever.pos.row - SIDE_SPAWN.row);
+    expect(dist - 1).toBeLessThanOrEqual(3); // well inside a 4-5 moveRange ⇒ move + pull on turn 1
+    // …and the walk is unobstructed at the authored lock state (no door to pick first).
+    expect(findPath(stagedGrid(buildAuthoredGates(lvl)), SIDE_SPAWN, lever.pos)).not.toBeNull();
+  });
+
+  it("B6c — every cells→mouth escort route runs a chokepoint (cut vertices, not just one corridor)", () => {
+    // "All mouths are exfil" means the escort CHOOSES a route, so the chokepoint requirement is on the
+    // whole route set: an unchokepointed shorter alternate would quietly become *the* route (C2 §2).
+    const lvl = level();
+    const span = lvl.objectives!.find((o) => o.kind === "extraction")!.span!;
+    /** The terrain grid with `choke` additionally blocked — a cut-vertex probe. */
+    const without = (choke: GridCoord): TileGrid => new TileGrid(lvl.cols, lvl.rows, [...lvl.blocked, choke]);
+    const terrain = new TileGrid(lvl.cols, lvl.rows, lvl.blocked);
+
+    // (9,5) — the cellblock hall door: on EVERY route from EVERY cell to EVERY mouth.
+    for (const c of lvl.captives!) {
+      for (const m of span) {
+        expect(findPath(terrain, c.pos, m), "no escort route at all").not.toBeNull();
+        expect(findPath(without({ col: 9, row: 5 }), c.pos, m), `${c.spec.id}→(${m.col},${m.row}) bypasses (9,5)`).toBeNull();
+      }
+    }
+    // (14,5) — the wall-walk doorway: the choke on the east-mouth leg specifically.
+    for (const c of lvl.captives!) {
+      for (const m of span.filter((t) => t.col === 19)) {
+        expect(findPath(without({ col: 14, row: 5 }), c.pos, m), `${c.spec.id}→east mouth bypasses (14,5)`).toBeNull();
+      }
+    }
+    // (13,8) — the inner seal: the choke on the bottom-mouth leg (the route back through the barracks).
+    for (const c of lvl.captives!) {
+      for (const m of span.filter((t) => t.row === 19)) {
+        expect(findPath(without({ col: 13, row: 8 }), c.pos, m), `${c.spec.id}→bottom mouth bypasses (13,8)`).toBeNull();
+      }
+    }
+  });
+
+  it("the slammed seal actually DRIVES the garrison (the doctrine fires on the live board, not just on paper)", () => {
+    // The end-to-end proof that B1's tags + B5's seal + B8's lock choices compose: stage the real
+    // level, pull the turn-1 winch, and ask the shipped planner what the barracks garrison does.
+    // Before the slam there is no openable gate at all (both seals start open, everything else is
+    // lockpick-only) ⇒ no drive; after it, unengaged garrison bodies converge to batter `seal-inner`.
+    const { loop } = buildScenarioRun(levelToScenario(level()));
+    loop.startEncounter();
+    loop.beginBattle();
+    const battle = loop.staged!.battle;
+    const warden = battle.units.find((u) => u.id === "the-warden")!;
+    const planOpts = () => ({ gates: battle.gates, tagContext: battle.tagContext(), controlRoom: battle.controlRoom });
+
+    expect(planEnemyTurn(warden, battle.units, battle.grid, planOpts()).gateTarget).toBeUndefined();
+
+    const winch = battle.levers.find((l) => l.id === "winch-wall")!;
+    const infiltrator = battle.units.find((u) => u.side === "player" && u.pos.col >= 15)!;
+    infiltrator.pos = { ...winch.pos };
+    battle.pullLever(winch, infiltrator);
+    expect(battle.gates.find((g) => g.id === "seal-inner")!.locked).toBe(true);
+
+    const seal = battle.gates.find((g) => g.id === "seal-inner")!;
+    const dist = (a: GridCoord) => Math.abs(a.col - seal.pos.col) + Math.abs(a.row - seal.pos.row);
+    const barracks = battle.units.filter((u) => u.side === "enemy" && u.pos.row > 8);
+    expect(barracks.length).toBeGreaterThanOrEqual(8);
+    for (const u of barracks) {
+      const plan = planEnemyTurn(u, battle.units, battle.grid, planOpts());
+      // Driving, not fighting: the door-drive ignores foes outright…
+      expect(plan.target, `${u.id} attacked instead of driving the seal`).toBeNull();
+      // …and every body closes on the ONE gate it can open — nothing else is openable to it (B8).
+      expect(dist(plan.destination), `${u.id} did not close on the seal`).toBeLessThan(dist(u.pos));
+      if (plan.gateTarget) {
+        expect(plan.gateTarget.id).toBe("seal-inner");
+        expect(plan.gateAct).toBe("attack"); // no garrison keyholder on the inner seal ⇒ they batter
+      }
+    }
+  });
+
+  it("eliminate-all stays winnable without a Thief — every enemy is reachable with the lockpick gates shut", () => {
+    // The frontal win must never hard-require the flank's Thief (D99 graceful degradation). No enemy
+    // may sit behind a lockpick-only door.
+    const lvl = level();
+    const grid = stagedGrid(buildAuthoredGates(lvl));
+    for (const e of lvl.enemies) {
+      expect(findPath(grid, MAIN_SPAWN, e.pos), `enemy at ${e.pos.col},${e.pos.row} is behind a locked door`).not.toBeNull();
+    }
   });
 });
 

@@ -1,53 +1,1026 @@
 {
   "id": "the-rescue",
   "name": "The Rescue",
-  "cols": 13,
-  "rows": 7,
+  "cols": 20,
+  "rows": 20,
   "blocked": [
-    { "col": 3, "row": 0 }, { "col": 3, "row": 1 }, { "col": 3, "row": 4 }, { "col": 3, "row": 5 }, { "col": 3, "row": 6 },
-    { "col": 6, "row": 2 }, { "col": 6, "row": 3 },
-    { "col": 8, "row": 0 }, { "col": 8, "row": 1 }, { "col": 8, "row": 3 }, { "col": 8, "row": 4 }, { "col": 8, "row": 5 }, { "col": 8, "row": 6 },
-    { "col": 10, "row": 2 }, { "col": 11, "row": 2 }, { "col": 12, "row": 2 },
-    { "col": 10, "row": 4 }, { "col": 11, "row": 4 }, { "col": 12, "row": 4 }
+    {
+      "col": 0,
+      "row": 0
+    },
+    {
+      "col": 1,
+      "row": 0
+    },
+    {
+      "col": 2,
+      "row": 0
+    },
+    {
+      "col": 3,
+      "row": 0
+    },
+    {
+      "col": 4,
+      "row": 0
+    },
+    {
+      "col": 5,
+      "row": 0
+    },
+    {
+      "col": 6,
+      "row": 0
+    },
+    {
+      "col": 7,
+      "row": 0
+    },
+    {
+      "col": 8,
+      "row": 0
+    },
+    {
+      "col": 9,
+      "row": 0
+    },
+    {
+      "col": 10,
+      "row": 0
+    },
+    {
+      "col": 11,
+      "row": 0
+    },
+    {
+      "col": 12,
+      "row": 0
+    },
+    {
+      "col": 13,
+      "row": 0
+    },
+    {
+      "col": 14,
+      "row": 0
+    },
+    {
+      "col": 15,
+      "row": 0
+    },
+    {
+      "col": 16,
+      "row": 0
+    },
+    {
+      "col": 17,
+      "row": 0
+    },
+    {
+      "col": 18,
+      "row": 0
+    },
+    {
+      "col": 19,
+      "row": 0
+    },
+    {
+      "col": 0,
+      "row": 1
+    },
+    {
+      "col": 3,
+      "row": 1
+    },
+    {
+      "col": 6,
+      "row": 1
+    },
+    {
+      "col": 9,
+      "row": 1
+    },
+    {
+      "col": 14,
+      "row": 1
+    },
+    {
+      "col": 15,
+      "row": 1
+    },
+    {
+      "col": 16,
+      "row": 1
+    },
+    {
+      "col": 17,
+      "row": 1
+    },
+    {
+      "col": 18,
+      "row": 1
+    },
+    {
+      "col": 19,
+      "row": 1
+    },
+    {
+      "col": 0,
+      "row": 2
+    },
+    {
+      "col": 3,
+      "row": 2
+    },
+    {
+      "col": 6,
+      "row": 2
+    },
+    {
+      "col": 9,
+      "row": 2
+    },
+    {
+      "col": 14,
+      "row": 2
+    },
+    {
+      "col": 15,
+      "row": 2
+    },
+    {
+      "col": 16,
+      "row": 2
+    },
+    {
+      "col": 17,
+      "row": 2
+    },
+    {
+      "col": 18,
+      "row": 2
+    },
+    {
+      "col": 19,
+      "row": 2
+    },
+    {
+      "col": 0,
+      "row": 3
+    },
+    {
+      "col": 2,
+      "row": 3
+    },
+    {
+      "col": 3,
+      "row": 3
+    },
+    {
+      "col": 5,
+      "row": 3
+    },
+    {
+      "col": 6,
+      "row": 3
+    },
+    {
+      "col": 8,
+      "row": 3
+    },
+    {
+      "col": 9,
+      "row": 3
+    },
+    {
+      "col": 14,
+      "row": 3
+    },
+    {
+      "col": 19,
+      "row": 3
+    },
+    {
+      "col": 0,
+      "row": 4
+    },
+    {
+      "col": 9,
+      "row": 4
+    },
+    {
+      "col": 14,
+      "row": 4
+    },
+    {
+      "col": 0,
+      "row": 5
+    },
+    {
+      "col": 0,
+      "row": 6
+    },
+    {
+      "col": 9,
+      "row": 6
+    },
+    {
+      "col": 14,
+      "row": 6
+    },
+    {
+      "col": 0,
+      "row": 7
+    },
+    {
+      "col": 9,
+      "row": 7
+    },
+    {
+      "col": 14,
+      "row": 7
+    },
+    {
+      "col": 19,
+      "row": 7
+    },
+    {
+      "col": 0,
+      "row": 8
+    },
+    {
+      "col": 1,
+      "row": 8
+    },
+    {
+      "col": 2,
+      "row": 8
+    },
+    {
+      "col": 3,
+      "row": 8
+    },
+    {
+      "col": 4,
+      "row": 8
+    },
+    {
+      "col": 5,
+      "row": 8
+    },
+    {
+      "col": 6,
+      "row": 8
+    },
+    {
+      "col": 7,
+      "row": 8
+    },
+    {
+      "col": 8,
+      "row": 8
+    },
+    {
+      "col": 9,
+      "row": 8
+    },
+    {
+      "col": 10,
+      "row": 8
+    },
+    {
+      "col": 11,
+      "row": 8
+    },
+    {
+      "col": 12,
+      "row": 8
+    },
+    {
+      "col": 14,
+      "row": 8
+    },
+    {
+      "col": 15,
+      "row": 8
+    },
+    {
+      "col": 16,
+      "row": 8
+    },
+    {
+      "col": 17,
+      "row": 8
+    },
+    {
+      "col": 18,
+      "row": 8
+    },
+    {
+      "col": 19,
+      "row": 8
+    },
+    {
+      "col": 0,
+      "row": 9
+    },
+    {
+      "col": 19,
+      "row": 9
+    },
+    {
+      "col": 0,
+      "row": 10
+    },
+    {
+      "col": 2,
+      "row": 10
+    },
+    {
+      "col": 4,
+      "row": 10
+    },
+    {
+      "col": 6,
+      "row": 10
+    },
+    {
+      "col": 16,
+      "row": 10
+    },
+    {
+      "col": 19,
+      "row": 10
+    },
+    {
+      "col": 0,
+      "row": 11
+    },
+    {
+      "col": 2,
+      "row": 11
+    },
+    {
+      "col": 4,
+      "row": 11
+    },
+    {
+      "col": 6,
+      "row": 11
+    },
+    {
+      "col": 11,
+      "row": 11
+    },
+    {
+      "col": 12,
+      "row": 11
+    },
+    {
+      "col": 13,
+      "row": 11
+    },
+    {
+      "col": 16,
+      "row": 11
+    },
+    {
+      "col": 19,
+      "row": 11
+    },
+    {
+      "col": 0,
+      "row": 12
+    },
+    {
+      "col": 19,
+      "row": 12
+    },
+    {
+      "col": 0,
+      "row": 13
+    },
+    {
+      "col": 19,
+      "row": 13
+    },
+    {
+      "col": 0,
+      "row": 14
+    },
+    {
+      "col": 2,
+      "row": 14
+    },
+    {
+      "col": 3,
+      "row": 14
+    },
+    {
+      "col": 19,
+      "row": 14
+    },
+    {
+      "col": 0,
+      "row": 15
+    },
+    {
+      "col": 19,
+      "row": 15
+    },
+    {
+      "col": 0,
+      "row": 16
+    },
+    {
+      "col": 1,
+      "row": 16
+    },
+    {
+      "col": 2,
+      "row": 16
+    },
+    {
+      "col": 3,
+      "row": 16
+    },
+    {
+      "col": 4,
+      "row": 16
+    },
+    {
+      "col": 5,
+      "row": 16
+    },
+    {
+      "col": 6,
+      "row": 16
+    },
+    {
+      "col": 7,
+      "row": 16
+    },
+    {
+      "col": 8,
+      "row": 16
+    },
+    {
+      "col": 10,
+      "row": 16
+    },
+    {
+      "col": 11,
+      "row": 16
+    },
+    {
+      "col": 12,
+      "row": 16
+    },
+    {
+      "col": 13,
+      "row": 16
+    },
+    {
+      "col": 14,
+      "row": 16
+    },
+    {
+      "col": 15,
+      "row": 16
+    },
+    {
+      "col": 16,
+      "row": 16
+    },
+    {
+      "col": 17,
+      "row": 16
+    },
+    {
+      "col": 18,
+      "row": 16
+    },
+    {
+      "col": 19,
+      "row": 16
+    },
+    {
+      "col": 0,
+      "row": 17
+    },
+    {
+      "col": 19,
+      "row": 17
+    },
+    {
+      "col": 0,
+      "row": 18
+    },
+    {
+      "col": 19,
+      "row": 18
+    },
+    {
+      "col": 0,
+      "row": 19
+    },
+    {
+      "col": 1,
+      "row": 19
+    },
+    {
+      "col": 2,
+      "row": 19
+    },
+    {
+      "col": 3,
+      "row": 19
+    },
+    {
+      "col": 4,
+      "row": 19
+    },
+    {
+      "col": 5,
+      "row": 19
+    },
+    {
+      "col": 6,
+      "row": 19
+    },
+    {
+      "col": 7,
+      "row": 19
+    },
+    {
+      "col": 11,
+      "row": 19
+    },
+    {
+      "col": 12,
+      "row": 19
+    },
+    {
+      "col": 13,
+      "row": 19
+    },
+    {
+      "col": 14,
+      "row": 19
+    },
+    {
+      "col": 15,
+      "row": 19
+    },
+    {
+      "col": 16,
+      "row": 19
+    },
+    {
+      "col": 17,
+      "row": 19
+    },
+    {
+      "col": 18,
+      "row": 19
+    },
+    {
+      "col": 19,
+      "row": 19
+    }
   ],
   "playerSpawns": [
-    { "col": 0, "row": 1 },
-    { "col": 0, "row": 2 },
-    { "col": 0, "row": 3 },
-    { "col": 0, "row": 4 },
-    { "col": 0, "row": 5 },
-    { "col": 1, "row": 3 }
+    {
+      "col": 18,
+      "row": 5
+    },
+    {
+      "col": 9,
+      "row": 18
+    },
+    {
+      "col": 8,
+      "row": 18
+    },
+    {
+      "col": 10,
+      "row": 18
+    },
+    {
+      "col": 11,
+      "row": 18
+    },
+    {
+      "col": 9,
+      "row": 17
+    }
   ],
   "enemies": [
-    { "templateId": "bandit-thug", "pos": { "col": 4, "row": 2 } },
-    { "templateId": "bandit-cutthroat", "pos": { "col": 4, "row": 3 } },
-    { "templateId": "bandit-cutthroat", "pos": { "col": 5, "row": 1 } },
-    { "templateId": "bandit-bowman", "pos": { "col": 5, "row": 4 } },
-    { "templateId": "bandit-thug", "pos": { "col": 7, "row": 1 } },
-    { "templateId": "bandit-thug", "pos": { "col": 7, "row": 4 } },
-    { "templateId": "bandit-thug", "pos": { "col": 9, "row": 0 } },
-    { "templateId": "bandit-captain", "pos": { "col": 9, "row": 4 }, "id": "the-warden", "role": "captain" }
+    {
+      "templateId": "bandit-captain",
+      "pos": {
+        "col": 9,
+        "row": 13
+      },
+      "id": "the-warden",
+      "role": "captain",
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    },
+    {
+      "templateId": "bandit-thug",
+      "pos": {
+        "col": 5,
+        "row": 10
+      },
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    },
+    {
+      "templateId": "bandit-thug",
+      "pos": {
+        "col": 12,
+        "row": 10
+      },
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    },
+    {
+      "templateId": "bandit-thug",
+      "pos": {
+        "col": 6,
+        "row": 15
+      },
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    },
+    {
+      "templateId": "bandit-cutthroat",
+      "pos": {
+        "col": 9,
+        "row": 10
+      },
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    },
+    {
+      "templateId": "bandit-cutthroat",
+      "pos": {
+        "col": 14,
+        "row": 12
+      },
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    },
+    {
+      "templateId": "bandit-bowman",
+      "pos": {
+        "col": 3,
+        "row": 12
+      },
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    },
+    {
+      "templateId": "snare-trapper",
+      "pos": {
+        "col": 11,
+        "row": 15
+      },
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    },
+    {
+      "templateId": "bandit-thug",
+      "pos": {
+        "col": 11,
+        "row": 5
+      },
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    },
+    {
+      "templateId": "bandit-bowman",
+      "pos": {
+        "col": 12,
+        "row": 3
+      },
+      "overrides": {
+        "tags": [
+          "garrison"
+        ]
+      }
+    }
   ],
   "captives": [
     {
-      "spec": { "id": "wren", "name": "Wren", "side": "player", "pos": { "col": 11, "row": 1 }, "jobId": "medic", "primaryJob": "medic", "role": "prisoner", "speed": 11, "maxHp": 20, "attack": 5, "defense": 2, "moveRange": 4, "sightRadius": 5, "attackRange": 1 },
-      "pos": { "col": 11, "row": 1 },
-      "release": { "kind": "lockpick" }
+      "spec": {
+        "id": "wren",
+        "name": "Wren",
+        "side": "player",
+        "pos": {
+          "col": 1,
+          "row": 1
+        },
+        "jobId": "medic",
+        "primaryJob": "medic",
+        "role": "prisoner",
+        "tags": [
+          "non-combatant"
+        ],
+        "speed": 11,
+        "maxHp": 20,
+        "attack": 5,
+        "defense": 2,
+        "moveRange": 4,
+        "sightRadius": 5,
+        "attackRange": 1
+      },
+      "pos": {
+        "col": 1,
+        "row": 1
+      },
+      "release": {
+        "kind": "lockpick"
+      }
     },
     {
-      "spec": { "id": "cass", "name": "Cass", "side": "player", "pos": { "col": 11, "row": 3 }, "jobId": "hunter", "primaryJob": "hunter", "role": "prisoner", "speed": 11, "maxHp": 20, "attack": 7, "defense": 1, "moveRange": 4, "sightRadius": 6, "attackRange": 3 },
-      "pos": { "col": 11, "row": 3 },
-      "release": { "kind": "lockpick" }
+      "spec": {
+        "id": "cass",
+        "name": "Cass",
+        "side": "player",
+        "pos": {
+          "col": 4,
+          "row": 1
+        },
+        "jobId": "hunter",
+        "primaryJob": "hunter",
+        "role": "prisoner",
+        "tags": [
+          "non-combatant"
+        ],
+        "speed": 11,
+        "maxHp": 20,
+        "attack": 7,
+        "defense": 1,
+        "moveRange": 4,
+        "sightRadius": 6,
+        "attackRange": 3
+      },
+      "pos": {
+        "col": 4,
+        "row": 1
+      },
+      "release": {
+        "kind": "lockpick"
+      }
     },
     {
-      "spec": { "id": "bram", "name": "Bram", "side": "player", "pos": { "col": 11, "row": 5 }, "jobId": "heavy-knight", "primaryJob": "heavy-knight", "role": "prisoner", "speed": 9, "maxHp": 30, "attack": 7, "defense": 4, "moveRange": 3, "sightRadius": 5, "attackRange": 1 },
-      "pos": { "col": 11, "row": 5 },
-      "release": { "kind": "lockpick" }
+      "spec": {
+        "id": "bram",
+        "name": "Bram",
+        "side": "player",
+        "pos": {
+          "col": 7,
+          "row": 1
+        },
+        "jobId": "heavy-knight",
+        "primaryJob": "heavy-knight",
+        "role": "prisoner",
+        "tags": [
+          "non-combatant"
+        ],
+        "speed": 9,
+        "maxHp": 30,
+        "attack": 7,
+        "defense": 4,
+        "moveRange": 3,
+        "sightRadius": 5,
+        "attackRange": 1
+      },
+      "pos": {
+        "col": 7,
+        "row": 1
+      },
+      "release": {
+        "kind": "lockpick"
+      }
     }
   ],
-  "objectives": [
-    { "id": "storm", "kind": "eliminate-all", "required": true, "label": "Clear the garrison — the captives are safe" },
-    { "id": "extract", "kind": "extraction", "required": true, "label": "Free the captives and escort them to the exit", "span": [{ "col": 0, "row": 0 }, { "col": 0, "row": 1 }, { "col": 0, "row": 2 }, { "col": 0, "row": 3 }, { "col": 0, "row": 4 }, { "col": 0, "row": 5 }, { "col": 0, "row": 6 }], "escort": { "role": "prisoner" } }
+  "gates": [
+    {
+      "id": "cell-wren",
+      "pos": {
+        "col": 1,
+        "row": 3
+      },
+      "openBy": [
+        {
+          "kind": "lockpick"
+        }
+      ],
+      "locked": true
+    },
+    {
+      "id": "cell-cass",
+      "pos": {
+        "col": 4,
+        "row": 3
+      },
+      "openBy": [
+        {
+          "kind": "lockpick"
+        }
+      ],
+      "locked": true
+    },
+    {
+      "id": "cell-bram",
+      "pos": {
+        "col": 7,
+        "row": 3
+      },
+      "openBy": [
+        {
+          "kind": "lockpick"
+        }
+      ],
+      "locked": true
+    },
+    {
+      "id": "hall-gate",
+      "pos": {
+        "col": 9,
+        "row": 5
+      },
+      "openBy": [
+        {
+          "kind": "lockpick"
+        }
+      ],
+      "locked": true
+    },
+    {
+      "id": "seal-inner",
+      "pos": {
+        "col": 13,
+        "row": 8
+      },
+      "openBy": [
+        {
+          "kind": "destructible",
+          "hp": 64
+        }
+      ],
+      "locked": false
+    },
+    {
+      "id": "seal-outer",
+      "pos": {
+        "col": 9,
+        "row": 16
+      },
+      "openBy": [
+        {
+          "kind": "destructible",
+          "hp": 64
+        },
+        {
+          "kind": "keyholder",
+          "tag": {
+            "id": "the-warden"
+          },
+          "dropOnDeath": true
+        }
+      ],
+      "locked": false
+    }
   ],
-  "reward": { "gold": 260, "materials": [], "xp": 120 }
+  "levers": [
+    {
+      "id": "winch-wall",
+      "pos": {
+        "col": 17,
+        "row": 6
+      },
+      "targets": [
+        "seal-inner"
+      ]
+    },
+    {
+      "id": "winch-control",
+      "pos": {
+        "col": 12,
+        "row": 7
+      },
+      "targets": [
+        "seal-inner"
+      ]
+    },
+    {
+      "id": "winch-hall",
+      "pos": {
+        "col": 10,
+        "row": 4
+      },
+      "targets": [
+        "hall-gate"
+      ]
+    },
+    {
+      "id": "winch-staging",
+      "pos": {
+        "col": 8,
+        "row": 17
+      },
+      "targets": [
+        "seal-outer"
+      ]
+    }
+  ],
+  "controlRoom": {
+    "cols": [
+      10,
+      13
+    ],
+    "rows": [
+      3,
+      7
+    ]
+  },
+  "objectives": [
+    {
+      "id": "storm",
+      "kind": "eliminate-all",
+      "required": true,
+      "label": "Clear the garrison — the captives are safe"
+    },
+    {
+      "id": "extract",
+      "kind": "extraction",
+      "required": true,
+      "label": "Free Wren, Cass and Bram and escort them to an exit",
+      "span": [
+        {
+          "col": 19,
+          "row": 4
+        },
+        {
+          "col": 19,
+          "row": 5
+        },
+        {
+          "col": 19,
+          "row": 6
+        },
+        {
+          "col": 8,
+          "row": 19
+        },
+        {
+          "col": 9,
+          "row": 19
+        },
+        {
+          "col": 10,
+          "row": 19
+        }
+      ],
+      "escort": {
+        "role": "prisoner"
+      }
+    }
+  ],
+  "reward": {
+    "gold": 260,
+    "materials": [],
+    "xp": 120
+  }
 }

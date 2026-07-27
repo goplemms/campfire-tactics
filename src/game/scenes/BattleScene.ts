@@ -117,6 +117,13 @@ import { ICON, placeIcon } from "../icons";
 const BOARD_SCALE = 1.4;
 
 /**
+ * Viewport chrome the board must stay clear of when {@link CombatView.fitBoardScale} shrinks an
+ * oversized grid — the objective banner + unit card down the left/top, and the action row, legend
+ * and initiative rail across the bottom. Subtracted from the canvas to get the usable board box.
+ */
+const BOARD_MARGIN = { x: 60, y: 190 };
+
+/**
  * The two interactive board phases that share the scene's render/interaction path
  * (D-feel: deployment ↔ combat parity). Several verbs — Search, Disarm, the click-ahead
  * replay, the whole-turn undo — are one context-parameterized helper branching on this;
@@ -515,6 +522,14 @@ export class BattleScene extends Phaser.Scene {
     this.view.clearPreview(this.preview);
     this.threatGfx.clear();
 
+    // Shrink-to-fit before centring (a hand-authored 20×20 level is ~3× the procedural board and
+    // the battle field has no pan camera): the preferred zoom is kept whenever the board fits, so
+    // every existing encounter renders unchanged.
+    this.view.boardScale = CombatView.fitBoardScale(
+      this.grid.cols, this.grid.rows,
+      this.scale.width - BOARD_MARGIN.x, this.scale.height - BOARD_MARGIN.y,
+      BOARD_SCALE,
+    );
     // The shared board-centering (CombatView.centerOrigin) — the one formula, so a grid/tile
     // metric change reaches the editor too (the view owns the resulting origin).
     this.view.centerOrigin(this.grid.rows, this.scale.height, this.scale.width / 2);

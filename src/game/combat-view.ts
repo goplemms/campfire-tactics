@@ -176,6 +176,22 @@ export class CombatView {
     this.setOrigin(centerX, viewportH / 2 - (rows * TILE_HEIGHT * this.boardScale) / 2 + 4);
   }
 
+  /**
+   * The largest board zoom (≤ `max`) at which a `cols`×`rows` grid still **fits** the viewport —
+   * the shrink-to-fit clamp for oversized boards. The battle field has a fixed preferred zoom
+   * chosen for legibility on the ~8×6 procedural board; a hand-authored **20×20** level (the v4
+   * prison finale) is ~3× that footprint and would spill off every edge with no camera to pan it.
+   *
+   * The projected diamond spans `(cols + rows - 2) * TILE_WIDTH/2` across and the same in
+   * `TILE_HEIGHT/2` down (see {@link "../core".gridToScreen}), so both axes are checked against the
+   * usable box the caller passes (viewport minus its HUD chrome). Returns `max` unchanged whenever
+   * the board already fits — every existing board is byte-identical, only a too-big one shrinks.
+   */
+  static fitBoardScale(cols: number, rows: number, usableW: number, usableH: number, max: number): number {
+    const span = Math.max(1, cols + rows - 2);
+    return Math.min(max, usableW / (span * (TILE_WIDTH / 2)), usableH / (span * (TILE_HEIGHT / 2)));
+  }
+
   /** Half a tile's width/height at the current board zoom (for scene-side geometry). */
   halfW(): number {
     return (TILE_WIDTH / 2) * this.boardScale;

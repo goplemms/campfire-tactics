@@ -5,6 +5,9 @@ D97/D99/D116) from its current standalone state to shipped-in-the-arc. Updated *
 `main` (D117 tag system + guard doctrine, M1–M5) and a `/code-review` pass that verified every code claim
 below against the source.
 
+**Canon:** this session's calls are logged as **D118** in `decisions.md` — read it for the ratified
+decisions; this file is the working checklist.
+
 Read alongside `finale-extraction-viability.md` (crux C2 in full), `decisions.md` **D97** (dual-OR
 extraction), **D99** (rescue reframe + deferred flank), **D116** (authored-node injection +
 `provides`/`requires`), **D108/D117** (guard door-drive doctrine + tag system), and the handoffs

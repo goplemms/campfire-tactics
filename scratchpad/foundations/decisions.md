@@ -5036,3 +5036,91 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   key-drop test (use → persists → re-lock → re-open). Single-use lands with the general item system (D108).
 - **Guards after the pass:** build clean · `npm test` **1330** · sim byte-identical · `test:e2e:micro` **34**
   (+2 undo) · deploy-battle/scenario/visual green.
+
+---
+
+## D118 — The finale's spawn condition + the extraction win made real (design)
+
+- **Status:** Decided (design) 2026-07-26 — owner-directed design session, **no production code**. Merged as
+  **PR #203**. Full detail: [`finale-design-checklist.md`](finale-design-checklist.md) (the A–G checklist) +
+  [`finale-extraction-viability.md`](finale-extraction-viability.md) (crux C2). Every code claim in both was
+  verified against source by a `/code-review` pass; the corrections it forced are recorded below because they
+  are the traps a build session would otherwise fall into.
+- **Context (why now):** **D117** closed the finale's load-bearing crux (`in-combat` ratified + built, the
+  garrison door-drive doctrine shipped) — but against `DOCTRINE_HARNESS`, not the finale. That left two
+  genuinely open design questions from **D99/D116**: what the deferred **flank** actually *is*, and how
+  **extraction** — the finale's thematic heart but a **dead win-path** (the sim never takes it) — becomes a
+  win a player would *choose*.
+- **Decision — the spawn condition is ARM-GRAIN, attributed to `cuffedCell`.** Taking the Hollow Mill's
+  **infiltration arm** earns `side-door-intel`. Attribution rides **`cuffedCell`** because its completion is
+  **unconditional** (win the fight), whereas `guildRite`'s meaningful outcome is **conditional** (an
+  under-floor Scout gets D92's gracious decline) — the flag must not fire for something that narratively
+  didn't happen; and the freed prisoner *is* the insider who knows the side door. **The finer scout-grain**
+  (an optional/missable beat also setting the flag) stays **deferred**, layerable without rework.
+  - **Two separate wirings** (a build session must do both): **`AuthoredEncounter.grants[].flag`** is what
+    *sets* the flag (`applyGrant`, `runloop.ts:635`) — `CUFFED_CELL` has none today; **`MapNode.provides`/
+    `requires`** are **validate-only** (`expedition.ts`) and set nothing. Use the exported `SIDE_DOOR_INTEL`
+    constant — the flag bag is untyped, so a spelling slip fails **silently**.
+- **Decision — the flank is a SECOND deploy zone (split-force), not a swap.** The intel opens the side
+  entrance **in addition to** the main one; the player splits their force. The flank is **safer, not
+  faster** — cells stay canon-far from *every* mouth (D97/D99, no walkover), so it shortens nothing; it buys
+  a garrison-free approach and makes the two-pronged op possible. *No intel ⇒ no side deploy ⇒ no
+  two-pronged play ⇒ extraction impractical ⇒ eliminate-all.* **The graceful degradation and the incentive
+  are the same mechanism** — and this is what finally makes D97's two topology-exclusive arms pay off
+  **differently** at the finale.
+- **Decision — extraction is a split-force operation; viability is a HEAD-START RACE, not a seal-hold.**
+  Bulk at the main entrance **pins** garrison bodies (`in-combat`); the infiltrator **slams a lever-seal**;
+  the garrison **drives to batter it** (D117); the head start buys the cell-break; the garrison **breaks
+  through — designed in, not a failure** — and the escort **outruns the thinned pursuit through a
+  chokepointed corridor**, taking pot shots. So `head-start ≥ pursuit-close-time`, and seals want
+  **~60–70 hp** (2–3 turns of delay) — **not** the ~150 a full-escort hold would need, and not the 15–20
+  micro-fixture default. **Pinning costs bodies** — that is the tension.
+  - **Two geometry invariants, or the play collapses:** (1) while shut, the seal is the garrison's **only
+    route** *and* **the only gate any `garrison` unit can open** — `driveSealFor` picks the **nearest**
+    openable gate with **no route-relevance check**, so a Warden keyholding the **cell doors would drive
+    over and free the captives for you** (D117 **F2** as a live hazard); (2) the **competitive** escort
+    routes carry **chokepoints** for a rearguard — captives (`moveRange` 3–4) are slower than fast pursuers
+    (5), so geometry, not a speed bump, is what makes "outrun" hold. A **freed-and-fleeing move bump** stays
+    a reserve lever.
+  - **Incentive, not just viability:** eliminate-all *also* saves the captives, so the garrison must be
+    **costly enough to clear** that sneaking them out is the *smart* play.
+- **Decision — exfil semantics + the "Go now" call.** A unit **survives only if it is on an exfil site**
+  when extraction resolves — **captives and party alike**. **Every mouth is an exfil site** (all exits
+  represent "away"), so the distraction party falls back out the **main entrance**. **Auto-resolve** when
+  everyone is out; **"Go now"** resolves early so the player can accept a sacrifice deliberately. The
+  outcome is **computed from what's true at the call** — captives out ⇒ **extraction win**, else ⇒ a
+  **survivable retreat** (`objective-failure`) — which unifies "Go now" with the existing retreat concept.
+  Losing someone is an **allowed consequence**; an appropriately-levelled party should have leeway to get
+  everyone out (expressed as the **everyone-out** pacing bar below).
+  - **Left-behind ⇒ captured** (D9/D12 → rescue follow-up quest / roster removal). Thematically exact: you
+    left someone in a prison, so they become a prisoner — and the consequence machinery already exists.
+  - **Two pieces are new work, and both are required or "Go now" is toothless:** (a) **nothing marks
+    off-exfil survivors as captured today** — `resolveRescues` (`runloop.ts:642–658`) opens
+    `if (!u.captured) continue`, so a straggler is untouched and simply comes home; (b) once marked, the
+    same function's `won` branch `freeCaptive`s every captured unit (**D21**, control-the-field) — an
+    **extraction win is a flight, not a field hold**, so that auto-free must be **gated on field control**.
+  - Also: extraction currently **auto-completes on captives-alone** (`objectives.ts`) — it must broaden to
+    **captives + surviving party**, or it resolves out from under a party still crossing.
+- **The design payoff:** the two OR'd wins gain different **shapes**, not flavours — **eliminate-all** is
+  higher *risk* (fight everyone) but holds the field so nobody is left; **extraction** is lower risk but
+  carries a **cost decision**. "Go now" is where that cost is paid, by the player's own hand.
+- **Corrections the review forced (recorded as traps):** `placeParty` (`authored.ts:263`) **index-maps units
+  and stacks extras on the last spawn**, so authoring a small side zone **caps nothing** and gives no
+  player-facing split — a real allocation mechanism is owed; and `BattleScene.enterDeploy` runs the deploy
+  phase **unconditionally** while `createCampfire` hardcodes origin **`col 0`** (both v4 mouths sit outside
+  it), so "authored placement ⇒ no capture rolls" is **a decision to make**, not a given. **Do not** answer
+  it with a second campfire — that is the full **C5**, still parked, and D99's **F1** forbids claiming a
+  *safe* informed insert; the flank's risk is **in-battle isolation**.
+- **Guard shape for the build (the sim cannot prove any of this — its bot skips deploy and every interactive
+  screen):** a scripted **split-force scenario** (win-by-extraction with the garrison alive) + an
+  **everyone-out, mutation-robust pacing bar** (halving `sealHp` / dropping the distraction / widening the
+  corridor must each flip it red) + the **geometry-invariant** tests + **exfil-semantics** tests, plus a
+  visual e2e for the split-deploy and "Go now" surfaces (freeze-catcher doctrine).
+- **Explicitly NOT decided / deferred:** populating the v4 finale (checklist **B**); the scout-grain flag
+  source; the full **C5** deploy deep-dive; promoting The Rescue into the arc (**F**); the keyed-seal ↔ lever
+  re-lock residual (**E1**). **G3's resolution-semantics change needs its own decision record when built.**
+- **Reuses:** **D97** (dual-OR + `extraction`), **D99** (rescue reframe, the deferred flank, **F1**),
+  **D116** (`provides`/`requires`, injection), **D117** (`in-combat`, garrison door-drive, `driveSealFor`,
+  `non-combatant`), **D92** (the infiltration arm + `cuffedCell`), **D52** (run flags, captives), **D9/D12/
+  D21** (capture, rescue, field-control auto-rescue), **D63/D67** (deploy zone model), **D22**.
+  **Superseded by:** —

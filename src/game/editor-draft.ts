@@ -76,6 +76,8 @@ export interface DraftPassthrough {
   rumors?: AuthoredEncounter["rumors"];
   intelDepth?: AuthoredEncounter["intelDepth"];
   grants?: AuthoredEncounter["grants"];
+  /** The control-room {@link "../core".Region} (D117/M3b) — a garrison target-priority span, unpainted. */
+  controlRoom?: AuthoredEncounter["controlRoom"];
 }
 
 /** The editor's mutable working state — a superset of what it can currently paint. */
@@ -197,6 +199,7 @@ export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
   if (enc.rumors) pt.rumors = enc.rumors;
   if (enc.intelDepth !== undefined) pt.intelDepth = enc.intelDepth;
   if (enc.grants) pt.grants = enc.grants;
+  if (enc.controlRoom) pt.controlRoom = enc.controlRoom;
 
   return {
     id: enc.id,
@@ -250,12 +253,21 @@ function cloneObjective(o: ObjectiveSpec): ObjectiveSpec {
   };
 }
 
-/** Deep-ish clone of a gate (pos + each openBy condition copied — keyholder tags too) so editing never touches the source. */
+/**
+ * Deep-ish clone of a gate (pos + each openBy condition copied — keyholder tags too, and the
+ * `dropOnDeath` opt-in that turns a fallen keyholder's auto-open into a **dropped key**, D117/M5) so
+ * editing never touches the source. Copy every field of a lock here: a silently-dropped one survives
+ * the type-check and only shows up as a level playing differently after a round-trip.
+ */
 export function cloneGate(g: AuthoredGate): AuthoredGate {
   return {
     id: g.id,
     pos: cp(g.pos),
-    openBy: g.openBy.map((c) => (c.kind === "keyholder" ? { kind: "keyholder" as const, tag: { ...c.tag } } : { ...c })),
+    openBy: g.openBy.map((c) =>
+      c.kind === "keyholder"
+        ? { kind: "keyholder" as const, tag: { ...c.tag }, ...(c.dropOnDeath !== undefined ? { dropOnDeath: c.dropOnDeath } : {}) }
+        : { ...c },
+    ),
     ...(g.locked !== undefined ? { locked: g.locked } : {}),
   };
 }
@@ -302,6 +314,7 @@ export function draftToEncounter(draft: EditorDraft): AuthoredEncounter {
     ...(draft.levers.length ? { levers: draft.levers.map((l) => ({ id: l.id, pos: { ...l.pos }, targets: [...l.targets] })) } : {}),
     ...(pt.rumors ? { rumors: pt.rumors } : {}),
     ...(pt.intelDepth !== undefined ? { intelDepth: pt.intelDepth } : {}),
+    ...(pt.controlRoom ? { controlRoom: pt.controlRoom } : {}),
     ...(objectives ? { objectives } : {}),
     reward: draft.reward ?? { gold: 50, materials: [], xp: 40 },
     ...(pt.grants ? { grants: pt.grants } : {}),

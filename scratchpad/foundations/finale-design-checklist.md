@@ -87,6 +87,16 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
   deliberate act, "I scouted but I'm still going in the front" stays legal, and nobody is stranded at a door
   they can't open. **The cap is not optional** — without it there is no distraction and the two-pronged
   tension collapses.
+- ⚠️ **A3c — AUTHOR THE SIDE ZONE TIGHT (the door tile only). Load-bearing, verified.** The deploy phase
+  already offers **Place Trap** (`skills.ts:408` — a trap is `pre-combat` data; surfaces via
+  `availableSkills(actor,"pre-combat")`, `BattleScene.ts:935`) **and Pull Lever** (`pullLever` has **no
+  phase gate**, `turn.ts:607`; the deploy row calls `pushGateVerbs(…,"deployment")`, `BattleScene.ts:941`,
+  which pushes Pick Cell / Break Gate / Turn Key / **Pull Lever**). The garrison is **frozen** during deploy
+  (`configureDeployClock`), so an early lever throw draws no combat response — its only price is the capture
+  roll. `winch-wall` `(17,6)` is **2 steps** from the side spawn `(18,5)`: a zone drawn over the lever makes
+  the early seal **free** and voids the trade; a zone of just the door tile makes reaching it cost
+  **`NEUTRAL_DANGER = 0.4`/net turn**. That trade — *plenty of time to set traps on safe ground, or step out
+  and risk detection for the early seal* — is the **stated intent** of accepting the loose backstop.
 - ⬜ **A3b** — **Deploy-phase treatment at the side zone (F1) — DECIDED (D119): authored spawn zones.**
   ⚠️ Three verified defects, two of them **general, not finale-specific**: `enterDeploy` runs the
   campfire/net phase **unconditionally**; `createCampfire` (`deployment.ts:176`) hardcodes origin
@@ -146,6 +156,11 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
   Guards: scripted split-force scenario + **everyone-out** mutation-robust pacing bar + three
   geometry-invariant tests. **Open owner calls:** one seal vs. series · lever reachable turn 1 · corridor
   chokepoints · garrison-strength target.
+  ⚠️ **New (D119): the scenario must cover the SEAL-ALREADY-SHUT opening.** Levers are pullable during
+  **deploy** (verified — see A3c), so a player can slam the seal *before* combat for a capture roll rather
+  than a combat turn. Combat then opens with the seal shut and the garrison battering from turn 1. The race
+  still runs — judged coherent, not a hole — but a scenario that only models slam-it-mid-fight proves the
+  **wrong race**.
 
 ### G — Exfil semantics + the "Go now" call *(owner-directed 2026-07-26)*
 > A unit **survives only if it's on an exfil site** when extraction resolves — captives *and* party.

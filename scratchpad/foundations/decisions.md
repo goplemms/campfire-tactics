@@ -5207,6 +5207,41 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   - Note the phase is not risk-free even so: **neutral ground still rolls `NEUTRAL_DANGER = 0.4` per net
     turn**, so a unit that wanders *out* of a zone during deploy is in real danger. The zones are what
     matter; leaving one is a choice with teeth.
+- **The owner's intent for the loose backstop, and what verification found (2026-07-28).** Intent: the long
+  runway is *for* something — the player has room to **lay traps** on their safe side, but reaching for
+  **more efficiency (throwing a lever early)** means leaving a zone and **risking detection**. Both halves
+  were checked against source rather than assumed, and **both are already shipped**:
+  - **Traps in setup — real.** `skills.ts:408` classifies a **trap ⇒ `pre-combat`**, and the deploy action
+    row surfaces it from the same `availableSkills(actor, "pre-combat")` projection combat uses
+    (`BattleScene.ts:935`, "Place Trap Here"). Costs a **trap kit** (a carried material, `cost.ts`), so it
+    is party-dependent, not free.
+  - **Levers in setup — real, and unblocked.** `pullLever` carries **no phase gate** in the interpreter
+    (`turn.ts:607`) — only adjacency (`canPullLever`) — and the deploy row calls `pushGateVerbs(specs,
+    actor, "deployment")` (`BattleScene.ts:941`), which pushes **Pick Cell, Break Gate, Turn Key *and*
+    Pull Lever**. (The call-site comment names only "Pick Cell"; the other three come with it.) This is
+    D67's ruling that engagement is **board state, not a per-phase verb ban**.
+  - **The garrison is frozen during deploy** (`configureDeployClock` narrows participants to active
+    players), so an early lever throw costs **no combat response** — the price is purely the capture roll.
+- **Consequence — the side zone's authored size is now LOAD-BEARING, not cosmetic.** The infiltration
+  lever `winch-wall` sits at `(17,6)`, **2 steps** from the side spawn `(18,5)`. So:
+  - author the side zone **to cover the lever** ⇒ the early seal is **free**, and the owner's risk/reward
+    evaporates;
+  - author it **tight (the door tile only)** ⇒ reaching the lever means standing on neutral ground at
+    **0.4 capture per net turn**, which is exactly the intended "risk detection for efficiency" trade.
+  **Author it tight.** This is the knob the whole intent hangs on; it belongs in the build brief as a
+  stated requirement, not left to an authoring whim.
+- **Consequence — an early seal shortens, but does not remove, the C2 head-start race.** Slamming the seal
+  in setup means combat opens with it already shut; the garrison's door-drive (D117) begins battering
+  immediately, so the race still runs — the player has simply bought the pull for a capture roll instead of
+  a combat turn. Judged coherent, not a hole. ⚠️ But it means **#209's split-force scenario must cover the
+  seal-shut-at-turn-1 opening**, not only the slam-it-mid-fight one, or the guard proves the wrong race.
+- **Implementation note — the force-start is nearly free work.** `frontTurnStage` (`deploy-flow.ts:43`)
+  already returns `overrun` on `out.breached`, and `breached` (`deployment.ts:375`) already means *the net
+  has reached the protected core*. So the requested rule **exists**; it needs to read the **authored
+  primary zone** instead of the campfire. ⚠️ One spec point for the brief: today `breached` is
+  **unit-dependent** — `players.some(u => isProtected(u.pos, camp) && inDangerZone(u.pos, front))`, i.e. it
+  needs somebody *standing* in the core. The owner described it **geometrically** ("when the danger zone
+  reaches the primary spawn point"). Build the geometric reading, or an empty primary zone never fires it.
 - **Reuses:** **D118** (the split-force finale, the flank, the traps), **D99** (**F1** — no *safe*
   informed insert; the flank is deferred/reframed), **D97** (dual-OR + extraction), **D63/D67** (the
   deploy zone model — campfire, net, `DeploySource`), **D68** (Quiet Footsteps / capture multipliers),

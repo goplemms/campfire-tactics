@@ -198,6 +198,25 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 
 ## Suggested next step
 
-**B (populate the v4 layout)** is now authoring against a fully specified target. The A-group wiring
-(A1/A2/A3/A3b) is the other buildable slice — note A3 and A3b each carry a real mechanism decision, not
-just wiring.
+**B is populated (#211).** Verified against `the-rescue.json` on 2026-07-28: 10 garrison-tagged bodies + the
+Warden (keyholder on `seal-outer`, `dropOnDeath`), 3 captives named + **`non-combatant`-tagged**, cells
+lockpick-only, two destructible seals at **64 hp**, four levers, both goals authored, and the extraction
+`span` already the **union of both mouths**. B1/B2/B4/B5/B7/B9 are done; **B6/B8 remain unproven** (they are
+geometry claims, and the tests that would prove them are the C2 guards, #209).
+
+**Next: the A group** (split deploy). A3 and A3b each carry a real mechanism decision.
+
+### Sequencing call — owner, 2026-07-28: **build first, tune later**
+
+The winnability proof (**#209**'s incentive/pacing bar) does **not** gate the A-group build. Rationale:
+beatability is a **numbers** problem, and the numbers — garrison count/archetypes, seal hp, cell locks — are
+all editable natively in the **map editor** (verified: the enemy palette places any template, the gate
+inspector edits `openBy`/`locked`, and the party picker already offers an **"Infiltration (3)"** squad with a
+thief). So the fight gets tuned by feel in the editor once it is playable, and #209 **pins** the result
+afterwards rather than gating it.
+
+⚠️ **One honest caveat, recorded not litigated:** the editor's playtest bodies all share **one flat stat
+block** (`speed 11 / hp 26 / atk 8`, `playtest.ts` `BASE`) with only the *job* varying — they are not the
+levelled campaign party that actually arrives at the finale. So editor tuning calibrates the fight against a
+**proxy** party. That is fine for feel; it means the "is it winnable by the real party" question is answered
+at **arc-promotion time (F)**, not before.

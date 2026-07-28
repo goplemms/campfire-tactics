@@ -5181,11 +5181,32 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
 - **Fixes a general defect, not just the finale.** Problems 2 and 3 are **not finale-specific**: every
   authored map inherits a safe zone and a net anchored to hardcoded board edges with no check that either
   lands on walkable ground. Authored zones are the general fix.
-- **STILL OPEN (blocks the build brief):** whether the entrance action is a **swap** (the actor trades
-  places with whoever holds the side door — the one-person cap holds *by construction*, but the side door
-  is never empty) or a **move with an enforced cap** (so "nobody takes the side door" stays a legal,
-  fully-frontal choice). **The cap itself is not optional** — D118: without it the player fields everyone
+- **Decision (owner, same session) — the entrance action is a MOVE with a CONFIGURABLE cap.** Not a swap.
+  The cap is **authored per zone**, not hardcoded to 1, so the side door's capacity is a tuning knob like
+  any other number on the map. **The cap is not optional** — D118: without one the player fields everyone
   at the side, there is no distraction, and the two-pronged tension collapses.
+  - **The default placement is everyone at the primary zone, side door EMPTY.** This is the point of
+    choosing move over swap: a swap leaves the side door permanently occupied, which reproduces today's
+    defect (the roster-first Soldier stranded alone at a door he cannot open). Move-with-cap makes sending
+    someone a **deliberate act**, and keeps "I scouted but I am still going in the front" a legal play — a
+    reward you are forced to spend is not a reward.
+- **Decision (owner, same session) — the deploy phase force-starts when the net reaches the primary zone.**
+  This **replaces** the `safeGroundRemains`-goes-false end condition for encounters with authored zones
+  (that rule can no longer fire — overriding zones mean safe ground never runs out), rather than sitting
+  beside it. It restores a hard stop without restoring pressure on the infiltrator: the primary zone still
+  **overrides** danger, so the net *arriving* starts the battle but grabs nobody.
+  - ⚠️ **Measured, so the expectation is honest: on this map the backstop is very loose.** The net's
+    hardcoded origin is `(19,9)`; the nearest primary spawn tile is `(11,18)` — **17 steps**, and
+    `FRONT_ADVANCE_PER_TURN = 1`. With the front taking roughly one turn per party-unit round, that is on
+    the order of **80+ individual deploy actions** before it fires. It works as a **backstop against
+    planning forever**; it is **not** pacing pressure, and it should not be sold as any.
+  - **Deliberately not tuned yet.** Making it bite means re-anchoring the net for this encounter, and the
+    net origin is **not** editable in the map editor (unlike guard counts and gate hp) — so it is a code
+    change either way. Nobody can guess the right number before watching someone actually play this phase.
+    **Revisit after the first real playthrough**; it is a one-line change.
+  - Note the phase is not risk-free even so: **neutral ground still rolls `NEUTRAL_DANGER = 0.4` per net
+    turn**, so a unit that wanders *out* of a zone during deploy is in real danger. The zones are what
+    matter; leaving one is a choice with teeth.
 - **Reuses:** **D118** (the split-force finale, the flank, the traps), **D99** (**F1** — no *safe*
   informed insert; the flank is deferred/reframed), **D97** (dual-OR + extraction), **D63/D67** (the
   deploy zone model — campfire, net, `DeploySource`), **D68** (Quiet Footsteps / capture multipliers),

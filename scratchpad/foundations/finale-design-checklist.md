@@ -82,10 +82,11 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
   **Decided (D119):** a unit standing in a spawn zone may take an action moving it to the **other** spawn
   zone — a **fourth verb** beside the existing `hold`/`digIn`/`move` (`DeployForecast`), not a new screen.
   Offered only when the side zone exists (no intel ⇒ no verb), so A4's degradation is unchanged.
-  💬 **Still open — the last thing blocking the build brief:** **swap** (actor trades places with the side-door
-  holder; cap holds by construction, side door never empty) vs. **move with an enforced cap** (an empty side
-  door — fully-frontal — stays legal). **The cap is not optional either way**: without it the player fields
-  everyone at the side, there is **no distraction**, and the two-pronged tension collapses.
+  ✅ **Settled (D119): a MOVE with a CONFIGURABLE, authored-per-zone cap** — not a swap, and not hardcoded
+  to 1. **Default placement is everyone at the primary zone, side door EMPTY**: sending someone is a
+  deliberate act, "I scouted but I'm still going in the front" stays legal, and nobody is stranded at a door
+  they can't open. **The cap is not optional** — without it there is no distraction and the two-pronged
+  tension collapses.
 - ⬜ **A3b** — **Deploy-phase treatment at the side zone (F1) — DECIDED (D119): authored spawn zones.**
   ⚠️ Three verified defects, two of them **general, not finale-specific**: `enterDeploy` runs the
   campfire/net phase **unconditionally**; `createCampfire` (`deployment.ts:176`) hardcodes origin
@@ -97,10 +98,15 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
   hardcoded campfire doesn't apply to such an encounter. Insertion is contained — `inSafeZone` is the one
   predicate both `game/deploy-zones.ts:32` and `safeGroundRemains` consult; `captureChanceAt` is the one
   risk computation.
-  **Accepted consequence:** `deploy-flow.ts:43` ends the phase on `overrun` when safe ground runs out —
-  with overriding zones it never does, so **this fight's deploy phase has no timer** and the entrance
-  action is effectively free. Deliberate: the decision here is *which door each person takes*, and the
-  pressure lives **in the battle**.
+  **The phase-end rule is replaced, not lost.** `deploy-flow.ts:43` ends the phase on `overrun` when safe
+  ground runs out — with overriding zones that can never fire. **Decided (D119): the phase force-starts
+  when the net reaches the primary zone.** The primary zone still overrides danger, so the net *arriving*
+  starts the battle but grabs nobody. ⚠️ **Measured — the backstop is very loose here:** net origin
+  `(19,9)` → nearest primary tile `(11,18)` is **17 steps** at `FRONT_ADVANCE_PER_TURN = 1`, so on the
+  order of **80+ deploy actions**. It prevents planning forever; it is **not** pacing pressure. Tightening
+  it means re-anchoring the net (a code change — the net origin is **not** editor-tunable), so it is
+  deliberately deferred to **after the first real playthrough**. Note neutral ground still rolls
+  `NEUTRAL_DANGER = 0.4` per net turn — leaving a zone during deploy has teeth.
   **Revises** D118's "do NOT add a second campfire" — the *scope* half stands (this is **not** C5: no
   second presence-sized anchor, no interior deploy, no alarm), the *design* half is revised (D118 itself
   ruled the flank's risk is **in-battle isolation, not a pre-battle dice roll**).

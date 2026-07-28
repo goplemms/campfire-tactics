@@ -74,22 +74,36 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 - ⬜ **A2** — Staging reads the flag: the finale's `AuthoredEncounter` carries the main `playerSpawns`
   **plus an optional second set** (side entrance); staging **unions** them when
   `run.flags[SIDE_DOOR_INTEL]`. One named flag, **no capability engine** (D116 discipline).
-- ⬜ **A3** — **Split-deploy allocation — needs a real mechanism.** ⚠️ Authoring 1–2 side tiles does **not**
-  cap anything: `placeParty` (`authored.ts:263`) maps unit *index* → spawn and **stacks every extra unit on
-  the last spawn tile**, so it neither limits the side zone nor lets the player choose the split. Required:
-  a **player-facing zone assignment** (which units start side vs. main) **plus an enforced side-zone cap**.
-  This is load-bearing, not polish — if the player can field everyone at the side there is **no
-  distraction**, the whole garrison converges on the escort, and the two-pronged tension collapses.
-- ⬜ **A3b** — **Deploy-phase treatment at the side zone (F1) — a real decision, not free.** ⚠️ Verified:
-  `BattleScene.enterDeploy` runs the campfire/closing-net deploy phase **unconditionally**, and
-  `createCampfire` (`deployment.ts:176`) hardcodes its origin to **`col 0`, mid-row** — while the v4 mouths
-  are **east (18,5)** and **bottom (9,18)**. So *both* zones sit outside the protected radius as authored;
-  a side infiltrator would take capture rolls, and the net geometry doesn't match the map at all. Options:
-  (i) **skip/short-circuit the deploy phase** for this authored encounter (units simply start at their
-  spawns — the owner's "enter during deployment / setup" reading); (ii) **re-anchor the campfire** per
-  encounter. **Do NOT** add a second campfire — that's the full **C5**, which stays parked, and D99's **F1**
-  forbids claiming a *safe* informed insert. Intent: the flank's risk is **in-battle isolation**, not a
-  pre-battle dice roll.
+- ⬜ **A3** — **Split-deploy allocation — mechanism decided (D119): a deploy-phase entrance action.**
+  ⚠️ The gap is live: `placeParty` (`authored.ts:263`) maps unit *index* → spawn and **stacks every extra
+  unit on the last spawn tile**, so authoring 1–2 side tiles neither limits the side zone nor lets the
+  player choose — and since the finale authors `playerSpawns[0] = (18,5)`, **`party[0]` is the
+  infiltrator** (currently a Soldier, who cannot pick the cell locks).
+  **Decided (D119):** a unit standing in a spawn zone may take an action moving it to the **other** spawn
+  zone — a **fourth verb** beside the existing `hold`/`digIn`/`move` (`DeployForecast`), not a new screen.
+  Offered only when the side zone exists (no intel ⇒ no verb), so A4's degradation is unchanged.
+  💬 **Still open — the last thing blocking the build brief:** **swap** (actor trades places with the side-door
+  holder; cap holds by construction, side door never empty) vs. **move with an enforced cap** (an empty side
+  door — fully-frontal — stays legal). **The cap is not optional either way**: without it the player fields
+  everyone at the side, there is **no distraction**, and the two-pronged tension collapses.
+- ⬜ **A3b** — **Deploy-phase treatment at the side zone (F1) — DECIDED (D119): authored spawn zones.**
+  ⚠️ Three verified defects, two of them **general, not finale-specific**: `enterDeploy` runs the
+  campfire/net phase **unconditionally**; `createCampfire` (`deployment.ts:176`) hardcodes origin
+  **`col 0`, mid-row** → **`(0,9)`, blocked terrain** here, its radius painting over the **cellblock**;
+  and `createFront` hardcodes the enemy-edge centre → **`(19,9)`, 5 steps from the side door vs 19 from
+  main staging** — so the net would bear down on the **lone infiltrator** first, backwards from intent.
+  **Decided (D119):** an authored encounter declares its spawn zones at **authored fixed sizes** (*not*
+  presence-derived) which **override the tile's danger level outright**; **both** mouths get one, and the
+  hardcoded campfire doesn't apply to such an encounter. Insertion is contained — `inSafeZone` is the one
+  predicate both `game/deploy-zones.ts:32` and `safeGroundRemains` consult; `captureChanceAt` is the one
+  risk computation.
+  **Accepted consequence:** `deploy-flow.ts:43` ends the phase on `overrun` when safe ground runs out —
+  with overriding zones it never does, so **this fight's deploy phase has no timer** and the entrance
+  action is effectively free. Deliberate: the decision here is *which door each person takes*, and the
+  pressure lives **in the battle**.
+  **Revises** D118's "do NOT add a second campfire" — the *scope* half stands (this is **not** C5: no
+  second presence-sized anchor, no interior deploy, no alarm), the *design* half is revised (D118 itself
+  ruled the flank's risk is **in-battle isolation, not a pre-battle dice roll**).
 - ✅ **A4** — Graceful main-entrance-only fallback — *by construction* (flag absent ⇒ side set never unioned).
 - ⬜ **A5** — Visual e2e for the flag-gated deploy surface (freeze-catcher): flag **set** ⇒ side tiles
   placeable; **unset** ⇒ main-only; no page error either way. *(Note: `test:e2e:doctrine` proves a **6×3

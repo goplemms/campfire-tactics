@@ -5124,3 +5124,70 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   `non-combatant`), **D92** (the infiltration arm + `cuffedCell`), **D52** (run flags, captives), **D9/D12/
   D21** (capture, rescue, field-control auto-rescue), **D63/D67** (deploy zone model), **D22**.
   **Superseded by:** —
+
+## D119 — Authored spawn zones: fixed-size, danger-overriding, and a deploy-phase entrance swap
+
+- **Status:** Decided (design) 2026-07-28 — owner-directed. **Revises D118's "no second campfire" line.**
+  No production code yet; this entry is the brief's canon. One sub-question stays open (see the end).
+- **Context.** D118 settled that the intel opens a **second deploy zone** (the side door) and that the
+  player splits their force — but left *how the player allocates* (**A3**) and *what the deploy phase does
+  at a distant side zone* (**A3b**) as open mechanism decisions. Building against the populated map (#211)
+  made both concrete and surfaced a third problem D118 had not seen.
+- **The three problems, verified against source 2026-07-28:**
+  1. **No allocation.** `placeParty` (`authored.ts:263`) index-maps `party[i] → spawns[i]`, and the finale
+     authors `playerSpawns[0] = (18,5)` (the side door). So the infiltrator is **whoever is first in the
+     roster** — currently a Soldier, who cannot pick the cell locks. The extraction route is unplayable.
+  2. **The safe zone is drawn in a wall.** `createCampfire` (`deployment.ts:176`) hardcodes origin
+     **`col 0`, mid-row** → `(0,9)`, which is **blocked terrain** on this map, and its presence-sized
+     protected radius paints over the **cellblock** — nowhere near either mouth.
+  3. **The closing net is anchored just as blindly, and asymmetrically.** `createFront` hardcodes the
+     enemy-edge centre → `(19,9)`, which is **5 steps from the side door** and **19 from the main
+     staging area**. As shipped, the net would bear down on the **lone infiltrator** almost immediately
+     while the main force sat untouched — backwards from the design's intent in every reading.
+- **Decision — authored spawn zones are a first-class, fixed-size, danger-overriding thing.**
+  An authored encounter may declare its spawn zones with **authored fixed sizes** — *not* derived from
+  party presence the way the campfire's radius is (`protectRadiusOn`) — and those tiles **override the
+  tile's danger level outright**: a unit standing in an authored spawn zone is safe regardless of where
+  the net has reached. **Both** the main entrance and the side door get one; when an encounter declares
+  zones, the hardcoded campfire does not apply to it.
+  - **Why fixed size:** copying the campfire's presence-sizing to a second anchor would force us to
+    re-derive rules we do not need here (how presence splits between two anchors, which anchor the net
+    contracts against). Authoring the shape sidesteps all of it.
+  - **Why an override rather than moving the net:** it answers problem 3 without re-anchoring the net
+    per encounter, and it generalises — **any** authored map can now declare where its safe ground is,
+    which is the real fix for problem 2 rather than a patch for this one board.
+  - **Contained insertion (verified):** `inSafeZone` is the single predicate both the render
+    (`game/deploy-zones.ts:32`) and `safeGroundRemains` consult, and `captureChanceAt` is the single risk
+    computation. The override lands in those two.
+- **Decision — the player allocates via a deploy-phase entrance action, not a selection screen.**
+  A unit standing in a spawn zone may take an action that moves it to the **other** spawn zone. This is a
+  **fourth verb** alongside the existing deploy choices (`DeployForecast` = `hold` / `digIn` / `move`),
+  not a new screen. Fiction: during deploy nobody has noticed you, so peeling off to circle to the other
+  door is exactly what the phase is for. The action exists **only when the side zone does** — no intel ⇒
+  no side zone ⇒ no verb, so D118's graceful degradation is unchanged.
+- **Accepted consequence — this fight's deploy phase has no timer.** `deploy-flow.ts:43` ends the phase on
+  `overrun` when `safeGroundRemains` goes false. With authored zones always overriding, safe ground never
+  runs out, so **the phase never auto-ends** — the player commits when ready, and the entrance action is
+  therefore **free** (no turn cost that matters). Accepted deliberately: the decision in this phase is
+  *which door each person takes*, and a grab timer would tax precisely the wrong unit. **The pressure in
+  this fight lives in the battle, not before it.**
+- **What this revises.** D118 (and `finale-design-checklist.md` A3b) said **"do NOT add a second
+  campfire — that's the parked C5, and D99's F1 forbids claiming a *safe* informed insert."** That
+  objection bundled two things. The **scope** half stands and is honoured: this is **not** a second
+  campfire and **not** C5 — no second presence-sized anchor, no interior-deploy deep-dive, no alarm model.
+  The **design** half is **revised**: D118 itself ruled the flank's risk is **in-battle isolation, not a
+  pre-battle dice roll**, and a safe *insert* is consistent with that — the infiltrator's exposure is
+  being alone behind a sealed wall with the garrison on the far side, which is untouched by this.
+- **Fixes a general defect, not just the finale.** Problems 2 and 3 are **not finale-specific**: every
+  authored map inherits a safe zone and a net anchored to hardcoded board edges with no check that either
+  lands on walkable ground. Authored zones are the general fix.
+- **STILL OPEN (blocks the build brief):** whether the entrance action is a **swap** (the actor trades
+  places with whoever holds the side door — the one-person cap holds *by construction*, but the side door
+  is never empty) or a **move with an enforced cap** (so "nobody takes the side door" stays a legal,
+  fully-frontal choice). **The cap itself is not optional** — D118: without it the player fields everyone
+  at the side, there is no distraction, and the two-pronged tension collapses.
+- **Reuses:** **D118** (the split-force finale, the flank, the traps), **D99** (**F1** — no *safe*
+  informed insert; the flank is deferred/reframed), **D97** (dual-OR + extraction), **D63/D67** (the
+  deploy zone model — campfire, net, `DeploySource`), **D68** (Quiet Footsteps / capture multipliers),
+  **D116** (authored-node injection). **Parked, untouched:** **C5** (the deploy deep-dive).
+  **Superseded by:** —

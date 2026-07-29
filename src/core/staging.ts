@@ -28,10 +28,13 @@ import {
   buildAuthoredCaptives,
   buildAuthoredGates,
   buildAuthoredLevers,
+  buildSpawnZones,
   placeParty,
+  placeInZone,
   type AuthoredEncounter,
   type EncounterResult,
 } from "./authored";
+import { primaryZone, type SpawnZone } from "./deployment";
 import type { Gate, Lever } from "./gates";
 import {
   armObjectives,
@@ -87,6 +90,13 @@ export interface StageOptions {
    * deterministic `0` floor when unset (a bare staged battle / test).
    */
   seed?: string | number;
+  /**
+   * The run's **flags** (D52/D119) — read only to gate {@link AuthoredEncounter.spawnZones}:
+   * a zone declaring `requiresFlag` is unioned in only when that flag is set (`side-door-intel`
+   * opens the finale's side entrance). Omitted ⇒ `{}` ⇒ every gated zone is dropped, which is
+   * the graceful-degradation path, not an error. Nothing else in staging reads it.
+   */
+  flags?: Record<string, boolean>;
 }
 
 /** Reset a unit's combat-scoped transient state for a fresh encounter. */
@@ -156,6 +166,7 @@ export function stageEncounter(
   let gates: Gate[] = [];
   let levers: Lever[] = [];
   let controlRoom: Region | undefined;
+  let spawnZones: SpawnZone[] = [];
   let objectiveSpecs;
 
   if (isAuthoredEncounter(source)) {
@@ -167,7 +178,14 @@ export function stageEncounter(
     controlRoom = source.controlRoom; // D117/M3b: the garrison's target-priority span (authored only)
     // Scouted-to-full intel blows the ambush: hidden bodies start visible (D10).
     if (opts.revealHidden) for (const e of enemies) e.hidden = false;
-    placeParty(players, opts.playerSpawns ?? source.playerSpawns);
+    // D119 — authored spawn zones: when the encounter declares them, the zones own placement.
+    // Everyone starts in the **primary** zone with the others EMPTY (the roster-order index-map
+    // that stranded a Soldier at the finale's side door is exactly what this replaces); an
+    // explicit `playerSpawns` override still wins, so the scenario/level harnesses are unchanged.
+    spawnZones = buildSpawnZones(source, opts.flags);
+    const primary = spawnZones.length > 0 ? primaryZone(spawnZones) : undefined;
+    if (primary && !opts.playerSpawns) placeInZone(players, primary);
+    else placeParty(players, opts.playerSpawns ?? source.playerSpawns);
     objectiveSpecs = withDefaultGoal(source.objectives);
   } else {
     grid = buildGrid(source);
@@ -180,7 +198,7 @@ export function stageEncounter(
   // Captives ride between the roster and the enemies: player-side and bound, so they're off
   // the clock (the `isActive` participant predicate excludes captured), never an AI target
   // (`activeUnits` foe-lists skip them), and visible in deployment (only enemies are veiled).
-  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed, gates, levers, controlRoom });
+  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed, gates, levers, controlRoom, spawnZones });
 
   // Pre-place the authored concealed enemy traps (the trap-field lever, D12): they
   // ride the same entity registry the player's Set Trap uses, so movement springs

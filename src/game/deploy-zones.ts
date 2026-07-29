@@ -6,10 +6,11 @@ import { clearLayer } from "./ui";
 import {
   type GridCoord,
   type TileGrid,
-  type DeploySource,
   type DeployFront,
+  type SafeGround,
   inDangerZone,
   inSafeZone,
+  isZoneGround,
   stepDistance,
 } from "../core";
 
@@ -27,9 +28,12 @@ export type DeployZone = "danger" | "warning" | "safe" | "neutral";
  * green **safe** core is capture-immune; **neutral** open ground is a real (lower)
  * capture risk — there is no free ground — and the **danger** net is near-guaranteed.
  */
-export function zoneOf(t: GridCoord, campfire: DeploySource, front: DeployFront): DeployZone {
+export function zoneOf(t: GridCoord, ground: SafeGround, front: DeployFront): DeployZone {
+  // Safe is tested FIRST so an authored zone (D119) keeps painting green under the net — the
+  // override is the point. Behaviour-identical for the campfire: `inSafeZone` already excludes
+  // any tile the net has reached, so a netted tile can never take the safe branch.
+  if (inSafeZone(t, ground, front)) return "safe";
   if (inDangerZone(t, front)) return "danger";
-  if (inSafeZone(t, campfire, front)) return "safe";
   if (stepDistance(t, front.origin) === front.radius + 1) return "warning";
   return "neutral";
 }
@@ -72,7 +76,7 @@ export function strokeZoneOutline(
   view: CombatView,
   g: Phaser.GameObjects.Graphics,
   grid: TileGrid,
-  campfire: DeploySource,
+  ground: SafeGround,
   front: DeployFront,
   zone: "danger" | "warning" | "safe",
   color: number,
@@ -90,11 +94,11 @@ export function strokeZoneOutline(
   for (let row = 0; row < grid.rows; row++) {
     for (let col = 0; col < grid.cols; col++) {
       const t = { col, row };
-      if (!grid.isWalkable(t) || zoneOf(t, campfire, front) !== zone) continue;
+      if (!grid.isWalkable(t) || zoneOf(t, ground, front) !== zone) continue;
       const { x, y } = view.tileToWorld(t);
       for (const e of edges) {
         const n = { col: col + e.dc, row: row + e.dr };
-        const outside = !grid.isWalkable(n) || zoneOf(n, campfire, front) !== zone;
+        const outside = !grid.isWalkable(n) || zoneOf(n, ground, front) !== zone;
         if (outside) dashedLine(g, x + e.a[0], y + e.a[1], x + e.b[0], y + e.b[1]);
       }
     }
@@ -114,17 +118,17 @@ export function paintZones(
   safe: Phaser.GameObjects.Graphics,
   danger: Phaser.GameObjects.Graphics,
   grid: TileGrid,
-  campfire: DeploySource | undefined,
+  ground: SafeGround | undefined,
   front: DeployFront | undefined,
 ): void {
   safe.clear();
   danger.clear();
-  if (!front || !campfire) return;
+  if (!front || !ground) return;
   for (let row = 0; row < grid.rows; row++) {
     for (let col = 0; col < grid.cols; col++) {
       const t = { col, row };
       if (!grid.isWalkable(t)) continue;
-      switch (zoneOf(t, campfire, front)) {
+      switch (zoneOf(t, ground, front)) {
         case "danger":
           fillTileDiamond(view, danger, t, COLOR.danger, 0.34);
           break;
@@ -144,30 +148,38 @@ export function paintZones(
     }
   }
   // Trace a dotted outline around each zone's perimeter for at-a-glance clarity.
-  strokeZoneOutline(view, safe, grid, campfire, front, "safe", COLOR.success);
-  strokeZoneOutline(view, danger, grid, campfire, front, "warning", COLOR.accent);
-  strokeZoneOutline(view, danger, grid, campfire, front, "danger", COLOR.danger);
+  strokeZoneOutline(view, safe, grid, ground, front, "safe", COLOR.success);
+  strokeZoneOutline(view, danger, grid, ground, front, "warning", COLOR.accent);
+  strokeZoneOutline(view, danger, grid, ground, front, "danger", COLOR.danger);
 }
 
-/** Mark the two sources on the board: a campfire glyph at the camp, the net's source at the foe. */
+/**
+ * Mark the sources on the board: a campfire glyph on the party's ground, the net's source at
+ * the foe. Authored zones (D119) get **one glyph per zone** (anchored on the zone's first
+ * tile) — the party's ground is a set of entrances now, not a single fire, and an unmarked
+ * side door would read as decoration rather than somewhere you can stand.
+ */
 export function drawSourceMarkers(
   scene: Phaser.Scene,
   view: CombatView,
   markers: Phaser.GameObjects.GameObject[],
-  campfire: DeploySource | undefined,
+  ground: SafeGround | undefined,
   front: DeployFront | undefined,
 ): void {
   clearLayer(markers);
-  if (!campfire || !front) return;
-  const camp = view.tileToWorld(campfire.origin);
+  if (!ground || !front) return;
+  const anchors = isZoneGround(ground)
+    ? ground.map((z) => z.tiles[0]).filter((t): t is GridCoord => t !== undefined)
+    : [ground.origin];
   const foe = view.tileToWorld(front.origin);
   // Sit the source markers in the lower half of their tile: trap glyphs anchor at the tile's
   // top vertex (y − halfH), so a marker at tile-centre collides with a trap placed on the same
   // tile (the campfire core is exactly where the party — and its traps — cluster). The drop
   // tucks the marker under the trap, clear of it.
   const drop = view.halfH() * 0.5;
-  markers.push(
-    placeIcon(scene, camp.x, camp.y + drop, "campfire", { size: FONT.display }).setDepth(0.9),
-    placeIcon(scene, foe.x, foe.y + drop, "netSource", { size: FONT.display }).setDepth(0.9),
-  );
+  for (const anchor of anchors) {
+    const p = view.tileToWorld(anchor);
+    markers.push(placeIcon(scene, p.x, p.y + drop, "campfire", { size: FONT.display }).setDepth(0.9));
+  }
+  markers.push(placeIcon(scene, foe.x, foe.y + drop, "netSource", { size: FONT.display }).setDepth(0.9));
 }

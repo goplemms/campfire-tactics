@@ -148,6 +148,97 @@ export interface DeploySource {
   radius: number;
 }
 
+// --- D119: authored spawn zones — fixed-size, danger-overriding -------------
+//
+// The campfire above is *derived*: an origin hardcoded to the board's home edge
+// and a radius sized by party presence. That is fine for a procedural board and
+// wrong for an authored one — `createCampfire` never checks that its origin is
+// walkable, so a hand-built map can (and on The Rescue does) anchor its safe
+// ground inside a wall. D119's answer is to let an authored encounter **declare**
+// its safe ground instead: fixed tiles, an authored capacity cap, and a danger
+// **override** so a distant second entrance is viable without a pre-battle dice
+// roll. When an encounter declares zones, the campfire does not apply to it.
+
+/**
+ * An authored, fixed-size deploy zone (D119) — a named patch of safe ground the
+ * encounter declares rather than deriving. Its `tiles` are authored verbatim (no
+ * presence sizing), a unit standing on one is capture-immune **regardless of where
+ * the net has reached**, and `cap` bounds how many player bodies may stand in it —
+ * the knob that keeps a split force split (D118: without a cap the player fields
+ * everyone at the side door and the two-pronged tension collapses).
+ */
+export interface SpawnZone {
+  id: string;
+  /** Player-facing name — the deploy row's entrance verb reads "Take {label}". */
+  label: string;
+  /** The zone's tiles, authored verbatim. Order is the placement order. */
+  tiles: readonly GridCoord[];
+  /** How many player bodies may stand here (authored per zone, never hardcoded to 1). */
+  cap: number;
+  /**
+   * The **primary** zone — where the party defaults (everyone here, the other zones
+   * EMPTY) and the anchor the deploy phase force-starts against. Exactly one zone in a
+   * set is primary.
+   */
+  primary: boolean;
+}
+
+/**
+ * The party's safe ground during deployment: either the derived {@link DeploySource}
+ * campfire (every procedural board, and every authored one that declares no zones) or
+ * a set of authored {@link SpawnZone}s (D119). Every deploy predicate takes this union,
+ * so the override lands in exactly two functions ({@link isProtected}, {@link inSafeZone})
+ * and every existing caller keeps passing a campfire unchanged.
+ */
+export type SafeGround = DeploySource | readonly SpawnZone[];
+
+/**
+ * Discriminate {@link SafeGround}. Hand-written rather than a bare `Array.isArray` call:
+ * TypeScript's built-in `Array.isArray` guard is `arg is any[]`, which does **not** subtract
+ * a `readonly T[]` member from the union in the negative branch (the `.radius` read then
+ * fails to compile). Verified against tsc before relying on it.
+ */
+export function isZoneGround(ground: SafeGround): ground is readonly SpawnZone[] {
+  return Array.isArray(ground);
+}
+
+/** The zone containing `coord`, or `undefined` — zones never overlap (content-validated). */
+export function zoneAt(zones: readonly SpawnZone[], coord: GridCoord): SpawnZone | undefined {
+  return zones.find((z) => z.tiles.some((t) => t.col === coord.col && t.row === coord.row));
+}
+
+/** The set's **primary** zone (the default placement + the force-start anchor). */
+export function primaryZone(zones: readonly SpawnZone[]): SpawnZone | undefined {
+  return zones.find((z) => z.primary);
+}
+
+/**
+ * The player bodies currently standing in `zone` — what {@link zoneHasRoom} counts against
+ * the cap. Captured/dead units are excluded (a netted body isn't holding a slot), but
+ * {@link freeTileIn} still routes *around* them, so nobody is ever stacked onto an
+ * occupied tile.
+ */
+export function zoneOccupants(zone: SpawnZone, units: readonly Unit[]): Unit[] {
+  return units.filter((u) => u.side === "player" && u.alive && !u.captured && zone.tiles.some((t) => t.col === u.pos.col && t.row === u.pos.row));
+}
+
+/** True while `zone` is under its authored capacity cap (ignoring `mover`, who is leaving). */
+export function zoneHasRoom(zone: SpawnZone, units: readonly Unit[], mover?: Unit): boolean {
+  return zoneOccupants(zone, units).filter((u) => u !== mover).length < zone.cap;
+}
+
+/**
+ * The first tile of `zone` that is walkable and unoccupied — where an entering unit lands.
+ * Occupancy is checked against **every** unit (an enemy or a bound captive standing there
+ * blocks it just as an ally does); `mover` is ignored so a unit can re-enter the zone it
+ * is already standing in. `undefined` when the zone is full/blocked.
+ */
+export function freeTileIn(zone: SpawnZone, units: readonly Unit[], grid: TileGrid, mover?: Unit): GridCoord | undefined {
+  return zone.tiles.find(
+    (t) => grid.isWalkable(t) && !units.some((u) => u !== mover && u.alive && u.pos.col === t.col && u.pos.row === t.row),
+  );
+}
+
 /** The enemy danger source (D63): a {@link DeploySource} that ticks on the clock. */
 export interface DeployFront extends DeploySource {
   /** CT-style Speed — how fast the source closes, derived from the enemy roster. */
@@ -188,22 +279,45 @@ export function inDangerZone(coord: GridCoord, front: DeploySource): boolean {
 }
 
 /**
- * True if `coord` is inside the campfire's **protected** radius — the green core where
- * a unit is **capture-immune** (D-feel). Protection is what carves safety out of an
- * otherwise-hostile board; everything outside it is a danger zone (neutral or net).
+ * True if `coord` is **protected** — the capture-immune green core (D-feel). Protection is
+ * what carves safety out of an otherwise-hostile board; everything outside it is a danger
+ * zone (neutral or net). Reads either the campfire's radius (the derived default) or the
+ * authored {@link SpawnZone} tiles (D119) — **the single predicate the override lands in**,
+ * consulted by {@link inSafeZone}, {@link captureChanceAt} and {@link resolveFrontTurn}.
  */
-export function isProtected(coord: GridCoord, camp: DeploySource): boolean {
-  return stepDistance(coord, camp.origin) <= camp.radius;
+export function isProtected(coord: GridCoord, ground: SafeGround): boolean {
+  if (isZoneGround(ground)) return zoneAt(ground, coord) !== undefined;
+  return stepDistance(coord, ground.origin) <= ground.radius;
 }
 
 /**
- * True if `coord` reads as safe ground for the overlays: protected by the campfire and
- * **not yet reached by the net**. (A protected tile the net has lapped over no longer
- * paints green — the contact is what ends deployment — but the unit there is still
- * never captured; see {@link captureChanceAt}.)
+ * True if `coord` reads as safe ground for the overlays.
+ *
+ * - **Campfire:** protected **and not yet reached by the net** — a protected tile the net
+ *   has lapped over no longer paints green (the contact is what ends deployment), though
+ *   the unit there is still never captured; see {@link captureChanceAt}.
+ * - **Authored zones (D119):** protected, full stop. An authored zone **overrides** the
+ *   tile's danger level outright, so it keeps painting green under the net and a unit
+ *   standing in it is safe wherever the net has reached. That is what makes a distant side
+ *   entrance viable without a pre-battle dice roll — and it is why {@link safeGroundRemains}
+ *   can never go false for a zoned encounter, so the phase's end condition moves to the
+ *   geometric force-start (see {@link FrontTurnOutcome.breached}).
  */
-export function inSafeZone(coord: GridCoord, camp: DeploySource, front: DeploySource): boolean {
-  return isProtected(coord, camp) && !inDangerZone(coord, front);
+export function inSafeZone(coord: GridCoord, ground: SafeGround, front: DeploySource): boolean {
+  if (isZoneGround(ground)) return isProtected(coord, ground);
+  return isProtected(coord, ground) && !inDangerZone(coord, front);
+}
+
+/**
+ * True once the net has reached **any tile of the primary zone** (D119) — the *geometric*
+ * force-start, deliberately unlike the campfire's unit-dependent breach: the primary zone
+ * overrides danger, so the net arriving there starts the battle but grabs nobody, and an
+ * **empty** primary zone (the default when the player has sent everyone to the side door)
+ * must still fire it. `false` when the set declares no primary.
+ */
+export function frontReachedPrimary(zones: readonly SpawnZone[], front: DeploySource): boolean {
+  const primary = primaryZone(zones);
+  return primary !== undefined && primary.tiles.some((t) => inDangerZone(t, front));
 }
 
 /** Grow the danger radius one (or `by`) steps. */
@@ -220,11 +334,11 @@ export function advanceFront(front: DeployFront, by = FRONT_ADVANCE_PER_TURN): v
  */
 export function frontCaptureChance(
   unit: Unit,
-  camp: DeploySource,
+  ground: SafeGround,
   front: DeploySource,
   opts: { dugIn?: boolean; exposureMultiplier?: number } = {},
 ): number {
-  return captureChanceAt(unit.pos, camp, front, { ...opts, evasion: captureEvasionFactor(unit) });
+  return captureChanceAt(unit.pos, ground, front, { ...opts, evasion: captureEvasionFactor(unit) });
 }
 
 /**
@@ -237,11 +351,11 @@ export function frontCaptureChance(
  */
 export function captureChanceAt(
   coord: GridCoord,
-  camp: DeploySource,
+  ground: SafeGround,
   front: DeploySource,
   opts: { dugIn?: boolean; evasion?: number; exposureMultiplier?: number } = {},
 ): number {
-  if (isProtected(coord, camp)) return 0; // green core — capture-immune
+  if (isProtected(coord, ground)) return 0; // green core / authored zone — capture-immune
   const base = inDangerZone(coord, front) ? FRONT_DANGER : NEUTRAL_DANGER * (opts.exposureMultiplier ?? 1);
   let chance = base;
   if (opts.dugIn) chance *= DIG_IN_CAPTURE_FACTOR;
@@ -284,7 +398,7 @@ export interface DeployForecast {
 
 export function deployForecast(
   unit: Unit,
-  camp: DeploySource,
+  ground: SafeGround,
   front: DeploySource,
   reachable: readonly GridCoord[] = [],
   opts: { dugIn?: boolean; exposureMultiplier?: number } = {},
@@ -292,11 +406,11 @@ export function deployForecast(
   const dugIn = opts.dugIn ?? unit.dugIn === true;
   const evasion = captureEvasionFactor(unit);
   const exposureMultiplier = opts.exposureMultiplier;
-  const hold = captureChanceAt(unit.pos, camp, front, { dugIn, evasion, exposureMultiplier });
-  const digIn = dugIn ? null : captureChanceAt(unit.pos, camp, front, { dugIn: true, evasion, exposureMultiplier });
+  const hold = captureChanceAt(unit.pos, ground, front, { dugIn, evasion, exposureMultiplier });
+  const digIn = dugIn ? null : captureChanceAt(unit.pos, ground, front, { dugIn: true, evasion, exposureMultiplier });
   let best: number | null = null;
   for (const coord of reachable) {
-    const risk = captureChanceAt(coord, camp, front, { dugIn: false, evasion, exposureMultiplier });
+    const risk = captureChanceAt(coord, ground, front, { dugIn: false, evasion, exposureMultiplier });
     if (best === null || risk < best) best = risk;
   }
   const move = best !== null && best < hold ? best : null;
@@ -337,7 +451,7 @@ export interface FrontTurnOutcome {
  */
 export function resolveFrontTurn(
   front: DeployFront,
-  camp: DeploySource,
+  ground: SafeGround,
   units: readonly Unit[],
   rng: Rng,
   opts: { dugIn?: (u: Unit) => boolean; by?: number; exposureMultiplier?: number } = {},
@@ -350,7 +464,7 @@ export function resolveFrontTurn(
   // Capture rolls are for the **unprotected** — neutral or netted; the green core is
   // immune. Deepest (closest to the source) first, so the most-exposed is grabbed first.
   const exposed = players
-    .filter((u) => !isProtected(u.pos, camp))
+    .filter((u) => !isProtected(u.pos, ground))
     .sort(
       (a, b) =>
         stepDistance(a.pos, front.origin) - stepDistance(b.pos, front.origin) ||
@@ -364,24 +478,33 @@ export function resolveFrontTurn(
   for (const u of exposed) {
     if (remaining <= 1) break; // never catch the party's last fighter
     rolled.push(u);
-    if (rng.chance(frontCaptureChance(u, camp, front, { dugIn: isDugIn(u), exposureMultiplier }))) {
+    if (rng.chance(frontCaptureChance(u, ground, front, { dugIn: isDugIn(u), exposureMultiplier }))) {
       captured = u;
       remaining -= 1;
       break; // first catch raises the alarm → combat begins
     }
   }
-  // No catch, but the net has lapped over a protected unit → it can't be grabbed, but
+  // No catch, but the net has reached the party's ground → it can't grab anyone there, but
   // the contact trips the alarm (combat starts, nobody taken) — the soft consequence.
-  const breached = captured === null && players.some((u) => isProtected(u.pos, camp) && inDangerZone(u.pos, front));
+  //  - campfire: the **unit-dependent** reading — somebody must be standing in the lapped core.
+  //  - authored zones (D119): the **geometric** reading — the net *arriving* at the primary
+  //    zone force-starts the phase, whether or not anyone is standing there. An empty primary
+  //    zone would never fire the unit-dependent test, and the zone still overrides danger, so
+  //    the arrival starts the battle and grabs nobody.
+  const breached =
+    captured === null &&
+    (isZoneGround(ground)
+      ? frontReachedPrimary(ground, front)
+      : players.some((u) => isProtected(u.pos, ground) && inDangerZone(u.pos, front)));
   return { advancedTo: front.radius, captured, rolled, alarm: captured !== null, breached };
 }
 
 /** True while any walkable tile is still safe ground (else the danger has overrun). */
-export function safeGroundRemains(grid: TileGrid, camp: DeploySource, front: DeploySource): boolean {
+export function safeGroundRemains(grid: TileGrid, ground: SafeGround, front: DeploySource): boolean {
   for (let row = 0; row < grid.rows; row++) {
     for (let col = 0; col < grid.cols; col++) {
       const t = { col, row };
-      if (grid.isWalkable(t) && inSafeZone(t, camp, front)) return true;
+      if (grid.isWalkable(t) && inSafeZone(t, ground, front)) return true;
     }
   }
   return false;

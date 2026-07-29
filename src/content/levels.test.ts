@@ -335,7 +335,10 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
 
   it("B6b — the turn-1 lever: `winch-wall` toggles the inner seal and sits within one move of the side spawn", () => {
     const lvl = level();
-    expect(lvl.playerSpawns[0]).toEqual(SIDE_SPAWN); // the side door is spawn[0] (placeParty maps party[i]→spawns[i])
+    // The infiltrator's start is the authored **side-door spawn zone** now (D119), not
+    // `playerSpawns[0]` — the roster-order index-map that put a Soldier here is what D119 replaced.
+    const side = lvl.spawnZones!.find((z) => z.id === "side-door")!;
+    expect(side.tiles).toEqual([SIDE_SPAWN]);
     const lever = lvl.levers!.find((l) => l.id === "winch-wall")!;
     expect(lever.targets).toEqual(["seal-inner"]);
     // A lever is pulled from its tile or one step away, so the infiltrator needs (dist - 1) movement.
@@ -390,7 +393,11 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
     expect(planEnemyTurn(warden, battle.units, battle.grid, planOpts()).gateTarget).toBeUndefined();
 
     const winch = battle.levers.find((l) => l.id === "winch-wall")!;
-    const infiltrator = battle.units.find((u) => u.side === "player" && u.pos.col >= 15)!;
+    // Whoever the player sent through the side door. (Before D119 this read `pos.col >= 15`,
+    // which only worked because `placeParty` index-mapped party[0] onto the side spawn — the
+    // very defect authored zones removed. The doctrine under test is the seal-drive, not
+    // placement, so the probe just puts *a* player body on the winch.)
+    const infiltrator = battle.units.find((u) => u.side === "player" && !u.captured)!;
     infiltrator.pos = { ...winch.pos };
     battle.pullLever(winch, infiltrator);
     expect(battle.gates.find((g) => g.id === "seal-inner")!.locked).toBe(true);
@@ -435,5 +442,91 @@ describe("the unit-id uniqueness guard (D98 editor M-B)", () => {
     for (const id of ["the-rescue", "prison-break", "sample-skirmish"]) {
       expect(validateLevel(getLevel(id)!).filter((i) => /duplicate unit id/.test(i))).toEqual([]);
     }
+  });
+});
+
+/**
+ * The spawn-zone content guard (D119). Authored zones decide where the party stands, which
+ * ground is capture-immune, and when the deploy phase force-starts — every rule below is one
+ * whose violation would otherwise surface as a mid-deploy freeze or a silently-wrong phase
+ * rather than a load error. Each case must fail on **its own** violation and nothing else.
+ */
+describe("the spawn-zone guard (D119)", () => {
+  const base = () => ({
+    id: "zoned",
+    name: "Zoned",
+    cols: 6,
+    rows: 6,
+    blocked: [{ col: 5, row: 5 }],
+    playerSpawns: [{ col: 0, row: 0 }],
+    enemies: [{ templateId: "bandit-thug", pos: { col: 4, row: 4 } }],
+    gates: [{ id: "door", pos: { col: 3, row: 3 }, openBy: [{ kind: "lockpick" }], locked: true }],
+    reward: { gold: 10, materials: [], xp: 10 },
+    spawnZones: [
+      { id: "main", label: "the Gate", primary: true, cap: 2, tiles: [{ col: 0, row: 0 }, { col: 1, row: 0 }] },
+      { id: "back", label: "the Back Way", cap: 1, requiresFlag: "some-intel", tiles: [{ col: 5, row: 0 }] },
+    ],
+  });
+  const only = (issues: string[], re: RegExp) => {
+    expect(issues.some((i) => re.test(i)), `no issue matched ${re}: ${JSON.stringify(issues)}`).toBe(true);
+    return issues;
+  };
+
+  it("the well-formed shape validates clean", () => {
+    expect(validateLevel(base())).toEqual([]);
+  });
+
+  it("rejects a set with no primary zone, and a set with two", () => {
+    const none = base();
+    none.spawnZones[0].primary = false;
+    only(validateLevel(none), /exactly one primary/);
+    const two = base();
+    two.spawnZones[1].primary = true;
+    only(validateLevel(two), /exactly one primary/);
+  });
+
+  it("rejects a flag-gated PRIMARY (it could vanish at stage time, leaving nowhere to stand)", () => {
+    const lvl = base();
+    lvl.spawnZones[0].requiresFlag = "some-intel";
+    only(validateLevel(lvl), /primary AND flag-gated/);
+  });
+
+  it("rejects a zone tile drawn in a wall — the exact defect authored zones exist to fix", () => {
+    const lvl = base();
+    lvl.spawnZones[1].tiles = [{ col: 5, row: 5 }]; // blocked terrain
+    only(validateLevel(lvl), /blocked terrain/);
+  });
+
+  it("rejects a zone tile off the board", () => {
+    const lvl = base();
+    lvl.spawnZones[1].tiles = [{ col: 9, row: 0 }];
+    only(validateLevel(lvl), /off the board/);
+  });
+
+  it("rejects a zone tile sitting on a gate (a locked gate blocks it once the battle is built)", () => {
+    const lvl = base();
+    lvl.spawnZones[1].tiles = [{ col: 3, row: 3 }];
+    only(validateLevel(lvl), /is a gate tile/);
+  });
+
+  it("rejects overlapping zones (zoneAt must resolve a tile to exactly one entrance)", () => {
+    const lvl = base();
+    lvl.spawnZones[1].tiles = [{ col: 1, row: 0 }];
+    only(validateLevel(lvl), /must not overlap/);
+  });
+
+  it("rejects a zero cap and an empty tile list (a zone nobody may enter is a dead verb)", () => {
+    const zeroCap = base();
+    zeroCap.spawnZones[1].cap = 0;
+    only(validateLevel(zeroCap), /integer cap/);
+    const empty = base();
+    empty.spawnZones[1].tiles = [];
+    only(validateLevel(empty), /has no tiles/);
+  });
+
+  it("a level that declares NO zones is untouched by the guard", () => {
+    const lvl = base();
+    delete (lvl as Partial<typeof lvl>).spawnZones;
+    expect(validateLevel(lvl)).toEqual([]);
   });
 });

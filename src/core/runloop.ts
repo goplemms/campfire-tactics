@@ -439,6 +439,10 @@ export class RunLoop {
       // Per-encounter salt (node + night): an unsalted run.seed replayed the identical
       // deploy/trap-spot streams in every battle of the run (audit 2026-07-20 / D114).
       seed: saltSeed(this.run.seed, Labels.battle(node.id, this.run.night)),
+      // The run's flags gate the authored spawn zones (D119): `side-door-intel`, earned
+      // upstream via an authored win's `grants.flag`, is what unions the finale's side
+      // entrance into its zone set. Unset ⇒ primary entrance only (graceful degradation).
+      flags: this.run.flags,
     });
     this.source = source;
     this.staged = staged;

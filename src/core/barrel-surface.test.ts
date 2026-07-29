@@ -173,6 +173,18 @@
  *     `Battle.keyGate` is a method. No new registration/RNG → sim digest unchanged.
  *   - M2c (gates.ts): +1 — `keyholderOf` (position-independent keyholder match; the AI key-drive filter).
  *     `AIPlan.gateAct` is a type-only field; the planner reorder is behavior. No new registration/RNG.
+ *
+ * Authored spawn-zone deltas (D119 — the split-force deploy, finale group A):
+ *   - +10 — the deploy-zone substrate in `deployment.ts` (`isZoneGround` — the hand-written
+ *     `SafeGround` discriminant, since TS's `Array.isArray` guard does not subtract a
+ *     `readonly T[]` union member; `zoneAt` / `primaryZone` / `zoneOccupants` / `zoneHasRoom` /
+ *     `freeTileIn` — zone lookup + the authored capacity cap; `frontReachedPrimary` — the
+ *     *geometric* deploy force-start that replaces `safeGroundRemains` for a zoned encounter),
+ *     the authored half in `authored.ts` (`buildSpawnZones` — flag-gated inflation;
+ *     `placeInZone` — everyone at the primary zone, replacing the roster-order index-map at the
+ *     finale), and `SIDE_DOOR_ID` (`the-rescue.ts`, the provider node's authored body).
+ *     `SpawnZone` / `SafeGround` / `AuthoredSpawnZone` are type-only. No new RNG label, no new
+ *     registration, no routing/reward change → sim digest unchanged (→ 731).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -330,6 +342,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "SCOUT_JOB",
   "SCOUT_PRESTIGE_FLOOR",
   "SELA_MEDIC",
+  "SIDE_DOOR_ID",
   "SIDE_DOOR_INTEL",
   "SKILLS",
   "SLOWED",
@@ -449,6 +462,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "buildGrid",
   "buildLedger",
   "buildScenarioRun",
+  "buildSpawnZones",
   "bumpCounter",
   "buyArmoryGear",
   "buyPriceFor",
@@ -579,7 +593,9 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "forget",
   "formatDigest",
   "freeCaptive",
+  "freeTileIn",
   "frontCaptureChance",
+  "frontReachedPrimary",
   "frontSpeed",
   "frontTurnStage",
   "gainRunGold",
@@ -671,6 +687,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "isRunOver",
   "isStealthed",
   "isValidSkillTarget",
+  "isZoneGround",
   "itemEffect",
   "jeopardyOf",
   "jobLevelOf",
@@ -741,6 +758,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "payUpkeep",
   "pct",
   "pickRepresentatives",
+  "placeInZone",
   "placeParty",
   "placePlayerTrap",
   "placePlayersAutoEdge",
@@ -753,6 +771,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "prestigeOptions",
   "previewNode",
   "primaryJobOf",
+  "primaryZone",
   "primeFlag",
   "projectDossier",
   "projectForecast",
@@ -901,6 +920,9 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "visibleNodes",
   "withDefaultGoal",
   "woundedBySeverity",
+  "zoneAt",
+  "zoneHasRoom",
+  "zoneOccupants",
 ];
 
 describe("R3 barrel surface — the core public export names are frozen (pure motion)", () => {

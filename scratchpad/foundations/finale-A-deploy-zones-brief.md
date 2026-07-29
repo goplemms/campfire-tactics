@@ -207,7 +207,7 @@ npm run audit:visual · npm run audit:challenge
 
 ## Working agreement
 
-- **Plan first**, and **red-team the deploy-side choices** before building (`decision-adversary`).
+- **Plan first**, and **red-team the deploy-side choices** before building (`memento:decision-adversary`).
 - **Do NOT commit.** Report your changes and let the main session commit — subagent commits are unsigned.
 - **Report honestly**: what you built, what you verified, what you could not, and anything that turned out
   differently from this brief. If a verified claim above is wrong, that is a finding worth more than a

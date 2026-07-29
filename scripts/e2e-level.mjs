@@ -70,6 +70,8 @@ async function main() {
           levers: s.battle.levers.map(x => x.id).sort().join(","),
           exitSpan: s.loop.staged.objectives.find(o => o.spec.kind === "extraction").spec.span.length,
           goals: s.loop.staged.objectives.map(o => o.spec.kind).sort().join(","),
+          zones: s.battle.spawnZones.map(z => z.id).join(","),
+          atFrontGate: s.battle.units.filter(u => u.side === "player" && !u.captured).every(u => u.pos.row >= 17),
         };`);
         console.log("• #level=the-rescue boots the v4 concentric prison");
         check("the-rescue renders a deployment board", tr.phase === "deployment");
@@ -83,15 +85,23 @@ async function main() {
         check("the four winches are armed", tr.levers === "winch-control,winch-hall,winch-staging,winch-wall");
         check("the exit span is the union of both mouths (6 tiles)", tr.exitSpan === 6);
         check("it carries the two OR'd goals", tr.goals === "eliminate-all,extraction");
+        // D119 graceful degradation, rendered: `#level` boots with no run flags, so the
+        // flag-gated side door is never unioned in and the party stages at the front gate.
+        check("with no intel flag only the front-gate zone stages", tr.zones === "front-gate");
+        check("the whole party stages at the front gate (nobody stranded at the side door)", tr.atFrontGate === true);
         await g.screenshot(path.join(OUT, "04-the-rescue.png"));
 
         // Drive the load-bearing surface: the infiltrator's turn-1 lever slam. Pulling `winch-wall`
         // must re-lock `seal-inner` AND re-block its tile through the real scene's lever path — the
         // one interaction the whole split-force design keys off (C2 / checklist B6).
+        // NB: the probe used to find the infiltrator by `pos.col >= 15`, which only worked because
+        // `placeParty` index-mapped party[0] onto the side spawn — the defect D119 removed. Booting
+        // via `#level` carries no run flags, so the side-door zone is (correctly) never unioned in
+        // and the whole party stages at the front gate. The doctrine under test is the seal slam.
         const slam = await g.bsEval(`
           const lever = s.battle.levers.find(l => l.id === "winch-wall");
-          const infil = s.battle.units.find(u => u.side === "player" && u.pos.col >= 15);
-          if (!infil) return { err: "no infiltrator at the side door" };
+          const infil = s.battle.units.find(u => u.side === "player" && !u.captured);
+          if (!infil) return { err: "no player body to send through the side door" };
           infil.pos = { col: lever.pos.col, row: lever.pos.row };
           s.battle.pullLever(lever, infil);
           const seal = s.battle.gates.find(g => g.id === "seal-inner");

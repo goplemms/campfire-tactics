@@ -5230,6 +5230,14 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
     **0.4 capture per net turn**, which is exactly the intended "risk detection for efficiency" trade.
   **Author it tight.** This is the knob the whole intent hangs on; it belongs in the build brief as a
   stated requirement, not left to an authoring whim.
+  - **CORRECTION (build session, 2026-07-28) — the 0.4 is an EARLY-WINDOW price, not a flat one.** The
+    bullet above reads as if the lever approach costs `NEUTRAL_DANGER = 0.4` throughout. It does not. The
+    tiles a unit must stand on to pull `winch-wall` — `(18,6)` and `(17,7)` — are **4 steps** from the net
+    origin `(19,9)`, and the net grows 1 step per its turn from radius 0. So **once the net reaches radius
+    4 those tiles are inside it at `FRONT_DANGER = 0.95`**. The trade is therefore *sharper* than D119
+    described and strictly better for it: an **early** dash for the seal is a real gamble at 0.4, and
+    dithering turns it into near-certain capture. Recorded, not changed — the numbers stand; only the
+    description was wrong.
 - **Consequence — an early seal shortens, but does not remove, the C2 head-start race.** Slamming the seal
   in setup means combat opens with it already shut; the garrison's door-drive (D117) begins battering
   immediately, so the race still runs — the player has simply bought the pull for a capture roll instead of

@@ -13,7 +13,7 @@
  */
 
 import type { TileGrid } from "./grid";
-import type { DeploySource, FrontTurnOutcome } from "./deployment";
+import type { DeploySource, FrontTurnOutcome, SafeGround } from "./deployment";
 import { safeGroundRemains } from "./deployment";
 
 /** What the deploy phase does once the net's turn resolves (D63). */
@@ -32,15 +32,22 @@ export type FrontTurnStage =
  * ({@link FrontTurnOutcome.breached}) or no safe ground remains, the net has overrun
  * the camp (combat starts, nobody taken); otherwise the deploy phase continues. The
  * scene renders each branch but no longer decides it.
+ *
+ * **With authored spawn zones (D119) only the first of those two overrun rules can
+ * fire.** A zone overrides the tile's danger outright, so {@link safeGroundRemains} is
+ * permanently true and the phase would never auto-end — which is exactly why `breached`
+ * switches to the *geometric* reading (the net **arriving** at the primary zone) for a
+ * zoned encounter. The two rules are not left to sit beside each other and hope: for
+ * zones, `breached` **is** the end condition.
  */
 export function frontTurnStage(
   out: FrontTurnOutcome,
   grid: TileGrid,
-  camp: DeploySource,
+  ground: SafeGround,
   front: DeploySource,
 ): FrontTurnStage {
   if (out.captured) return { kind: "capture" };
-  if (out.breached || !safeGroundRemains(grid, camp, front)) return { kind: "overrun" };
+  if (out.breached || !safeGroundRemains(grid, ground, front)) return { kind: "overrun" };
   return { kind: "continue" };
 }
 

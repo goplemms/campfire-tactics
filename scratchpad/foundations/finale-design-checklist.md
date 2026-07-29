@@ -207,6 +207,23 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 - 💬 **E1** — The **keyed-seal ↔ lever re-lock oscillation** ships un-fully-defused: M3b's control-room
   targeting is a *weight* (makes the camper attackable), not a full defuse; the free-casualty ceiling is
   the farming tripwire. Decide whether the finale's lever/seal geometry needs more.
+  **The concrete loop, verified 2026-07-28** (folded in here rather than filed — this is an open owner call,
+  not agreed work; promote it to an issue if it should be visible as its own thread):
+  - `seal-outer` `(9,16)` carries **two** openers: `{ destructible, hp: 64 }` **and**
+    `{ keyholder, tag: the-warden, dropOnDeath: true }`.
+  - `winch-staging` `(8,17)` targets `seal-outer`, and sits in the **front staging area** — one step outside
+    the `front-gate` spawn zone, so the main party can reach it turn 1.
+  - So: the player throws the lever to shut `seal-outer`, the Warden (garrison, un-engaged) drives over and
+    **opens it with his key**, the player shuts it again — repeat. The Warden can be **tied up indefinitely**
+    at a lever the party controls, which is a way to neutralise the encounter's toughest body without
+    fighting it.
+  - **Not a farming exploit** — D117's **M4** free-casualty ceiling caps reward-milking, and D106 means a
+    *battered* door becomes a permanent breach the lever can't re-seal. The residual is the **oscillation
+    itself**, i.e. a stalling tactic, not an economy hole.
+  - ⚠️ **Note the asymmetry:** the Warden keys `seal-outer` (the front route), **not** `seal-inner` (the
+    infiltration route, destructible-only). So this does **not** trip D118's "a Warden keyholding the cell
+    doors would free the captives for you" hazard — the cells are lockpick-only and no `garrison` body can
+    open them. **B8 is satisfied**; this is the separate stalling question.
 
 ### F — Promotion into the arc
 - ⬜ **F1** — Replace `PRISON_ASSAULT` (`hollow-mill.ts:372`) with The Rescue; wire the finale node

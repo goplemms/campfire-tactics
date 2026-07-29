@@ -167,9 +167,10 @@ npm run audit:visual · npm run audit:challenge
   Prove: flag **set** ⇒ side zone placeable, a unit can be moved there via the entrance action, cap
   enforced; flag **unset** ⇒ primary only; **no page error either way**.
   ⚠️ `test:e2e:doctrine` proves a **6×3** harness — it does **not** de-risk a distant side zone on 20×20.
-  ⚠️ **Position units by tile lookup, not by pixel.** There is no pan camera in battle; the board zoom is
-  `min(BOARD_SCALE, fitBoardScale(...))` (`BattleScene.ts:528`). The editor e2e had to move to
-  lookup-by-tile for exactly this reason.
+  ⚠️ **Position units by tile lookup, never by pixel.** The board zoom is today
+  `min(BOARD_SCALE, fitBoardScale(...))` (`BattleScene.ts:528`), and **`BoardCamera` adoption is a queued
+  follow-up** (D100) that will make pixel coordinates wrong again in a different way. The editor e2e had to
+  move to lookup-by-tile for exactly this reason. Write it tile-addressed and it survives both.
 - **Determinism** — the flag round-trips `snapshotRun`/repro: same seed + same choices ⇒ same zones.
 - **The degradation path is tested, not assumed** — flag unset ⇒ the side zone is never unioned.
 - **Fail-loud placement still works** — a typo'd or removed provider is rejected (the D116 guards).
@@ -193,6 +194,10 @@ npm run audit:visual · npm run audit:challenge
   `CUFFED_CELL`.
 - **The map expansion** — growing the board so the party starts outside the front door. Owner's next
   piece; expect the zone coordinates authored here to **move**. Author them so that is a data edit.
+- **Battle-side `BoardCamera` adoption** (pan + zoom on the battle board). Built and shipped for the
+  editor as **D100**; the battle wiring is a **recorded, deliberate follow-up** whose prerequisite is
+  moving BattleScene's on-canvas HUD to a **second, fixed camera** (else the HUD scrolls with the board).
+  Sequenced **before** the map expansion, **after** this. Do not start it here.
 - **Balance/tuning** — guard counts, seal hp, party strength. Owner tunes these in the map editor after
   this lands.
 - **The full C5** deploy deep-dive, and the scout-grain flag source. Both parked.

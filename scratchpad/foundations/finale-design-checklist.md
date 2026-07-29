@@ -255,3 +255,27 @@ block** (`speed 11 / hp 26 / atk 8`, `playtest.ts` `BASE`) with only the *job* v
 levelled campaign party that actually arrives at the finale. So editor tuning calibrates the fight against a
 **proxy** party. That is fine for feel; it means the "is it winnable by the real party" question is answered
 at **arc-promotion time (F)**, not before.
+
+---
+
+## Queued after this track (owner-directed, 2026-07-28)
+
+Recorded here so the finale's remaining sequence is visible in one place. Neither is in the group-A brief.
+
+1. **Battle-side `BoardCamera` adoption — pan + zoom on the battle board.** ✅ **The component is built and
+   shipped** (**D100**, 2026-07-18): `game/board-camera.ts`, grab-and-drag pan + cursor-anchored wheel
+   zoom, a click-vs-drag discriminator so a drag never also taps, a **Recenter** control, and e2e guards
+   (`test:e2e:editor`). Today **only `EditorScene` imports it**. D100 records the game wiring as a
+   **deliberate follow-up** and names its **prerequisite**: camera scroll/zoom moves *everything* the
+   camera renders, so **BattleScene's on-canvas HUD must move to a second, fixed camera first** — the
+   editor sidesteps this by keeping all chrome in the DOM. Adjacent to the **#131** BattleScene
+   decomposition.
+2. **The map expansion** — grow the board so the party starts **some tiles outside the front door** (the
+   owner's original intent for the approach). **Sequence after (1):** without pan, a larger board only
+   shrinks via `fitBoardScale` (`BattleScene.ts:528`, no camera today), trading interior legibility — which
+   is exactly where reading the fight matters. With pan adopted, that cost goes away.
+   - Expect the group-A zone coordinates to **move**; they are authored as data so this is an edit, not a
+     rebuild.
+   - 💬 **Worth deciding then, not now:** if the party starts outside the front door, "everyone reaches an
+     exit" could simply mean **getting back to where you came in** — a cleaner read for the player than the
+     current authored exit spans, and it interacts with **G** (#208).

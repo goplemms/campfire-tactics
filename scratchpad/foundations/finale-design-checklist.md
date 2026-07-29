@@ -170,6 +170,23 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 - ⬜ **G2** — **The "Go now" call** — resolve on demand; on-exfil units escape, off-exfil are left behind.
   Outcome from what's true: captives out ⇒ **extraction win**; else ⇒ **survivable retreat**
   (`objective-failure`), unifying "Go now" with the existing retreat concept.
+- ⚠️ **G3-CORRECTION (verified 2026-07-28, recorded as D120): there are TWO populations, not one.** The
+  bullets below describe only the **party** path and are correct about it. **Captives are a separate path
+  and currently worse than "untouched":** they are staged but **never in `combatants`/the roster**, so
+  `resolveRescues` cannot see them. Their one seam, `resolveCaptiveRecruits` (`runloop.ts:686`),
+  **recruits every declared captive unconditionally** — never reading position, `alive`, or `captured` —
+  so **an extraction win brings home a prisoner still locked in a cell**; and it is **win-gated**, so on
+  the survivable retreat "Go now" produces, **captives are neither recruited nor rescue-quested — they
+  vanish**. That second failure was **predicted in-repo** by the function's own *"Seam limitation"* note,
+  which asks for a captive → rescue-quest fallback **before** standing a captive up in an
+  objective-failure-capable node. **G2 makes The Rescue exactly that node.**
+- ✅ **G3b — settled (D120, owner): record it, generate nothing.** Extend the **existing**
+  `RescueQuest` (`mortality.ts:181`, accumulated on `run.rescueQuests`) to cover captives — it already
+  names the unit. **No new flag namespace.** A branching retrieval encounter is the eventual design and is
+  **not built now** (the demo stays a self-contained run). **Run-level only**; shape it so promoting it to
+  the guild tier is a move, not a rewrite. ⚠️ Accepted consequence: the finale is the run's last node, so
+  the record is written then discarded — what it buys **now** is a correct outcome (Bram is named, and he
+  does not come home), not a live hook.
 - ⬜ **G3** — **Left-behind consequence — two changes, both new work.** ⚠️ Verified: `resolveRescues`
   (`runloop.ts:642–658`) starts `if (!u.captured) continue`, so an off-exfil **survivor is untouched and
   just comes home**. So (a) extraction resolution must **mark off-exfil survivors as captured** (doesn't

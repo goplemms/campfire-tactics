@@ -5255,3 +5255,60 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   deploy zone model — campfire, net, `DeploySource`), **D68** (Quiet Footsteps / capture multipliers),
   **D116** (authored-node injection). **Parked, untouched:** **C5** (the deploy deep-dive).
   **Superseded by:** —
+
+## D120 — Exfil semantics, the "Go now" call, and what leaving someone behind actually costs
+
+- **Status:** Decided (design) 2026-07-28 — owner-directed. Implements checklist group **G** / issue
+  **#208**. **D118 required this to carry its own decision record** because it changes **shipped
+  resolution semantics for every encounter**, not just the finale.
+- **The rule (restated from D118, unchanged).** A unit **survives only if it is on an exfil site** when
+  extraction resolves — **captives and party alike**. **Every mouth is an exfil site.** **Auto-resolve**
+  when everyone is out; **"Go now"** resolves early so the player can accept a sacrifice deliberately. The
+  outcome is computed **from what is true at the call**: captives out ⇒ **extraction win**; else ⇒
+  **survivable retreat** (`objective-failure`), unifying "Go now" with the existing retreat concept.
+- **Verified 2026-07-28 — the tracking described only HALF the problem.** Captives and party units are
+  **two populations on two code paths**, and the fix everyone had in mind touches one:
+  - **Party (as tracked, confirmed).** `resolveRescues` (`runloop.ts:646`) opens
+    `if (!u.captured) continue` over `this.combatants` (the roster) — an off-exfil **survivor** is
+    untouched and simply comes home. Its `won` branch `freeCaptive`s **every** captured unit (**D21**,
+    control-the-field).
+  - **Captives (NOT tracked — and worse than "untouched").** Captives are staged in the battle but
+    **never in `combatants`/the roster**, so `resolveRescues` cannot see them. Their one seam is
+    `resolveCaptiveRecruits` (`runloop.ts:686`), which **recruits every declared captive
+    unconditionally — it never reads position, `alive`, or `captured`** ("regardless of whether it was
+    freed mid-fight or even downed after"). **So on an extraction win a prisoner still locked in a cell
+    joins the party anyway**, and marking off-exfil survivors as captured does *nothing* for them.
+  - **And that seam is win-gated** (`if (!won || …) return`), so on the **survivable retreat** "Go now"
+    produces, **no captive is recruited and no rescue quest is mounted** — they vanish from the run.
+    **This was predicted in-repo:** the function's own *"Seam limitation"* note says the win-gating is
+    sound only for **win-or-wipe** encounters, that a captive in an **objective-failure-capable** node
+    "would currently vanish on a survivable loss", and *"Extend this (a captive → rescue-quest fallback)
+    before standing a captive up in such a node."* **G2 makes The Rescue exactly that node**, so the
+    fallback is in scope here, not a future nicety.
+- **Decision — a left-behind unit is RECORDED, by name, and no retrieval is generated yet.** The owner's
+  ask was a `captured(unit-name)`-style memory hook for later expedition generation. **Do not invent a new
+  flag namespace — the record already exists.** `RescueQuest` (`mortality.ts:181`) is
+  `{ unitId, resolution, nights, deploymentPenalty }`, produced by `resolveCaptured` and accumulated on
+  **`run.rescueQuests`** (`run.ts:144`), whose stated purpose is that an abandonment is **never silently
+  lost**. It already names the unit. Extend it to cover **captives**; leave it **inert** (nothing
+  generates a node from it).
+  - **The demo stays self-contained (owner).** A branching retrieval node — the party goes back for a
+    captured unit via a new encounter — is the **eventual** design and is **explicitly not built now**.
+- **Decision — RUN-LEVEL for now, not the guild tier (owner).** `run.flags` and `run.rescueQuests` are
+  **run-scoped** (`run.ts:150`, "Run-scoped … D52 vertical-slice"). ⚠️ **Honest consequence, accepted:**
+  the finale is the **last node of a self-contained run**, so this record is written and then discarded
+  with the run — as a hook for a *future expedition* it currently reaches nothing. What it **does** buy
+  immediately is a **correct outcome**: leaving Bram is recorded by name and **he does not come home**.
+  - **Why not the guild tier now:** retrieval quests do not exist, and cross-run durability lands on the
+    **unsettled save model (#117** — `RunSnapshot` is partial and does not persist this). Building storage
+    for an absent consumer is the upfront framework this repo deliberately avoids (cf. **#171** rev 2,
+    concrete-first: extract only when a **second** consumer appears). **Shape the record so promoting it
+    to the guild tier is a move, not a rewrite.**
+- **Blast radius — this is the risky part.** Gating the `won`-branch auto-free on **field control** changes
+  how wins resolve for **every** encounter that could leave captured units. **An eliminate-all win must
+  still auto-rescue exactly as today** — that regression guard is not optional.
+- **Reuses:** **D118** (the rule, and the requirement that this be its own record), **D97** (dual-OR +
+  `extraction`), **D9/D12** (capture, rescue quests, `resolveCaptured`), **D21** (field-control
+  auto-rescue — the clause being narrowed), **D52** (run flags, authored captives), **D51** (the retreat
+  path). **Deferred:** the retrieval node; guild-tier persistence (**#117**).
+  **Superseded by:** —

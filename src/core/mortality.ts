@@ -180,6 +180,16 @@ export function advanceDyingClocksOneNight(units: readonly Unit[]): Unit[] {
 /** A rescue follow-up quest produced by a captured-and-unrescued unit (D9). */
 export interface RescueQuest {
   unitId: string;
+  /**
+   * The unit's **name** at the moment it was abandoned (D120). The record's stated purpose is
+   * that an abandonment is never silently lost, and until now the name was recovered by looking
+   * `unitId` up in `run.party` — which works for a roster member and **not** for an on-board
+   * captive, who is never in the roster and is precisely the unit most likely to be left in a
+   * cell. Carrying the name makes the record self-describing, which is also what a later promotion
+   * to the guild tier needs (the run whose roster held them is gone by then). Optional so old
+   * repro dumps (D-repro) still restore; the single producer always fills it.
+   */
+  unitName?: string;
   resolution: CaptureResolution;
   /** Night window (0 = no timer). */
   nights: number;
@@ -189,13 +199,19 @@ export interface RescueQuest {
 
 /**
  * Resolve a captured-and-unrescued unit into a **rescue follow-up quest** under
- * a policy (D9) — *not* an instant death. Per D21 a *win* auto-rescues, so this
- * only fires on a non-win/abandon outcome. The unit stays captured (a rescuable
- * sub-objective) until the quest is run or its window lapses.
+ * a policy (D9) — *not* an instant death. Per D21 a win auto-rescues **when it held the
+ * field**, so this fires on a non-win/abandon outcome *and* on the D120 extraction win that
+ * flew rather than held (whoever was not on a mouth stays in the prison). The unit stays
+ * captured (a rescuable sub-objective) until the quest is run or its window lapses.
+ *
+ * Covers both populations (D120): a roster member marked captured by the "Go now" call, and an
+ * **on-board captive** who never made it out — the latter has no roster entry at all, which is
+ * why the record carries {@link RescueQuest.unitName} rather than relying on a party lookup.
  */
 export function resolveCaptured(policy: DifficultyPolicy, unit: Unit): RescueQuest {
   return {
     unitId: unit.id,
+    unitName: unit.name,
     resolution: policy.capture,
     nights: policy.rescueNights,
     deploymentPenalty: policy.rescueDeploymentPenalty,

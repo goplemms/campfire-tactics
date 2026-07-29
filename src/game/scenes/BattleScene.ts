@@ -61,6 +61,11 @@ import { pct,
   // M6 — the run loop
   currentEncounter,
   encounterOutcome,
+  // D120 — exfil semantics: the "Go now" call + the field-control clause on the auto-free
+  heldTheField,
+  canCallExfil,
+  callExfil,
+  exfilStandings,
   jobLevelOf,
   // M10 — theft (D30) + mid-combat bribe → recruitment (D33)
   thiefSteal,
@@ -1917,8 +1922,56 @@ export class BattleScene extends Phaser.Scene {
     }
     // The turn's explicit close is the prominent green primary button (plus Space and
     // W) — so the verb box carries only the unit's *verbs*; Undo sits side-by-side with
-    // End Turn in the separate control box below.
-    this.layoutActionMenu(specs, { undo });
+    // End Turn in the separate control box below, along with the "Go now" call.
+    this.layoutActionMenu(specs, { undo, controls: this.exfilControls() });
+  }
+
+  /**
+   * The **"Go now" call** (D120) — a turn-control, not a verb. It sits in the control box
+   * beside Undo/End Turn exactly as Start Battle does in deployment, because it is a
+   * **phase-level commitment** made on the party's behalf, not something *this* unit does with
+   * its action. It is what makes leaving early a decision the player takes deliberately instead
+   * of one the mission takes for them.
+   *
+   * Offered only when the encounter carries an exfil objective **and someone has actually
+   * reached a mouth** ({@link canCallExfil}) — with nobody out there is nothing to call, and a
+   * call that bound the whole party would grade a wipe. So on every encounter without an
+   * extraction goal this returns `[]` and the row is exactly as it has always been.
+   *
+   * The hover copy names **who walks out and who does not, by name, before the click** — the
+   * price has to be legible at the moment of paying it, since nothing takes it back.
+   */
+  private exfilControls(): ActionSpec[] {
+    const staged = this.loop.staged;
+    if (!staged || this.phase !== "battle" || !canCallExfil(staged)) return [];
+    const { out, leftBehind } = exfilStandings(staged);
+    const names = (us: readonly Unit[]) => us.map((u) => u.name).join(", ");
+    const stranded = leftBehind.length
+      ? `${names(leftBehind)} ${leftBehind.length === 1 ? "is" : "are"} still inside and will NOT come home.`
+      : "Everyone is at a mouth — nobody gets left.";
+    return [{
+      text: `Go Now (${out.length}/${out.length + leftBehind.length})`,
+      description:
+        `Call the extraction NOW. ${names(out)} slip away. ${stranded} ` +
+        `Anyone left behind is captured, and the run records it. This cannot be taken back.`,
+      onClick: () => this.callGoNow(),
+    }];
+  }
+
+  /**
+   * Commit the "Go now" call: resolve extraction off what is true right now, re-read the board
+   * so the units that didn't make it visibly go bound, and grade the encounter. The core call
+   * ({@link callExfil}) owns the rule and the logging — this is the render half.
+   */
+  private callGoNow(): void {
+    const staged = this.loop.staged;
+    if (this.busy || this.over || !staged) return;
+    const call = callExfil(staged);
+    if (!call) return; // nobody at a mouth — the control shouldn't have been up
+    for (const u of call.leftBehind) this.tintCaptured(u, true);
+    this.refreshUnits();
+    this.refreshObjectives();
+    this.finishBattle();
   }
 
   // --- Trap-field: spotting, searching, disarming (D12) ----------------------
@@ -2603,11 +2656,16 @@ export class BattleScene extends Phaser.Scene {
     const res = this.loop.resolve();
     const recruited = this.commitPendingRecruits();
 
-    // Winning frees the field's captives (D52): an on-board captive recruit (the L1 Cook)
-    // the player never reached is freed by the captors' fall — release the bound token so
+    // Winning **the field** frees its captives (D52/D21): an on-board captive recruit (the L1
+    // Cook) the player never reached is freed by the captors' fall — release the bound token so
     // the board reads coherently (un-greyed, full alpha) under the report. resolve() already
     // recruited him into the party; this only mirrors the freeing on his battle token.
-    if (res.result === "win") {
+    //
+    // Gated on **field control** (D120), and not merely cosmetically: these are the same unit
+    // objects as the run roster, so on an extraction win — a flight, with the garrison still
+    // standing — an ungated sweep here would un-capture the very people `resolve()` just
+    // recorded as left behind, handing them back to the party a line after taking them away.
+    if (res.result === "win" && heldTheField(this.battle.units)) {
       for (const u of this.battle.units) if (u.side === "player" && u.captured) freeCaptive(u);
     }
 

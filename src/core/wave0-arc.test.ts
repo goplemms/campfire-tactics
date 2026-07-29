@@ -150,6 +150,12 @@ describe("Wave-0 infiltration arm — the Thief path fires end to end (#168)", (
     const exit = loop.staged!.objectives.find((o) => o.spec.kind === "extraction")!.spec.span!;
     prisoners.forEach((p, i) => { freeCaptive(p); p.pos = { ...exit[i] }; });
     expect(loop.staged!.battle.units.some((u) => u.side === "enemy" && u.alive)).toBe(true);
+    // D120: the prisoners being out is no longer enough — the escort walks out with them, or
+    // the mission would resolve with half the party still inside the prison.
+    expect(loop.staged!.objectives.find((o) => o.spec.kind === "extraction")!.status()).toBe("pending");
+    for (const u of loop.staged!.battle.units) {
+      if (u.side === "player" && u.role !== "prisoner" && u.alive) u.pos = { ...exit[0] };
+    }
 
     const res = loop.resolve();
     expect(res.result).toBe("win"); // extraction cleared the finale without a kill

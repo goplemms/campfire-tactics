@@ -80,8 +80,8 @@ describe("withDefaultGoal (D50/D97)", () => {
   });
 });
 
-describe("extraction (D97)", () => {
-  it("met only once every freed prisoner stands on an exit tile", () => {
+describe("extraction (D97, broadened by D120)", () => {
+  it("met only once every freed prisoner AND the surviving party stands on an exit tile", () => {
     const p1 = prisoner("p1");
     const hero = unit("hero", "player", { pos: { col: 0, row: 0 } });
     const foe = unit("foe", "enemy", { pos: { col: 6, row: 2 } });
@@ -93,6 +93,10 @@ describe("extraction (D97)", () => {
     p1.captured = false; // the Thief picks the lock
     expect(obj.status()).toBe("pending"); // freed, but not yet at the exit
     p1.pos = { col: 0, row: 5 }; // escorted onto an exit tile
+    // D120: the prisoner is out, but the escort is still inside — the mission must NOT
+    // resolve out from under a party still crossing.
+    expect(obj.status()).toBe("pending");
+    hero.pos = { col: 1, row: 5 }; // the escort falls back out too
     expect(obj.status()).toBe("met");
   });
 
@@ -111,22 +115,32 @@ describe("extraction (D97)", () => {
 
   it("a still-captured prisoner sitting on an exit tile does NOT count", () => {
     const p1 = prisoner("p1", { col: 0, row: 5 }); // bound, but happens to be on the exit
-    const units = [unit("hero", "player"), p1];
+    // The hero stands on the exit too, so the ONLY thing that can keep this pending is the
+    // prisoner's bound state — without that this would pass for the wrong reason under D120.
+    const units = [unit("hero", "player", { pos: { col: 1, row: 5 } }), p1];
     const clock = new CTClock(units);
     const [obj] = armObjectives(clock, units, [EXTRACTION]);
     expect(obj.status()).toBe("pending"); // captured ⇒ not extracted
+    p1.captured = false;
+    expect(obj.status()).toBe("met"); // …and freeing it is all that was missing
   });
 
-  it("progress reports the fraction of prisoners freed-and-at-the-exit", () => {
+  it("progress reports the fraction of EVERYONE-who-must-get-out that is out (D120)", () => {
     const p1 = prisoner("p1");
     const p2 = prisoner("p2", { col: 7, row: 0 });
-    const units = [unit("hero", "player"), p1, p2];
+    const hero = unit("hero", "player");
+    const units = [hero, p1, p2];
     const clock = new CTClock(units);
     const [obj] = armObjectives(clock, units, [EXTRACTION]);
+    // Three bodies must reach a mouth: two prisoners + the escort. The bar can no longer read
+    // 100% while the objective is pending, which was the old prisoners-only readout's defect.
     expect(obj.progress()).toBe(0);
     p1.captured = false; p1.pos = { col: 0, row: 5 };
-    expect(obj.progress()).toBe(0.5);
+    expect(obj.progress()).toBeCloseTo(1 / 3);
     p2.captured = false; p2.pos = { col: 1, row: 5 };
+    expect(obj.progress()).toBeCloseTo(2 / 3);
+    expect(obj.status()).toBe("pending"); // the escort is still inside
+    hero.pos = { col: 0, row: 5 };
     expect(obj.progress()).toBe(1);
     expect(obj.status()).toBe("met");
   });

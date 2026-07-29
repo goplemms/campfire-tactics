@@ -15,9 +15,12 @@
  *   and **fails** the objective. It **fizzles** (resolves **met**) when its tagged
  *   driver is killed or immobilized — kill/snare the driver to stop the gate.
  * - **`extraction`** — a *goal* (D97/C2): **met** when every tagged escortee (a freed
- *   prisoner, `escort`) is alive, no longer captured, and standing on the `span` exit
- *   tiles. The finale's second win-path — free the cells and get the prisoners out —
- *   OR'd against `eliminate-all` (the frontal path) by the classifier.
+ *   prisoner, `escort`) is alive, no longer captured, and standing on the `span` exfil
+ *   tiles — **and every surviving party member is standing there too** (D120). The finale's
+ *   second win-path — free the cells and get *everyone* out — OR'd against `eliminate-all`
+ *   (the frontal path) by the classifier. The player may resolve it early and deliberately
+ *   with the **"Go now"** call ({@link "./staging".callExfil}), accepting that whoever is not
+ *   on a mouth does not come home.
  *
  * A **goal** kind ({@link isGoalKind}: `eliminate-all` / `extraction`) *wins* the
  * encounter when met; goals are **OR'd** — achieving *any one* wins (D97/C2). A
@@ -31,7 +34,7 @@
  */
 
 import type { GridCoord } from "./iso";
-import type { Unit } from "./units";
+import { isActive, type Unit } from "./units";
 import { CTClock } from "./clock";
 import { isImmobilized } from "./status";
 import { applyDamage, battleOutcome } from "./combat";
@@ -98,9 +101,10 @@ export interface ObjectiveSpec {
   // --- extraction fields (D97) ---
   /**
    * The units to escort to the `span` exit tiles (the freed prisoners) — tagged by
-   * role/id like {@link driver}. Extraction is **met** when *every* alive escortee is
-   * freed (uncaptured) and standing on an exit tile; a lost prisoner leaves it *pending*
-   * (a goal never *fails*, so the frontal `eliminate-all` path stays open).
+   * role/id like {@link driver}. Extraction is **met** when *every* escortee is freed
+   * (uncaptured), alive and standing on an exit tile **and the surviving party is out with
+   * them** (D120); a lost prisoner leaves it *pending* (a goal never *fails*, so the frontal
+   * `eliminate-all` path stays open).
    */
   escort?: ObjectiveTag;
 }
@@ -112,6 +116,23 @@ export interface ArmedObjective {
   status: () => ObjectiveStatus;
   /** Gauge fill 0..1 for a timed objective, else `undefined` (HUD readout). */
   progress: () => number | undefined;
+  /**
+   * **`extraction` only (D120): the exfil cohort** — the ids of the units the exfil rule
+   * governs, **snapshotted when the objective is armed**. At that moment (immediately after
+   * the `Battle` is constructed in {@link "./staging".stageEncounter}) the player-side units
+   * are exactly *the roster plus the declared captives* — the people who go home.
+   *
+   * It is a snapshot rather than a live `side === "player"` filter because a **swayed** enemy
+   * (the Noble's Bribe, D30/D62) flips `side` to `"player"` mid-fight. A turncoat standing deep
+   * in the prison would otherwise block the extraction win **forever** and be recorded as
+   * "left behind" — neither of which is true of someone who was never yours.
+   */
+  cohort?: ReadonlySet<string>;
+}
+
+/** True if `u` stands on one of `spec`'s exfil tiles (the `extraction` `span`, D97/D120). */
+export function onExfilSite(u: Unit, spec: ObjectiveSpec): boolean {
+  return (spec.span ?? []).some((t) => t.col === u.pos.col && t.row === u.pos.row);
 }
 
 /** The injected default goal (D50): clear the field when none is authored. */
@@ -168,24 +189,40 @@ function armOne(clock: CTClock, units: readonly Unit[], spec: ObjectiveSpec): Ar
   }
 
   if (spec.kind === "extraction") {
-    // A goal (D97): met when every tagged escortee (a freed prisoner) is alive,
-    // uncaptured, and standing on an exit tile. Never *fails* — a downed/lost
-    // prisoner just leaves it pending, so the frontal path stays open.
-    const exit = spec.span ?? [];
-    const onExit = (u: Unit) => exit.some((t) => t.col === u.pos.col && t.row === u.pos.row);
-    const escortees = () => units.filter((u) => matchesTag(u, spec.escort));
+    // A goal (D97, broadened by D120): met when every tagged escortee (a freed prisoner) is
+    // alive, uncaptured and standing on an exfil site — **and the surviving party is out too**.
+    // Before D120 the escortees alone decided it, so the mission declared victory the instant
+    // the prisoners touched a mouth with half the party still crossing the corridor; "Go now"
+    // could not mean anything, because leaving early was the only thing that ever happened.
+    // Never *fails* — a downed/lost prisoner just leaves it pending, so the frontal path stays
+    // open (D97). A **downed** or **fled** (D84 `escaped`) party member does not block it:
+    // only the living, still-on-the-field cohort has to walk out.
+    const onExit = (u: Unit) => onExfilSite(u, spec);
+    // The cohort snapshot — see {@link ArmedObjective.cohort} for why this is not a live filter.
+    const cohort: ReadonlySet<string> = new Set(units.filter((u) => u.side === "player").map((u) => u.id));
+    const mine = () => units.filter((u) => cohort.has(u.id));
+    const escortees = () => mine().filter((u) => matchesTag(u, spec.escort));
+    /** Everyone who still has to be accounted for: the escortees + the party still on its feet. */
+    const owed = () => {
+      const es = escortees();
+      const ids = new Set(es.map((u) => u.id));
+      return [...es, ...mine().filter((u) => !ids.has(u.id) && isActive(u))];
+    };
+    /** An escortee is out only if alive+uncaptured+on a mouth; anyone else, only if on a mouth. */
+    const isOut = (u: Unit) => (matchesTag(u, spec.escort) ? u.alive && !u.captured && onExit(u) : onExit(u));
     return {
       spec,
+      cohort,
       status: () => {
-        const es = escortees();
-        if (es.length === 0) return "pending"; // nothing tagged to extract yet
-        return es.every((u) => u.alive && !u.captured && onExit(u)) ? "met" : "pending";
+        if (escortees().length === 0) return "pending"; // nothing tagged to extract yet
+        return owed().every(isOut) ? "met" : "pending";
       },
-      // HUD readout: fraction of the prisoners currently freed-and-at-the-exit.
+      // HUD readout: the fraction of everyone who must get out that currently is — so the bar
+      // can no longer read 100% while the objective is still pending.
       progress: () => {
-        const es = escortees();
-        if (es.length === 0) return undefined;
-        return es.filter((u) => u.alive && !u.captured && onExit(u)).length / es.length;
+        if (escortees().length === 0) return undefined;
+        const all = owed();
+        return all.length === 0 ? 1 : all.filter(isOut).length / all.length;
       },
     };
   }

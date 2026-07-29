@@ -88,8 +88,10 @@ export function buildResolutionSummary(input: ResolutionInput): ResolutionReport
     if (res.permadeaths.length) party.push({ icon: "lost", text: `Lost forever: ${res.permadeaths.map(nameOf).join(", ")}`, color: INK.danger });
   }
   // Captives left behind become rescue follow-ups (D9/D21) — name them so the
-  // abandonment isn't silently dropped; the Captain's Journal keeps nagging after.
-  if (res.rescueQuests.length) party.push({ icon: "captive", text: `Captured — needs rescue: ${res.rescueQuests.map((q) => nameOf(q.unitId)).join(", ")}`, color: INK.ember });
+  // abandonment isn't silently dropped; the Captain's Journal keeps nagging after. Prefer the
+  // name the record carries (D120): an on-board captive left in a cell is not on the roster,
+  // and after a "Go now" call this line is the moment the player learns who didn't come home.
+  if (res.rescueQuests.length) party.push({ icon: "captive", text: `Left behind — needs rescue: ${res.rescueQuests.map((q) => q.unitName ?? nameOf(q.unitId)).join(", ")}`, color: INK.ember });
 
   // Advancement (D53): who reached a new job level, with their new actives.
   const advancement: ReportRow[] = [];

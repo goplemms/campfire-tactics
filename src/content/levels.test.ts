@@ -97,23 +97,29 @@ describe("the JSON level content pipeline (D98)", () => {
       expect(loop.staged!.battle.units.filter((u) => u.role === "prisoner").every((p) => p.captured)).toBe(true);
       expect(encounterOutcome(loop.staged!)).toBe("win");
     }
-    // (b) Extraction path: free ALL THREE + escort each to the exit, garrison left standing → win.
-    //     And with only TWO extracted it is NOT yet a win — the whole group must be out.
+    // (b) Extraction path: free ALL THREE + escort each to a mouth, garrison left standing → win.
+    //     With only TWO extracted it is NOT yet a win — the whole group must be out. And since
+    //     D120 the *party* must be out with them: the mission no longer resolves out from under
+    //     a rearguard still crossing the corridor.
     {
       const { loop } = buildScenarioRun(levelToScenario(level));
       loop.startEncounter();
       loop.beginBattle();
       const prisoners = loop.staged!.battle.units.filter((u) => u.role === "prisoner");
       const exit = loop.staged!.objectives.find((o) => o.spec.kind === "extraction")!.spec.span!;
+      const party = loop.staged!.battle.units.filter((u) => u.side === "player" && u.role !== "prisoner");
       expect(prisoners).toHaveLength(3);
-      // Free + move only the first two onto the exit — the group is not fully out yet.
+      // Free + move only the first two onto a mouth — the group is not fully out yet.
       prisoners.slice(0, 2).forEach((p, i) => { p.captured = false; p.pos = { ...exit[i] }; });
       expect(loop.staged!.battle.units.some((u) => u.side === "enemy" && u.alive)).toBe(true);
       expect(encounterOutcome(loop.staged!)).not.toBe("win");
-      // Now free + extract the third — the whole group is out → win (garrison still standing).
+      // Free + extract the third: the whole group is out, but the party still isn't (D120).
       const third = prisoners[2];
       third.captured = false;
       third.pos = { ...exit[2] };
+      expect(encounterOutcome(loop.staged!)).not.toBe("win");
+      // The party falls back out through the mouths too → win, garrison still standing.
+      for (const u of party) u.pos = { ...exit[0] };
       expect(loop.staged!.battle.units.some((u) => u.side === "enemy" && u.alive)).toBe(true);
       expect(encounterOutcome(loop.staged!)).toBe("win");
     }

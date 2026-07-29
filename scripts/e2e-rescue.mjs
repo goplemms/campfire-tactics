@@ -229,6 +229,181 @@ async function main() {
     check("the infiltrator carried its side-door position into the fight",
       fought.thiefPos.col === 18 && fought.thiefPos.row === 5);
     check("the deploy overlays are torn down at the boundary", fought.zonesCleared === 0);
+
+    // ---------------------------------------------------------------------------
+    // Arm C — the "Go now" call and the LEFT-BEHIND result screen (D120).
+    //
+    // Two brand-new player-facing surfaces: a turn-control that has never been rendered, and
+    // an after-action report carrying a "left behind" line. `vitest` proves the *rule* and the
+    // sim's bot never opens either — an uncaught throw in the control's spec-builder or in the
+    // report assembly reads as a FREEZE, not a stack trace (the D92/#168 tale). So both are
+    // driven here, and the button is hit with a REAL mouse click on its rendered position.
+    //
+    // The board is posed by TILE (never by pixel — D100's BoardCamera adoption will move
+    // pixels again): two prisoners walked to a mouth, one still cuffed in its cell, and a party
+    // member deliberately stranded deep inside. That is the emotional case the feature exists
+    // for — "go now, and Bram doesn't come home".
+    // ---------------------------------------------------------------------------
+    const posed = await g.bsEval(`
+      const ext = s.loop.staged.objectives.find(o => o.spec.kind === "extraction").spec;
+      const mouth = ext.span[0];
+      const u = s.battle.units;
+      const put = (id, t) => { const x = u.find(v => v.id === id); x.pos = { col: t.col, row: t.row }; };
+      // Wren + Cass are picked out of their cells and walked to the mouth; Bram stays cuffed.
+      for (const id of ["wren", "cass"]) { const c = u.find(v => v.id === id); c.captured = false; c.ct = 0; }
+      put("wren", mouth); put("cass", mouth);
+      // The party falls back to the mouth — except Thane, the rearguard, still deep inside.
+      for (const id of ["cinder", "lark", "nyx"]) put(id, mouth);
+      put("thane", { col: 12, row: 10 });
+      for (const v of u) s.placeView(v);
+      // Hand the turn to a unit so the combat action row (and its control box) renders —
+      // mirroring what beginPlayerTurn does, primary included (it is End Turn during a turn).
+      s.waitingFor = u.find(v => v.id === "cinder");
+      s.acted = false;
+      s.setPrimary("End Turn");
+      s.showSkillButtons(s.waitingFor);
+      const btn = s.actionButtons.find(b => b.label && /Go Now/.test(b.label.text));
+      return {
+        phase: s.phase,
+        mouth,
+        bram: u.find(v => v.id === "bram").captured,
+        row: ${ROW},
+        hasBtn: !!btn,
+        label: btn && btn.label.text,
+        x: btn && btn.x, y: btn && btn.y,
+      };
+    `);
+    console.log("• the 'Go now' turn-control renders once someone has reached a mouth");
+    check("the scene is still mid-battle (posing the board didn't freeze it)", posed.phase === "battle");
+    check("Bram is still cuffed in his cell", posed.bram === true);
+    check("a 'Go Now' control is rendered in the turn-control box", posed.hasBtn === true);
+    // 4 of 5 (Wren, Cass, Cinder, Lark, Nyx out — Thane in): the count is the price, up front.
+    check("…and its label counts who is out vs. who is not", /Go Now \(5\/6\)/.test(posed.label || ""));
+    check("the unit's own verbs are untouched beside it", posed.row.includes("Defend (D)"));
+
+    // A REAL mouse click on the rendered control — not a direct handler call.
+    await g.clickScene(posed.x, posed.y);
+    await sleep(600);
+
+    const left = await g.bsEval(`
+      const u = s.battle.units;
+      // The report's rows live inside a Container on the overlay layer — walk it, so this
+      // asserts what is actually PAINTED, not just what the result object holds.
+      const harvest = (objs, out) => {
+        for (const o of objs || []) {
+          if (o && typeof o.text === "string" && o.text) out.push(o.text);
+          if (o && o.list) harvest(o.list, out);
+        }
+        return out;
+      };
+      const overlayText = harvest(s.overlay, []);
+      return {
+        phase: s.phase,
+        thaneCaptured: u.find(v => v.id === "thane").captured,
+        nyxCaptured: u.find(v => v.id === "nyx").captured,
+        quests: s.loop.run.rescueQuests.map(q => q.unitName || q.unitId).sort(),
+        party: s.loop.run.party.map(v => v.id).sort(),
+        overlayText,
+        primary: s.primary.label.text,
+      };
+    `);
+    console.log("• the call resolves into the after-action report, with the cost named on it");
+    check("the click resolved the encounter (the result screen is up, no freeze)", left.phase === "resolution");
+    check("the stranded rearguard is captured", left.thaneCaptured === true);
+    check("…and a unit that was AT the mouth is not", left.nyxCaptured === false);
+    // Both populations, on one list: a party member (Thane) and a prisoner (Bram).
+    check("the run records BOTH left-behind populations by name",
+      JSON.stringify(left.quests) === JSON.stringify(["Bram", "Thane"]));
+    check("the prisoner left in his cell did NOT join the party", !left.party.includes("bram"));
+    check("…while the two who were walked out DID", left.party.includes("wren") && left.party.includes("cass"));
+    // The report is the surface the player actually reads — assert the rendered text, since a
+    // silently-empty report would otherwise pass every state check above.
+    const reportText = (left.overlayText || []).join(" | ");
+    check("the report names who was left behind, on screen",
+      /Left behind — needs rescue:/.test(reportText) && /Bram/.test(reportText) && /Thane/.test(reportText));
+    check("it reads as the survivable retreat, not a victory and not a defeat",
+      /Objective Failed — Retreat/.test(reportText));
+    check("the party member left behind is NOT reported as freed",
+      !/Freed by winning the field[^|]*Thane/.test(reportText));
+    check("the resolution offers a way onward (the run ends at the finale)", !!left.primary);
+
+    // ---------------------------------------------------------------------------
+    // Arm D — a "Go now" WIN with someone left behind.
+    //
+    // Arm C is a retreat, so it never exercises the scene's post-WIN sweep — and that sweep
+    // ("winning frees the field's captives", D52) walks the same unit objects as the run
+    // roster. Ungated, it would un-capture the very people resolve() had just recorded as left
+    // behind, handing them back a line after taking them away. That defect lives only in the
+    // scene: every headless guard would stay green while the feature quietly did nothing. So
+    // it gets a rendered win of its own.
+    // ---------------------------------------------------------------------------
+    await g.eval(ov(`s.scene.start("OverworldScene", { run: s.run, loop: s.loop });`));
+    await g.waitForScene("OverworldScene", ["run", "loop"]);
+    await g.eval(ov(`
+      const r = s.run;
+      r.over = false; r.complete = false; r.rescueQuests.length = 0;
+      r.mapNodeId = "start"; r.path = ["start"];
+      // Re-form the original party: release Thane, and drop the prisoners recruited in Arm C
+      // so the finale stages them in their cells again.
+      for (const u of r.party) { u.captured = false; u.alive = true; u.hp = u.maxHp; }
+      r.party = r.party.filter(u => !["wren", "cass", "bram"].includes(u.id));
+    `));
+    await g.eval(toFinale(true));
+    await g.waitForScene("BattleScene", ["battle"]);
+    await sleep(700);
+
+    const won = await g.bsEval(`
+      s.startBattle();
+      const ext = s.loop.staged.objectives.find(o => o.spec.kind === "extraction").spec;
+      const mouth = ext.span[0];
+      const u = s.battle.units;
+      const put = (id, t) => { const x = u.find(v => v.id === id); x.pos = { col: t.col, row: t.row }; };
+      // ALL THREE prisoners picked and walked out ⇒ the extraction goal can be met…
+      for (const id of ["wren", "cass", "bram"]) { const c = u.find(v => v.id === id); c.captured = false; c.ct = 0; put(id, mouth); }
+      for (const id of ["cinder", "lark", "nyx"]) put(id, mouth);
+      put("thane", { col: 12, row: 10 }); // …but Thane is still deep inside.
+      for (const v of u) s.placeView(v);
+      s.waitingFor = u.find(v => v.id === "cinder");
+      s.acted = false;
+      s.setPrimary("End Turn");
+      s.showSkillButtons(s.waitingFor);
+      const btn = s.actionButtons.find(b => b.label && /Go Now/.test(b.label.text));
+      return { garrisonAlive: u.some(v => v.side === "enemy" && v.alive), hasBtn: !!btn, x: btn && btn.x, y: btn && btn.y };
+    `);
+    console.log("• Go Now with every prisoner out is a WIN — and it still costs the rearguard");
+    check("the garrison is still standing (this is a flight, not a field hold)", won.garrisonAlive === true);
+    check("the Go Now control is up again in the second battle", won.hasBtn === true);
+
+    await g.clickScene(won.x, won.y);
+    await sleep(600);
+
+    const after = await g.bsEval(`
+      const harvest = (objs, out) => {
+        for (const o of objs || []) {
+          if (o && typeof o.text === "string" && o.text) out.push(o.text);
+          if (o && o.list) harvest(o.list, out);
+        }
+        return out;
+      };
+      const thane = s.battle.units.find(v => v.id === "thane");
+      return {
+        phase: s.phase,
+        thaneCaptured: thane.captured,
+        rosterThaneCaptured: s.loop.run.party.find(v => v.id === "thane").captured,
+        quests: s.loop.run.rescueQuests.map(q => q.unitName || q.unitId),
+        party: s.loop.run.party.map(v => v.id),
+        text: harvest(s.overlay, []).join(" | "),
+      };
+    `);
+    check("it graded as a victory with the garrison alive", /Victory!/.test(after.text));
+    check("all three prisoners came home", ["wren", "cass", "bram"].every(id => after.party.includes(id)));
+    // The load-bearing assertion: the post-win sweep must NOT free the man left inside.
+    check("the WIN did not auto-free the party member left behind (the board token stays bound)",
+      after.thaneCaptured === true);
+    check("…nor un-capture him on the run roster (he does not walk home)",
+      after.rosterThaneCaptured === true);
+    check("…and he is recorded by name on the victory screen too",
+      after.quests.includes("Thane") && /Left behind — needs rescue:[^|]*Thane/.test(after.text));
   }, { hash: "#rescue" });
 
   console.log(`\n✓ rescue E2E: ${passed} assertions passed, no page errors`);

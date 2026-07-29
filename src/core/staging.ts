@@ -17,7 +17,7 @@
  */
 
 import type { GridCoord, Region } from "./iso";
-import type { Unit } from "./units";
+import { isActive, type Unit } from "./units";
 import { TileGrid } from "./grid";
 import { Battle } from "./turn";
 import { makeConcealedTrap } from "./entities";
@@ -40,6 +40,7 @@ import {
   armObjectives,
   withDefaultGoal,
   isGoalKind,
+  onExfilSite,
   type ArmedObjective,
 } from "./objectives";
 
@@ -58,6 +59,13 @@ export interface StagedEncounter {
   objectives: ArmedObjective[];
   /** The source the staging came from (rewards/records read it). */
   source: EncounterSource;
+  /**
+   * Set once by {@link callExfil} — the player called **"Go now"** (D120). It makes the call
+   * *sticky*: with the captives out the extraction goal now reads `met` on its own, but with
+   * them still inside nothing else would ever decide the encounter, so this is what grades the
+   * deliberate withdrawal as a **survivable retreat** instead of leaving it undecided.
+   */
+  exfilCalled?: boolean;
 }
 
 /** Options for {@link stageEncounter}. */
@@ -242,5 +250,106 @@ export function encounterOutcome(staged: StagedEncounter): EncounterResult | und
   // No required goal (constraint-only encounter) ⇒ constraints alone decide (legacy shape).
   const goalMet = goals.length === 0 || goals.some((o) => o.status() === "met");
   if (constraintsMet && goalMet) return "win";
+  // The player called "Go now" and no goal landed (D120) — a *deliberate* withdrawal, graded as
+  // the existing survivable retreat rather than a fourth outcome. Checked last so a call that
+  // does complete the extraction still reads as the win it is.
+  if (staged.exfilCalled) return "objective-failure";
   return undefined;
+}
+
+// --- Exfil: the "Go now" call (D120) ----------------------------------------
+
+/**
+ * **Field control** (D21) — no *active* enemy remains ({@link isActive}: alive, uncaptured,
+ * not fled). The clause that decides whether a win auto-frees everyone the enemy is holding.
+ *
+ * This is exactly the predicate `eliminate-all` resolves on ({@link "./combat".battleOutcome}
+ * reads the same {@link isActive} over the enemy side), which is *why* narrowing D21's auto-free
+ * to field control leaves every elimination win byte-identical: an eliminate-all win holds the
+ * field by construction. The only wins that can lack it are **extraction** wins — a flight, not
+ * a field hold, where the garrison is still standing between you and whoever you left.
+ */
+export function heldTheField(units: readonly Unit[]): boolean {
+  return !units.some((u) => u.side === "enemy" && isActive(u));
+}
+
+/** The encounter's required `extraction` goal — the exfil objective, if it has one (D97/D120). */
+export function exfilObjective(staged: StagedEncounter): ArmedObjective | undefined {
+  return staged.objectives.find((o) => o.spec.kind === "extraction" && o.spec.required);
+}
+
+/** Who walks out and who does not, if extraction resolved right now (D120) — a pure read. */
+export interface ExfilStandings {
+  /** Cohort members standing on a mouth — they come home. */
+  out: Unit[];
+  /** Cohort members still on their feet inside — they do not. */
+  leftBehind: Unit[];
+}
+
+/**
+ * Read the exfil board *without* committing (D120): who of the cohort is on a mouth and who is
+ * still inside. Drives the "Go now" control's label and its hover copy, so the player can see
+ * the price of the call **before** paying it. Units already down or already bound are in
+ * neither list — the call decides the fate of those still on their feet.
+ */
+export function exfilStandings(staged: StagedEncounter): ExfilStandings {
+  const obj = exfilObjective(staged);
+  const out: Unit[] = [];
+  const leftBehind: Unit[] = [];
+  if (!obj) return { out, leftBehind };
+  for (const u of staged.battle.units) {
+    if (!obj.cohort?.has(u.id) || !isActive(u)) continue;
+    (onExfilSite(u, obj.spec) ? out : leftBehind).push(u);
+  }
+  return { out, leftBehind };
+}
+
+/**
+ * Whether the **"Go now"** call is available: the encounter carries an exfil objective **and at
+ * least one of the cohort is standing on a mouth**.
+ *
+ * The second clause is load-bearing, not decoration — with nobody out, the call would bind the
+ * entire cohort and {@link encounterOutcome}'s standing-players check would grade the result a
+ * **wipe**. A button press must never be able to manufacture a run-ending loss, so the control
+ * simply does not exist until someone has actually reached a door.
+ */
+export function canCallExfil(staged: StagedEncounter): boolean {
+  return !!exfilObjective(staged) && exfilStandings(staged).out.length > 0;
+}
+
+/** What the {@link callExfil} commitment produced (D120). */
+export interface ExfilCall {
+  /** The grade at the call: captives out ⇒ `win`, else the survivable `objective-failure`. */
+  result: EncounterResult;
+  /** Cohort members who were on a mouth — they come home. */
+  extracted: Unit[];
+  /** Cohort members left inside — now **captured**, and recorded by the resolution (D9/D120). */
+  leftBehind: Unit[];
+}
+
+/**
+ * **"Go now" (D120)** — resolve extraction *on demand*, so leaving early is a decision the
+ * player makes rather than one the mission makes for them. The outcome is computed from what is
+ * true **at the call**: whoever stands on a mouth escapes; whoever does not is left behind.
+ *
+ * The one place position is ever consulted. Every off-mouth member of the cohort is bound
+ * ({@link "./combat-actions".CombatAction} `capture`, so the marking is logged, replayable and
+ * undo-aware like any other in-battle mutation) — and from here on the whole resolution path
+ * reads only `captured`. That is what lets **two populations on two code paths** (roster units
+ * via `resolveRescues`, on-board captives via `resolveCaptiveRecruits`) converge without either
+ * of them re-deriving the geometry.
+ *
+ * Binding them is also what *makes* the extraction resolve: a bound unit is no longer part of the
+ * "everyone must be out" clause, so with the prisoners on a mouth the goal now reads `met` and the
+ * call grades a **win**; without them it grades the survivable **retreat** ({@link exfilCalled}).
+ *
+ * Returns `undefined` — committing nothing — when the encounter has no exfil objective or nobody
+ * is at a door ({@link canCallExfil}). Idempotent: a second call finds nobody left to bind.
+ */
+export function callExfil(staged: StagedEncounter): ExfilCall | undefined {
+  if (!canCallExfil(staged)) return undefined;
+  const { out, leftBehind } = exfilStandings(staged);
+  for (const u of leftBehind) staged.battle.apply({ kind: "capture", unit: u.id });
+  staged.exfilCalled = true;
+  return { result: encounterOutcome(staged) ?? "objective-failure", extracted: out, leftBehind };
 }

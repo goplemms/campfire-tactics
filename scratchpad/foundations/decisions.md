@@ -5124,3 +5124,191 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   `non-combatant`), **D92** (the infiltration arm + `cuffedCell`), **D52** (run flags, captives), **D9/D12/
   D21** (capture, rescue, field-control auto-rescue), **D63/D67** (deploy zone model), **D22**.
   **Superseded by:** —
+
+## D119 — Authored spawn zones: fixed-size, danger-overriding, and a deploy-phase entrance swap
+
+- **Status:** Decided (design) 2026-07-28 — owner-directed. **Revises D118's "no second campfire" line.**
+  No production code yet; this entry is the brief's canon. One sub-question stays open (see the end).
+- **Context.** D118 settled that the intel opens a **second deploy zone** (the side door) and that the
+  player splits their force — but left *how the player allocates* (**A3**) and *what the deploy phase does
+  at a distant side zone* (**A3b**) as open mechanism decisions. Building against the populated map (#211)
+  made both concrete and surfaced a third problem D118 had not seen.
+- **The three problems, verified against source 2026-07-28:**
+  1. **No allocation.** `placeParty` (`authored.ts:263`) index-maps `party[i] → spawns[i]`, and the finale
+     authors `playerSpawns[0] = (18,5)` (the side door). So the infiltrator is **whoever is first in the
+     roster** — currently a Soldier, who cannot pick the cell locks. The extraction route is unplayable.
+  2. **The safe zone is drawn in a wall.** `createCampfire` (`deployment.ts:176`) hardcodes origin
+     **`col 0`, mid-row** → `(0,9)`, which is **blocked terrain** on this map, and its presence-sized
+     protected radius paints over the **cellblock** — nowhere near either mouth.
+  3. **The closing net is anchored just as blindly, and asymmetrically.** `createFront` hardcodes the
+     enemy-edge centre → `(19,9)`, which is **5 steps from the side door** and **19 from the main
+     staging area**. As shipped, the net would bear down on the **lone infiltrator** almost immediately
+     while the main force sat untouched — backwards from the design's intent in every reading.
+- **Decision — authored spawn zones are a first-class, fixed-size, danger-overriding thing.**
+  An authored encounter may declare its spawn zones with **authored fixed sizes** — *not* derived from
+  party presence the way the campfire's radius is (`protectRadiusOn`) — and those tiles **override the
+  tile's danger level outright**: a unit standing in an authored spawn zone is safe regardless of where
+  the net has reached. **Both** the main entrance and the side door get one; when an encounter declares
+  zones, the hardcoded campfire does not apply to it.
+  - **Why fixed size:** copying the campfire's presence-sizing to a second anchor would force us to
+    re-derive rules we do not need here (how presence splits between two anchors, which anchor the net
+    contracts against). Authoring the shape sidesteps all of it.
+  - **Why an override rather than moving the net:** it answers problem 3 without re-anchoring the net
+    per encounter, and it generalises — **any** authored map can now declare where its safe ground is,
+    which is the real fix for problem 2 rather than a patch for this one board.
+  - **Contained insertion (verified):** `inSafeZone` is the single predicate both the render
+    (`game/deploy-zones.ts:32`) and `safeGroundRemains` consult, and `captureChanceAt` is the single risk
+    computation. The override lands in those two.
+- **Decision — the player allocates via a deploy-phase entrance action, not a selection screen.**
+  A unit standing in a spawn zone may take an action that moves it to the **other** spawn zone. This is a
+  **fourth verb** alongside the existing deploy choices (`DeployForecast` = `hold` / `digIn` / `move`),
+  not a new screen. Fiction: during deploy nobody has noticed you, so peeling off to circle to the other
+  door is exactly what the phase is for. The action exists **only when the side zone does** — no intel ⇒
+  no side zone ⇒ no verb, so D118's graceful degradation is unchanged.
+- **Accepted consequence — this fight's deploy phase has no timer.** `deploy-flow.ts:43` ends the phase on
+  `overrun` when `safeGroundRemains` goes false. With authored zones always overriding, safe ground never
+  runs out, so **the phase never auto-ends** — the player commits when ready, and the entrance action is
+  therefore **free** (no turn cost that matters). Accepted deliberately: the decision in this phase is
+  *which door each person takes*, and a grab timer would tax precisely the wrong unit. **The pressure in
+  this fight lives in the battle, not before it.**
+- **What this revises.** D118 (and `finale-design-checklist.md` A3b) said **"do NOT add a second
+  campfire — that's the parked C5, and D99's F1 forbids claiming a *safe* informed insert."** That
+  objection bundled two things. The **scope** half stands and is honoured: this is **not** a second
+  campfire and **not** C5 — no second presence-sized anchor, no interior-deploy deep-dive, no alarm model.
+  The **design** half is **revised**: D118 itself ruled the flank's risk is **in-battle isolation, not a
+  pre-battle dice roll**, and a safe *insert* is consistent with that — the infiltrator's exposure is
+  being alone behind a sealed wall with the garrison on the far side, which is untouched by this.
+- **Fixes a general defect, not just the finale.** Problems 2 and 3 are **not finale-specific**: every
+  authored map inherits a safe zone and a net anchored to hardcoded board edges with no check that either
+  lands on walkable ground. Authored zones are the general fix.
+- **Decision (owner, same session) — the entrance action is a MOVE with a CONFIGURABLE cap.** Not a swap.
+  The cap is **authored per zone**, not hardcoded to 1, so the side door's capacity is a tuning knob like
+  any other number on the map. **The cap is not optional** — D118: without one the player fields everyone
+  at the side, there is no distraction, and the two-pronged tension collapses.
+  - **The default placement is everyone at the primary zone, side door EMPTY.** This is the point of
+    choosing move over swap: a swap leaves the side door permanently occupied, which reproduces today's
+    defect (the roster-first Soldier stranded alone at a door he cannot open). Move-with-cap makes sending
+    someone a **deliberate act**, and keeps "I scouted but I am still going in the front" a legal play — a
+    reward you are forced to spend is not a reward.
+- **Decision (owner, same session) — the deploy phase force-starts when the net reaches the primary zone.**
+  This **replaces** the `safeGroundRemains`-goes-false end condition for encounters with authored zones
+  (that rule can no longer fire — overriding zones mean safe ground never runs out), rather than sitting
+  beside it. It restores a hard stop without restoring pressure on the infiltrator: the primary zone still
+  **overrides** danger, so the net *arriving* starts the battle but grabs nobody.
+  - ⚠️ **Measured, so the expectation is honest: on this map the backstop is very loose.** The net's
+    hardcoded origin is `(19,9)`; the nearest primary spawn tile is `(11,18)` — **17 steps**, and
+    `FRONT_ADVANCE_PER_TURN = 1`. With the front taking roughly one turn per party-unit round, that is on
+    the order of **80+ individual deploy actions** before it fires. It works as a **backstop against
+    planning forever**; it is **not** pacing pressure, and it should not be sold as any.
+  - **Deliberately not tuned yet.** Making it bite means re-anchoring the net for this encounter, and the
+    net origin is **not** editable in the map editor (unlike guard counts and gate hp) — so it is a code
+    change either way. Nobody can guess the right number before watching someone actually play this phase.
+    **Revisit after the first real playthrough**; it is a one-line change.
+  - Note the phase is not risk-free even so: **neutral ground still rolls `NEUTRAL_DANGER = 0.4` per net
+    turn**, so a unit that wanders *out* of a zone during deploy is in real danger. The zones are what
+    matter; leaving one is a choice with teeth.
+- **The owner's intent for the loose backstop, and what verification found (2026-07-28).** Intent: the long
+  runway is *for* something — the player has room to **lay traps** on their safe side, but reaching for
+  **more efficiency (throwing a lever early)** means leaving a zone and **risking detection**. Both halves
+  were checked against source rather than assumed, and **both are already shipped**:
+  - **Traps in setup — real.** `skills.ts:408` classifies a **trap ⇒ `pre-combat`**, and the deploy action
+    row surfaces it from the same `availableSkills(actor, "pre-combat")` projection combat uses
+    (`BattleScene.ts:935`, "Place Trap Here"). Costs a **trap kit** (a carried material, `cost.ts`), so it
+    is party-dependent, not free.
+  - **Levers in setup — real, and unblocked.** `pullLever` carries **no phase gate** in the interpreter
+    (`turn.ts:607`) — only adjacency (`canPullLever`) — and the deploy row calls `pushGateVerbs(specs,
+    actor, "deployment")` (`BattleScene.ts:941`), which pushes **Pick Cell, Break Gate, Turn Key *and*
+    Pull Lever**. (The call-site comment names only "Pick Cell"; the other three come with it.) This is
+    D67's ruling that engagement is **board state, not a per-phase verb ban**.
+  - **The garrison is frozen during deploy** (`configureDeployClock` narrows participants to active
+    players), so an early lever throw costs **no combat response** — the price is purely the capture roll.
+- **Consequence — the side zone's authored size is now LOAD-BEARING, not cosmetic.** The infiltration
+  lever `winch-wall` sits at `(17,6)`, **2 steps** from the side spawn `(18,5)`. So:
+  - author the side zone **to cover the lever** ⇒ the early seal is **free**, and the owner's risk/reward
+    evaporates;
+  - author it **tight (the door tile only)** ⇒ reaching the lever means standing on neutral ground at
+    **0.4 capture per net turn**, which is exactly the intended "risk detection for efficiency" trade.
+  **Author it tight.** This is the knob the whole intent hangs on; it belongs in the build brief as a
+  stated requirement, not left to an authoring whim.
+  - **CORRECTION (build session, 2026-07-28) — the 0.4 is an EARLY-WINDOW price, not a flat one.** The
+    bullet above reads as if the lever approach costs `NEUTRAL_DANGER = 0.4` throughout. It does not. The
+    tiles a unit must stand on to pull `winch-wall` — `(18,6)` and `(17,7)` — are **4 steps** from the net
+    origin `(19,9)`, and the net grows 1 step per its turn from radius 0. So **once the net reaches radius
+    4 those tiles are inside it at `FRONT_DANGER = 0.95`**. The trade is therefore *sharper* than D119
+    described and strictly better for it: an **early** dash for the seal is a real gamble at 0.4, and
+    dithering turns it into near-certain capture. Recorded, not changed — the numbers stand; only the
+    description was wrong.
+- **Consequence — an early seal shortens, but does not remove, the C2 head-start race.** Slamming the seal
+  in setup means combat opens with it already shut; the garrison's door-drive (D117) begins battering
+  immediately, so the race still runs — the player has simply bought the pull for a capture roll instead of
+  a combat turn. Judged coherent, not a hole. ⚠️ But it means **#209's split-force scenario must cover the
+  seal-shut-at-turn-1 opening**, not only the slam-it-mid-fight one, or the guard proves the wrong race.
+- **Implementation note — the force-start is nearly free work.** `frontTurnStage` (`deploy-flow.ts:43`)
+  already returns `overrun` on `out.breached`, and `breached` (`deployment.ts:375`) already means *the net
+  has reached the protected core*. So the requested rule **exists**; it needs to read the **authored
+  primary zone** instead of the campfire. ⚠️ One spec point for the brief: today `breached` is
+  **unit-dependent** — `players.some(u => isProtected(u.pos, camp) && inDangerZone(u.pos, front))`, i.e. it
+  needs somebody *standing* in the core. The owner described it **geometrically** ("when the danger zone
+  reaches the primary spawn point"). Build the geometric reading, or an empty primary zone never fires it.
+- **Reuses:** **D118** (the split-force finale, the flank, the traps), **D99** (**F1** — no *safe*
+  informed insert; the flank is deferred/reframed), **D97** (dual-OR + extraction), **D63/D67** (the
+  deploy zone model — campfire, net, `DeploySource`), **D68** (Quiet Footsteps / capture multipliers),
+  **D116** (authored-node injection). **Parked, untouched:** **C5** (the deploy deep-dive).
+  **Superseded by:** —
+
+## D120 — Exfil semantics, the "Go now" call, and what leaving someone behind actually costs
+
+- **Status:** Decided (design) 2026-07-28 — owner-directed. Implements checklist group **G** / issue
+  **#208**. **D118 required this to carry its own decision record** because it changes **shipped
+  resolution semantics for every encounter**, not just the finale.
+- **The rule (restated from D118, unchanged).** A unit **survives only if it is on an exfil site** when
+  extraction resolves — **captives and party alike**. **Every mouth is an exfil site.** **Auto-resolve**
+  when everyone is out; **"Go now"** resolves early so the player can accept a sacrifice deliberately. The
+  outcome is computed **from what is true at the call**: captives out ⇒ **extraction win**; else ⇒
+  **survivable retreat** (`objective-failure`), unifying "Go now" with the existing retreat concept.
+- **Verified 2026-07-28 — the tracking described only HALF the problem.** Captives and party units are
+  **two populations on two code paths**, and the fix everyone had in mind touches one:
+  - **Party (as tracked, confirmed).** `resolveRescues` (`runloop.ts:646`) opens
+    `if (!u.captured) continue` over `this.combatants` (the roster) — an off-exfil **survivor** is
+    untouched and simply comes home. Its `won` branch `freeCaptive`s **every** captured unit (**D21**,
+    control-the-field).
+  - **Captives (NOT tracked — and worse than "untouched").** Captives are staged in the battle but
+    **never in `combatants`/the roster**, so `resolveRescues` cannot see them. Their one seam is
+    `resolveCaptiveRecruits` (`runloop.ts:686`), which **recruits every declared captive
+    unconditionally — it never reads position, `alive`, or `captured`** ("regardless of whether it was
+    freed mid-fight or even downed after"). **So on an extraction win a prisoner still locked in a cell
+    joins the party anyway**, and marking off-exfil survivors as captured does *nothing* for them.
+  - **And that seam is win-gated** (`if (!won || …) return`), so on the **survivable retreat** "Go now"
+    produces, **no captive is recruited and no rescue quest is mounted** — they vanish from the run.
+    **This was predicted in-repo:** the function's own *"Seam limitation"* note says the win-gating is
+    sound only for **win-or-wipe** encounters, that a captive in an **objective-failure-capable** node
+    "would currently vanish on a survivable loss", and *"Extend this (a captive → rescue-quest fallback)
+    before standing a captive up in such a node."* **G2 makes The Rescue exactly that node**, so the
+    fallback is in scope here, not a future nicety.
+- **Decision — a left-behind unit is RECORDED, by name, and no retrieval is generated yet.** The owner's
+  ask was a `captured(unit-name)`-style memory hook for later expedition generation. **Do not invent a new
+  flag namespace — the record already exists.** `RescueQuest` (`mortality.ts:181`) is
+  `{ unitId, resolution, nights, deploymentPenalty }`, produced by `resolveCaptured` and accumulated on
+  **`run.rescueQuests`** (`run.ts:144`), whose stated purpose is that an abandonment is **never silently
+  lost**. It already names the unit. Extend it to cover **captives**; leave it **inert** (nothing
+  generates a node from it).
+  - **The demo stays self-contained (owner).** A branching retrieval node — the party goes back for a
+    captured unit via a new encounter — is the **eventual** design and is **explicitly not built now**.
+- **Decision — RUN-LEVEL for now, not the guild tier (owner).** `run.flags` and `run.rescueQuests` are
+  **run-scoped** (`run.ts:150`, "Run-scoped … D52 vertical-slice"). ⚠️ **Honest consequence, accepted:**
+  the finale is the **last node of a self-contained run**, so this record is written and then discarded
+  with the run — as a hook for a *future expedition* it currently reaches nothing. What it **does** buy
+  immediately is a **correct outcome**: leaving Bram is recorded by name and **he does not come home**.
+  - **Why not the guild tier now:** retrieval quests do not exist, and cross-run durability lands on the
+    **unsettled save model (#117** — `RunSnapshot` is partial and does not persist this). Building storage
+    for an absent consumer is the upfront framework this repo deliberately avoids (cf. **#171** rev 2,
+    concrete-first: extract only when a **second** consumer appears). **Shape the record so promoting it
+    to the guild tier is a move, not a rewrite.**
+- **Blast radius — this is the risky part.** Gating the `won`-branch auto-free on **field control** changes
+  how wins resolve for **every** encounter that could leave captured units. **An eliminate-all win must
+  still auto-rescue exactly as today** — that regression guard is not optional.
+- **Reuses:** **D118** (the rule, and the requirement that this be its own record), **D97** (dual-OR +
+  `extraction`), **D9/D12** (capture, rescue quests, `resolveCaptured`), **D21** (field-control
+  auto-rescue — the clause being narrowed), **D52** (run flags, authored captives), **D51** (the retreat
+  path). **Deferred:** the retrieval node; guild-tier persistence (**#117**).
+  **Superseded by:** —

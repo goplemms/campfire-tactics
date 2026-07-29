@@ -39,6 +39,15 @@ import { pct,
   inDangerZone,
   isProtected,
   deployForecast,
+  // D119 — authored spawn zones: the encounter's own, danger-overriding safe ground,
+  // and the deploy-phase entrance verb that lets the player allocate bodies between them.
+  isZoneGround,
+  zoneAt,
+  zoneHasRoom,
+  zoneOccupants,
+  freeTileIn,
+  type SafeGround,
+  type SpawnZone,
   // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
   // tested), so the scene renders the choices instead of making them.
   frontTurnStage,
@@ -52,6 +61,11 @@ import { pct,
   // M6 — the run loop
   currentEncounter,
   encounterOutcome,
+  // D120 — exfil semantics: the "Go now" call + the field-control clause on the auto-free
+  heldTheField,
+  canCallExfil,
+  callExfil,
+  exfilStandings,
   jobLevelOf,
   // M10 — theft (D30) + mid-combat bribe → recruitment (D33)
   thiefSteal,
@@ -85,7 +99,6 @@ import { pct,
   type RunLoop,
   type IntelReport,
   type DeployFront,
-  type DeploySource,
   type Rng,
   type GridCoord,
   type Unit,
@@ -241,8 +254,12 @@ export class BattleScene extends Phaser.Scene {
   private dangerZoneGfx?: Phaser.GameObjects.Graphics;
   /** The extraction exit span tint (D97) — the "escape route" the freed prisoners walk to. */
   private exitZoneGfx?: Phaser.GameObjects.Graphics;
-  /** The party's campfire (safe ground) and the enemy danger source (D63). */
-  private campfire!: DeploySource;
+  /**
+   * The party's **safe ground** during deploy and the enemy danger source (D63/D119): either
+   * the derived campfire ({@link createCampfire}) or the encounter's authored spawn zones,
+   * which override the net outright. One field, so every predicate reads one thing.
+   */
+  private safeGround!: SafeGround;
   private front!: DeployFront;
   /** On-board source markers (campfire + enemy), cleared when battle begins. */
   private deployMarkers: Phaser.GameObjects.GameObject[] = [];
@@ -685,7 +702,11 @@ export class BattleScene extends Phaser.Scene {
     // capped to the board width (D-feel) — a small map keeps a tight core. The morale/
     // intel deploy edge (D8/D10) now trims the *neutral* capture rate instead of widening
     // the immune zone (see deployMods().exposureMultiplier, threaded into the net rolls).
-    this.campfire = createCampfire(this.grid, this.battle.units);
+    // D119: an authored encounter may declare its own spawn zones — fixed tiles that override
+    // the net's danger and replace the campfire entirely. `createCampfire` anchors blindly at
+    // (col 0, mid-row) with no walkability check, which on a hand-built board can (and on The
+    // Rescue does) draw the safe core inside a wall; declaring zones is the general fix.
+    this.safeGround = this.battle.spawnZones.length > 0 ? this.battle.spawnZones : createCampfire(this.grid, this.battle.units);
     this.front = createFront(this.grid, enemies);
     // Deployment runs on the Battle's **own** CT clock (D67 W2) — no parallel instance.
     // Configure it for the phase: narrow turn-taking to active players (the pre-positioned
@@ -695,7 +716,7 @@ export class BattleScene extends Phaser.Scene {
     configureDeployClock(this.battle.clock, this.front);
     this.battle.clock.seedFlat();
     this.drawZones();
-    drawSourceMarkers(this, this.view, this.deployMarkers, this.campfire, this.front);
+    drawSourceMarkers(this, this.view, this.deployMarkers, this.safeGround, this.front);
     this.markCuffedCaptives(); // lock glyphs over any cuffed captives (D90)
     this.markGates(); // lock/bar glyphs over any locked interactable gates (D103)
     this.markLevers(); // lever glyphs over any pull-switches (D103)
@@ -786,7 +807,7 @@ export class BattleScene extends Phaser.Scene {
   private resolveFrontWave(): void {
     // resolveFrontTurn reads each unit's dugIn stance by default (D63); the morale/intel
     // deploy edge rides in as the neutral-capture multiplier (D8/D10).
-    const out = resolveFrontTurn(this.front, this.campfire, this.battle.units, this.deployRng, {
+    const out = resolveFrontTurn(this.front, this.safeGround, this.battle.units, this.deployRng, {
       exposureMultiplier: this.deployMods().exposureMultiplier,
     });
     this.battle.clock.spendTempo();
@@ -797,7 +818,7 @@ export class BattleScene extends Phaser.Scene {
 
     // The branch (catch → alarm / overrun / continue) is a pure decision now (D63
     // Phase B); the scene just renders the chosen stage.
-    const stage = frontTurnStage(out, this.grid, this.campfire, this.front);
+    const stage = frontTurnStage(out, this.grid, this.safeGround, this.front);
     if (stage.kind === "capture") {
       const caught = out.captured!;
       // The net's turn is the deploy "enemy turn": bind the catch through the one
@@ -818,8 +839,13 @@ export class BattleScene extends Phaser.Scene {
       this.busy = true;
       // Either the net reached the protected core (a breach — nobody taken) or it
       // swallowed the last safe tile; both start the battle with the party where it stands.
+      // With authored zones the breach is *geometric* — the net arrived at the primary
+      // entrance. Nobody is taken either way (the zone overrides danger); it is the hard
+      // stop that replaces "safe ground ran out", which zones make impossible.
       this.setHint(out.breached
-        ? "The net reaches your camp — the alarm goes up, battle begins!"
+        ? isZoneGround(this.safeGround)
+          ? "The net reaches your staging ground — the alarm goes up, battle begins!"
+          : "The net reaches your camp — the alarm goes up, battle begins!"
         : "The enemy has overrun the camp — battle begins!");
       this.time.delayedCall(800, () => {
         this.busy = false;
@@ -940,6 +966,7 @@ export class BattleScene extends Phaser.Scene {
       this.pushTrapVerbs(specs, actor, "deployment"); // Search / Disarm — the shared trap-field verbs
       this.pushRescueVerbs(specs, actor, "deployment"); // Pick Lock — free an adjacent cuffed captive (D90)
       this.pushGateVerbs(specs, actor, "deployment"); // Pick Cell — lockpick an adjacent locked gate (D103)
+      this.pushEntranceVerbs(specs, actor); // Circle to … — take a different authored entrance (D119)
     }
     // Start Battle is a turn-control (commit early at any point), so it sits in the control
     // box (a full-width row above the Undo/primary pair) — not among the unit's verbs.
@@ -949,6 +976,75 @@ export class BattleScene extends Phaser.Scene {
       onClick: () => { if (!this.busy) this.startBattle(); },
     }];
     this.layoutActionMenu(specs, { undo, controls });
+  }
+
+  /**
+   * Push the **entrance verbs** (D119) — "Circle to {zone}" — onto the deploy row: a unit
+   * standing in one authored spawn zone peels off and takes another. This is the player's
+   * force-allocation mechanism, and deliberately a **fourth verb beside Dig In / Place Trap /
+   * reposition, not a selection screen**: the fiction is that during deploy nobody has noticed
+   * you yet, so walking round to the far door is exactly what the phase is for.
+   *
+   * It is a **move, not a swap**, and it respects each zone's authored `cap`. That pairing is
+   * the whole design: the default placement is everyone at the primary entrance with the others
+   * EMPTY, so sending someone is a deliberate act (a swap would leave the side door permanently
+   * occupied by whoever the roster happened to put there — the exact defect D119 fixes), while
+   * the cap stops the player fielding the whole party at the flank and dissolving the two-pronged
+   * tension. The verb **only exists when a second zone does**: no intel ⇒ no side zone ⇒ no verb,
+   * so D118's graceful degradation holds by construction rather than by a branch.
+   *
+   * Deployment-only by construction — it is pushed from {@link refreshDeployButtons} alone,
+   * never from the shared combat row.
+   */
+  private pushEntranceVerbs(specs: ActionSpec[], actor: Unit): void {
+    const zones = this.battle.spawnZones;
+    if (zones.length < 2) return; // one entrance ⇒ nothing to allocate
+    const here = zoneAt(zones, actor.pos);
+    if (!here) return; // must be standing in a zone to peel off from it
+    for (const zone of zones) {
+      if (zone.id === here.id) continue;
+      const dest = freeTileIn(zone, this.battle.units, this.grid, actor);
+      const room = zoneHasRoom(zone, this.battle.units, actor);
+      if (!dest || !room) continue; // full, or every tile blocked/occupied — no dead button
+      // Terse label — the deploy row's buttons fit ~140px and `fitText` ellipsizes (loudly)
+      // past it; the fiction and the capacity read live in the hover description.
+      specs.push({
+        text: `Take ${zone.label}`,
+        description:
+          `Slip away from the ${here.label} and come at the ${zone.label} instead — nobody has spotted you yet. ` +
+          `Room for ${zone.cap} (${zoneOccupants(zone, this.battle.units).length} there now). Takes this unit's whole deploy turn.`,
+        onClick: () => this.doTakeEntrance(actor, zone, dest),
+      });
+    }
+  }
+
+  /**
+   * Take another authored entrance as this unit's deploy turn (D119) — the "Circle to …" handler.
+   *
+   * Lowered to the ordinary logged `move` action (a one-tile path to the destination) rather than a
+   * new verb: it rides the same interpreter, log, replay and undo every other board mutation does
+   * (D87), and no new `CombatAction` kind is minted for what is, mechanically, the unit changing
+   * where it stands. The step is **not** animated — a tween would glide the token straight across
+   * the compound; the fiction is an off-board circle, so it cuts.
+   *
+   * It spends the unit's move **and** its act: circling the building is the turn. There is no
+   * pacing cost to that (D119 accepts this phase has no timer worth the name), and it stops a unit
+   * from teleporting to the side door *and* sprinting to the lever in one turn.
+   */
+  private doTakeEntrance(actor: Unit, zone: SpawnZone, dest: GridCoord): void {
+    if (!this.canFieldAct(actor, "deployment")) return;
+    // Re-derive under the live board: the row was built before this click, and the player may
+    // have moved another unit into the zone in between.
+    if (!zoneHasRoom(zone, this.battle.units, actor) || !freeTileIn(zone, this.battle.units, this.grid, actor)) {
+      return void this.setHint(`The ${zone.label} is full — there's no room for ${actor.name} there.`);
+    }
+    this.battle.moveUnit(actor, [dest]);
+    this.deployMoved = true;
+    this.moveBudget = 0; // the circle IS the turn — no reposition left after arriving
+    this.placeView(actor);
+    this.highlightTile(actor.pos);
+    this.drawDeployReach();
+    this.commitFieldAct(actor, "deployment", `${actor.name} circles round to the ${zone.label}. End Turn (Space) to advance the net.`);
   }
 
   /**
@@ -1306,7 +1402,12 @@ export class BattleScene extends Phaser.Scene {
     // The title now carries only the *global* deploy state — the net's reach, your
     // safe radius, kits. The per-unit band + capture risk live on the focus card.
     const reach = this.front?.radius ?? "—";
-    const safeR = this.campfire?.radius ?? "—";
+    // Authored zones have no radius to report — name how many entrances the party holds instead.
+    const safeR = !this.safeGround
+      ? "—"
+      : isZoneGround(this.safeGround)
+        ? `${this.safeGround.length} zone${this.safeGround.length === 1 ? "" : "s"}`
+        : this.safeGround.radius;
     const who = actor ? (actor.captured ? `${actor.name} captured` : `${actor.name}'s turn`) : "set up";
     this.titleText.setText(`Deployment — ${who} · reach ${reach} · safe ${safeR} · ${kits} kit${kits === 1 ? "" : "s"}`);
     this.refreshObjectives(); // the objectives check-list shows in deployment too
@@ -1362,7 +1463,7 @@ export class BattleScene extends Phaser.Scene {
       this.boardObjects.push(this.dangerZoneGfx);
     }
     // The zone painter (#131) fills + outlines the bands into the two graphics off the sources.
-    paintZones(this.view, this.safeZoneGfx, this.dangerZoneGfx, this.grid, this.campfire, this.front);
+    paintZones(this.view, this.safeZoneGfx, this.dangerZoneGfx, this.grid, this.safeGround, this.front);
     // The tarpit ring renders in Deployment too (D64) — position around the tax.
     this.refreshAuras();
     // The extraction exit span (D97) — painted in deploy and kept through battle.
@@ -1821,8 +1922,56 @@ export class BattleScene extends Phaser.Scene {
     }
     // The turn's explicit close is the prominent green primary button (plus Space and
     // W) — so the verb box carries only the unit's *verbs*; Undo sits side-by-side with
-    // End Turn in the separate control box below.
-    this.layoutActionMenu(specs, { undo });
+    // End Turn in the separate control box below, along with the "Go now" call.
+    this.layoutActionMenu(specs, { undo, controls: this.exfilControls() });
+  }
+
+  /**
+   * The **"Go now" call** (D120) — a turn-control, not a verb. It sits in the control box
+   * beside Undo/End Turn exactly as Start Battle does in deployment, because it is a
+   * **phase-level commitment** made on the party's behalf, not something *this* unit does with
+   * its action. It is what makes leaving early a decision the player takes deliberately instead
+   * of one the mission takes for them.
+   *
+   * Offered only when the encounter carries an exfil objective **and someone has actually
+   * reached a mouth** ({@link canCallExfil}) — with nobody out there is nothing to call, and a
+   * call that bound the whole party would grade a wipe. So on every encounter without an
+   * extraction goal this returns `[]` and the row is exactly as it has always been.
+   *
+   * The hover copy names **who walks out and who does not, by name, before the click** — the
+   * price has to be legible at the moment of paying it, since nothing takes it back.
+   */
+  private exfilControls(): ActionSpec[] {
+    const staged = this.loop.staged;
+    if (!staged || this.phase !== "battle" || !canCallExfil(staged)) return [];
+    const { out, leftBehind } = exfilStandings(staged);
+    const names = (us: readonly Unit[]) => us.map((u) => u.name).join(", ");
+    const stranded = leftBehind.length
+      ? `${names(leftBehind)} ${leftBehind.length === 1 ? "is" : "are"} still inside and will NOT come home.`
+      : "Everyone is at a mouth — nobody gets left.";
+    return [{
+      text: `Go Now (${out.length}/${out.length + leftBehind.length})`,
+      description:
+        `Call the extraction NOW. ${names(out)} slip away. ${stranded} ` +
+        `Anyone left behind is captured, and the run records it. This cannot be taken back.`,
+      onClick: () => this.callGoNow(),
+    }];
+  }
+
+  /**
+   * Commit the "Go now" call: resolve extraction off what is true right now, re-read the board
+   * so the units that didn't make it visibly go bound, and grade the encounter. The core call
+   * ({@link callExfil}) owns the rule and the logging — this is the render half.
+   */
+  private callGoNow(): void {
+    const staged = this.loop.staged;
+    if (this.busy || this.over || !staged) return;
+    const call = callExfil(staged);
+    if (!call) return; // nobody at a mouth — the control shouldn't have been up
+    for (const u of call.leftBehind) this.tintCaptured(u, true);
+    this.refreshUnits();
+    this.refreshObjectives();
+    this.finishBattle();
   }
 
   // --- Trap-field: spotting, searching, disarming (D12) ----------------------
@@ -2169,13 +2318,13 @@ export class BattleScene extends Phaser.Scene {
       "  1–9 — use the active unit's skills          Esc — cancel target / Undo Move",
       "  T — danger zone     F — animation speed     L — this legend",
       "",
-      "DEPLOYMENT (the closing net): green = your camp's safe core — no capture there",
-      "  (wider with a stronger party, capped on small maps). Faint-red open ground is",
-      "  risky; the solid-red net (grows each time it acts, amber = falls next turn) is",
-      "  near-certain capture. On a unit's turn: pull back into the core, Dig In to hunker,",
-      "  or set a trap — then End Turn (Space); Advance Clock (Space) grows the net. A unit",
-      "  caught in the open or the net is captured (the alarm begins the battle); if the",
-      "  net reaches your safe core, the battle just starts — nobody is taken.",
+      "DEPLOYMENT (the closing net): green = your safe ground — no capture there: the camp's",
+      "  core, or a hand-built map's own entrances (safe even under the net). Faint-red open",
+      "  ground is risky; the solid-red net (grows each time it acts, amber = falls next turn)",
+      "  is near-certain capture. On a unit's turn: pull back onto green, Dig In to hunker, set",
+      "  a trap, or — with two entrances — take the other one; then End Turn (Space); Advance",
+      "  Clock (Space) grows the net. A unit caught in the open or the net is captured (the",
+      "  alarm begins the battle); if the net reaches your safe ground, it just starts.",
     ].join("\n");
     showModal(this, this.legend, {
       title: "Legend & Keys  (L to close)",
@@ -2507,11 +2656,16 @@ export class BattleScene extends Phaser.Scene {
     const res = this.loop.resolve();
     const recruited = this.commitPendingRecruits();
 
-    // Winning frees the field's captives (D52): an on-board captive recruit (the L1 Cook)
-    // the player never reached is freed by the captors' fall — release the bound token so
+    // Winning **the field** frees its captives (D52/D21): an on-board captive recruit (the L1
+    // Cook) the player never reached is freed by the captors' fall — release the bound token so
     // the board reads coherently (un-greyed, full alpha) under the report. resolve() already
     // recruited him into the party; this only mirrors the freeing on his battle token.
-    if (res.result === "win") {
+    //
+    // Gated on **field control** (D120), and not merely cosmetically: these are the same unit
+    // objects as the run roster, so on an extraction win — a flight, with the garrison still
+    // standing — an ungated sweep here would un-capture the very people `resolve()` just
+    // recorded as left behind, handing them back to the party a line after taking them away.
+    if (res.result === "win" && heldTheField(this.battle.units)) {
       for (const u of this.battle.units) if (u.side === "player" && u.captured) freeCaptive(u);
     }
 
@@ -2779,7 +2933,7 @@ export class BattleScene extends Phaser.Scene {
     if (job) rows.push({ label: "Role", value: `${job.name} L${jobLevelOf(actor, primaryJobOf(actor))}`, color: INK.secondary });
     if (this.phase === "deployment") {
       const dug = actor.dugIn === true;
-      const protectedHere = !!this.campfire && isProtected(actor.pos, this.campfire);
+      const protectedHere = !!this.safeGround && isProtected(actor.pos, this.safeGround);
       const inNet = !!this.front && inDangerZone(actor.pos, this.front);
       const band = actor.captured ? "Captured" : protectedHere ? "Safe" : inNet ? "In the net" : dug ? "Dug in" : "Exposed";
       // Protected ground is genuinely safe (green); the net is near-certain capture;
@@ -2795,12 +2949,12 @@ export class BattleScene extends Phaser.Scene {
         // capture-risk wording the forecast card already uses on protected ground, and
         // the "Position: Safe" row above still carries the in-camp reason.
         rows.push({ label: "Capture risk", value: "none", color: INK.success });
-      } else if (!actor.captured && this.front && this.campfire) {
+      } else if (!actor.captured && this.front && this.safeGround) {
         // Hot decision: forecast each choice's capture risk (D48 route-forecast ethos),
         // so the card answers "what should this unit do *now*", not just "how bad is it".
         // Repositioning stays on the table while move budget remains this turn.
         const reach = this.moveBudget > 0 ? reachableTiles(actor, this.battle.units, this.grid, this.moveBudget).map((r) => r.tile) : [];
-        const fc = deployForecast(actor, this.campfire, this.front, reach, { dugIn: dug, exposureMultiplier: this.deployMods().exposureMultiplier });
+        const fc = deployForecast(actor, this.safeGround, this.front, reach, { dugIn: dug, exposureMultiplier: this.deployMods().exposureMultiplier });
         rows.push({ label: "Hold", value: pct(fc.hold), color: INK.danger, emphasize: true });
         if (fc.digIn !== null) rows.push({ label: "Dig in", value: pct(fc.digIn), color: INK.success });
         if (fc.move !== null) rows.push({ label: "Move", value: fc.move <= 0 ? "safe" : pct(fc.move), color: INK.success });
@@ -2886,7 +3040,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.phase === "deployment") {
       const actor = this.deployActor;
       if (!actor || this.busy || actor.captured || this.armedSkill || !this.deployHoverTile) return this.previewCtl.hide();
-      return this.previewCtl.showDeployPreview(actor, this.deployHoverTile, this.campfire, this.front, this.deployMods().exposureMultiplier);
+      return this.previewCtl.showDeployPreview(actor, this.deployHoverTile, this.safeGround, this.front, this.deployMods().exposureMultiplier);
     }
     this.previewCtl.hide();
   }

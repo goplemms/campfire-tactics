@@ -60,7 +60,8 @@ const SEVERITY_RANK: Record<ConcernSeverity, number> = { urgent: 0, warning: 1, 
  * - **gear-wear** — worn-gear debt the next rest node clears (D45/D47).
  * - **dying** — a downed companion on the Hard-mode cleric clock (D9).
  * - **rescue** — a companion left captured, now an outstanding rescue follow-up
- *   (D9/D21); the name is recovered from the still-listed roster member.
+ *   (D9/D21); the name comes from the still-listed roster member, or from the record
+ *   itself for an on-board captive who was never on the roster (D120).
  */
 export function captainsJournal(run: RunState): JournalConcern[] {
   const out: JournalConcern[] = [];
@@ -89,7 +90,10 @@ export function captainsJournal(run: RunState): JournalConcern[] {
     out.push({
       kind: "rescue",
       severity: quest.nights > 0 && quest.nights <= CLOCK_URGENT_NIGHTS ? "urgent" : "warning",
-      subject: member?.name ?? quest.unitId,
+      // The roster lookup first (a captured companion is still listed), then the name the
+      // record carries — an abandoned **on-board captive** (D120) was never in the roster, so
+      // without it the Journal would nag about a raw id.
+      subject: member?.name ?? quest.unitName ?? quest.unitId,
       value: quest.nights,
     });
   }

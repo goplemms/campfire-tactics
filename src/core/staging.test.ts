@@ -226,3 +226,80 @@ describe("encounterOutcome (D50/D51)", () => {
     expect(encounterOutcome(s)).toBe("win");
   });
 });
+
+// --- D119: authored spawn zones through the staging seam ---------------------
+
+/**
+ * The finale's shape in miniature: a multi-tile primary mouth plus a one-tile, flag-gated
+ * side door. The gate is the *whole* graceful-degradation mechanism (D118) — no flag, no
+ * zone, no entrance verb — so it is tested from the staging seam the game actually uses.
+ */
+const ZONED: AuthoredEncounter = {
+  ...AUTHORED,
+  id: "two-mouths",
+  spawnZones: [
+    { id: "front", label: "the Front Gate", primary: true, cap: 4, tiles: [{ col: 1, row: 5 }, { col: 2, row: 5 }, { col: 3, row: 5 }] },
+    { id: "side", label: "the Side Door", cap: 1, requiresFlag: "side-door-intel", tiles: [{ col: 7, row: 0 }] },
+  ],
+};
+
+describe("stageEncounter × authored spawn zones (D119)", () => {
+  it("defaults the WHOLE party to the primary zone — the side door stages EMPTY", () => {
+    const roster = [player("a"), player("b"), player("c")];
+    const staged = stageEncounter(ZONED, roster, { flags: { "side-door-intel": true } });
+    expect(roster.map((u) => u.pos)).toEqual([{ col: 1, row: 5 }, { col: 2, row: 5 }, { col: 3, row: 5 }]);
+    // The defect this replaces: `placeParty` index-mapped party[i]→playerSpawns[i], so the
+    // encounter's first authored spawn went to whoever was first in the roster.
+    expect(roster.some((u) => u.pos.col === 7 && u.pos.row === 0)).toBe(false);
+    expect(staged.battle.spawnZones.map((z) => z.id)).toEqual(["front", "side"]);
+  });
+
+  it("the flag is what unions the side door in — unset ⇒ the primary entrance alone", () => {
+    const withIntel = stageEncounter(ZONED, [player("a")], { flags: { "side-door-intel": true } });
+    expect(withIntel.battle.spawnZones.map((z) => z.id)).toEqual(["front", "side"]);
+
+    const without = stageEncounter(ZONED, [player("a")], { flags: {} });
+    expect(without.battle.spawnZones.map((z) => z.id)).toEqual(["front"]);
+
+    const noFlagsAtAll = stageEncounter(ZONED, [player("a")]);
+    expect(noFlagsAtAll.battle.spawnZones.map((z) => z.id)).toEqual(["front"]);
+  });
+
+  it("a spelling slip in the flag degrades silently to primary-only — hence the constant", () => {
+    // The flag bag is an untyped Record<string, boolean>; this is the failure mode the
+    // exported SIDE_DOOR_INTEL constant (and the JSON pin test) exist to prevent.
+    const typo = stageEncounter(ZONED, [player("a")], { flags: { "side-door-inter": true } });
+    expect(typo.battle.spawnZones.map((z) => z.id)).toEqual(["front"]);
+  });
+
+  it("is deterministic — same encounter + same flags ⇒ identical zones and placement", () => {
+    const a = [player("a"), player("b")];
+    const b = [player("a"), player("b")];
+    const flags = { "side-door-intel": true };
+    const s1 = stageEncounter(ZONED, a, { flags });
+    const s2 = stageEncounter(ZONED, b, { flags });
+    expect(s1.battle.spawnZones).toEqual(s2.battle.spawnZones);
+    expect(a.map((u) => u.pos)).toEqual(b.map((u) => u.pos));
+  });
+
+  it("an explicit playerSpawns override still wins (the scenario/level harnesses)", () => {
+    const roster = [player("a")];
+    stageEncounter(ZONED, roster, { flags: { "side-door-intel": true }, playerSpawns: [{ col: 5, row: 2 }] });
+    expect(roster[0].pos).toEqual({ col: 5, row: 2 });
+  });
+
+  it("fails loud when flag-filtering would leave no primary zone", () => {
+    const headless: AuthoredEncounter = {
+      ...ZONED,
+      spawnZones: [{ id: "side", label: "the Side Door", primary: true, cap: 1, requiresFlag: "never-set", tiles: [{ col: 7, row: 0 }] }],
+    };
+    expect(() => stageEncounter(headless, [player("a")], { flags: {} })).toThrow(/none is primary/);
+  });
+
+  it("REGRESSION — an encounter that declares NO zones stages exactly as before", () => {
+    const roster = [player("a"), player("b")];
+    const staged = stageEncounter(AUTHORED, roster, { flags: { "side-door-intel": true } });
+    expect(staged.battle.spawnZones).toEqual([]); // ⇒ the scene falls back to the campfire
+    expect(roster.map((u) => u.pos)).toEqual([{ col: 2, row: 2 }, { col: 2, row: 3 }]); // authored spawns, index-mapped
+  });
+});

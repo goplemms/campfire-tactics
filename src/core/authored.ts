@@ -25,6 +25,7 @@ import { getEnemyTemplate, type EncounterReward } from "./generation";
 import { TAGS } from "./tags";
 import type { ObjectiveSpec } from "./objectives";
 import { makeGate, makeLever, type Gate, type GateLock, type Lever } from "./gates";
+import type { SpawnZone } from "./deployment";
 import type { IntelTier } from "./intel"; // type-only (erased) — no runtime cycle
 
 /** A hand-placed enemy in an authored encounter. */
@@ -110,8 +111,23 @@ export interface AuthoredEncounter {
   cols: number;
   rows: number;
   blocked: GridCoord[];
-  /** Where the party deploys (home edge). */
+  /**
+   * Where the party deploys (home edge). Ignored when {@link spawnZones} is declared —
+   * the zones then own placement (everyone at the primary zone) *and* the safe ground.
+   * Still authored so a level stays playable without zones (and the editor's spawn brush
+   * keeps meaning something).
+   */
   playerSpawns: GridCoord[];
+  /**
+   * **Authored spawn zones** (D119) — this encounter's declared safe ground, replacing the
+   * derived campfire. Each zone is a fixed tile list with its own capacity cap; a unit
+   * standing in one is capture-immune wherever the net has reached, and the deploy phase
+   * force-starts when the net reaches the **primary** zone. A zone with `requiresFlag` is
+   * unioned in only when that run flag is set (the intel gate) — no flag ⇒ no zone ⇒ no
+   * entrance verb, which is D118's graceful degradation by construction. Absent ⇒ the
+   * hardcoded campfire, exactly as before. See {@link AuthoredSpawnZone}.
+   */
+  spawnZones?: AuthoredSpawnZone[];
   enemies: EnemyPlacement[];
   /**
    * On-board **captive recruits** (D52) — bound, player-side units the player frees by
@@ -259,12 +275,76 @@ export function buildAuthoredLevers(enc: AuthoredEncounter): Lever[] {
   return (enc.levers ?? []).map((l) => makeLever(l.id, l.pos, l.targets));
 }
 
+/**
+ * An authored **spawn zone** placement (D119): a named tile patch with a capacity cap,
+ * optionally gated behind a run flag.
+ *
+ * ⚠️ **The tile list is load-bearing content, not decoration.** The deploy phase already
+ * offers Pull Lever with no phase gate (D67 — engagement is board state, not a per-phase
+ * verb ban) while the garrison is frozen, so a zone drawn *over* a lever makes throwing it
+ * free. A zone drawn tight (the doorway only) means reaching that lever costs a step onto
+ * unprotected ground — the intended "risk detection for efficiency" trade. Author tight.
+ */
+export interface AuthoredSpawnZone {
+  id: string;
+  /** Player-facing name — the deploy row reads "Take {label}"; keep it short (the button fits ~140px). */
+  label: string;
+  /** The zone's tiles, authored verbatim (fixed size — never presence-derived). */
+  tiles: GridCoord[];
+  /** How many player bodies may stand here. Authored per zone; never hardcoded to 1. */
+  cap: number;
+  /** The default/force-start zone. Exactly one zone in a set must be primary. */
+  primary?: boolean;
+  /**
+   * Union this zone in only when `run.flags[requiresFlag]` is set — the intel gate. Must be
+   * absent on the primary zone (the party always has somewhere to stand). The flag bag is an
+   * untyped `Record<string, boolean>`, so a spelling slip fails **silently**: reference the
+   * exported constant (`SIDE_DOOR_INTEL`) and pin the JSON's value against it in a test.
+   */
+  requiresFlag?: string;
+}
+
+/**
+ * Inflate an authored encounter's {@link AuthoredSpawnZone}s into live {@link SpawnZone}s
+ * (D119), dropping any whose `requiresFlag` is unset in `flags` — the intel gate, and the
+ * whole of the graceful-degradation path. Returns `[]` when the encounter declares none (the
+ * campfire default). **Fails loud** on a zone set with no surviving primary: a set that lost
+ * its anchor would leave the party unplaceable and the phase unable to force-start, and a
+ * silent fallback to the campfire would put the safe ground back inside a wall.
+ */
+export function buildSpawnZones(enc: AuthoredEncounter, flags: Record<string, boolean> = {}): SpawnZone[] {
+  const declared = enc.spawnZones ?? [];
+  if (declared.length === 0) return [];
+  const zones = declared
+    .filter((z) => z.requiresFlag === undefined || flags[z.requiresFlag] === true)
+    .map((z) => ({ id: z.id, label: z.label, tiles: z.tiles.map((t) => ({ col: t.col, row: t.row })), cap: z.cap, primary: z.primary === true }));
+  if (!zones.some((z) => z.primary)) {
+    throw new Error(`buildSpawnZones: encounter "${enc.id}" declares spawn zones but none is primary (after flag filtering)`);
+  }
+  return zones;
+}
+
 /** Place the party at the encounter's spawn tiles (extras stack on the last). */
 export function placeParty(party: readonly Unit[], spawns: readonly GridCoord[]): void {
   party.forEach((u, i) => {
     const s = spawns[Math.min(i, spawns.length - 1)] ?? { col: 0, row: 0 };
     u.pos = { col: s.col, row: s.row };
   });
+}
+
+/**
+ * Place the whole party in the **primary** zone (D119) — the default that replaces
+ * {@link placeParty}'s roster-order index-map for a zoned encounter.
+ *
+ * This is the fix, not a tidy-up: index-mapping `party[i] → spawns[i]` meant the finale's
+ * first authored spawn (the side door) went to whoever happened to be first in the roster —
+ * a Soldier, who cannot pick the cells — while the Thief started at the far mouth. Everyone
+ * defaults to the primary zone with the other zones **EMPTY**; sending someone to the side
+ * door is then a deliberate act (the entrance verb), and "I scouted but I'm still going in
+ * the front" stays a legal play. Extras stack on the last tile, as `placeParty` always has.
+ */
+export function placeInZone(party: readonly Unit[], zone: SpawnZone): void {
+  placeParty(party, zone.tiles);
 }
 
 /** The graded outcome of an encounter (D43): win, survivable failure, or wipe. */

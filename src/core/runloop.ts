@@ -33,6 +33,7 @@ import {
 import {
   stageEncounter,
   encounterOutcome,
+  heldTheField,
   isAuthoredEncounter,
   type StagedEncounter,
   type EncounterSource,
@@ -439,6 +440,10 @@ export class RunLoop {
       // Per-encounter salt (node + night): an unsalted run.seed replayed the identical
       // deploy/trap-spot streams in every battle of the run (audit 2026-07-20 / D114).
       seed: saltSeed(this.run.seed, Labels.battle(node.id, this.run.night)),
+      // The run's flags gate the authored spawn zones (D119): `side-door-intel`, earned
+      // upstream via an authored win's `grants.flag`, is what unions the finale's side
+      // entrance into its zone set. Unset ⇒ primary entrance only (graceful degradation).
+      flags: this.run.flags,
     });
     this.source = source;
     this.staged = staged;
@@ -483,6 +488,11 @@ export class RunLoop {
     const result = encounterOutcome(this.staged) ?? "wipe";
     const won = result === "win";
     const survivable = result !== "wipe"; // win or objective-failure: the party retreats alive
+    // Did the party **hold the field**, or merely get out? (D21 narrowed by D120.) An
+    // eliminate-all win holds it by construction, so every elimination win resolves exactly as
+    // it always has; an extraction win is a flight, and you cannot free the people your enemy is
+    // still standing over. Read before anything below mutates.
+    const heldField = heldTheField(battle.units);
 
     // Rewards + material recovery + XP — **win only** (forfeited otherwise, D51/D53).
     let goldEarned = 0;
@@ -491,21 +501,22 @@ export class RunLoop {
     let sweptTraps = 0;
     if (won) ({ goldEarned, recovered, levels, sweptTraps } = this.applyRewards(source, battle));
 
-    // Captives: auto-rescued on a win, else turned into rescue follow-ups (D21).
-    // Persist the follow-ups on the run so an abandoned companion is never lost
-    // from view — the Captain's Journal nags from `run.rescueQuests` (D9).
-    const { rescued, rescueQuests } = this.resolveRescues(won, policy);
-    this.run.rescueQuests.push(...rescueQuests);
+    // Captives: auto-rescued on a win **that held the field** (D21/D120), else turned into
+    // rescue follow-ups. Persist the follow-ups on the run so an abandoned companion is never
+    // lost from view — the Captain's Journal nags from `run.rescueQuests` (D9).
+    const { rescued, rescueQuests } = this.resolveRescues(won && heldField, policy);
 
-    // On-board captive **recruits** (D52): an authored captive (the L1 Cook) is freed and
-    // **joins the party on the win** — even if the player never reached him (the captors
-    // fell), and even if a mid-fight-freed captive was downed (demo-friendly: a won node
-    // always delivers the recruit, replacing the old post-win `grants.recruit`). Win-only,
-    // idempotent. Recruits are folded into `rescued` (the resolution names the join) and
-    // their completion-XP level-ups into `levels` (the captive joins leveled, not at base).
-    const captives = this.resolveCaptiveRecruits(won, source);
+    // On-board captive **recruits** (D52/D120): a captive the party held the field for joins on
+    // the win however the fight went for him; otherwise **position decides**, and whoever did
+    // not get out is recorded instead of vanishing. Recruits are folded into `rescued` (the
+    // resolution names the join) and their completion-XP level-ups into `levels` (the captive
+    // joins leveled, not at base); the abandonments join the same `rescueQuests` slice the
+    // roster's do, so the report and the Journal read one list, not two.
+    const captives = this.resolveCaptiveRecruits({ won, survivable, heldField, source, battle, policy });
     rescued.push(...captives.recruited);
     levels = { ...levels, ...captives.levels };
+    rescueQuests.push(...captives.rescueQuests);
+    this.run.rescueQuests.push(...rescueQuests);
 
     // Mortality (D9): downed player combatants resolve on a survivable outcome (D51).
     const { downed, permadeaths } = this.resolveMortalities(survivable, policy);
@@ -636,18 +647,25 @@ export class RunLoop {
   }
 
   /**
-   * Resolve captives (D21): auto-freed on a win, else turned into rescue follow-up
-   * quests (not death). Mutates freed units; returns the rescue slice.
+   * Resolve the **roster's** captives (D21): auto-freed when `freeAll`, else turned into rescue
+   * follow-up quests (not death). Mutates freed units; returns the rescue slice.
+   *
+   * `freeAll` is *"the party won **and held the field**"* (D120), not merely "won". Holding the
+   * field is what frees the people the enemy was standing over — so an eliminate-all win is
+   * unchanged, while an **extraction** win is a flight: it takes home whoever reached a mouth
+   * and leaves the rest bound, exactly as the "Go now" call promised. This iterates the roster,
+   * so it is blind to on-board captives by construction — {@link resolveCaptiveRecruits} is the
+   * other half of the same rule (D120: two populations, two code paths).
    */
   private resolveRescues(
-    won: boolean,
+    freeAll: boolean,
     policy: ReturnType<typeof runDifficulty>,
   ): Pick<ResolveResult, "rescued" | "rescueQuests"> {
     const rescued: string[] = [];
     const rescueQuests: RescueQuest[] = [];
     for (const u of this.combatants) {
       if (!u.captured) continue;
-      if (won) {
+      if (freeAll) {
         freeCaptive(u);
         rescued.push(u.id);
       } else {
@@ -658,48 +676,73 @@ export class RunLoop {
   }
 
   /**
-   * Recruit an authored encounter's on-board **captive recruits** (D52) on the win — the
-   * L1 Cook's "freeing → joins permanently" path, replacing the old post-win
-   * `grants.recruit`. The captive is staged in the battle but never in `combatants`/the
-   * roster, so {@link resolveRescues} (which iterates the roster) doesn't touch it; this is
-   * its single recruit seam. On a **win** each declared captive joins `run.party` as a
-   * fresh authored body that **banks the encounter's completion XP** (the objective
-   * `reward.xp`, routed through {@link "./leveling".commitCombatXp} to the same char + job
-   * axes the survivors level on) — so it joins **leveled with the party**, not at base —
-   * **regardless of whether it was freed mid-fight or even downed after** (the win-recruit
-   * guarantee: a captor's fall frees the captive). It earns only this flat completion XP,
-   * **not** the per-unit combat-event tally (it was never a tracked combatant). On a
-   * **non-win** nothing is recruited (the rescue failed; it was never in the party, so
-   * there's nothing to lose and no quest to mount). Idempotent (an id already aboard is
-   * skipped). Returns the recruited **ids** (folded into the resolution's `rescued`; the
-   * render maps them to names) and their **level-ups** (folded into the resolution `levels`).
+   * Resolve an authored encounter's on-board **captives** (D52, completed by D120) — the L1
+   * Cook's "freeing → joins permanently" path, and the *only* seam that can see them at all: a
+   * captive is staged in the battle but never in `combatants`/the roster, so
+   * {@link resolveRescues} (which iterates the roster) cannot touch it. **Two populations, two
+   * code paths** — this is the captive half of the same rule.
    *
-   * **Seam limitation (reuse note):** win-gated, so it's only sound for encounters that end
-   * **win or wipe** — E1 is elimination-only, so a survivable non-win can't happen there. A
-   * future captive in an **objective-failure-capable** encounter would currently vanish on a
-   * survivable loss (no recruit *and* no rescue quest, unlike a roster captive). Extend this
-   * (a captive → rescue-quest fallback) before standing a captive up in such a node.
+   * A recruit joins `run.party` as a fresh authored body that **banks the encounter's completion
+   * XP** (the objective `reward.xp`, routed through {@link "./leveling".commitCombatXp} to the
+   * same char + job axes the survivors level on) — so it joins **leveled with the party**, not
+   * at base. It earns only this flat completion XP, **not** the per-unit combat-event tally (it
+   * was never a tracked combatant). Idempotent (an id already aboard is skipped).
+   *
+   * **Who comes home:**
+   * - **Field-control win** (D21) — *every* declared captive, exactly as before: the captors
+   *   fell, so the cells are yours regardless of whether the player ever reached them, and even
+   *   if a mid-fight-freed captive was downed after. This is the win-recruit guarantee E1 ships.
+   * - **Otherwise** — **position decides**, read off the board as `alive && !captured`. There is
+   *   no geometry here: {@link "./staging".callExfil} already bound everyone who was not on a
+   *   mouth when the player called "Go now", so a prisoner still in a cell and a freed one who
+   *   did not reach the door read the same way, which is the point.
+   *
+   * **Whoever does not come home is recorded**, on a **win** *and* on a survivable retreat — a
+   * {@link "./mortality".RescueQuest} naming them, on the same `run.rescueQuests` the roster's
+   * abandonments ride. This closes the seam limitation this function used to carry: it was
+   * win-gated, sound only for **win-or-wipe** encounters, and warned that a captive in an
+   * objective-failure-capable node "would currently vanish on a survivable loss". D120's "Go
+   * now" makes The Rescue exactly that node, so the fallback is here now.
+   *
+   * Two edges, deliberately: a **wipe** records nothing (there is no party left to mount
+   * anything, and `resolveMortalities` sits out a wipe for the same reason), and a **downed**
+   * captive is neither recruited nor recorded — a corpse is not a rescue, and the player watched
+   * it fall, so it is not a *silent* loss either.
    */
-  private resolveCaptiveRecruits(
-    won: boolean,
-    source: EncounterSource,
-  ): { recruited: string[]; levels: ResolveResult["levels"] } {
-    if (!won || !isAuthoredEncounter(source) || !source.captives) return { recruited: [], levels: {} };
+  private resolveCaptiveRecruits(opts: {
+    won: boolean;
+    survivable: boolean;
+    heldField: boolean;
+    source: EncounterSource;
+    battle: Battle;
+    policy: ReturnType<typeof runDifficulty>;
+  }): { recruited: string[]; levels: ResolveResult["levels"]; rescueQuests: RescueQuest[] } {
+    const { won, survivable, heldField, source, battle, policy } = opts;
+    const empty = { recruited: [], levels: {}, rescueQuests: [] };
+    if (!survivable || !isAuthoredEncounter(source) || !source.captives) return empty;
     const recruited: string[] = [];
+    const rescueQuests: RescueQuest[] = [];
     const fresh: Unit[] = [];
     for (const c of source.captives) {
       if (this.run.party.some((u) => u.id === c.spec.id)) continue; // idempotent
-      const unit = createUnit({ ...c.spec, authored: true });
-      this.run.party.push(unit);
-      fresh.push(unit);
-      recruited.push(c.spec.id); // ids (like resolveRescues); the render maps to names
+      const onBoard = battle.units.find((u) => u.id === c.spec.id);
+      // Held the field ⇒ the cells are yours. Otherwise only who actually got out (D120).
+      const comesHome = won && heldField ? true : !!onBoard && onBoard.alive && !onBoard.captured;
+      if (comesHome) {
+        const unit = createUnit({ ...c.spec, authored: true });
+        this.run.party.push(unit);
+        fresh.push(unit);
+        recruited.push(c.spec.id); // ids (like resolveRescues); the render maps to names
+      } else if (onBoard?.alive) {
+        rescueQuests.push(resolveCaptured(policy, onBoard)); // left in the prison, named
+      }
     }
     // A freed captive shares the encounter's **completion XP** (D52) — the flat objective
     // `reward.xp` every survivor banks at resolution — so it joins leveled with the party.
     const objXp = source.reward.xp ?? 0;
     const tally: CombatXpTally = {};
     if (objXp > 0) for (const u of fresh) tally[u.id] = objXp;
-    return { recruited, levels: commitCombatXp(tally, fresh) };
+    return { recruited, levels: commitCombatXp(tally, fresh), rescueQuests };
   }
 
   /**

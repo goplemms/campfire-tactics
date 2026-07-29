@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { frontTurnStage, deployActions, type DeployActionContext } from "./deploy-flow";
-import { createFront, createCampfire, advanceFront, type FrontTurnOutcome } from "./deployment";
+import { createFront, createCampfire, advanceFront, type FrontTurnOutcome, type SpawnZone } from "./deployment";
 import { TileGrid } from "./grid";
 import { createUnit, type Unit } from "./units";
 
@@ -13,6 +13,35 @@ const outcome = (captured: Unit | null, breached = false): FrontTurnOutcome => (
   rolled: [],
   alarm: captured !== null,
   breached,
+});
+
+describe("frontTurnStage with authored spawn zones (D119) — the force-start replaces overrun", () => {
+  const grid = () => new TileGrid(8, 5);
+  const zones: SpawnZone[] = [
+    { id: "front", label: "front", tiles: [{ col: 0, row: 4 }, { col: 1, row: 4 }], cap: 3, primary: true },
+    { id: "side", label: "side", tiles: [{ col: 7, row: 0 }], cap: 1, primary: false },
+  ];
+
+  it("never overruns on 'no safe ground left' — a zone overrides the net, so it never runs out", () => {
+    const g = grid();
+    const front = createFront(g, [player("e")]);
+    for (let i = 0; i < 50; i++) advanceFront(front); // the net has swallowed the whole board
+    // The rule that used to end this phase can no longer fire. If `breached` had NOT been
+    // re-pointed at the primary zone, the deploy phase would simply never end.
+    expect(frontTurnStage(outcome(null, false), g, zones, front).kind).toBe("continue");
+  });
+
+  it("force-starts on the geometric breach — the net arriving at the primary zone", () => {
+    const g = grid();
+    const front = createFront(g, [player("e")]);
+    expect(frontTurnStage(outcome(null, true), g, zones, front).kind).toBe("overrun");
+  });
+
+  it("a catch still leads (a unit that wandered OFF a zone is still grabbable)", () => {
+    const g = grid();
+    const front = createFront(g, [player("e")]);
+    expect(frontTurnStage(outcome(player("c"), true), g, zones, front).kind).toBe("capture");
+  });
 });
 
 describe("frontTurnStage — what the deploy phase does after the net's turn", () => {

@@ -46,7 +46,7 @@ import {
   type UnitId,
 } from "./combat-actions";
 import { placePlayerTrap } from "./traps";
-import { captureUnit, freeCaptive, canRelease } from "./deployment";
+import { captureUnit, freeCaptive, canRelease, type SpawnZone } from "./deployment";
 import { applyGatesToGrid, openGateOnGrid, destroyGateOnGrid, lockGateOnGrid, canLockpickGate, canAttackGate, canKeyGate, canPullLever, damageGate, gatesOpenedByDeath, dropsKeyOnDeath, type Gate, type Lever } from "./gates";
 import type { RecoverableEntity } from "./entities";
 import { streamFor, type Rng } from "./rng";
@@ -106,6 +106,13 @@ export interface BattleOptions {
    * as attack targets (Decision G). Handed to the planner via `AIOptions`; absent ⇒ no target tilt.
    */
   controlRoom?: Region;
+  /**
+   * The encounter's **authored spawn zones** (D119) — its declared, danger-overriding safe ground for
+   * the deploy phase. Staging builds them (flag-gated) and hands them here so the render layer reads
+   * one place; empty/absent ⇒ the derived campfire, exactly as before. Deploy-only: nothing in combat
+   * reads them, so they never touch `apply`, the log, or replay.
+   */
+  spawnZones?: SpawnZone[];
 }
 
 /** The CT a skill spends on its caster's turn (Act is the expensive option, D5). */
@@ -125,6 +132,8 @@ export class Battle {
   readonly levers: Lever[];
   /** The encounter's **control-room region** (D117/M3b) — the garrison's target-priority span (Decision G). */
   readonly controlRoom?: Region;
+  /** The encounter's **authored spawn zones** (D119) — the deploy phase's declared safe ground; `[]` ⇒ campfire. */
+  readonly spawnZones: SpawnZone[];
 
   /**
    * Which board phase this battle is in (D67): `"deploy"` (pre-combat staging — the
@@ -217,6 +226,7 @@ export class Battle {
     this.gates = opts.gates ?? [];
     this.levers = opts.levers ?? [];
     this.controlRoom = opts.controlRoom;
+    this.spawnZones = opts.spawnZones ?? [];
     applyGatesToGrid(this.grid, this.gates);
     if (this.gates.length) this.bus.on("unitDefeated", ({ unit }) => this.openKeyholderGates(unit));
     // Stamp job passives + arm the tarpit aura from the starting formation (D40).

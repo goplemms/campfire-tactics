@@ -12,24 +12,25 @@
  * Topology — a minimal branching approach to the prison, enough to exercise the D116
  * **prerequisite** rule end to end:
  * ```
- *   start (camp) ─► sideDoor (scout the wall — provides "side-door-intel") ─┐
- *              └──► frontal (form up at the gate) ───────────────────────────┤
- *                                                                            ▼
- *                                                            finale — The Rescue
- *                                                       (requires "side-door-intel")
+ *   start (camp) ─► sideDoor (fight the wall patrol — GRANTS "side-door-intel") ─┐
+ *              └──► frontal (form up at the gate) ────────────────────────────────┤
+ *                                                                                 ▼
+ *                                                                 finale — The Rescue
+ *                                                            (requires "side-door-intel")
  * ```
  * The finale's **infiltration flank** *wants* the side-door intel; the load pipeline
  * validates that the `sideDoor` provider sits reachable **upstream on some path** (the
  * *opportunity*), never splicing one in (D98 anti-silent-overwrite). A player may still take
  * the `frontal` arm and skip it — so the finale must **degrade gracefully to frontal-only**
  * (it stays fully winnable by storming the garrison; the flank is a reward for scouting, not a
- * hard gate — D99). The runtime flag itself (set on visiting `sideDoor`, read at the finale's
- * deploy) is parked with the v4 finale population; this slice ships the **validated
- * opportunity** only. **This session sets/reads no `sideDoorIntel` flag** — so the finale
- * currently plays *identically* on both arms (the frontal win is the whole game); `provides`/
- * `requires` are validated-but-inert placement markers until the flank is populated. Wiring a
- * future `requires` node therefore does nothing until that flag is built — don't assume the
- * provider grants anything yet.
+ * hard gate — D99).
+ *
+ * **The flag is live now (D119).** Winning `sideDoor` sets `run.flags["side-door-intel"]` through
+ * its authored body's `grants.flag`, and the finale's staging unions its **side-door spawn zone**
+ * in when that flag is set — so the two arms finally play differently: with the intel the player
+ * can split the force between the front gate and the side door; without it the finale offers the
+ * front gate alone and stays fully winnable by storming the garrison. `provides`/`requires` remain
+ * **validate-only** markers throughout — they prove the opportunity sits upstream and set nothing.
  *
  * NOTE: this is a **standalone** expedition — the shipped D97 arc finale (Hollow Mill's
  * `PRISON_ASSAULT`) is untouched. Promoting The Rescue into the arc is a later owner step.
@@ -47,6 +48,22 @@ export const SIDE_DOOR_INTEL = "side-door-intel";
 
 /** The authored-node id the finale resolves from the injected catalog (the JSON body's `id`). */
 export const RESCUE_FINALE_ID = "the-rescue";
+
+/**
+ * The authored-node id the **side-door provider** resolves from the injected catalog (D118/D119).
+ *
+ * The provider has to be a **combat** node, not the rest node it started as. `AuthoredEncounter.
+ * grants[].flag` (`applyGrant`, `runloop.ts`) is the only shipped write path to `run.flags`, and it
+ * fires **only on an authored combat encounter's win** — so a `"rest"` provider could carry
+ * `provides` (which is validate-only and sets nothing) while being physically unable to grant the
+ * flag its own edge advertises. Making it a real fight costs zero new mechanism; inventing a
+ * non-combat flag-write path would be its own decision record.
+ *
+ * **Standalone-expedition scaffolding.** D118 attributes the intel to the Hollow Mill's
+ * `cuffedCell`; promoting The Rescue into that arc (and moving the grant onto `CUFFED_CELL`) is a
+ * separate, later step. Until then this is where the flag is earned.
+ */
+export const SIDE_DOOR_ID = "the-side-door";
 
 /** Build a party member from a job's baseline frame (mirrors the Hollow Mill's `member`, D39). */
 function member(id: string, name: string, jobId: JobId, extra: Partial<UnitSpec> = {}): UnitSpec {
@@ -98,7 +115,10 @@ function theRescueMap(): OverworldMap {
   const nodes: Record<string, MapNode> = {
     start: node("start", 0, "rest", ["sideDoor", "frontal"]),
     // The scouting beat that yields the side-door intel — the finale's flank prerequisite.
-    sideDoor: node("sideDoor", 1, "rest", ["finale"], { provides: SIDE_DOOR_INTEL }),
+    // A **combat** node (the wall patrol): its authored body carries `grants.flag`, the only
+    // shipped write path to `run.flags`, and it fires on the win. `provides` beside it stays
+    // validate-only — it is what proves the opportunity sits upstream, not what sets anything.
+    sideDoor: node("sideDoor", 1, "combat", ["finale"], { authoredId: SIDE_DOOR_ID, provides: SIDE_DOOR_INTEL }),
     // The frontal approach — no intel; committing here skips the flank (graceful fallback).
     frontal: node("frontal", 1, "rest", ["finale"]),
     // The prison itself — body injected from content JSON; its flank *wants* the intel.

@@ -7,7 +7,7 @@ import { pct,
   type GridCoord,
   type AbilityForecast,
   type SkillDef,
-  type DeploySource,
+  type SafeGround,
   type DeployFront,
   type Inventory,
   reachableTiles,
@@ -153,13 +153,15 @@ export class PreviewCardController {
   }
 
   /** Deployment hover — a walkable tile: its capture risk for the active unit, plus the band it sits in. */
-  showDeployPreview(actor: Unit, tile: GridCoord, campfire: DeploySource, front: DeployFront, exposureMultiplier: number): void {
-    const protectedHere = isProtected(tile, campfire);
+  showDeployPreview(actor: Unit, tile: GridCoord, ground: SafeGround, front: DeployFront, exposureMultiplier: number): void {
+    const protectedHere = isProtected(tile, ground);
     const inNet = inDangerZone(tile, front);
-    const risk = captureChanceAt(tile, campfire, front, {
+    const risk = captureChanceAt(tile, ground, front, {
       evasion: captureEvasionFactor(actor),
       exposureMultiplier,
     });
+    // An authored zone (D119) overrides the net, so a zone tile the net has lapped reads
+    // "Safe core" with 0 risk — correct, and the whole reason a distant side door is playable.
     const band = protectedHere ? "Safe core" : inNet ? "In the net" : "Open ground";
     this.showPreview("If moved here", [
       { label: "Capture risk", value: protectedHere ? "none" : pct(risk), color: protectedHere ? INK.success : inNet ? INK.danger : INK.ember, emphasize: true },

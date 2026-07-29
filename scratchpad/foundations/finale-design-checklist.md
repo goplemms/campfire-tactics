@@ -74,22 +74,52 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 - ⬜ **A2** — Staging reads the flag: the finale's `AuthoredEncounter` carries the main `playerSpawns`
   **plus an optional second set** (side entrance); staging **unions** them when
   `run.flags[SIDE_DOOR_INTEL]`. One named flag, **no capability engine** (D116 discipline).
-- ⬜ **A3** — **Split-deploy allocation — needs a real mechanism.** ⚠️ Authoring 1–2 side tiles does **not**
-  cap anything: `placeParty` (`authored.ts:263`) maps unit *index* → spawn and **stacks every extra unit on
-  the last spawn tile**, so it neither limits the side zone nor lets the player choose the split. Required:
-  a **player-facing zone assignment** (which units start side vs. main) **plus an enforced side-zone cap**.
-  This is load-bearing, not polish — if the player can field everyone at the side there is **no
-  distraction**, the whole garrison converges on the escort, and the two-pronged tension collapses.
-- ⬜ **A3b** — **Deploy-phase treatment at the side zone (F1) — a real decision, not free.** ⚠️ Verified:
-  `BattleScene.enterDeploy` runs the campfire/closing-net deploy phase **unconditionally**, and
-  `createCampfire` (`deployment.ts:176`) hardcodes its origin to **`col 0`, mid-row** — while the v4 mouths
-  are **east (18,5)** and **bottom (9,18)**. So *both* zones sit outside the protected radius as authored;
-  a side infiltrator would take capture rolls, and the net geometry doesn't match the map at all. Options:
-  (i) **skip/short-circuit the deploy phase** for this authored encounter (units simply start at their
-  spawns — the owner's "enter during deployment / setup" reading); (ii) **re-anchor the campfire** per
-  encounter. **Do NOT** add a second campfire — that's the full **C5**, which stays parked, and D99's **F1**
-  forbids claiming a *safe* informed insert. Intent: the flank's risk is **in-battle isolation**, not a
-  pre-battle dice roll.
+- ⬜ **A3** — **Split-deploy allocation — mechanism decided (D119): a deploy-phase entrance action.**
+  ⚠️ The gap is live: `placeParty` (`authored.ts:263`) maps unit *index* → spawn and **stacks every extra
+  unit on the last spawn tile**, so authoring 1–2 side tiles neither limits the side zone nor lets the
+  player choose — and since the finale authors `playerSpawns[0] = (18,5)`, **`party[0]` is the
+  infiltrator** (currently a Soldier, who cannot pick the cell locks).
+  **Decided (D119):** a unit standing in a spawn zone may take an action moving it to the **other** spawn
+  zone — a **fourth verb** beside the existing `hold`/`digIn`/`move` (`DeployForecast`), not a new screen.
+  Offered only when the side zone exists (no intel ⇒ no verb), so A4's degradation is unchanged.
+  ✅ **Settled (D119): a MOVE with a CONFIGURABLE, authored-per-zone cap** — not a swap, and not hardcoded
+  to 1. **Default placement is everyone at the primary zone, side door EMPTY**: sending someone is a
+  deliberate act, "I scouted but I'm still going in the front" stays legal, and nobody is stranded at a door
+  they can't open. **The cap is not optional** — without it there is no distraction and the two-pronged
+  tension collapses.
+- ⚠️ **A3c — AUTHOR THE SIDE ZONE TIGHT (the door tile only). Load-bearing, verified.** The deploy phase
+  already offers **Place Trap** (`skills.ts:408` — a trap is `pre-combat` data; surfaces via
+  `availableSkills(actor,"pre-combat")`, `BattleScene.ts:935`) **and Pull Lever** (`pullLever` has **no
+  phase gate**, `turn.ts:607`; the deploy row calls `pushGateVerbs(…,"deployment")`, `BattleScene.ts:941`,
+  which pushes Pick Cell / Break Gate / Turn Key / **Pull Lever**). The garrison is **frozen** during deploy
+  (`configureDeployClock`), so an early lever throw draws no combat response — its only price is the capture
+  roll. `winch-wall` `(17,6)` is **2 steps** from the side spawn `(18,5)`: a zone drawn over the lever makes
+  the early seal **free** and voids the trade; a zone of just the door tile makes reaching it cost
+  **`NEUTRAL_DANGER = 0.4`/net turn**. That trade — *plenty of time to set traps on safe ground, or step out
+  and risk detection for the early seal* — is the **stated intent** of accepting the loose backstop.
+- ⬜ **A3b** — **Deploy-phase treatment at the side zone (F1) — DECIDED (D119): authored spawn zones.**
+  ⚠️ Three verified defects, two of them **general, not finale-specific**: `enterDeploy` runs the
+  campfire/net phase **unconditionally**; `createCampfire` (`deployment.ts:176`) hardcodes origin
+  **`col 0`, mid-row** → **`(0,9)`, blocked terrain** here, its radius painting over the **cellblock**;
+  and `createFront` hardcodes the enemy-edge centre → **`(19,9)`, 5 steps from the side door vs 19 from
+  main staging** — so the net would bear down on the **lone infiltrator** first, backwards from intent.
+  **Decided (D119):** an authored encounter declares its spawn zones at **authored fixed sizes** (*not*
+  presence-derived) which **override the tile's danger level outright**; **both** mouths get one, and the
+  hardcoded campfire doesn't apply to such an encounter. Insertion is contained — `inSafeZone` is the one
+  predicate both `game/deploy-zones.ts:32` and `safeGroundRemains` consult; `captureChanceAt` is the one
+  risk computation.
+  **The phase-end rule is replaced, not lost.** `deploy-flow.ts:43` ends the phase on `overrun` when safe
+  ground runs out — with overriding zones that can never fire. **Decided (D119): the phase force-starts
+  when the net reaches the primary zone.** The primary zone still overrides danger, so the net *arriving*
+  starts the battle but grabs nobody. ⚠️ **Measured — the backstop is very loose here:** net origin
+  `(19,9)` → nearest primary tile `(11,18)` is **17 steps** at `FRONT_ADVANCE_PER_TURN = 1`, so on the
+  order of **80+ deploy actions**. It prevents planning forever; it is **not** pacing pressure. Tightening
+  it means re-anchoring the net (a code change — the net origin is **not** editor-tunable), so it is
+  deliberately deferred to **after the first real playthrough**. Note neutral ground still rolls
+  `NEUTRAL_DANGER = 0.4` per net turn — leaving a zone during deploy has teeth.
+  **Revises** D118's "do NOT add a second campfire" — the *scope* half stands (this is **not** C5: no
+  second presence-sized anchor, no interior deploy, no alarm), the *design* half is revised (D118 itself
+  ruled the flank's risk is **in-battle isolation, not a pre-battle dice roll**).
 - ✅ **A4** — Graceful main-entrance-only fallback — *by construction* (flag absent ⇒ side set never unioned).
 - ⬜ **A5** — Visual e2e for the flag-gated deploy surface (freeze-catcher): flag **set** ⇒ side tiles
   placeable; **unset** ⇒ main-only; no page error either way. *(Note: `test:e2e:doctrine` proves a **6×3
@@ -126,6 +156,11 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
   Guards: scripted split-force scenario + **everyone-out** mutation-robust pacing bar + three
   geometry-invariant tests. **Open owner calls:** one seal vs. series · lever reachable turn 1 · corridor
   chokepoints · garrison-strength target.
+  ⚠️ **New (D119): the scenario must cover the SEAL-ALREADY-SHUT opening.** Levers are pullable during
+  **deploy** (verified — see A3c), so a player can slam the seal *before* combat for a capture roll rather
+  than a combat turn. Combat then opens with the seal shut and the garrison battering from turn 1. The race
+  still runs — judged coherent, not a hole — but a scenario that only models slam-it-mid-fight proves the
+  **wrong race**.
 
 ### G — Exfil semantics + the "Go now" call *(owner-directed 2026-07-26)*
 > A unit **survives only if it's on an exfil site** when extraction resolves — captives *and* party.
@@ -135,6 +170,23 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 - ⬜ **G2** — **The "Go now" call** — resolve on demand; on-exfil units escape, off-exfil are left behind.
   Outcome from what's true: captives out ⇒ **extraction win**; else ⇒ **survivable retreat**
   (`objective-failure`), unifying "Go now" with the existing retreat concept.
+- ⚠️ **G3-CORRECTION (verified 2026-07-28, recorded as D120): there are TWO populations, not one.** The
+  bullets below describe only the **party** path and are correct about it. **Captives are a separate path
+  and currently worse than "untouched":** they are staged but **never in `combatants`/the roster**, so
+  `resolveRescues` cannot see them. Their one seam, `resolveCaptiveRecruits` (`runloop.ts:686`),
+  **recruits every declared captive unconditionally** — never reading position, `alive`, or `captured` —
+  so **an extraction win brings home a prisoner still locked in a cell**; and it is **win-gated**, so on
+  the survivable retreat "Go now" produces, **captives are neither recruited nor rescue-quested — they
+  vanish**. That second failure was **predicted in-repo** by the function's own *"Seam limitation"* note,
+  which asks for a captive → rescue-quest fallback **before** standing a captive up in an
+  objective-failure-capable node. **G2 makes The Rescue exactly that node.**
+- ✅ **G3b — settled (D120, owner): record it, generate nothing.** Extend the **existing**
+  `RescueQuest` (`mortality.ts:181`, accumulated on `run.rescueQuests`) to cover captives — it already
+  names the unit. **No new flag namespace.** A branching retrieval encounter is the eventual design and is
+  **not built now** (the demo stays a self-contained run). **Run-level only**; shape it so promoting it to
+  the guild tier is a move, not a rewrite. ⚠️ Accepted consequence: the finale is the run's last node, so
+  the record is written then discarded — what it buys **now** is a correct outcome (Bram is named, and he
+  does not come home), not a live hook.
 - ⬜ **G3** — **Left-behind consequence — two changes, both new work.** ⚠️ Verified: `resolveRescues`
   (`runloop.ts:642–658`) starts `if (!u.captured) continue`, so an off-exfil **survivor is untouched and
   just comes home**. So (a) extraction resolution must **mark off-exfil survivors as captured** (doesn't
@@ -155,6 +207,23 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 - 💬 **E1** — The **keyed-seal ↔ lever re-lock oscillation** ships un-fully-defused: M3b's control-room
   targeting is a *weight* (makes the camper attackable), not a full defuse; the free-casualty ceiling is
   the farming tripwire. Decide whether the finale's lever/seal geometry needs more.
+  **The concrete loop, verified 2026-07-28** (folded in here rather than filed — this is an open owner call,
+  not agreed work; promote it to an issue if it should be visible as its own thread):
+  - `seal-outer` `(9,16)` carries **two** openers: `{ destructible, hp: 64 }` **and**
+    `{ keyholder, tag: the-warden, dropOnDeath: true }`.
+  - `winch-staging` `(8,17)` targets `seal-outer`, and sits in the **front staging area** — one step outside
+    the `front-gate` spawn zone, so the main party can reach it turn 1.
+  - So: the player throws the lever to shut `seal-outer`, the Warden (garrison, un-engaged) drives over and
+    **opens it with his key**, the player shuts it again — repeat. The Warden can be **tied up indefinitely**
+    at a lever the party controls, which is a way to neutralise the encounter's toughest body without
+    fighting it.
+  - **Not a farming exploit** — D117's **M4** free-casualty ceiling caps reward-milking, and D106 means a
+    *battered* door becomes a permanent breach the lever can't re-seal. The residual is the **oscillation
+    itself**, i.e. a stalling tactic, not an economy hole.
+  - ⚠️ **Note the asymmetry:** the Warden keys `seal-outer` (the front route), **not** `seal-inner` (the
+    infiltration route, destructible-only). So this does **not** trip D118's "a Warden keyholding the cell
+    doors would free the captives for you" hazard — the cells are lockpick-only and no `garrison` body can
+    open them. **B8 is satisfied**; this is the separate stalling question.
 
 ### F — Promotion into the arc
 - ⬜ **F1** — Replace `PRISON_ASSAULT` (`hollow-mill.ts:372`) with The Rescue; wire the finale node
@@ -198,6 +267,49 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 
 ## Suggested next step
 
-**B (populate the v4 layout)** is now authoring against a fully specified target. The A-group wiring
-(A1/A2/A3/A3b) is the other buildable slice — note A3 and A3b each carry a real mechanism decision, not
-just wiring.
+**B is populated (#211).** Verified against `the-rescue.json` on 2026-07-28: 10 garrison-tagged bodies + the
+Warden (keyholder on `seal-outer`, `dropOnDeath`), 3 captives named + **`non-combatant`-tagged**, cells
+lockpick-only, two destructible seals at **64 hp**, four levers, both goals authored, and the extraction
+`span` already the **union of both mouths**. B1/B2/B4/B5/B7/B9 are done; **B6/B8 remain unproven** (they are
+geometry claims, and the tests that would prove them are the C2 guards, #209).
+
+**Next: the A group** (split deploy). A3 and A3b each carry a real mechanism decision.
+
+### Sequencing call — owner, 2026-07-28: **build first, tune later**
+
+The winnability proof (**#209**'s incentive/pacing bar) does **not** gate the A-group build. Rationale:
+beatability is a **numbers** problem, and the numbers — garrison count/archetypes, seal hp, cell locks — are
+all editable natively in the **map editor** (verified: the enemy palette places any template, the gate
+inspector edits `openBy`/`locked`, and the party picker already offers an **"Infiltration (3)"** squad with a
+thief). So the fight gets tuned by feel in the editor once it is playable, and #209 **pins** the result
+afterwards rather than gating it.
+
+⚠️ **One honest caveat, recorded not litigated:** the editor's playtest bodies all share **one flat stat
+block** (`speed 11 / hp 26 / atk 8`, `playtest.ts` `BASE`) with only the *job* varying — they are not the
+levelled campaign party that actually arrives at the finale. So editor tuning calibrates the fight against a
+**proxy** party. That is fine for feel; it means the "is it winnable by the real party" question is answered
+at **arc-promotion time (F)**, not before.
+
+---
+
+## Queued after this track (owner-directed, 2026-07-28)
+
+Recorded here so the finale's remaining sequence is visible in one place. Neither is in the group-A brief.
+
+1. **Battle-side `BoardCamera` adoption — pan + zoom on the battle board.** ✅ **The component is built and
+   shipped** (**D100**, 2026-07-18): `game/board-camera.ts`, grab-and-drag pan + cursor-anchored wheel
+   zoom, a click-vs-drag discriminator so a drag never also taps, a **Recenter** control, and e2e guards
+   (`test:e2e:editor`). Today **only `EditorScene` imports it**. D100 records the game wiring as a
+   **deliberate follow-up** and names its **prerequisite**: camera scroll/zoom moves *everything* the
+   camera renders, so **BattleScene's on-canvas HUD must move to a second, fixed camera first** — the
+   editor sidesteps this by keeping all chrome in the DOM. Adjacent to the **#131** BattleScene
+   decomposition.
+2. **The map expansion** — grow the board so the party starts **some tiles outside the front door** (the
+   owner's original intent for the approach). **Sequence after (1):** without pan, a larger board only
+   shrinks via `fitBoardScale` (`BattleScene.ts:528`, no camera today), trading interior legibility — which
+   is exactly where reading the fight matters. With pan adopted, that cost goes away.
+   - Expect the group-A zone coordinates to **move**; they are authored as data so this is an edit, not a
+     rebuild.
+   - 💬 **Worth deciding then, not now:** if the party starts outside the front door, "everyone reaches an
+     exit" could simply mean **getting back to where you came in** — a cleaner read for the player than the
+     current authored exit spans, and it interacts with **G** (#208).

@@ -75,6 +75,58 @@ function idIssues(e: Partial<AuthoredEncounter>): string[] {
 }
 
 /**
+ * The **spawn-zone guard** (D119). Authored zones replace the derived campfire outright, so a
+ * malformed set is not a cosmetic bug: it decides where the party stands, which ground is
+ * capture-immune, and when the deploy phase force-starts. Every failure below is one that would
+ * otherwise surface as a mid-deploy freeze or a silently-wrong phase rather than a load error.
+ *
+ *  - **exactly one primary** — the primary zone is the default placement *and* the force-start
+ *    anchor; zero leaves the party unplaceable, two makes the anchor ambiguous;
+ *  - **the primary is never flag-gated** — a gated primary can vanish at stage time, and the
+ *    party must always have somewhere to stand;
+ *  - **`cap ≥ 1`, tiles non-empty** — a zone nobody may enter is a dead verb;
+ *  - **tiles walkable and on-board** — a zone drawn in a wall is exactly the defect authored
+ *    zones exist to fix ({@link "../core".createCampfire} lands The Rescue's core at a blocked
+ *    `(0,9)`). It would also make `safeGroundRemains` false on turn one → instant overrun;
+ *  - **no tile shared with a gate** — a locked gate blocks its own tile at battle construction,
+ *    so a zone tile under one silently becomes unstandable *after* placement;
+ *  - **no overlap between zones** — `zoneAt` resolves a tile to one zone, so an overlap makes
+ *    "which entrance am I in" (and therefore the cap accounting) ambiguous.
+ */
+function spawnZoneIssues(e: Partial<AuthoredEncounter>): string[] {
+  const zones = e.spawnZones;
+  if (!Array.isArray(zones) || zones.length === 0) return [];
+  const issues: string[] = [];
+  const blocked = new Set((Array.isArray(e.blocked) ? e.blocked : []).map((b) => `${b?.col},${b?.row}`));
+  const gates = new Set((Array.isArray(e.gates) ? e.gates : []).map((g) => `${g?.pos?.col},${g?.pos?.row}`));
+  const seen = new Map<string, string>();
+  const primaries = zones.filter((z) => z?.primary === true);
+  if (primaries.length !== 1)
+    issues.push(`spawnZones must declare exactly one primary zone (found ${primaries.length}) — it is both the default placement and the force-start anchor`);
+  for (const z of zones) {
+    const id = z?.id ?? "(unnamed)";
+    if (typeof z?.id !== "string" || !z.id) issues.push("a spawn zone is missing an id");
+    if (typeof z?.label !== "string" || !z.label) issues.push(`spawn zone "${id}" is missing a label (the entrance verb reads it)`);
+    if (!Number.isInteger(z?.cap) || (z?.cap ?? 0) < 1) issues.push(`spawn zone "${id}" needs an integer cap ≥ 1`);
+    if (z?.primary === true && z?.requiresFlag !== undefined)
+      issues.push(`spawn zone "${id}" is primary AND flag-gated — the primary zone must always be present`);
+    const tiles = Array.isArray(z?.tiles) ? z.tiles : [];
+    if (tiles.length === 0) issues.push(`spawn zone "${id}" has no tiles`);
+    for (const t of tiles) {
+      const key = `${t?.col},${t?.row}`;
+      if (!Number.isInteger(t?.col) || !Number.isInteger(t?.row) || (t?.col ?? -1) < 0 || (t?.row ?? -1) < 0 || (t?.col ?? 0) >= (e.cols ?? 0) || (t?.row ?? 0) >= (e.rows ?? 0))
+        issues.push(`spawn zone "${id}" tile (${key}) is off the board`);
+      else if (blocked.has(key)) issues.push(`spawn zone "${id}" tile (${key}) is blocked terrain — a zone must be standable ground`);
+      if (gates.has(key)) issues.push(`spawn zone "${id}" tile (${key}) is a gate tile — a locked gate blocks it once the battle is built`);
+      const owner = seen.get(key);
+      if (owner !== undefined) issues.push(`spawn zones "${owner}" and "${id}" both claim tile (${key}) — zones must not overlap`);
+      else seen.set(key, id);
+    }
+  }
+  return issues;
+}
+
+/**
  * Structurally validate a parsed level file → the list of problems (empty = valid). A light
  * shape + reference check (enemy templates resolve, objective kinds are known) plus the D97/D99
  * walkover guard and unit-id uniqueness; the deep check is `stageEncounter` itself, exercised by
@@ -95,6 +147,7 @@ export function validateLevel(raw: unknown): string[] {
   if (!e.reward) issues.push("missing reward");
   issues.push(...extractionIssues(e));
   issues.push(...idIssues(e));
+  issues.push(...spawnZoneIssues(e));
   return issues;
 }
 

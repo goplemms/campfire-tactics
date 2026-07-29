@@ -267,6 +267,8 @@ read it everywhere.
 | **Instant** / **Charged** | Resolves now / schedules and **resolves later**. | "quick"/"slow"; "channeled" |
 | **Defend** | The universal brace action (applies the **Guarded** status). | "Brace"/"Block" as the *button*; "Guard" (that's the Banker verb) |
 | **Bribe** | The Noble's mid-combat **Influence** verb (sway an enemy). A **roll** scaled by **Standing** (D62): higher band = cheaper + likelier; a failed sway still spends the Influence and the Act. | "Sway"/"Charm" as the button; abbreviating `Influence` to `Inf` |
+| **Go Now** | The turn-control that calls the extraction **early** (D120): whoever is on a **mouth** gets out, whoever isn't is **Captured** and left behind. A phase-level commitment, so it sits with **End Turn**, not among a unit's verbs. | "Abort"/"Evac"/"Extract" as the button; "Exfil" (that's the *code* word — see conventions.md) |
+| **mouth** | An exit tile the extraction resolves on — **every** entrance is one, so a party can fall back the way it came in. | "exit zone"; "escape hatch"; "LZ" |
 
 > **Retired: `Wait`.** There is no **Wait** verb — **End Turn** covers passing the turn
 > without acting (owner ruling, #151). Do not reintroduce a separate "Wait"/"Skip"/"Pass"

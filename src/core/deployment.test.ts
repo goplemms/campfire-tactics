@@ -25,11 +25,20 @@ import {
   PROTECT_MAP_DIVISOR,
   NEUTRAL_DANGER,
   FRONT_DANGER,
+  isZoneGround,
+  zoneAt,
+  primaryZone,
+  zoneOccupants,
+  zoneHasRoom,
+  freeTileIn,
+  frontReachedPrimary,
+  type SpawnZone,
 } from "./deployment";
 import { CTClock, sideSeed } from "./clock";
 import { Rng } from "./rng";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
+import type { GridCoord } from "./iso";
 
 function unit(id: string, side: Side, awareness: number, speed = 10): Unit {
   return createUnit({
@@ -456,5 +465,148 @@ describe("D63/D67 deploy clock — the front folds onto the one CTClock as a tem
     }
     expect([...actors].sort()).toEqual(["p1", "p2"]); // never an enemy
     expect(enemies.every((e) => e.ct === 0)).toBe(true); // never charged, despite their high Speed
+  });
+});
+
+// --- D119: authored spawn zones — fixed-size, danger-overriding, capped -------
+
+describe("D119 authored spawn zones — the encounter declares its own safe ground", () => {
+  const zone = (id: string, tiles: GridCoord[], cap: number, primary = false): SpawnZone => ({
+    id,
+    label: id,
+    tiles,
+    cap,
+    primary,
+  });
+  /** The finale's shape in miniature: a wide primary mouth and a one-tile side door. */
+  const zones = (): SpawnZone[] => [
+    zone("front", [{ col: 0, row: 4 }, { col: 1, row: 4 }, { col: 0, row: 5 }], 3, true),
+    zone("side", [{ col: 7, row: 0 }], 1),
+  ];
+  const grid = () => new TileGrid(8, 6);
+  const at = (id: string, col: number, row: number): Unit =>
+    createUnit({ id, side: "player", pos: { col, row }, awareness: 2, speed: 10, maxHp: 24, attack: 6, defense: 2, moveRange: 4, sightRadius: 5 });
+
+  it("a unit in a zone is protected — and STAYS protected once the net has lapped over it", () => {
+    const z = zones();
+    const side = { col: 7, row: 0 };
+    const front = { origin: { col: 7, row: 2 }, radius: 0, speed: 10 };
+    expect(isProtected(side, z)).toBe(true);
+    expect(captureChanceAt(side, z, front)).toBe(0);
+    // The whole point of the override: the net arriving does NOT make the door dangerous.
+    for (let i = 0; i < 6; i++) advanceFront(front);
+    expect(inDangerZone(side, front)).toBe(true);
+    expect(isProtected(side, z)).toBe(true);
+    expect(captureChanceAt(side, z, front)).toBe(0); // still immune — no pre-battle dice roll
+    expect(inSafeZone(side, z, front)).toBe(true); // …and still paints green
+  });
+
+  it("a tile OUTSIDE every zone is ordinary ground — leaving a zone has teeth", () => {
+    const z = zones();
+    const front = { origin: { col: 7, row: 2 }, radius: 0, speed: 10 };
+    const stepOut = { col: 6, row: 0 }; // one step off the side door
+    expect(isProtected(stepOut, z)).toBe(false);
+    expect(captureChanceAt(stepOut, z, front)).toBeCloseTo(NEUTRAL_DANGER, 5);
+    advanceFront(front);
+    advanceFront(front);
+    advanceFront(front); // radius 3 ⇒ dist(7,2 → 6,0) = 3 is inside the net
+    expect(captureChanceAt(stepOut, z, front)).toBeCloseTo(FRONT_DANGER, 5);
+  });
+
+  it("safe ground can NEVER run out with zones — which is why the end condition had to move", () => {
+    const g = grid();
+    const z = zones();
+    const front = createFront(g, [unit("e", "enemy", 2, 8)]);
+    for (let i = 0; i < 40; i++) advanceFront(front); // the net swallows the entire board
+    expect(safeGroundRemains(g, z, front)).toBe(true);
+  });
+
+  it("the force-start is GEOMETRIC — the net reaching an EMPTY primary zone still fires it", () => {
+    const z = zones();
+    const rng = new Rng(1);
+    // Everyone has gone through the side door; the primary mouth is empty (the default is the
+    // reverse, but this is precisely the case a unit-dependent `breached` would never fire).
+    const party = [at("a", 7, 0), at("b", 7, 0)];
+    // Origin (7,5): 7 steps from the nearest primary tile, but only 5 from the side door —
+    // exactly the finale's asymmetry (the net bears on the infiltrator long before the mouth).
+    const front = { origin: { col: 7, row: 5 }, radius: 5, speed: 10 };
+    let out = resolveFrontTurn(front, z, party, rng); // radius 6 — over the side door, short of (0,5)
+    expect(frontReachedPrimary(z, front)).toBe(false);
+    expect(out.breached).toBe(false);
+    out = resolveFrontTurn(front, z, party, rng); // radius 7 ⇒ reaches (0,5)
+    expect(out.breached).toBe(true);
+    expect(out.captured).toBeNull(); // …and grabs nobody: the zone still overrides danger
+    expect(out.rolled).toEqual([]); // the side-door pair is protected, so no dice were even thrown
+  });
+
+  it("the net arriving at the primary zone captures nobody standing in it", () => {
+    const z = zones();
+    const party = [at("a", 0, 4), at("b", 1, 4)];
+    const front = { origin: { col: 7, row: 5 }, radius: 8, speed: 10 };
+    const out = resolveFrontTurn(front, z, party, new Rng(7));
+    expect(out.breached).toBe(true);
+    expect(out.captured).toBeNull();
+    expect(party.every((u) => !u.captured)).toBe(true);
+  });
+
+  it("the cap is per-zone and configurable — not hardcoded to 1", () => {
+    const z = zones();
+    const side = z[1];
+    const front = z[0];
+    expect(side.cap).toBe(1);
+    expect(zoneHasRoom(side, [])).toBe(true);
+    expect(zoneHasRoom(side, [at("a", 7, 0)])).toBe(false); // at cap
+    // …but the same machinery holds 3 at the primary mouth.
+    expect(zoneHasRoom(front, [at("a", 0, 4), at("b", 1, 4)])).toBe(true);
+    expect(zoneHasRoom(front, [at("a", 0, 4), at("b", 1, 4), at("c", 0, 5)])).toBe(false);
+  });
+
+  it("the mover doesn't count against the cap of the zone it is leaving or re-entering", () => {
+    const side = zones()[1];
+    const occupant = at("a", 7, 0);
+    expect(zoneHasRoom(side, [occupant])).toBe(false);
+    expect(zoneHasRoom(side, [occupant], occupant)).toBe(true); // it is the one moving
+  });
+
+  it("captured and dead bodies don't hold a slot, but they still block their tile", () => {
+    const side = zones()[1];
+    const netted = at("a", 7, 0);
+    netted.captured = true;
+    const g = grid();
+    expect(zoneOccupants(side, [netted])).toEqual([]); // not counted against the cap…
+    expect(freeTileIn(side, [netted], g)).toBeUndefined(); // …but nobody is stacked onto it
+  });
+
+  it("freeTileIn skips blocked tiles and occupied ones, whatever side is standing there", () => {
+    const g = new TileGrid(8, 6, [{ col: 0, row: 4 }]); // the primary mouth's first tile is a wall
+    const front = zones()[0];
+    expect(freeTileIn(front, [], g)).toEqual({ col: 1, row: 4 });
+    const foe = createUnit({ id: "e", side: "enemy", pos: { col: 1, row: 4 }, awareness: 2, speed: 10, maxHp: 20, attack: 5, defense: 1, moveRange: 3, sightRadius: 4 });
+    expect(freeTileIn(front, [foe], g)).toEqual({ col: 0, row: 5 });
+  });
+
+  it("zoneAt resolves a tile to its zone (and to nothing off-zone)", () => {
+    const z = zones();
+    expect(zoneAt(z, { col: 7, row: 0 })?.id).toBe("side");
+    expect(zoneAt(z, { col: 1, row: 4 })?.id).toBe("front");
+    expect(zoneAt(z, { col: 4, row: 4 })).toBeUndefined();
+    expect(primaryZone(z)?.id).toBe("front");
+    // The SafeGround discriminant is hand-written, not `Array.isArray` — TS does not subtract a
+    // `readonly T[]` union member through the built-in guard (verified against tsc).
+    expect(isZoneGround(z)).toBe(true);
+    expect(isZoneGround({ origin: { col: 0, row: 0 }, radius: 2 })).toBe(false);
+  });
+
+  it("REGRESSION — a campfire ground behaves exactly as before (breach stays unit-dependent)", () => {
+    const g = grid();
+    const camp = createCampfire(g, [unit("a", "player", 2)]); // origin (0,2) radius 2
+    // Nobody standing in the core ⇒ the campfire's breach must NOT fire, even with the net over it.
+    const away = [at("a", 7, 5)];
+    const front = { origin: { col: 7, row: 2 }, radius: 10, speed: 10 };
+    expect(resolveFrontTurn(front, camp, away, new Rng(3)).breached).toBe(false);
+    // …and it does fire with somebody in the lapped core.
+    const inCore = [at("a", 0, 2), at("b", 1, 2)];
+    const f2 = { origin: { col: 7, row: 2 }, radius: 10, speed: 10 };
+    expect(resolveFrontTurn(f2, camp, inCore, new Rng(3)).breached).toBe(true);
   });
 });

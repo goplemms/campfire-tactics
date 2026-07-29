@@ -615,6 +615,48 @@
       "row": 17
     }
   ],
+  "spawnZones": [
+    {
+      "id": "front-gate",
+      "label": "Front Gate",
+      "primary": true,
+      "cap": 6,
+      "tiles": [
+        {
+          "col": 9,
+          "row": 18
+        },
+        {
+          "col": 8,
+          "row": 18
+        },
+        {
+          "col": 10,
+          "row": 18
+        },
+        {
+          "col": 11,
+          "row": 18
+        },
+        {
+          "col": 9,
+          "row": 17
+        }
+      ]
+    },
+    {
+      "id": "side-door",
+      "label": "Side Door",
+      "cap": 1,
+      "requiresFlag": "side-door-intel",
+      "tiles": [
+        {
+          "col": 18,
+          "row": 5
+        }
+      ]
+    }
+  ],
   "enemies": [
     {
       "templateId": "bandit-captain",
@@ -980,7 +1022,7 @@
       "id": "storm",
       "kind": "eliminate-all",
       "required": true,
-      "label": "Clear the garrison — the captives are safe"
+      "label": "Clear the garrison \u2014 the captives are safe"
     },
     {
       "id": "extract",

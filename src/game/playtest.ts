@@ -154,7 +154,11 @@ function kitSpecs(kit: PartyKitDef): UnitSpec[] {
  * isn't is exactly the way a dev tool lies to its user. Only registered gear does anything.
  */
 export function registerKits(kits: readonly PartyKitDef[]): Record<string, PartyKitDef> {
-  const out: Record<string, PartyKitDef> = {};
+  // **Null prototype, deliberately.** A kit name is arbitrary caller input (a `?party=` value, a
+  // picker string), and on a normal object `parties["toString"]` hands back
+  // `Object.prototype.toString` — truthy, so `buildScenarioRun`'s fail-loud "no party" guard would
+  // sail past it and then choke further downstream on a function where a roster belongs.
+  const out: Record<string, PartyKitDef> = Object.create(null);
   for (const kit of kits) {
     if (out[kit.id]) throw new Error(`PLAYTEST_KITS: duplicate kit id "${kit.id}"`);
     if (kit.bodies.length === 0) throw new Error(`PLAYTEST_KITS: kit "${kit.id}" declares no bodies`);
@@ -184,8 +188,9 @@ export function getPartyKit(id: string): PartyKitDef | undefined {
  * {@link PLAYTEST_KITS}, not hand-written. Keeping this shape is what leaves every existing
  * consumer (the editor picker, `#scene=…?party=`, `#level`) untouched.
  */
-export const PLAYTEST_PARTIES: Record<string, UnitSpec[]> = Object.fromEntries(
-  Object.values(PLAYTEST_KITS).map((kit) => [kit.id, kitSpecs(kit)]),
+export const PLAYTEST_PARTIES: Record<string, UnitSpec[]> = Object.assign(
+  Object.create(null) as Record<string, UnitSpec[]>, // prototype-less, for the reason registerKits gives
+  Object.fromEntries(Object.values(PLAYTEST_KITS).map((kit) => [kit.id, kitSpecs(kit)])),
 );
 
 /** The squad fielded when the author hasn't chosen otherwise — a small, standard trio. */

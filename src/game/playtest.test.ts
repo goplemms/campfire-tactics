@@ -112,6 +112,14 @@ describe("the kit registry follows the D114 registry shape", () => {
     expect(Object.keys(PLAYTEST_PARTIES)).toEqual(Object.keys(PLAYTEST_KITS));
   });
 
+  it("a prototype key is NOT a squad — it must fail loud like any other miss", () => {
+    // On a normal object `parties["toString"]` is Object.prototype.toString: truthy, so
+    // buildScenarioRun's "no party" guard would pass it through and choke downstream instead.
+    expect(getPartyKit("toString")).toBeUndefined();
+    expect(getPartyKit("constructor")).toBeUndefined();
+    expect(PLAYTEST_PARTIES["toString" as string]).toBeUndefined();
+  });
+
   it("an unknown squad name fails LOUD, and names what was available", () => {
     const enc: AuthoredEncounter = {
       id: "kit-probe",

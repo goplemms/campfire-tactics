@@ -64,11 +64,44 @@ function extractionIssues(e: Partial<AuthoredEncounter>): string[] {
       const s: UnitSpec = c.spec;
       const move = s.moveRange ?? 0;
       const start = c.pos;
-      if (!start) continue; // a placement-less captive is a shape error; `stageEncounter` is the deep check
+      if (!start) continue; // reported by `captiveIssues` — don't double-report it here
       const nearest = Math.min(...span.map((t) => Math.abs(t.col - start.col) + Math.abs(t.row - start.row)));
       if (nearest <= move)
         issues.push(`escortee "${s.id}" starts ${nearest} tile(s) from the exit (≤ moveRange ${move}) — trivializes extraction (D97/D99 walkover)`);
     }
+  }
+  return issues;
+}
+
+/**
+ * A captive's **placement tile** (the encounters-as-JSON challenge pass, 2026-07-30).
+ *
+ * `buildAuthoredCaptives` stages a captive at `c.pos` — `createUnit` then reads `spec.pos.col`, so a
+ * placement-less captive is a **TypeError mid-boot**, not a load error. Nothing checked it: the
+ * walkover guard is the only other reader of this field and it only runs when an `extraction`
+ * objective exists, so a plain rescue level could carry a `pos`-less captive silently.
+ *
+ * This is a **JSON-tier hazard specifically** — in TS, `CaptivePlacement.pos` is required and a
+ * missing one is a compile error. It is exactly the class D122 is about: a field that `tsc` guards
+ * today and only `validateLevel` can guard once the body is data.
+ */
+function captiveIssues(e: Partial<AuthoredEncounter>): string[] {
+  const issues: string[] = [];
+  const cols = e.cols ?? 0;
+  const rows = e.rows ?? 0;
+  for (const [i, c] of (Array.isArray(e.captives) ? e.captives : []).entries()) {
+    const who = c?.spec?.id ? `"${c.spec.id}"` : `#${i}`;
+    if (!c?.spec) {
+      issues.push(`captive ${who} has no spec — the staged unit is built from it`);
+      continue;
+    }
+    const p = c.pos;
+    if (!p || !Number.isInteger(p.col) || !Number.isInteger(p.row)) {
+      issues.push(`captive ${who} has no valid placement pos — it is staged at this tile (spec.pos is discarded)`);
+      continue;
+    }
+    if (p.col < 0 || p.row < 0 || p.col >= cols || p.row >= rows)
+      issues.push(`captive ${who} is placed off the board at (${p.col},${p.row})`);
   }
   return issues;
 }
@@ -159,6 +192,7 @@ export function validateLevel(raw: unknown): string[] {
   else for (const en of e.enemies) if (!getEnemyTemplate(en?.templateId)) issues.push(`unknown enemy template "${en?.templateId}"`);
   if (e.objectives) for (const o of e.objectives) if (!KINDS.includes(o?.kind)) issues.push(`unknown objective kind "${o?.kind}"`);
   if (!e.reward) issues.push("missing reward");
+  issues.push(...captiveIssues(e));
   issues.push(...extractionIssues(e));
   issues.push(...idIssues(e));
   issues.push(...spawnZoneIssues(e));

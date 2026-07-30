@@ -5444,15 +5444,26 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   audit over every authored body in the repo returns **16 of 18 exact** (the kickoff's "19" is an
   arithmetic slip; the scenario group is 11, not 12).
   - **Convert now:** `E1_SKIRMISH`, `PRISON_WAGON`, `CUFFED_CELL`, `THIEVES_DEN`.
-  - **Blocked on trap-params:** `TRAP_FIELD`, `OUTER_YARD` — both refuse for the **same** cause
-    (traps carrying `damage`/`concealment`). The kickoff's *second* refusal (a captive `release.kind`
-    outside `reach`/`lockpick`) is **currently vacuous** — nothing in the repo uses one. So the
-    migration costs **one** editor feature, not two.
+  - **Blocked on validator M5** (*not* on the editor — see the correction below): `TRAP_FIELD`,
+    `OUTER_YARD`. Both carry traps with `damage`/`concealment`, which the **editor** refuses to import
+    and the **validator** does not check. The kickoff's *second* editor refusal (a captive
+    `release.kind` outside `reach`/`lockpick`) is **currently vacuous** — nothing in the repo uses one.
   - **Excluded:** `PRISON_ASSAULT` — checklist **F1** deletes it. Do not convert a body being deleted.
 - **Decision — trap-params is sequenced AFTER the first conversions, as its own editor milestone.**
   It gates only the 2 blocked bodies and nothing else; making it a prerequisite would stall 4 clean
-  conversions behind an editor feature. It is **not** dropped — without it the migration is
-  permanently partial, and the *reachable* set is not fully JSON, which is the principle above.
+  conversions behind an editor feature.
+  - **⚠️ CORRECTED by the challenge pass (2026-07-30) — this record originally conflated two
+    different milestones, and got the blocked-set's *reason* wrong.** Verified: `TRAP_FIELD` as JSON
+    **validates clean and would load, inject and play today**. Only the **editor** refuses it. Since
+    this very record promises **loadable, not editable**, the 2 bodies are **not blocked on the
+    editor at all** — by its own logic the editor milestone is irrelevant to whether they convert.
+  - **What actually gates them: validator M5 (trap-param range checks).** `TRAP_FIELD`'s design *is*
+    its `damage`/`concealment` numbers, and **nothing validates them** — converting it before M5 moves
+    the encounter's entire substance into the silent-typo zone with neither a compiler nor a validator
+    covering it. That is the one combination D122 exists to prevent.
+  - **So the two milestones are independent:** **validator M5 unblocks the CONVERSION**; the **editor**
+    trap-params milestone unblocks **EDITING** them. The migration can reach *fully JSON* without any
+    editor work — which the original wording denied.
 - **SHIPPED IN THIS ENTRY — the walkover guard measured the wrong tile.** Found by the audit, fixed
   before anything is migrated, because **the first conversion would have tripped it**:
   - `buildAuthoredCaptives` (`authored.ts:242`) stages a captive at the **placement** `c.pos`;
@@ -5491,6 +5502,22 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
     becomes explicit `{ kind: "reach" }`, and `captives: []` becomes omitted. Canonicalize both (or
     emit the canonical form and diff against *that*). **Specifying it without this is how a sound
     conversion gets abandoned as "lossy" when it isn't.**
+- **SHIPPED IN THIS ENTRY (challenge pass) — the migration's silent-failure mode is guarded.**
+  `resolveAuthored` is `exp.encounters?.[id] ?? getAuthoredNode(id)` — **the inline map wins**.
+  Converting a body to JSON *without* deleting it from the expedition's `encounters: {}` map leaves the
+  game **silently playing the stale TS const**: the JSON loads, validates, injects, and is ignored.
+  Nothing errors and every guard stays green.
+  - **This is the natural workflow's exact failure** — "add the JSON, verify it works, then delete the
+    const" gives a **false green on the verify step**. `loadLevels()` only rejects duplicate ids
+    *within* `levels/*.json`; it never compared against an inline map.
+  - A guard now asserts no expedition serves an id that is also a JSON level. **Each conversion is
+    therefore a 3-part change — write the JSON, delete the const, unwire the `encounters` entry — and
+    the guard fails if the third part is skipped.**
+- **SHIPPED IN THIS ENTRY (challenge pass) — captive placement is validated.** A captive is staged at
+  its **placement** `pos`; a missing one is a **TypeError mid-boot**, not a load error. Nothing checked
+  it (the walkover guard is the field's only other reader, and it runs only when an `extraction`
+  objective exists). In TS `pos` is a required field, so this is precisely the D122 class: **a hazard
+  `tsc` covers today that only `validateLevel` can cover once the body is data.**
 - **Explicitly NOT decided here.** Arc promotion (**F1**/#210) · the finale's reference party · balance
   tuning · in-UI kit authoring · whether the "Load into editor" button ships (**it is small, useful,
   works on the 4 JSON levels today, and was never blocked on this principle**).

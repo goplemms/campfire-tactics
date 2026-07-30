@@ -88,11 +88,25 @@ string in the format; it must not re-enter through the content door.
 - numeric fields are actually numbers — `concealment: "4"` passes today;
 - `blocked` / `playerSpawns` / trap / gate / lever tiles are on-board. `spawnZoneIssues` already does
   this for zones (`levels.ts`) — **copy its shape**, don't invent a second spelling.
+  **Captive placement is already done** (`captiveIssues`, shipped with the challenge pass) — copy *that*
+  for the remaining collections; it is the closest exemplar.
 
-### M5 — trap params (only when trap-params authoring lands)
+### M5 — trap params — **this is what gates the last 2 bodies, and it is NOT the editor milestone**
 
-`id`/`damage`/`concealment` ranges. **Sequenced with the editor milestone (D122), not before** — the
-2 bodies that carry these can't convert until then anyway.
+`id`/`damage`/`concealment` presence + numeric + sane ranges.
+
+**Corrected by the challenge pass (2026-07-30).** The original brief (and D122) said these bodies wait
+on the *editor's* trap-params milestone. **Verified false:** `TRAP_FIELD` as JSON validates clean and
+would load, inject and play today — only the *editor* refuses to import it. Since the promise is
+**loadable, not editable**, the editor is irrelevant to whether it converts.
+
+What actually gates it is **this milestone**. `TRAP_FIELD`'s entire design *is* its `damage` /
+`concealment` numbers ("the threat is the terrain"), and nothing checks them — `concealment: "4"`
+passes today. Converting it before M5 moves the encounter's whole substance into the silent-typo zone
+with **neither a compiler nor a validator** covering it.
+
+**So M5 is not the tail of this brief — it is the unblocker for finishing the migration.** The editor
+milestone remains genuinely deferred, but it buys *editability*, not conversion.
 
 ---
 
@@ -126,3 +140,20 @@ the divergent case, not the convenient one.
 ## Still open — nothing blocking
 
 None. The brief is implementable as written; M2 is the recommended first slice.
+
+## What the challenge pass changed (2026-07-30)
+
+Run before any conversion, and it moved two things:
+
+- **M5 was re-scoped from "last, with the editor" to "the unblocker for finishing the migration"** —
+  see above. The blocked bodies were never waiting on the editor.
+- **Two gaps found and closed in `validateLevel`**, both shipped: captive **placement** validation
+  (a `pos`-less captive was a TypeError mid-boot, checked by nothing), and a guard against a **stale
+  inline `encounters` entry shadowing a converted JSON body** — the failure the natural
+  add-then-verify-then-delete workflow walks straight into.
+
+What **survived** the attempt to break it: the conversion path end-to-end (all 4 bodies serialize
+exactly, validate clean, and round-trip), the `release`-default normalization (`deployment.ts:55` does
+`?? { kind: "reach" }`, so absent and explicit really are identical), and the whole-repo sweep's
+specificity (it independently catches unknown templates, duplicate ids, missing reward, bad dims —
+it is not merely sensitive to the one bug that prompted it).

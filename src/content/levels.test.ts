@@ -21,6 +21,7 @@ import {
   type AuthoredEncounter,
 } from "../core";
 import * as HOLLOW_MILL_BODIES from "../core/hollow-mill";
+import { THE_HOLLOW_MILL } from "../core/hollow-mill";
 import { SCENARIOS } from "../core/scenarios";
 
 /**
@@ -194,6 +195,33 @@ describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
     expect(issues.some((i) => /no captive matching its escort tag/.test(i))).toBe(true);
   });
 
+  /**
+   * A captive is staged at its **placement** tile, so a missing/off-board one is a TypeError mid-boot
+   * rather than a load error. In TS `CaptivePlacement.pos` is required; as JSON it is just an absent
+   * key — the D122 class of field that only `validateLevel` can guard once the body is data.
+   */
+  describe("captive placement (a JSON-tier hazard tsc covers today)", () => {
+    const withCaptive = (mutate: (c: Record<string, unknown>) => void): unknown => {
+      const level = rescueLevel(9) as { captives: Array<Record<string, unknown>> };
+      mutate(level.captives[0]);
+      return level;
+    };
+
+    it("flags a captive with no placement pos", () => {
+      const issues = validateLevel(withCaptive((c) => delete c.pos));
+      expect(issues.some((i) => /no valid placement pos/.test(i))).toBe(true);
+    });
+
+    it("flags a captive placed off the board", () => {
+      const issues = validateLevel(withCaptive((c) => { c.pos = { col: 99, row: 0 }; }));
+      expect(issues.some((i) => /placed off the board at \(99,0\)/.test(i))).toBe(true);
+    });
+
+    it("does NOT fire on a well-placed captive", () => {
+      expect(validateLevel(rescueLevel(9)).filter((i) => /placement pos|off the board/.test(i))).toEqual([]);
+    });
+  });
+
   it("leaves the shipped finale levels clean (no false positives)", () => {
     expect(validateLevel(getLevel("the-rescue")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
     expect(validateLevel(getLevel("prison-break")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
@@ -260,6 +288,25 @@ describe("every authored body in the repo passes the content validator", () => {
 
   it.each(bodies)("%s validates clean", (_label, enc) => {
     expect(validateLevel(enc)).toEqual([]);
+  });
+
+  /**
+   * **The migration's silent-failure mode** (challenge pass, 2026-07-30).
+   *
+   * `resolveAuthored` is `exp.encounters?.[id] ?? getAuthoredNode(id)` — the **inline map wins**. So
+   * converting an arc body to JSON *without* also deleting it from the expedition's `encounters: {}`
+   * map leaves the game **silently playing the stale TS const**: the JSON file loads, validates,
+   * injects, and is then ignored. Nothing errors, every guard stays green, and an author editing the
+   * new JSON sees no change in game.
+   *
+   * That is the natural workflow's exact failure — "add the JSON, check it works, then delete the
+   * const" gives a **false green** in the middle step. `loadLevels()` only rejects duplicate ids
+   * *within* `levels/*.json`; it has never compared against an inline map.
+   */
+  it("no expedition serves an id that is ALSO a JSON level (a stale inline const would shadow it)", () => {
+    const inline = Object.keys(THE_HOLLOW_MILL.encounters ?? {});
+    const shadowed = inline.filter((id) => id in LEVELS);
+    expect(shadowed, `these ids resolve to the inline TS const, NOT their JSON file: ${shadowed.join(", ")}`).toEqual([]);
   });
 });
 

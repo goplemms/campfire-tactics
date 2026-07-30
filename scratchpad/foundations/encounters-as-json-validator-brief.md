@@ -1,7 +1,8 @@
 # Build brief — grow `validateLevel` into the gate the JSON migration rests on
 
 **Track:** content pipeline / authoring. **Gates:** the encounters-as-JSON migration (**D122**).
-**Status:** briefed, not built. **Read first:** **D122**, `encounters-as-json-review.md` (the audit
+**Status: M1–M5 BUILT** (2026-07-30) — see "Results" at the end. The remaining work is the
+conversions themselves. **Read first:** **D122**, `encounters-as-json-review.md` (the audit
 behind the numbers), **D114** + `docs/design/implementation/conventions.md` (registry spellings).
 
 > Every number below was produced by running probes against source at `f361219`. Re-verify anything
@@ -52,8 +53,13 @@ Check on **every** authored `UnitSpec` — captives today, `grants.recruit` too:
 - `jobId` and `primaryJob` resolve in `JOBS` (use `getJob`, never a hand-copied id list — the
   `OBJECTIVE_KINDS` import in `levels.ts:21` is the living exemplar for "never hand-copy a registry");
 - `heldJobs[]` each resolve;
-- `role` and any objective `escort` tag resolve against the tag registry — `assertRegisteredTags`
-  (`authored.ts:244`) already exists at *staging*; this is the load-time twin.
+- ~~`role` resolves against the tag registry~~ — **this instruction was WRONG; do not implement it.**
+  `UnitSpec.role` is `string`, **free-form by design**: objectives bind to it by value (D50), so a
+  generator can emit an objective and a matching unit without a shared registry. `TAGS` is a
+  *different* registry (`garrison`, `non-combatant`) covering `unit.tags`, not `role`.
+  **A typo'd `role` is already caught relationally**, and only where it can matter: if an objective
+  binds to it, `extractionIssues` reports *"no captive matching its escort tag — a dead win-path"*.
+  Verified 2026-07-30 (`role: "prisner"` against an `escort: { role: "prisoner" }` → flagged).
 
 **Watch for:** `jobId` is `JobId | undefined` and legitimately absent on some specs. Absent is fine;
 *present and unknown* is the error. Don't turn an optional field into a required one.
@@ -140,6 +146,34 @@ the divergent case, not the convenient one.
 ## Still open — nothing blocking
 
 None. The brief is implementable as written; M2 is the recommended first slice.
+
+## Results — the typo table, re-measured after M1–M5 (2026-07-30)
+
+The same 13 classes, re-run against the grown validator. **Before: 2 caught. After: 9 caught
+directly, 2 caught relationally, 1 genuine gap remaining.**
+
+| | Class | Status |
+|---|---|---|
+| ✅ | enemy `templateId`, objective `kind` | caught before |
+| ✅ | captive `jobId`, `primaryJob`, `heldJobs` | **now caught** (M1) |
+| ✅ | captive `release.kind` | **now caught** (M2) — the editor/loader inversion is closed |
+| ✅ | `reward.materials[].id`, `grants.item`, `grants.flag`, `grants.recruit`'s job | **now caught** (M3) |
+| ✅ | `intelDepth` range, `rumors` beyond depth, trap `damage`/`concealment` types, off-board tiles | **now caught** (M4/M5) |
+| 🔗 | captive `role`, enemy `role` | caught **relationally** when an objective binds to it — correct by design, not a gap |
+| ⚠️ | enemy `overrides.standingOrder` | **still silent — the one real remaining gap** |
+
+**The remaining gap, stated honestly.** `standingOrder` is a free-form `string` the AI planner
+dispatches on (D81: `"hold"`, `"hold-skittish"`, `"defend"`). A typo silently falls back to default
+behaviour — a real silent-failure class. Closing it needs a **standing-order registry in core**
+(a D114 `*Def` record, like `run-flags.ts`), which is a core change rather than a content-validator
+one. `TRAP_FIELD` carries `standingOrder: "hold-skittish"`, so this is worth doing before that body
+converts — but it is **separate work**, not part of this brief.
+
+**M5 landed with M4** — trap `damage`/`concealment` are now checked for presence and type
+(`concealment: "4"` is refused). Upper bounds were deliberately not added: an implausibly large
+damage value is a *balance* question, not a typo class, and `validateLevel` is a correctness gate.
+**So the last 2 bodies are no longer blocked by this brief** — only by the `standingOrder` registry
+above, and only `TRAP_FIELD` at that.
 
 ## What the challenge pass changed (2026-07-30)
 

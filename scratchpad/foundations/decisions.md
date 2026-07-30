@@ -5518,6 +5518,26 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   it (the walkover guard is the field's only other reader, and it runs only when an `extraction`
   objective exists). In TS `pos` is a required field, so this is precisely the D122 class: **a hazard
   `tsc` covers today that only `validateLevel` can cover once the body is data.**
+- **SHIPPED — the validator prerequisite (brief M1–M5) is BUILT** (2026-07-30, same day). The typo
+  table is re-measured: **2 caught → 9 caught directly + 2 relationally**, with **one** genuine gap
+  left. `validateLevel` now checks unit identity (`jobId`/`primaryJob`/`heldJobs` via `getJob`),
+  `release.kind` (closing the editor-stricter-than-loader inversion), `reward.materials[].id` /
+  `grants.item` / `grants.flag` / `grants.recruit`, `intelDepth` range, rumors-beyond-depth, trap
+  numerics, and off-board tiles across every authored collection. 15 failing-input tests, one per
+  class — no check ships without one.
+  - **A brief instruction was WRONG and was not implemented.** It said to validate `role` against the
+    tag registry. `UnitSpec.role` is **free-form by design** (objectives bind to it by value, D50);
+    `TAGS` covers `unit.tags`, a different field. **Verified: a typo'd `role` is already caught
+    *relationally*** — if an objective binds to it, the existing "no captive matching its escort tag
+    — a dead win-path" fires. Checking it against a registry would have been actively wrong.
+  - **The one remaining gap, stated plainly: `overrides.standingOrder`.** A free-form string the AI
+    planner dispatches on (D81); a typo silently falls back to default behaviour. Closing it needs a
+    **standing-order registry in core** (a D114 `*Def` record, the `run-flags.ts` shape) — a core
+    change, not a content-validator one. **`TRAP_FIELD` carries `standingOrder: "hold-skittish"`**,
+    so it is worth doing before *that* body converts. It blocks nothing else.
+  - **Consequence: the conversions are unblocked.** M5 landed with M4 (trap numerics), so no brief
+    milestone gates the last 2 bodies any more. Upper bounds on trap damage were deliberately
+    omitted — an implausible number is a *balance* question, and this is a correctness gate.
 - **Explicitly NOT decided here.** Arc promotion (**F1**/#210) · the finale's reference party · balance
   tuning · in-UI kit authoring · whether the "Load into editor" button ships (**it is small, useful,
   works on the 4 JSON levels today, and was never blocked on this principle**).

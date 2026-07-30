@@ -19,6 +19,7 @@ import {
   type Gate,
   type GridCoord,
   type AuthoredEncounter,
+  type ReleaseRequirement,
 } from "../core";
 import * as HOLLOW_MILL_BODIES from "../core/hollow-mill";
 import { THE_HOLLOW_MILL } from "../core/hollow-mill";
@@ -148,6 +149,136 @@ describe("the JSON level content pipeline (D98)", () => {
     expect(
       validateLevel({ ...getLevel("sample-skirmish")!, enemies: [{ templateId: "nope", pos: { col: 0, row: 0 } }] }),
     ).toContain('unknown enemy template "nope"');
+  });
+});
+
+/**
+ * **The typo surface** (validator M1–M4, D122).
+ *
+ * Moving an encounter from TS to JSON trades a compiler for this function. Before these checks it
+ * caught **2 of 13** single-field typo classes — a downgrade, not a migration. Each case below
+ * corrupts exactly one field of an otherwise-valid level and asserts a *specific* message, which is
+ * what separates a real check from a message nobody triggers.
+ *
+ * Every field here is one `tsc` guards while the body is TypeScript and stops guarding the moment
+ * it becomes data. That is the whole reason D122 makes this a gate.
+ */
+describe("the typo surface — every field that loses tsc when it becomes JSON", () => {
+  const base = (): Record<string, unknown> => ({
+    id: "typo-probe",
+    name: "Typo Probe",
+    cols: 9,
+    rows: 6,
+    blocked: [],
+    playerSpawns: [{ col: 0, row: 2 }],
+    enemies: [{ templateId: "bandit-thug", pos: { col: 8, row: 2 } }],
+    captives: [
+      {
+        spec: {
+          id: "probe-prisoner", name: "Prisoner", side: "player", pos: { col: 4, row: 1 },
+          jobId: "soldier", primaryJob: "soldier", role: "prisoner",
+          speed: 10, maxHp: 22, attack: 6, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1,
+        },
+        pos: { col: 4, row: 1 },
+        release: { kind: "reach" },
+      },
+    ],
+    reward: { gold: 50, materials: [], xp: 40 },
+  });
+
+  /** Corrupt one field, return the issues. `path` is applied with a tiny setter for readability. */
+  const probe = (mutate: (e: Record<string, never>) => void): string[] => {
+    const e = base();
+    mutate(e as unknown as Record<string, never>);
+    return validateLevel(e);
+  };
+  const at = (e: Record<string, never>): Record<string, unknown> => e as unknown as Record<string, unknown>;
+  const captiveSpec = (e: Record<string, never>): Record<string, unknown> =>
+    (at(e).captives as Array<{ spec: Record<string, unknown> }>)[0].spec;
+
+  it("the baseline probe is clean (so every failure below is the mutation, not the fixture)", () => {
+    expect(validateLevel(base())).toEqual([]);
+  });
+
+  // --- M1: unit identity -----------------------------------------------------------------
+  it("catches a typo'd captive jobId (the silently-worthless unit)", () => {
+    expect(probe((e) => { captiveSpec(e).jobId = "soldeir"; }).some((i) => /unknown jobId "soldeir"/.test(i))).toBe(true);
+  });
+
+  it("catches a typo'd primaryJob and an unknown heldJob", () => {
+    expect(probe((e) => { captiveSpec(e).primaryJob = "medik"; }).some((i) => /unknown primaryJob "medik"/.test(i))).toBe(true);
+    expect(probe((e) => { captiveSpec(e).heldJobs = ["soldier", "hunterr"]; }).some((i) => /holds unknown job "hunterr"/.test(i))).toBe(true);
+  });
+
+  it("still accepts an ABSENT jobId (optional by design — don't turn it into a required field)", () => {
+    expect(probe((e) => { delete captiveSpec(e).jobId; delete captiveSpec(e).primaryJob; })).toEqual([]);
+  });
+
+  // --- M2: the editor/loader inversion ---------------------------------------------------
+  it("catches an unknown captive release kind — the editor refused this on import, the loader didn't", () => {
+    expect(probe((e) => { (at(e).captives as Array<Record<string, unknown>>)[0].release = { kind: "lockpik" }; })
+      .some((i) => /unknown release kind "lockpik"/.test(i))).toBe(true);
+  });
+
+  it("accepts every kind the ReleaseRequirement union models", () => {
+    // A mapped type over the union: adding a member to `ReleaseRequirement` makes this a COMPILE
+    // error until the new kind is handled in `levels.ts` too, so the list can't silently drift.
+    const ALL: Record<ReleaseRequirement["kind"], true> = { reach: true, lockpick: true };
+    for (const kind of Object.keys(ALL)) {
+      expect(probe((e) => { (at(e).captives as Array<Record<string, unknown>>)[0].release = { kind }; })).toEqual([]);
+    }
+  });
+
+  // --- M3: economy + grants --------------------------------------------------------------
+  it("catches a typo'd reward material — grantItem would silently drop it", () => {
+    expect(probe((e) => { (at(e).reward as Record<string, unknown>).materials = [{ id: "trap-kitt", count: 1 }]; })
+      .some((i) => /reward material "trap-kitt" is not a known material/.test(i))).toBe(true);
+  });
+
+  it("catches a typo'd grants.item and grants.flag", () => {
+    expect(probe((e) => { at(e).grants = { item: "relic-hollow-blad" }; }).some((i) => /grants.item "relic-hollow-blad"/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).grants = { flag: "medic-fred" }; }).some((i) => /grants.flag "medic-fred" is not a known run flag/.test(i))).toBe(true);
+  });
+
+  it("catches a typo'd job on grants.recruit (a whole UnitSpec hiding in a grant)", () => {
+    expect(probe((e) => { at(e).grants = { recruit: { id: "sela", name: "Sela", side: "player", pos: { col: 0, row: 0 }, jobId: "medik", maxHp: 20, speed: 10, attack: 5, defense: 2, moveRange: 4, sightRadius: 5 } }; })
+      .some((i) => /grants.recruit "sela" has unknown jobId "medik"/.test(i))).toBe(true);
+  });
+
+  it("accepts the flags shipped content actually uses", () => {
+    expect(probe((e) => { at(e).grants = { flag: "medic-freed" }; })).toEqual([]);
+    expect(probe((e) => { at(e).grants = { flag: "side-door-intel" }; })).toEqual([]);
+  });
+
+  // --- M4: scalars, tiles, numbers -------------------------------------------------------
+  it("catches an out-of-range intelDepth", () => {
+    expect(probe((e) => { at(e).intelDepth = 99; }).some((i) => /intelDepth must be an integer in 1\.\.3/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).intelDepth = 0; }).some((i) => /intelDepth must be an integer/.test(i))).toBe(true);
+  });
+
+  it("catches rumors deeper than the read can ever reach — but NOT fewer (one-sided, by design)", () => {
+    expect(probe((e) => { at(e).intelDepth = 2; at(e).rumors = ["a", "b", "c"]; })
+      .some((i) => /3 rumors but intelDepth is 2/.test(i))).toBe(true);
+    // Fewer rumors than the depth is intentional — a shallow node has less hearsay to give.
+    expect(probe((e) => { at(e).intelDepth = 3; at(e).rumors = ["a"]; })).toEqual([]);
+    expect(probe((e) => { at(e).rumors = ["a", "b", "c"]; })).toEqual([]); // default depth = MAX_TIER
+  });
+
+  it("catches a stringly-typed trap number (concealment: \"4\")", () => {
+    expect(probe((e) => { at(e).traps = [{ pos: { col: 3, row: 3 }, concealment: "4", damage: 22 }]; })
+      .some((i) => /trap\[0\].concealment must be a non-negative number/.test(i))).toBe(true);
+  });
+
+  it("catches off-board tiles across every authored collection", () => {
+    expect(probe((e) => { at(e).blocked = [{ col: 99, row: 0 }]; }).some((i) => /blocked\[0\] is off the board/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).playerSpawns = [{ col: 0, row: 99 }]; }).some((i) => /playerSpawns\[0\] is off the board/.test(i))).toBe(true);
+    expect(probe((e) => { (at(e).enemies as Array<Record<string, unknown>>)[0].pos = { col: 99, row: 0 }; })
+      .some((i) => /enemy\[0\] .* is off the board/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).traps = [{ pos: { col: 0, row: 99 } }]; }).some((i) => /trap\[0\] is off the board/.test(i))).toBe(true);
+  });
+
+  it("catches a non-numeric reward.gold", () => {
+    expect(probe((e) => { (at(e).reward as Record<string, unknown>).gold = "50"; })).toContain("reward.gold must be a number");
   });
 });
 

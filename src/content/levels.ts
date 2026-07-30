@@ -15,10 +15,139 @@
  */
 
 import type { UnitSpec, ScenarioConfig, ObjectiveTag, ObjectiveSpec } from "../core";
-import { getEnemyTemplate, OBJECTIVE_KINDS, type AuthoredEncounter } from "../core";
+import {
+  getEnemyTemplate,
+  OBJECTIVE_KINDS,
+  getJob,
+  getMaterial,
+  isKnownRunFlag,
+  runFlagIds,
+  MAX_TIER,
+  type AuthoredEncounter,
+} from "../core";
 
 /** Objective kinds accepted in a level file — the core list (never hand-copied, so it can't drift). */
 const KINDS: readonly string[] = OBJECTIVE_KINDS;
+
+/**
+ * The **release kinds** the engine models. Mirrors `ReleaseRequirement` (`units.ts`) — a union type,
+ * so there is no runtime registry to read; this list is pinned against the type by
+ * `levels.test.ts` so a new kind can't be added to the union without landing here too.
+ */
+const RELEASE_KINDS: readonly string[] = ["reach", "lockpick"];
+
+/**
+ * **Unit identity** (validator M1) — the `jobId` class.
+ *
+ * `jobId` is `JobId = keyof typeof JOBS`, so in TypeScript a typo is a **build error**. As JSON it is
+ * a bare string, and an unknown one resolves through `getJob()` to `undefined` — producing a unit
+ * with **no job and therefore no skills**. It deploys, it fights badly, and nothing errors: the
+ * silently-worthless failure that `run.flags` and `EQUIPMENT` ids both hit before being made
+ * fail-loud (#216). Absent is legitimate (`jobId?`); *present and unknown* is the defect.
+ */
+function unitSpecIssues(spec: UnitSpec | undefined, where: string): string[] {
+  if (!spec) return [];
+  const issues: string[] = [];
+  for (const [field, id] of [
+    ["jobId", spec.jobId],
+    ["primaryJob", spec.primaryJob],
+  ] as const) {
+    if (id !== undefined && !getJob(id)) issues.push(`${where} has unknown ${field} "${id}" — no such job (a unit with no job has no skills)`);
+  }
+  for (const id of spec.heldJobs ?? []) if (!getJob(id)) issues.push(`${where} holds unknown job "${id}"`);
+  return issues;
+}
+
+/**
+ * **Economy + grant ids** (validator M3).
+ *
+ * `grantItem` opens `if (!getMaterial(materialId)) return` — a misspelled reward or relic is
+ * **silently never granted**, the exact shape of the `equipmentDelta` bug. `grants.flag` is worse:
+ * `run.flags` is an untyped bag where an unset flag and a typo'd one are indistinguishable at the
+ * gate that reads them, which is why `run-flags.ts` exists (#216). Content must not re-open that
+ * door — a flag authored here is checked against the same registry a launcher checks human input
+ * against.
+ */
+function economyIssues(e: Partial<AuthoredEncounter>): string[] {
+  const issues: string[] = [];
+  const reward = e.reward;
+  if (reward) {
+    if (typeof reward.gold !== "number" || !Number.isFinite(reward.gold)) issues.push("reward.gold must be a number");
+    if (reward.xp !== undefined && (typeof reward.xp !== "number" || !Number.isFinite(reward.xp))) issues.push("reward.xp must be a number when present");
+    for (const m of Array.isArray(reward.materials) ? reward.materials : [])
+      if (!getMaterial(m?.id)) issues.push(`reward material "${m?.id}" is not a known material — it would be silently dropped`);
+  }
+  const g = e.grants;
+  if (g) {
+    if (g.item !== undefined && !getMaterial(g.item)) issues.push(`grants.item "${g.item}" is not a known material — grantItem would silently skip it`);
+    if (g.flag !== undefined && !isKnownRunFlag(g.flag))
+      issues.push(`grants.flag "${g.flag}" is not a known run flag (known: ${runFlagIds().join(", ")}) — a typo'd flag is indistinguishable from an unset one`);
+    issues.push(...unitSpecIssues(g.recruit, `grants.recruit "${g.recruit?.id}"`));
+  }
+  return issues;
+}
+
+/**
+ * **Intel scalars** (validator M4).
+ *
+ * `intelDepth` caps how deep a node can be scouted (`min(floor + scouting, intelDepth)`), so an
+ * out-of-range value silently changes what a read can ever reveal. `rumors[i]` is revealed at tier
+ * `i+1`, so a rumor **beyond** the depth is a line **no read can reach** — `authored.ts` documents
+ * this as an authoring rule and nothing enforced it.
+ *
+ * **One-sided on purpose** (owner, 2026-07-30): *fewer* rumors than the depth is intended — a
+ * shallow node genuinely has less hearsay to give. Only exceeding it is a defect.
+ */
+function intelIssues(e: Partial<AuthoredEncounter>): string[] {
+  const issues: string[] = [];
+  const depth = e.intelDepth;
+  if (depth !== undefined && (!Number.isInteger(depth) || depth < 1 || depth > MAX_TIER))
+    issues.push(`intelDepth must be an integer in 1..${MAX_TIER} (got ${depth})`);
+  const rumors = e.rumors;
+  if (Array.isArray(rumors)) {
+    const cap = typeof depth === "number" ? depth : MAX_TIER;
+    if (rumors.length > cap)
+      issues.push(`${rumors.length} rumors but intelDepth is ${cap} — rumor ${cap + 1}+ is revealed at a tier no read can reach`);
+  }
+  return issues;
+}
+
+/**
+ * **Tiles and numbers** (validator M4).
+ *
+ * Every authored coordinate must be on the board, and every authored number must be a number. In
+ * TypeScript both are compile-checked; as JSON, `concealment: "4"` is a plain string that flows
+ * into damage math. `spawnZoneIssues` already does exactly this for zones — this is the same shape
+ * applied to the collections that had no guard.
+ */
+function tileIssues(e: Partial<AuthoredEncounter>): string[] {
+  const issues: string[] = [];
+  const cols = e.cols ?? 0;
+  const rows = e.rows ?? 0;
+  const onBoard = (t: { col?: number; row?: number } | undefined, what: string): void => {
+    if (!t || !Number.isInteger(t.col) || !Number.isInteger(t.row)) {
+      issues.push(`${what} is not a valid tile`);
+      return;
+    }
+    if (t.col! < 0 || t.row! < 0 || t.col! >= cols || t.row! >= rows) issues.push(`${what} is off the board at (${t.col},${t.row})`);
+  };
+
+  (Array.isArray(e.blocked) ? e.blocked : []).forEach((t, i) => onBoard(t, `blocked[${i}]`));
+  (Array.isArray(e.playerSpawns) ? e.playerSpawns : []).forEach((t, i) => onBoard(t, `playerSpawns[${i}]`));
+  (Array.isArray(e.enemies) ? e.enemies : []).forEach((en, i) => onBoard(en?.pos, `enemy[${i}] "${en?.templateId}"`));
+  (Array.isArray(e.gates) ? e.gates : []).forEach((g) => onBoard(g?.pos, `gate "${g?.id}"`));
+  (Array.isArray(e.levers) ? e.levers : []).forEach((l) => onBoard(l?.pos, `lever "${l?.id}"`));
+
+  for (const [i, t] of (Array.isArray(e.traps) ? e.traps : []).entries()) {
+    onBoard(t?.pos, `trap[${i}]`);
+    for (const field of ["damage", "concealment"] as const) {
+      const v = t?.[field];
+      if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v) || v < 0))
+        issues.push(`trap[${i}].${field} must be a non-negative number (got ${JSON.stringify(v)})`);
+    }
+  }
+  return issues;
+}
 
 /** Does a captive's authored spec match an objective's escort tag (by role or id)? */
 function escorteeMatches(spec: UnitSpec, tag?: ObjectiveTag): boolean {
@@ -102,6 +231,16 @@ function captiveIssues(e: Partial<AuthoredEncounter>): string[] {
     }
     if (p.col < 0 || p.row < 0 || p.col >= cols || p.row >= rows)
       issues.push(`captive ${who} is placed off the board at (${p.col},${p.row})`);
+
+    // M2 — the editor/loader inversion. `encounterToDraft` REFUSES an unmodelled release kind on
+    // import, while the JSON loader accepted anything: the editor was stricter than the pipeline it
+    // feeds. An unknown kind falls through `deployment.ts`'s `?? { kind: "reach" }` default only
+    // because it is a truthy object — so a typo'd "lockpik" silently becomes an un-pickable cell.
+    const kind = c.release?.kind;
+    if (kind !== undefined && !RELEASE_KINDS.includes(kind))
+      issues.push(`captive ${who} has unknown release kind "${kind}" (known: ${RELEASE_KINDS.join(", ")})`);
+
+    issues.push(...unitSpecIssues(c.spec, `captive ${who}`));
   }
   return issues;
 }
@@ -193,6 +332,9 @@ export function validateLevel(raw: unknown): string[] {
   if (e.objectives) for (const o of e.objectives) if (!KINDS.includes(o?.kind)) issues.push(`unknown objective kind "${o?.kind}"`);
   if (!e.reward) issues.push("missing reward");
   issues.push(...captiveIssues(e));
+  issues.push(...economyIssues(e));
+  issues.push(...intelIssues(e));
+  issues.push(...tileIssues(e));
   issues.push(...extractionIssues(e));
   issues.push(...idIssues(e));
   issues.push(...spawnZoneIssues(e));

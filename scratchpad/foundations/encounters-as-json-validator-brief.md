@@ -77,8 +77,14 @@ string in the format; it must not re-enter through the content door.
 ### M4 — scalars and shapes
 
 - `intelDepth` within `1..MAX_TIER` (currently any number passes, including `99`);
-- `rumors.length <= intelDepth` — `authored.ts:171` already documents this as an authoring rule
-  ("deeper lines are unreachable"); it is enforced nowhere;
+- **`rumors.length <= intelDepth`, one-sided — an ERROR, and only when rumors EXCEED the depth.**
+  `authored.ts:171` documents this as an authoring rule ("deeper lines are unreachable"); it is
+  enforced nowhere. **Fewer rumors than `intelDepth` is intentional and must stay clean** (owner,
+  2026-07-30) — some nodes simply have less hearsay to give, which is the point of a shallow node.
+  So the only defect is an authored line **no read can ever reach**.
+  **Verified 2026-07-30: no body in the repo violates this** — the max is 3 rumors, and every body
+  carrying 3 has `intelDepth` at the default `MAX_TIER = 3`; the two `intelDepth: 2` bodies
+  (`CUFFED_CELL`, `THIEVES_DEN`) carry none. It lands as a hard error with **zero content churn**.
 - numeric fields are actually numbers — `concealment: "4"` passes today;
 - `blocked` / `playerSpawns` / trap / gate / lever tiles are on-board. `spawnZoneIssues` already does
   this for zones (`levels.ts`) — **copy its shape**, don't invent a second spelling.
@@ -106,12 +112,17 @@ the divergent case, not the convenient one.
 
 ---
 
-## Open — for the owner, not for the implementer
+## Settled (both former open questions — owner, 2026-07-30)
 
-- **Should `validateLevel` gate the TS bodies at runtime, or only in CI?** Today the sweep is a test.
-  Making `injectContentNodes()` validate on the way through would make it a *load-time* contract for
-  arc bodies too — stronger, but it turns a content typo into a boot crash for a body that is not
-  even JSON yet. **Recommendation: leave it in CI** until the migration is done, then reconsider.
-- **How hard should the `rumors.length <= intelDepth` rule bite?** It is an authoring guideline today;
-  as an error it may fail existing content. Worth checking the sweep before deciding error vs. warning
-  — `validateLevel` currently has no warning tier, and adding one is a real design change.
+- **CI only, not a runtime gate — for now.** The whole-repo sweep stays a **test**.
+  `injectContentNodes()` does **not** validate on the way through: that would turn a content typo in a
+  TS body into a **boot crash** for something that isn't even JSON yet. Revisit once the migration is
+  done and the arc bodies are JSON — at that point `loadLevels()` already gates them fail-loud, so the
+  question mostly dissolves.
+- **`rumors` vs `intelDepth` is a one-sided ERROR** — see M4. Fewer rumors than depth is intended, not
+  a defect. **No warning tier is introduced**; `validateLevel` stays a flat list of real problems, which
+  keeps it a gate rather than a report nobody reads.
+
+## Still open — nothing blocking
+
+None. The brief is implementable as written; M2 is the recommended first slice.

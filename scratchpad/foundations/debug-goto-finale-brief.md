@@ -1,3 +1,11 @@
+> # ⚠️ SUPERSEDED (2026-07-28) — do not build from this file
+>
+> The owner ruled that per-scenario debug boots should stop being built one at a time. This brief's
+> **flag control** and **party kit** work is **absorbed into**
+> [`playtest-launcher-brief.md`](playtest-launcher-brief.md) — the launcher, hosted as an editor tab.
+> **That is the one live home.** This file is kept only for the verified findings below (the existing-route
+> survey, and the Thief/lockpick composition constraint), which the launcher brief cites.
+
 # Build brief — the debug go-to: reach the finale's interesting states directly, with a kitted party
 
 **Track:** dev tooling in service of the finale. No new gameplay rules.

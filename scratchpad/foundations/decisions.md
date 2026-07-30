@@ -5238,6 +5238,31 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
     described and strictly better for it: an **early** dash for the seal is a real gamble at 0.4, and
     dithering turns it into near-certain capture. Recorded, not changed — the numbers stand; only the
     description was wrong.
+  - ⚠️ **CORRECTION 2 (challenge pass, 2026-07-30) — the price is NEVER PAID. The early seal is FREE, and
+    "author it tight" does not make it cost anything.** Both bullets above describe a **path** cost — as if
+    crossing the tile out to `winch-wall` is what exposes you. The code only charges a **parking** cost.
+    Capture is rolled on the **front's turn** (`resolveFrontTurn`), a snapshot of where each unit *stands*
+    at that instant; the net is a clock participant, so it never acts inside a unit's own turn. A deploy
+    turn permits **move → act → move-back**: `canFieldAct` gates on `!deployActed` only, and
+    `commitFieldAct` never touches `moveBudget` (the tell is `doTakeEntrance`, which has to zero it
+    *explicitly* because acting otherwise leaves movement intact — and the shipped hint text after every
+    deploy act literally reads *"Reposition or End Turn"*). **Verified against the shipped
+    `the-rescue.json`:** thief at `(18,5)` → step to `(18,6)` → `canPullLever(winch-wall)` → pull → step
+    back to `(18,5)`; `frontCaptureChance == 0` with the net at radius 20. Round trip costs 2 of a
+    4-budget. **This generalises to every deploy verb** (Place Trap, Search, Pick Cell, Break Gate, Turn
+    Key), for anything within half a move of a zone.
+  - ⚠️ **And `winch-staging` is free without even leaving.** `winch-staging` `(8,17)` targets `seal-outer`
+    and is **Manhattan-1 from two primary-zone tiles** (`(9,17)`, `(8,18)`); `canPullLever` is
+    `manhattan <= 1`. So the **front** route's seal can be slammed on deploy turn 1 with **zero movement
+    and zero exposure** — no capture roll exists to dodge. There are therefore **two** free pre-battle
+    seals, and no tuning of the *risk model* can reach the second one.
+  - **Resolution (owner, 2026-07-30) — ACCEPT the parking cost; the mechanic is not changed.** A snapshot
+    on the net's turn is the expected behaviour; a path cost would be a redesign of D63's deploy model, not
+    a fix. So this entry's "reaching for the lever means risking detection" framing is **withdrawn**: tight
+    authoring is retained only because a wide zone would be a large safe pocket, **not** because it prices
+    the lever. The lever's price moves to a different axis entirely — **tempo, via an alarm** — recorded as
+    **D121**. ⚠️ **Consequence for #209 (unchanged in force, now certain):** the split-force scenario must
+    treat **seal-shut-at-turn-1 as the default opening**, not one variant among two.
 - **Consequence — an early seal shortens, but does not remove, the C2 head-start race.** Slamming the seal
   in setup means combat opens with it already shut; the garrison's door-drive (D117) begins battering
   immediately, so the race still runs — the player has simply bought the pull for a capture roll instead of
@@ -5312,3 +5337,80 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   auto-rescue — the clause being narrowed), **D52** (run flags, authored captives), **D51** (the retreat
   path). **Deferred:** the retrieval node; guild-tier persistence (**#117**).
   **Superseded by:** —
+
+## D121 — Noise raises an alarm: the deploy phase's acts get heard, and the fight starts on a gauge
+
+- **Status:** Decided (design) 2026-07-30 — owner-directed. No production code yet; this entry is the
+  brief's canon. **Own record and own PR** — it is a **new gameplay rule**, deliberately kept out of the
+  playtest-launcher tooling work (`playtest-launcher-brief.md`: "no new gameplay rules").
+- **Context — D119's CORRECTION 2.** The finale's two pre-battle seals are **free**. Capture is a snapshot
+  taken on the net's turn, so a unit that steps out, acts, and steps back is never sampled outside
+  (`winch-wall`); and `winch-staging` is adjacent to two primary-zone tiles, so the front seal needs no step
+  at all. Neither the capture roll nor the map geometry can price the second one. The owner's read on the
+  first: *"I did have the implicit assumption that the lever would trigger an automatic battle start
+  (essentially alerting the guards)."* That is the missing consequence — and it prices **both**.
+- **Decision — the price of an early lever is TEMPO, not a dice roll.** Throwing a winch during deployment
+  is **loud**: it raises an alarm, and the alarm **starts the battle**. The player may still buy the early
+  seal — they simply pay for it by forfeiting the rest of their setup, with the party where it stands.
+  This is the risk/reward D119 wanted, moved off the axis that could not carry it.
+  - **Why this and not a rules change to capture:** the capture model is **accepted as-is** (D119
+    Resolution). Charging exposure differently would tax darting out to Search/Disarm — play we want — and
+    still would not reach `winch-staging`, which never leaves the zone.
+- **Decision — the alarm RESOLVES ON A GAUGE, not as an instant cut (owner).** The lever does not hard-cut
+  to combat. It inserts a visible, in-flight state change that reads as *"you were heard — the garrison is
+  rousing"*, and the fight opens when it fills. Use the shipped mechanics so the player learns what their
+  action did from machinery they already understand.
+  - **Verified seam:** `CTClock.schedule` + `scheduledProgress(id) → 0..1` is exactly what the
+    **`closing-gate` objective already renders as a filling gauge** — a live exemplar, not new machinery.
+    The deploy→combat handoff is also already built: `resolveFrontWave` routes `overrun → startBattle()`
+    with a wash message, and a manual `startBattle()` sits behind the "Start Battle" control.
+  - ⚠️ Care around the busy-window guard the capture/overrun auto-start already needs
+    (`BattleScene.ts:1685`).
+- **Decision — NO confirm modal; Undo is the confirm (verified).** The reversibility worry that motivated a
+  `showModal` guard **does not apply**: `BattleCheckpoint` snapshots units **including `statuses`**, the
+  clock **including in-flight scheduled effects** (`clock.ts:424` — shallow-copied, so each `gauge` is
+  captured by value), `entities` (`EntitySnapshot`), gates and stash. So whichever carrier the alert uses,
+  the existing deploy Undo rolls it back. **A stray click is takeable-back by the control already on
+  screen** — do not add a modal in front of it.
+- **Decision — the general mechanism is a BUS EVENT, and it is NOT a tag.** The owner's instinct is that
+  many things should be able to make noise (a trip-wire, knocking on a door, a sound trap) and that this
+  wants one mechanism. Agreed on the generalisation; **rejected on calling it a tag.** `tags.ts` exists to
+  hold one line — *"statuses **do** something over time; tags **answer a question**"* — and `hasTag` is
+  **unit-only** (`intrinsic` reads `Unit.tags`; `derived` calls `derive(unit, ctx)`). An alarm on a *tile*
+  that *acts* departs on both axes at once and would spend exactly the distinction D117 was built to keep.
+  - **The unifier is the event bus, not a shared base type.** It already carries `trapSprung`,
+    `gateOpened` (with a `cause` discriminant), `gateDamaged`, `gateLocked`. Add **one `noise` event** any
+    carrier emits and **one listener** that owns the consequence. Levers, gates, traps and tiles then all
+    participate without a common supertype, and *what makes the sound* stays decoupled from *what the sound
+    does*.
+  - **The owner's three examples are TWO trigger shapes, not one** — worth naming so the substrate is not
+    mis-shaped:
+    - **movement-triggered** (trip-wire, sound trap, stepping on a tile) → `FieldEntity.onUnitEnterTile`,
+      which **already exists**; `ConcealedTrap` is the living exemplar (registered on the registry, sprung
+      by movement, undo-covered). A noise-maker is its sibling, and inherits concealment / Search / Disarm
+      for free — most of the trip-wire fantasy is already built.
+    - **verb-triggered** (pull a lever, break or knock a door, pick a lock) → acts on `Gate` / `Lever`,
+      which are **not** entities (separate arrays on `Battle`).
+- **Decision — SMALLEST USEFUL SLICE first; do not build the substrate up front.** Ship the **`noise` event
+  + the lever emitter + the scheduled rouse**. That closes both free seals and makes the mechanic playable.
+  The `FieldEntity` noise-maker lands **when a map actually wants a trip-wire** — the repo's concrete-first
+  discipline (**#171** rev 2: extract when a *second* consumer appears). At that point there is one.
+  - **Start uniform: any lever pull during deployment is heard.** A winch is loud; uniform reads better
+    than a special case, and it avoids a new authored `Lever` field. `Lever` is `{ id, pos, targets }` with
+    no flags today, so a per-lever `raisesAlarm` would touch the content JSON, the editor's lever tool, the
+    draft round-trip and sanitize — a class that **has bitten before** (`d1a3d83`, "Fix editor round-trip
+    dropping `dropOnDeath` and `controlRoom`"). Add the authored axis only if play shows a lever that must
+    stay quiet.
+- **Open, deliberately not decided here.** Whether **other loud deploy acts** — Pick Cell, freeing a
+  captive, Break Gate — should also be heard. Arguably louder than a winch. Kept **lever-only** for the
+  first slice so play decides, rather than deciding it by omission.
+- **Consequence — it prices the Warden re-seal oscillation's opening move.** The stalling loop the finale
+  checklist records as an open owner call (player shuts `seal-outer`, the Warden keys it open, repeat) now
+  costs the setup phase to *start*. It does not resolve that question; it removes its free opening.
+- **Reuses:** **D119** (the authored zones + the correction that forced this), **D117** (the tag system —
+  and the line this record declines to cross; the derived event log), **D103** (gates + levers, the
+  `pullLever` verb), **D63/D67** (the deploy clock, the front, the `overrun → startBattle` path; engagement
+  is board state, not a per-phase verb ban), **D12** (`FieldEntity` / concealed traps — the movement-trigger
+  exemplar), **D50** (the `closing-gate` scheduled gauge — the render exemplar), **D87** (logged, replayable
+  board mutations). **Defers:** the `FieldEntity` noise-maker; a per-lever quiet flag; noise on non-lever
+  deploy acts. **Superseded by:** —

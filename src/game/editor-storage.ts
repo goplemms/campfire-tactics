@@ -194,3 +194,62 @@ export function deleteFromLibrary(name: string): void {
     writeLS(LIBRARY_KEY, JSON.stringify(store));
   }
 }
+
+// --- The launcher's last launch (the Launch tab) -----------------------------
+
+const LAUNCH_KEY = "campfire-editor-launch";
+
+/**
+ * The **last launch's four levers**, browser-local — so the launch→play→tweak→relaunch loop
+ * survives a reload, not just a scene round-trip (instance state already covers the latter).
+ *
+ * Stored as plain, already-serialisable values: the target is kept as the tab's own dropdown
+ * **key** rather than a structured target, so this store never has to track
+ * `LaunchTarget`'s shape. The tab parses it back, and an unrecognised key falls back to the
+ * draft — the always-valid default.
+ */
+export interface LaunchConfig {
+  /** The target dropdown key (`draft` · `level:<id>` · `node:<exp>:<node>`). */
+  targetKey: string;
+  /** The kit name. */
+  kit: string;
+  /** The run-flag ids that were switched on. */
+  flags: string[];
+  /** The seed box's contents (blank = the deterministic default). */
+  seed: string;
+}
+
+/**
+ * Sanitize a stored launch config, **fail-safe**: a tampered, truncated or
+ * version-drifted blob resolves to `null` (the tab keeps its defaults) rather than wedging the
+ * Launch tab — the same discipline {@link sanitizeDraft} applies to the working draft, and the
+ * reason `test:e2e:editor:persist` boots garbage on purpose.
+ *
+ * Note what is deliberately *not* done here: flag ids are **not** validated against the registry.
+ * This layer cannot fail loud — a stale id must not stop the editor booting — so it only coerces
+ * types. The Launch tab drops unknown ids on load and *says so* on its status line, which keeps
+ * the fail-loud promise where a human can act on it.
+ */
+export function sanitizeLaunchConfig(raw: unknown): LaunchConfig | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const p = raw as Partial<LaunchConfig>;
+  return {
+    targetKey: typeof p.targetKey === "string" && p.targetKey ? p.targetKey : "draft",
+    kit: typeof p.kit === "string" ? p.kit : "",
+    // Coerce to strings and de-dupe; the *meaning* of a flag id (is it known?) is the Launch
+    // tab's call, not this layer's — see the note above.
+    flags: Array.isArray(p.flags) ? [...new Set(p.flags.filter((f): f is string => typeof f === "string"))] : [],
+    seed: typeof p.seed === "string" ? p.seed : "",
+  };
+}
+
+export function loadLaunchConfig(): LaunchConfig | null {
+  const raw = readLS(LAUNCH_KEY);
+  if (!raw) return null;
+  try { return sanitizeLaunchConfig(JSON.parse(raw)); } catch { return null; }
+}
+
+/** Persist the launch config. Silently no-ops if storage is unavailable/full. */
+export function saveLaunchConfig(cfg: LaunchConfig): void {
+  writeLS(LAUNCH_KEY, JSON.stringify(cfg));
+}

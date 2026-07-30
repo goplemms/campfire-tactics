@@ -285,6 +285,57 @@ async function main() {
         b = await g.eval(BATTLE);
         check("the editor is back after the node launch", b.editorActive);
 
+        // ---------------------------------------------------------------
+        // 8. The last launch survives a RELOAD (D113), not just a scene return.
+        // ---------------------------------------------------------------
+        console.log("• the four levers survive a full page reload");
+        await g.eval(clickTab("Launch"));
+        await g.eval(setSelect("launch-target", "level:the-rescue"));
+        await g.eval(setSelect("launch-kit", "Skirmishers (4)"));
+        await g.eval(setFlag("side-door-intel", true));
+        await g.eval(`(() => { const s = document.querySelector('input[data-role="launch-seed"]');
+          s.value = "sticky-seed"; s.dispatchEvent(new Event("input")); })()`);
+        await sleep(150);
+
+        await g.boot("#editor"); // a genuine fresh document, not a scene restart
+        await sleep(900);
+        await g.eval(clickTab("Launch"));
+        await sleep(150);
+        t = await g.eval(TAB);
+        check("the target survived the reload", t.targetValue === "level:the-rescue");
+        check("the kit survived the reload", t.kitValue === "Skirmishers (4)");
+        check("the seed survived the reload", t.seedValue === "sticky-seed");
+        const flagOn = await g.eval(`document.querySelector('input[data-role="launch-flag-side-door-intel"]').checked`);
+        check("the flag survived the reload", flagOn === true);
+        check("…and it is immediately re-launchable (status reads OK)", /✓/.test(t.status));
+        await shot(g, path.join(OUT, "07-restored-after-reload.png"));
+
+        // ---------------------------------------------------------------
+        // 9. A tampered store must not wedge the tab, and a stale flag must be SAID.
+        // ---------------------------------------------------------------
+        console.log("• a garbage launch store falls back cleanly instead of wedging");
+        await g.eval(`localStorage.setItem("campfire-editor-launch", "{not json")`);
+        await g.boot("#editor");
+        await sleep(900);
+        await g.eval(clickTab("Launch"));
+        await sleep(150);
+        t = await g.eval(TAB);
+        check("the editor still booted with a live Launch tab", t.hasTab && t.hasTarget && t.hasButton);
+        check("…falling back to the draft default", t.targetValue === "draft");
+
+        console.log("• a STALE flag id is dropped and named, not silently swallowed");
+        await g.eval(`localStorage.setItem("campfire-editor-launch", JSON.stringify(
+          { targetKey: "level:the-rescue", kit: "Standard (3)", flags: ["side-door-intel", "ghost-flag"], seed: "" }))`);
+        await g.boot("#editor");
+        await sleep(900);
+        await g.eval(clickTab("Launch"));
+        await sleep(150);
+        t = await g.eval(TAB);
+        check("the tab reports the dropped flag by name", /ghost-flag/.test(t.status));
+        const keptReal = await g.eval(`document.querySelector('input[data-role="launch-flag-side-door-intel"]').checked`);
+        check("…while keeping the flag that IS known", keptReal === true);
+        await shot(g, path.join(OUT, "08-stale-flag-dropped.png"));
+
         assertNoProblems(g);
         console.log(`\n✓ launcher E2E: ${passed} assertions passed, no page errors`);
         console.log(`  stage screenshots → screenshots/e2e-launcher/`);

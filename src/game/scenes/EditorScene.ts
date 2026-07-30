@@ -17,7 +17,7 @@ import { runFlagIds, getRunFlag, runFlagBag, traverseRoute, THE_RESCUE } from ".
 
 /** The expeditions the Launch tab offers nodes from. The Hollow Mill's own jump tool is `#debug`. */
 const LAUNCH_EXPEDITIONS = [THE_RESCUE.id] as const;
-import { loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
+import { loadLaunchConfig, saveLaunchConfig, loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
 import type { RunHandoff } from "./OverworldScene";
 import {
   blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec, standardObjectives,
@@ -317,6 +317,10 @@ export class EditorScene extends Phaser.Scene {
   private launchSeed = "";
   /** The Launch tab's status line (fail-loud messages + the last launch's summary). */
   private launchStatus?: HTMLDivElement;
+  /** One-shot: restore the stored launch config on the FIRST boot only, not on a launch return. */
+  private launchRestored = false;
+  /** Flag ids dropped by the restore because the registry no longer knows them — surfaced, not swallowed. */
+  private launchDroppedFlags: string[] = [];
   private brush: Brush = "wall";
   private enemyTemplate = ENEMY_IDS[0];
   private captiveRelease: "reach" | "lockpick" = "lockpick";
@@ -406,6 +410,13 @@ export class EditorScene extends Phaser.Scene {
       this.restored = true;
       const working = loadWorking();
       if (working) this.draft = working;
+    }
+    // The launcher's four levers, same one-shot discipline: restore on the FIRST boot so the
+    // launch→play→tweak→relaunch loop survives a reload, but never on a launch return (which
+    // re-runs create() on this instance, where the live selections already are).
+    if (!this.launchRestored) {
+      this.launchRestored = true;
+      this.restoreLaunchConfig();
     }
     this.cameras.main.setBackgroundColor(COLOR.bg);
     this.view = new CombatView(this);
@@ -1732,7 +1743,7 @@ export class EditorScene extends Phaser.Scene {
     seed.value = this.launchSeed;
     seed.title = "The encounter's RNG seed. Blank uses the deterministic default, so repeat launches match.";
     Object.assign(seed.style, { width: "170px" } as CSSStyleDeclaration);
-    seed.oninput = () => { this.launchSeed = seed.value; };
+    seed.oninput = () => { this.launchSeed = seed.value; this.persistLaunchConfig(); };
     seedRow.appendChild(seed);
     d.appendChild(seedRow);
 
@@ -1811,6 +1822,15 @@ export class EditorScene extends Phaser.Scene {
    */
   private refreshLaunchStatus(): void {
     if (!this.launchStatus) return;
+    this.persistLaunchConfig();
+    // A restore that dropped stale flag ids says so once, ahead of the normal preview — the
+    // storage layer swallowed them by necessity; this is where that gets reported.
+    if (this.launchDroppedFlags.length > 0) {
+      const dropped = this.launchDroppedFlags.join(", ");
+      this.launchDroppedFlags = [];
+      this.setLaunchStatus(`\u26a0 dropped unknown stored flag(s): ${dropped} — reselect and launch`, "#f0a0a0");
+      return;
+    }
     try {
       const resolved = resolveLaunchTarget(this.launchTarget, { draftEncounter: this.draftEncounterOrUndefined() });
       const flags = this.launchFlags.size ? [...this.launchFlags].join(", ") : "none";
@@ -1819,6 +1839,33 @@ export class EditorScene extends Phaser.Scene {
     } catch (err) {
       this.setLaunchStatus(`\u26a0 ${(err as Error).message}`, "#f0a0a0");
     }
+  }
+
+  /**
+   * Restore the stored launch config (D113). **Unknown flag ids are dropped and named** rather
+   * than silently discarded: the storage layer cannot fail loud (a stale blob must never stop the
+   * editor booting), so the refusal surfaces here, on the status line, where a human can act on
+   * it. An unrecognised kit or target key falls back to the default the same way.
+   */
+  private restoreLaunchConfig(): void {
+    const cfg = loadLaunchConfig();
+    if (!cfg) return;
+    this.launchTarget = this.parseTargetKey(cfg.targetKey);
+    this.launchKit = playtestPartyNames().includes(cfg.kit) ? cfg.kit : DEFAULT_PLAYTEST_PARTY;
+    const known = new Set(runFlagIds());
+    this.launchFlags = new Set(cfg.flags.filter((f) => known.has(f)));
+    this.launchDroppedFlags = cfg.flags.filter((f) => !known.has(f));
+    this.launchSeed = cfg.seed;
+  }
+
+  /** Persist the four levers so the loop survives a reload, not just a scene round-trip. */
+  private persistLaunchConfig(): void {
+    saveLaunchConfig({
+      targetKey: this.launchTargetKey(),
+      kit: this.launchKit,
+      flags: [...this.launchFlags],
+      seed: this.launchSeed,
+    });
   }
 
   private setLaunchStatus(text: string, color: string): void {

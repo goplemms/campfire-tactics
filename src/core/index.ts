@@ -60,6 +60,7 @@ export * from "./dossier";
 export * from "./journal";
 export * from "./manifest";
 export * from "./run";
+export * from "./run-flags";
 export * from "./runloop";
 export * from "./repro";
 export * from "./recovery";

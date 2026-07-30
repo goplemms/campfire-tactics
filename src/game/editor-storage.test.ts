@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeDraft } from "./editor-storage";
+import { sanitizeDraft, sanitizeLaunchConfig } from "./editor-storage";
 import { blankDraft } from "./editor-draft";
 
 /**
@@ -91,5 +91,48 @@ describe("sanitizeDraft", () => {
   it("coerces a garbage reward to finite gold/xp + a materials array", () => {
     const out = sanitizeDraft({ cols: 6, rows: 6, reward: { gold: "lots", xp: {} } })!;
     expect(out.reward).toEqual({ gold: 50, xp: 40, materials: [] });
+  });
+});
+
+/**
+ * `sanitizeLaunchConfig` is the same fail-safe for the Launch tab's stored levers: a tampered or
+ * version-drifted blob must never wedge the tab. These pin the pure logic — `test:e2e:launcher`
+ * covers the localStorage round-trip, a corrupt-store boot, and the stale-flag report.
+ */
+describe("sanitizeLaunchConfig", () => {
+  it("returns null for non-object input", () => {
+    expect(sanitizeLaunchConfig(null)).toBeNull();
+    expect(sanitizeLaunchConfig("nope")).toBeNull();
+    expect(sanitizeLaunchConfig(42)).toBeNull();
+    expect(sanitizeLaunchConfig([])).toBeNull(); // an array is not a config
+  });
+
+  it("round-trips a well-formed config", () => {
+    const cfg = { targetKey: "level:the-rescue", kit: "Vanguard (5)", flags: ["side-door-intel"], seed: "s1" };
+    expect(sanitizeLaunchConfig(JSON.parse(JSON.stringify(cfg)))).toEqual(cfg);
+  });
+
+  it("defaults each field independently rather than discarding the whole blob", () => {
+    // A partial/drifted store should still restore what it legitimately carries.
+    expect(sanitizeLaunchConfig({ kit: "Solo (1)" })).toEqual({
+      targetKey: "draft", kit: "Solo (1)", flags: [], seed: "",
+    });
+    expect(sanitizeLaunchConfig({})).toEqual({ targetKey: "draft", kit: "", flags: [], seed: "" });
+  });
+
+  it("coerces a hostile flags value to a clean string list", () => {
+    expect(sanitizeLaunchConfig({ flags: "side-door-intel" })!.flags).toEqual([]); // not an array
+    expect(sanitizeLaunchConfig({ flags: [1, null, "a", { b: 2 }, "a"] })!.flags).toEqual(["a"]); // filtered + de-duped
+  });
+
+  it("keeps an UNKNOWN flag id — validating it is the tab's job, not this layer's", () => {
+    // This layer cannot fail loud: a stale id must not stop the editor booting. The Launch tab
+    // drops it on load and names it on the status line, where a human can act on it.
+    expect(sanitizeLaunchConfig({ flags: ["ghost-flag"] })!.flags).toEqual(["ghost-flag"]);
+  });
+
+  it("coerces non-string scalars to their defaults", () => {
+    const out = sanitizeLaunchConfig({ targetKey: 7, kit: {}, seed: false })!;
+    expect(out).toEqual({ targetKey: "draft", kit: "", flags: [], seed: "" });
   });
 });

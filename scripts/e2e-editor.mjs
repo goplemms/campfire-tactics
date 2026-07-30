@@ -101,7 +101,7 @@ async function main() {
         check("the editor scene is active", st.active === true);
         check("the placeable gallery has every essential brush (incl. gate + lever)", st.essentialBrushes === true);
         check("the enemy roster is unrolled into cards (not a dropdown)", st.enemyCards >= 6);
-        check("the drawer tab bar is present (5 tabs incl. Objects)", st.tabs === 5);
+        check("the drawer tab bar is present (6 tabs incl. Objects + Launch)", st.tabs === 6);
 
         // D109 slice 2 — the card tweaks are live, persisted display options (size / tint / captive).
         console.log("• display options: size · enemy tint · captive variants");

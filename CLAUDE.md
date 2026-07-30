@@ -19,6 +19,7 @@ npm run sim            # the run-simulator digest (re-pin when routing/rewards m
 npm run test:e2e       # deploy → battle click-through (real headless browser)
 npm run test:e2e:scenario   # the #scene isolated-encounter harness
 npm run test:e2e:arc        # overworld authored-event screens (mentor beats, etc.)
+npm run test:e2e:launcher   # the editor's Launch tab: target/kit/flags/seed → scene → back
 npm run audit:visual        # 14-surface visual sweep: geometric linter + per-surface coverage gate
 npm run audit:challenge     # proves each text coverage gate is specific (own screen only)
 ```

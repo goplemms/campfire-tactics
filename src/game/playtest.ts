@@ -201,9 +201,22 @@ export function playtestPartyNames(): string[] {
   return Object.keys(PLAYTEST_PARTIES);
 }
 
-/** Wrap an encounter as a scenario whose party matrix is the full playtest registry. */
-export function playtestScenario(enc: AuthoredEncounter): ScenarioConfig {
-  return { id: enc.id, name: enc.name, encounter: enc, parties: PLAYTEST_PARTIES, defaultParty: DEFAULT_PLAYTEST_PARTY };
+/**
+ * Wrap an encounter as a scenario whose party matrix is the full playtest registry.
+ *
+ * `seed` is optional and threads straight onto {@link ScenarioConfig.seed} (the encounter's RNG);
+ * omitted ⇒ the deterministic `0` floor `buildScenarioRun` already defaults to, so every existing
+ * caller is unchanged.
+ */
+export function playtestScenario(enc: AuthoredEncounter, seed?: string | number): ScenarioConfig {
+  return {
+    id: enc.id,
+    name: enc.name,
+    encounter: enc,
+    parties: PLAYTEST_PARTIES,
+    defaultParty: DEFAULT_PLAYTEST_PARTY,
+    ...(seed !== undefined ? { seed } : {}),
+  };
 }
 
 /**
@@ -211,7 +224,18 @@ export function playtestScenario(enc: AuthoredEncounter): ScenarioConfig {
  * standard trio). Fail-loud on an unknown squad or a malformed encounter (via
  * {@link buildScenarioRun}) — the editor gates on {@link "../content/levels".validateLevel}
  * first, so a genuine throw here means a bug worth surfacing, not a bad paint.
+ *
+ * `opts.seed` picks the encounter's RNG; `opts.flags` seeds `run.flags` **before** the scene
+ * stages, which is what makes a flag-gated spawn zone reachable for a *run-less* encounter boot —
+ * `RunLoop.startEncounter` reads `run.flags` at stage time, and a scenario run has no route that
+ * could have earned one. Validate the ids with `runFlagBag` before calling; this just applies them.
  */
-export function buildPlaytest(enc: AuthoredEncounter, partyName: string = DEFAULT_PLAYTEST_PARTY): { run: RunState; loop: RunLoop } {
-  return buildScenarioRun(playtestScenario(enc), partyName);
+export function buildPlaytest(
+  enc: AuthoredEncounter,
+  partyName: string = DEFAULT_PLAYTEST_PARTY,
+  opts: { seed?: string | number; flags?: Record<string, boolean> } = {},
+): { run: RunState; loop: RunLoop } {
+  const built = buildScenarioRun(playtestScenario(enc, opts.seed), partyName);
+  if (opts.flags) Object.assign(built.run.flags, opts.flags);
+  return built;
 }

@@ -6,6 +6,17 @@ import { clearLayer } from "../ui";
 import { clamp, TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
 import { validateLevel } from "../../content/levels";
 import { buildPlaytest, playtestPartyNames, DEFAULT_PLAYTEST_PARTY } from "../playtest";
+import {
+  resolveLaunchTarget,
+  launchTargetLabel,
+  levelTargets,
+  nodeTargets,
+  type LaunchTarget,
+} from "../launch-target";
+import { runFlagIds, getRunFlag, runFlagBag, traverseRoute, THE_RESCUE } from "../../core";
+
+/** The expeditions the Launch tab offers nodes from. The Hollow Mill's own jump tool is `#debug`. */
+const LAUNCH_EXPEDITIONS = [THE_RESCUE.id] as const;
 import { loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
 import type { RunHandoff } from "./OverworldScene";
 import {
@@ -26,7 +37,7 @@ const JOB_IDS = Object.keys(JOBS);
  * **Scenario** (meta + JSON I/O). The ✓/⚠ status bar sits outside the drawers so the live guards
  * never hide; the inspector is persistent so selecting *any* object edits it wherever you are.
  */
-const TAB_NAMES = ["Terrain", "Objects", "Units", "Events", "Scenario"] as const;
+const TAB_NAMES = ["Terrain", "Objects", "Units", "Events", "Scenario", "Launch"] as const;
 type TabName = (typeof TAB_NAMES)[number];
 
 /** Single-key brush shortcuts (lower-cased key → brush). Mnemonic where it can be; ignored while typing. */
@@ -292,6 +303,20 @@ export class EditorScene extends Phaser.Scene {
   private restored = false;
   /** The squad the next soft-play (Playtest) will field — chosen in the Scenario tab's picker. */
   private playtestParty: string = DEFAULT_PLAYTEST_PARTY;
+  // --- Launch tab state (the launcher) --------------------------------------
+  // Held on the scene INSTANCE, deliberately: `returnTo` starts the scene with no data payload
+  // (`scene.start(this.returnTo)`), and `create()` re-runs on the same instance, so instance state
+  // is exactly what survives a launch→play→return round-trip. Same reason the draft does.
+  /** What the next launch boots. Defaults to the draft, so the tab opens on the familiar case. */
+  private launchTarget: LaunchTarget = { kind: "draft" };
+  /** The kit the next launch fields. */
+  private launchKit: string = DEFAULT_PLAYTEST_PARTY;
+  /** The run flags the next launch forces on. Ids only — validated through `runFlagBag`. */
+  private launchFlags = new Set<string>();
+  /** The encounter seed for the next launch; blank ⇒ the deterministic default. */
+  private launchSeed = "";
+  /** The Launch tab's status line (fail-loud messages + the last launch's summary). */
+  private launchStatus?: HTMLDivElement;
   private brush: Brush = "wall";
   private enemyTemplate = ENEMY_IDS[0];
   private captiveRelease: "reach" | "lockpick" = "lockpick";
@@ -1013,6 +1038,7 @@ export class EditorScene extends Phaser.Scene {
     this.buildUnitsDrawer(this.drawers.Units!);
     this.buildEventsDrawer(this.drawers.Events!);
     this.buildScenarioDrawer(this.drawers.Scenario!);
+    this.buildLaunchDrawer(this.drawers.Launch!);
 
     // Persistent ✓/⚠ status bar in the bar (outside the drawers, so live guards never hide).
     const valid = document.createElement("div");
@@ -1624,6 +1650,221 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(pre.style, { margin: "6px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "220px", overflow: "auto" } as CSSStyleDeclaration);
     d.appendChild(pre);
     this.exportPre = pre;
+  }
+
+  // --- Launch tab (the playtest launcher) -----------------------------------
+
+  /**
+   * The **Launch** tab — the human-facing front door that composes the existing boots.
+   *
+   * A sibling of the draft, not a field on it: the draft is one *target* among several
+   * ({@link "../launch-target".LaunchTarget}), alongside every shipped content level and every
+   * reachable expedition node. The hash routes are untouched — they stay the machine-facing
+   * interface the e2e harness drives; this is the surface a human uses.
+   *
+   * Four levers, the ones we have evidence for: **target**, **kit**, **run flags**, **seed**.
+   * Flags are **checkboxes over the known registry**, never free text — the flag bag is untyped, so
+   * a typo would otherwise boot a plausible-looking run with a silently absent zone.
+   */
+  private buildLaunchDrawer(d: HTMLDivElement): void {
+    // — Target —
+    d.appendChild(this.sectionHead("Target", { first: true }));
+    const targetRow = this.launchRow();
+    const target = document.createElement("select");
+    target.dataset.role = "launch-target";
+    for (const t of this.launchTargetOptions()) {
+      const opt = document.createElement("option");
+      opt.value = t.value;
+      opt.textContent = t.label;
+      opt.selected = t.value === this.launchTargetKey();
+      target.appendChild(opt);
+    }
+    target.onchange = () => { this.launchTarget = this.parseTargetKey(target.value); this.refreshLaunchStatus(); };
+    targetRow.appendChild(target);
+    d.appendChild(targetRow);
+    d.appendChild(this.hint("the draft you're editing, any content level, or a node of an expedition (walked to, then handed over)"));
+
+    // — Party kit —
+    d.appendChild(this.sectionHead("Party kit"));
+    const kitRow = this.launchRow();
+    const kit = document.createElement("select");
+    kit.dataset.role = "launch-kit";
+    for (const name of playtestPartyNames()) {
+      const opt = document.createElement("option");
+      opt.value = name; opt.textContent = name; opt.selected = name === this.launchKit;
+      kit.appendChild(opt);
+    }
+    kit.onchange = () => { this.launchKit = kit.value; this.refreshLaunchStatus(); };
+    kitRow.appendChild(kit);
+    d.appendChild(kitRow);
+    d.appendChild(this.hint("kits declare job levels, gear and stats — an expedition node fields its own roster instead"));
+
+    // — Run flags — a CHOICE over the known registry, never free text (a typo fails silently).
+    d.appendChild(this.sectionHead("Run flags"));
+    for (const id of runFlagIds()) {
+      const def = getRunFlag(id)!;
+      const row = this.launchRow();
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.dataset.role = `launch-flag-${id}`;
+      box.checked = this.launchFlags.has(id);
+      box.onchange = () => {
+        if (box.checked) this.launchFlags.add(id); else this.launchFlags.delete(id);
+        this.refreshLaunchStatus();
+      };
+      const label = document.createElement("label");
+      label.textContent = def.label;
+      label.title = `${def.description}\n\nset by: ${def.setBy}\nread by: ${def.readBy}`;
+      label.style.cursor = "pointer";
+      label.onclick = () => { box.checked = !box.checked; box.onchange!(new Event("change")); };
+      row.append(box, label);
+      d.appendChild(row);
+    }
+
+    // — Seed —
+    d.appendChild(this.sectionHead("Seed"));
+    const seedRow = this.launchRow();
+    const seed = document.createElement("input");
+    seed.dataset.role = "launch-seed";
+    // Short enough to render un-clipped in the field's width (the audit flags spilled text); the
+    // full explanation lives in the tooltip rather than being truncated in the box.
+    seed.placeholder = "blank = default";
+    seed.value = this.launchSeed;
+    seed.title = "The encounter's RNG seed. Blank uses the deterministic default, so repeat launches match.";
+    Object.assign(seed.style, { width: "170px" } as CSSStyleDeclaration);
+    seed.oninput = () => { this.launchSeed = seed.value; };
+    seedRow.appendChild(seed);
+    d.appendChild(seedRow);
+
+    // — Launch —
+    d.appendChild(this.sectionHead("Launch"));
+    const go = this.launchRow();
+    const btn = document.createElement("button");
+    btn.textContent = "\u25b6 Launch";
+    btn.dataset.role = "launch";
+    btn.title = "Boot the chosen target with the chosen kit, flags and seed — and return here afterwards";
+    btn.onclick = () => this.launch();
+    go.appendChild(btn);
+    d.appendChild(go);
+
+    const status = document.createElement("div");
+    status.dataset.role = "launch-status";
+    Object.assign(status.style, { margin: SP.row, opacity: "0.8" } as CSSStyleDeclaration);
+    d.appendChild(status);
+    this.launchStatus = status;
+    this.refreshLaunchStatus();
+  }
+
+  /** A launch-tab control row — the Scenario tab's row idiom, one place so the tab reads evenly. */
+  private launchRow(): HTMLDivElement {
+    const row = document.createElement("div");
+    Object.assign(row.style, { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", margin: SP.row } as CSSStyleDeclaration);
+    return row;
+  }
+
+  /**
+   * The target dropdown's rows. A flat `<select>` rather than nested pickers: there are a handful
+   * of targets, and one control that always shows what is selected beats three that interact.
+   * Values are round-trippable keys ({@link parseTargetKey}), so the selection survives a rebuild.
+   */
+  private launchTargetOptions(): { value: string; label: string }[] {
+    const rows = [{ value: "draft", label: "Current draft" }];
+    for (const t of levelTargets()) {
+      if (t.kind !== "level") continue;
+      rows.push({ value: `level:${t.levelId}`, label: launchTargetLabel(t) });
+    }
+    // Expedition nodes. Wrapped: an expedition registers at module load, so a missing one is a
+    // build/import problem, not a reason to lose the whole tab.
+    for (const expId of LAUNCH_EXPEDITIONS) {
+      try {
+        for (const t of nodeTargets(expId)) {
+          if (t.kind !== "node") continue;
+          rows.push({ value: `node:${expId}:${t.nodeId}`, label: launchTargetLabel(t) });
+        }
+      } catch { /* an unregistered expedition simply contributes no rows */ }
+    }
+    return rows;
+  }
+
+  /** The dropdown key for the current target (the inverse of {@link parseTargetKey}). */
+  private launchTargetKey(): string {
+    const t = this.launchTarget;
+    if (t.kind === "draft") return "draft";
+    if (t.kind === "level") return `level:${t.levelId}`;
+    return `node:${t.expeditionId}:${t.nodeId}`;
+  }
+
+  /** Parse a dropdown key back into a target. Unrecognised ⇒ the draft (the always-valid default). */
+  private parseTargetKey(key: string): LaunchTarget {
+    if (key.startsWith("level:")) return { kind: "level", levelId: key.slice("level:".length) };
+    if (key.startsWith("node:")) {
+      const [, expeditionId, nodeId] = key.split(":");
+      if (expeditionId && nodeId) return { kind: "node", expeditionId, nodeId };
+    }
+    return { kind: "draft" };
+  }
+
+  /**
+   * Repaint the status line: what the current selection *would* boot, or why it cannot. Resolving
+   * on every change is what makes the tab fail loud **before** the click rather than after it —
+   * a dev tool that boots the wrong state is worse than one that refuses.
+   */
+  private refreshLaunchStatus(): void {
+    if (!this.launchStatus) return;
+    try {
+      const resolved = resolveLaunchTarget(this.launchTarget, { draftEncounter: this.draftEncounterOrUndefined() });
+      const flags = this.launchFlags.size ? [...this.launchFlags].join(", ") : "none";
+      const where = resolved.kind === "node" ? `${resolved.label} via ${resolved.route.join(" → ")}` : resolved.label;
+      this.setLaunchStatus(`\u2713 ${where} · ${this.launchKit} · flags: ${flags}`, "#9ff0bf"); // the editor's ok/warn pair
+    } catch (err) {
+      this.setLaunchStatus(`\u26a0 ${(err as Error).message}`, "#f0a0a0");
+    }
+  }
+
+  private setLaunchStatus(text: string, color: string): void {
+    if (!this.launchStatus) return;
+    this.launchStatus.textContent = text;
+    this.launchStatus.style.color = color;
+  }
+
+  /** The draft as an encounter, or `undefined` when it cannot convert — the resolver reports why. */
+  private draftEncounterOrUndefined(): AuthoredEncounter | undefined {
+    try { return draftToEncounter(this.draft); } catch { return undefined; }
+  }
+
+  /**
+   * **Launch** — resolve the four levers into a `{ run, loop }` and hand it to the real BattleScene
+   * with `returnTo: "EditorScene"`, so the fight bounces back into this tab with its selections
+   * intact (they live on the scene instance, which `create()` re-runs against).
+   *
+   * Every failure path refuses *before* the scene switch and says why on the status line.
+   */
+  private launch(): void {
+    let handoff: RunHandoff;
+    try {
+      const resolved = resolveLaunchTarget(this.launchTarget, { draftEncounter: this.draftEncounterOrUndefined() });
+      // Validate the chosen flag ids up front: `runFlagBag` throws on an unknown one rather than
+      // handing staging a bag that quietly does nothing.
+      const flags = runFlagBag([...this.launchFlags], "launch");
+      const seed = this.launchSeed.trim() === "" ? undefined : this.launchSeed.trim();
+
+      if (resolved.kind === "encounter") {
+        const { run, loop } = buildPlaytest(resolved.encounter, this.launchKit, { seed, flags });
+        handoff = { run, loop, returnTo: "EditorScene" };
+      } else {
+        // A node target is a POSITIONED RUN: walk the route (predecessors auto-play), then force
+        // the chosen flags on before the scene stages — `startEncounter` reads `run.flags` there.
+        // The kit is deliberately NOT applied: an expedition fields its own authored roster, and
+        // silently swapping it would misrepresent the state the launch claims to reach.
+        const { run, loop } = traverseRoute(resolved.expedition, resolved.route);
+        Object.assign(run.flags, flags);
+        handoff = { run, loop, returnTo: "EditorScene" };
+      }
+    } catch (err) {
+      this.setLaunchStatus(`\u26a0 launch refused — ${(err as Error).message}`, "#f0a0a0");
+      return;
+    }
+    this.scene.start("BattleScene", handoff);
   }
 
   // --- Local map library (D-editor persistence) -----------------------------

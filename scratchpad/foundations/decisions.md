@@ -5414,3 +5414,90 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   exemplar), **D50** (the `closing-gate` scheduled gauge — the render exemplar), **D87** (logged, replayable
   board mutations). **Defers:** the `FieldEntity` noise-maker; a per-lever quiet flag; noise on non-lever
   deploy acts. **Superseded by:** —
+
+## D122 — Encounters as JSON: the scoped principle, and the validator that has to come first
+
+- **Status:** Decided (foundation) 2026-07-30 — owner-directed, settling
+  `encounters-as-json-kickoff.md` via `encounters-as-json-review.md`. The **blocker fix below is
+  shipped in this entry's commit**; the migration itself is briefed, not built.
+- **Why now, mid-finale (owner).** The timing is admittedly poor — finale group **G** is live. Taken
+  anyway, and for a stated reason: **the failure this prevents is a migration bug discovered in the
+  finale *after* new nodes are built on top of it.** Foundation before population.
+- **Decision — the principle, in Q4's SCOPED form.** *Every encounter a **player can reach** is JSON;
+  the `scenarios/` harness stays TypeScript.* The exception is **load-bearing, not drift**:
+  - the `scenarios/` bodies are **test fixtures**, not content — they pin gate/lever/doctrine mechanics
+    and live beside the guards that read them;
+  - **verified 2026-07-30:** they are also the *only* place real fragment sharing exists (`micro.ts`
+    shares `STATS` ×10, `prisoner` ×6, `CELL_WALLS` ×5). **Every** named const in `hollow-mill.ts` is
+    referenced **exactly once** (`MIRA_MERCHANT`: zero) — readability aliases, not shared fragments.
+  - **Consequence, and the reason Q3 and Q4 settle together:** the kickoff's "TS de-duplicates, JSON
+    does not" cost lands **entirely on the exempted set**. It is **dismissed with evidence**, not
+    "accepted" — no shared-fragment mechanism, no include system, no decision deferred.
+- **Decision — the promise is LOADABLE, not EDITABLE.** `encounterToDraft`/`draftToEncounter` are
+  lossless **by carrying**, not by modeling: a converted body loads, renders and relaunches, but fields
+  the editor cannot paint ride invisibly. Editor milestones are **out of scope** here.
+  - ⚠️ **Honest consequence, accepted:** this does **not** deliver the friction that raised the
+    question (*"pick it, see it, **tune it**"*). Worse, **the two bodies whose design most wants tuning
+    are the two that cannot convert** — `TRAP_FIELD` *is* its traps ("the threat is the terrain").
+    The motivating want is served **last**, not first. Recorded so nobody re-derives it as a surprise.
+- **Decision — scope is 4 bodies now, 2 after trap-params.** Measured, not estimated: a full round-trip
+  audit over every authored body in the repo returns **16 of 18 exact** (the kickoff's "19" is an
+  arithmetic slip; the scenario group is 11, not 12).
+  - **Convert now:** `E1_SKIRMISH`, `PRISON_WAGON`, `CUFFED_CELL`, `THIEVES_DEN`.
+  - **Blocked on trap-params:** `TRAP_FIELD`, `OUTER_YARD` — both refuse for the **same** cause
+    (traps carrying `damage`/`concealment`). The kickoff's *second* refusal (a captive `release.kind`
+    outside `reach`/`lockpick`) is **currently vacuous** — nothing in the repo uses one. So the
+    migration costs **one** editor feature, not two.
+  - **Excluded:** `PRISON_ASSAULT` — checklist **F1** deletes it. Do not convert a body being deleted.
+- **Decision — trap-params is sequenced AFTER the first conversions, as its own editor milestone.**
+  It gates only the 2 blocked bodies and nothing else; making it a prerequisite would stall 4 clean
+  conversions behind an editor feature. It is **not** dropped — without it the migration is
+  permanently partial, and the *reachable* set is not fully JSON, which is the principle above.
+- **SHIPPED IN THIS ENTRY — the walkover guard measured the wrong tile.** Found by the audit, fixed
+  before anything is migrated, because **the first conversion would have tripped it**:
+  - `buildAuthoredCaptives` (`authored.ts:242`) stages a captive at the **placement** `c.pos`;
+    `spec.pos` is **discarded**. `member()` (`hollow-mill.ts:52`) hardcodes every spec to `(0,0)`.
+    `extractionIssues` measured from **`spec.pos`** — and `FINALE_EXIT[0]` *is* `(0,0)`.
+  - **Effect:** The Prison Assault's two cells (actually at **col 8**, eight tiles out) scored as a
+    **0-tile walkover**. `loadLevels()` throws on any issue, so as JSON this is a **hard load failure**
+    on a false positive.
+  - **Why it hid:** all 5 captives across the 4 JSON levels happen to have been hand-written with
+    `spec.pos` equal to the placement tile. The guard was **accidentally correct for its entire
+    population** — and, being blind in the inverse direction too, was *also* silently **missing real
+    walkovers** whose spec placeholder sat far from the exit. Both directions are now pinned.
+- **Decision — `validateLevel` growth is a PREREQUISITE, briefed separately** (owner). See
+  `encounters-as-json-validator-brief.md`. The kickoff treats this as debt budgeted against an
+  authoring convenience; **the audit inverts that — validation is the point.**
+  - **Measured:** of 13 single-field typo classes, `validateLevel` catches **2** (enemy `templateId`,
+    objective `kind`). Silent: captive `jobId`/`primaryJob`/`role`, enemy `role` and `overrides.*`,
+    `reward.materials[].id`, `grants.*`, `intelDepth` range, trap `concealment` as a string.
+    A typo'd `jobId` resolves through `getJob()` to `undefined` → **a unit with no job and no skills**,
+    the third instance of the class that bit twice in one day (**#216**: `run.flags`, `EQUIPMENT` ids).
+  - ⚠️ **Until it grows, the move trades a compiler for a validator weaker than the compiler.** That is
+    the honest reading, and the reason this is a gate rather than a follow-up.
+  - **Inversion to close regardless of the migration:** a bad `release.kind` is **fail-loud on editor
+    import but silent at JSON load**. The editor is stricter than the pipeline.
+- **SHIPPED IN THIS ENTRY — the validator's population now matches its claim.** `validateLevel` ran
+  **only** over `levels/*.json` (four files); the ~14 TS bodies were checked by `tsc` for shape and by
+  **nothing** for sense. A guard now sweeps **every** authored body in the repo (arc + harness + JSON),
+  enumerated structurally so a new body joins without a registry edit. This is what makes a body
+  **provably validator-clean before** conversion instead of at load time mid-migration.
+- **Decision — the order: one body end-to-end first.** `THIEVES_DEN` or `CUFFED_CELL` — both round-trip
+  exactly today and carry captives + gates + lockpick releases, so they exercise the interesting
+  machinery without the trap blocker. Land it with an equality guard against the TS const, kept until
+  the const is deleted.
+  - ⚠️ **The equality guard must NORMALIZE.** Run as the kickoff specifies it (strict deep-equality),
+    it reports **7 false failures** on healthy bodies, from two cosmetic shapes: an omitted `release`
+    becomes explicit `{ kind: "reach" }`, and `captives: []` becomes omitted. Canonicalize both (or
+    emit the canonical form and diff against *that*). **Specifying it without this is how a sound
+    conversion gets abandoned as "lossy" when it isn't.**
+- **Explicitly NOT decided here.** Arc promotion (**F1**/#210) · the finale's reference party · balance
+  tuning · in-UI kit authoring · whether the "Load into editor" button ships (**it is small, useful,
+  works on the 4 JSON levels today, and was never blocked on this principle**).
+- **Reuses:** **D116** (the authored-node injection seam — the JSON→core pipeline this rides, already
+  proven by The Rescue), **D98** (the `#editor` scene, `validateLevel`, the JSON level pipeline),
+  **D112/D113** (editor soft play + local persistence), **D114** (conventions — the registry/result
+  spellings the new validator checks must follow), **D97/D99** (the walkover guard corrected here),
+  **D52** (authored expeditions, captives, grants), **#216** (`run-flags.ts` / `playtest.ts` — the
+  living exemplars for refusing an unknown id at load). **Defers:** trap-params (its own editor
+  milestone); the 2 blocked bodies; editability generally. **Superseded by:** —

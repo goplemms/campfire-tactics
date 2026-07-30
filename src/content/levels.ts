@@ -36,6 +36,15 @@ function escorteeMatches(spec: UnitSpec, tag?: ObjectiveTag): boolean {
  * `moveRange`). Also flags an extraction whose escort tag matches **no** captive — a silently dead
  * win-path. Lives in shared `validateLevel` so it protects **every** level (hand- or editor-authored),
  * not just the finale — the general form of the two file-specific test pins it supersedes.
+ *
+ * ## Measure from the **placement** tile, never `spec.pos`
+ * A captive is staged at its {@link "../core".CaptivePlacement.pos} — `buildAuthoredCaptives` passes
+ * `pos: c.pos` into `createUnit`, so the spec's own `pos` is **ignored at staging** and is free to be
+ * a placeholder. Every `member()`-built spec in `hollow-mill.ts` is exactly that: `{ col: 0, row: 0 }`.
+ * Reading `spec.pos` here therefore measured a tile the prisoner never stands on — and since the
+ * finale's exit span contains `(0,0)`, it scored The Prison Assault's two cells (actually at col 8,
+ * eight tiles out) as a **0-tile walkover**. It never fired only because all four JSON levels happen
+ * to have been hand-written with `spec.pos` equal to the placement tile.
  */
 function extractionIssues(e: Partial<AuthoredEncounter>): string[] {
   const issues: string[] = [];
@@ -44,14 +53,19 @@ function extractionIssues(e: Partial<AuthoredEncounter>): string[] {
     if (o?.kind !== "extraction") continue;
     const span = Array.isArray(o.span) ? o.span : [];
     if (!span.length) continue;
-    const escortees = captives.map((c) => c?.spec).filter((s): s is UnitSpec => !!s && escorteeMatches(s, o.escort));
+    // Keep the placement beside the spec: the tag matches on the spec, the distance measures
+    // from the placement. Splitting them is what produced the false walkover above.
+    const escortees = captives.filter((c) => !!c?.spec && escorteeMatches(c.spec, o.escort));
     if (!escortees.length) {
       issues.push(`extraction objective "${o.id}" has no captive matching its escort tag — a dead win-path`);
       continue;
     }
-    for (const s of escortees) {
+    for (const c of escortees) {
+      const s: UnitSpec = c.spec;
       const move = s.moveRange ?? 0;
-      const nearest = Math.min(...span.map((t) => Math.abs(t.col - s.pos.col) + Math.abs(t.row - s.pos.row)));
+      const start = c.pos;
+      if (!start) continue; // a placement-less captive is a shape error; `stageEncounter` is the deep check
+      const nearest = Math.min(...span.map((t) => Math.abs(t.col - start.col) + Math.abs(t.row - start.row)));
       if (nearest <= move)
         issues.push(`escortee "${s.id}" starts ${nearest} tile(s) from the exit (≤ moveRange ${move}) — trivializes extraction (D97/D99 walkover)`);
     }

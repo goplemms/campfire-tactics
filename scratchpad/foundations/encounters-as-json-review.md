@@ -1,6 +1,10 @@
 # Review — "should every authored encounter be reproducible from JSON?"
 
-**Reviews:** `encounters-as-json-kickoff.md`. **Written** 2026-07-30. **Status:** discussion input, not a decision.
+**Reviews:** `encounters-as-json-kickoff.md`. **Written** 2026-07-30.
+**Status: SETTLED — see `## D122`.** Kept as the audit record behind that decision; the numbers and the
+method here are what it rests on. Two items shipped with D122: the `extractionIssues` fix (§ "The blocker")
+and the whole-repo validator sweep. The validator growth is briefed in
+`encounters-as-json-validator-brief.md`.
 Every claim below was produced by *running* code against the repo at `f361219`, not by reading it. The
 probe harnesses were temporary and have been deleted; the method is described so anyone can re-run it.
 

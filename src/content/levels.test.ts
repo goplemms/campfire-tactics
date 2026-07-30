@@ -18,7 +18,10 @@ import {
   planEnemyTurn,
   type Gate,
   type GridCoord,
+  type AuthoredEncounter,
 } from "../core";
+import * as HOLLOW_MILL_BODIES from "../core/hollow-mill";
+import { SCENARIOS } from "../core/scenarios";
 
 /**
  * The JSON level content pipeline (D98) — proves a `.json` in `content/levels/` is
@@ -150,13 +153,19 @@ describe("the JSON level content pipeline (D98)", () => {
 describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
   const CAPTIVE_STATS = { jobId: "soldier", primaryJob: "soldier", role: "prisoner", speed: 10, maxHp: 22, attack: 6, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 } as const;
   const EXIT = [{ col: 0, row: 0 }, { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 0, row: 5 }];
-  function rescueLevel(captiveCol: number, escortTag: { role?: string; id?: string } = { role: "prisoner" }): unknown {
+  /**
+   * `specCol` defaults to the placement column (the hand-written-JSON shape). Pass it explicitly to
+   * model a **`member()`-built spec**, whose `pos` is a `{ col: 0, row: 0 }` placeholder the staging
+   * seam ignores — the divergence that hid a real bug in this guard.
+   */
+  function rescueLevel(captiveCol: number, escortTag: { role?: string; id?: string } = { role: "prisoner" }, specCol = captiveCol): unknown {
     const pos = { col: captiveCol, row: 2 };
+    const specPos = { col: specCol, row: 2 };
     return {
       id: "walkover-probe", name: "Walkover Probe", cols: 10, rows: 6, blocked: [],
       playerSpawns: [{ col: 0, row: 1 }],
       enemies: [{ templateId: "bandit-thug", pos: { col: 5, row: 2 } }],
-      captives: [{ spec: { id: "cap", name: "Cap", side: "player", pos, ...CAPTIVE_STATS }, pos, release: { kind: "lockpick" } }],
+      captives: [{ spec: { id: "cap", name: "Cap", side: "player", pos: specPos, ...CAPTIVE_STATS }, pos, release: { kind: "lockpick" } }],
       objectives: [
         { id: "storm", kind: "eliminate-all", required: true, label: "clear" },
         { id: "extract", kind: "extraction", required: true, label: "escort", span: EXIT, escort: escortTag },
@@ -188,6 +197,69 @@ describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
   it("leaves the shipped finale levels clean (no false positives)", () => {
     expect(validateLevel(getLevel("the-rescue")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
     expect(validateLevel(getLevel("prison-break")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
+  });
+
+  /**
+   * The guard measures from the **placement** tile, never `spec.pos` — the spec's own `pos` is a
+   * placeholder that `buildAuthoredCaptives` discards. Both directions matter, and both were wrong
+   * before: a placeholder ON the exit span produced a false walkover (this is exactly The Prison
+   * Assault, whose `member()`-built cells default to `(0,0)` — the first tile of the finale's exit),
+   * and a placeholder far from the exit *masked* a real one.
+   */
+  describe("measures from the placement tile, not spec.pos (the member() placeholder)", () => {
+    it("does NOT flag a far-held captive whose spec.pos placeholder sits on the exit span", () => {
+      // Placement col 9 (a real 9-tile escort); spec.pos col 0 = on the span. The prisoner never
+      // stands on spec.pos, so this must stay clean.
+      expect(validateLevel(rescueLevel(9, { role: "prisoner" }, 0)).some((i) => /walkover/.test(i))).toBe(false);
+    });
+
+    it("DOES flag a captive placed on the exit whose spec.pos placeholder is far away", () => {
+      // The inverse, and the dangerous one: a genuine walkover (placement col 1 ≤ moveRange 4)
+      // that a spec.pos of col 9 previously hid.
+      expect(validateLevel(rescueLevel(1, { role: "prisoner" }, 9)).some((i) => /walkover/.test(i))).toBe(true);
+    });
+
+    it("reports the distance from the placement tile in the message", () => {
+      const issue = validateLevel(rescueLevel(3, { role: "prisoner" }, 9)).find((i) => /walkover/.test(i));
+      expect(issue).toMatch(/starts 3 tile\(s\) from the exit/);
+    });
+  });
+});
+
+/**
+ * **The content validator's real population** (the encounters-as-JSON audit, 2026-07-30).
+ *
+ * `validateLevel` runs fail-loud at load — but only over `levels/*.json`, which is *four* files. The
+ * ~14 TS-const bodies (the Hollow Mill arc + the `scenarios/` harness) are checked by `tsc` for shape
+ * and by **nothing at all** for sense: no walkover guard, no unknown-template check, no id-uniqueness.
+ *
+ * That gap is what let the walkover guard read `spec.pos` for a year without anyone noticing, and it
+ * is the gap a JSON migration closes. Running the validator across every authored body in the repo
+ * makes the guard's population match its claim ("protects **every** level") — and, concretely, means a
+ * body is proven validator-clean **before** anyone converts it, rather than discovering a false
+ * failure at load time mid-migration.
+ */
+describe("every authored body in the repo passes the content validator", () => {
+  /** Structural enumeration, so a newly-authored body joins this guard without a registry edit. */
+  const bodies: Array<[string, AuthoredEncounter]> = [
+    ...Object.entries(HOLLOW_MILL_BODIES)
+      .filter((entry): entry is [string, AuthoredEncounter] => {
+        const e = entry[1] as Partial<AuthoredEncounter>;
+        return !!e && typeof e === "object" && typeof e.cols === "number" && typeof e.rows === "number" && Array.isArray(e.enemies);
+      })
+      .map(([k, e]) => [`hollow-mill:${k}`, e] as [string, AuthoredEncounter]),
+    ...Object.values(SCENARIOS).map((s) => [`scenario:${s.id}`, s.encounter as AuthoredEncounter] as [string, AuthoredEncounter]),
+    ...listLevels().map((l) => [`json:${l.id}`, l] as [string, AuthoredEncounter]),
+  ];
+
+  it("enumerates the whole population (arc + harness + JSON), not just the JSON files", () => {
+    // Guards the enumeration itself: if this drops to ~4 the sweep below has gone vacuous.
+    expect(bodies.length).toBeGreaterThanOrEqual(18);
+    expect(bodies.filter(([k]) => k.startsWith("hollow-mill:")).length).toBeGreaterThanOrEqual(7);
+  });
+
+  it.each(bodies)("%s validates clean", (_label, enc) => {
+    expect(validateLevel(enc)).toEqual([]);
   });
 });
 

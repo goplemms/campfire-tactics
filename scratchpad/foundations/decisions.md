@@ -5531,13 +5531,62 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
     *relationally*** — if an objective binds to it, the existing "no captive matching its escort tag
     — a dead win-path" fires. Checking it against a registry would have been actively wrong.
   - **The one remaining gap, stated plainly: `overrides.standingOrder`.** A free-form string the AI
-    planner dispatches on (D81); a typo silently falls back to default behaviour. Closing it needs a
-    **standing-order registry in core** (a D114 `*Def` record, the `run-flags.ts` shape) — a core
-    change, not a content-validator one. **`TRAP_FIELD` carries `standingOrder: "hold-skittish"`**,
-    so it is worth doing before *that* body converts. It blocks nothing else.
+    planner dispatches on (D81); a typo silently falls back to default behaviour. **`TRAP_FIELD`
+    carries `standingOrder: "hold-skittish"`**, so it is worth doing before *that* body converts.
+    - ⚠️ **This entry originally said closing it "needs a standing-order registry in core." That was
+      WRONG** — `src/core/standing-orders.ts` has existed since PR #154. What was missing was only the
+      `run-flags.ts` half: an **enumerable, refusable** vocabulary. The real work was ~20 lines grown
+      in place, not a new module. **Closed 2026-07-31** (brief M6).
+    - **The trap in the obvious implementation, worth keeping on record.** Validating against
+      `Object.keys(STANDING_ORDERS)` — what this record implied — would have **rejected four shipped
+      specs**. `"defend"` is authored on `PIP_COOK`, `CAPTIVE_PRISONER`, `CELL_PRISONER_A`/`B` and
+      Mira, and is the D41 universal skill's id, but it is a reserved *player-side* auto-action with
+      no AI posture — and `standing-orders.ts`'s own doc comment says it "needs no record here",
+      which is true for the **planner** and false for the **vocabulary**. Modelled as a sibling
+      `PLAYER_AUTO_ORDERS` registry so the authoring vocabulary is the *union*. **The check was
+      widened; it was not softened.**
+    - **It also exposed a hole in M1.** `unitSpecIssues` was never run against an enemy placement's
+      `overrides`, so a typo'd `jobId`/`primaryJob`/`heldJobs` **on an override** was silent too —
+      the brief's headline class, leaking through the same field. Closed by the same wiring.
+    - **Runtime refusal in the AI planner was considered and rejected.** `repro.ts` restores party
+      units wholesale from arbitrary dumps, so a throwing `orderOf` turns an old dump into a boot
+      crash — worse than degraded behaviour, and dumps exist to debug runs that already went wrong.
+      `orderOf` is also on the hottest path (every enemy plan, replay step, undo restore). Same line
+      `run-flags.ts` draws with *"Deliberately NOT wired into staging"*: **refuse at the authoring
+      boundary, not in the engine.**
   - **Consequence: the conversions are unblocked.** M5 landed with M4 (trap numerics), so no brief
     milestone gates the last 2 bodies any more. Upper bounds on trap damage were deliberately
     omitted — an implausible number is a *balance* question, and this is a correctness gate.
+- **SHIPPED — conversion 1 of 6: `THIEVES_DEN` → `content/levels/thieves-den.json`** (2026-07-31).
+  The pilot D122 called for. The body was emitted **mechanically** from the const (never
+  hand-transcribed) and verified byte-identical; all three parts of the change landed together; the
+  const is replaced by `THIEVES_DEN_ID`, mirroring `RESCUE_FINALE_ID`, so the map node and the
+  content guards share one spelling instead of a bare literal in two layers.
+  - ⚠️ **The layering move cascades far wider than this record assumed.** "Core must not import
+    content" was written here as if one body's assertions move. In practice **six core test files
+    broke, five of them unflagged** — anything that *plays* the arc (`autoTraverse`, `samplePopulation`,
+    `analyzeExpedition`, `simulateRun`) or *reads* a body had to move to `src/content/`, and
+    `package.json`'s `sim`/`validate` paths moved with them. **Budget this per conversion; it is the
+    dominant cost, not the JSON.**
+  - **Two guards were restated, not weakened** — both now *migration-invariant*, so the remaining
+    conversions need no edit: the **C3 pacing guard** sums `reward.xp` through `resolveAuthored`
+    (home-agnostic, throws on a missing body rather than defaulting to 0), and the sweep's
+    **enumeration floor** — a per-home count that would legitimately fall on every conversion, where
+    "lower the number" is indistinguishable from "a body vanished" — now asserts every `authoredId`
+    the arc's map binds is present in the validated population, whichever home it lives in.
+  - **A silently-degraded pass, worth knowing about:** `arrivals.test.ts` showed only *one* red test
+    because `samplePopulation` swallows a crashing route into a non-survivor sample — the rest were
+    quietly measuring wipes. **If a file samples or analyses the arc anywhere, move the whole file,
+    not the red test.**
+  - **The reusable recipe** (10 ordered steps, including "baseline the sim *before* you start — you
+    cannot prove the digest is unchanged after the fact") is the pilot's primary deliverable and
+    governs conversions 2–6. **The expensive shared work is done once and is home-agnostic** — the
+    moved files, the pacing guard, the enumeration invariant and the `package.json` paths should
+    mostly not be touched again.
+  - **Verified independently, not merely reported:** sim digest byte-identical on every metric
+    (`completed 3 · lost 77 · median nights 6 · gold 215 · win 195 · wipe 77 · L4:9 L5:16 L6:55`,
+    authored arc complete at L10, traps staged 8 / sprung 5); `tsc` clean; **1538** tests with no
+    drop in count; `test:e2e:level` now boots `#level=thieves-den` in a real browser.
 - **Explicitly NOT decided here.** Arc promotion (**F1**/#210) · the finale's reference party · balance
   tuning · in-UI kit authoring · whether the "Load into editor" button ships (**it is small, useful,
   works on the 4 JSON levels today, and was never blocked on this principle**).

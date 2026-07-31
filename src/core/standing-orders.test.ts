@@ -3,7 +3,16 @@ import { createUnit, isActive, type Side, type Unit } from "./units";
 import { TileGrid } from "./grid";
 import { Battle, replay } from "./turn";
 import { planEnemyTurn, edgeDistance, threatenedTiles } from "./ai";
-import { STANDING_ORDERS, orderOf } from "./standing-orders";
+import {
+  STANDING_ORDERS,
+  PLAYER_AUTO_ORDERS,
+  orderOf,
+  getStandingOrder,
+  isKnownStandingOrder,
+  standingOrderIds,
+  registerStandingOrders,
+} from "./standing-orders";
+import { DEFEND } from "./jobs-data/support";
 
 function at(id: string, side: Side, col: number, row: number, over: Partial<Parameters<typeof createUnit>[0]> = {}): Unit {
   return createUnit({
@@ -25,6 +34,51 @@ describe("standing orders — the behavior registry (D81/D84)", () => {
     expect(orderOf(at("g", "enemy", 0, 0, { standingOrder: "hold" }))?.posture).toBe("hold");
     expect(orderOf(at("p", "player", 0, 0, { standingOrder: "defend" }))).toBeUndefined();
     expect(orderOf(at("u", "enemy", 0, 0))).toBeUndefined();
+  });
+});
+
+/**
+ * **The authorable vocabulary** (D122) — `standingOrder` is a bare `string` even in TypeScript,
+ * so a typo is caught by nothing: `orderOf` misses, the planner sees no posture, and the unit
+ * silently charges. These guards are what let `validateLevel` refuse one at the authoring
+ * boundary; the failing-input probes live in `content/levels.test.ts`.
+ */
+describe("the standing-order vocabulary — enumerable and refusable (D122)", () => {
+  it("covers BOTH namespaces: the AI postures and the reserved player-side defend", () => {
+    expect(standingOrderIds().sort()).toEqual(["charge", "defend", "flee", "hold", "hold-skittish", "hold-wary"]);
+    for (const id of standingOrderIds()) expect(isKnownStandingOrder(id)).toBe(true);
+  });
+
+  it("refuses a near-miss spelling of every shipped order (the silent-fallback class)", () => {
+    for (const typo of ["hold-skittsh", "hold_skittish", "Hold", "holdskittish", "flea", "defende", ""]) {
+      expect(isKnownStandingOrder(typo), `"${typo}" must not be a known order`).toBe(false);
+    }
+  });
+
+  it("the null prototype means an inherited key is a MISS, not a plausible-looking hit", () => {
+    // On a normal object literal `STANDING_ORDERS["toString"]` hands back Object.prototype's
+    // method *typed as a def*, so `"toString" in registry` would wave a nonexistent order
+    // through the validator. This is the exact trick `run-flags.ts` documents.
+    for (const inherited of ["toString", "constructor", "hasOwnProperty", "__proto__"]) {
+      expect(getStandingOrder(inherited)).toBeUndefined();
+      expect(isKnownStandingOrder(inherited)).toBe(false);
+    }
+    expect(Object.getPrototypeOf(STANDING_ORDERS)).toBeNull();
+    expect(Object.getPrototypeOf(PLAYER_AUTO_ORDERS)).toBeNull();
+  });
+
+  it("registerStandingOrders fails loud on a duplicate or empty id (D114)", () => {
+    expect(() => registerStandingOrders([{ id: "hold" }, { id: "hold" }], "T")).toThrow(/duplicate id "hold"/);
+    expect(() => registerStandingOrders([{ id: "" }], "T")).toThrow(/empty id/);
+  });
+
+  it("the reserved `defend` id is the D41 universal brace, pinned against its SkillDef", () => {
+    // `run-flags.ts`'s move: keep the literal (importing the SkillDef into every order lookup
+    // would drag `jobs-data` along), pin it in the test so the two cannot drift.
+    expect(PLAYER_AUTO_ORDERS[DEFEND.id]).toBeDefined();
+    // It is deliberately NOT an AI posture — `orderOf` must keep reading undefined for it, or a
+    // player unit would start planning enemy turns.
+    expect(getStandingOrder(DEFEND.id)).toBeUndefined();
   });
 });
 

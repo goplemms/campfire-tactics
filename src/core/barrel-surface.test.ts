@@ -195,6 +195,17 @@
  *     sim digest unchanged (731).
  *     **Expect one such −BODY/+BODY_ID pair per remaining conversion** (`E1_SKIRMISH`,
  *     `PRISON_WAGON`, `CUFFED_CELL`, then `TRAP_FIELD`, `OUTER_YARD`).
+ *
+ * Standing-order vocabulary delta (D122 — the last silent typo class in `validateLevel`):
+ *   - +5 — `standing-orders.ts` grows the `run-flags.ts` registry spelling so an authored
+ *     `standingOrder` can be **refused** instead of silently falling back to the charging
+ *     planner: `registerStandingOrders` (the null-prototype, fail-loud-on-duplicate builder
+ *     `STANDING_ORDERS` is now built through — same values, so `orderOf` is unchanged),
+ *     `getStandingOrder` (the D114 getter `orderOf` reads through), `PLAYER_AUTO_ORDERS` (the
+ *     reserved player-side `defend`, D41 — authored on five shipped specs, dispatched by
+ *     nothing), and the vocabulary queries `standingOrderIds` / `isKnownStandingOrder` that
+ *     `validateLevel` refuses against. `PlayerAutoOrderDef` is type-only. No planner change, no
+ *     new registration at import, no RNG → sim digest unchanged (→ 736).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -326,6 +337,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "PICK_THE_CELL_ENCOUNTER",
   "PILOT_POLICY",
   "PIP_COOK",
+  "PLAYER_AUTO_ORDERS",
   "PRESTIGE_OFFERS",
   "PRISON_ASSAULT",
   "PRISON_ASSAULT_SCENARIO",
@@ -634,6 +646,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "getRunFlag",
   "getScenario",
   "getSkill",
+  "getStandingOrder",
   "getStory",
   "getTag",
   "grantAbilityUseXp",
@@ -697,6 +710,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "isHealer",
   "isImmobilized",
   "isKnownRunFlag",
+  "isKnownStandingOrder",
   "isNodeVisible",
   "isOverworldActionEffect",
   "isPrimed",
@@ -826,6 +840,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "refreshMercPool",
   "registerExpedition",
   "registerRunFlags",
+  "registerStandingOrders",
   "remember",
   "removeFromRoster",
   "removeItem",
@@ -902,6 +917,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "spotWhileMoving",
   "stageEncounter",
   "stampPassives",
+  "standingOrderIds",
   "statusAmount",
   "statusVisual",
   "stealth",

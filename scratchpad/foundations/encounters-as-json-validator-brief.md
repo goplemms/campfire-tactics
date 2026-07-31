@@ -149,8 +149,9 @@ None. The brief is implementable as written; M2 is the recommended first slice.
 
 ## Results — the typo table, re-measured after M1–M5 (2026-07-30)
 
-The same 13 classes, re-run against the grown validator. **Before: 2 caught. After: 9 caught
-directly, 2 caught relationally, 1 genuine gap remaining.**
+The same 13 classes, re-run against the grown validator. **Before: 2 caught. After M1–M5: 9 caught
+directly, 2 caught relationally, 1 genuine gap remaining. After M6 (2026-07-31): 10 caught directly,
+2 relationally, 0 remaining.**
 
 | | Class | Status |
 |---|---|---|
@@ -160,20 +161,40 @@ directly, 2 caught relationally, 1 genuine gap remaining.**
 | ✅ | `reward.materials[].id`, `grants.item`, `grants.flag`, `grants.recruit`'s job | **now caught** (M3) |
 | ✅ | `intelDepth` range, `rumors` beyond depth, trap `damage`/`concealment` types, off-board tiles | **now caught** (M4/M5) |
 | 🔗 | captive `role`, enemy `role` | caught **relationally** when an objective binds to it — correct by design, not a gap |
-| ⚠️ | enemy `overrides.standingOrder` | **still silent — the one real remaining gap** |
+| ✅ | enemy `overrides.standingOrder`, captive/recruit `standingOrder` | **now caught** (M6, 2026-07-31) — see below |
 
-**The remaining gap, stated honestly.** `standingOrder` is a free-form `string` the AI planner
-dispatches on (D81: `"hold"`, `"hold-skittish"`, `"defend"`). A typo silently falls back to default
-behaviour — a real silent-failure class. Closing it needs a **standing-order registry in core**
-(a D114 `*Def` record, like `run-flags.ts`), which is a core change rather than a content-validator
-one. `TRAP_FIELD` carries `standingOrder: "hold-skittish"`, so this is worth doing before that body
-converts — but it is **separate work**, not part of this brief.
+**The last gap, and how it closed (M6 — 2026-07-31).** `standingOrder` is a free-form `string` the
+AI planner dispatches on. A typo silently falls back to the charging default — a real
+silent-failure class, and the only one `tsc` never covered *even while the body is TypeScript*.
+
+- **The registry already existed**: `src/core/standing-orders.ts` `STANDING_ORDERS` is a D114 `*Def`
+  registry (`hold`, `hold-skittish`, `hold-wary`, `flee`, `charge`) and `ai.ts`/`turn.ts` dispatch
+  through `orderOf()`. What was missing was not a registry but a **vocabulary that content can be
+  refused against** — the `run-flags.ts` half of the shape.
+- **The authorable vocabulary is a UNION of two namespaces.** `defend` (D41) is authored on five
+  shipped player specs (Pip, the Bound/Gaunt/Shackled Prisoners, Mira) and is deliberately *not* an
+  AI posture — `orderOf` returns `undefined` for it. So it lives in a sibling registry,
+  `PLAYER_AUTO_ORDERS`, and `standingOrderIds()` is the union. Validating against
+  `Object.keys(STANDING_ORDERS)` alone would have failed **three shipped bodies**.
+- `STANDING_ORDERS` is now built through `registerStandingOrders` — same records, but a
+  **null-prototype** map, so `"toString"` is a miss rather than a plausible-looking hit.
+- `validateLevel` checks it on `enemies[].overrides` (via `unitSpecIssues`, which now takes a
+  `Partial<UnitSpec>` — so an override's `jobId` is covered too) and on every authored `UnitSpec`
+  (captives, `grants.recruit`). Failing-input probes are in the `typo surface` block; a
+  specificity guard corrupts the field on the **real** bodies that carry one.
+- **Runtime refusal in the planner was considered and rejected** — `orderOf` runs inside every
+  plan/replay/undo, and `repro.ts` restores `party: Unit[]` from an arbitrary JSON dump, so
+  throwing would turn an old dump into a boot crash. Same line `run-flags.ts` draws at
+  `stageEncounter`. Refuse at the authoring boundary only.
+
+**`TRAP_FIELD` is therefore unblocked** — its `overrides: { standingOrder: "hold-skittish" }` is now
+a validated field.
 
 **M5 landed with M4** — trap `damage`/`concealment` are now checked for presence and type
 (`concealment: "4"` is refused). Upper bounds were deliberately not added: an implausibly large
 damage value is a *balance* question, not a typo class, and `validateLevel` is a correctness gate.
-**So the last 2 bodies are no longer blocked by this brief** — only by the `standingOrder` registry
-above, and only `TRAP_FIELD` at that.
+**So the last 2 bodies are no longer blocked by this brief** — and since M6 landed (above), not by
+the `standingOrder` vocabulary either. Nothing in the validator blocks any remaining conversion.
 
 ## What the challenge pass changed (2026-07-30)
 

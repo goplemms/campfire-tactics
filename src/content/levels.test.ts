@@ -16,6 +16,7 @@ import {
   NON_COMBATANT,
   inRegion,
   planEnemyTurn,
+  standingOrderIds,
   type Gate,
   type GridCoord,
   type AuthoredEncounter,
@@ -280,6 +281,51 @@ describe("the typo surface — every field that loses tsc when it becomes JSON",
   it("catches a non-numeric reward.gold", () => {
     expect(probe((e) => { (at(e).reward as Record<string, unknown>).gold = "50"; })).toContain("reward.gold must be a number");
   });
+
+  // --- M6: the standingOrder vocabulary --------------------------------------------------
+  /**
+   * The class the M1–M5 audit left open. Unlike every other field here, `standingOrder` is a bare
+   * `string` **even in TypeScript** — `tsc` never covered it — so the typo is silent in both
+   * formats: `orderOf` misses the registry, `planEnemyTurn` sees no posture, and the unit falls
+   * back to the charging default. A `hold-skittish` straggler that never bolts erases the
+   * win-without-the-kill his whole encounter is built around, and nothing errors.
+   */
+  const enemy = (e: Record<string, never>): Record<string, unknown> => (at(e).enemies as Array<Record<string, unknown>>)[0];
+
+  it("catches a typo'd standingOrder on an enemy override — TRAP_FIELD's field, the JSON-conversion blocker", () => {
+    expect(probe((e) => { enemy(e).overrides = { standingOrder: "hold-skittsh" }; })
+      .some((i) => /unknown standingOrder "hold-skittsh"/.test(i))).toBe(true);
+    // Specific enough to name the offender, not just the class.
+    expect(probe((e) => { enemy(e).id = "lone-straggler"; enemy(e).overrides = { standingOrder: "hold-skittsh" }; })
+      .some((i) => /enemy\[0\] "lone-straggler" overrides has unknown standingOrder/.test(i))).toBe(true);
+  });
+
+  it("catches a typo'd standingOrder on an authored UnitSpec (a captive, and a grants.recruit)", () => {
+    expect(probe((e) => { captiveSpec(e).standingOrder = "defned"; })
+      .some((i) => /captive "probe-prisoner" has unknown standingOrder "defned"/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).grants = { recruit: { id: "pip", name: "Pip", side: "player", pos: { col: 0, row: 0 }, jobId: "cook", standingOrder: "defned", maxHp: 20, speed: 10, attack: 5, defense: 2, moveRange: 4, sightRadius: 5 } }; })
+      .some((i) => /grants.recruit "pip" has unknown standingOrder "defned"/.test(i))).toBe(true);
+  });
+
+  it("catches the OTHER fields an enemy override can typo, too (it is a whole Partial<UnitSpec>)", () => {
+    expect(probe((e) => { enemy(e).overrides = { jobId: "soldeir" }; })
+      .some((i) => /overrides has unknown jobId "soldeir"/.test(i))).toBe(true);
+  });
+
+  it("accepts every order the engine actually dispatches on, plus the reserved player-side one", () => {
+    // Read from core, never hand-copied — a new order joins the vocabulary without editing this
+    // test, and an order DELETED from core makes the loop shrink rather than silently pass.
+    expect(standingOrderIds()).toContain("hold-skittish");
+    expect(standingOrderIds()).toContain("defend");
+    for (const order of standingOrderIds()) {
+      expect(probe((e) => { enemy(e).overrides = { standingOrder: order }; }), `enemy override "${order}"`).toEqual([]);
+      expect(probe((e) => { captiveSpec(e).standingOrder = order; }), `captive "${order}"`).toEqual([]);
+    }
+  });
+
+  it("still accepts an ABSENT standingOrder (the default: manual control / the charging planner)", () => {
+    expect(probe((e) => { delete enemy(e).overrides; delete captiveSpec(e).standingOrder; })).toEqual([]);
+  });
 });
 
 describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
@@ -419,6 +465,31 @@ describe("every authored body in the repo passes the content validator", () => {
 
   it.each(bodies)("%s validates clean", (_label, enc) => {
     expect(validateLevel(enc)).toEqual([]);
+  });
+
+  /**
+   * **Specificity for the `standingOrder` check** (D122). The sweep passing proves nothing about a
+   * check that no shipped body exercises — the `audit:challenge` discipline applied to a content
+   * gate. `TRAP_FIELD`'s lone straggler carries `overrides.standingOrder: "hold-skittish"` and is
+   * one of the two bodies queued for JSON conversion, which is exactly where `tsc` stops covering
+   * the field. So corrupt that field (and every other body's) on a deep copy and prove the sweep
+   * would have caught it, rather than trusting the synthetic probe fixture alone.
+   */
+  it("would catch a typo'd standingOrder in the REAL bodies that carry one (not just the probe)", () => {
+    const carries = ([, e]: [string, AuthoredEncounter]): boolean =>
+      (e.enemies ?? []).some((en) => en.overrides?.standingOrder !== undefined) ||
+      (e.captives ?? []).some((c) => c.spec?.standingOrder !== undefined);
+    const carriers = bodies.filter(carries);
+    // The straggler is the motivating case; if he stops carrying an order, this guard has gone
+    // vacuous and should be re-pointed rather than deleted.
+    expect(carriers.map(([k]) => k)).toContain("hollow-mill:TRAP_FIELD");
+
+    for (const [label, enc] of carriers) {
+      const corrupt = JSON.parse(JSON.stringify(enc)) as AuthoredEncounter;
+      for (const en of corrupt.enemies ?? []) if (en.overrides?.standingOrder) en.overrides.standingOrder += "-typo";
+      for (const c of corrupt.captives ?? []) if (c.spec?.standingOrder) c.spec.standingOrder += "-typo";
+      expect(validateLevel(corrupt).some((i) => /unknown standingOrder/.test(i)), label).toBe(true);
+    }
   });
 
   /**

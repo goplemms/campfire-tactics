@@ -22,6 +22,8 @@ import {
   getMaterial,
   isKnownRunFlag,
   runFlagIds,
+  isKnownStandingOrder,
+  standingOrderIds,
   MAX_TIER,
   type AuthoredEncounter,
 } from "../core";
@@ -37,15 +39,29 @@ const KINDS: readonly string[] = OBJECTIVE_KINDS;
 const RELEASE_KINDS: readonly string[] = ["reach", "lockpick"];
 
 /**
- * **Unit identity** (validator M1) — the `jobId` class.
+ * **Unit identity** (validator M1) — the `jobId` class, plus the `standingOrder` vocabulary.
  *
  * `jobId` is `JobId = keyof typeof JOBS`, so in TypeScript a typo is a **build error**. As JSON it is
  * a bare string, and an unknown one resolves through `getJob()` to `undefined` — producing a unit
  * with **no job and therefore no skills**. It deploys, it fights badly, and nothing errors: the
  * silently-worthless failure that `run.flags` and `EQUIPMENT` ids both hit before being made
  * fail-loud (#216). Absent is legitimate (`jobId?`); *present and unknown* is the defect.
+ *
+ * **`standingOrder` is the same class, and worse — `tsc` never covered it at all.** The field is a
+ * bare `string` on `UnitSpec` even in TypeScript, and `orderOf` is a plain registry lookup: a typo
+ * misses, `planEnemyTurn` sees no posture, and the unit **silently falls back to the charging
+ * default**. A leashed guard abandons its post; a skittish guard never bolts, which erases the
+ * `hold-skittish` win-without-the-kill the L3 straggler is built around. Nothing errors and the
+ * encounter merely plays differently — the one class D122 left open after M1–M5.
+ *
+ * Checked against the **union** of both order namespaces ({@link "../core".standingOrderIds}): the
+ * AI postures *and* the reserved player-side `defend`, which shipped captives and recruits author
+ * and which no planner reads. Refusing `defend` here would flag five healthy specs.
+ *
+ * Takes a `Partial<UnitSpec>` so an enemy placement's `overrides` — the other authored home of
+ * these fields, and where `TRAP_FIELD` carries `hold-skittish` — runs the identical check.
  */
-function unitSpecIssues(spec: UnitSpec | undefined, where: string): string[] {
+function unitSpecIssues(spec: Partial<UnitSpec> | undefined, where: string): string[] {
   if (!spec) return [];
   const issues: string[] = [];
   for (const [field, id] of [
@@ -55,6 +71,12 @@ function unitSpecIssues(spec: UnitSpec | undefined, where: string): string[] {
     if (id !== undefined && !getJob(id)) issues.push(`${where} has unknown ${field} "${id}" — no such job (a unit with no job has no skills)`);
   }
   for (const id of spec.heldJobs ?? []) if (!getJob(id)) issues.push(`${where} holds unknown job "${id}"`);
+  const order = spec.standingOrder;
+  if (order !== undefined && !isKnownStandingOrder(order))
+    issues.push(
+      `${where} has unknown standingOrder "${order}" (known: ${standingOrderIds().join(", ")}) — ` +
+        `an unrecognized order silently falls back to the default charging planner`,
+    );
   return issues;
 }
 
@@ -328,7 +350,14 @@ export function validateLevel(raw: unknown): string[] {
   if (!Number.isInteger(e.rows) || (e.rows ?? 0) < 1) issues.push("rows must be a positive integer");
   if (!Array.isArray(e.playerSpawns) || e.playerSpawns.length === 0) issues.push("needs at least one playerSpawn");
   if (!Array.isArray(e.enemies)) issues.push("enemies must be an array");
-  else for (const en of e.enemies) if (!getEnemyTemplate(en?.templateId)) issues.push(`unknown enemy template "${en?.templateId}"`);
+  else
+    for (const [i, en] of e.enemies.entries()) {
+      if (!getEnemyTemplate(en?.templateId)) issues.push(`unknown enemy template "${en?.templateId}"`);
+      // `overrides` is a `Partial<UnitSpec>` spread over the template at staging (`authored.ts`),
+      // so every field `unitSpecIssues` guards on a captive is authorable here too — and this is
+      // the only place `standingOrder` appears in shipped enemy content (`TRAP_FIELD`'s straggler).
+      issues.push(...unitSpecIssues(en?.overrides, `enemy[${i}] "${en?.id ?? en?.templateId}" overrides`));
+    }
   if (e.objectives) for (const o of e.objectives) if (!KINDS.includes(o?.kind)) issues.push(`unknown objective kind "${o?.kind}"`);
   if (!e.reward) issues.push("missing reward");
   issues.push(...captiveIssues(e));

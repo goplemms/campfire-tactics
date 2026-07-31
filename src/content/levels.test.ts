@@ -414,7 +414,17 @@ describe("every authored body in the repo passes the content validator", () => {
   it("enumerates the whole population (arc + harness + JSON), not just the JSON files", () => {
     // Guards the enumeration itself: if this drops to ~4 the sweep below has gone vacuous.
     expect(bodies.length).toBeGreaterThanOrEqual(18);
-    expect(bodies.filter(([k]) => k.startsWith("hollow-mill:")).length).toBeGreaterThanOrEqual(7);
+    // **Migration-invariant, not a per-home count** (D122): each conversion moves one arc body
+    // from `hollow-mill:` to `json:`, so a floor on either bucket would fall as the migration
+    // runs — and "lower the number" is indistinguishable from "a body vanished". Pin the thing
+    // that must hold in every intermediate state instead: **every** encounter the Hollow Mill's
+    // map binds is somewhere in the swept population, whichever home it currently lives in.
+    const swept = new Set(bodies.map(([, e]) => e.id));
+    const arcIds = Object.values(THE_HOLLOW_MILL.map.nodes)
+      .map((n) => n.authoredId)
+      .filter((id): id is string => typeof id === "string");
+    expect(arcIds.length).toBeGreaterThanOrEqual(7);
+    for (const id of arcIds) expect(swept.has(id), `arc body "${id}" is not in the validated population`).toBe(true);
   });
 
   it.each(bodies)("%s validates clean", (_label, enc) => {

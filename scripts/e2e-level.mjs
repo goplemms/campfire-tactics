@@ -50,6 +50,27 @@ async function main() {
         check("it carries the two OR'd goals", pb.goals === "eliminate-all,extraction");
         await g.screenshot(path.join(OUT, "03-prison-break.png"));
 
+        // A **converted arc body** (D122): the Thieves' Den moved from a TS const in
+        // `core/hollow-mill.ts` to `content/levels/thieves-den.json`. It is now a content level
+        // like any other, so `#level=thieves-den` renders it — the freeze-catcher for the
+        // conversion itself (a body that loads and validates headlessly can still throw in the
+        // scene, and an uncaught scene exception reads as a freeze, not a stack trace).
+        await g.boot("#level=thieves-den");
+        await sleep(1300);
+        const den = await g.bsEval(`return {
+          phase: s.phase,
+          cols: s.grid.cols, rows: s.grid.rows,
+          enemies: s.battle.units.filter(u => u.side === "enemy").length,
+          thieves: s.battle.units.filter(u => u.side === "enemy" && u.thief).length,
+          blocked: [{c:3,r:0},{c:5,r:5},{c:6,r:2}].every(t => !s.grid.isWalkable({ col: t.c, row: t.r })),
+        };`);
+        console.log("• #level=thieves-den boots the arc body that became JSON (D122)");
+        check("thieves-den renders a deployment board", den.phase === "deployment");
+        check("it is the authored 9x6 board", den.cols === 9 && den.rows === 6);
+        check("its four bodies are staged, two of them thieves", den.enemies === 4 && den.thieves === 2);
+        check("the authored walls are stamped into the grid", den.blocked === true);
+        await g.screenshot(path.join(OUT, "06-thieves-den.png"));
+
         // The rescue finale — the v4 concentric prison (issue #204 B): a 20x20 board, a tagged
         // garrison, 3 named prisoners, six gates (two lever-toggled destructible seals) and four
         // levers, on the two OR'd goals. Every one of those is a *rendered* thing — gates, levers,

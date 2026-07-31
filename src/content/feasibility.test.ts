@@ -1,12 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { THE_HOLLOW_MILL } from "./hollow-mill";
-import { registerExpedition, type AuthoredExpedition } from "./expedition";
+import { THE_HOLLOW_MILL, registerExpedition, type AuthoredExpedition } from "../core";
+import { injectContentNodes } from "./authored-nodes";
 import {
   playToTerminal,
   analyzeExpedition,
   CORE_INVARIANTS,
-} from "./feasibility";
-import type { OverworldMap, MapNode } from "./overworld";
+} from "../core";
+import type { OverworldMap, MapNode } from "../core";
+
+/**
+ * **Lives in `content/` because it plays the real arc** (D122). The Hollow Mill's encounter
+ * bodies are migrating to `content/levels/*.json`, and a JSON body reaches core only through
+ * the injection seam (`injectContentNodes()` → the shared authored-node catalog). `core/` may
+ * never import `content/`, so a test that *plays or analyzes* the arc has to sit one layer up —
+ * the same split The Rescue has always used (`the-rescue-expedition.test.ts`). Nothing about
+ * the assertions changed in the move; only the imports and the injection call.
+ */
+injectContentNodes();
 
 /** A known full completion route through the Hollow Mill — the sustain arm to the finale. */
 const COMPLETION: string[] = [

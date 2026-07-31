@@ -185,6 +185,16 @@
  *     finale), and `SIDE_DOOR_ID` (`the-rescue.ts`, the provider node's authored body).
  *     `SpawnZone` / `SafeGround` / `AuthoredSpawnZone` are type-only. No new RNG label, no new
  *     registration, no routing/reward change → sim digest unchanged (→ 731).
+ *
+ * Encounters-as-JSON deltas (D122 — arc bodies migrate to `content/levels/*.json`):
+ *   - conversion 1 (`thieves-den`): net 0 — −`THIEVES_DEN` (the body const is deleted; the
+ *     encounter now lives at `content/levels/thieves-den.json` and reaches core through the
+ *     injected authored-node catalog), +`THIEVES_DEN_ID` (the `"thieves-den"` binding the map
+ *     node and the content-layer guards share, mirroring `RESCUE_FINALE_ID` / `SIDE_DOOR_ID`
+ *     on The Rescue). The body is byte-identical JSON, so routing and rewards are untouched →
+ *     sim digest unchanged (731).
+ *     **Expect one such −BODY/+BODY_ID pair per remaining conversion** (`E1_SKIRMISH`,
+ *     `PRISON_WAGON`, `CUFFED_CELL`, then `TRAP_FIELD`, `OUTER_YARD`).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -370,7 +380,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "THE_HOLLOW_MILL",
   "THE_RESCUE",
   "THIEF_JOB",
-  "THIEVES_DEN",
+  "THIEVES_DEN_ID",
   "THIEVES_GUILD_CONTACT",
   "THIEVES_GUILD_RITE",
   "TILE_HEIGHT",

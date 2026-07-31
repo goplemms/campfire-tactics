@@ -293,41 +293,25 @@ export const CUFFED_CELL: AuthoredEncounter = {
 };
 
 /**
- * Node 6 (offshoot) — Thieves' Den (the relic offshoot). Thief enemies skim the purse
- * and bolt for the edge (per theft.ts + ENEMY_TEMPLATES.thief) — kill them to drop the
- * gold; let them escape and it's gone. On the win, the **relic** drops (placeholder
- * unique; effect TBD). Stealth in play.
+ * Node 6 (offshoot) — Thieves' Den (the relic offshoot). **The body is JSON** (D122): it lives
+ * at `content/levels/thieves-den.json` and reaches core through the injected authored-node
+ * catalog ({@link "./authored-catalog".injectAuthoredNodes}, called by the content layer's
+ * `injectContentNodes()` at boot). This id is the binding — the topology stays curated in TS,
+ * the node *body* is data, exactly as The Rescue's finale does ({@link "./the-rescue".RESCUE_FINALE_ID}).
  *
- * **Shallow intel (D86): `intelDepth: 2`.** A hidden hideout resists a distant read —
- * you can learn *what* lurks and *how many*, but never *where* they'll spring from
- * (no tier-3 positions / starting vision). The first authored use of per-node depth:
- * you deploy into the den half-blind, sharpening the chase-the-thief tension.
+ * The design the body carries, recorded here because the map is where it is reasoned about:
+ * thief enemies skim the purse and bolt for the edge (per theft.ts + `ENEMY_TEMPLATES.thief`) —
+ * kill them to drop the gold; let them escape and it's gone. On the win the **relic** drops
+ * (`grants.item`, a placeholder unique; effect TBD). **Shallow intel (D86): `intelDepth: 2`** —
+ * a hidden hideout resists a distant read (what lurks and how many, never *where* they spring
+ * from), so you deploy half-blind. Its `reward.xp` (110) is part of the C3 pacing budget with
+ * the Outer Yard's — pinned by the pacing guard in `content/hollow-mill-expedition.test.ts`,
+ * which reads the resolved body rather than a const.
+ *
+ * ⚠️ Do **not** re-add an inline `encounters` entry for this id: `resolveAuthored` prefers the
+ * inline map, so a stale const would silently shadow the JSON (guarded in `content/levels.test.ts`).
  */
-export const THIEVES_DEN: AuthoredEncounter = {
-  id: "thieves-den",
-  name: "The Thieves' Den",
-  intelDepth: 2,
-  cols: 9,
-  rows: 6,
-  blocked: [{ col: 3, row: 0 }, { col: 5, row: 5 }, { col: 6, row: 2 }],
-  playerSpawns: [
-    { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 1, row: 2 },
-  ],
-  enemies: [
-    // Thieves skim the purse and bolt — the chase-the-thief tension (theft.ts).
-    { templateId: "thief", pos: { col: 7, row: 1 } },
-    { templateId: "thief", pos: { col: 7, row: 4 } },
-    { templateId: "bandit-cutthroat", pos: { col: 8, row: 2 } },
-    { templateId: "bandit-thug", pos: { col: 8, row: 3 } },
-  ],
-  // reward.xp bumped (70→110) for the C3 pacing budget: Den + Outer Yard's guaranteed
-  // objective-XP must clear a fielded Scout to the prestige floor (L5) by the Guild's Rite
-  // (see the pacing-guard in hollow-mill.test.ts). The uncontested objXp does the work; the
-  // combat kill/hit tally is only margin.
-  reward: { gold: 90, materials: [{ id: "valuables", count: 1 }], xp: 110 },
-  // The build-defining relic (placeholder unique — effect TBD with the user).
-  grants: { item: "relic-hollow-blade" },
-};
+export const THIEVES_DEN_ID = "thieves-den";
 
 /**
  * The finale's **cell prisoners** (D97) — the liberation objective's escortees. Each is a
@@ -448,7 +432,7 @@ function hollowMillMap(): OverworldMap {
     restCamp: node("restCamp", 6, "rest", ["finale"]), // a breather before the finale
     // --- Infiltration arm (Thief) — the C7 mentor two-beat, the C3 fights, and the D90 cell ---
     guildContact: node("guildContact", 5, "event", ["den"], { eventId: "guild-contact" }), // C7 beat-1 (arm early)
-    den: node("den", 6, "combat", ["outerYard"], { authoredId: THIEVES_DEN.id }), // C3 fight #1 (relic)
+    den: node("den", 6, "combat", ["outerYard"], { authoredId: THIEVES_DEN_ID }), // C3 fight #1 (relic) — body in content JSON
     outerYard: node("outerYard", 7, "combat", ["guildRite"], { authoredId: OUTER_YARD.id }), // C3 fight #2
     guildRite: node("guildRite", 8, "event", ["cuffedCell"], { eventId: "guild-rite" }), // C7 beat-2 (fire → Thief)
     cuffedCell: node("cuffedCell", 9, "combat", ["finale"], { authoredId: CUFFED_CELL.id }), // D90 taste's live home
@@ -472,11 +456,13 @@ export const THE_HOLLOW_MILL: AuthoredExpedition = registerExpedition({
   name: "The Hollow Mill",
   seed: "hollow-mill",
   map: hollowMillMap(),
+  // Inline bodies only for the encounters still authored as TS consts. A converted body
+  // (D122) is served from the **injected catalog** instead and MUST NOT appear here —
+  // `resolveAuthored` prefers this map, so a leftover entry silently shadows the JSON.
   encounters: {
     [E1_SKIRMISH.id]: E1_SKIRMISH,
     [TRAP_FIELD.id]: TRAP_FIELD,
     [PRISON_WAGON.id]: PRISON_WAGON,
-    [THIEVES_DEN.id]: THIEVES_DEN,
     [OUTER_YARD.id]: OUTER_YARD,
     [CUFFED_CELL.id]: CUFFED_CELL,
     [PRISON_ASSAULT.id]: PRISON_ASSAULT,

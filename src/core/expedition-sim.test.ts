@@ -26,7 +26,11 @@ function assertValidWalk(route: string[], target: string): void {
 describe("enumeratePaths (Phase 1)", () => {
   it("is the right fixture (the topology these expectations derive from)", () => {
     // Sanity: the route sets below are derived from this exact (Wave-0) topology.
-    expect(validateExpedition(THE_HOLLOW_MILL)).toEqual([]);
+    // D122: bodies converted to `content/levels/*.json` can't resolve from `core/` (which may
+    // not import content), so the only problems visible here are those un-injected ids — every
+    // topological check (edges, reachability, cycles, prerequisites) still runs. The `[]` form
+    // lives in `content/hollow-mill-expedition.test.ts`, with the catalog injected.
+    for (const p of validateExpedition(THE_HOLLOW_MILL)) expect(p).toMatch(/binds authoredId ".*" with no encounter/);
     expect(MAP.nodes.snares.edges).toEqual(["market"]);
     expect(MAP.nodes.market.edges).toEqual(["guildContact", "wagon"]); // the exclusive fork
   });

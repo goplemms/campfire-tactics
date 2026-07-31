@@ -4,7 +4,7 @@ import {
   E1_SKIRMISH,
   TRAP_FIELD,
   PRISON_WAGON,
-  THIEVES_DEN,
+  THIEVES_DEN_ID,
   OUTER_YARD,
   CUFFED_CELL,
   PRISON_ASSAULT,
@@ -14,9 +14,9 @@ import { isConcealedTrap } from "./entities";
 import { validateExpedition } from "./expedition";
 import { createRunFromExpedition } from "./run";
 import { RunLoop } from "./runloop";
-import { jobLevelOf, LEVELING } from "./leveling";
-import { THIEVES_GUILD_CONTACT } from "./stories";
-import { SCOUT_PRESTIGE_FLOOR } from "./jobs-data/scout-line";
+import { jobLevelOf } from "./leveling";
+// `LEVELING` / `THIEVES_GUILD_CONTACT` / `SCOUT_PRESTIGE_FLOOR` left with the C3 pacing guard
+// when it moved to `content/hollow-mill-expedition.test.ts` (D122).
 import { intelFloor } from "./intel";
 import { createUnit } from "./units";
 import { freeCaptive, canRelease } from "./deployment";
@@ -57,8 +57,19 @@ function drive(loop: RunLoop, onCombat: (loop: RunLoop) => void, pick: (ids: str
 }
 
 describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
-  it("is a valid hand-built expedition (connectivity + authored bindings)", () => {
-    expect(validateExpedition(THE_HOLLOW_MILL)).toEqual([]);
+  /**
+   * **The arc is only fully valid one layer up** (D122). Bodies converted to
+   * `content/levels/*.json` resolve through the injected catalog, and `core/` may never import
+   * `content/` — so from here the *only* thing `validateExpedition` can report is those
+   * un-injected ids. Asserting that shape (rather than `[]`) keeps the core-side claim real:
+   * edges, reachability, cycles and prerequisites are all still proven clean here, and the
+   * `[]` assertion lives in `content/hollow-mill-expedition.test.ts` **with injection live**.
+   * Stated as a shape, not a list, so the next conversion doesn't have to touch it.
+   */
+  it("is a valid hand-built expedition — every problem is a body that lives in content JSON", () => {
+    const problems = validateExpedition(THE_HOLLOW_MILL);
+    for (const p of problems) expect(p).toMatch(/binds authoredId ".*" with no encounter/);
+    expect(problems.some((p) => p.includes(THIEVES_DEN_ID))).toBe(true);
   });
 
   it("authors the Wave-0 topology (spine → pre-fork Market → two exclusive arms → finale)", () => {
@@ -81,7 +92,7 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(m.nodes.e1.authoredId).toBe(E1_SKIRMISH.id);
     expect(m.nodes.snares.authoredId).toBe(TRAP_FIELD.id);
     expect(m.nodes.wagon.authoredId).toBe(PRISON_WAGON.id);
-    expect(m.nodes.den.authoredId).toBe(THIEVES_DEN.id);
+    expect(m.nodes.den.authoredId).toBe(THIEVES_DEN_ID); // body in content JSON (D122)
     expect(m.nodes.outerYard.authoredId).toBe(OUTER_YARD.id);
     expect(m.nodes.cuffedCell.authoredId).toBe(CUFFED_CELL.id);
     expect(m.nodes.finale.authoredId).toBe(PRISON_ASSAULT.id);
@@ -117,18 +128,10 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(m.nodes.finale.edges).toEqual([]);
   });
 
-  it("C3 pacing: guaranteed objective-XP clears a fielded Scout to the prestige floor by the Guild's Rite", () => {
-    // The infiltration arm's pre-rite combats award reward.xp uncontested to every survivor's
-    // primary job (routeCombatXp); the guild-contact grant tops it up. With ZERO combat kill/hit
-    // tally (the worst case), this floor alone must reach L5 — else the rite silently omits the
-    // prestige and the Thief route evaporates (the red-team's silent-dead-end). Vale starts L1.
-    const den = THE_HOLLOW_MILL.encounters!["thieves-den"];
-    const guaranteedObjXp =
-      (E1_SKIRMISH.reward.xp ?? 0) + (TRAP_FIELD.reward.xp ?? 0) + (den.reward.xp ?? 0) + (OUTER_YARD.reward.xp ?? 0);
-    const contactGrant = THIEVES_GUILD_CONTACT.choices.find((c) => c.outcome.jobXp)!.outcome.jobXp!.amount;
-    const floorXp = (SCOUT_PRESTIGE_FLOOR - 1) * LEVELING.xpPerJobLevel; // L1 → L5
-    expect(guaranteedObjXp + contactGrant).toBeGreaterThanOrEqual(floorXp);
-  });
+  // The **C3 pacing guard** moved to `content/hollow-mill-expedition.test.ts` (D122): it sums
+  // `reward.xp` across the infiltration arm, and the Den's body is now content JSON — a sum a
+  // core test cannot read without importing content. It reads the *resolved* body there, so it
+  // keeps working whichever home each remaining body lives in.
 
   it("boots with the starting trio (recruits join via their nodes, not the bundle)", () => {
     const run = createRunFromExpedition(THE_HOLLOW_MILL);
@@ -236,17 +239,8 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(loop.isComplete()).toBe(true);
   });
 
-  it("CLEAR via the infiltration arm: relic at the Den + the cell prisoner joins, and NO Medic (C8)", () => {
-    const loop = freshLoop();
-    // Route: e1 → camp2 → snares → market → guildContact → den → outerYard → guildRite → cuffedCell → finale.
-    const route = ["e1", "camp2", "snares", "market", "guildContact", "den", "outerYard", "guildRite", "cuffedCell", "finale"];
-    const visited = drive(loop, forceWin, (ids) => ids.find((id) => route.includes(id)) ?? ids[0]);
-    expect(visited).toContain("cuffedCell");
-    expect(loop.run.inventory.counts["relic-hollow-blade"] ?? 0).toBeGreaterThan(0); // relic from the Den
-    expect(loop.run.party.some((u) => u.id === "cell-prisoner")).toBe(true); // recruit-on-win (D52), even frontally
-    expect(loop.run.party.some((u) => u.id === "sela")).toBe(false); // no Medic catch-up on this arm (C8)
-    expect(loop.isComplete()).toBe(true);
-  });
+  // "CLEAR via the infiltration arm" moved to `content/hollow-mill-expedition.test.ts` — the
+  // arm runs through the Den, whose body is content JSON (D122), so the walk needs injection.
 
   it("the iron-weapons pick grants party-gear that confers a blanket +attack edge (D78)", () => {
     const run = createRunFromExpedition(THE_HOLLOW_MILL);
@@ -260,16 +254,9 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(gearDelta(run).defensePenalty).toBeGreaterThan(0);
   });
 
-  it("a pure AI auto-traverse reaches a terminal deterministically (replayable)", () => {
-    const a = freshLoop();
-    const b = freshLoop();
-    a.autoTraverse();
-    b.autoTraverse();
-    expect(a.isTerminal()).toBe(true);
-    expect(b.isTerminal()).toBe(true);
-    expect(a.run.path).toEqual(b.run.path);
-    expect(a.run.complete).toBe(b.run.complete);
-  });
+  // "a pure AI auto-traverse reaches a terminal deterministically" moved to
+  // `content/hollow-mill-expedition.test.ts` — `autoTraverse` walks the infiltration arm
+  // (first-reachable), so it plays the Den's content-JSON body (D122).
 
   it("WIPE: losing node 1 ends the run", () => {
     const loop = freshLoop();
@@ -287,12 +274,8 @@ describe("The Hollow Mill — the redesigned vertical slice (D52)", () => {
     expect(intelFloor(party)).toBeGreaterThanOrEqual(2);
   });
 
-  it("the Den fields thief enemies (the chase-the-thief tension)", () => {
-    expect(THIEVES_DEN.enemies.some((e) => e.templateId === "thief")).toBe(true);
-    const run = createRunFromExpedition(THE_HOLLOW_MILL);
-    const staged = stageEncounter(THIEVES_DEN, run.party);
-    expect(staged.battle.units.some((u) => u.side === "enemy" && u.thief)).toBe(true);
-  });
+  // "the Den fields thief enemies" moved to `content/hollow-mill-expedition.test.ts` — it is a
+  // *body* assertion, and the Den's body is content JSON (D122); core must not import content.
 });
 
 describe("The Prison Assault finale (D97) — the dual-OR win", () => {

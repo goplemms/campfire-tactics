@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { THE_HOLLOW_MILL } from "./hollow-mill";
-import { analyzeExpedition, type FeasibilityReport } from "./feasibility";
+import { THE_HOLLOW_MILL, analyzeExpedition, type FeasibilityReport } from "../core";
+import { injectContentNodes } from "./authored-nodes";
+
+/**
+ * **Lives in `content/` because it plays the real arc** (D122). The Hollow Mill's encounter
+ * bodies are migrating to `content/levels/*.json`, and a JSON body reaches core only through
+ * the injection seam (`injectContentNodes()` → the shared authored-node catalog). `core/` may
+ * never import `content/`, so a test that *plays or analyzes* the arc has to sit one layer up —
+ * the same split The Rescue has always used (`the-rescue-expedition.test.ts`). Nothing about
+ * the assertions changed in the move; only the imports and the injection call.
+ */
+injectContentNodes();
 
 // The report writes straight to stdout (vitest leaves this uncaptured), mirroring
 // `sim.test.ts`'s digest convention — so `npm run validate` always surfaces the

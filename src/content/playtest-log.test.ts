@@ -7,7 +7,18 @@ import {
   summarizePlaytest,
   type PlaytestLog,
   type LeverSnapshot,
-} from "./index";
+} from "../core";
+import { injectContentNodes } from "./authored-nodes";
+
+/**
+ * **Lives in `content/` because it plays the real arc** (D122). The Hollow Mill's encounter
+ * bodies are migrating to `content/levels/*.json`, and a JSON body reaches core only through
+ * the injection seam (`injectContentNodes()` → the shared authored-node catalog). `core/` may
+ * never import `content/`, so a test that *plays or analyzes* the arc has to sit one layer up —
+ * the same split The Rescue has always used (`the-rescue-expedition.test.ts`). Nothing about
+ * the assertions changed in the move; only the imports and the injection call.
+ */
+injectContentNodes();
 
 describe("playtest-log — the logistics-integrity instrument", () => {
   it("captures nothing when no log is attached (zero behaviour change)", () => {

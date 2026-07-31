@@ -303,14 +303,8 @@ describe("intel — per-node depth caps the read (D86)", () => {
     expect(full.grantsVision).toBe(true);
   });
 
-  it("the Thieves' Den is authored shallow (depth 2) — fully known to a smart party, no positions", () => {
-    const run = createRunFromExpedition(THE_HOLLOW_MILL); // Vale int 7 → tier-2 floor
-    const den = previewNode(run, "den");
-    expect(den.intelDepth).toBe(2);
-    // At the tier-2 floor the den is already read to its depth — nothing to scout.
-    expect(den.intelComplete).toBe(true);
-    expect(den.intel?.positions).toBeUndefined(); // never learns where the thieves lurk
-    // A Survey bump can't push past the cap.
-    expect(previewNode(run, "den", 1).intel?.tier).toBe(2);
-  });
+  // "the Thieves' Den is authored shallow (depth 2)" reads the Den's *body*, which is now
+  // `content/levels/thieves-den.json` (D122) — it moved verbatim to
+  // `content/hollow-mill-expedition.test.ts`, where the catalog can be injected. The mechanic
+  // itself (`intelDepthOf` / `effectiveIntelTier` capping) stays pinned above on a local fixture.
 });

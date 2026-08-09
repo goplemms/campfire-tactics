@@ -1,9 +1,31 @@
-import { describe, it, expect } from "vitest";
-import { createRunFromExpedition } from "./run";
-import { RunLoop } from "./runloop";
-import { THE_HOLLOW_MILL } from "./hollow-mill";
-import { dumpRun, restoreRun, serializeDump, parseDump, REPRO_DUMP_VERSION } from "./repro";
-import type { StatusInstance } from "./status";
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  createRunFromExpedition,
+  RunLoop,
+  THE_HOLLOW_MILL,
+  dumpRun,
+  restoreRun,
+  serializeDump,
+  parseDump,
+  REPRO_DUMP_VERSION,
+  clearInjectedNodes,
+  type StatusInstance,
+} from "../core";
+import { injectContentNodes } from "./authored-nodes";
+
+/**
+ * **Moved from `core/` by the encounters-as-JSON migration (D122).** Every case here walks the
+ * Hollow Mill to `snares`, and that walk now crosses `e1`, whose body lives in
+ * `content/levels/e1-skirmish.json`. `runEncounter` throws on an `authoredId` it cannot resolve
+ * rather than fabricating a fight, so the fixture only exists once the content catalog is
+ * injected — and `core/` may never import `content/`. The file moved **wholesale** (D122's
+ * "move the file, not the red test"): its two non-walking cases share the same arc fixture.
+ * No assertion changed in the move.
+ */
+beforeEach(() => {
+  clearInjectedNodes();
+  injectContentNodes();
+});
 
 /** Walk (playing rests/events) to a chosen-but-unplayed `snares` — a combat prep state. */
 function loopAtSnares(): RunLoop {

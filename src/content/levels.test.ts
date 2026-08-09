@@ -491,8 +491,10 @@ describe("every authored body in the repo passes the content validator", () => {
       (e.captives ?? []).some((c) => c.spec?.standingOrder !== undefined);
     const carriers = bodies.filter(carries);
     // The straggler is the motivating case; if he stops carrying an order, this guard has gone
-    // vacuous and should be re-pointed rather than deleted.
-    expect(carriers.map(([k]) => k)).toContain("hollow-mill:TRAP_FIELD");
+    // vacuous and should be re-pointed rather than deleted. Matched on the **encounter id**, not
+    // the label, so it is migration-invariant (D122): the Snares' body moved from
+    // `hollow-mill:TRAP_FIELD` to `json:snares-trapfield` and the claim is unchanged.
+    expect(carriers.map(([, e]) => e.id)).toContain("snares-trapfield");
 
     for (const [label, enc] of carriers) {
       const corrupt = JSON.parse(JSON.stringify(enc)) as AuthoredEncounter;

@@ -1,0 +1,108 @@
+{
+  "id": "snares-trapfield",
+  "name": "The Sapper's Snares",
+  "cols": 9,
+  "rows": 6,
+  "blocked": [
+    {
+      "col": 4,
+      "row": 0
+    },
+    {
+      "col": 4,
+      "row": 5
+    }
+  ],
+  "playerSpawns": [
+    {
+      "col": 0,
+      "row": 1
+    },
+    {
+      "col": 0,
+      "row": 2
+    },
+    {
+      "col": 0,
+      "row": 3
+    },
+    {
+      "col": 0,
+      "row": 4
+    },
+    {
+      "col": 1,
+      "row": 2
+    }
+  ],
+  "enemies": [
+    {
+      "templateId": "bandit-thug",
+      "pos": {
+        "col": 8,
+        "row": 2
+      },
+      "id": "lone-straggler",
+      "overrides": {
+        "standingOrder": "hold-skittish"
+      }
+    }
+  ],
+  "rumors": [
+    "Folk around here say a deserter from the mill garrison has gone to ground past the cut — and that carts stopped coming back.",
+    "A carter swears he watched the sapper dig along the narrows five separate times before slipping away.",
+    "He worked hurriedly near the old wagon rut — a careful survey should spot the sloppiest of it."
+  ],
+  "traps": [
+    {
+      "pos": {
+        "col": 3,
+        "row": 1
+      },
+      "concealment": 4,
+      "damage": 22
+    },
+    {
+      "pos": {
+        "col": 4,
+        "row": 2
+      },
+      "concealment": 5,
+      "damage": 24
+    },
+    {
+      "pos": {
+        "col": 4,
+        "row": 3
+      },
+      "concealment": 5,
+      "damage": 24
+    },
+    {
+      "pos": {
+        "col": 5,
+        "row": 1
+      },
+      "concealment": 5,
+      "damage": 22
+    },
+    {
+      "pos": {
+        "col": 5,
+        "row": 4
+      },
+      "concealment": 6,
+      "damage": 26
+    }
+  ],
+  "reward": {
+    "gold": 70,
+    "materials": [
+      {
+        "id": "trap-kit",
+        "count": 1
+      }
+    ],
+    "xp": 70
+  }
+}

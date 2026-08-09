@@ -85,14 +85,63 @@ describe("editor draft → encounter (D98 M2)", () => {
 });
 
 describe("editor import round-trip (D98 editor M-A — lossless import)", () => {
+  /**
+   * Canonicalize the one **cosmetic** shape the round-trip cannot preserve (recorded in D122): an
+   * **omitted** `release` comes back as an explicit `{ kind: "reach" }`, because the draft models
+   * release as a required `"reach" | "lockpick"` string. The two are the *same captive* by the
+   * loader's own rule — `canRelease` reads `captive.release ?? { kind: "reach" }` — so applying that
+   * exact default to both sides keeps the comparison total rather than softening it: every other
+   * field still has to match exactly, and a `reach → lockpick` slip still fails.
+   */
+  const canonical = (enc: AuthoredEncounter): AuthoredEncounter => ({
+    ...enc,
+    ...(enc.captives ? { captives: enc.captives.map((c) => ({ ...c, release: c.release ?? { kind: "reach" as const } })) } : {}),
+  });
+
+  /**
+   * The shapes M-A **declines to model** — traps carrying `id`/`damage`/`concealment`, which stay
+   * positions-only until the trap-params editor milestone. D122 is explicit that its promise is
+   * **loadable, not editable**: a body with trap params converts to JSON, loads, validates and
+   * plays, and the editor still refuses to import it *loudly*. So the round-trip below runs over
+   * the levels the editor accepts, and the refusal is pinned as its own property — the two
+   * together still cover every content level, with no level silently unexamined.
+   */
+  const hasTrapParams = (l: AuthoredEncounter): boolean =>
+    (l.traps ?? []).some((t) => t.id !== undefined || t.damage !== undefined || t.concealment !== undefined);
+
   it("every content level round-trips structurally: draftToEncounter(encounterToDraft(L)) deep-equals L", () => {
-    const levels = listLevels();
+    const levels = listLevels().filter((l) => !hasTrapParams(l));
     expect(levels.length).toBeGreaterThan(0);
     for (const level of levels) {
       // Structural (deep) equality — NOT byte-identical: the editor's JSON formatter differs from a
       // hand-formatted file, but no data may change. This is the M-A safety property.
-      expect(draftToEncounter(encounterToDraft(level))).toEqual(level);
+      expect(canonical(draftToEncounter(encounterToDraft(level))), level.id).toEqual(canonical(level));
     }
+  });
+
+  it("the levels it CANNOT model are refused loudly, by name — never silently dropped", () => {
+    const refused = listLevels().filter(hasTrapParams);
+    // The set is non-empty (the guard above would otherwise be trivially total) and is exactly the
+    // trap-param carriers: `snares-trapfield` and `outer-yard`, the two bodies D122 named as
+    // "loadable, not editable" — both convert to JSON and play; neither imports into the editor.
+    expect(refused.map((l) => l.id).sort()).toEqual(["outer-yard", "snares-trapfield"]);
+    for (const level of refused) {
+      expect(() => encounterToDraft(level), level.id).toThrow(/trap params aren't editable yet/);
+    }
+    // …and the whole population is accounted for: accepted ∪ refused = every content level.
+    expect(listLevels().filter((l) => !hasTrapParams(l)).length + refused.length).toBe(listLevels().length);
+  });
+
+  /**
+   * …and the normalization above is **narrow**: it forgives only the absent-vs-explicit `reach`
+   * default, never a changed requirement. Proven on the shipped body that exercises it
+   * (`e1-skirmish`'s bound Cook, the first JSON captive authored without a `release`).
+   */
+  it("the reach-default normalization forgives nothing else: a changed release kind still fails", () => {
+    const level = getLevel("e1-skirmish")!;
+    expect(level.captives?.[0].release).toBeUndefined(); // the shape under test really is here
+    const tampered = { ...level, captives: [{ ...level.captives![0], release: { kind: "lockpick" as const } }] };
+    expect(canonical(tampered)).not.toEqual(canonical(level));
   });
 
   it("the-rescue survives import losslessly — named captives, custom labels, reward all preserved", () => {

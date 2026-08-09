@@ -3,7 +3,9 @@ import { createUnit, type Unit, type UnitSpec } from "./units";
 import { createRun, createRunFromExpedition, type RunState } from "./run";
 import { RunLoop } from "./runloop";
 import { registerExpedition, type AuthoredExpedition } from "./expedition";
-import { THE_HOLLOW_MILL } from "./hollow-mill";
+// `THE_HOLLOW_MILL` left with the shipped-E1 regression pin when it moved to
+// `content/hollow-mill-expedition.test.ts` (D122); the synthetic expeditions below are this
+// file's own fixtures and need no authored-body catalog.
 import { freeCaptive, captureUnit } from "./deployment";
 import type { AuthoredEncounter } from "./authored";
 import type { OverworldMap, MapNode } from "./overworld";
@@ -167,20 +169,10 @@ describe("REGRESSION — an eliminate-all win still auto-rescues exactly as befo
     expect(loop.run.rescueQuests).toEqual([]);
   });
 
-  it("the shipped Hollow Mill E1 is byte-identical: Pip joins leveled, with no rescue quest", () => {
-    const loop = new RunLoop(createRunFromExpedition(THE_HOLLOW_MILL));
-    loop.choose("e1");
-    loop.startEncounter();
-    loop.beginBattle();
-    clearTheField(loop);
-
-    const res = loop.resolve();
-    expect(res.result).toBe("win");
-    expect(res.rescued).toContain("pip");
-    expect(res.levels.pip).toBeDefined(); // the completion-XP join (D52)
-    expect(loop.run.party.some((u) => u.id === "pip")).toBe(true);
-    expect(loop.run.rescueQuests).toEqual([]);
-  });
+  // "the shipped Hollow Mill E1 is byte-identical" moved to
+  // `content/hollow-mill-expedition.test.ts` (D122) — it plays node `e1`, whose body is now
+  // `content/levels/e1-skirmish.json`, and `core/` may never import `content/`. The synthetic
+  // cases above still pin the D21 clause itself, on fixtures this file owns.
 
   it("an encounter with NO exfil objective is untouched: no Go-now control exists at all", () => {
     const loop = stagedRun(plainCamp());

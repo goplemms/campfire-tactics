@@ -1,0 +1,116 @@
+{
+  "id": "outer-yard",
+  "name": "The Outer Yard",
+  "cols": 9,
+  "rows": 6,
+  "blocked": [
+    {
+      "col": 4,
+      "row": 0
+    },
+    {
+      "col": 4,
+      "row": 5
+    }
+  ],
+  "playerSpawns": [
+    {
+      "col": 0,
+      "row": 1
+    },
+    {
+      "col": 0,
+      "row": 2
+    },
+    {
+      "col": 0,
+      "row": 3
+    },
+    {
+      "col": 0,
+      "row": 4
+    },
+    {
+      "col": 1,
+      "row": 2
+    }
+  ],
+  "enemies": [
+    {
+      "templateId": "bandit-captain",
+      "pos": {
+        "col": 8,
+        "row": 2
+      },
+      "id": "yard-sergeant",
+      "role": "captain",
+      "overrides": {
+        "maxHp": 34,
+        "attack": 10,
+        "defense": 3,
+        "awareness": 6
+      }
+    },
+    {
+      "templateId": "bandit-cutthroat",
+      "pos": {
+        "col": 7,
+        "row": 1
+      },
+      "overrides": {
+        "awareness": 5
+      }
+    },
+    {
+      "templateId": "bandit-thug",
+      "pos": {
+        "col": 7,
+        "row": 4
+      },
+      "overrides": {
+        "awareness": 4
+      }
+    }
+  ],
+  "rumors": [
+    "The outer yard bristles — watchfires burn in pairs, and the ground before the wall has been worked over.",
+    "A full watch holds the yard in alert shifts; the approach is seeded with something.",
+    "No careless digging here — whoever laid these snares took their time. Nothing to mark from afar."
+  ],
+  "traps": [
+    {
+      "pos": {
+        "col": 2,
+        "row": 2
+      },
+      "concealment": 5,
+      "damage": 16
+    },
+    {
+      "pos": {
+        "col": 3,
+        "row": 3
+      },
+      "concealment": 6,
+      "damage": 18
+    },
+    {
+      "pos": {
+        "col": 2,
+        "row": 4
+      },
+      "concealment": 5,
+      "damage": 16
+    }
+  ],
+  "reward": {
+    "gold": 100,
+    "materials": [
+      {
+        "id": "salve",
+        "count": 1
+      }
+    ],
+    "xp": 100
+  }
+}

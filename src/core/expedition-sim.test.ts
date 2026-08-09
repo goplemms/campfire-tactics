@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { THE_HOLLOW_MILL } from "./hollow-mill";
+// `traverseRoute` left with its block when that moved to `content/hollow-mill-nodes.test.ts` (D122).
 import {
   enumeratePaths,
   enumerateCompletions,
-  traverseRoute,
 } from "./expedition-sim";
 import { validateExpedition } from "./expedition";
 
@@ -88,85 +88,7 @@ describe("enumerateCompletions (Phase 1)", () => {
   });
 });
 
-describe("traverseRoute (Phase 1)", () => {
-  // The infiltration arm to the Den (the only way there); the Den does NOT free the Medic (C8).
-  const DEN_ROUTE = ["start", "e1", "camp2", "snares", "market", "guildContact", "den"];
-  // The sustain arm through the Wagon (which frees the Medic), landing at the rest before finale.
-  const WAGON_ROUTE = ["start", "e1", "camp2", "snares", "market", "wagon", "restCamp"];
-
-  it("lands positioned AT the target, pre-resolution", () => {
-    const { run, targetId } = traverseRoute(THE_HOLLOW_MILL, DEN_ROUTE);
-    expect(targetId).toBe("den");
-    expect(run.mapNodeId).toBe("den");
-    expect(run.path).toEqual(DEN_ROUTE); // the full route is the path taken
-    // The target has NOT been resolved — no history record yet for `den`.
-    expect(run.history.some((h) => h.nodeId === "den")).toBe(false);
-    // Its predecessors WERE played (e.g. the node-1 skirmish recorded).
-    expect(run.history.some((h) => h.nodeId === "e1")).toBe(true);
-  });
-
-  it("never resolves the START node — only the predecessors between start and target", () => {
-    const { run } = traverseRoute(THE_HOLLOW_MILL, DEN_ROUTE);
-    // The starting camp is departed, not played — it must not appear in history.
-    expect(run.history.some((h) => h.nodeId === "start")).toBe(false);
-    // Exactly the predecessors (route minus start minus target) were resolved, in order.
-    const predecessors = DEN_ROUTE.slice(1, -1); // e1, camp2, snares, market, guildContact
-    expect(run.history.map((h) => h.nodeId)).toEqual(predecessors);
-    // One night per played predecessor — no spurious start-node recovery night.
-    expect(run.history).toHaveLength(predecessors.length);
-    expect(run.night).toBe(predecessors.length);
-  });
-
-  it("the arrival's loop is ready to play the (unresolved) target", () => {
-    const { loop } = traverseRoute(THE_HOLLOW_MILL, DEN_ROUTE);
-    expect(loop.isTerminal()).toBe(false);
-    expect(loop.run.mapNodeId).toBe("den");
-  });
-
-  it("the sustain route via the Wagon frees the Medic (flag + Sela in party)", () => {
-    const { run } = traverseRoute(THE_HOLLOW_MILL, WAGON_ROUTE);
-    expect(run.flags["medic-freed"]).toBe(true);
-    expect(run.party.some((u) => u.id === "sela")).toBe(true);
-  });
-
-  it("the infiltration route (no Wagon) does NOT free the Medic (C8 exclusivity)", () => {
-    const { run } = traverseRoute(THE_HOLLOW_MILL, DEN_ROUTE);
-    expect(run.flags["medic-freed"]).toBeFalsy();
-    expect(run.party.some((u) => u.id === "sela")).toBe(false);
-  });
-
-  it("is deterministic — identical args reproduce party/gold/flags exactly", () => {
-    const a = traverseRoute(THE_HOLLOW_MILL, DEN_ROUTE).run;
-    const b = traverseRoute(THE_HOLLOW_MILL, DEN_ROUTE).run;
-    expect(a.party.map((u) => u.id)).toEqual(b.party.map((u) => u.id));
-    expect(a.party.map((u) => u.hp)).toEqual(b.party.map((u) => u.hp));
-    expect(a.camp.purse).toBe(b.camp.purse);
-    expect(a.flags).toEqual(b.flags);
-  });
-
-  it("seedSalt changes combat variance but not map/route/recruits/flags", () => {
-    const s1 = traverseRoute(THE_HOLLOW_MILL, WAGON_ROUTE, { seedSalt: 1 });
-    const s2 = traverseRoute(THE_HOLLOW_MILL, WAGON_ROUTE, { seedSalt: 2 });
-    // The authored map/route/outcomes are fixed across salts.
-    expect(s1.run.path).toEqual(s2.run.path);
-    expect(s1.run.mapNodeId).toBe(s2.run.mapNodeId);
-    expect(s1.run.flags["medic-freed"]).toBe(true);
-    expect(s2.run.flags["medic-freed"]).toBe(true);
-    expect(s1.run.party.some((u) => u.id === "sela")).toBe(true);
-    expect(s2.run.party.some((u) => u.id === "sela")).toBe(true);
-    expect(s1.run.party.map((u) => u.id)).toEqual(s2.run.party.map((u) => u.id));
-  });
-
-  it("throws on a route that does not start at the start node", () => {
-    expect(() => traverseRoute(THE_HOLLOW_MILL, ["e1", "camp2"])).toThrow(/start/);
-  });
-
-  it("throws on a non-edge hop", () => {
-    // start→snares skips e1/camp2 — not a real forward edge.
-    expect(() => traverseRoute(THE_HOLLOW_MILL, ["start", "snares"])).toThrow();
-  });
-
-  it("throws on an empty route", () => {
-    expect(() => traverseRoute(THE_HOLLOW_MILL, [])).toThrow();
-  });
-});
+// The `traverseRoute` block moved to `content/hollow-mill-nodes.test.ts` (D122): every route it
+// walks starts at `e1`, whose body is now `content/levels/e1-skirmish.json`, so the walk needs the
+// content catalog injected — which `core/` may not reach. Path *enumeration* (above) is pure
+// topology and stays here. No assertion changed in the move.

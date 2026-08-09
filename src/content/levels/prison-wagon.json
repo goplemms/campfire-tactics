@@ -1,0 +1,107 @@
+{
+  "id": "prison-wagon",
+  "name": "The Prison Wagon",
+  "cols": 9,
+  "rows": 6,
+  "blocked": [
+    {
+      "col": 4,
+      "row": 2
+    },
+    {
+      "col": 4,
+      "row": 3
+    }
+  ],
+  "playerSpawns": [
+    {
+      "col": 0,
+      "row": 1
+    },
+    {
+      "col": 0,
+      "row": 2
+    },
+    {
+      "col": 0,
+      "row": 3
+    },
+    {
+      "col": 0,
+      "row": 4
+    },
+    {
+      "col": 1,
+      "row": 2
+    }
+  ],
+  "enemies": [
+    {
+      "templateId": "bandit-captain",
+      "pos": {
+        "col": 8,
+        "row": 2
+      },
+      "id": "slaver-lieutenant",
+      "role": "captain",
+      "overrides": {
+        "maxHp": 34,
+        "attack": 10,
+        "defense": 3
+      }
+    },
+    {
+      "templateId": "bandit-cutthroat",
+      "pos": {
+        "col": 7,
+        "row": 1
+      }
+    },
+    {
+      "templateId": "bandit-thug",
+      "pos": {
+        "col": 7,
+        "row": 4
+      }
+    },
+    {
+      "templateId": "bandit-bowman",
+      "pos": {
+        "col": 8,
+        "row": 4
+      }
+    }
+  ],
+  "reward": {
+    "gold": 120,
+    "materials": [
+      {
+        "id": "salve",
+        "count": 2
+      }
+    ],
+    "xp": 80
+  },
+  "grants": {
+    "recruit": {
+      "id": "sela",
+      "name": "Sela",
+      "side": "player",
+      "pos": {
+        "col": 0,
+        "row": 0
+      },
+      "jobId": "medic",
+      "speed": 9,
+      "maxHp": 20,
+      "attack": 4,
+      "defense": 2,
+      "moveRange": 3,
+      "sightRadius": 4,
+      "attackRange": 1,
+      "intelligence": 2,
+      "awareness": 2
+    },
+    "flag": "medic-freed"
+  }
+}

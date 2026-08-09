@@ -5597,3 +5597,66 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   **D52** (authored expeditions, captives, grants), **#216** (`run-flags.ts` / `playtest.ts` — the
   living exemplars for refusing an unknown id at load). **Defers:** trap-params (its own editor
   milestone); the 2 blocked bodies; editability generally. **Superseded by:** —
+
+## D123 — Where "a consistent format" stops: bodies are JSON, topology stays TS, events get a guard
+
+- **Status:** Decided (scope) 2026-07-31 — owner-directed. Bounds **D122**; settles what "authored
+  expeditions in a consistent format" does and does not mean, so the remaining work has an end.
+- **Decision — consistency is complete at the BODY layer.** Every player-reachable **encounter body**
+  is JSON; an expedition's **topology (`map`), `bundle` and cast stay TypeScript**. At that point both
+  shipped expeditions have the **identical shape** — which is the actual goal. "Consistent" means *the
+  two expeditions look the same as each other*, **not** "expeditions are JSON". Stated plainly here
+  because the phrase invites the second reading.
+- **Decision — topology stays TS, by decision rather than drift.**
+  - ⚠️ **Not a capability gap — verified.** `OverworldMap` is `{seed, layers, nodes, startId,
+    finalIds, order}` and every `MapNode` field is a scalar or array. The one non-scalar,
+    `blockedWhen?: Predicate`, is itself an explicit **data union** (`{kind:"flagSet", flag}`,
+    `{kind:"all", of:[…]}`) evaluated by `evalPredicateRun` — **#127 made conditions data on purpose**.
+    Topology would serialize with **zero new mechanism**, as a D122-shaped migration, and
+    `validateExpedition` already gates edges/reachability/dead-ends/orphans/prerequisites.
+  - **What decides it against: the comments.** `hollowMillMap()` is not merely a literal — it is
+    **where the arc's design is explained**: why the infiltration arm is listed first (so the sim's
+    naive bot walks the headline arm and proves it completes), the C7 mentor two-beat, the C3 fight
+    pacing, the D90 cell's home. **JSON has no comments.** The pilot conversion preserved a body's
+    rationale by moving its doc comment onto the `_ID` export; topology has **no equivalent anchor** —
+    the explanation would simply be homeless.
+  - Second cost: **`order` is derived** (stable iteration order). In JSON it becomes denormalized
+    state that can drift from `nodes`.
+  - **Revisit when there is a consumer** — an editor that renders or edits a run map. Not before
+    (the repo's concrete-first rule, #171 rev 2: extract when a *second* consumer appears).
+- **Decision — "events as JSON" is DECLINED as the wrong frame.** `EventDef` is **behavior, not
+  data**: `autoResolve(run, node)`, `choices?(run, node)`, `choose?(run, node, choiceId)` and
+  `prompt?(run, node)` are **methods that mutate the run and hold real logic** — the traveler event
+  checks whether a Cook is *fielded and not captured* and conditionally offers the stew.
+  - Serializing that means **inventing an effect-and-condition DSL plus an interpreter** ("grant
+    item", "bank RP", "recruit", "party fields a Cook"). **That is designing a scripting language, not
+    migrating a format** — and it is the same slope D122 already refused at smaller scale when it
+    declined a shared-fragment include system.
+  - **The bounded middle path, recorded but NOT taken now:** split the record — *presentation*
+    (`name`, `teaser`, `prompt` text, choice labels/details, `weight`, `standingBias`,
+    `minInfluence`) is pure data and could be JSON; *behavior* (`autoResolve`/`choose`) stays TS,
+    keyed by id. That buys the real authoring win (copy edited without touching code) with no DSL.
+    **Take it only when an authoring need actually appears** — not speculatively.
+- **Decision — the genuine events gap is VALIDATION, and it is independent of format.**
+  `HOLLOW_MILL_EVENTS` has **no validator at all**, and authored events are precisely the surface that
+  **froze the game** (D92/#168: the Wave-0 mentor beats were the Mill's first pinned `"story"` events,
+  `showStoryScreen` only handled the random-pool shape, every headless guard green). A validator +
+  scene guard is cheap, bounded, and has a known failure precedent. **Briefed separately; not part of
+  D122's remaining work.**
+- **What therefore remains to CLOSE D122** (and nothing else):
+  1. **5 conversions** — `E1_SKIRMISH`, `PRISON_WAGON`, `CUFFED_CELL`, `TRAP_FIELD`, `OUTER_YARD`
+     (the last two unblocked by validator M5 + M6). `PRISON_ASSAULT` is **deleted, not converted**.
+  2. **Empty the Hollow Mill's inline `encounters: {}`** — both expeditions then resolve bodies
+     identically through the injected catalog.
+  3. **Delete `AuthoredExpedition.encounters?` from the type.** This is what makes the format **one
+     thing** rather than two-with-a-precedence-rule, and it **permanently retires the shadowing
+     failure mode** — the anti-shadowing guard becomes unnecessary because the field is gone.
+  - ⚠️ **Step 3 is gated on F1 (#210)**, which D122 put out of scope: `PRISON_ASSAULT` is an inline
+    entry and the plan deletes rather than converts it, so the map cannot be emptied until F1 lands.
+    **Finishing D122 depends on work D122 excluded** — recorded so it is not discovered late.
+- **Reuses:** **D122** (the migration this bounds), **D116** (the injection seam; it deferred
+  JSON-defined graphs — this record states *why* that deferral stands), **#127** (conditions as data —
+  the reason topology *could* convert), **D92/#168** (the authored-event freeze — the reason the events
+  gap is about guards), **D52** (authored expeditions, events, bundles), **#171** rev 2
+  (concrete-first: extract on a second consumer). **Defers:** topology-as-JSON; the event
+  presentation/behavior split; the authored-event validator. **Superseded by:** —

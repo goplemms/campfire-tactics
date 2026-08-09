@@ -5654,6 +5654,37 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   - ⚠️ **Step 3 is gated on F1 (#210)**, which D122 put out of scope: `PRISON_ASSAULT` is an inline
     entry and the plan deletes rather than converts it, so the map cannot be emptied until F1 lands.
     **Finishing D122 depends on work D122 excluded** — recorded so it is not discovered late.
+- **SHIPPED — all six bodies converted; the body layer is DONE** (2026-07-31). `THE_HOLLOW_MILL.
+  encounters` now holds **exactly one** entry (`PRISON_ASSAULT`), and `hollow-mill.ts` is topology +
+  cast + six `*_ID` exports. Verified independently: `tsc` clean, **1552** tests / 128 files (from
+  1538/127, **no test lost**), build clean, **sim digest byte-identical**, `e2e:level` 51 assertions
+  (was 26), arc 9, launcher 55, deploy-battle 73, scenario 34, `audit:visual` 0/0 across 15 surfaces,
+  `audit:challenge` 7/7.
+- **⚠️ NEW DRIFT SURFACE, created by this record's own split — cast in TS, bodies in JSON.**
+  `PIP_COOK` and `SELA_MEDIC` now exist **twice**: as the TS cast consts, and as **serialized copies
+  inside the JSON bodies** (`e1-skirmish`'s captive spec, `prison-wagon`'s `grants.recruit`). **The
+  game plays the JSON**, so the TS const is decorative for those two — and nothing would notice them
+  diverging. A drift pin now deep-equals each body's copy against its cast const.
+  - **This is the standing cost of keeping cast in TS**, and it grows with every recruit authored into
+    a body. If it ever outgrows a pin, the answer is to make the JSON the single source and derive the
+    TS const from it — **not** to duplicate more carefully.
+- **Recipe lessons for anyone doing this again** (fed back from the five-body run):
+  - **Blast radius is about the node's POSITION, not the body's size.** `E1_SKIRMISH` was ~80% of the
+    whole job because node `e1` is the arc's **first** node, so every `traverseRoute`/`drive`/
+    `autoTraverse` walk crosses it — five core files broke. Conversions 3, 4 and 6 needed **zero**
+    test moves. Convert the earliest node first and budget it accordingly.
+  - **`src/game/` breaks too, not just core.** Both genuine surprises were in `editor-draft.test.ts`,
+    and D122 **predicted both shapes** (the `release ?? reach` cosmetic default; the trap-param import
+    refusal) without ever connecting them to the guard that would go red. Restate that guard — do not
+    weaken it.
+  - **"Move the file, not the red test" is a SAMPLER rule, not a universal one.** It is right for
+    `arrivals.test.ts` (where `samplePopulation` swallows a crashing route and the greens quietly
+    measure wipes) and wrong for `runloop.test.ts` / `intel.test.ts`, which are **core-mechanic
+    suites** that merely use arc bodies as fixtures. **The discriminator is the failure mode:** silent
+    degradation ⇒ move the file; a hard `runEncounter` throw ⇒ move just the arc-fixture block and
+    leave the mechanic pinned in core on a local fixture.
+  - **Never pin on a `hollow-mill:BODY` sweep label** — it is migration-fragile by construction. Match
+    on the encounter **id**, like the sweep's enumeration invariant.
 - **Reuses:** **D122** (the migration this bounds), **D116** (the injection seam; it deferred
   JSON-defined graphs — this record states *why* that deferral stands), **#127** (conditions as data —
   the reason topology *could* convert), **D92/#168** (the authored-event freeze — the reason the events

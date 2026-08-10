@@ -186,8 +186,59 @@ export async function withGame(fn, opts = {}) {
           props,
         );
       },
+      /**
+       * Wait until a **battle-scene predicate** holds — the `bsEval` sibling of
+       * {@link waitForScene}, for the far more common "I clicked something, now wait for the
+       * scene to get there" case.
+       *
+       * Use this instead of `await sleep(n)` before any assertion about a transition. A fixed
+       * sleep encodes one machine's speed: too short and it flakes on a loaded CI runner, too
+       * long and every run pays for it. Worse, when it *does* fail it reports only the
+       * downstream assertion ("phase is not resolution"), losing the state that would explain
+       * why.
+       *
+       * `body` is a `bs(...)`-wrapped snippet returning a boolean. On timeout this throws with
+       * the caller's `label` **and a live state dump** (`diagnose`, another `bs(...)` snippet),
+       * so a failure that only reproduces on CI still arrives with evidence attached.
+       */
+      async waitForBattle(body, { timeout = 10000, label = "condition", diagnose } = {}) {
+        try {
+          await page.waitForFunction(bs(body), { timeout, polling: 50 });
+        } catch (err) {
+          let dump = "";
+          if (diagnose) {
+            try {
+              dump = `\n  state at timeout: ${JSON.stringify(await page.evaluate(bs(diagnose)))}`;
+            } catch (e) {
+              dump = `\n  (diagnose snippet threw: ${e.message})`;
+            }
+          }
+          const seen = problems.length ? `\n  page problems so far: ${problems.join(" | ")}` : "";
+          throw new Error(`waitForBattle timed out after ${timeout}ms waiting for ${label}.${dump}${seen}`);
+        }
+      },
+      /**
+       * A **real** pointer click at scene coords.
+       *
+       * Moves the pointer and **lets Phaser see the move before the press**. `page.mouse.click`
+       * dispatches `pointermove` and `pointerdown` back-to-back, but Phaser hit-tests a press
+       * against the pointer position it processed on its **last frame** — so when frames are slow
+       * (a loaded CI runner on software GL) the press is tested against the *previous* position
+       * and lands on nothing. The click is silently swallowed: no error, no effect, and the
+       * failure surfaces much later as "the thing I clicked didn't happen".
+       *
+       * That is the CI failure this harness has been red on — proven by a `waitForBattle` dump
+       * showing `deployActed: false` with an untouched `moveBudget` ten seconds after the click.
+       * It reproduces on neither the pinned Chrome nor a newer one locally, because frames here
+       * are fast enough that the move is always processed first.
+       *
+       * So: move, yield two animation frames, then click. Costs ~32ms per click and makes the
+       * press deterministic regardless of frame rate.
+       */
       async clickScene(x, y, opts = {}) {
         const { px, py } = await scenePoint(x, y);
+        await page.mouse.move(px, py);
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
         await page.mouse.click(px, py, opts); // opts.button "right" for a right-click
       },
       // Move the pointer to scene coords without clicking (fires pointermove — for hover readouts/previews).

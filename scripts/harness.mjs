@@ -186,6 +186,37 @@ export async function withGame(fn, opts = {}) {
           props,
         );
       },
+      /**
+       * Wait until a **battle-scene predicate** holds — the `bsEval` sibling of
+       * {@link waitForScene}, for the far more common "I clicked something, now wait for the
+       * scene to get there" case.
+       *
+       * Use this instead of `await sleep(n)` before any assertion about a transition. A fixed
+       * sleep encodes one machine's speed: too short and it flakes on a loaded CI runner, too
+       * long and every run pays for it. Worse, when it *does* fail it reports only the
+       * downstream assertion ("phase is not resolution"), losing the state that would explain
+       * why.
+       *
+       * `body` is a `bs(...)`-wrapped snippet returning a boolean. On timeout this throws with
+       * the caller's `label` **and a live state dump** (`diagnose`, another `bs(...)` snippet),
+       * so a failure that only reproduces on CI still arrives with evidence attached.
+       */
+      async waitForBattle(body, { timeout = 10000, label = "condition", diagnose } = {}) {
+        try {
+          await page.waitForFunction(bs(body), { timeout, polling: 50 });
+        } catch (err) {
+          let dump = "";
+          if (diagnose) {
+            try {
+              dump = `\n  state at timeout: ${JSON.stringify(await page.evaluate(bs(diagnose)))}`;
+            } catch (e) {
+              dump = `\n  (diagnose snippet threw: ${e.message})`;
+            }
+          }
+          const seen = problems.length ? `\n  page problems so far: ${problems.join(" | ")}` : "";
+          throw new Error(`waitForBattle timed out after ${timeout}ms waiting for ${label}.${dump}${seen}`);
+        }
+      },
       async clickScene(x, y, opts = {}) {
         const { px, py } = await scenePoint(x, y);
         await page.mouse.click(px, py, opts); // opts.button "right" for a right-click

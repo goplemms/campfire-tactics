@@ -184,7 +184,12 @@ async function main() {
 
     // A REAL mouse click on the rendered button — not a direct handler call.
     await g.clickScene(armed.x, armed.y);
-    await sleep(250);
+    // Wait for the circle to actually land (the same click→transition class as the 'Go Now'
+    // wait below), not for a fixed 250ms.
+    await g.waitForBattle(`return s.deployActed === true && s.deployMoved === true;`, {
+      label: "the 'Take Side Door' click to spend the deploy turn",
+      diagnose: `return { phase: s.phase, deployActed: s.deployActed, deployMoved: s.deployMoved, moveBudget: s.moveBudget, clickedAt: { x: ${JSON.stringify(armed.x)}, y: ${JSON.stringify(armed.y)} } };`,
+    });
 
     snap = await g.bsEval(DEPLOY_SNAP);
     console.log("• clicking it circles the Thief round to the side door");
@@ -283,7 +288,27 @@ async function main() {
 
     // A REAL mouse click on the rendered control — not a direct handler call.
     await g.clickScene(posed.x, posed.y);
-    await sleep(600);
+    // Wait for the TRANSITION, not for a fixed number of milliseconds. This assertion is the
+    // one that has been red on `main` since #214: a `sleep(600)` passes locally (the phase
+    // flips in under 30ms here) and fails on CI, where 600ms is somehow not enough — so the
+    // sleep was encoding this machine's speed. On timeout the harness dumps the live scene
+    // state, so if the cause turns out NOT to be timing, the next CI run says what it is
+    // instead of only "phase is not resolution".
+    await g.waitForBattle(`return s.phase === "resolution";`, {
+      label: "the 'Go Now' click to resolve the encounter",
+      diagnose: `
+        const btn = s.actionButtons && s.actionButtons.find(b => b.label && /Go Now/.test(b.label.text));
+        return {
+          phase: s.phase,
+          goNowStillRendered: !!btn,
+          goNowXY: btn ? { x: btn.x, y: btn.y } : null,
+          clickedAt: { x: ${JSON.stringify(posed.x)}, y: ${JSON.stringify(posed.y)} },
+          waitingFor: s.waitingFor && s.waitingFor.id,
+          acted: s.acted,
+          overlayChildren: s.overlay ? s.overlay.length : null,
+        };
+      `,
+    });
 
     const left = await g.bsEval(`
       const u = s.battle.units;
@@ -375,7 +400,14 @@ async function main() {
     check("the Go Now control is up again in the second battle", won.hasBtn === true);
 
     await g.clickScene(won.x, won.y);
-    await sleep(600);
+    // The second 'Go Now' — same class again, same wait.
+    await g.waitForBattle(`return s.phase === "resolution";`, {
+      label: "the second 'Go Now' click to resolve the encounter",
+      diagnose: `
+        const btn = s.actionButtons && s.actionButtons.find(b => b.label && /Go Now/.test(b.label.text));
+        return { phase: s.phase, goNowStillRendered: !!btn, clickedAt: { x: ${JSON.stringify(won.x)}, y: ${JSON.stringify(won.y)} }, overlayChildren: s.overlay ? s.overlay.length : null };
+      `,
+    });
 
     const after = await g.bsEval(`
       const harvest = (objs, out) => {

@@ -286,6 +286,48 @@ describe("planEnemyTurn", () => {
     expect(without.target).toBe(outCr); // …it targets the adjacent foe either way
   });
 
+  // --- #213: `non-combatant` target deprioritisation ---------------------------
+  // The reading half of the tag (`tags.ts` promised it; nothing read it). Geometry again gives the
+  // generic AI every reason to pick the prisoner — it is ADJACENT (zero move) *and* frail *and*
+  // wounded, i.e. exactly what the squishy/lowHp weights chase — so the soldier a step away only
+  // wins if `nonCombatantPenalty` outweighs all of that. The tag-on/tag-off pair is the proof.
+  const escortBoard = (prisonerTags: string[], prisonerHp = 5) => {
+    const grid = new TileGrid(6, 1);
+    const prisoner = { ...at("wren", "player", 4, 0), tags: prisonerTags, hp: prisonerHp };
+    const soldier = at("thane", "player", 1, 0); // a step away → the guard must spend movement
+    const guard = { ...at("guard", "enemy", 3, 0), tags: ["garrison"] };
+    return { grid, prisoner, soldier, guard };
+  };
+
+  it("deprioritizes a `non-combatant` — the guard walks past the adjacent prisoner to hit the soldier", () => {
+    const { grid, prisoner, soldier, guard } = escortBoard(["non-combatant"]);
+    const plan = planEnemyTurn(guard, [guard, prisoner, soldier], grid);
+    expect(plan.target).toBe(soldier);
+  });
+
+  it("…and the SAME board with the tag removed targets the prisoner (the penalty is load-bearing)", () => {
+    const { grid, prisoner, soldier, guard } = escortBoard([]); // untagged twin, identical stats
+    const plan = planEnemyTurn(guard, [guard, prisoner, soldier], grid);
+    expect(plan.target).toBe(prisoner);
+  });
+
+  it("still attacks a `non-combatant` when it is the ONLY foe in reach (a weight, not a ban)", () => {
+    // `tags.ts` is explicit that a non-combatant "remains a valid *low-priority* target" — a guard
+    // with nothing else to hit must not stand there idle.
+    const { grid, prisoner, guard } = escortBoard(["non-combatant"]);
+    const plan = planEnemyTurn(guard, [guard, prisoner], grid);
+    expect(plan.target).toBe(prisoner);
+  });
+
+  it("even a KILLING blow on a prisoner loses to a plain swing at a soldier (penalty > lethalBonus)", () => {
+    // The magnitude pin: at 1 hp the prisoner is a guaranteed kill (+lethalBonus 400) and maximally
+    // wounded. Sizing the penalty *under* lethalBonus would flip this red — which is the whole
+    // difference between "escort takes pot shots" (D118's thinned pursuit) and "escort gets picked off".
+    const { grid, prisoner, soldier, guard } = escortBoard(["non-combatant"], 1);
+    const plan = planEnemyTurn(guard, [guard, prisoner, soldier], grid);
+    expect(plan.target).toBe(soldier);
+  });
+
   it("does not move while immobilized but still attacks an adjacent foe", () => {
     const grid = new TileGrid(8, 1);
     const enemy = at("e", "enemy", 0, 0);

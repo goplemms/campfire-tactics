@@ -771,8 +771,8 @@
     {
       "templateId": "bandit-bowman",
       "pos": {
-        "col": 12,
-        "row": 3
+        "col": 9,
+        "row": 12
       },
       "overrides": {
         "tags": [

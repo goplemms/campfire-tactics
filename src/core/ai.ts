@@ -33,7 +33,7 @@ import { canSeeUnit } from "./vision";
 import { availableSkills } from "./leveling";
 import { orderOf } from "./standing-orders";
 import { isBreakable, keyholderOf, type Gate } from "./gates";
-import { hasTag, GARRISON, IN_COMBAT, type TagContext } from "./tags";
+import { hasTag, GARRISON, IN_COMBAT, NON_COMBATANT, type TagContext } from "./tags";
 
 /** Scoring weights — all tunable data, a numbers pass later (D42). */
 export const AI = {
@@ -89,6 +89,22 @@ export const AI = {
    * with a control-room region supplied — generic AI is untouched.
    */
   controlRoomTarget: 250,
+  /**
+   * Target-priority **penalty** for attacking a {@link "./tags".NON_COMBATANT} — the reading half of
+   * the tag `tags.ts` has always promised ("deprioritized as a target … remains a valid *low-priority*
+   * target"), which nothing read until now (#213).
+   *
+   * Sized as **last resort, not a ban**: above {@link AI.lethalBonus} (400), so even a guaranteed kill
+   * on a fleeing prisoner loses to a plain swing at an actual soldier; below {@link AI.actionBase}
+   * (1000), so a garrison with *only* a non-combatant in reach still attacks it (the score stays far
+   * above every positioning branch, which is negative). This is what D118's viability model means by a
+   * **thinned** pursuit — the escort takes pot shots, it isn't focused down.
+   *
+   * Unlike {@link AI.controlRoomTarget} this is **not** garrison-scoped: being a non-combatant is a
+   * property of the *target*, so every planner reads it. A **difficulty dial** by intent — a harsher
+   * setting lowers it (down to 0 = prisoners are fair game).
+   */
+  nonCombatantPenalty: 600,
 } as const;
 
 /**
@@ -286,11 +302,19 @@ function damageFrom(unit: Unit, from: GridCoord, foe: Unit, units: readonly Unit
   return dmg;
 }
 
-/** Target-priority bonus: frailer + more wounded + already-debuffed bodies. */
+/**
+ * Target priority: frailer + more wounded + already-debuffed bodies score higher — **less** a
+ * {@link "./tags".NON_COMBATANT}, which is deprioritized to a last resort (#213).
+ *
+ * Note the two pull in opposite directions on purpose: a prisoner is exactly the frail, wounded body
+ * the squishy/lowHp weights would otherwise make the *most* attractive target on the board, so the
+ * penalty has to outweigh them by a wide margin rather than merely offset them.
+ */
 function priority(foe: Unit): number {
   let p = AI.squishyWeight * Math.max(0, AI.squishyRefHp - foe.maxHp);
   p += AI.lowHpWeight * Math.max(0, AI.woundedRefHp - foe.hp);
   if (hasStatus(foe, EXPOSED) || isDebuffed(foe)) p += AI.debuffedBonus;
+  if (hasTag(foe, NON_COMBATANT)) p -= AI.nonCombatantPenalty;
   return p;
 }
 

@@ -5691,3 +5691,73 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   gap is about guards), **D52** (authored expeditions, events, bundles), **#171** rev 2
   (concrete-first: extract on a second consumer). **Defers:** topology-as-JSON; the event
   presentation/behavior split; the authored-event validator. **Superseded by:** —
+
+## D124 — The finale's pursuit gets its teeth calibrated: one pinnable defender, prisoners as last resort
+
+- **Status:** Decided + **shipped** 2026-08-11 — owner-directed, closing **#212** and **#213**. Both are
+  pre-pin corrections: they land **before** #209's numbers are taken, because each moves the very race
+  #209 exists to measure. No new mechanism — one authored position and one AI weight.
+- **Context.** Two independently-verified defects sat inside D118's viability model
+  (`head-start ≥ pursuit-close-time`). The seal was being battered from **both faces** at once, and the
+  `non-combatant` tag's **target-deprioritising half had no reader** — `ai.ts` never looked at it, so the
+  escort was pursued as if the prisoners were soldiers. Together they made the finale materially harsher
+  than the design it was authored against, in the one number the whole track hangs on.
+
+- **Decision (#212) — ONE defender inside the sealed wing, and pinning it is the PLAYER'S call (owner).**
+  The two bodies authored north of row 8 (`bandit-thug` `(11,5)`, `bandit-bowman` `(12,3)`) were not
+  strays — they are **B1's control-room guards**, inside the authored `controlRoom` region and astride the
+  row-5 escort route. So the issue's own fix direction ("reposition both into the lower yard") was
+  **declined**: it would have restored the one-sided timer by leaving the infiltration arm unopposed,
+  cutting against **D99 F1** (the flank's risk is *in-battle isolation*, not a dice roll).
+  - **Shipped:** the **bowman relocates to `(9,12)`** (the lower yard, covering the Warden); the **thug
+    stays at `(11,5)`**. Relocated rather than deleted — the roster stays at 10 bodies, so the
+    eliminate-all cost #209's incentive check weighs is unchanged.
+  - **Melee, deliberately.** The bowman was the worse body to leave inside: `attackRange 3` let it plink
+    the seal's inner face from cover and made it awkward to pin. A melee thug must be *stood next to*,
+    which is what makes the owner's decision stream work.
+  - **The remaining defender still drives the seal, and that is the design.** Under normal aggro
+    (`garrison && !in-combat`) it walks to the inner face and batters. The infiltrator **pins it by
+    hitting it** (D117's rule) and it turns and fights. **Declining to pin is a legitimate play with a
+    real price** — you keep your actions and pay in head start. No `standingOrder` was authored: a posted
+    sentry would have removed the choice rather than presented it.
+  - **Verified on the staged level, not on paper** (probe, deleted after use): exactly one inside body;
+    unpinned ⇒ `gateTarget: seal-inner`, `act: attack`, destination `(13,7)` — the inner face, **5 steps**
+    away, so at `moveRange 4` its first swing lands a turn late, then `attack 8`/turn; struck once ⇒
+    `gateTarget: undefined`, target = the engager. The old pair put ~15/turn on that face, a **ranged**
+    source among them; one late melee body is a fraction of that, and it is opt-in.
+  - **Guarded** by a content invariant that derives "inside" by **walking the shut board** (not a row
+    number, which a wall edit would sail past): `levels.test.ts` — exactly one garrison body cannot reach
+    the main spawn with `seal-inner` slammed. Mutation-verified (restoring `(12,3)` turns it red).
+
+- **Decision (#213) — a non-combatant is a LAST RESORT, above `lethalBonus` (owner).**
+  `AI.nonCombatantPenalty = 600`, subtracted in `priority()`. Sized between `lethalBonus` (400) and
+  `actionBase` (1000): even a **guaranteed kill** on a fleeing prisoner loses to a plain swing at a
+  soldier, while a garrison with *only* a prisoner in reach still attacks it — the tag's own doc has
+  always promised "remains a valid *low-priority* target", and that promise is now kept in both
+  directions. **A difficulty dial by intent** (owner): a harsher setting lowers it, 0 = prisoners are fair
+  game.
+  - **Not garrison-scoped**, unlike `controlRoomTarget`: being a non-combatant is a property of the
+    *target*, so every planner reads it. Blast radius is nil today — the only bodies carrying the tag in
+    shipped content are The Rescue's three captives, and the **sim digest is byte-identical**.
+  - **Guarded** by four `ai.test.ts` cases, the pair being the proof: same board, tag on ⇒ the guard walks
+    past the adjacent prisoner to reach a soldier; tag off ⇒ it takes the prisoner. Mutation-verified at
+    600 → 300 → 0 (both magnitude cases flip red at each).
+
+- **⚠️ Found by challenging the fix, NOT fixed, deliberately — the APPROACH branch is tag-blind.**
+  `priority()` scores only foes **already in reach**. With nobody in reach the planner advances toward
+  `min(manhattan)` over *every* seen foe, reading no tags — **measured**: a garrison at col 7 with a
+  prisoner 2 away and a soldier 5 away walks toward **the prisoner**. So the shipped fix deprioritises
+  **striking** a non-combatant, not **chasing** one.
+  - Left alone on purpose, two reasons. It is **out of #213's scope** (the issue asks for a target-priority
+    weight and specifies exactly the guards now shipped), and it is **not obviously wrong**: a garrison
+    recapturing prisoners *should* converge on them, and the composite behavior — close on the prisoners,
+    swing at the escort — is a defensible read of D118's "pot shots" rather than a violation of it.
+  - **It belongs to #209.** Whether the pursuit *catching* the escort is the real difficulty is precisely
+    what the everyone-out pacing bar measures; if the bar comes up red, the approach branch is the first
+    place to look, and this entry is the pointer. Changing it speculatively would move AI convergence
+    game-wide (**#171** rev 2: concrete-first).
+- **Reuses:** **D117** (the tag system + the door-drive doctrine; `in-combat` as the pin), **D118** (the
+  viability model these two numbers feed), **D99** F1 (the flank's risk is in-battle isolation), **D42**
+  (the AI weight table these join), **D108** (`controlRoomTarget` as the living exemplar for a
+  target-priority weight). **Defers:** tag-awareness in the approach branch (to #209); difficulty-scaled
+  weights. **Superseded by:** —

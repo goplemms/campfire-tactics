@@ -157,7 +157,15 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 
 ### C — Fairness cruxes
 - ✅ **C1** — What sets/clears `in-combat`. **DONE** — ratified + built in D117.
-- 🔨 **C2 — Extraction viability. Design drafted → `finale-extraction-viability.md`.** Split-force op:
+- 🔨 **C2 — Extraction viability. Design drafted → `finale-extraction-viability.md`. HARNESS BUILT +
+  MEASURED 2026-08-11 (#209 / D125).** The scripted split-force race runs headlessly on the real board
+  against the real doctrine (`src/content/rescue-race.ts` + 6 guards); the geometry invariants and exfil
+  semantics were **already shipped** (`levels.test.ts` B6a/B6b/B6c/B8, `exfil.test.ts`). **The pacing bar
+  is not pinned yet** — measuring it found two content blockers, both owner calls: (1) the arc has **no
+  Thief** (it prestiges the Scout at the rite, gated `scout ≥ 5`; the canonical run arrives at **L1**), so
+  extraction is **unreachable** by the real arrival party — and intel-without-a-Thief makes the side door a
+  **trap**; (2) the arrival party **one-shots** the garrison, so the distraction deletes rather than pins
+  and eliminate-all is free — the **incentive check answers "not yet"**. See **D125**. Split-force op:
   front distraction pins the garrison, infiltrator slams a lever-seal for a **head start**, escort
   **outruns the thinned pursuit through a chokepointed corridor**. Viability = **head-start ≥
   pursuit-close-time**, *not* a seal-hold — seals ~**60–70 hp** (not 150, not the 15–20 micro default).

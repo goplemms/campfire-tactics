@@ -5761,3 +5761,70 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   (the AI weight table these join), **D108** (`controlRoomTarget` as the living exemplar for a
   target-priority weight). **Defers:** tag-awareness in the approach branch (to #209); difficulty-scaled
   weights. **Superseded by:** —
+
+## D125 — C2 measured: the extraction race has a harness, and two content facts block the bar
+
+- **Status:** **Measured** 2026-08-11 (#209). The scripted split-force race is **built and green**; the
+  **pacing bar is deliberately not pinned yet** because measuring it surfaced two content facts that must
+  be ruled on first. Two owner calls open at the bottom. Not a design reversal — D118's model is intact;
+  this is the first time anything actually *ran* it.
+- **What shipped.** `src/content/rescue-race.ts` — a headless, deterministic driver that plays the
+  canonical solution on the real board: split deploy, slam `winch-wall`, pick the hall gate, free each
+  prisoner, rearguard the `(14,5)` choke, run for a mouth; the garrison planned by the **shipped AI**
+  (`runPolicyTurn` — the D117 door-drive, the `in-combat` gate) on the **real CT clock**, so a `speed 13`
+  cutthroat genuinely acts more often than a `speed 9` prisoner. Plus `referenceParty()` — the reference
+  party **derived** from the arc's own infiltration-arm arrival (`traverseRoute`) rather than hand-authored,
+  so it re-derives when arc balance moves. Three mutation knobs (`sealHp` / `pin` / `widenChoke`) exist so
+  the bar can be proven non-vacuous when it lands.
+  - **Guarded today** (`rescue-race.test.ts`, 6 cases) — the parts that hold **whatever the numbers
+    become**: the harness is deterministic (identical inputs ⇒ identical report, trace included); it
+    really executes the canonical solution (slam · pick in · **all three** prisoners freed); the seal buys
+    a head start that **scales with durability** (halve `sealHp` ⇒ breached strictly sooner — measured
+    t53 vs t86, on the real board against the real doctrine); and the distraction pin is load-bearing
+    (unpinned ⇒ the survivable retreat with the garrison still standing, i.e. the pursuit closed).
+  - **Already shipped, not rebuilt:** C2's other two proof items. The **geometry invariants** are
+    `levels.test.ts` B6a/B6b/B6c/B8 (+ #212's inside-the-wing invariant), and the **exfil semantics** are
+    `exfil.test.ts` (~30 cases covering exactly the five bullets the viability note lists). #209's
+    remaining scope was always the race and the bar.
+
+- **⚠️ FINDING 1 — extraction is UNREACHABLE by the party that actually arrives.** The arc holds **no
+  Thief in its cast** (`edrin` soldier · `rook` hunter · `vale` scout · …). The Thief is a **prestige** of
+  the Scout, granted by the `thieves-guild-rite` story and gated on
+  `{ kind: "jobLevel", job: "scout", min: SCOUT_PRESTIGE_FLOOR }` = **5**. The canonical playthrough
+  arrives at the finale with **`vale/scout` at job level 1** — four short — so the rite takes D92's
+  **gracious decline** and the party holds **no `lockpick` capability at all**. No cell opens; no hall
+  gate opens. Extraction is not merely unpinned, it is **unplayable** on that branch.
+  - **The sharp edge this creates.** **D118 attributed the side-door intel flag to `cuffedCell`
+    *because* its completion is unconditional** — but the *capability to use the side door* comes from the
+    **conditional** rite. So a player can arrive **with intel and without a Thief**, be offered the
+    side-door zone, send a body through it, and find that body can open **nothing**. The flank becomes a
+    **trap for the uninformed** rather than an option. (`the-rescue.ts`'s own `RESCUE_PARTY` comment has
+    the intent right — "a party without one still wins **frontally**" — but the *front* is a fallback for
+    the whole party, not for a lone body already through the side door.)
+- **⚠️ FINDING 2 — the garrison is a pushover for that party, so extraction is not "chosen".** Pinning
+  requires **striking**, and the arrival party's Hunter (`rook`, `attack 30`) one-shots a `bandit-thug`
+  (`maxHp 22`). So the distraction cannot *pin* — it **deletes**. Measured, as authored: the front party
+  clears **10/10 garrison bodies with zero party casualties**, and the encounter grades **eliminate-all**
+  long before the escort is out. That is #209's **incentive check**, answered: **not yet.** The sneak-out
+  cannot be the smart play while the frontal assault is free.
+  - Corollary worth keeping: the escort is also **slow** — `bram` (`moveRange 3`) freed on turn 81 was
+    still crossing at turn 400 in the unpinned run. The viability note's named **reserve lever** (a
+    freed-and-fleeing move bump) is the lever this points at, and it is still unspent.
+
+- **Why the bar is not pinned green.** Pinning it against today's numbers would enshrine a race the
+  content cannot run, and pinning it against a *hypothetical* garrison would be fiction. This is exactly
+  the owner's **"build first, tune later"** sequencing (#209, 2026-07-28): the machinery lands now, the
+  numbers get tuned by feel in the editor, and the bar pins the tuned result. What changed is only that
+  the tuning target is now **measured** instead of guessed.
+- **Open owner calls.**
+  1. **The Thief prerequisite** (Finding 1) — gate the side-door zone on `lockpick` capability as well as
+     the intel flag · or move the intel grant to the rite (D118 declined this for conditionality) · or
+     leave it and accept the trap · or give a non-Thief infiltrator something to do (a breakable cell).
+  2. **Garrison strength** (Finding 2, and the viability note's open decision 5) — the numbers pass that
+     makes pinning cost something and eliminate-all genuinely expensive. Editor-tunable by design.
+- **Reuses:** **D118** (the model this measures), **D117** (the doctrine the harness drives), **D124**
+  (the two pre-pin corrections that had to land first), **D92** (the gracious decline that produces
+  Finding 1), **D68** (the Scout prestige fork + its floor), **D122/D123** (the injected body catalog the
+  harness resolves through), **D56** (the policy seam `runPolicyTurn` plans through). **Defers:** the
+  everyone-out pacing bar + its three mutation guards (blocked on the two calls above); the
+  freed-and-fleeing move bump. **Superseded by:** —

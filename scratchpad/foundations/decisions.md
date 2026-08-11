@@ -5414,3 +5414,280 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   exemplar), **D50** (the `closing-gate` scheduled gauge — the render exemplar), **D87** (logged, replayable
   board mutations). **Defers:** the `FieldEntity` noise-maker; a per-lever quiet flag; noise on non-lever
   deploy acts. **Superseded by:** —
+
+## D122 — Encounters as JSON: the scoped principle, and the validator that has to come first
+
+- **Status:** Decided (foundation) 2026-07-30 — owner-directed, settling
+  `encounters-as-json-kickoff.md` via `encounters-as-json-review.md`. The **blocker fix below is
+  shipped in this entry's commit**; the migration itself is briefed, not built.
+- **Why now, mid-finale (owner).** The timing is admittedly poor — finale group **G** is live. Taken
+  anyway, and for a stated reason: **the failure this prevents is a migration bug discovered in the
+  finale *after* new nodes are built on top of it.** Foundation before population.
+- **Decision — the principle, in Q4's SCOPED form.** *Every encounter a **player can reach** is JSON;
+  the `scenarios/` harness stays TypeScript.* The exception is **load-bearing, not drift**:
+  - the `scenarios/` bodies are **test fixtures**, not content — they pin gate/lever/doctrine mechanics
+    and live beside the guards that read them;
+  - **verified 2026-07-30:** they are also the *only* place real fragment sharing exists (`micro.ts`
+    shares `STATS` ×10, `prisoner` ×6, `CELL_WALLS` ×5). **Every** named const in `hollow-mill.ts` is
+    referenced **exactly once** (`MIRA_MERCHANT`: zero) — readability aliases, not shared fragments.
+  - **Consequence, and the reason Q3 and Q4 settle together:** the kickoff's "TS de-duplicates, JSON
+    does not" cost lands **entirely on the exempted set**. It is **dismissed with evidence**, not
+    "accepted" — no shared-fragment mechanism, no include system, no decision deferred.
+- **Decision — the promise is LOADABLE, not EDITABLE.** `encounterToDraft`/`draftToEncounter` are
+  lossless **by carrying**, not by modeling: a converted body loads, renders and relaunches, but fields
+  the editor cannot paint ride invisibly. Editor milestones are **out of scope** here.
+  - ⚠️ **Honest consequence, accepted:** this does **not** deliver the friction that raised the
+    question (*"pick it, see it, **tune it**"*). Worse, **the two bodies whose design most wants tuning
+    are the two that cannot convert** — `TRAP_FIELD` *is* its traps ("the threat is the terrain").
+    The motivating want is served **last**, not first. Recorded so nobody re-derives it as a surprise.
+- **Decision — scope is 4 bodies now, 2 after trap-params.** Measured, not estimated: a full round-trip
+  audit over every authored body in the repo returns **16 of 18 exact** (the kickoff's "19" is an
+  arithmetic slip; the scenario group is 11, not 12).
+  - **Convert now:** `E1_SKIRMISH`, `PRISON_WAGON`, `CUFFED_CELL`, `THIEVES_DEN`.
+  - **Blocked on validator M5** (*not* on the editor — see the correction below): `TRAP_FIELD`,
+    `OUTER_YARD`. Both carry traps with `damage`/`concealment`, which the **editor** refuses to import
+    and the **validator** does not check. The kickoff's *second* editor refusal (a captive
+    `release.kind` outside `reach`/`lockpick`) is **currently vacuous** — nothing in the repo uses one.
+  - **Excluded:** `PRISON_ASSAULT` — checklist **F1** deletes it. Do not convert a body being deleted.
+- **Decision — trap-params is sequenced AFTER the first conversions, as its own editor milestone.**
+  It gates only the 2 blocked bodies and nothing else; making it a prerequisite would stall 4 clean
+  conversions behind an editor feature.
+  - **⚠️ CORRECTED by the challenge pass (2026-07-30) — this record originally conflated two
+    different milestones, and got the blocked-set's *reason* wrong.** Verified: `TRAP_FIELD` as JSON
+    **validates clean and would load, inject and play today**. Only the **editor** refuses it. Since
+    this very record promises **loadable, not editable**, the 2 bodies are **not blocked on the
+    editor at all** — by its own logic the editor milestone is irrelevant to whether they convert.
+  - **What actually gates them: validator M5 (trap-param range checks).** `TRAP_FIELD`'s design *is*
+    its `damage`/`concealment` numbers, and **nothing validates them** — converting it before M5 moves
+    the encounter's entire substance into the silent-typo zone with neither a compiler nor a validator
+    covering it. That is the one combination D122 exists to prevent.
+  - **So the two milestones are independent:** **validator M5 unblocks the CONVERSION**; the **editor**
+    trap-params milestone unblocks **EDITING** them. The migration can reach *fully JSON* without any
+    editor work — which the original wording denied.
+- **SHIPPED IN THIS ENTRY — the walkover guard measured the wrong tile.** Found by the audit, fixed
+  before anything is migrated, because **the first conversion would have tripped it**:
+  - `buildAuthoredCaptives` (`authored.ts:242`) stages a captive at the **placement** `c.pos`;
+    `spec.pos` is **discarded**. `member()` (`hollow-mill.ts:52`) hardcodes every spec to `(0,0)`.
+    `extractionIssues` measured from **`spec.pos`** — and `FINALE_EXIT[0]` *is* `(0,0)`.
+  - **Effect:** The Prison Assault's two cells (actually at **col 8**, eight tiles out) scored as a
+    **0-tile walkover**. `loadLevels()` throws on any issue, so as JSON this is a **hard load failure**
+    on a false positive.
+  - **Why it hid:** all 5 captives across the 4 JSON levels happen to have been hand-written with
+    `spec.pos` equal to the placement tile. The guard was **accidentally correct for its entire
+    population** — and, being blind in the inverse direction too, was *also* silently **missing real
+    walkovers** whose spec placeholder sat far from the exit. Both directions are now pinned.
+- **Decision — `validateLevel` growth is a PREREQUISITE, briefed separately** (owner). See
+  `encounters-as-json-validator-brief.md`. The kickoff treats this as debt budgeted against an
+  authoring convenience; **the audit inverts that — validation is the point.**
+  - **Measured:** of 13 single-field typo classes, `validateLevel` catches **2** (enemy `templateId`,
+    objective `kind`). Silent: captive `jobId`/`primaryJob`/`role`, enemy `role` and `overrides.*`,
+    `reward.materials[].id`, `grants.*`, `intelDepth` range, trap `concealment` as a string.
+    A typo'd `jobId` resolves through `getJob()` to `undefined` → **a unit with no job and no skills**,
+    the third instance of the class that bit twice in one day (**#216**: `run.flags`, `EQUIPMENT` ids).
+  - ⚠️ **Until it grows, the move trades a compiler for a validator weaker than the compiler.** That is
+    the honest reading, and the reason this is a gate rather than a follow-up.
+  - **Inversion to close regardless of the migration:** a bad `release.kind` is **fail-loud on editor
+    import but silent at JSON load**. The editor is stricter than the pipeline.
+- **SHIPPED IN THIS ENTRY — the validator's population now matches its claim.** `validateLevel` ran
+  **only** over `levels/*.json` (four files); the ~14 TS bodies were checked by `tsc` for shape and by
+  **nothing** for sense. A guard now sweeps **every** authored body in the repo (arc + harness + JSON),
+  enumerated structurally so a new body joins without a registry edit. This is what makes a body
+  **provably validator-clean before** conversion instead of at load time mid-migration.
+- **Decision — the order: one body end-to-end first.** `THIEVES_DEN` or `CUFFED_CELL` — both round-trip
+  exactly today and carry captives + gates + lockpick releases, so they exercise the interesting
+  machinery without the trap blocker. Land it with an equality guard against the TS const, kept until
+  the const is deleted.
+  - ⚠️ **The equality guard must NORMALIZE.** Run as the kickoff specifies it (strict deep-equality),
+    it reports **7 false failures** on healthy bodies, from two cosmetic shapes: an omitted `release`
+    becomes explicit `{ kind: "reach" }`, and `captives: []` becomes omitted. Canonicalize both (or
+    emit the canonical form and diff against *that*). **Specifying it without this is how a sound
+    conversion gets abandoned as "lossy" when it isn't.**
+- **SHIPPED IN THIS ENTRY (challenge pass) — the migration's silent-failure mode is guarded.**
+  `resolveAuthored` is `exp.encounters?.[id] ?? getAuthoredNode(id)` — **the inline map wins**.
+  Converting a body to JSON *without* deleting it from the expedition's `encounters: {}` map leaves the
+  game **silently playing the stale TS const**: the JSON loads, validates, injects, and is ignored.
+  Nothing errors and every guard stays green.
+  - **This is the natural workflow's exact failure** — "add the JSON, verify it works, then delete the
+    const" gives a **false green on the verify step**. `loadLevels()` only rejects duplicate ids
+    *within* `levels/*.json`; it never compared against an inline map.
+  - A guard now asserts no expedition serves an id that is also a JSON level. **Each conversion is
+    therefore a 3-part change — write the JSON, delete the const, unwire the `encounters` entry — and
+    the guard fails if the third part is skipped.**
+- **SHIPPED IN THIS ENTRY (challenge pass) — captive placement is validated.** A captive is staged at
+  its **placement** `pos`; a missing one is a **TypeError mid-boot**, not a load error. Nothing checked
+  it (the walkover guard is the field's only other reader, and it runs only when an `extraction`
+  objective exists). In TS `pos` is a required field, so this is precisely the D122 class: **a hazard
+  `tsc` covers today that only `validateLevel` can cover once the body is data.**
+- **SHIPPED — the validator prerequisite (brief M1–M5) is BUILT** (2026-07-30, same day). The typo
+  table is re-measured: **2 caught → 9 caught directly + 2 relationally**, with **one** genuine gap
+  left. `validateLevel` now checks unit identity (`jobId`/`primaryJob`/`heldJobs` via `getJob`),
+  `release.kind` (closing the editor-stricter-than-loader inversion), `reward.materials[].id` /
+  `grants.item` / `grants.flag` / `grants.recruit`, `intelDepth` range, rumors-beyond-depth, trap
+  numerics, and off-board tiles across every authored collection. 15 failing-input tests, one per
+  class — no check ships without one.
+  - **A brief instruction was WRONG and was not implemented.** It said to validate `role` against the
+    tag registry. `UnitSpec.role` is **free-form by design** (objectives bind to it by value, D50);
+    `TAGS` covers `unit.tags`, a different field. **Verified: a typo'd `role` is already caught
+    *relationally*** — if an objective binds to it, the existing "no captive matching its escort tag
+    — a dead win-path" fires. Checking it against a registry would have been actively wrong.
+  - **The one remaining gap, stated plainly: `overrides.standingOrder`.** A free-form string the AI
+    planner dispatches on (D81); a typo silently falls back to default behaviour. **`TRAP_FIELD`
+    carries `standingOrder: "hold-skittish"`**, so it is worth doing before *that* body converts.
+    - ⚠️ **This entry originally said closing it "needs a standing-order registry in core." That was
+      WRONG** — `src/core/standing-orders.ts` has existed since PR #154. What was missing was only the
+      `run-flags.ts` half: an **enumerable, refusable** vocabulary. The real work was ~20 lines grown
+      in place, not a new module. **Closed 2026-07-31** (brief M6).
+    - **The trap in the obvious implementation, worth keeping on record.** Validating against
+      `Object.keys(STANDING_ORDERS)` — what this record implied — would have **rejected four shipped
+      specs**. `"defend"` is authored on `PIP_COOK`, `CAPTIVE_PRISONER`, `CELL_PRISONER_A`/`B` and
+      Mira, and is the D41 universal skill's id, but it is a reserved *player-side* auto-action with
+      no AI posture — and `standing-orders.ts`'s own doc comment says it "needs no record here",
+      which is true for the **planner** and false for the **vocabulary**. Modelled as a sibling
+      `PLAYER_AUTO_ORDERS` registry so the authoring vocabulary is the *union*. **The check was
+      widened; it was not softened.**
+    - **It also exposed a hole in M1.** `unitSpecIssues` was never run against an enemy placement's
+      `overrides`, so a typo'd `jobId`/`primaryJob`/`heldJobs` **on an override** was silent too —
+      the brief's headline class, leaking through the same field. Closed by the same wiring.
+    - **Runtime refusal in the AI planner was considered and rejected.** `repro.ts` restores party
+      units wholesale from arbitrary dumps, so a throwing `orderOf` turns an old dump into a boot
+      crash — worse than degraded behaviour, and dumps exist to debug runs that already went wrong.
+      `orderOf` is also on the hottest path (every enemy plan, replay step, undo restore). Same line
+      `run-flags.ts` draws with *"Deliberately NOT wired into staging"*: **refuse at the authoring
+      boundary, not in the engine.**
+  - **Consequence: the conversions are unblocked.** M5 landed with M4 (trap numerics), so no brief
+    milestone gates the last 2 bodies any more. Upper bounds on trap damage were deliberately
+    omitted — an implausible number is a *balance* question, and this is a correctness gate.
+- **SHIPPED — conversion 1 of 6: `THIEVES_DEN` → `content/levels/thieves-den.json`** (2026-07-31).
+  The pilot D122 called for. The body was emitted **mechanically** from the const (never
+  hand-transcribed) and verified byte-identical; all three parts of the change landed together; the
+  const is replaced by `THIEVES_DEN_ID`, mirroring `RESCUE_FINALE_ID`, so the map node and the
+  content guards share one spelling instead of a bare literal in two layers.
+  - ⚠️ **The layering move cascades far wider than this record assumed.** "Core must not import
+    content" was written here as if one body's assertions move. In practice **six core test files
+    broke, five of them unflagged** — anything that *plays* the arc (`autoTraverse`, `samplePopulation`,
+    `analyzeExpedition`, `simulateRun`) or *reads* a body had to move to `src/content/`, and
+    `package.json`'s `sim`/`validate` paths moved with them. **Budget this per conversion; it is the
+    dominant cost, not the JSON.**
+  - **Two guards were restated, not weakened** — both now *migration-invariant*, so the remaining
+    conversions need no edit: the **C3 pacing guard** sums `reward.xp` through `resolveAuthored`
+    (home-agnostic, throws on a missing body rather than defaulting to 0), and the sweep's
+    **enumeration floor** — a per-home count that would legitimately fall on every conversion, where
+    "lower the number" is indistinguishable from "a body vanished" — now asserts every `authoredId`
+    the arc's map binds is present in the validated population, whichever home it lives in.
+  - **A silently-degraded pass, worth knowing about:** `arrivals.test.ts` showed only *one* red test
+    because `samplePopulation` swallows a crashing route into a non-survivor sample — the rest were
+    quietly measuring wipes. **If a file samples or analyses the arc anywhere, move the whole file,
+    not the red test.**
+  - **The reusable recipe** (10 ordered steps, including "baseline the sim *before* you start — you
+    cannot prove the digest is unchanged after the fact") is the pilot's primary deliverable and
+    governs conversions 2–6. **The expensive shared work is done once and is home-agnostic** — the
+    moved files, the pacing guard, the enumeration invariant and the `package.json` paths should
+    mostly not be touched again.
+  - **Verified independently, not merely reported:** sim digest byte-identical on every metric
+    (`completed 3 · lost 77 · median nights 6 · gold 215 · win 195 · wipe 77 · L4:9 L5:16 L6:55`,
+    authored arc complete at L10, traps staged 8 / sprung 5); `tsc` clean; **1538** tests with no
+    drop in count; `test:e2e:level` now boots `#level=thieves-den` in a real browser.
+- **Explicitly NOT decided here.** Arc promotion (**F1**/#210) · the finale's reference party · balance
+  tuning · in-UI kit authoring · whether the "Load into editor" button ships (**it is small, useful,
+  works on the 4 JSON levels today, and was never blocked on this principle**).
+- **Reuses:** **D116** (the authored-node injection seam — the JSON→core pipeline this rides, already
+  proven by The Rescue), **D98** (the `#editor` scene, `validateLevel`, the JSON level pipeline),
+  **D112/D113** (editor soft play + local persistence), **D114** (conventions — the registry/result
+  spellings the new validator checks must follow), **D97/D99** (the walkover guard corrected here),
+  **D52** (authored expeditions, captives, grants), **#216** (`run-flags.ts` / `playtest.ts` — the
+  living exemplars for refusing an unknown id at load). **Defers:** trap-params (its own editor
+  milestone); the 2 blocked bodies; editability generally. **Superseded by:** —
+
+## D123 — Where "a consistent format" stops: bodies are JSON, topology stays TS, events get a guard
+
+- **Status:** Decided (scope) 2026-07-31 — owner-directed. Bounds **D122**; settles what "authored
+  expeditions in a consistent format" does and does not mean, so the remaining work has an end.
+- **Decision — consistency is complete at the BODY layer.** Every player-reachable **encounter body**
+  is JSON; an expedition's **topology (`map`), `bundle` and cast stay TypeScript**. At that point both
+  shipped expeditions have the **identical shape** — which is the actual goal. "Consistent" means *the
+  two expeditions look the same as each other*, **not** "expeditions are JSON". Stated plainly here
+  because the phrase invites the second reading.
+- **Decision — topology stays TS, by decision rather than drift.**
+  - ⚠️ **Not a capability gap — verified.** `OverworldMap` is `{seed, layers, nodes, startId,
+    finalIds, order}` and every `MapNode` field is a scalar or array. The one non-scalar,
+    `blockedWhen?: Predicate`, is itself an explicit **data union** (`{kind:"flagSet", flag}`,
+    `{kind:"all", of:[…]}`) evaluated by `evalPredicateRun` — **#127 made conditions data on purpose**.
+    Topology would serialize with **zero new mechanism**, as a D122-shaped migration, and
+    `validateExpedition` already gates edges/reachability/dead-ends/orphans/prerequisites.
+  - **What decides it against: the comments.** `hollowMillMap()` is not merely a literal — it is
+    **where the arc's design is explained**: why the infiltration arm is listed first (so the sim's
+    naive bot walks the headline arm and proves it completes), the C7 mentor two-beat, the C3 fight
+    pacing, the D90 cell's home. **JSON has no comments.** The pilot conversion preserved a body's
+    rationale by moving its doc comment onto the `_ID` export; topology has **no equivalent anchor** —
+    the explanation would simply be homeless.
+  - Second cost: **`order` is derived** (stable iteration order). In JSON it becomes denormalized
+    state that can drift from `nodes`.
+  - **Revisit when there is a consumer** — an editor that renders or edits a run map. Not before
+    (the repo's concrete-first rule, #171 rev 2: extract when a *second* consumer appears).
+- **Decision — "events as JSON" is DECLINED as the wrong frame.** `EventDef` is **behavior, not
+  data**: `autoResolve(run, node)`, `choices?(run, node)`, `choose?(run, node, choiceId)` and
+  `prompt?(run, node)` are **methods that mutate the run and hold real logic** — the traveler event
+  checks whether a Cook is *fielded and not captured* and conditionally offers the stew.
+  - Serializing that means **inventing an effect-and-condition DSL plus an interpreter** ("grant
+    item", "bank RP", "recruit", "party fields a Cook"). **That is designing a scripting language, not
+    migrating a format** — and it is the same slope D122 already refused at smaller scale when it
+    declined a shared-fragment include system.
+  - **The bounded middle path, recorded but NOT taken now:** split the record — *presentation*
+    (`name`, `teaser`, `prompt` text, choice labels/details, `weight`, `standingBias`,
+    `minInfluence`) is pure data and could be JSON; *behavior* (`autoResolve`/`choose`) stays TS,
+    keyed by id. That buys the real authoring win (copy edited without touching code) with no DSL.
+    **Take it only when an authoring need actually appears** — not speculatively.
+- **Decision — the genuine events gap is VALIDATION, and it is independent of format.**
+  `HOLLOW_MILL_EVENTS` has **no validator at all**, and authored events are precisely the surface that
+  **froze the game** (D92/#168: the Wave-0 mentor beats were the Mill's first pinned `"story"` events,
+  `showStoryScreen` only handled the random-pool shape, every headless guard green). A validator +
+  scene guard is cheap, bounded, and has a known failure precedent. **Briefed separately; not part of
+  D122's remaining work.**
+- **What therefore remains to CLOSE D122** (and nothing else):
+  1. **5 conversions** — `E1_SKIRMISH`, `PRISON_WAGON`, `CUFFED_CELL`, `TRAP_FIELD`, `OUTER_YARD`
+     (the last two unblocked by validator M5 + M6). `PRISON_ASSAULT` is **deleted, not converted**.
+  2. **Empty the Hollow Mill's inline `encounters: {}`** — both expeditions then resolve bodies
+     identically through the injected catalog.
+  3. **Delete `AuthoredExpedition.encounters?` from the type.** This is what makes the format **one
+     thing** rather than two-with-a-precedence-rule, and it **permanently retires the shadowing
+     failure mode** — the anti-shadowing guard becomes unnecessary because the field is gone.
+  - ⚠️ **Step 3 is gated on F1 (#210)**, which D122 put out of scope: `PRISON_ASSAULT` is an inline
+    entry and the plan deletes rather than converts it, so the map cannot be emptied until F1 lands.
+    **Finishing D122 depends on work D122 excluded** — recorded so it is not discovered late.
+- **SHIPPED — all six bodies converted; the body layer is DONE** (2026-07-31). `THE_HOLLOW_MILL.
+  encounters` now holds **exactly one** entry (`PRISON_ASSAULT`), and `hollow-mill.ts` is topology +
+  cast + six `*_ID` exports. Verified independently: `tsc` clean, **1552** tests / 128 files (from
+  1538/127, **no test lost**), build clean, **sim digest byte-identical**, `e2e:level` 51 assertions
+  (was 26), arc 9, launcher 55, deploy-battle 73, scenario 34, `audit:visual` 0/0 across 15 surfaces,
+  `audit:challenge` 7/7.
+- **⚠️ NEW DRIFT SURFACE, created by this record's own split — cast in TS, bodies in JSON.**
+  `PIP_COOK` and `SELA_MEDIC` now exist **twice**: as the TS cast consts, and as **serialized copies
+  inside the JSON bodies** (`e1-skirmish`'s captive spec, `prison-wagon`'s `grants.recruit`). **The
+  game plays the JSON**, so the TS const is decorative for those two — and nothing would notice them
+  diverging. A drift pin now deep-equals each body's copy against its cast const.
+  - **This is the standing cost of keeping cast in TS**, and it grows with every recruit authored into
+    a body. If it ever outgrows a pin, the answer is to make the JSON the single source and derive the
+    TS const from it — **not** to duplicate more carefully.
+- **Recipe lessons for anyone doing this again** (fed back from the five-body run):
+  - **Blast radius is about the node's POSITION, not the body's size.** `E1_SKIRMISH` was ~80% of the
+    whole job because node `e1` is the arc's **first** node, so every `traverseRoute`/`drive`/
+    `autoTraverse` walk crosses it — five core files broke. Conversions 3, 4 and 6 needed **zero**
+    test moves. Convert the earliest node first and budget it accordingly.
+  - **`src/game/` breaks too, not just core.** Both genuine surprises were in `editor-draft.test.ts`,
+    and D122 **predicted both shapes** (the `release ?? reach` cosmetic default; the trap-param import
+    refusal) without ever connecting them to the guard that would go red. Restate that guard — do not
+    weaken it.
+  - **"Move the file, not the red test" is a SAMPLER rule, not a universal one.** It is right for
+    `arrivals.test.ts` (where `samplePopulation` swallows a crashing route and the greens quietly
+    measure wipes) and wrong for `runloop.test.ts` / `intel.test.ts`, which are **core-mechanic
+    suites** that merely use arc bodies as fixtures. **The discriminator is the failure mode:** silent
+    degradation ⇒ move the file; a hard `runEncounter` throw ⇒ move just the arc-fixture block and
+    leave the mechanic pinned in core on a local fixture.
+  - **Never pin on a `hollow-mill:BODY` sweep label** — it is migration-fragile by construction. Match
+    on the encounter **id**, like the sweep's enumeration invariant.
+- **Reuses:** **D122** (the migration this bounds), **D116** (the injection seam; it deferred
+  JSON-defined graphs — this record states *why* that deferral stands), **#127** (conditions as data —
+  the reason topology *could* convert), **D92/#168** (the authored-event freeze — the reason the events
+  gap is about guards), **D52** (authored expeditions, events, bundles), **#171** rev 2
+  (concrete-first: extract on a second consumer). **Defers:** topology-as-JSON; the event
+  presentation/behavior split; the authored-event validator. **Superseded by:** —

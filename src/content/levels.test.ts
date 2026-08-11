@@ -16,9 +16,15 @@ import {
   NON_COMBATANT,
   inRegion,
   planEnemyTurn,
+  standingOrderIds,
   type Gate,
   type GridCoord,
+  type AuthoredEncounter,
+  type ReleaseRequirement,
 } from "../core";
+import * as HOLLOW_MILL_BODIES from "../core/hollow-mill";
+import { THE_HOLLOW_MILL } from "../core/hollow-mill";
+import { SCENARIOS } from "../core/scenarios";
 
 /**
  * The JSON level content pipeline (D98) — proves a `.json` in `content/levels/` is
@@ -147,16 +153,197 @@ describe("the JSON level content pipeline (D98)", () => {
   });
 });
 
+/**
+ * **The typo surface** (validator M1–M4, D122).
+ *
+ * Moving an encounter from TS to JSON trades a compiler for this function. Before these checks it
+ * caught **2 of 13** single-field typo classes — a downgrade, not a migration. Each case below
+ * corrupts exactly one field of an otherwise-valid level and asserts a *specific* message, which is
+ * what separates a real check from a message nobody triggers.
+ *
+ * Every field here is one `tsc` guards while the body is TypeScript and stops guarding the moment
+ * it becomes data. That is the whole reason D122 makes this a gate.
+ */
+describe("the typo surface — every field that loses tsc when it becomes JSON", () => {
+  const base = (): Record<string, unknown> => ({
+    id: "typo-probe",
+    name: "Typo Probe",
+    cols: 9,
+    rows: 6,
+    blocked: [],
+    playerSpawns: [{ col: 0, row: 2 }],
+    enemies: [{ templateId: "bandit-thug", pos: { col: 8, row: 2 } }],
+    captives: [
+      {
+        spec: {
+          id: "probe-prisoner", name: "Prisoner", side: "player", pos: { col: 4, row: 1 },
+          jobId: "soldier", primaryJob: "soldier", role: "prisoner",
+          speed: 10, maxHp: 22, attack: 6, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1,
+        },
+        pos: { col: 4, row: 1 },
+        release: { kind: "reach" },
+      },
+    ],
+    reward: { gold: 50, materials: [], xp: 40 },
+  });
+
+  /** Corrupt one field, return the issues. `path` is applied with a tiny setter for readability. */
+  const probe = (mutate: (e: Record<string, never>) => void): string[] => {
+    const e = base();
+    mutate(e as unknown as Record<string, never>);
+    return validateLevel(e);
+  };
+  const at = (e: Record<string, never>): Record<string, unknown> => e as unknown as Record<string, unknown>;
+  const captiveSpec = (e: Record<string, never>): Record<string, unknown> =>
+    (at(e).captives as Array<{ spec: Record<string, unknown> }>)[0].spec;
+
+  it("the baseline probe is clean (so every failure below is the mutation, not the fixture)", () => {
+    expect(validateLevel(base())).toEqual([]);
+  });
+
+  // --- M1: unit identity -----------------------------------------------------------------
+  it("catches a typo'd captive jobId (the silently-worthless unit)", () => {
+    expect(probe((e) => { captiveSpec(e).jobId = "soldeir"; }).some((i) => /unknown jobId "soldeir"/.test(i))).toBe(true);
+  });
+
+  it("catches a typo'd primaryJob and an unknown heldJob", () => {
+    expect(probe((e) => { captiveSpec(e).primaryJob = "medik"; }).some((i) => /unknown primaryJob "medik"/.test(i))).toBe(true);
+    expect(probe((e) => { captiveSpec(e).heldJobs = ["soldier", "hunterr"]; }).some((i) => /holds unknown job "hunterr"/.test(i))).toBe(true);
+  });
+
+  it("still accepts an ABSENT jobId (optional by design — don't turn it into a required field)", () => {
+    expect(probe((e) => { delete captiveSpec(e).jobId; delete captiveSpec(e).primaryJob; })).toEqual([]);
+  });
+
+  // --- M2: the editor/loader inversion ---------------------------------------------------
+  it("catches an unknown captive release kind — the editor refused this on import, the loader didn't", () => {
+    expect(probe((e) => { (at(e).captives as Array<Record<string, unknown>>)[0].release = { kind: "lockpik" }; })
+      .some((i) => /unknown release kind "lockpik"/.test(i))).toBe(true);
+  });
+
+  it("accepts every kind the ReleaseRequirement union models", () => {
+    // A mapped type over the union: adding a member to `ReleaseRequirement` makes this a COMPILE
+    // error until the new kind is handled in `levels.ts` too, so the list can't silently drift.
+    const ALL: Record<ReleaseRequirement["kind"], true> = { reach: true, lockpick: true };
+    for (const kind of Object.keys(ALL)) {
+      expect(probe((e) => { (at(e).captives as Array<Record<string, unknown>>)[0].release = { kind }; })).toEqual([]);
+    }
+  });
+
+  // --- M3: economy + grants --------------------------------------------------------------
+  it("catches a typo'd reward material — grantItem would silently drop it", () => {
+    expect(probe((e) => { (at(e).reward as Record<string, unknown>).materials = [{ id: "trap-kitt", count: 1 }]; })
+      .some((i) => /reward material "trap-kitt" is not a known material/.test(i))).toBe(true);
+  });
+
+  it("catches a typo'd grants.item and grants.flag", () => {
+    expect(probe((e) => { at(e).grants = { item: "relic-hollow-blad" }; }).some((i) => /grants.item "relic-hollow-blad"/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).grants = { flag: "medic-fred" }; }).some((i) => /grants.flag "medic-fred" is not a known run flag/.test(i))).toBe(true);
+  });
+
+  it("catches a typo'd job on grants.recruit (a whole UnitSpec hiding in a grant)", () => {
+    expect(probe((e) => { at(e).grants = { recruit: { id: "sela", name: "Sela", side: "player", pos: { col: 0, row: 0 }, jobId: "medik", maxHp: 20, speed: 10, attack: 5, defense: 2, moveRange: 4, sightRadius: 5 } }; })
+      .some((i) => /grants.recruit "sela" has unknown jobId "medik"/.test(i))).toBe(true);
+  });
+
+  it("accepts the flags shipped content actually uses", () => {
+    expect(probe((e) => { at(e).grants = { flag: "medic-freed" }; })).toEqual([]);
+    expect(probe((e) => { at(e).grants = { flag: "side-door-intel" }; })).toEqual([]);
+  });
+
+  // --- M4: scalars, tiles, numbers -------------------------------------------------------
+  it("catches an out-of-range intelDepth", () => {
+    expect(probe((e) => { at(e).intelDepth = 99; }).some((i) => /intelDepth must be an integer in 1\.\.3/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).intelDepth = 0; }).some((i) => /intelDepth must be an integer/.test(i))).toBe(true);
+  });
+
+  it("catches rumors deeper than the read can ever reach — but NOT fewer (one-sided, by design)", () => {
+    expect(probe((e) => { at(e).intelDepth = 2; at(e).rumors = ["a", "b", "c"]; })
+      .some((i) => /3 rumors but intelDepth is 2/.test(i))).toBe(true);
+    // Fewer rumors than the depth is intentional — a shallow node has less hearsay to give.
+    expect(probe((e) => { at(e).intelDepth = 3; at(e).rumors = ["a"]; })).toEqual([]);
+    expect(probe((e) => { at(e).rumors = ["a", "b", "c"]; })).toEqual([]); // default depth = MAX_TIER
+  });
+
+  it("catches a stringly-typed trap number (concealment: \"4\")", () => {
+    expect(probe((e) => { at(e).traps = [{ pos: { col: 3, row: 3 }, concealment: "4", damage: 22 }]; })
+      .some((i) => /trap\[0\].concealment must be a non-negative number/.test(i))).toBe(true);
+  });
+
+  it("catches off-board tiles across every authored collection", () => {
+    expect(probe((e) => { at(e).blocked = [{ col: 99, row: 0 }]; }).some((i) => /blocked\[0\] is off the board/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).playerSpawns = [{ col: 0, row: 99 }]; }).some((i) => /playerSpawns\[0\] is off the board/.test(i))).toBe(true);
+    expect(probe((e) => { (at(e).enemies as Array<Record<string, unknown>>)[0].pos = { col: 99, row: 0 }; })
+      .some((i) => /enemy\[0\] .* is off the board/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).traps = [{ pos: { col: 0, row: 99 } }]; }).some((i) => /trap\[0\] is off the board/.test(i))).toBe(true);
+  });
+
+  it("catches a non-numeric reward.gold", () => {
+    expect(probe((e) => { (at(e).reward as Record<string, unknown>).gold = "50"; })).toContain("reward.gold must be a number");
+  });
+
+  // --- M6: the standingOrder vocabulary --------------------------------------------------
+  /**
+   * The class the M1–M5 audit left open. Unlike every other field here, `standingOrder` is a bare
+   * `string` **even in TypeScript** — `tsc` never covered it — so the typo is silent in both
+   * formats: `orderOf` misses the registry, `planEnemyTurn` sees no posture, and the unit falls
+   * back to the charging default. A `hold-skittish` straggler that never bolts erases the
+   * win-without-the-kill his whole encounter is built around, and nothing errors.
+   */
+  const enemy = (e: Record<string, never>): Record<string, unknown> => (at(e).enemies as Array<Record<string, unknown>>)[0];
+
+  it("catches a typo'd standingOrder on an enemy override — TRAP_FIELD's field, the JSON-conversion blocker", () => {
+    expect(probe((e) => { enemy(e).overrides = { standingOrder: "hold-skittsh" }; })
+      .some((i) => /unknown standingOrder "hold-skittsh"/.test(i))).toBe(true);
+    // Specific enough to name the offender, not just the class.
+    expect(probe((e) => { enemy(e).id = "lone-straggler"; enemy(e).overrides = { standingOrder: "hold-skittsh" }; })
+      .some((i) => /enemy\[0\] "lone-straggler" overrides has unknown standingOrder/.test(i))).toBe(true);
+  });
+
+  it("catches a typo'd standingOrder on an authored UnitSpec (a captive, and a grants.recruit)", () => {
+    expect(probe((e) => { captiveSpec(e).standingOrder = "defned"; })
+      .some((i) => /captive "probe-prisoner" has unknown standingOrder "defned"/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).grants = { recruit: { id: "pip", name: "Pip", side: "player", pos: { col: 0, row: 0 }, jobId: "cook", standingOrder: "defned", maxHp: 20, speed: 10, attack: 5, defense: 2, moveRange: 4, sightRadius: 5 } }; })
+      .some((i) => /grants.recruit "pip" has unknown standingOrder "defned"/.test(i))).toBe(true);
+  });
+
+  it("catches the OTHER fields an enemy override can typo, too (it is a whole Partial<UnitSpec>)", () => {
+    expect(probe((e) => { enemy(e).overrides = { jobId: "soldeir" }; })
+      .some((i) => /overrides has unknown jobId "soldeir"/.test(i))).toBe(true);
+  });
+
+  it("accepts every order the engine actually dispatches on, plus the reserved player-side one", () => {
+    // Read from core, never hand-copied — a new order joins the vocabulary without editing this
+    // test, and an order DELETED from core makes the loop shrink rather than silently pass.
+    expect(standingOrderIds()).toContain("hold-skittish");
+    expect(standingOrderIds()).toContain("defend");
+    for (const order of standingOrderIds()) {
+      expect(probe((e) => { enemy(e).overrides = { standingOrder: order }; }), `enemy override "${order}"`).toEqual([]);
+      expect(probe((e) => { captiveSpec(e).standingOrder = order; }), `captive "${order}"`).toEqual([]);
+    }
+  });
+
+  it("still accepts an ABSENT standingOrder (the default: manual control / the charging planner)", () => {
+    expect(probe((e) => { delete enemy(e).overrides; delete captiveSpec(e).standingOrder; })).toEqual([]);
+  });
+});
+
 describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
   const CAPTIVE_STATS = { jobId: "soldier", primaryJob: "soldier", role: "prisoner", speed: 10, maxHp: 22, attack: 6, defense: 2, moveRange: 4, sightRadius: 5, attackRange: 1 } as const;
   const EXIT = [{ col: 0, row: 0 }, { col: 0, row: 1 }, { col: 0, row: 2 }, { col: 0, row: 3 }, { col: 0, row: 4 }, { col: 0, row: 5 }];
-  function rescueLevel(captiveCol: number, escortTag: { role?: string; id?: string } = { role: "prisoner" }): unknown {
+  /**
+   * `specCol` defaults to the placement column (the hand-written-JSON shape). Pass it explicitly to
+   * model a **`member()`-built spec**, whose `pos` is a `{ col: 0, row: 0 }` placeholder the staging
+   * seam ignores — the divergence that hid a real bug in this guard.
+   */
+  function rescueLevel(captiveCol: number, escortTag: { role?: string; id?: string } = { role: "prisoner" }, specCol = captiveCol): unknown {
     const pos = { col: captiveCol, row: 2 };
+    const specPos = { col: specCol, row: 2 };
     return {
       id: "walkover-probe", name: "Walkover Probe", cols: 10, rows: 6, blocked: [],
       playerSpawns: [{ col: 0, row: 1 }],
       enemies: [{ templateId: "bandit-thug", pos: { col: 5, row: 2 } }],
-      captives: [{ spec: { id: "cap", name: "Cap", side: "player", pos, ...CAPTIVE_STATS }, pos, release: { kind: "lockpick" } }],
+      captives: [{ spec: { id: "cap", name: "Cap", side: "player", pos: specPos, ...CAPTIVE_STATS }, pos, release: { kind: "lockpick" } }],
       objectives: [
         { id: "storm", kind: "eliminate-all", required: true, label: "clear" },
         { id: "extract", kind: "extraction", required: true, label: "escort", span: EXIT, escort: escortTag },
@@ -185,9 +372,155 @@ describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
     expect(issues.some((i) => /no captive matching its escort tag/.test(i))).toBe(true);
   });
 
+  /**
+   * A captive is staged at its **placement** tile, so a missing/off-board one is a TypeError mid-boot
+   * rather than a load error. In TS `CaptivePlacement.pos` is required; as JSON it is just an absent
+   * key — the D122 class of field that only `validateLevel` can guard once the body is data.
+   */
+  describe("captive placement (a JSON-tier hazard tsc covers today)", () => {
+    const withCaptive = (mutate: (c: Record<string, unknown>) => void): unknown => {
+      const level = rescueLevel(9) as { captives: Array<Record<string, unknown>> };
+      mutate(level.captives[0]);
+      return level;
+    };
+
+    it("flags a captive with no placement pos", () => {
+      const issues = validateLevel(withCaptive((c) => delete c.pos));
+      expect(issues.some((i) => /no valid placement pos/.test(i))).toBe(true);
+    });
+
+    it("flags a captive placed off the board", () => {
+      const issues = validateLevel(withCaptive((c) => { c.pos = { col: 99, row: 0 }; }));
+      expect(issues.some((i) => /placed off the board at \(99,0\)/.test(i))).toBe(true);
+    });
+
+    it("does NOT fire on a well-placed captive", () => {
+      expect(validateLevel(rescueLevel(9)).filter((i) => /placement pos|off the board/.test(i))).toEqual([]);
+    });
+  });
+
   it("leaves the shipped finale levels clean (no false positives)", () => {
     expect(validateLevel(getLevel("the-rescue")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
     expect(validateLevel(getLevel("prison-break")!).filter((i) => /walkover|escort tag/.test(i))).toEqual([]);
+  });
+
+  /**
+   * The guard measures from the **placement** tile, never `spec.pos` — the spec's own `pos` is a
+   * placeholder that `buildAuthoredCaptives` discards. Both directions matter, and both were wrong
+   * before: a placeholder ON the exit span produced a false walkover (this is exactly The Prison
+   * Assault, whose `member()`-built cells default to `(0,0)` — the first tile of the finale's exit),
+   * and a placeholder far from the exit *masked* a real one.
+   */
+  describe("measures from the placement tile, not spec.pos (the member() placeholder)", () => {
+    it("does NOT flag a far-held captive whose spec.pos placeholder sits on the exit span", () => {
+      // Placement col 9 (a real 9-tile escort); spec.pos col 0 = on the span. The prisoner never
+      // stands on spec.pos, so this must stay clean.
+      expect(validateLevel(rescueLevel(9, { role: "prisoner" }, 0)).some((i) => /walkover/.test(i))).toBe(false);
+    });
+
+    it("DOES flag a captive placed on the exit whose spec.pos placeholder is far away", () => {
+      // The inverse, and the dangerous one: a genuine walkover (placement col 1 ≤ moveRange 4)
+      // that a spec.pos of col 9 previously hid.
+      expect(validateLevel(rescueLevel(1, { role: "prisoner" }, 9)).some((i) => /walkover/.test(i))).toBe(true);
+    });
+
+    it("reports the distance from the placement tile in the message", () => {
+      const issue = validateLevel(rescueLevel(3, { role: "prisoner" }, 9)).find((i) => /walkover/.test(i));
+      expect(issue).toMatch(/starts 3 tile\(s\) from the exit/);
+    });
+  });
+});
+
+/**
+ * **The content validator's real population** (the encounters-as-JSON audit, 2026-07-30).
+ *
+ * `validateLevel` runs fail-loud at load — but only over `levels/*.json`, which is *four* files. The
+ * ~14 TS-const bodies (the Hollow Mill arc + the `scenarios/` harness) are checked by `tsc` for shape
+ * and by **nothing at all** for sense: no walkover guard, no unknown-template check, no id-uniqueness.
+ *
+ * That gap is what let the walkover guard read `spec.pos` for a year without anyone noticing, and it
+ * is the gap a JSON migration closes. Running the validator across every authored body in the repo
+ * makes the guard's population match its claim ("protects **every** level") — and, concretely, means a
+ * body is proven validator-clean **before** anyone converts it, rather than discovering a false
+ * failure at load time mid-migration.
+ */
+describe("every authored body in the repo passes the content validator", () => {
+  /** Structural enumeration, so a newly-authored body joins this guard without a registry edit. */
+  const bodies: Array<[string, AuthoredEncounter]> = [
+    ...Object.entries(HOLLOW_MILL_BODIES)
+      .filter((entry): entry is [string, AuthoredEncounter] => {
+        const e = entry[1] as Partial<AuthoredEncounter>;
+        return !!e && typeof e === "object" && typeof e.cols === "number" && typeof e.rows === "number" && Array.isArray(e.enemies);
+      })
+      .map(([k, e]) => [`hollow-mill:${k}`, e] as [string, AuthoredEncounter]),
+    ...Object.values(SCENARIOS).map((s) => [`scenario:${s.id}`, s.encounter as AuthoredEncounter] as [string, AuthoredEncounter]),
+    ...listLevels().map((l) => [`json:${l.id}`, l] as [string, AuthoredEncounter]),
+  ];
+
+  it("enumerates the whole population (arc + harness + JSON), not just the JSON files", () => {
+    // Guards the enumeration itself: if this drops to ~4 the sweep below has gone vacuous.
+    expect(bodies.length).toBeGreaterThanOrEqual(18);
+    // **Migration-invariant, not a per-home count** (D122): each conversion moves one arc body
+    // from `hollow-mill:` to `json:`, so a floor on either bucket would fall as the migration
+    // runs — and "lower the number" is indistinguishable from "a body vanished". Pin the thing
+    // that must hold in every intermediate state instead: **every** encounter the Hollow Mill's
+    // map binds is somewhere in the swept population, whichever home it currently lives in.
+    const swept = new Set(bodies.map(([, e]) => e.id));
+    const arcIds = Object.values(THE_HOLLOW_MILL.map.nodes)
+      .map((n) => n.authoredId)
+      .filter((id): id is string => typeof id === "string");
+    expect(arcIds.length).toBeGreaterThanOrEqual(7);
+    for (const id of arcIds) expect(swept.has(id), `arc body "${id}" is not in the validated population`).toBe(true);
+  });
+
+  it.each(bodies)("%s validates clean", (_label, enc) => {
+    expect(validateLevel(enc)).toEqual([]);
+  });
+
+  /**
+   * **Specificity for the `standingOrder` check** (D122). The sweep passing proves nothing about a
+   * check that no shipped body exercises — the `audit:challenge` discipline applied to a content
+   * gate. `TRAP_FIELD`'s lone straggler carries `overrides.standingOrder: "hold-skittish"` and is
+   * one of the two bodies queued for JSON conversion, which is exactly where `tsc` stops covering
+   * the field. So corrupt that field (and every other body's) on a deep copy and prove the sweep
+   * would have caught it, rather than trusting the synthetic probe fixture alone.
+   */
+  it("would catch a typo'd standingOrder in the REAL bodies that carry one (not just the probe)", () => {
+    const carries = ([, e]: [string, AuthoredEncounter]): boolean =>
+      (e.enemies ?? []).some((en) => en.overrides?.standingOrder !== undefined) ||
+      (e.captives ?? []).some((c) => c.spec?.standingOrder !== undefined);
+    const carriers = bodies.filter(carries);
+    // The straggler is the motivating case; if he stops carrying an order, this guard has gone
+    // vacuous and should be re-pointed rather than deleted. Matched on the **encounter id**, not
+    // the label, so it is migration-invariant (D122): the Snares' body moved from
+    // `hollow-mill:TRAP_FIELD` to `json:snares-trapfield` and the claim is unchanged.
+    expect(carriers.map(([, e]) => e.id)).toContain("snares-trapfield");
+
+    for (const [label, enc] of carriers) {
+      const corrupt = JSON.parse(JSON.stringify(enc)) as AuthoredEncounter;
+      for (const en of corrupt.enemies ?? []) if (en.overrides?.standingOrder) en.overrides.standingOrder += "-typo";
+      for (const c of corrupt.captives ?? []) if (c.spec?.standingOrder) c.spec.standingOrder += "-typo";
+      expect(validateLevel(corrupt).some((i) => /unknown standingOrder/.test(i)), label).toBe(true);
+    }
+  });
+
+  /**
+   * **The migration's silent-failure mode** (challenge pass, 2026-07-30).
+   *
+   * `resolveAuthored` is `exp.encounters?.[id] ?? getAuthoredNode(id)` — the **inline map wins**. So
+   * converting an arc body to JSON *without* also deleting it from the expedition's `encounters: {}`
+   * map leaves the game **silently playing the stale TS const**: the JSON file loads, validates,
+   * injects, and is then ignored. Nothing errors, every guard stays green, and an author editing the
+   * new JSON sees no change in game.
+   *
+   * That is the natural workflow's exact failure — "add the JSON, check it works, then delete the
+   * const" gives a **false green** in the middle step. `loadLevels()` only rejects duplicate ids
+   * *within* `levels/*.json`; it has never compared against an inline map.
+   */
+  it("no expedition serves an id that is ALSO a JSON level (a stale inline const would shadow it)", () => {
+    const inline = Object.keys(THE_HOLLOW_MILL.encounters ?? {});
+    const shadowed = inline.filter((id) => id in LEVELS);
+    expect(shadowed, `these ids resolve to the inline TS const, NOT their JSON file: ${shadowed.join(", ")}`).toEqual([]);
   });
 });
 

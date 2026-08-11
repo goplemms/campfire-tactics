@@ -21,6 +21,12 @@ screenshots/
 .env.*
 !.env.example
 
+# --- agent scaffolding ---
+# Isolated git worktrees the harness creates for background subagents. Each is a full
+# nested checkout, created and reclaimed transiently — never repo content. `.claude/`
+# itself stays tracked (agents, skills, settings), so this ignores only the worktrees.
+.claude/worktrees/
+
 # --- editor / OS noise ---
 .DS_Store
 Thumbs.db

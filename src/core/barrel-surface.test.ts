@@ -185,6 +185,46 @@
  *     finale), and `SIDE_DOOR_ID` (`the-rescue.ts`, the provider node's authored body).
  *     `SpawnZone` / `SafeGround` / `AuthoredSpawnZone` are type-only. No new RNG label, no new
  *     registration, no routing/reward change → sim digest unchanged (→ 731).
+ *
+ * Encounters-as-JSON deltas (D122 — arc bodies migrate to `content/levels/*.json`):
+ *   - conversion 1 (`thieves-den`): net 0 — −`THIEVES_DEN` (the body const is deleted; the
+ *     encounter now lives at `content/levels/thieves-den.json` and reaches core through the
+ *     injected authored-node catalog), +`THIEVES_DEN_ID` (the `"thieves-den"` binding the map
+ *     node and the content-layer guards share, mirroring `RESCUE_FINALE_ID` / `SIDE_DOOR_ID`
+ *     on The Rescue). The body is byte-identical JSON, so routing and rewards are untouched →
+ *     sim digest unchanged (731).
+ *     **Expect one such −BODY/+BODY_ID pair per remaining conversion** (`E1_SKIRMISH`,
+ *     `PRISON_WAGON`, `CUFFED_CELL`, then `TRAP_FIELD`, `OUTER_YARD`).
+ *   - conversion 2 (`e1-skirmish`): net 0 — −`E1_SKIRMISH` / +`E1_SKIRMISH_ID`, the same pair for
+ *     the same reason (body → `content/levels/e1-skirmish.json`, id stays the map node's binding).
+ *     `PIP_COOK` stays exported: the **cast** remains TS (D123), it is simply serialized into the
+ *     body's `captives[0].spec`. Byte-identical JSON → sim digest unchanged (736 — conversions 2+
+ *     land after the standing-order delta below, and each is net 0, so the total does not move).
+ *   - conversion 3 (`prison-wagon`): net 0 — −`PRISON_WAGON` / +`PRISON_WAGON_ID`. `SELA_MEDIC`
+ *     stays exported (the **cast** is TS, D123); the body simply carries a serialized copy of her
+ *     spec in `grants.recruit`, exactly as the editor's exporter would. → 736.
+ *   - conversion 4 (`cuffed-cell`): net 0 — −`CUFFED_CELL` / +`CUFFED_CELL_ID`. The body's
+ *     module-private `CAPTIVE_PRISONER` spec is deleted with it (it was never barrel surface —
+ *     see increment PR-2 above — and `noUnusedLocals` strands it), serialized instead into
+ *     `captives[0].spec`. → 736.
+ *   - conversion 5 (`snares-trapfield`): net 0 — −`TRAP_FIELD` / +`TRAP_FIELD_ID`. This is the
+ *     body D122 called "the one whose design IS its numbers": the trap `damage`/`concealment`
+ *     and `overrides.standingOrder: "hold-skittish"` leave `tsc`'s reach entirely, which is why
+ *     validator M4 (trap numerics) and M6 (the standing-order vocabulary) had to land first. → 736.
+ *   - conversion 6 (`outer-yard`): net 0 — −`OUTER_YARD` / +`OUTER_YARD_ID`. The last body the
+ *     Hollow Mill's map binds to a TS const, apart from `PRISON_ASSAULT` (which checklist F1
+ *     **deletes** rather than converts, so it stays the sole inline `encounters` entry). → 736.
+ *
+ * Standing-order vocabulary delta (D122 — the last silent typo class in `validateLevel`):
+ *   - +5 — `standing-orders.ts` grows the `run-flags.ts` registry spelling so an authored
+ *     `standingOrder` can be **refused** instead of silently falling back to the charging
+ *     planner: `registerStandingOrders` (the null-prototype, fail-loud-on-duplicate builder
+ *     `STANDING_ORDERS` is now built through — same values, so `orderOf` is unchanged),
+ *     `getStandingOrder` (the D114 getter `orderOf` reads through), `PLAYER_AUTO_ORDERS` (the
+ *     reserved player-side `defend`, D41 — authored on five shipped specs, dispatched by
+ *     nothing), and the vocabulary queries `standingOrderIds` / `isKnownStandingOrder` that
+ *     `validateLevel` refuses against. `PlayerAutoOrderDef` is type-only. No planner change, no
+ *     new registration at import, no RNG → sim digest unchanged (→ 736).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -217,7 +257,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "CORE_INVARIANTS",
   "CRITICAL_HP_FRACTION",
   "CTClock",
-  "CUFFED_CELL",
+  "CUFFED_CELL_ID",
   "DASH_CAPTURE_FACTOR",
   "DEAL_PRIMED_FLAG",
   "DEFAULT_GOAL",
@@ -236,7 +276,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "DOCTRINE_HARNESS",
   "DOCTRINE_HARNESS_SCENARIO",
   "DYING_COUNTER",
-  "E1_SKIRMISH",
+  "E1_SKIRMISH_ID",
   "EARLY_EVENT",
   "ECONOMY",
   "ENEMY_TEMPLATES",
@@ -309,18 +349,19 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "NON_COMBATANT",
   "OBJECTIVE_KINDS",
   "ORTHO_OFFSETS",
-  "OUTER_YARD",
+  "OUTER_YARD_ID",
   "PASSIVE",
   "PASSIVE_INFO",
   "PICK_THE_CELL",
   "PICK_THE_CELL_ENCOUNTER",
   "PILOT_POLICY",
   "PIP_COOK",
+  "PLAYER_AUTO_ORDERS",
   "PRESTIGE_OFFERS",
   "PRISON_ASSAULT",
   "PRISON_ASSAULT_SCENARIO",
   "PRISON_ASSAULT_SCENARIO_ENCOUNTER",
-  "PRISON_WAGON",
+  "PRISON_WAGON_ID",
   "PROTECT_MAP_DIVISOR",
   "QUIET_FOOTSTEPS_CAPTURE_FACTOR",
   "REACH",
@@ -370,12 +411,12 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "THE_HOLLOW_MILL",
   "THE_RESCUE",
   "THIEF_JOB",
-  "THIEVES_DEN",
+  "THIEVES_DEN_ID",
   "THIEVES_GUILD_CONTACT",
   "THIEVES_GUILD_RITE",
   "TILE_HEIGHT",
   "TILE_WIDTH",
-  "TRAP_FIELD",
+  "TRAP_FIELD_ID",
   "TRAP_INTEL",
   "TRIAGE",
   "TRIAGE_FALLBACK",
@@ -624,6 +665,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "getRunFlag",
   "getScenario",
   "getSkill",
+  "getStandingOrder",
   "getStory",
   "getTag",
   "grantAbilityUseXp",
@@ -687,6 +729,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "isHealer",
   "isImmobilized",
   "isKnownRunFlag",
+  "isKnownStandingOrder",
   "isNodeVisible",
   "isOverworldActionEffect",
   "isPrimed",
@@ -816,6 +859,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "refreshMercPool",
   "registerExpedition",
   "registerRunFlags",
+  "registerStandingOrders",
   "remember",
   "removeFromRoster",
   "removeItem",
@@ -892,6 +936,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "spotWhileMoving",
   "stageEncounter",
   "stampPassives",
+  "standingOrderIds",
   "statusAmount",
   "statusVisual",
   "stealth",

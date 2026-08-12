@@ -138,8 +138,16 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 - ⬜ **B6** — **Split-force geometry (C2):** a **lever reachable by the infiltrator on turn 1** from the
   side spawn; the seal **fully walls** the garrison off the infiltration route while shut; and the
   **competitive escort routes** (cells → *any* mouth) carry **chokepoints** for the rearguard.
-- ⬜ **B7** — **Tag the captives `non-combatant`.** Load-bearing for the pursuit model (D117 **R3**: they
-  never confer `in-combat`, so they can't self-screen) — and **not tagged in `the-rescue.json` today**.
+- ✅ **B10 — the sealed wing holds EXACTLY ONE defender (#212 / D124, shipped 2026-08-11).** The
+  `bandit-bowman` relocated `(12,3)` → `(9,12)`; the `bandit-thug` `(11,5)` stays as the infiltrator's
+  interference. Two inside bodies were battering the 64 hp seal from *both* faces, roughly halving the
+  head start D118 sized. **Owner's decision stream:** the lone defender still drives the seal under normal
+  aggro, the infiltrator **pins it by hitting it**, and declining to pin is a real choice that costs head
+  start. Guarded by a shut-board connectivity invariant in `levels.test.ts` (mutation-verified).
+- ✅ **B7** — **Tag the captives `non-combatant`.** Load-bearing for the pursuit model (D117 **R3**: they
+  never confer `in-combat`, so they can't self-screen). *(Stale line corrected 2026-08-11: all three ARE
+  tagged in `the-rescue.json`, and `levels.test.ts` asserts it. The gap was never the authoring — it was
+  the **reading** side, which nothing did until #213/D124.)*
 - ⬜ **B8** — **No garrison-openable gate except the intended seal.** ⚠️ `driveSealFor` (`ai.ts`) picks the
   **nearest** gate the unit can open, sorted by manhattan, with **no route-relevance check** — so a Warden
   who is keyholder of the **cell doors** will drive over and **open the cells for you**. Cell locks must not
@@ -149,7 +157,15 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 
 ### C — Fairness cruxes
 - ✅ **C1** — What sets/clears `in-combat`. **DONE** — ratified + built in D117.
-- 🔨 **C2 — Extraction viability. Design drafted → `finale-extraction-viability.md`.** Split-force op:
+- 🔨 **C2 — Extraction viability. Design drafted → `finale-extraction-viability.md`. HARNESS BUILT +
+  MEASURED 2026-08-11 (#209 / D125).** The scripted split-force race runs headlessly on the real board
+  against the real doctrine (`src/content/rescue-race.ts` + 6 guards); the geometry invariants and exfil
+  semantics were **already shipped** (`levels.test.ts` B6a/B6b/B6c/B8, `exfil.test.ts`). **The pacing bar
+  is not pinned yet** — measuring it found two content blockers, both owner calls: (1) the arc has **no
+  Thief** (it prestiges the Scout at the rite, gated `scout ≥ 5`; the canonical run arrives at **L1**), so
+  extraction is **unreachable** by the real arrival party — and intel-without-a-Thief makes the side door a
+  **trap**; (2) the arrival party **one-shots** the garrison, so the distraction deletes rather than pins
+  and eliminate-all is free — the **incentive check answers "not yet"**. See **D125**. Split-force op:
   front distraction pins the garrison, infiltrator slams a lever-seal for a **head start**, escort
   **outruns the thinned pursuit through a chokepointed corridor**. Viability = **head-start ≥
   pursuit-close-time**, *not* a seal-hold — seals ~**60–70 hp** (not 150, not the 15–20 micro default).
@@ -240,7 +256,8 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
 |------|----------|-------|
 | Guard converge/batter behavior | garrison door-drive (primary, gated `!in-combat`) | `ai.ts` (`planSealDrive`) |
 | "Is this guard pinned?" | `in-combat` derived tag | `tags.ts`, `combat-log.ts` |
-| Deprioritize captives as targets | `non-combatant` intrinsic tag *(must still be authored — B7)* | `tags.ts`, `Unit.tags` |
+| Deprioritize captives as **attack targets** | `non-combatant` tag + `AI.nonCombatantPenalty` (**#213/D124** — the reading half; this row used to claim the whole capability shipped when `ai.ts` read nothing) | `tags.ts`, `ai.ts` (`priority`) |
+| Deprioritize captives as **pursuit targets** | ⬜ **nothing** — the approach branch is tag-blind (D124, measured); belongs to #209's pacing bar | `ai.ts` (advance branch) |
 | Keyholder drops a key on death | `dropOnDeath` on the gate lock | `gates.ts`, `key-drop.test.ts` |
 | Camper gets attacked | control-room `Region` + weight | `iso.ts` (`inRegion`), `ai.ts` |
 | Set a run flag | `AuthoredEncounter.grants[].flag` → `applyGrant` | `runloop.ts:635`, `run.ts:156` |
@@ -273,7 +290,19 @@ lockpick-only, two destructible seals at **64 hp**, four levers, both goals auth
 `span` already the **union of both mouths**. B1/B2/B4/B5/B7/B9 are done; **B6/B8 remain unproven** (they are
 geometry claims, and the tests that would prove them are the C2 guards, #209).
 
-**Next: the A group** (split deploy). A3 and A3b each carry a real mechanism decision.
+**A and G have since shipped** (#207/#208 via PR #214 — D119 authored spawn zones + the capped entrance
+verb, D120 exfil semantics + the "Go now" call + the left-behind record), and their player-facing surfaces
+carry a browser guard: **`npm run test:e2e:rescue`** (the side-door deploy, the Go-Now control, the
+left-behind result screen). B6a/B6b/B6c/B8 are now **proven** in `levels.test.ts`.
+
+**The two pre-pin corrections are done** (#212/#213 → **D124**, 2026-08-11): one defender inside the sealed
+wing, prisoners deprioritised as attack targets. Both moved numbers #209 has to measure, which is why they
+went first.
+
+**Next: the C2 guards (#209)** — the split-force scenario, the everyone-out pacing bar, mutation robustness.
+Two live pointers into it: the **seal-already-shut opening** (D119/D121 — levers are pullable during deploy)
+and the **tag-blind approach branch** (D124 — the pursuit still *chases* prisoners even though it no longer
+*targets* them). Then **F (#210)**, which also unblocks D122's step 3.
 
 ### Sequencing call — owner, 2026-07-28: **build first, tune later**
 

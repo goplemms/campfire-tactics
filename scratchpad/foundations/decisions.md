@@ -5828,3 +5828,66 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   harness resolves through), **D56** (the policy seam `runPolicyTurn` plans through). **Defers:** the
   everyone-out pacing bar + its three mutation guards (blocked on the two calls above); the
   freed-and-fleeing move bump. **Superseded by:** —
+
+## D126 — The finale garrison retuned to switch the difficulty gradient back on
+
+- **Status:** **Decided + shipped** 2026-08-11 — owner-directed, answering D125's Finding 2. Owner's target:
+  *"probably ideally everyone survives, but varies by difficulty."* Scope deliberately narrow: **this entry
+  is about difficulty, not about making extraction attractive.** The incentive question stays open (below).
+- **The reframe that made the target buildable.** `DifficultyPolicy` (D9) already varies exactly what the
+  owner asked for, and **only** that: `downed: "full-heal"` (Easy) → `"half-redeploy"` (Normal) →
+  `dying-timer` → `permadeath`. **Nothing in the codebase scales enemy stats by difficulty** — its own doc
+  says difficulty scales *only* `rpPerChunk`. So "varies by difficulty" needs **no new axis**: tune **one**
+  garrison so the fight puts bodies on the floor, and the shipped policy decides what a floored body costs.
+  - **Therefore `partyDown` of 1–3 is the TARGET, not a failure.** On Normal a downed unit half-redeploys —
+    everyone survives the run, which is the owner's words exactly — while on Hardest the same fight
+    permadeaths them. A fight where nobody ever goes down is a fight where **difficulty is inert**, and that
+    is precisely what the finale was: measured `partyDown = 0`, so every tier played identically.
+- **Decision — the dial is ATTACK; hp only buys time.** Measured, not argued (sweep over five settings,
+  reference party, pinned run):
+
+  | setting | result | rounds | garrison | party downed |
+  |---|---|---|---|---|
+  | **A** shipped (thug 22/8 · captain 48/12) | win | 9 | 0/10 | **0** |
+  | **B** hp only (thug 30/8 · captain 60/12) | win | 10 | 0/10 | **0** |
+  | **C** gentle atk (thug 30/10 · captain 60/14) | win | 9 | 0/10 | **1** |
+  | **C+ SHIPPED** (thug 30/11 · captain 60/15) | win | 9 | 0/10 | **2** |
+  | **D** moderate (thug 30/12 · captain 60/16) | win | 11 | 0/10 | **3** |
+  | **E** overshoot (thug 34/14 · captain 72/20) | **wipe** | 16 | 6/10 | **9** |
+
+  - **B is the load-bearing row:** +8 hp per body across the garrison changed the fight by **one round** and
+    **zero** casualties. Durability alone cannot make a fight matter; it only makes it longer. Anyone
+    reaching for "add more bodies / more hp" should read that row first — and note that a longer *safe*
+    grind makes extraction **less** attractive, not more.
+  - **The C+ → E cliff is steep** (2 downed → a full wipe on +3 attack) because casualties compound: fewer
+    party bodies ⇒ less damage out ⇒ more garrison alive ⇒ more damage in. Tune this dial in small steps.
+- **Shipped numbers** — per-placement `overrides` in `the-rescue.json` (`maxHp`/`attack`): thug **30/11**,
+  cutthroat **26/12**, bowman **22/10**, snare-trapper **24/6** (a utility body, kept weak), the Warden
+  **60/15**. Chosen over **C** (1 casualty) because a single loss reads as noise while 2–3 reads as a
+  gradient; **C** is a one-number-per-template edit away if play says otherwise.
+  - **Authoring home:** per-placement `overrides`, **not** new templates — because `overrides` are
+    **editor-native** (`editor-draft.ts`'s diff-on-edit stat editing, round-tripped losslessly), which is
+    what the owner's "tune by feel in the editor" call requires. Cost: the four thugs repeat the same
+    numbers. If other late-arc nodes want the same bodies, promote them to a **veteran template tier** then
+    — a second consumer is the trigger (#171 rev 2), not a hypothetical.
+  - **Digest-safe:** The Rescue is a standalone level, not in the arc sim, so the pinned digest is unmoved.
+- **⚠️ What this does NOT fix.** Every setting above still clears the garrison **0/10** and grades
+  **eliminate-all**. So extraction is still not the *chosen* path — this entry fixed difficulty inertness,
+  which was its goal. The incentive half needs the **other** measured bottleneck, deliberately deferred by
+  the owner: freeing three prisoners costs **~14–17 infiltrator turns** (three cells 6–12 steps apart, each
+  door *and* each rescue its own Act) against a seal that buys 2–3 rounds — while the escort **walk** is
+  only 5–6 turns. Clustering the cells is the lever that fits the actual bottleneck.
+  - **Correction to the canon, worth stating plainly:** `finale-extraction-viability.md` names a
+    **freed-and-fleeing move bump** as the reserve lever, on the assumption that the escort *walk* is the
+    tight phase. Measured, the walk is the cheap phase. **The named reserve lever is aimed at the wrong
+    phase** and would barely move the race.
+- **Guard note (a lesson, not a defect).** The retune turned `rescue-race.test.ts`'s unpinned case from
+  `objective-failure` to `wipe` — a *more* emphatic version of the same fact, reported as a regression,
+  because the assertion had pinned the **grade** of a failing variant. Rewritten to assert the property
+  (*not a win*). D125 set out to guard only what survives retuning; this is where that rule was tested.
+- **Reuses:** **D9** (the difficulty policy this leans on entirely), **D125** (the measurement that found
+  the inertness), **D39** (the `+1`-per-level floor that produced it — party defense 5–7 vs flat authored
+  attack), **D122/D123** (JSON bodies + the editor round-trip that makes overrides tunable). **Defers:** the
+  picking-tour fix (clustered cells) and with it #209's incentive check; a veteran template tier;
+  difficulty-scaled enemy stats (**declined as unnecessary** — D9 already varies the consequence).
+  **Superseded by:** —

@@ -5691,3 +5691,203 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   gap is about guards), **D52** (authored expeditions, events, bundles), **#171** rev 2
   (concrete-first: extract on a second consumer). **Defers:** topology-as-JSON; the event
   presentation/behavior split; the authored-event validator. **Superseded by:** —
+
+## D124 — The finale's pursuit gets its teeth calibrated: one pinnable defender, prisoners as last resort
+
+- **Status:** Decided + **shipped** 2026-08-11 — owner-directed, closing **#212** and **#213**. Both are
+  pre-pin corrections: they land **before** #209's numbers are taken, because each moves the very race
+  #209 exists to measure. No new mechanism — one authored position and one AI weight.
+- **Context.** Two independently-verified defects sat inside D118's viability model
+  (`head-start ≥ pursuit-close-time`). The seal was being battered from **both faces** at once, and the
+  `non-combatant` tag's **target-deprioritising half had no reader** — `ai.ts` never looked at it, so the
+  escort was pursued as if the prisoners were soldiers. Together they made the finale materially harsher
+  than the design it was authored against, in the one number the whole track hangs on.
+
+- **Decision (#212) — ONE defender inside the sealed wing, and pinning it is the PLAYER'S call (owner).**
+  The two bodies authored north of row 8 (`bandit-thug` `(11,5)`, `bandit-bowman` `(12,3)`) were not
+  strays — they are **B1's control-room guards**, inside the authored `controlRoom` region and astride the
+  row-5 escort route. So the issue's own fix direction ("reposition both into the lower yard") was
+  **declined**: it would have restored the one-sided timer by leaving the infiltration arm unopposed,
+  cutting against **D99 F1** (the flank's risk is *in-battle isolation*, not a dice roll).
+  - **Shipped:** the **bowman relocates to `(9,12)`** (the lower yard, covering the Warden); the **thug
+    stays at `(11,5)`**. Relocated rather than deleted — the roster stays at 10 bodies, so the
+    eliminate-all cost #209's incentive check weighs is unchanged.
+  - **Melee, deliberately.** The bowman was the worse body to leave inside: `attackRange 3` let it plink
+    the seal's inner face from cover and made it awkward to pin. A melee thug must be *stood next to*,
+    which is what makes the owner's decision stream work.
+  - **The remaining defender still drives the seal, and that is the design.** Under normal aggro
+    (`garrison && !in-combat`) it walks to the inner face and batters. The infiltrator **pins it by
+    hitting it** (D117's rule) and it turns and fights. **Declining to pin is a legitimate play with a
+    real price** — you keep your actions and pay in head start. No `standingOrder` was authored: a posted
+    sentry would have removed the choice rather than presented it.
+  - **Verified on the staged level, not on paper** (probe, deleted after use): exactly one inside body;
+    unpinned ⇒ `gateTarget: seal-inner`, `act: attack`, destination `(13,7)` — the inner face, **5 steps**
+    away, so at `moveRange 4` its first swing lands a turn late, then `attack 8`/turn; struck once ⇒
+    `gateTarget: undefined`, target = the engager. The old pair put ~15/turn on that face, a **ranged**
+    source among them; one late melee body is a fraction of that, and it is opt-in.
+  - **Guarded** by a content invariant that derives "inside" by **walking the shut board** (not a row
+    number, which a wall edit would sail past): `levels.test.ts` — exactly one garrison body cannot reach
+    the main spawn with `seal-inner` slammed. Mutation-verified (restoring `(12,3)` turns it red).
+
+- **Decision (#213) — a non-combatant is a LAST RESORT, above `lethalBonus` (owner).**
+  `AI.nonCombatantPenalty = 600`, subtracted in `priority()`. Sized between `lethalBonus` (400) and
+  `actionBase` (1000): even a **guaranteed kill** on a fleeing prisoner loses to a plain swing at a
+  soldier, while a garrison with *only* a prisoner in reach still attacks it — the tag's own doc has
+  always promised "remains a valid *low-priority* target", and that promise is now kept in both
+  directions. **A difficulty dial by intent** (owner): a harsher setting lowers it, 0 = prisoners are fair
+  game.
+  - **Not garrison-scoped**, unlike `controlRoomTarget`: being a non-combatant is a property of the
+    *target*, so every planner reads it. Blast radius is nil today — the only bodies carrying the tag in
+    shipped content are The Rescue's three captives, and the **sim digest is byte-identical**.
+  - **Guarded** by four `ai.test.ts` cases, the pair being the proof: same board, tag on ⇒ the guard walks
+    past the adjacent prisoner to reach a soldier; tag off ⇒ it takes the prisoner. Mutation-verified at
+    600 → 300 → 0 (both magnitude cases flip red at each).
+
+- **⚠️ Found by challenging the fix, NOT fixed, deliberately — the APPROACH branch is tag-blind.**
+  `priority()` scores only foes **already in reach**. With nobody in reach the planner advances toward
+  `min(manhattan)` over *every* seen foe, reading no tags — **measured**: a garrison at col 7 with a
+  prisoner 2 away and a soldier 5 away walks toward **the prisoner**. So the shipped fix deprioritises
+  **striking** a non-combatant, not **chasing** one.
+  - Left alone on purpose, two reasons. It is **out of #213's scope** (the issue asks for a target-priority
+    weight and specifies exactly the guards now shipped), and it is **not obviously wrong**: a garrison
+    recapturing prisoners *should* converge on them, and the composite behavior — close on the prisoners,
+    swing at the escort — is a defensible read of D118's "pot shots" rather than a violation of it.
+  - **It belongs to #209.** Whether the pursuit *catching* the escort is the real difficulty is precisely
+    what the everyone-out pacing bar measures; if the bar comes up red, the approach branch is the first
+    place to look, and this entry is the pointer. Changing it speculatively would move AI convergence
+    game-wide (**#171** rev 2: concrete-first).
+- **Reuses:** **D117** (the tag system + the door-drive doctrine; `in-combat` as the pin), **D118** (the
+  viability model these two numbers feed), **D99** F1 (the flank's risk is in-battle isolation), **D42**
+  (the AI weight table these join), **D108** (`controlRoomTarget` as the living exemplar for a
+  target-priority weight). **Defers:** tag-awareness in the approach branch (to #209); difficulty-scaled
+  weights. **Superseded by:** —
+
+## D125 — C2 measured: the extraction race has a harness, and two content facts block the bar
+
+- **Status:** **Measured** 2026-08-11 (#209). The scripted split-force race is **built and green**; the
+  **pacing bar is deliberately not pinned yet** because measuring it surfaced two content facts that must
+  be ruled on first. Two owner calls open at the bottom. Not a design reversal — D118's model is intact;
+  this is the first time anything actually *ran* it.
+- **What shipped.** `src/content/rescue-race.ts` — a headless, deterministic driver that plays the
+  canonical solution on the real board: split deploy, slam `winch-wall`, pick the hall gate, free each
+  prisoner, rearguard the `(14,5)` choke, run for a mouth; the garrison planned by the **shipped AI**
+  (`runPolicyTurn` — the D117 door-drive, the `in-combat` gate) on the **real CT clock**, so a `speed 13`
+  cutthroat genuinely acts more often than a `speed 9` prisoner. Plus `referenceParty()` — the reference
+  party **derived** from the arc's own infiltration-arm arrival (`traverseRoute`) rather than hand-authored,
+  so it re-derives when arc balance moves. Three mutation knobs (`sealHp` / `pin` / `widenChoke`) exist so
+  the bar can be proven non-vacuous when it lands.
+  - **Guarded today** (`rescue-race.test.ts`, 6 cases) — the parts that hold **whatever the numbers
+    become**: the harness is deterministic (identical inputs ⇒ identical report, trace included); it
+    really executes the canonical solution (slam · pick in · **all three** prisoners freed); the seal buys
+    a head start that **scales with durability** (halve `sealHp` ⇒ breached strictly sooner — measured
+    t53 vs t86, on the real board against the real doctrine); and the distraction pin is load-bearing
+    (unpinned ⇒ the survivable retreat with the garrison still standing, i.e. the pursuit closed).
+  - **Already shipped, not rebuilt:** C2's other two proof items. The **geometry invariants** are
+    `levels.test.ts` B6a/B6b/B6c/B8 (+ #212's inside-the-wing invariant), and the **exfil semantics** are
+    `exfil.test.ts` (~30 cases covering exactly the five bullets the viability note lists). #209's
+    remaining scope was always the race and the bar.
+
+- **⚠️ FINDING 1 — extraction is UNREACHABLE by the party that actually arrives.** The arc holds **no
+  Thief in its cast** (`edrin` soldier · `rook` hunter · `vale` scout · …). The Thief is a **prestige** of
+  the Scout, granted by the `thieves-guild-rite` story and gated on
+  `{ kind: "jobLevel", job: "scout", min: SCOUT_PRESTIGE_FLOOR }` = **5**. The canonical playthrough
+  arrives at the finale with **`vale/scout` at job level 1** — four short — so the rite takes D92's
+  **gracious decline** and the party holds **no `lockpick` capability at all**. No cell opens; no hall
+  gate opens. Extraction is not merely unpinned, it is **unplayable** on that branch.
+  - **The sharp edge this creates.** **D118 attributed the side-door intel flag to `cuffedCell`
+    *because* its completion is unconditional** — but the *capability to use the side door* comes from the
+    **conditional** rite. So a player can arrive **with intel and without a Thief**, be offered the
+    side-door zone, send a body through it, and find that body can open **nothing**. The flank becomes a
+    **trap for the uninformed** rather than an option. (`the-rescue.ts`'s own `RESCUE_PARTY` comment has
+    the intent right — "a party without one still wins **frontally**" — but the *front* is a fallback for
+    the whole party, not for a lone body already through the side door.)
+- **⚠️ FINDING 2 — the garrison is a pushover for that party, so extraction is not "chosen".** Pinning
+  requires **striking**, and the arrival party's Hunter (`rook`, `attack 30`) one-shots a `bandit-thug`
+  (`maxHp 22`). So the distraction cannot *pin* — it **deletes**. Measured, as authored: the front party
+  clears **10/10 garrison bodies with zero party casualties**, and the encounter grades **eliminate-all**
+  long before the escort is out. That is #209's **incentive check**, answered: **not yet.** The sneak-out
+  cannot be the smart play while the frontal assault is free.
+  - Corollary worth keeping: the escort is also **slow** — `bram` (`moveRange 3`) freed on turn 81 was
+    still crossing at turn 400 in the unpinned run. The viability note's named **reserve lever** (a
+    freed-and-fleeing move bump) is the lever this points at, and it is still unspent.
+
+- **Why the bar is not pinned green.** Pinning it against today's numbers would enshrine a race the
+  content cannot run, and pinning it against a *hypothetical* garrison would be fiction. This is exactly
+  the owner's **"build first, tune later"** sequencing (#209, 2026-07-28): the machinery lands now, the
+  numbers get tuned by feel in the editor, and the bar pins the tuned result. What changed is only that
+  the tuning target is now **measured** instead of guessed.
+- **Open owner calls.**
+  1. **The Thief prerequisite** (Finding 1) — gate the side-door zone on `lockpick` capability as well as
+     the intel flag · or move the intel grant to the rite (D118 declined this for conditionality) · or
+     leave it and accept the trap · or give a non-Thief infiltrator something to do (a breakable cell).
+  2. **Garrison strength** (Finding 2, and the viability note's open decision 5) — the numbers pass that
+     makes pinning cost something and eliminate-all genuinely expensive. Editor-tunable by design.
+- **Reuses:** **D118** (the model this measures), **D117** (the doctrine the harness drives), **D124**
+  (the two pre-pin corrections that had to land first), **D92** (the gracious decline that produces
+  Finding 1), **D68** (the Scout prestige fork + its floor), **D122/D123** (the injected body catalog the
+  harness resolves through), **D56** (the policy seam `runPolicyTurn` plans through). **Defers:** the
+  everyone-out pacing bar + its three mutation guards (blocked on the two calls above); the
+  freed-and-fleeing move bump. **Superseded by:** —
+
+## D126 — The finale garrison retuned to switch the difficulty gradient back on
+
+- **Status:** **Decided + shipped** 2026-08-11 — owner-directed, answering D125's Finding 2. Owner's target:
+  *"probably ideally everyone survives, but varies by difficulty."* Scope deliberately narrow: **this entry
+  is about difficulty, not about making extraction attractive.** The incentive question stays open (below).
+- **The reframe that made the target buildable.** `DifficultyPolicy` (D9) already varies exactly what the
+  owner asked for, and **only** that: `downed: "full-heal"` (Easy) → `"half-redeploy"` (Normal) →
+  `dying-timer` → `permadeath`. **Nothing in the codebase scales enemy stats by difficulty** — its own doc
+  says difficulty scales *only* `rpPerChunk`. So "varies by difficulty" needs **no new axis**: tune **one**
+  garrison so the fight puts bodies on the floor, and the shipped policy decides what a floored body costs.
+  - **Therefore `partyDown` of 1–3 is the TARGET, not a failure.** On Normal a downed unit half-redeploys —
+    everyone survives the run, which is the owner's words exactly — while on Hardest the same fight
+    permadeaths them. A fight where nobody ever goes down is a fight where **difficulty is inert**, and that
+    is precisely what the finale was: measured `partyDown = 0`, so every tier played identically.
+- **Decision — the dial is ATTACK; hp only buys time.** Measured, not argued (sweep over five settings,
+  reference party, pinned run):
+
+  | setting | result | rounds | garrison | party downed |
+  |---|---|---|---|---|
+  | **A** shipped (thug 22/8 · captain 48/12) | win | 9 | 0/10 | **0** |
+  | **B** hp only (thug 30/8 · captain 60/12) | win | 10 | 0/10 | **0** |
+  | **C** gentle atk (thug 30/10 · captain 60/14) | win | 9 | 0/10 | **1** |
+  | **C+ SHIPPED** (thug 30/11 · captain 60/15) | win | 9 | 0/10 | **2** |
+  | **D** moderate (thug 30/12 · captain 60/16) | win | 11 | 0/10 | **3** |
+  | **E** overshoot (thug 34/14 · captain 72/20) | **wipe** | 16 | 6/10 | **9** |
+
+  - **B is the load-bearing row:** +8 hp per body across the garrison changed the fight by **one round** and
+    **zero** casualties. Durability alone cannot make a fight matter; it only makes it longer. Anyone
+    reaching for "add more bodies / more hp" should read that row first — and note that a longer *safe*
+    grind makes extraction **less** attractive, not more.
+  - **The C+ → E cliff is steep** (2 downed → a full wipe on +3 attack) because casualties compound: fewer
+    party bodies ⇒ less damage out ⇒ more garrison alive ⇒ more damage in. Tune this dial in small steps.
+- **Shipped numbers** — per-placement `overrides` in `the-rescue.json` (`maxHp`/`attack`): thug **30/11**,
+  cutthroat **26/12**, bowman **22/10**, snare-trapper **24/6** (a utility body, kept weak), the Warden
+  **60/15**. Chosen over **C** (1 casualty) because a single loss reads as noise while 2–3 reads as a
+  gradient; **C** is a one-number-per-template edit away if play says otherwise.
+  - **Authoring home:** per-placement `overrides`, **not** new templates — because `overrides` are
+    **editor-native** (`editor-draft.ts`'s diff-on-edit stat editing, round-tripped losslessly), which is
+    what the owner's "tune by feel in the editor" call requires. Cost: the four thugs repeat the same
+    numbers. If other late-arc nodes want the same bodies, promote them to a **veteran template tier** then
+    — a second consumer is the trigger (#171 rev 2), not a hypothetical.
+  - **Digest-safe:** The Rescue is a standalone level, not in the arc sim, so the pinned digest is unmoved.
+- **⚠️ What this does NOT fix.** Every setting above still clears the garrison **0/10** and grades
+  **eliminate-all**. So extraction is still not the *chosen* path — this entry fixed difficulty inertness,
+  which was its goal. The incentive half needs the **other** measured bottleneck, deliberately deferred by
+  the owner: freeing three prisoners costs **~14–17 infiltrator turns** (three cells 6–12 steps apart, each
+  door *and* each rescue its own Act) against a seal that buys 2–3 rounds — while the escort **walk** is
+  only 5–6 turns. Clustering the cells is the lever that fits the actual bottleneck.
+  - **Correction to the canon, worth stating plainly:** `finale-extraction-viability.md` names a
+    **freed-and-fleeing move bump** as the reserve lever, on the assumption that the escort *walk* is the
+    tight phase. Measured, the walk is the cheap phase. **The named reserve lever is aimed at the wrong
+    phase** and would barely move the race.
+- **Guard note (a lesson, not a defect).** The retune turned `rescue-race.test.ts`'s unpinned case from
+  `objective-failure` to `wipe` — a *more* emphatic version of the same fact, reported as a regression,
+  because the assertion had pinned the **grade** of a failing variant. Rewritten to assert the property
+  (*not a win*). D125 set out to guard only what survives retuning; this is where that rule was tested.
+- **Reuses:** **D9** (the difficulty policy this leans on entirely), **D125** (the measurement that found
+  the inertness), **D39** (the `+1`-per-level floor that produced it — party defense 5–7 vs flat authored
+  attack), **D122/D123** (JSON bodies + the editor round-trip that makes overrides tunable). **Defers:** the
+  picking-tour fix (clustered cells) and with it #209's incentive check; a veteran template tier;
+  difficulty-scaled enemy stats (**declined as unnecessary** — D9 already varies the consequence).
+  **Superseded by:** —

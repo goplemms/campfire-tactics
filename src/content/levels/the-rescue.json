@@ -669,7 +669,9 @@
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 60,
+        "attack": 15
       }
     },
     {
@@ -681,7 +683,9 @@
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 30,
+        "attack": 11
       }
     },
     {
@@ -693,7 +697,9 @@
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 30,
+        "attack": 11
       }
     },
     {
@@ -705,7 +711,9 @@
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 30,
+        "attack": 11
       }
     },
     {
@@ -717,7 +725,9 @@
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 26,
+        "attack": 12
       }
     },
     {
@@ -729,7 +739,9 @@
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 26,
+        "attack": 12
       }
     },
     {
@@ -741,7 +753,9 @@
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 22,
+        "attack": 10
       }
     },
     {
@@ -753,7 +767,9 @@
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 24,
+        "attack": 6
       }
     },
     {
@@ -765,19 +781,23 @@
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 30,
+        "attack": 11
       }
     },
     {
       "templateId": "bandit-bowman",
       "pos": {
-        "col": 12,
-        "row": 3
+        "col": 9,
+        "row": 12
       },
       "overrides": {
         "tags": [
           "garrison"
-        ]
+        ],
+        "maxHp": 22,
+        "attack": 10
       }
     }
   ],

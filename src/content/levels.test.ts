@@ -672,6 +672,27 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
     }
   });
 
+  it("#212 — EXACTLY ONE garrison body starts inside the sealed wing (a defender, not a second batterer)", () => {
+    // The seal buys the escort its head start by soaking ~64 hp from the OUTSIDE face. A body that
+    // starts *inside* batters the other face at the same time, so two of them roughly **halve** the
+    // delay — a hole in the single most load-bearing number on the finale track (D118's
+    // `head-start ≥ pursuit-close-time`), and the exact effect #209's "halve sealHp" mutation models.
+    //
+    // ONE is authored on purpose: the infiltrator's interference (D99 F1 — the flank's risk is
+    // in-battle isolation). Under normal aggro that defender drives the seal too, and pinning it (hit
+    // it ⇒ `in-combat` ⇒ it fights instead) is the player's call; declining is a legitimate choice
+    // that costs head start. So ZERO would leave the flank unopposed and TWO is the defect.
+    //
+    // "Inside" is derived by walking the shut board, not by a row number: a wall edit that opened a
+    // second way around row 8 would keep a row-based test green while voiding the invariant.
+    const lvl = level();
+    const gates = buildAuthoredGates(lvl);
+    gateNamed(gates, "seal-inner").locked = true; // the turn-1 slam
+    const shut = stagedGrid(gates);
+    const inside = lvl.enemies.filter((e) => findPath(shut, e.pos, MAIN_SPAWN) === null);
+    expect(inside.map((e) => `${e.templateId}@${e.pos.col},${e.pos.row}`)).toEqual(["bandit-thug@11,5"]);
+  });
+
   it("B6b — the turn-1 lever: `winch-wall` toggles the inner seal and sits within one move of the side spawn", () => {
     const lvl = level();
     // The infiltrator's start is the authored **side-door spawn zone** now (D119), not

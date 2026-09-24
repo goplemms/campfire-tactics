@@ -180,6 +180,29 @@ describe("guild — return flows survivors/gear/purse home (D27/D34)", () => {
     expect(runFor(g, c.id)).toBeUndefined();
   });
 
+  it("a permanent (authored) recruit picked up mid-run joins the roster on return; a generic one leaves (D33)", () => {
+    const g = guildWith("recruits", ["Rook"]);
+    const c = g.caravans[0];
+    assignMember(c, g.roster[0]);
+    const gr = dispatch(g, c, g.board.find((q) => q.generated)!);
+    // Two bodies joined `run.party` on the road (a post-win grant / freed captive, and a
+    // recruiter's rolled merc) — neither is in `caravan.party`, so the return walk that
+    // only reconciles the caravan's own party is blind to both.
+    const pip = fighter("Pip");
+    pip.authored = true; // the temp↔permanent flag: authored ⇒ permanent
+    const hireling = fighter("Hireling");
+    gr.run.party.push(pip, hireling);
+    gr.run.complete = true;
+
+    const res = resolveReturn(g, c, gr.run);
+    expect(res.outcome).toBe("returned");
+    expect(res.recruited).toEqual([pip.id]);
+    expect(g.roster.some((u) => u.id === pip.id)).toBe(true);
+    expect(g.roster.some((u) => u.id === hireling.id)).toBe(false);
+    // Idempotent: a second reconciliation (or a body already home) doesn't double-book.
+    expect(g.roster.filter((u) => u.id === pip.id)).toHaveLength(1);
+  });
+
   it("mid-run permadeaths don't rejoin the pool on return", () => {
     const g = guildWith("partial", ["Rook", "Vale"]);
     const c = g.caravans[0];

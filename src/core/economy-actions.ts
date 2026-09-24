@@ -30,7 +30,7 @@ import type { RunState } from "./run";
 import { fieldedUnits, fieldsJob, primaryJobOf, healUnit, type Unit } from "./units";
 import { getJob, unitHasCapability, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
-import { getNode, effectiveMarketTier, type MarketTier } from "./overworld";
+import { getNode, effectiveMarketTier, type MarketTier, type MapNode } from "./overworld";
 import { isPrimed, consumeFlag } from "./overworld-state";
 import { checkOverworldCost, overworldCostOf, type OverworldCost } from "./overworld-cost";
 import { MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD, NOBLE_PATRONIZE, UNIVERSAL_BUY } from "./jobs-data/support";
@@ -109,7 +109,20 @@ export function merchantPrice(tier: MarketTier): number {
  * function (not a const) so jobs-data can reference it in a lazy cost provider with no init cycle.
  */
 export function merchantBuyGold(run: RunState): number {
-  return merchantPrice(effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld));
+  return merchantPrice(marketTierHere(run));
+}
+
+/**
+ * The market tier the caravan trades at **here** — the one reader for buying, selling and the
+ * scene's Market surfaces alike. Folds the node's innate market, a fielded Merchant's Appraisal
+ * and the per-node **Find Trade** flag (D70) that lives on `run.overworld`; a caller that reaches
+ * for {@link "./overworld".effectiveMarketTier} directly can forget that third input, which is how
+ * a paid-for impromptu market once traded core-side but never showed a Market button (the
+ * `market-access` guard keeps every reader on this spelling). `node` defaults to the current
+ * node; the scene passes its camp node.
+ */
+export function marketTierHere(run: RunState, node: MapNode = getNode(run.map, run.mapNodeId)): MarketTier {
+  return effectiveMarketTier(node, run.party, run.overworld);
 }
 
 /** What a Merchant buy produced. */
@@ -235,7 +248,7 @@ export function applySellEffect(
   if (countOf(run.inventory, materialId) <= 0) {
     return { ok: false, reason: `No ${material.name} to sell.`, price: 0 };
   }
-  const tier = effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld);
+  const tier = marketTierHere(run);
   const base = sellPrice(material, tier);
   if (base <= 0) {
     const why = saleValueOf(material) <= 0 ? `${material.name} can't be sold.` : `No market here to sell ${material.name}.`;

@@ -138,6 +138,14 @@ export interface ScheduledEffect {
    * `fizzleWhen` overrides both (the counter-spell shape reserves it).
    */
   fizzleWhen?: () => boolean;
+  /**
+   * Survives the **pre-combat → combat boundary** ({@link CTClock.resetForCombat}). The
+   * boundary sheds the staging timeline — a charge cast during Deployment does not carry
+   * into the fight — but an *encounter-scoped* timer armed at staging (a closing-gate
+   * objective, D50) belongs to the fight itself: it is kept, with its gauge restarted so
+   * combat still opens on a fresh clock. Default false (a charge).
+   */
+  persistent?: boolean;
 }
 
 /**
@@ -238,7 +246,11 @@ export class CTClock {
     this.tempo = undefined;
     this.participates = isActive;
     this.time = 0;
-    this.scheduled = [];
+    // Shed the staging timeline — except the encounter-scoped timers ({@link
+    // ScheduledEffect.persistent}): an objective's gauge armed at staging must outlive the
+    // boundary, or it silently resolves off the schedule and reads "met" for the whole fight.
+    // Its gauge restarts with the clock (Deployment's ticks were the net's, not the fight's).
+    this.scheduled = this.scheduled.filter((e) => e.persistent).map((e) => ({ ...e, gauge: 0 }));
   }
 
   /**

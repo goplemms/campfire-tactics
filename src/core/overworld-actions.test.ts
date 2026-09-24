@@ -407,7 +407,7 @@ describe("the D61 invariant is total over the ONE home — no standalone gated v
   const NON_VERBS = new Set([
     // economy-actions — pure reads / predicates + the universal-skill cost provider bodies (R4/A)
     "merchantPrice", "sellPrice", "bribePrice", "bribeChance", "buyPriceFor",
-    "merchantBuyGold", "triageFallbackRp",
+    "merchantBuyGold", "marketTierHere", "triageFallbackRp",
     "hasBanker", "hasNoble", "hasThief", "declaredFaucetInfluence",
     // economy-actions — passive per-node-step faucets (fired by breakCamp, not chosen)
     "accrueDeclaredFaucets", "deftHandsSkim",

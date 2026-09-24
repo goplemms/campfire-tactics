@@ -317,6 +317,12 @@ export interface CaravanResolution {
   survivors: string[];
   /** Unit ids lost to permadeath (mid-run on a return; all aboard on a wipe). */
   lost: string[];
+  /**
+   * Unit ids picked up **on the road** that joined the roster on return (D33): a post-win
+   * grant recruit, a freed captive, a hired authored body. Only **permanent** (authored)
+   * recruits land; a generic hireling rode for the run and leaves. Empty on a wipe.
+   */
+  recruited: string[];
   /** Gear ids unlocked back to the armory (a return; none on a wipe). */
   gearReturned: string[];
   /** Gear ids lost for good (a wipe). */
@@ -356,6 +362,7 @@ export function resolveReturn(guild: Guild, caravan: Caravan, run: RunState): Ca
 
   const survivors: string[] = [];
   const lost: string[] = [];
+  const recruited: string[] = [];
   let lordLost = false;
 
   if (wiped) {
@@ -373,6 +380,17 @@ export function resolveReturn(guild: Guild, caravan: Caravan, run: RunState): Ca
         lost.push(u.id);
         removeFromGuildRoster(guild, u.id);
       }
+    }
+    // Bodies picked up on the road live in `run.party` but never in `caravan.party` — a
+    // grant recruit (D52), a freed captive (D120), a recruiter's hire (M11). The temp↔permanent
+    // flag (D33) decides who comes home: an **authored** body joins the roster for good; a
+    // generic one rode for the run only. Idempotent — a body already home isn't re-added.
+    const aboard = new Set(caravan.party.map((u) => u.id));
+    for (const u of run.party) {
+      if (aboard.has(u.id) || !u.authored) continue;
+      if (guild.roster.some((r) => r.id === u.id)) continue;
+      guild.roster.push(u);
+      recruited.push(u.id);
     }
   }
 
@@ -413,6 +431,7 @@ export function resolveReturn(guild: Guild, caravan: Caravan, run: RunState): Ca
     outcome: wiped ? "wiped" : "returned",
     survivors,
     lost,
+    recruited,
     gearReturned,
     gearLost,
     purseReturned,

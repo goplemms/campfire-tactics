@@ -29,7 +29,7 @@ import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
 import type { MaterialCost } from "./cost";
 import { unitHasCapability, getJob, type JobLookup } from "./jobs";
 import { bumpCounter, nonNegInt } from "./num";
-import { reachableFrom, marketOpenedFlag, getNode, effectiveMarketTier } from "./overworld";
+import { reachableFrom, marketOpenedFlag } from "./overworld";
 import { satisfyUpkeepLine, accrueRp } from "./upkeep";
 import { applyCampSkill, type CampOutcome } from "./camp";
 import { availableSkills, grantAbilityUseXp, jobLevelOf } from "./leveling";
@@ -54,6 +54,7 @@ import {
   applyTriageEffect,
   applyTriageFallbackEffect,
   mostWoundedFielded,
+  marketTierHere,
 } from "./economy-actions";
 
 /**
@@ -373,7 +374,7 @@ const OVERWORLD_EFFECT_HANDLERS: {
   buy: (_effect, { run, opts }) => {
     // Universal Buy (D61): the good + market tier come from the action opts; the gold price
     // (with any primed Savvy-Barter overlay) rode the shared gate before this handler.
-    const tier = opts.tier ?? effectiveMarketTier(getNode(run.map, run.mapNodeId), run.party, run.overworld);
+    const tier = opts.tier ?? marketTierHere(run);
     const primed = isPrimed(run.overworld, DEAL_PRIMED_FLAG);
     return applyBuyEffect(run, opts.materialId ?? "", tier, buyPriceFor(tier, primed), primed);
   },

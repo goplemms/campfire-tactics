@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit, type UnitSpec } from "./units";
 import { CTClock } from "./clock";
+import { Battle } from "./turn";
+import { TileGrid } from "./grid";
 import { applyStatus, immobilized } from "./status";
 import {
   armObjectives,
@@ -187,6 +189,26 @@ describe("closing-gate (D50)", () => {
     const [gate] = armObjectives(clock, units, [CLOSING_GATE]);
     sapper.alive = false; // killed → the gate can never land
     expect(gate.status()).toBe("met");
+  });
+
+  it("survives the deploy → combat boundary: still pending, gauge restarted, and it can still fail", () => {
+    // The live game arms objectives at staging, then enters Deployment and crosses into
+    // combat via the logged `beginBattle` (D67). That boundary sheds the staging timeline
+    // (`resetForCombat`) — the gate must not be shed with it, or every closing-gate reads
+    // "met" for the whole fight. The headless sim never enters deploy, so only this pins it.
+    const onSpan = unit("victim", "player", { pos: { col: 4, row: 2 } });
+    const sapper = unit("sap", "enemy", { pos: { col: 7, row: 0 }, role: "sapper" });
+    const battle = new Battle(new TileGrid(8, 6), [onSpan, sapper]);
+    const [gate] = armObjectives(battle.clock, battle.units, [CLOSING_GATE]);
+    battle.enterDeploy();
+    for (let i = 0; i < 5; i++) battle.clock.tick(); // the net steps during Deployment
+    expect(gate.status()).toBe("pending");
+    battle.beginBattle();
+    expect(gate.status()).toBe("pending");
+    expect(gate.progress()).toBe(0); // combat opens on a fresh clock: the gauge restarts
+    for (let i = 0; i < 40 && gate.status() === "pending"; i++) battle.clock.tick();
+    expect(gate.status()).toBe("failed");
+    expect(onSpan.hp).toBeLessThanOrEqual(0);
   });
 
   it("fizzles to met when the driver is immobilized at completion (span spared)", () => {

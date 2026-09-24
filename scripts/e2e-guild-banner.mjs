@@ -35,15 +35,18 @@ const findButton = (label) =>
       return b ? { x: b.x, y: b.y } : null;`);
 const hasText = (t) =>
   gs(`return s.children.list.some(o => typeof o.text === "string" && o.text === ${JSON.stringify(t)});`);
+/** The banner body is ONE multi-line text object — match a line inside it. */
+const hasLine = (t) =>
+  gs(`return s.children.list.some(o => typeof o.text === "string" && o.text.includes(${JSON.stringify(t)}));`);
 
 const RETURNED = {
   caravanId: "e2e", questId: "main", outcome: "returned",
-  survivors: ["Rook", "Vale"], lost: ["Moss"], gearReturned: ["trap-kit"],
+  survivors: ["Rook", "Vale"], lost: ["Moss"], recruited: ["Pip"], gearReturned: ["trap-kit"],
   gearLost: [], purseReturned: 40, purseLost: 0, payout: 60, lordLost: false,
 };
 const WIPED = {
   caravanId: "e2e", questId: "main", outcome: "wiped",
-  survivors: [], lost: ["Rook", "Vale"], gearReturned: [],
+  survivors: [], lost: ["Rook", "Vale"], recruited: [], gearReturned: [],
   gearLost: ["trap-kit"], purseReturned: 0, purseLost: 25, payout: 0, lordLost: true,
 };
 
@@ -56,6 +59,8 @@ async function main() {
   await g.eval(gs(`s.banner = ${JSON.stringify(RETURNED)}; s.render();`));
   await sleep(150);
   check("the returned banner renders (Caravan Home)", await g.eval(hasText("Caravan Home")));
+  // A body picked up on the road that came home (D33) is named on the banner.
+  check("the returned banner names the road recruit who joined", await g.eval(hasLine("Joined the guild: Pip")));
   await g.screenshot(path.join(OUT, "01-returned.png"));
 
   // The backdrop blocks the hall: a real click on a quest row under the modal

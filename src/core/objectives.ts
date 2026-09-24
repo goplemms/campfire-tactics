@@ -236,6 +236,9 @@ function armOne(clock: CTClock, units: readonly Unit[], spec: ObjectiveSpec): Ar
   clock.schedule({
     id: key,
     speed: spec.speed ?? 1,
+    // Armed at staging, so it must outlive the deploy → combat boundary (`resetForCombat`
+    // sheds every non-persistent effect) — the fight is what the gauge times.
+    persistent: true,
     // Kill OR immobilize the driver at completion to fizzle the gate (D50).
     fizzleWhen: () => !!driver && (!driver.alive || isImmobilized(driver)),
     run: () => {

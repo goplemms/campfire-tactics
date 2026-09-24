@@ -339,6 +339,7 @@ export class GuildScene extends Phaser.Scene {
     } else {
       lines.push(`Caravan RETURNED — survivors: ${r.survivors.join(", ") || "—"}.`);
       if (r.lost.length) lines.push(`Fell on the road: ${r.lost.join(", ")}.`);
+      if (r.recruited.length) lines.push(`Joined the guild: ${r.recruited.join(", ")}.`);
       if (r.gearReturned.length) lines.push(`Gear returned: ${r.gearReturned.join(", ")}.`);
       lines.push(`Purse returned to treasury: ${r.purseReturned}g.`);
       if (r.payout) lines.push(`Quest payout banked to treasury: +${r.payout}g.`);

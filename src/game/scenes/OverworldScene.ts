@@ -30,7 +30,7 @@ import { pct,
   merchantBuy,
   // D61 — market access + the Merchant buy/sell faucet
   merchantSell,
-  effectiveMarketTier,
+  marketTierHere,
   marketReadyAt,
   getMaterial,
   // D62 — the Noble's per-expedition Influence (presence accrual + Patronize)
@@ -586,7 +586,7 @@ export class OverworldScene extends Phaser.Scene {
     // Market — a *place you visit*, listed only when you have access (a market node or a
     // Merchant in the party). Hidden otherwise, so trap-kit/herb restock is a real logistics
     // gate. It's a shop overlay, not a page, so it never carries an `active` highlight.
-    if (effectiveMarketTier(this.campNode ?? currentNode(this.run), this.run.party) !== "none") {
+    if (marketTierHere(this.run, this.campNode ?? currentNode(this.run)) !== "none") {
       entries.push({ id: "market", label: "Market", onClick: () => this.openMarket(returnTo), tip: "Buy supplies (trap kits, herbs) and sell salvage. Only open with market access. Stock up: you may not pass a market again soon." });
     }
     const h = 26;
@@ -1137,7 +1137,7 @@ export class OverworldScene extends Phaser.Scene {
 
   /** Buy `qty` of `id` at the node's tier (stops early if gold/storage runs out). */
   private marketBuy(id: string, qty: number): void {
-    const tier = effectiveMarketTier(this.campNode ?? currentNode(this.run), this.run.party);
+    const tier = marketTierHere(this.run, this.campNode ?? currentNode(this.run));
     let bought = 0;
     let reason = "";
     for (let i = 0; i < qty; i++) {

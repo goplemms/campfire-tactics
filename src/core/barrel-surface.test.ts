@@ -769,6 +769,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "marketReadyAt",
   "marketStock",
   "marketTierBonus",
+  "marketTierHere",
   "matchesTag",
   "medHealAmount",
   "medicalHerbs",

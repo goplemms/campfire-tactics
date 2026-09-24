@@ -15,7 +15,7 @@ import { COLOR, DEPTH, FONT, INK } from "./theme";
 import { clearLayer } from "./ui";
 import { showModal, type ButtonFactory } from "./overlay-card";
 import {
-  effectiveMarketTier,
+  marketTierHere,
   merchantPrice,
   marketStock,
   sellPrice,
@@ -57,7 +57,7 @@ export function drawMarket(
 ): void {
   clearLayer(layer);
   const run = o.run;
-  const tier = effectiveMarketTier(o.node, run.party);
+  const tier = marketTierHere(run, o.node);
   const cx = scene.scale.width / 2;
   const cy = scene.scale.height / 2;
   const w = 560;

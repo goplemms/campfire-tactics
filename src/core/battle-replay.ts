@@ -2,10 +2,10 @@
  * Battle replay driver (D4 event-sourcing) — the `replay(log) === state` invariant.
  *
  * Split out of `turn.ts` (R3, #121): the {@link replay} driver that rebuilds a battle
- * by **re-running** its recorded {@link "./combat-actions".CombatAction} log, and the
- * {@link planActions} lowering ({@link "./ai".AIPlan} → actions) the AI turn shares with
- * it. `Battle` keeps `runPolicyTurn` (which calls {@link planActions}). Pure code motion:
- * behaviour unchanged.
+ * by **re-running** its recorded {@link "./combat-actions".CombatAction} log. (The
+ * {@link "./combat-actions".planActions} lowering the AI turn shares with it moved to the
+ * action grammar — design map, step 2 — since `Battle` calls it and this module reads
+ * `Battle`.) Pure code motion: behaviour unchanged.
  *
  * Pure logic: no Phaser, no DOM.
  */
@@ -13,37 +13,8 @@
 import type { Unit } from "./units";
 import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
-import type { AIPlan } from "./ai";
 import { commitsTurn, type CombatAction } from "./combat-actions";
 import { Battle, type BattleOptions } from "./turn";
-
-/**
- * Lower an {@link AIPlan} (intent-as-data, D42) to the {@link CombatAction}s that
- * realize it — the *plan → actions* half of the AI/player convergence. Mirrors the
- * old `runPolicyTurn` ordering exactly: an optional move, then **either** a
- * turn-ending ability (the snare) **or** an optional attack followed by an explicit
- * `endTurn`. A skill commits the turn itself, so no `endTurn` follows it.
- */
-export function planActions(plan: AIPlan): CombatAction[] {
-  const unit = plan.unit.id;
-  const actions: CombatAction[] = [];
-  if (plan.path.length > 0) actions.push({ kind: "move", unit, path: plan.path.map((t) => ({ ...t })) });
-  if (plan.ability && plan.target?.alive) {
-    actions.push({ kind: "skill", unit, skill: plan.ability.id, target: plan.target.id, commitTurn: true });
-    return actions; // the skill ends the turn (commitSkill spends the CT)
-  }
-  // Open a gate in the way (D103/D108) — the walled-off unit's Act; ends the turn. A keyholder **keys**
-  // its gate (fast, D108); any unit **batters** a breakable one. `gateAct` was fixed at plan time.
-  if (plan.gateTarget) {
-    const kind = plan.gateAct === "key" ? "keyGate" : "attackGate";
-    actions.push({ kind, unit, gate: plan.gateTarget.id });
-    actions.push({ kind: "endTurn", unit, spend: { moved: plan.path.length > 0, acted: true } });
-    return actions;
-  }
-  if (plan.target?.alive) actions.push({ kind: "attack", unit, target: plan.target.id });
-  actions.push({ kind: "endTurn", unit, spend: { moved: plan.path.length > 0, acted: plan.target !== null } });
-  return actions;
-}
 
 /**
  * **Replay** a recorded action {@link Battle.log} from an initial roster and assert it

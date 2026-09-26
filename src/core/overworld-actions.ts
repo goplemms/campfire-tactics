@@ -25,9 +25,10 @@
 import { fieldedUnits, fieldsJob, primaryJobOf, type Unit } from "./units";
 import type { RunState } from "./run";
 import type { MapNode } from "./overworld";
-import type { SkillDef, OverworldActionEffect, SkillEffect } from "./skills";
+import { skillContexts, type SkillDef, type OverworldActionEffect, type SkillEffect } from "./skills";
 import type { MaterialCost } from "./cost";
-import { unitHasCapability, getJob, type JobLookup } from "./jobs";
+import { unitHasCapability, getJob, JOBS, type JobLookup } from "./jobs";
+import { UNIVERSAL_OVERWORLD_SKILLS } from "./jobs-data/support";
 import { bumpCounter, nonNegInt } from "./num";
 import { reachableFrom, marketOpenedFlag } from "./overworld";
 import { satisfyUpkeepLine, accrueRp } from "./upkeep";
@@ -36,13 +37,12 @@ import { availableSkills, grantAbilityUseXp, jobLevelOf } from "./leveling";
 import { streamFor } from "./rng";
 import { Labels } from "./rng-labels";
 import { grantItem } from "./inventory";
-import { overworldCostOf, checkOverworldCost, resolveKnob, type OverworldCost } from "./overworld-cost";
-import { setNodeFlag, primeFlag, campSkillUses, cooldownRemaining, isPrimed } from "./overworld-state";
+import { overworldCostOf, checkOverworldCost, resolveKnob, validateOverworldCost, type OverworldCost } from "./overworld-cost";
+import { setNodeFlag, primeFlag, campSkillUses, cooldownRemaining, isPrimed, DEAL_PRIMED_FLAG } from "./overworld-state";
 // The economy-verb effect **cores** (R4/A) — the post-gate mutations each economy verb also
 // runs. The handlers below delegate to these so the projection (batch 3) and the legacy verbs
-// share one body per mechanism (no behaviour drift). One-directional at runtime: economy-actions
-// depends on this module only for the `ActionOutcome` type (erased) + the `DEAL_PRIMED_FLAG`
-// value (used lazily), so importing its cores here is init-safe.
+// share one body per mechanism (no behaviour drift). One-directional: economy-actions reads this
+// module only for the `ActionOutcome` type (erased), so importing its cores here is init-safe.
 import {
   applySellEffect,
   applyBuyEffect,
@@ -56,6 +56,16 @@ import {
   mostWoundedFielded,
   marketTierHere,
 } from "./economy-actions";
+
+// The D61/D72 two-axis invariant's **load-time walk** (R4/A; here, the Verb Cell, since `jobs.ts`
+// importing the cost grammar closed a runtime cycle — design map, step 2): every overworld-surfaced
+// skill's cost must be paced or priced (no free-and-unlimited). A bad record fails fast at import —
+// the JobDef.skills home and the universal overworld home together.
+for (const skill of [...Object.values(JOBS).flatMap((j) => j.skills), ...UNIVERSAL_OVERWORLD_SKILLS]) {
+  if (skillContexts(skill).includes("overworld")) {
+    validateOverworldCost(skill.name, overworldCostOf(skill));
+  }
+}
 
 /**
  * Whether a **market is ready to open at `node`** by the Merchant's presence (D30/D70):
@@ -289,9 +299,6 @@ export function useOverworldSkill(run: RunState, unit: Unit, skill: SkillDef, op
 }
 
 // --- The overworld-effect registry (D72) ------------------------------------
-
-/** The well-known one-shot flag a Merchant's "next deal" primes (D72) — consumed by the next trade. */
-export const DEAL_PRIMED_FLAG = "merchant-deal-primed";
 
 /** What an {@link OverworldActionEffect} handler resolves against — the run, the actor, and the action opts. */
 export interface OverworldEffectCtx {

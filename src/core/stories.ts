@@ -27,7 +27,8 @@ import { grantItem } from "./inventory";
 import { earn, spend } from "./purse-journal";
 import { nudgeMorale } from "./camp";
 import { remember } from "./units";
-import { emptyOutcome, type EventOutcome, type EventChoice } from "./node-events";
+import { emptyOutcome, type EventOutcome } from "./event-outcome";
+import type { EventChoice } from "./node-events";
 
 // --- Story (an authored-as-data choice, D23) --------------------------------
 

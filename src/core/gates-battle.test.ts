@@ -3,7 +3,8 @@ import { createUnit, type Unit } from "./units";
 import { stageEncounter } from "./staging";
 import type { AuthoredEncounter } from "./authored";
 import { makeGate, type Gate } from "./gates";
-import { Battle, replay } from "./turn";
+import { Battle } from "./turn";
+import { replay } from "./battle-replay";
 import { TileGrid } from "./grid";
 
 /**

@@ -17,6 +17,7 @@
  */
 
 import type { Unit } from "./units";
+import { costProvider } from "./cost-providers";
 import type { RunState } from "./run";
 import type { SkillDef } from "./skills";
 import type { Cost } from "./cost";
@@ -37,16 +38,21 @@ import { cooldownRemaining, campSkillUses } from "./overworld-state";
  * closure, so an effect that moves party composition mid-verb can no longer drift the
  * committed spend away from the price the check gated on (the old re-resolution trap).
  */
-export type CostKnob = number | ((run: RunState) => number);
+export type CostKnob = number | ((run: RunState) => number) | { provider: string };
 
-/** Resolve a {@link CostKnob} against the run — a provider is sanitized to a non-negative int. */
+/**
+ * Resolve a {@link CostKnob} against the run — a provider (a function, or a registered
+ * {@link "./cost-providers"} id, the form a data record names) is sanitized to a non-negative int.
+ */
 export function resolveKnob(knob: CostKnob | undefined, run: RunState): number {
-  return typeof knob === "function" ? nonNegInt(knob(run)) : knob ?? 0;
+  if (knob === undefined) return 0;
+  if (typeof knob === "number") return knob;
+  return nonNegInt((typeof knob === "function" ? knob : costProvider(knob.provider))(run));
 }
 
 /** True if a price {@link CostKnob} is **declared** — a provider always counts (its value isn't known at load). */
 export function knobDeclared(knob: CostKnob | undefined): boolean {
-  return typeof knob === "function" || (knob ?? 0) > 0;
+  return knob !== undefined && (typeof knob !== "number" || knob > 0);
 }
 
 /**

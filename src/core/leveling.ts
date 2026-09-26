@@ -16,34 +16,17 @@
  * Pure logic: no Phaser, no DOM, no `Math.random` (leveling is deterministic).
  */
 
-import { primaryJobOf, type Unit, type UnitStats } from "./units";
+import { primaryJobOf, LEVELING, jobLevelOf, type Unit, type UnitStats } from "./units";
 import { getJob, unitSkills, unitHasCapability, type JobLookup } from "./jobs";
 import { UNIVERSAL_SKILLS, UNIVERSAL_OVERWORLD_SKILLS } from "./jobs-data/support";
 import type { SkillDef } from "./skills";
 import { skillContexts, type UsableContext } from "./skills";
 import type { EventBus } from "./event-bus";
 
-/** Leveling tuning — all data, a numbers pass later (D32/D39). */
-export const LEVELING = {
-  /** XP needed to advance one **character** level (flat; a curve comes later). */
-  xpPerLevel: 100,
-  /** XP needed to advance one **job** level (D39). */
-  xpPerJobLevel: 100,
-  /** Passive XP a **deployed** character trickles per node-step on the road. */
-  deployedTrickle: 5,
-  /** Bonus XP for a successful non-combat ability use (the use-leveling hook). */
-  abilityUseBonus: 10,
-  /** Combat XP credited to the attacker for a defeat (kill credit, D53). */
-  killXp: 25,
-  /** Combat XP a unit earns for surviving a hit (the smaller defender bump, D53). */
-  survivedHitXp: 4,
-  /** Secondary held jobs earn XP at this fraction of the primary's rate (D39). */
-  secondaryRate: 0.25,
-  /** Additive ability magnitude per primary-job level above 1 (D39 scaling). */
-  abilityScalePerLevel: 2,
-  /** Character levels that each grant +1 loadout slot (the boon hook, D38/D39). */
-  loadoutBoonLevels: [5, 10] as readonly number[],
-} as const;
+// The progression **reads** (`LEVELING`, `jobLevelOf`, `abilityScaleBonus`) live in `units.ts` so the
+// skill resolvers can scale by job level without `skills → leveling → skills` closing a runtime
+// import cycle (design map, step 2; `import-cycles.test.ts`). Re-exported: this stays their public home.
+export { LEVELING, jobLevelOf, abilityScaleBonus } from "./units";
 
 /**
  * The "main stats" the **+1-all universal floor** hits on a job level-up (D39).
@@ -57,11 +40,6 @@ export const MAIN_STATS: readonly (keyof UnitStats)[] = [
   "speed",
   "moveRange",
 ];
-
-/** The level a unit holds in `jobId` (1 if never trained). */
-export function jobLevelOf(unit: Unit, jobId: string | undefined): number {
-  return jobId ? unit.jobLevels[jobId]?.level ?? 1 : 1;
-}
 
 /**
  * Apply one job level-up's **permanent, cumulative stat gains** (D39): +1 to
@@ -206,15 +184,6 @@ export function grantAbilityUseXp(unit: Unit): number {
 export function applyCharacterBoons(unit: Unit): void {
   const earned = LEVELING.loadoutBoonLevels.filter((lv) => unit.level >= lv).length;
   unit.loadoutSlots = Math.max(unit.loadoutSlots, 1 + earned);
-}
-
-/**
- * Additive ability magnitude from the caster's **primary** job level (D39): each
- * level above 1 adds {@link LEVELING.abilityScalePerLevel}. So Mend heals more,
- * and a class's strikes hit harder, as its job levels — the visible payoff.
- */
-export function abilityScaleBonus(unit: Unit): number {
-  return (jobLevelOf(unit, unit.primaryJob) - 1) * LEVELING.abilityScalePerLevel;
 }
 
 /**

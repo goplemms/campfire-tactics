@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit, type Side } from "./units";
-import { Battle, replay } from "./turn";
+import { Battle } from "./turn";
+import { replay } from "./battle-replay";
 import { TileGrid } from "./grid";
 import { makeGate, canKeyGate, dropsKeyOnDeath, lockGateOnGrid, type GateLock } from "./gates";
 import { isDroppedKey } from "./entities";

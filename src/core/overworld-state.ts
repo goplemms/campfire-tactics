@@ -111,6 +111,9 @@ export function hasNodeFlag(eco: OverworldState, flag: string): boolean {
   return eco.nodeFlags[flag] === true;
 }
 
+/** The well-known one-shot flag a Merchant's "next deal" primes (D72) — consumed by the next trade. */
+export const DEAL_PRIMED_FLAG = "merchant-deal-primed";
+
 /** **Prime** a one-shot ability flag (persists across node-steps until consumed) — the Savvy-Barter shape. */
 export function primeFlag(eco: OverworldState, flag: string): void {
   eco.primedFlags[flag] = true;

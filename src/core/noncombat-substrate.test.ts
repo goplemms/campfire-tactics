@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, type Unit } from "./units";
 import { createRun, breakCamp, type RunState } from "./run";
-import { useOverworldSkill, DEAL_PRIMED_FLAG } from "./overworld-actions";
+import { useOverworldSkill } from "./overworld-actions";
+import { DEAL_PRIMED_FLAG } from "./overworld-state";
 import { hasNodeFlag, isPrimed, consumeFlag } from "./overworld-state";
 import { availableSkills } from "./leveling";
 import { effectiveMarketTier, marketOpenedFlag, type MapNode } from "./overworld";

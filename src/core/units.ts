@@ -420,6 +420,70 @@ export function primaryJobOf(unit: Pick<Unit, "primaryJob" | "jobId">): JobId | 
   return unit.primaryJob ?? unit.jobId;
 }
 
+// --- Progression reads (D39) ------------------------------------------------
+// Live here, on the unit's own data, rather than in `leveling.ts`: the skill resolvers scale an
+// ability by job level, and `leveling.ts` reads the skill registry, so housing these there closed a
+// runtime import cycle (design map, step 2; `import-cycles.test.ts`). `leveling.ts` re-exports them.
+
+/** Leveling tuning — all data, a numbers pass later (D32/D39). */
+export const LEVELING = {
+  /** XP needed to advance one **character** level (flat; a curve comes later). */
+  xpPerLevel: 100,
+  /** XP needed to advance one **job** level (D39). */
+  xpPerJobLevel: 100,
+  /** Passive XP a **deployed** character trickles per node-step on the road. */
+  deployedTrickle: 5,
+  /** Bonus XP for a successful non-combat ability use (the use-leveling hook). */
+  abilityUseBonus: 10,
+  /** Combat XP credited to the attacker for a defeat (kill credit, D53). */
+  killXp: 25,
+  /** Combat XP a unit earns for surviving a hit (the smaller defender bump, D53). */
+  survivedHitXp: 4,
+  /** Secondary held jobs earn XP at this fraction of the primary's rate (D39). */
+  secondaryRate: 0.25,
+  /** Additive ability magnitude per primary-job level above 1 (D39 scaling). */
+  abilityScalePerLevel: 2,
+  /** Character levels that each grant +1 loadout slot (the boon hook, D38/D39). */
+  loadoutBoonLevels: [5, 10] as readonly number[],
+} as const;
+
+/** The level a unit holds in `jobId` (1 if never trained). */
+export function jobLevelOf(unit: Unit, jobId: string | undefined): number {
+  return jobId ? unit.jobLevels[jobId]?.level ?? 1 : 1;
+}
+
+/**
+ * Additive ability magnitude from the caster's **primary** job level (D39): each
+ * level above 1 adds {@link LEVELING.abilityScalePerLevel}. So Mend heals more,
+ * and a class's strikes hit harder, as its job levels — the visible payoff.
+ */
+export function abilityScaleBonus(unit: Unit): number {
+  return (jobLevelOf(unit, unit.primaryJob) - 1) * LEVELING.abilityScalePerLevel;
+}
+
+// --- The temp↔permanent recruit flag (D33) ---------------------------------
+// Housed with the unit (a read of its own `authored` mark) so the bribe/rescue verbs classify a
+// recruit without importing `recruitment.ts`, which reaches the guild and the run.
+
+/** How a bribed/rescued unit resolves after the battle (D33). */
+export interface RecruitOutcome {
+  /** Authored → joins the roster permanently. */
+  permanent: boolean;
+  /** Generic → fought for the rest of the battle only, then gone. */
+  temporary: boolean;
+}
+
+/**
+ * Classify a bribed/rescued enemy by the **temp↔permanent flag** (D33): an
+ * **authored** unit ({@link "./units".Unit.authored}) is a *permanent* recruit;
+ * a **generic** one (rolled merc / plain enemy) is *temporary* — it fights out the
+ * battle and then leaves (no roster bloat).
+ */
+export function recruitClassify(unit: Pick<Unit, "authored">): RecruitOutcome {
+  const permanent = !!unit.authored;
+  return { permanent, temporary: !permanent };
+}
+
 /**
  * The party members currently **fielded** (the overworld twin of {@link isActive}):
  * alive and not captured — the bodies the caravan can actually draw on between

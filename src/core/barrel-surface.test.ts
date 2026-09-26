@@ -225,6 +225,19 @@
  *     nothing), and the vocabulary queries `standingOrderIds` / `isKnownStandingOrder` that
  *     `validateLevel` refuses against. `PlayerAutoOrderDef` is type-only. No planner change, no
  *     new registration at import, no RNG → sim digest unchanged (→ 736).
+ *
+ * Design-map step 2 (the import-cycle tripwire, `import-cycles.test.ts`): +4 —
+ *   - `registerCostProvider` / `costProvider` / `costProviderIds`: the new `cost-providers.ts` leaf,
+ *     the registry a data skill record names a dynamic price by (`{ provider: "food-upkeep" }`)
+ *     instead of `jobs-data/support.ts` importing `upkeep` / `economy-actions` (the edges that closed
+ *     the 14-module core cycle).
+ *   - `planActions`: moved from `battle-replay.ts` (not surfaced) to `combat-actions.ts` (surfaced by
+ *     `export *`) — `Battle` calls it and `battle-replay` reads `Battle`. Same body.
+ *   The other moves keep their barrel names at new homes: `LEVELING` / `jobLevelOf` /
+ *   `abilityScaleBonus` → `units.ts` (re-exported by `leveling.ts`), `DEAL_PRIMED_FLAG` →
+ *   `overworld-state.ts`, `recruitClassify` → `units.ts`, `emptyOutcome` (+ the `EventKind` /
+ *   `EventOutcome` types) → the new `event-outcome.ts` leaf, `replay` reached via `battle-replay.ts`
+ *   directly rather than `turn.ts`'s re-export. Pure motion, no RNG → sim digest unchanged (→ 754).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -564,6 +577,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "configureDeployClock",
   "consumeFlag",
   "cooldownRemaining",
+  "costProvider",
+  "costProviderIds",
   "countOf",
   "createCamp",
   "createCampfire",
@@ -816,6 +831,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "placeParty",
   "placePlayerTrap",
   "placePlayersAutoEdge",
+  "planActions",
   "planAttack",
   "planEnemyTurn",
   "planMove",
@@ -858,6 +874,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "refillBoard",
   "refreshAuras",
   "refreshMercPool",
+  "registerCostProvider",
   "registerExpedition",
   "registerRunFlags",
   "registerStandingOrders",

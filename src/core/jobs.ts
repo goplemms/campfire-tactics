@@ -19,8 +19,7 @@
  */
 
 import { primaryJobOf, type Unit, type UnitStats } from "./units";
-import { skillContexts, type SkillDef } from "./skills";
-import { validateOverworldCost, overworldCostOf } from "./overworld-cost";
+import type { SkillDef } from "./skills";
 import { PASSIVE } from "./combat";
 import type { PrestigeBranch } from "./grants";
 import { SOLDIER_JOB, HEAVY_KNIGHT_JOB, HUNTER_JOB, MEDIC_JOB, SNARE_TRAPPER_JOB } from "./jobs-data/combat";
@@ -193,16 +192,6 @@ export const SKILLS: Record<string, SkillDef> = (() => {
   for (const s of UNIVERSAL_OVERWORLD_SKILLS) add(s, "the universal overworld skills");
   return out;
 })();
-
-// The D61/D72 two-axis invariant's **load-time walk** (R4/A, moved here from overworld-cost so it
-// runs after JOBS + the universal home are assembled, keeping overworld-cost side-effect-free):
-// every overworld-surfaced skill's cost must be paced or priced (no free-and-unlimited). A bad
-// record fails fast at import — the JobDef.skills home and the universal overworld home together.
-for (const skill of [...Object.values(JOBS).flatMap((j) => j.skills), ...UNIVERSAL_OVERWORLD_SKILLS]) {
-  if (skillContexts(skill).includes("overworld")) {
-    validateOverworldCost(skill.name, overworldCostOf(skill));
-  }
-}
 
 /** Look up an authored skill by id. Accepts any string (callers handle the `undefined` miss). */
 export function getSkill(id: string): SkillDef | undefined {

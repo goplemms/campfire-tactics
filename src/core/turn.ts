@@ -41,6 +41,7 @@ import {
   type PlaceTrapEffect,
 } from "./skills";
 import {
+  planActions,
   type CombatAction,
   type BattleActionResult,
   type UnitId,
@@ -59,13 +60,12 @@ import {
   resolveGuardAllies as resolveGuardAlliesEffect,
   execCleave as execCleaveEffect,
 } from "./field-effects";
-import { planActions } from "./battle-replay";
 
-// The undo machinery + the replay driver live in sibling modules now (R3, #121);
-// re-export the formerly-`turn.ts` public surface so the barrel + existing importers
-// are unchanged (sanctioned migration re-exports).
+// The undo machinery lives in a sibling module now (R3, #121); re-exported so the barrel + existing
+// importers are unchanged (a sanctioned migration re-export). The replay driver (`battle-replay.ts`)
+// is NOT re-exported here: it imports `Battle`, so the re-export closed a runtime cycle (design map,
+// step 2) — the barrel exports it directly, and readers import `replay` from its home.
 export { snapshotUnit, restoreUnit } from "./battle-undo";
-export { replay } from "./battle-replay";
 
 /**
  * Construction-time battle settings (all optional, all defaulting to the

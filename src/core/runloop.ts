@@ -55,8 +55,9 @@ import { recoverMaterials } from "./resolution";
 import { grantItem } from "./inventory";
 import { resolveDowned, resolveCaptured, advanceDyingClocksOneNight, type DownedOutcome, type RescueQuest } from "./mortality";
 import { rpPerNight, payUpkeep, accrueRp, type UpkeepResult } from "./upkeep";
-import { intelFloor, readEncounter, effectiveIntelTier, MAX_TIER, TRAP_INTEL, type IntelReport } from "./intel";
+import { intelFloor, readEncounter, effectiveIntelTier, deployModifiers, MAX_TIER, TRAP_INTEL, type IntelReport } from "./intel";
 import { PILOT_POLICY, type BattlePolicy } from "./ai";
+import { BattleFlow, HOLD_POSITION, type DeployPolicy, type DeployView } from "./battle-flow";
 import { useOverworldSkill, type ActionOpts, type CampSkillResult } from "./overworld-actions";
 import { scoutedTier } from "./overworld-state";
 import { gainRunGold } from "./economy";
@@ -200,6 +201,12 @@ export class RunLoop {
   staged?: StagedEncounter;
   /** The live battle for the current encounter. */
   battle?: Battle;
+  /**
+   * The current encounter's **game master** (design map, step 3): the one sequencer the render
+   * and the headless bot both drive through deployment. Set by {@link enterDeploy}; unset for a
+   * caller that stages and fights without a deploy phase (the older headless tests).
+   */
+  flow?: BattleFlow;
   /** Player combatants placed for the current encounter. */
   combatants: Unit[] = [];
   /** Combat XP tallied on the battle bus, committed at {@link resolve} (D53). */
@@ -460,10 +467,51 @@ export class RunLoop {
    */
   beginBattle(): number {
     if (!this.battle) throw new Error("RunLoop.beginBattle: no staged battle");
+    // A staged deploy phase commits here if the caller has not (the headless path) — the
+    // logged `beginBattle` boundary, then the fight's own seed below.
+    if (this.flow && this.flow.view().phase !== "combat") this.flow.startBattle();
     const healed = applyCampToParty(this.run.camp, this.battle.units, this.battle.bus);
     const mods = moraleModifiers(moraleTier(this.run.camp.morale));
     this.battle.seed(mods.initiativeBonus);
     return healed;
+  }
+
+  /**
+   * Open the staged encounter's **deployment phase** through the one {@link BattleFlow}
+   * (design map, step 3) — the same object the render drives: the Battle enters pre-combat,
+   * the run's stash is wired for trap kits, the morale × intel deploy edge (D8/D10) rides in
+   * as the net's exposure multiplier, and the party takes its opening trap read. Returns the
+   * flow; {@link autoDeploy} plays it headlessly, the scene sends the player's intents.
+   */
+  enterDeploy(): BattleFlow {
+    if (!this.battle || !this.source) throw new Error("RunLoop.enterDeploy: no staged battle");
+    this.battle.setStash(this.run.inventory);
+    const flow = new BattleFlow(this.battle, { exposureMultiplier: deployModifiers(this.run, this.source).exposureMultiplier });
+    flow.enterDeploy();
+    this.flow = flow;
+    return flow;
+  }
+
+  /**
+   * Play the deploy phase **headlessly** through the flow (design map, step 3): step the deploy
+   * clock up to `turns` times — each unit turn handed to `policy` (default: hold position),
+   * each net turn resolved — and commit. The default `turns: 0` commits at once, the naive
+   * bot's "no deploy" reading, so the sim's route through the boundary is the scene's route
+   * without the sim taking positions it never took before. Returns the view after commit.
+   */
+  autoDeploy(opts: { turns?: number; policy?: DeployPolicy } = {}): DeployView {
+    const flow = this.flow ?? this.enterDeploy();
+    const policy = opts.policy ?? HOLD_POSITION;
+    for (let i = 0; i < (opts.turns ?? 0); i++) {
+      const step = flow.advance();
+      if (step.kind === "refused") break; // the alarm went up — nothing more to step
+      if (step.kind === "turn") {
+        policy(flow, step.actor);
+        if (flow.view().actor === step.actor) flow.endTurn(step.actor); // a policy that never ends its turn still yields the clock
+      }
+    }
+    flow.startBattle();
+    return flow.view();
   }
 
   // --- Resolution (D13/D21/D9) ----------------------------------------------
@@ -793,6 +841,8 @@ export class RunLoop {
     this.camp();
     if (this.isOver()) return node; // a dying clock ran out at camp → wipe
     this.startEncounter();
+    this.enterDeploy();
+    this.autoDeploy(); // through the one flow: the sim now crosses the deploy → combat boundary the scene crosses
     this.beginBattle();
     this.autoBattle();
     this.resolve();

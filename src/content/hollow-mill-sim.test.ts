@@ -38,12 +38,12 @@ describe("run simulator (D55) — the authored Hollow Mill arc", () => {
     // The naive bot's route crosses the Sapper's Snares (L3, 5 traps) and — picking
     // first-reachable, the infiltration arm — the Outer Yard's mined approach (3 more): 8 staged.
     expect(hollowMill.summary.traps.staged).toBe(8);
-    // The BASELINE TRUTH this pin makes loud: headless play can only *blunder into*
-    // traps. The Awareness spot loop and the disarm verb live in the render layer
-    // (BattleScene), so the sim's floor is spotted 0 / disarmed 0 — the trap lever
-    // registers as silent damage only. When the spot/avoid/disarm layer reaches the
-    // core (or the Node-3 pass changes the field's shape), these move — repin then.
-    expect(hollowMill.summary.traps.spotted).toBe(0);
+    // The deploy phase runs headlessly through `BattleFlow` now (design map, step 3): the
+    // party's opening Awareness read at the deploy line and the battle-open scan are the flow's,
+    // so the sim *reads* the field's edge (4 spotted across the arc). The per-step spot loop of
+    // a walking unit and the disarm verb still live in the render layer (the combat turn is the
+    // next flow slice) — so disarmed stays 0, and the charging bot still blunders into the rest.
+    expect(hollowMill.summary.traps.spotted).toBe(4);
     expect(hollowMill.summary.traps.disarmed).toBe(0);
     // The charging bot eats mid-field snares on the way across (path-dependent, so
     // pinned loosely): the field is *felt* headlessly, just never *read*.

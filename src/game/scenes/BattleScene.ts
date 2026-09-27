@@ -32,10 +32,6 @@ import { pct,
   // D63 — the closing net: two radial influence sources. The party's campfire
   // (safe ground, sized by presence) vs. the enemy source (danger, growing on the
   // deployment clock); the danger overrides the campfire, shrinking your territory.
-  createFront,
-  createCampfire,
-  configureDeployClock,
-  resolveFrontTurn,
   inDangerZone,
   isProtected,
   deployForecast,
@@ -50,9 +46,9 @@ import { pct,
   type SpawnZone,
   // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
   // tested), so the scene renders the choices instead of making them.
-  frontTurnStage,
-  deployActions,
   advanceOutcome,
+  type BattleFlow,
+  type DeployAdvance,
   noActionsAvailable as scanNoActions,
   adjacentRevealedTrap as findAdjacentRevealedTrap,
   // M5 — camp / morale
@@ -246,9 +242,17 @@ export class BattleScene extends Phaser.Scene {
   /** The toggleable Legend & Keys panel (L) — empty when hidden. */
   private legend: Phaser.GameObjects.GameObject[] = [];
 
-  // Deployment state (D11): the active unit + a seeded roll stream for the net.
-  private deployActor: Unit | null = null;
-  private deployRng!: Rng;
+  /**
+   * The encounter's **game master** for the deploy phase (design map, step 3): the one
+   * sequencer the render and the headless bot both drive — intents in, view state out. It owns
+   * the active unit, the per-turn economy (moved / acted / revealed / the move budget), the
+   * closing net's turns and the alarm; the scene renders its view and turns clicks into intents.
+   */
+  private flow!: BattleFlow;
+  /** The unit whose deploy turn is open (read from the flow), or null between turns / before deploy. */
+  private get deployActor(): Unit | null {
+    return this.flow ? this.flow.view().actor : null;
+  }
   // D63 — the closing net: an advancing enemy danger front, a deployment-phase CT
   // clock that interleaves player turns with the front's, and the dug-in stance set.
   private dangerZoneGfx?: Phaser.GameObjects.Graphics;
@@ -271,17 +275,7 @@ export class BattleScene extends Phaser.Scene {
   private leverMarkers: Phaser.GameObjects.GameObject[] = [];
   /** Key glyphs over each un-fetched dropped key (D117/M5) — redrawn on keyDropped/keyPickedUp + board setup. */
   private keyMarkers: Phaser.GameObjects.GameObject[] = [];
-  /** What the active deploy unit has done this turn — drives the End-Turn CT spend. */
-  private deployMoved = false;
-  private deployActed = false;
-  /**
-   * A dug-in unit's turn opens to a minimal **Take Action / End Turn** menu (it chose to sit
-   * out the maneuver). This flag, set by **Take Action**, reveals the unit's full deploy row
-   * for the turn without yet breaking the stance — the dig-in capture benefit still holds
-   * until it actually moves or commits an act (the status-effect trigger). Reset per turn.
-   */
-  private deployReveal = false;
-  // D12 — concealed enemy traps: a seeded spot-roll stream.
+  // D12 — concealed enemy traps: the seeded spot-roll stream (the flow's; the combat reads share it).
   private spotRng!: Rng;
   /** The board trap-marker layer (#131): owns the enemy + player marker maps + the id counter. */
   private trapLayer!: TrapMarkerLayer;
@@ -298,10 +292,18 @@ export class BattleScene extends Phaser.Scene {
    */
   /**
    * Movement still in the budget this turn; 0 once spent or Immobilized. The **one**
-   * budget for both phases now (D-feel consolidation): a deploy turn and a battle turn
-   * both step tile-by-tile against it, charging the **weighted** reach cost of each leg.
+   * budget for both phases (D-feel consolidation): a deploy turn and a battle turn both step
+   * tile-by-tile against it, charging the **weighted** reach cost of each leg. In deployment
+   * the flow owns it (read-through); the combat turn keeps its own field until the combat
+   * slice of the flow lands.
    */
-  private moveBudget = 0;
+  private get moveBudget(): number {
+    return this.phase === "deployment" && this.flow ? this.flow.view().moveBudget : this.combatMoveBudget;
+  }
+  private set moveBudget(v: number) {
+    this.combatMoveBudget = v;
+  }
+  private combatMoveBudget = 0;
   /** True once the unit has used its single Act this turn (attack / skill / verb). */
   private acted = false;
   /** Whether that Act costs the full Act CT (a `spend: "move"` skill does not). */
@@ -490,7 +492,6 @@ export class BattleScene extends Phaser.Scene {
     this.busy = false;
     this.waitingFor = null;
     this.armedSkill = null;
-    this.deployActor = null;
     this.trapLayer.resetPlayer();
     this.pendingHerb = null;
     clearLayer(this.objectiveObjects);
@@ -667,68 +668,36 @@ export class BattleScene extends Phaser.Scene {
       clearLayer(this.deployMarkers);
       this.markCuffedCaptives(); // a still-cuffed captive keeps its lock into the fight (D90)
     });
-    // The front's net-closing turn (D67 W3): the deploy loop emits `frontTurn` when the CT
-    // clock hands the tempo source its turn, and the capture wave resolves here as a reaction
-    // — so the front's turn is a first-class slot on the clock, not a branch wired into the
-    // loop. Harmless in combat (never emitted there — the front is detached at the boundary).
-    this.battle.bus.on("frontTurn", () => this.resolveFrontWave());
   }
 
   // --- Phase: Deployment -----------------------------------------------------
 
   private enterDeploy(): void {
     this.phase = "deployment";
-    this.battle.enterDeploy(); // the Battle is now in the pre-combat phase (D67)
+    // The flow opens the phase (design map, step 3): the Battle enters pre-combat on its own CT
+    // clock (D67 W2 — configured for the net, seeded per unit), the run's stash is wired for trap
+    // kits, the safe ground (authored zones, D119, else the campfire) and the closing net (D63) are
+    // built, the label-keyed RNG streams derive from the one encounter seed, and the party takes
+    // its opening Awareness read of the trap field (D12). The scene reads all of it from the flow.
+    this.flow = this.loop.enterDeploy();
+    this.safeGround = this.flow.safeGround;
+    this.front = this.flow.front;
+    this.spotRng = this.flow.spotRng;
     // The foe is pre-positioned but unseen during staging (D12) — veil enemy tokens
     // now; startBattle lifts it. Refresh re-applies the veil after spawnUnits.
     this.view.concealEnemies = true;
     this.view.refreshUnits();
     this.legendStrip.setItems(this.hasExtraction() ? [...DEPLOY_LEGEND, EXIT_LEGEND_ITEM] : DEPLOY_LEGEND);
-    // Deployment's RNG draws from the one encounter seed the Battle now owns (D67), via its
-    // label-keyed stream seam — the scene no longer reaches into run.seed for its rolls.
-    // (battle seed == run.seed, so the streams are byte-identical to the prior wiring.)
-    this.deployRng = this.battle.stream(Labels.deploy());
-    this.spotRng = this.battle.stream(Labels.trapSpot());
     this.trapLayer.reset();
-    // Deploy verbs flow through the one interpreter now (D63): wire the run stash so
-    // Battle's placeTrap action can spend kits, undoably, on the shared log.
-    this.battle.setStash(this.run.inventory);
-    // D63 — the closing net: the enemy is a single danger front that marches in from
-    // its edge, with a Speed leaning toward the camp's fastest scout. Player units and
-    // the front share one deployment CT clock, so a quick party earns more positioning
-    // turns between net-closings. (Dig-in is unit state now, reset at staging.)
-    const enemies = this.battle.units.filter((u) => u.side === "enemy");
-    // The campfire's protected (capture-immune) core comes from party presence and is
-    // capped to the board width (D-feel) — a small map keeps a tight core. The morale/
-    // intel deploy edge (D8/D10) now trims the *neutral* capture rate instead of widening
-    // the immune zone (see deployMods().exposureMultiplier, threaded into the net rolls).
-    // D119: an authored encounter may declare its own spawn zones — fixed tiles that override
-    // the net's danger and replace the campfire entirely. `createCampfire` anchors blindly at
-    // (col 0, mid-row) with no walkability check, which on a hand-built board can (and on The
-    // Rescue does) draw the safe core inside a wall; declaring zones is the general fix.
-    this.safeGround = this.battle.spawnZones.length > 0 ? this.battle.spawnZones : createCampfire(this.grid, this.battle.units);
-    this.front = createFront(this.grid, enemies);
-    // Deployment runs on the Battle's **own** CT clock (D67 W2) — no parallel instance.
-    // Configure it for the phase: narrow turn-taking to active players (the pre-positioned
-    // enemies freeze off the same clock) and attach the front as a strict-lead tempo source.
-    // Seeded per-unit (a warmer party acts first); the front starts cold. The combat boundary
-    // (beginBattle → resetForCombat) sheds this config and re-seeds for the fight.
-    configureDeployClock(this.battle.clock, this.front);
-    this.battle.clock.seedFlat();
     this.drawZones();
     drawSourceMarkers(this, this.view, this.deployMarkers, this.safeGround, this.front);
     this.markCuffedCaptives(); // lock glyphs over any cuffed captives (D90)
     this.markGates(); // lock/bar glyphs over any locked interactable gates (D103)
     this.markLevers(); // lever glyphs over any pull-switches (D103)
     this.markKeys(); // key glyphs over any dropped keys (D117/M5) — usually none until a keyholder falls
-    // Trap-field (D12): enemy hazards are live across *both* phases, so the party's
-    // opening Awareness scan happens here — at the deploy line, not at combat start.
-    // Spotted traps draw now, so positioning is informed; the rest are sensed as units
-    // advance (the per-step read) or via a deliberate Search.
-    if (hiddenTraps(this.battle.entities).length > 0) {
-      for (const u of this.battle.units) if (u.side === "player" && u.alive) revealTrapsNear(u, this.battle.entities, this.spotRng);
-      this.redrawTrapMarkers();
-    }
+    // Spotted traps (the opening scan) draw now, so positioning is informed; the rest are sensed
+    // as units advance (the per-step read) or via a deliberate Search.
+    this.redrawTrapMarkers();
     this.deployNextActor(); // step to the first actor (a player gets the head start)
   }
 
@@ -741,29 +710,18 @@ export class BattleScene extends Phaser.Scene {
    */
   private deployNextActor(): void {
     if (this.over || this.phase !== "deployment" || this.busy) return;
-    const turn = this.battle.clock.nextTurn();
-    if (turn.kind === "unit") this.beginDeployTurn(turn.unit);
-    // "tempo" (the front leads) or "idle" (never — the front always charges): announce the
-    // front's turn on the bus; the capture-wave listener (resolveFrontWave) resolves it.
-    else this.battle.bus.emit("frontTurn", {});
+    const step = this.flow.advance();
+    if (step.kind === "turn") this.beginDeployTurn(step.actor, step.spotted.length);
+    else if (step.kind === "front") this.renderFrontWave(step);
   }
 
-  /** Open one player unit's deployment turn: it may move, dig in, or set a trap. */
-  private beginDeployTurn(unit: Unit): void {
+  /** Open one player unit's deployment turn (the flow opened it: undo armed, budget seeded, the passive trap read done). */
+  private beginDeployTurn(unit: Unit, spotted: number): void {
     this.view.setActiveUnit(unit);
-    this.deployMoved = false;
-    this.deployActed = false;
-    this.deployReveal = false;
-    this.moveBudget = moveBudget(unit);
     this.deployHoverTile = null;
     this.queuedTile = null;
-    // Arm the shared action-log undo for the deploy turn (D63) — each move/dig-in/
-    // trap becomes undoable back to the turn's start, exactly like a combat turn.
-    this.battle.beginUndo();
-    // The active unit looks around as it steps up — a passive Awareness scan may spot
-    // nearby traps (D12 parity with the combat turn-open, the same shared helper). Reveal
-    // *before* the buttons render so a freshly-spotted adjacent trap surfaces its Disarm verb.
-    const spotted = this.scanTrapsOnTurnOpen(unit);
+    // A freshly-spotted trap draws *before* the buttons render so an adjacent one surfaces its Disarm verb.
+    if (spotted > 0) this.redrawTrapMarkers();
     this.setPrimary("End Turn"); // before the row builds, so the half-width pair labels correctly
     this.selectDeployActor(unit);
     this.recomputeReach(unit); // light the reachable tiles for this turn's budget (shared with battle)
@@ -785,7 +743,6 @@ export class BattleScene extends Phaser.Scene {
 
   /** Between deploy turns the clock rests on the player — Advance Clock steps it. */
   private enterDeployIdle(hint: string): void {
-    this.deployActor = null;
     this.queuedTile = null;
     this.deployHoverTile = null;
     this.highlightTile(null);
@@ -797,33 +754,18 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * The capture wave — the `frontTurn` bus listener (D67 W3, was the inline `runFrontTurn`).
-   * The net advances one column, then rolls capture for every unit it has swallowed. The
-   * first capture raises the alarm and battle begins; if the net overruns the camp's home
-   * edge with nobody caught, battle begins anyway. Otherwise the clock rests on the player
-   * until the next Advance. Reached only via the bus (emitted when the CT clock hands the
-   * tempo source its turn), so the front's turn is a hookable moment, not a hardcoded branch.
+   * Render the capture wave the flow resolved (D63/D67): the net advanced one column and
+   * rolled capture for every unit it swallowed. A catch (already bound through the one
+   * interpreter, logged) raises the alarm and battle begins; an overrun with nobody caught
+   * begins it anyway; otherwise the clock rests on the player until the next Advance.
    */
-  private resolveFrontWave(): void {
-    // resolveFrontTurn reads each unit's dugIn stance by default (D63); the morale/intel
-    // deploy edge rides in as the neutral-capture multiplier (D8/D10).
-    const out = resolveFrontTurn(this.front, this.safeGround, this.battle.units, this.deployRng, {
-      exposureMultiplier: this.deployMods().exposureMultiplier,
-    });
-    this.battle.clock.spendTempo();
-    this.deployActor = null;
+  private renderFrontWave(step: Extract<DeployAdvance, { kind: "front" }>): void {
+    const { stage, outcome: out } = step;
     this.clearActionButtons();
     this.drawZones();
     this.highlightTile(null);
-
-    // The branch (catch → alarm / overrun / continue) is a pure decision now (D63
-    // Phase B); the scene just renders the chosen stage.
-    const stage = frontTurnStage(out, this.grid, this.safeGround, this.front);
     if (stage.kind === "capture") {
       const caught = out.captured!;
-      // The net's turn is the deploy "enemy turn": bind the catch through the one
-      // interpreter (logged), mirroring how a combat enemy turn flows through apply.
-      this.battle.capture(caught);
       this.dropNet(caught);
       this.placeView(caught);
       this.tintCaptured(caught, true);
@@ -859,8 +801,7 @@ export class BattleScene extends Phaser.Scene {
   /** End the active unit's deployment turn and spend its CT (no auto-advance). */
   private endDeployTurn(unit: Unit): void {
     this.view.setActiveUnit(null);
-    this.battle.endUndo(); // the deploy turn commits — no take-back across the boundary
-    this.battle.clock.spend(unit, { moved: this.deployMoved, acted: this.deployActed });
+    this.flow.endTurn(unit); // the deploy turn commits (no take-back across the boundary) and its CT is spent, logged
     this.enterDeployIdle(`${unit.name}'s turn ends — Advance Clock (Space) to step the net, or Start Battle.`);
   }
 
@@ -876,8 +817,7 @@ export class BattleScene extends Phaser.Scene {
    * reveal that ends in "End Turn" leaves the unit hunkered.
    */
   private takeAction(actor: Unit): void {
-    if (this.busy || actor.captured || this.deployActor !== actor) return;
-    this.deployReveal = true;
+    if (this.busy || !this.flow.takeAction(actor)) return;
     this.refreshDeployButtons();
     this.refreshDeployStatus();
     this.setHint(`${actor.name} re-engages — move, place a trap, or use a skill (the dug-in benefit holds until it does). Or End Turn (Space) to stay hunkered.`);
@@ -886,9 +826,7 @@ export class BattleScene extends Phaser.Scene {
   /** Dig In (D63): hunker on this tile for a sharply reduced capture chance. */
   private digIn(): void {
     const actor = this.deployActor;
-    if (!actor || actor.captured || this.busy || this.deployActed) return;
-    this.battle.digIn(actor); // logged + undoable through the one interpreter (D63)
-    this.deployActed = true;
+    if (!actor || this.busy || !this.flow.digIn(actor)) return; // logged + undoable through the one interpreter (D63)
     this.refreshDeployButtons();
     this.refreshDeployStatus();
     this.setHint(`${actor.name} digs in — braced low against the net. End Turn (Space) to advance it.`);
@@ -910,21 +848,21 @@ export class BattleScene extends Phaser.Scene {
   private selectDeployActor(unit: Unit | null): void {
     // Zones are now party-wide (campfire + enemy source), so switching units only
     // moves the cursor — the green/red map no longer redraws per unit (D63).
-    this.deployActor = unit;
     this.highlightTile(unit ? unit.pos : null);
     this.refreshDeployButtons();
     this.refreshDeployStatus();
   }
 
   private refreshDeployButtons(): void {
-    const actor = this.deployActor;
+    const v = this.flow.view();
+    const actor = v.actor;
     const specs: ActionSpec[] = [];
     // Turn-control box (pure decision, D63/D67): Undo + Start Battle + the Advance Clock /
     // End Turn primary, kept apart from the unit's verbs. During a unit's turn, Undo is
     // **persistent** beside End Turn (greyed/inert until there's something to take back);
     // between turns there's no active unit to undo, so it's omitted and Advance Clock stays
     // full-width.
-    const ids = deployActions({ hasActor: !!actor, captured: !!actor?.captured, canUndo: this.battle.canUndo() });
+    const ids = v.controls;
     const canUndo = ids.includes("undo");
     const undo: ActionSpec | undefined = actor
       ? {
@@ -936,13 +874,12 @@ export class BattleScene extends Phaser.Scene {
           onClick: () => this.undoTurn(actor, "deployment"),
         }
       : undefined;
-    // A unit that **began** the turn dug in (vs. one that just dug in this turn — `deployActed`)
-    // sits out the maneuver: a minimal **Take Action** verb stands in for the full row, so the
-    // player sees the unit was intentionally taken out of action. Take Action reveals the row
-    // for this turn (`deployReveal`) without breaking the stance yet. Moving (a map click) still
+    // A unit that **began** the turn dug in (vs. one that just dug in this turn) sits out the
+    // maneuver — the flow's `hunkered` view: a minimal **Take Action** verb stands in for the full
+    // row, so the player sees the unit was intentionally taken out of action. Take Action reveals
+    // the row for this turn without breaking the stance yet. Moving (a map click) still
     // re-engages it directly — the reach stays lit.
-    const hunkered = !!actor && !!actor.dugIn && !actor.captured && !this.deployActed && !this.deployReveal;
-    if (hunkered) {
+    if (v.hunkered) {
       specs.push({
         text: "Take Action",
         description: "Stand this unit up to act this turn — its full options return. The dug-in capture benefit holds until it actually moves or acts.",
@@ -952,14 +889,10 @@ export class BattleScene extends Phaser.Scene {
     // The ability buttons are the **same data-driven projection as combat** (D67): the unit's
     // pre-combat skills + the universal Dig In / Defend, from availableSkills — so a Set-Trap
     // skill surfaces because it's pre-combat *data*, not via a hand-computed `canTrap`.
-    if (actor && !actor.captured && !this.deployActed && !hunkered) {
+    if (v.canAct && actor) {
       // Offensive skills are board skills now (D67 W7) — not banned pre-combat, just idle
-      // without a target. Surface them only when a foe is actually **engageable** (un-concealed
-      // — a keep-assault stages defenders that way); the default staging conceals the enemy
-      // roster, so this stays empty and the deploy row reads exactly as before.
-      const canEngage = this.battle.units.some((u) => u.alive && !u.concealed && u.side !== actor.side);
-      for (const skill of availableSkills(actor, "pre-combat")) {
-        if (skill.target === "enemy" && !canEngage) continue;
+      // without a target; the flow surfaces them only when a foe is actually **engageable**.
+      for (const skill of v.skills) {
         const text = skill.effect.kind === "placeTrap" ? "Place Trap Here" : skill.name;
         specs.push({ text, description: skill.description, onClick: () => this.onDeploySkillButton(actor, skill) });
       }
@@ -1013,7 +946,7 @@ export class BattleScene extends Phaser.Scene {
         description:
           `Slip away from the ${here.label} and come at the ${zone.label} instead — nobody has spotted you yet. ` +
           `Room for ${zone.cap} (${zoneOccupants(zone, this.battle.units).length} there now). Takes this unit's whole deploy turn.`,
-        onClick: () => this.doTakeEntrance(actor, zone, dest),
+        onClick: () => this.doTakeEntrance(actor, zone),
       });
     }
   }
@@ -1031,16 +964,16 @@ export class BattleScene extends Phaser.Scene {
    * pacing cost to that (D119 accepts this phase has no timer worth the name), and it stops a unit
    * from teleporting to the side door *and* sprinting to the lever in one turn.
    */
-  private doTakeEntrance(actor: Unit, zone: SpawnZone, dest: GridCoord): void {
-    if (!this.canFieldAct(actor, "deployment")) return;
-    // Re-derive under the live board: the row was built before this click, and the player may
-    // have moved another unit into the zone in between.
-    if (!zoneHasRoom(zone, this.battle.units, actor) || !freeTileIn(zone, this.battle.units, this.grid, actor)) {
-      return void this.setHint(`The ${zone.label} is full — there's no room for ${actor.name} there.`);
+  private doTakeEntrance(actor: Unit, zone: SpawnZone): void {
+    if (this.busy) return;
+    // The flow re-derives the destination under the live board (the row was built before this
+    // click, and another unit may have moved into the zone in between), moves through the logged
+    // verb, and spends the move + the Act — the circle IS the turn.
+    const res = this.flow.takeEntrance(actor, zone);
+    if (!res.ok) {
+      if (res.reason === "full") this.setHint(`The ${zone.label} is full — there's no room for ${actor.name} there.`);
+      return;
     }
-    this.battle.moveUnit(actor, [dest]);
-    this.deployMoved = true;
-    this.moveBudget = 0; // the circle IS the turn — no reposition left after arriving
     this.placeView(actor);
     this.highlightTile(actor.pos);
     this.drawDeployReach();
@@ -1307,7 +1240,7 @@ export class BattleScene extends Phaser.Scene {
    * for a click — all the same `availableSkills` projection the buttons came from.
    */
   private onDeploySkillButton(actor: Unit, skill: SkillDef): void {
-    if (this.busy || this.deployActor !== actor || actor.captured || this.deployActed) return;
+    if (this.busy || !this.flow.canAct(actor)) return;
     if (skill.effect.kind === "placeTrap") return this.placeTrap(skill.effect, skill.cost?.material);
     if (skill.id === "dig-in") return this.digIn();
     if (skill.effect.kind === "med-heal") return this.openHerbMenu(actor, skill, "deployment"); // the Medic pre-heals (D67 W8)
@@ -1367,7 +1300,7 @@ export class BattleScene extends Phaser.Scene {
    * staging" rule, only "no engaging the concealed."
    */
   private castDeploySkill(actor: Unit, skill: SkillDef, target: Unit): void {
-    if (this.busy || actor.captured || this.deployActed) return;
+    if (this.busy || !this.flow.canAct(actor)) return;
     const herb = this.pendingHerb;
     this.armedSkill = null;
     this.pendingHerb = null;
@@ -1506,18 +1439,13 @@ export class BattleScene extends Phaser.Scene {
    */
   private moveStep(actor: Unit, tile: GridCoord, ctx: BoardCtx): void {
     if (actor.captured || this.busy) return;
-    const deploy = ctx === "deployment";
+    if (ctx === "deployment") return this.deployMoveStep(actor, tile);
     const r = this.reachByKey.get(`${tile.col},${tile.row}`);
     if (!r || r.path.length === 0) {
-      const more = this.canMoveFurther();
       return this.setHint(
-        deploy
-          ? more
-            ? "Out of reach — click a lit tile (you step, not leap)."
-            : "Out of moves this turn — Dig In, place a trap, or End Turn (Space)."
-          : more
-            ? "Out of reach — click a lit tile (you move in steps, not leaps)."
-            : `${actor.name} is out of moves — strike a foe, use a skill, or End Turn (Space/W).`,
+        this.canMoveFurther()
+          ? "Out of reach — click a lit tile (you move in steps, not leaps)."
+          : `${actor.name} is out of moves — strike a foe, use a skill, or End Turn (Space/W).`,
       );
     }
     // Per-step trap read (D12): the unit may sense a hidden enemy trap and stop short, or
@@ -1525,7 +1453,7 @@ export class BattleScene extends Phaser.Scene {
     // trap it already spotted halts it short (you don't step onto one you see).
     const spot = this.readStepTraps(actor, r.path, (sensed) =>
       `${actor.name} ${sensed ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
-        `(${ICON.trapArmed.glyph}) — route around it, Disarm it, ${deploy ? "" : "strike, "}or End Turn.`,
+        `(${ICON.trapArmed.glyph}) — route around it, Disarm it, strike, or End Turn.`,
     );
     if (!spot) return; // balked on a trap — hold ground (hint already set)
     const walked = spot.path;
@@ -1536,23 +1464,41 @@ export class BattleScene extends Phaser.Scene {
     const hpBefore = actor.hp;
     this.busy = true;
     this.hoverTile = null;
-    if (!deploy) {
-      // Battle: a move clears any armed strike/skill aim and its action row (the strike
-      // telegraph re-arms after the step). Deployment has no strike to clear.
-      this.armedSkill = null;
-      this.clearActionButtons();
-      this.highlightTile(null);
-      this.armedAim = null;
-    }
+    // Battle: a move clears any armed strike/skill aim and its action row (the strike
+    // telegraph re-arms after the step).
+    this.armedSkill = null;
+    this.clearActionButtons();
+    this.highlightTile(null);
+    this.armedAim = null;
     this.battle.moveUnit(actor, walked);
-    if (deploy) this.deployMoved = true;
-    else this.movedThisTurn = true;
-    this.moveBudget -= cost; // weighted spend — same in both phases
-    this.animateMove(actor, walked, () =>
-      deploy
-        ? this.afterDeployMoveStep(actor, !!spot.spotted, hpBefore)
-        : this.afterBattleMoveStep(actor, !!spot.spotted, hpBefore),
-    );
+    this.movedThisTurn = true;
+    this.moveBudget -= cost; // weighted spend
+    this.animateMove(actor, walked, () => this.afterBattleMoveStep(actor, !!spot.spotted, hpBefore));
+  }
+
+  /**
+   * The deploy step — the same click, sent to the flow as a **move intent**: it checks the reach,
+   * runs the per-step trap read (D12), commits through the logged `move` verb and spends the
+   * weighted budget; the scene animates what was walked and narrates the refusal.
+   */
+  private deployMoveStep(actor: Unit, tile: GridCoord): void {
+    const hpBefore = actor.hp;
+    const res = this.flow.move(actor, tile);
+    if (!res.ok) {
+      if (res.reason === "balked") {
+        if (res.spotted) this.redrawTrapMarkers(); // a trap sensed *now* on the blocked tile — mark it
+        return this.setHint(
+          `${actor.name} ${res.spotted ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
+            `(${ICON.trapArmed.glyph}) — route around it, Disarm it, or End Turn.`,
+        );
+      }
+      if (res.reason === "out-of-reach") return this.setHint("Out of reach — click a lit tile (you step, not leap).");
+      if (res.reason === "out-of-moves") return this.setHint("Out of moves this turn — Dig In, place a trap, or End Turn (Space).");
+      return;
+    }
+    this.busy = true;
+    this.hoverTile = null;
+    this.animateMove(actor, res.walked, () => this.afterDeployMoveStep(actor, !!res.spotted, hpBefore));
   }
 
   /** The deploy after-step: relight the (smaller) reach, surface trap/feedback, chain clicks. */
@@ -1616,8 +1562,7 @@ export class BattleScene extends Phaser.Scene {
     }
     this.trapLayer.addPlayerTrap(id, actor.pos);
     this.refreshSituationCard();
-    this.deployActed = true;
-    actor.dugIn = false; // placing a trap is an act — breaks the hunker (the "on action" trigger)
+    this.flow.spendAct(actor); // placing a trap is the Act — breaks the hunker (the "on action" trigger)
     this.refreshDeployButtons();
     this.refreshDeployStatus();
     this.setHint((res.levels ?? 0) > 0
@@ -1629,11 +1574,13 @@ export class BattleScene extends Phaser.Scene {
 
   private startBattle(): void {
     this.phase = "battle";
-    // Cross the pre-combat → combat boundary (D67): a *logged* transition that flips the
-    // Battle's phase and announces it. The bus listener (wireBattleFx) tears down the
-    // staging visuals — lifts the D12 veil so the foe resolves into view, retires the
-    // deploy overlays + markers — and the log marker lets replay delimit the deploy prelude.
-    this.battle.beginBattle();
+    // Cross the pre-combat → combat boundary (D67) through the flow: a *logged* transition
+    // that flips the Battle's phase and announces it (an open deploy turn commits as it
+    // stands), then the party's opening trap read as battle opens (D12). The bus listener
+    // (wireBattleFx) tears down the staging visuals — lifts the veil so the foe resolves into
+    // view, retires the deploy overlays + markers — and the log marker lets replay delimit the
+    // deploy prelude.
+    const spotted = this.flow.startBattle();
     this.titleText.setText("Battle");
     this.situationCard.resetView("camp"); // foes are on the board now — default the situation card back to Camp
     this.refreshSituationCard();
@@ -1645,7 +1592,6 @@ export class BattleScene extends Phaser.Scene {
     this.goldRecovered = 0;
     this.pendingRecruits = [];
     this.bribeArmed = false;
-    this.deployActor = null;
     this.highlightTile(null);
 
     // The damage / heal / defeat / trapSprung FX are already wired for this encounter's
@@ -1662,12 +1608,9 @@ export class BattleScene extends Phaser.Scene {
     this.refreshSituationCard();
     if (healed > 0) for (const u of this.battle.units) if (u.side === "player" && u.alive) this.flashHeal(u);
 
-    // Trap-field (D12): an opening party scan from the deploy line reveals the
-    // nearest concealed traps; the rest are spotted as units advance (or Search).
-    if (hiddenTraps(this.battle.entities).length > 0) {
-      for (const u of this.battle.units) if (u.side === "player" && u.alive) revealTrapsNear(u, this.battle.entities, this.spotRng);
-      this.redrawTrapMarkers();
-    }
+    // Trap-field (D12): the opening party scan (in the flow's commit) reveals the nearest
+    // concealed traps; the rest are spotted as units advance (or Search).
+    if (spotted.length > 0) this.redrawTrapMarkers();
 
     this.refreshHud();
     this.setPrimary("Advance Clock");
@@ -2008,7 +1951,7 @@ export class BattleScene extends Phaser.Scene {
    */
   private canFieldAct(actor: Unit, ctx: BoardCtx): boolean {
     if (this.busy || actor.captured) return false;
-    return ctx === "deployment" ? this.deployActor === actor && !this.deployActed : this.waitingFor === actor && !this.acted;
+    return ctx === "deployment" ? this.flow.canAct(actor) : this.waitingFor === actor && !this.acted;
   }
 
   /**
@@ -2022,8 +1965,7 @@ export class BattleScene extends Phaser.Scene {
    */
   private commitFieldAct(actor: Unit, ctx: BoardCtx, hint?: string, charged = true): void {
     if (ctx === "deployment") {
-      this.deployActed = true;
-      actor.dugIn = false; // acting breaks the hunker (the status-effect "on action" trigger); moving already clears it in moveUnit
+      this.flow.spendAct(actor); // marks the Act; acting breaks the hunker (the status-effect "on action" trigger)
       this.refreshDeployButtons();
       this.refreshDeployStatus();
     } else {
@@ -2559,23 +2501,20 @@ export class BattleScene extends Phaser.Scene {
    */
   private undoTurn(actor: Unit, ctx: BoardCtx): void {
     if (this.busy || !this.battle.canUndo()) return;
-    if (ctx === "deployment" ? this.deployActor !== actor : this.turnLocked || this.waitingFor !== actor) return;
-    // Combat clears any armed target on take-back; deployment reaches undo only un-armed
-    // (Esc cancels an aim first), so it has nothing to clear.
-    if (ctx === "battle") {
+    if (ctx === "deployment") {
+      // Deployment reaches undo only un-armed (Esc cancels an aim first), so nothing to clear;
+      // the flow rolls the turn back — positions, HP, statuses, kits, the log, and its own
+      // moved / acted / revealed flags + the budget (back to the minimal menu if dug in).
+      if (!this.flow.undo(actor)) return;
+      this.queuedTile = null;
+    } else {
+      if (this.turnLocked || this.waitingFor !== actor) return;
+      // Combat clears any armed target on take-back.
       this.armedSkill = null;
       this.pendingHerb = null;
       this.bribeArmed = false;
-    }
-    this.battle.undoAll(); // core: positions, HP, statuses, clock/charges, RNG cursor, log
-    // Per-turn render flags back to the turn's start (phase-specific sets).
-    if (ctx === "deployment") {
-      this.deployMoved = false;
-      this.deployActed = false;
-      this.deployReveal = false; // back to the minimal menu if the unit began the turn dug in
-      this.moveBudget = moveBudget(actor); // the whole turn rolled back — full range again
-      this.queuedTile = null;
-    } else {
+      this.battle.undoAll(); // core: positions, HP, statuses, clock/charges, RNG cursor, log
+      // Per-turn render flags back to the turn's start.
       this.moveBudget = moveBudget(actor);
       this.acted = false;
       this.actCharged = false;

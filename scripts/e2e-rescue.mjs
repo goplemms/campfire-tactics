@@ -47,6 +47,14 @@ const toFinale = (intel) =>
       `s.scene.start("BattleScene",{run:s.run,loop:s.loop});`,
   );
 
+/**
+ * Open a fresh deploy turn on `unitExpr` inside the scene's flow (the turn economy is the
+ * flow's state — the scene only renders it). The same shape `BattleFlow.openTurn` builds, with a
+ * fixed budget so the row is fully armed whoever the roster order would have picked.
+ */
+const handTurn = (unitExpr) =>
+  `s.flow.turn = { actor: ${unitExpr}, moved: false, acted: false, revealed: false, moveBudget: 4 };`;
+
 /** Snapshot the deploy state in tile terms — zones, who stands where, what the row offers. */
 const DEPLOY_SNAP = `
   const zones = s.battle.spawnZones;
@@ -168,11 +176,11 @@ async function main() {
 
     // --- The entrance action, driven as a player drives it ---------------------
     // Hand the turn to the Thief (by id — the whole point of the feature is that the player
-    // picks who infiltrates, rather than the roster order picking for them).
+    // picks who infiltrates, rather than the roster order picking for them). The deploy turn is
+    // the flow's state now (BattleFlow, design map step 3): open one on the unit directly.
     const armed = await g.bsEval(`
       const thief = s.battle.units.find(u => u.jobId === "thief");
-      s.deployActor = thief; s.deployMoved = false; s.deployActed = false; s.deployReveal = false;
-      s.moveBudget = 4;
+      ${handTurn("thief")}
       s.refreshDeployButtons();
       const btn = s.actionButtons.find(b => b.label && /Side Door/.test(b.label.text));
       return { thiefId: thief && thief.id, row: ${ROW}, hasBtn: !!btn, x: btn && btn.x, y: btn && btn.y };
@@ -186,9 +194,9 @@ async function main() {
     await g.clickScene(armed.x, armed.y);
     // Wait for the circle to actually land (the same click→transition class as the 'Go Now'
     // wait below), not for a fixed 250ms.
-    await g.waitForBattle(`return s.deployActed === true && s.deployMoved === true;`, {
+    await g.waitForBattle(`const t = s.flow.turn; return !!t && t.acted === true && t.moved === true;`, {
       label: "the 'Take Side Door' click to spend the deploy turn",
-      diagnose: `return { phase: s.phase, deployActed: s.deployActed, deployMoved: s.deployMoved, moveBudget: s.moveBudget, clickedAt: { x: ${JSON.stringify(armed.x)}, y: ${JSON.stringify(armed.y)} } };`,
+      diagnose: `const t = s.flow.turn; return { phase: s.phase, acted: t && t.acted, moved: t && t.moved, moveBudget: s.moveBudget, clickedAt: { x: ${JSON.stringify(armed.x)}, y: ${JSON.stringify(armed.y)} } };`,
     });
 
     snap = await g.bsEval(DEPLOY_SNAP);
@@ -196,15 +204,14 @@ async function main() {
     check("the Thief now stands on the side-door tile", snap.atSide.length === 1 && snap.atSide[0] === "nyx");
     check("…and is no longer at the front gate", !snap.atFront.includes("nyx"));
     check("the rest of the party held the front gate", snap.atFront.length >= 3);
-    const spent = await g.bsEval(`return { acted: s.deployActed, moved: s.deployMoved, budget: s.moveBudget, phase: s.phase };`);
+    const spent = await g.bsEval(`const t = s.flow.turn; return { acted: t.acted, moved: t.moved, budget: s.moveBudget, phase: s.phase };`);
     check("the circle spent the unit's deploy turn", spent.acted === true && spent.moved === true && spent.budget === 0);
     check("the scene is still in deployment (no freeze, no early battle)", spent.phase === "deployment");
 
     // --- The cap is enforced on the real board --------------------------------
     const capped = await g.bsEval(`
       const other = s.battle.units.find(u => u.side === "player" && !u.captured && u.jobId !== "thief");
-      s.deployActor = other; s.deployMoved = false; s.deployActed = false; s.deployReveal = false;
-      s.moveBudget = 4;
+      ${handTurn("other")}
       s.refreshDeployButtons();
       return { id: other.id, row: ${ROW} };
     `);
@@ -215,8 +222,8 @@ async function main() {
     // …while the Thief, standing at the side door, may still come back to the front gate
     // (the move is not one-way — "I changed my mind" stays a legal play).
     const back = await g.bsEval(`
-      s.deployActor = s.battle.units.find(u => u.jobId === "thief");
-      s.deployMoved = false; s.deployActed = false; s.deployReveal = false; s.moveBudget = 4;
+      const thief = s.battle.units.find(u => u.jobId === "thief");
+      ${handTurn("thief")}
       s.refreshDeployButtons();
       return ${ROW};
     `);

@@ -9,7 +9,8 @@
  * is engaged by **receiving** real damage since it last finished a turn.
  */
 import { describe, it, expect } from "vitest";
-import { Battle, replay } from "./turn";
+import { Battle } from "./turn";
+import { replay } from "./battle-replay";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";
 import { hasTag, IN_COMBAT } from "./tags";

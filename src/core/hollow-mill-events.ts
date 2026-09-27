@@ -22,7 +22,8 @@ import { createUnit, fieldsJob, type UnitSpec } from "./units";
 import { getJob } from "./jobs";
 import { grantItem } from "./inventory";
 import { accrueRp } from "./upkeep";
-import { emptyOutcome, type EventDef, type EventOutcome } from "./node-events";
+import { emptyOutcome, type EventOutcome } from "./event-outcome";
+import type { EventDef } from "./node-events";
 
 // --- The Hollow Mill authored-event resolvers (D52) -------------------------
 

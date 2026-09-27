@@ -4,8 +4,8 @@ import { createRun, reachableNodes, breakCamp, type RunState } from "./run";
 import {
   useOverworldSkill,
   applyOverworldEffect,
-  DEAL_PRIMED_FLAG,
 } from "./overworld-actions";
+import { DEAL_PRIMED_FLAG } from "./overworld-state";
 import {
   overworldCostOf,
   validateOverworldCost,
@@ -338,13 +338,11 @@ describe("the two-axis limiter invariant (D61)", () => {
   });
 
   it("every overworld/camp skill in the live registry satisfies the invariant (D72)", () => {
-    // The home is now JobDef.skills (A2): Survey, Cook Stew, and any future verb. The
-    // load-time guard in overworld-actions runs this same check at import.
-    for (const job of Object.values(JOBS)) {
-      for (const skill of job.skills) {
-        if (skillContexts(skill).includes("overworld")) {
-          expect(() => validateOverworldCost(skill.name, overworldCostOf(skill))).not.toThrow();
-        }
+    // The homes are JobDef.skills (A2: Survey, Cook Stew, any future verb) and the universal overworld
+    // skills (R4/A). The load-time walk in overworld-actions runs this same check at import.
+    for (const skill of [...Object.values(JOBS).flatMap((j) => j.skills), ...UNIVERSAL_OVERWORLD_SKILLS]) {
+      if (skillContexts(skill).includes("overworld")) {
+        expect(() => validateOverworldCost(skill.name, overworldCostOf(skill))).not.toThrow();
       }
     }
   });
@@ -353,7 +351,7 @@ describe("the two-axis limiter invariant (D61)", () => {
 describe("the D61 invariant is total over the ONE home — no standalone gated verb remains (#112, R4/A inverted)", () => {
   // The D88 guard, INVERTED (increment 9): VERB_COSTS + its load-time walk are gone. Every economy
   // verb's cost now lives on a SkillDef — validated by the single JOBS[*].skills + universal
-  // overworld walk in jobs.ts. This guard proves the ABSENCE of any standalone gated verb: every
+  // overworld walk in overworld-actions.ts. This guard proves the ABSENCE of any standalone gated verb: every
   // exported function of the two verb modules must classify as a JobDef-skill wrapper, a
   // universal-skill wrapper, gated-elsewhere (bribe's influence knob), or a non-verb helper — a NEW
   // export that is none of these fails BY NAME. Reading a per-verb cost registry is no longer a

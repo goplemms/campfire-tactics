@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createUnit, type Unit } from "./units";
+import { createUnit, recruitClassify, type Unit } from "./units";
 import { createGuild, GUILD, type Guild } from "./guild";
 import { createCaravan } from "./caravan";
 import {
@@ -7,7 +7,6 @@ import {
   mercPool,
   hireFromPool,
   hireRefusal,
-  recruitClassify,
   recruitToRoster,
   RECRUIT,
 } from "./recruitment";

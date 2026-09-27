@@ -18,8 +18,8 @@ import { Labels } from "./rng-labels";
 import { influenceTier, type InfluenceTier } from "./economy";
 import { spend } from "./purse-journal";
 import { rankOf } from "./num";
+import { emptyOutcome } from "./event-outcome";
 import {
-  emptyOutcome,
   mustGetEvent,
   eventWeightAt,
   INFLUENCE_ORDER,

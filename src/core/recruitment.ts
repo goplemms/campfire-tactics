@@ -25,7 +25,7 @@
  * no live RNG, no `Math.random`. Pure logic: no Phaser, no DOM.
  */
 
-import type { Unit } from "./units";
+import { recruitClassify, type Unit } from "./units";
 import { GUILD, rollMercenary, type Guild } from "./guild";
 
 /** Recruitment tuning — data, a numbers pass later (D33). */
@@ -81,24 +81,9 @@ export function hireFromPool(guild: Guild, mercId: string): Unit | null {
 
 // --- The temp↔permanent vector (the whole new rule, D33) --------------------
 
-/** How a bribed/rescued unit resolves after the battle (D33). */
-export interface RecruitOutcome {
-  /** Authored → joins the roster permanently. */
-  permanent: boolean;
-  /** Generic → fought for the rest of the battle only, then gone. */
-  temporary: boolean;
-}
-
-/**
- * Classify a bribed/rescued enemy by the **temp↔permanent flag** (D33): an
- * **authored** unit ({@link "./units".Unit.authored}) is a *permanent* recruit;
- * a **generic** one (rolled merc / plain enemy) is *temporary* — it fights out the
- * battle and then leaves (no roster bloat).
- */
-export function recruitClassify(unit: Pick<Unit, "authored">): RecruitOutcome {
-  const permanent = !!unit.authored;
-  return { permanent, temporary: !permanent };
-}
+// `RecruitOutcome` / `recruitClassify` (the temp↔permanent flag itself) live in `units.ts` — a read of
+// the unit's own `authored` mark, so the verb modules classify a bribe without importing this module
+// (which reaches `guild` → `run`; design map, step 2).
 
 /**
  * Land a **permanent** recruit (a bribed/rescued **authored** unit) in the guild

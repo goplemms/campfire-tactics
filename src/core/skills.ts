@@ -10,13 +10,12 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { healUnit, type Unit } from "./units";
+import { healUnit, abilityScaleBonus, type Unit } from "./units";
 import type { EventBus } from "./event-bus";
 import type { StatusInstance } from "./status";
 import { resolveAttack, manhattan, PASSIVE } from "./combat";
 import { applyStatus, markPrey, cleanseOne, hastened } from "./status";
 import { countOf, type Inventory } from "./inventory";
-import { abilityScaleBonus } from "./leveling";
 import { assertNever } from "./num";
 import type { CapabilityId } from "./jobs";
 import type { OverworldCost } from "./overworld-cost";

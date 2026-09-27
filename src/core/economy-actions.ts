@@ -27,16 +27,16 @@
  */
 
 import type { RunState } from "./run";
-import { fieldedUnits, fieldsJob, primaryJobOf, healUnit, type Unit } from "./units";
+import { fieldedUnits, fieldsJob, primaryJobOf, healUnit, recruitClassify, type RecruitOutcome, type Unit } from "./units";
 import { getJob, unitHasCapability, type JobLookup } from "./jobs";
 import { PASSIVE } from "./combat";
 import { getNode, effectiveMarketTier, type MarketTier, type MapNode } from "./overworld";
-import { isPrimed, consumeFlag } from "./overworld-state";
+import { isPrimed, consumeFlag, DEAL_PRIMED_FLAG } from "./overworld-state";
 import { checkOverworldCost, overworldCostOf, type OverworldCost } from "./overworld-cost";
 import { MERCHANT_SELL, BANKER_INTEREST, BANKER_BORROW, BANKER_GUARD, NOBLE_PATRONIZE, UNIVERSAL_BUY } from "./jobs-data/support";
 import { MEDIC_TRIAGE } from "./jobs-data/combat";
 import { getDifficulty } from "./mortality";
-import { DEAL_PRIMED_FLAG, type ActionOutcome } from "./overworld-actions";
+import type { ActionOutcome } from "./overworld-actions";
 import { earn } from "./purse-journal";
 import type { NodePreview } from "./intel";
 import { nonNegInt } from "./num";
@@ -46,7 +46,7 @@ import { Labels } from "./rng-labels";
 import { addInfluence, gainRunGold, influenceTier, type InfluenceTier } from "./economy";
 import { grantAbilityUseXp } from "./leveling";
 import { chunkHp } from "./upkeep";
-import { recruitClassify, type RecruitOutcome } from "./recruitment";
+import { registerCostProvider } from "./cost-providers";
 
 /** Economy-verb tuning — data, a numbers pass later (D30). */
 export const ECONOMY = {
@@ -105,12 +105,13 @@ export function merchantPrice(tier: MarketTier): number {
 /**
  * The Merchant Buy **gold price** at the run's current node — the market-tier base price (D61).
  * The provider body the universal Buy skill's `overworldCost.gold` calls (R4/A, #112), and the
- * base {@link merchantBuy} overlays a primed Savvy-Barter discount onto before the gate. A hoisted
- * function (not a const) so jobs-data can reference it in a lazy cost provider with no init cycle.
+ * base {@link merchantBuy} overlays a primed Savvy-Barter discount onto before the gate. Registered
+ * as the `"merchant-buy"` cost provider so the data record names it by id (no runtime import).
  */
 export function merchantBuyGold(run: RunState): number {
   return merchantPrice(marketTierHere(run));
 }
+registerCostProvider("merchant-buy", merchantBuyGold);
 
 /**
  * The market tier the caravan trades at **here** — the one reader for buying, selling and the
@@ -623,12 +624,13 @@ export const TRIAGE = {
 /**
  * The universal Triage-fallback **RP price** at the run's current node (R4, the ratified ruling):
  * `fallbackRpMultiplier ×` the difficulty's `rpPerChunk` — funds **one rest-chunk** at half a
- * normal rest's efficiency. The provider body the fallback skill's `overworldCost.rp` calls;
- * a hoisted function so jobs-data can reference it in a lazy cost provider with no init cycle.
+ * normal rest's efficiency. The provider body the fallback skill's `overworldCost.rp` names — registered
+ * as the `"triage-fallback"` cost provider so the data record carries an id, not a runtime import.
  */
 export function triageFallbackRp(run: RunState): number {
   return TRIAGE.fallbackRpMultiplier * getDifficulty(run.difficultyId).rpPerChunk;
 }
+registerCostProvider("triage-fallback", triageFallbackRp);
 
 /**
  * True if `unit` is a **healing class** — a job stamped with the Medic's Triage

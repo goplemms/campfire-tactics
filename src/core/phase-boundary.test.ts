@@ -10,7 +10,8 @@
  * Pure logic: no Phaser, no DOM.
  */
 import { describe, it, expect } from "vitest";
-import { Battle, replay } from "./turn";
+import { Battle } from "./turn";
+import { replay } from "./battle-replay";
 import { configureDeployClock, createFront } from "./deployment";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";

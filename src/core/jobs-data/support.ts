@@ -9,8 +9,10 @@
  * {@link "./jobs".JOBS} and derive the {@link "./jobs".SKILLS} registry. Pure code motion:
  * behaviour unchanged.
  *
- * The Cook Stew's computed cost keeps the lazy {@link computeUpkeep} import (a closure-only
- * reference — no init-time cycle), the one cyclic edge preserved from the original file.
+ * The dynamic prices (Cook Stew's Food line, the universal Buy's market price, the Triage
+ * fallback's RP) are named by **provider id** (`{ provider: "food-upkeep" }`, …) and resolved
+ * through {@link "./cost-providers"} at check time, so this file is pure data with **no runtime
+ * import** of the modules that compute them (design map, step 2: core has no import cycles).
  *
  * Pure logic: no Phaser, no DOM.
  */
@@ -18,11 +20,6 @@
 import type { JobDef } from "../jobs";
 import type { SkillDef } from "../skills";
 import { guarded } from "../status";
-import { computeUpkeep } from "../upkeep"; // Cook Stew's computed cost (lazy — closure only, no init-time cycle)
-// The universal economy verbs' cost **provider bodies** (R4/A, #112) — hoisted functions used only
-// inside the lazy `overworldCost` arrows below, so the economy-actions ⇄ support edge is closure-only
-// (no init-time cycle, exactly like `computeUpkeep` above).
-import { merchantBuyGold, triageFallbackRp } from "../economy-actions";
 
 /** Forage kit tuning (D73) — within-clearing pace × across-clearing fatigue + the yield; numbers pass. */
 export const FORAGE_KIT = {
@@ -115,7 +112,7 @@ export const COOK_STEW: SkillDef = {
   target: "party",
   range: 0,
   spend: "act",
-  overworldCost: { usesPerNode: 1, gold: (run) => computeUpkeep(run.party).lines.find((l) => l.id === "food")?.cost ?? 0 },
+  overworldCost: { usesPerNode: 1, gold: { provider: "food-upkeep" } },
   effect: { kind: "provisionMeal", rp: COOK_KIT.stewRp },
 };
 
@@ -402,7 +399,7 @@ export const UNIVERSAL_BUY: SkillDef = {
   target: "self",
   range: 0,
   spend: "act",
-  overworldCost: { gold: (run) => merchantBuyGold(run) },
+  overworldCost: { gold: { provider: "merchant-buy" } },
   effect: { kind: "buy" },
 };
 
@@ -422,7 +419,7 @@ export const TRIAGE_FALLBACK: SkillDef = {
   target: "party",
   range: 0,
   spend: "act",
-  overworldCost: { rp: (run) => triageFallbackRp(run) },
+  overworldCost: { rp: { provider: "triage-fallback" } },
   effect: { kind: "triage", base: 0, fallback: true },
 };
 

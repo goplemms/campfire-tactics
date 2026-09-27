@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { Battle, replay, type BattleOptions } from "./turn";
+import { Battle, type BattleOptions } from "./turn";
+import { replay } from "./battle-replay";
 import { computeDamage } from "./combat";
 import { TileGrid } from "./grid";
 import { createUnit, type Side, type Unit } from "./units";

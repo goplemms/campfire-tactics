@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createUnit, isActive, type Side, type Unit } from "./units";
 import { TileGrid } from "./grid";
-import { Battle, replay } from "./turn";
+import { Battle } from "./turn";
+import { replay } from "./battle-replay";
 import { planEnemyTurn, edgeDistance, threatenedTiles } from "./ai";
 import {
   STANDING_ORDERS,

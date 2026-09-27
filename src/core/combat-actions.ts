@@ -28,6 +28,7 @@ import type { SkillOutcome, PlaceTrapEffect } from "./skills";
 import type { MaterialCost } from "./cost";
 import type { TurnSpend } from "./clock";
 import type { RecoverableEntity } from "./entities";
+import type { AIPlan } from "./ai";
 
 /** A live unit referenced by its stable id (so an action survives a replay rebuild). */
 export type UnitId = string;
@@ -181,4 +182,32 @@ export function commitsTurn(action: CombatAction): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * Lower an {@link AIPlan} (intent-as-data, D42) to the {@link CombatAction}s that
+ * realize it — the *plan → actions* half of the AI/player convergence. Mirrors the
+ * old `runPolicyTurn` ordering exactly: an optional move, then **either** a
+ * turn-ending ability (the snare) **or** an optional attack followed by an explicit
+ * `endTurn`. A skill commits the turn itself, so no `endTurn` follows it.
+ */
+export function planActions(plan: AIPlan): CombatAction[] {
+  const unit = plan.unit.id;
+  const actions: CombatAction[] = [];
+  if (plan.path.length > 0) actions.push({ kind: "move", unit, path: plan.path.map((t) => ({ ...t })) });
+  if (plan.ability && plan.target?.alive) {
+    actions.push({ kind: "skill", unit, skill: plan.ability.id, target: plan.target.id, commitTurn: true });
+    return actions; // the skill ends the turn (commitSkill spends the CT)
+  }
+  // Open a gate in the way (D103/D108) — the walled-off unit's Act; ends the turn. A keyholder **keys**
+  // its gate (fast, D108); any unit **batters** a breakable one. `gateAct` was fixed at plan time.
+  if (plan.gateTarget) {
+    const kind = plan.gateAct === "key" ? "keyGate" : "attackGate";
+    actions.push({ kind, unit, gate: plan.gateTarget.id });
+    actions.push({ kind: "endTurn", unit, spend: { moved: plan.path.length > 0, acted: true } });
+    return actions;
+  }
+  if (plan.target?.alive) actions.push({ kind: "attack", unit, target: plan.target.id });
+  actions.push({ kind: "endTurn", unit, spend: { moved: plan.path.length > 0, acted: plan.target !== null } });
+  return actions;
 }

@@ -46,7 +46,7 @@ import type { TileGrid } from "./grid";
 import type { Inventory } from "./inventory";
 import { countOf } from "./inventory";
 import { manhattan, computeDamage, PASSIVE } from "./combat";
-import { abilityScaleBonus } from "./leveling";
+import { abilityScaleBonus } from "./units";
 import { isDebuffed, markOf, CHANNEL_TUNING } from "./status";
 import { moraleTier, type MoraleTier } from "./camp";
 import { moraleModifiers } from "./morale";

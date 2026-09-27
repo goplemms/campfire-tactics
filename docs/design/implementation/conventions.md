@@ -21,6 +21,7 @@ stopped being executed.
 | Battle RNG | `Battle.roll` (apply-driven, draw-counted) / `Battle.stream` (fixed-label deploy draws); seeded per encounter via `Labels.battle(nodeId, night)` | `src/core/turn.ts` `roll`/`stream` docs | `runloop.test.ts` "per-encounter battle seed" (cross-node divergence + same-coordinates determinism) |
 | Registries | `Def` record + const registry + `getX(id)` returning `undefined`; keys **derived from `.id`**, never hand-duplicated; duplicate ids **throw at load** | `src/core/scenarios/index.ts` (`[X.id]: X` keys), `src/core/jobs.ts` `SKILLS` (load-time collision check) | `registry-contracts.test.ts` (key ⇔ id walk, dual-registration, event-registration completeness) |
 | Unit tags (D117) | `hasTag(unit, tag, ctx)` over the `TAGS` registry — a tag is a **predicate/classification**, never a stateful status; one of three provenances (**intrinsic** `Unit.tags` · **conferred** by an active status · **derived** pure fn of battle state incl. the D87 log). Tag ids are kebab-case constants (`IN_COMBAT`, …), never inline strings | `src/core/tags.ts` (`in-combat` derived · `non-combatant`/`garrison` intrinsic) | `tags.test.ts`, `registry-contracts.test.ts` (key ⇔ id walk) |
+| Import layering | `src/core`'s **runtime** import graph is acyclic — a data record that needs a computed value names it by **id** through a registry (`{ provider: "food-upkeep" }` → `cost-providers.ts`) or the shape moves down to a leaf (`event-outcome.ts`, the progression reads on `units.ts`); never a "lazy / closure-only" import of a module above you. `import type` is free | `src/core/cost-providers.ts` (register at the owner's load, resolve at check time, throw by name on a miss) | `import-cycles.test.ts` (Tarjan over the raw sources, names every cycle), `cost-providers.test.ts` (every named id registered once the barrel loads) |
 | Costs / pacing | One `Cost` grammar (`src/core/cost.ts`), gated by `checkOverworldCost` → `{ ok, prices, commit() }` | `src/core/overworld-cost.ts` | `r2-verb-gate.test.ts` (every exported verb classified) |
 | Verbs | A verb is a `SkillDef` resolved by the one interpreter through the effect registry (the Verb Cell, D89) | `src/core/overworld-actions.ts` | `r2-verb-gate.test.ts`, `overworld-actions.test.ts` |
 | Result shapes | Verb layer: `ActionOutcome { applied, reason?, detail? }` · core/effect layer: `{ ok: true; … } \| { ok: false; reason }` discriminated | `src/core/overworld-actions.ts:ActionOutcome`, `src/core/combat-actions.ts:BattleActionResult` | (Wave-2: straggler migration; no mechanical guard yet) |
@@ -61,5 +62,8 @@ stopped being executed.
    headless suite cannot see a scene freeze — see `CLAUDE.md`'s cautionary tale.
 4. **A new modal** → `showModal`. If you're typing `installBackdrop` + a rect +
    a title yourself, stop.
-5. **A repeated shape with no home yet** → give it one (module + guard) *before*
+5. **A module that needs a value from a module above it** → don't import it "lazily";
+   name it by id through a registry (`cost-providers.ts`) or move the shared shape down
+   to a leaf. `import-cycles.test.ts` names the cycle you'd close.
+6. **A repeated shape with no home yet** → give it one (module + guard) *before*
    the third copy ships, and add it to the table above.

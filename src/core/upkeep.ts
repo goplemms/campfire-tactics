@@ -26,6 +26,7 @@ import { restCostMultiplier } from "./fatigue";
 import type { DifficultyPolicy } from "./mortality";
 import { DYING_COUNTER } from "./mortality";
 import { spend } from "./purse-journal";
+import { registerCostProvider } from "./cost-providers";
 
 // --- Upkeep (D15) -----------------------------------------------------------
 
@@ -88,6 +89,10 @@ export function computeUpkeep(party: readonly Unit[]): UpkeepBill {
   ];
   return { lines, total: lines.reduce((s, l) => s + l.cost, 0) };
 }
+
+// The Cook Stew's dynamic price (D71): tonight's Food line — registered here, the bill's home, so
+// the skill record (`jobs-data/support.ts` COOK_STEW) names it by id instead of importing this module.
+registerCostProvider("food-upkeep", (run) => computeUpkeep(run.party).lines.find((l) => l.id === "food")?.cost ?? 0);
 
 /**
  * Toggle a **voluntary Upkeep skip** (D45) — cross an Upkeep line off (free its gold,

@@ -115,20 +115,7 @@ export function validateExpedition(exp: AuthoredExpedition): string[] {
   }
 
   // Full reachability from the start (forward BFS over edges).
-  const seen = new Set<string>([map.startId]);
-  let frontier = [map.startId];
-  while (frontier.length > 0) {
-    const next: string[] = [];
-    for (const id of frontier) {
-      for (const e of map.nodes[id]?.edges ?? []) {
-        if (!seen.has(e) && map.nodes[e]) {
-          seen.add(e);
-          next.push(e);
-        }
-      }
-    }
-    frontier = next;
-  }
+  const seen = reachableSet(map, map.startId);
   for (const id of ids) {
     if (!seen.has(id)) problems.push(`unreachable: "${id}" cannot be reached from the start`);
   }

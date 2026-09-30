@@ -27,6 +27,7 @@ import type { RunHandoff } from "../scenes/OverworldScene";
 import { installPlaytestLogUI } from "../playtest-log-ui";
 import { installDebugMenu } from "../debug-menu";
 import { COLOR, INK, FONT } from "../theme";
+import { hoverTint } from "../button";
 
 /**
  * The **dev boot + jump tooling** — the developer/screenshot-harness entry points, split out
@@ -453,8 +454,7 @@ export class ScenarioBootScene extends Phaser.Scene {
           })
           .setOrigin(0.5)
           .setInteractive({ useHandCursor: true });
-        row.on(Phaser.Input.Events.POINTER_OVER, () => row.setColor(INK.bright));
-        row.on(Phaser.Input.Events.POINTER_OUT, () => row.setColor(INK.primary));
+        hoverTint(row, INK.primary);
         row.on(Phaser.Input.Events.POINTER_DOWN, () =>
           this.scene.start("BattleScene", buildScenarioBattle(config.id, partyName)),
         );

@@ -48,6 +48,15 @@ export class TileGrid {
     }
   }
 
+  /** Every tile on the board, row by row (row-major: the draw order). */
+  coords(): GridCoord[] {
+    const out: GridCoord[] = [];
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) out.push({ col, row });
+    }
+    return out;
+  }
+
   /** True if the coordinate lies on the grid. */
   inBounds({ col, row }: GridCoord): boolean {
     return col >= 0 && col < this.cols && row >= 0 && row < this.rows;

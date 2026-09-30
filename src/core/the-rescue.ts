@@ -39,7 +39,7 @@
  */
 
 import type { UnitSpec } from "./units";
-import { getJob, type JobId } from "./jobs";
+import { memberFromJob } from "./jobs";
 import type { OverworldMap, MapNode } from "./overworld";
 import { registerExpedition, type AuthoredExpedition } from "./expedition";
 
@@ -65,28 +65,6 @@ export const RESCUE_FINALE_ID = "the-rescue";
  */
 export const SIDE_DOOR_ID = "the-side-door";
 
-/** Build a party member from a job's baseline frame (mirrors the Hollow Mill's `member`, D39). */
-function member(id: string, name: string, jobId: JobId, extra: Partial<UnitSpec> = {}): UnitSpec {
-  const base = getJob(jobId)?.baseline;
-  return {
-    id,
-    name,
-    side: "player",
-    pos: { col: 0, row: 0 },
-    jobId,
-    speed: base?.speed ?? 10,
-    maxHp: base?.maxHp ?? 22,
-    attack: base?.attack ?? 6,
-    defense: base?.defense ?? 2,
-    moveRange: base?.moveRange ?? 4,
-    sightRadius: base?.sightRadius ?? 5,
-    attackRange: base?.attackRange ?? 1,
-    intelligence: 2,
-    awareness: 2,
-    ...extra,
-  };
-}
-
 /**
  * The rescue party — a Soldier front line, a Hunter's reach, a Scout's eyes, and a **Thief**.
  * The Thief makes the finale's `release: lockpick` cells pickable (the quiet extraction route);
@@ -94,10 +72,10 @@ function member(id: string, name: string, jobId: JobId, extra: Partial<UnitSpec>
  * enabler of the flank, never a requirement of the win.
  */
 export const RESCUE_PARTY: UnitSpec[] = [
-  member("cinder", "Cinder", "soldier", { isLord: true }),
-  member("thane", "Thane", "hunter"),
-  member("lark", "Lark", "scout", { intelligence: 6, awareness: 5 }),
-  member("nyx", "Nyx", "thief"),
+  memberFromJob("cinder", "Cinder", "soldier", { isLord: true }),
+  memberFromJob("thane", "Thane", "hunter"),
+  memberFromJob("lark", "Lark", "scout", { intelligence: 6, awareness: 5 }),
+  memberFromJob("nyx", "Nyx", "thief"),
 ];
 
 function node(

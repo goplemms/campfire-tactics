@@ -151,11 +151,7 @@ export class BoardCamera {
     if (pointer.button !== 0) return;
     this.pressed = true;
     this.dragging = false;
-    this.downX = pointer.x;
-    this.downY = pointer.y;
-    const cam = this.scene.cameras.main;
-    this.scrollX0 = cam.scrollX;
-    this.scrollY0 = cam.scrollY;
+    this.anchorAt(pointer);
   }
 
   private onMove(pointer: Phaser.Input.Pointer): void {
@@ -172,14 +168,19 @@ export class BoardCamera {
     cam.setScroll(this.scrollX0 - (pointer.x - this.downX) / cam.zoom, this.scrollY0 - (pointer.y - this.downY) / cam.zoom);
   }
 
-  /** Enter the pan gesture, re-anchoring to *here* so it starts smoothly (no threshold jump, no mid-gesture lurch). */
-  private beginDrag(pointer: Phaser.Input.Pointer): void {
-    this.dragging = true;
+  /** Pin the gesture's origin: where the pointer is now, and where the camera was scrolled. */
+  private anchorAt(pointer: Phaser.Input.Pointer): void {
     this.downX = pointer.x;
     this.downY = pointer.y;
     const cam = this.scene.cameras.main;
     this.scrollX0 = cam.scrollX;
     this.scrollY0 = cam.scrollY;
+  }
+
+  /** Enter the pan gesture, re-anchoring to *here* so it starts smoothly (no threshold jump, no mid-gesture lurch). */
+  private beginDrag(pointer: Phaser.Input.Pointer): void {
+    this.dragging = true;
+    this.anchorAt(pointer);
     this.scene.input.setDefaultCursor("grabbing");
   }
 

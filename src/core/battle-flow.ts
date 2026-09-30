@@ -142,6 +142,11 @@ export interface FlowTurn {
   /** Weighted movement left this turn (the same budget in both phases). */
   moveBudget: number;
 }
+
+/** A turn as it opens (or after a full take-back): nothing spent, the unit's whole move budget. */
+function freshTurn(actor: Unit): FlowTurn {
+  return { actor, moved: false, acted: false, charged: false, revealed: false, locked: false, moveBudget: moveBudget(actor) };
+}
 /** @deprecated The deploy slice's name for {@link FlowTurn}. */
 export type DeployTurn = FlowTurn;
 
@@ -390,7 +395,7 @@ export class BattleFlow {
    * turn's start), and the passive Awareness read as it steps up (D12). Returns what it spotted.
    */
   private openTurn(actor: Unit): ConcealedTrap[] {
-    this.turn = { actor, moved: false, acted: false, charged: false, revealed: false, locked: false, moveBudget: moveBudget(actor) };
+    this.turn = freshTurn(actor);
     this.battle.beginUndo();
     return hiddenTraps(this.battle.entities).length > 0 ? revealTrapsNear(actor, this.battle.entities, this.spotRng) : [];
   }
@@ -565,11 +570,9 @@ export class BattleFlow {
     const t = this.turn;
     if (!t || t.actor !== unit || t.locked || !this.battle.canUndo()) return false;
     this.battle.undoAll();
-    t.moved = false;
-    t.acted = false;
-    t.charged = false;
-    t.revealed = false; // back to the minimal menu if the unit began the turn dug in
-    t.moveBudget = moveBudget(unit); // the whole turn rolled back — full range again
+    // The whole turn rolled back: flags cleared (back to the minimal menu if the unit began the
+    // turn dug in) and the full move budget again.
+    this.turn = freshTurn(unit);
     return true;
   }
 

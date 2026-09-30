@@ -20,7 +20,7 @@ const LAUNCH_EXPEDITIONS = [THE_RESCUE.id] as const;
 import { loadLaunchConfig, saveLaunchConfig, loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
 import type { RunHandoff } from "./OverworldScene";
 import {
-  blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec, standardObjectives,
+  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec, standardObjectives,
   effectiveEnemyStat, setEnemyStat, setSpecStat, STAT_FIELDS,
   type Brush, type EditorDraft, type DraftEnemy, type DraftCaptive, type StatField,
 } from "../editor-draft";
@@ -595,13 +595,7 @@ export class EditorScene extends Phaser.Scene {
 
   /** Clear every placeable off a tile — the Erase brush's action, shared by right-click / right-drag erase. */
   private eraseAt(t: GridCoord): void {
-    const d = this.draft;
-    this.removeCoord(d.blocked, t); this.removeCoord(d.playerSpawns, t);
-    this.removeCoord(d.exit, t); this.removeCoord(d.traps, t);
-    d.enemies = d.enemies.filter((e) => !same(e.pos, t));
-    d.captives = d.captives.filter((c) => !same(c.pos, t));
-    d.gates = d.gates.filter((g) => !same(g.pos, t));
-    d.levers = d.levers.filter((l) => !same(l.pos, t));
+    keepPlacedWhere(this.draft, (c) => !same(c, t));
   }
 
   /** The full post-edit refresh — rebuild the board + every dependent panel + export + history buttons. */
@@ -856,12 +850,7 @@ export class EditorScene extends Phaser.Scene {
     this.draft.cols = clamp(cols || 1, 1, 20);
     this.draft.rows = clamp(rows || 1, 1, 20);
     // Drop anything now off the board.
-    const ok = (c: GridCoord) => c.col < this.draft.cols && c.row < this.draft.rows;
-    const d = this.draft;
-    d.blocked = d.blocked.filter(ok); d.playerSpawns = d.playerSpawns.filter(ok);
-    d.exit = d.exit.filter(ok); d.traps = d.traps.filter(ok);
-    d.enemies = d.enemies.filter((e) => ok(e.pos)); d.captives = d.captives.filter((c) => ok(c.pos));
-    d.gates = d.gates.filter((g) => ok(g.pos)); d.levers = d.levers.filter((l) => ok(l.pos));
+    keepPlacedWhere(this.draft, (c) => c.col < this.draft.cols && c.row < this.draft.rows);
     this.cancelShape();
     this.renderBoard();
     this.updateExport();
@@ -2000,24 +1989,12 @@ export class EditorScene extends Phaser.Scene {
 
   /** Replace the current draft with a saved map (undoable). Mirrors the import swap + remount. */
   private loadMapFromLibrary(m: SavedMap): void {
-    this.pushHistory(); // adopting a saved map replaces the whole draft — make it undoable
-    this.draft = m.draft; // a fresh object from loadLibrary's parse (not aliased to storage)
-    this.selection = null;
-    this.cancelShape();
-    this.renderBoard();
-    this.unmountPanel();
-    this.mountPanel();
+    this.replaceDraft(m.draft); // a fresh object from loadLibrary's parse (not aliased to storage)
   }
 
   /** Start a fresh blank map (undoable) — the escape hatch from an autosaved-restored draft. */
   private newBlankMap(): void {
-    this.pushHistory();
-    this.draft = blankDraft();
-    this.selection = null;
-    this.cancelShape();
-    this.renderBoard();
-    this.unmountPanel();
-    this.mountPanel();
+    this.replaceDraft(blankDraft());
   }
 
   /** Render the Units-drawer list — a clickable row per placed enemy/captive (the occlusion fix). */
@@ -2067,7 +2044,15 @@ export class EditorScene extends Phaser.Scene {
       }
       return;
     }
-    this.pushHistory(); // an import replaces the whole draft — make it undoable (the stack survives the remount)
+    this.replaceDraft(next);
+  }
+
+  /**
+   * Swap in a whole new draft (a library load, a blank map, an import) — undoable, and the panel
+   * is remounted so every field reflects the new level (the undo stack survives the remount).
+   */
+  private replaceDraft(next: EditorDraft): void {
+    this.pushHistory();
     this.draft = next;
     this.selection = null;
     this.cancelShape();

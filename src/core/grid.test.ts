@@ -61,4 +61,12 @@ describe("TileGrid", () => {
     grid.setWalkable({ col: 1, row: 1 }, true); // the gate opens
     expect(grid.isWalkable({ col: 1, row: 1 })).toBe(true);
   });
+
+  it("lists every tile row by row (the draw order), blocked ones included", () => {
+    const grid = new TileGrid(3, 2, [{ col: 1, row: 0 }]);
+    expect(grid.coords()).toEqual([
+      { col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 },
+      { col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 },
+    ]);
+  });
 });

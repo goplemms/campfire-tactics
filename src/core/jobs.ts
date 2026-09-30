@@ -18,7 +18,7 @@
  * Pure logic: no Phaser, no DOM.
  */
 
-import { primaryJobOf, type Unit, type UnitStats } from "./units";
+import { primaryJobOf, type Unit, type UnitSpec, type UnitStats } from "./units";
 import type { SkillDef } from "./skills";
 import { PASSIVE } from "./combat";
 import type { PrestigeBranch } from "./grants";
@@ -158,6 +158,28 @@ export type JobId = keyof typeof JOBS;
 /** Look up a job by id. Accepts any string (callers handle the `undefined` miss). */
 export function getJob(id: string | undefined): JobDef | undefined {
   return id === undefined ? undefined : JOBS[id as JobId];
+}
+
+/** A player party member built from a job's baseline frame (D39) — the authored expeditions' cast builder. */
+export function memberFromJob(id: string, name: string, jobId: JobId, extra: Partial<UnitSpec> = {}): UnitSpec {
+  const base = getJob(jobId)?.baseline;
+  return {
+    id,
+    name,
+    side: "player",
+    pos: { col: 0, row: 0 },
+    jobId,
+    speed: base?.speed ?? 10,
+    maxHp: base?.maxHp ?? 22,
+    attack: base?.attack ?? 6,
+    defense: base?.defense ?? 2,
+    moveRange: base?.moveRange ?? 4,
+    sightRadius: base?.sightRadius ?? 5,
+    attackRange: base?.attackRange ?? 1,
+    intelligence: 2,
+    awareness: 2,
+    ...extra,
+  };
 }
 
 /**

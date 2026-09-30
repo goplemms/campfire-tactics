@@ -22,7 +22,7 @@
 import type Phaser from "phaser";
 import { dumpRun, serializeDump, parseDump, restoreRun, RunLoop, type ReproDump, type RunState } from "../core";
 import type { RunHandoff } from "./scenes/OverworldScene";
-import { getDevTray } from "./dev-tray";
+import { DEV_BUTTON_STYLE, getDevTray } from "./dev-tray";
 
 /** Where the latest dump is stashed for the `#repro` same-browser re-entry. */
 export const REPRO_LS_KEY = "campfire:repro:last";
@@ -236,15 +236,7 @@ function panelButton(label: string, title: string): HTMLButtonElement {
   const b = document.createElement("button");
   b.textContent = label;
   b.title = title;
-  style(b, {
-    padding: "5px 10px",
-    background: "#2f6b46",
-    color: "#eafff0",
-    border: "1px solid #57b07a",
-    borderRadius: "4px",
-    font: "12px monospace",
-    cursor: "pointer",
-  });
+  style(b, { ...DEV_BUTTON_STYLE, padding: "5px 10px" });
   return b;
 }
 

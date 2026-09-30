@@ -6,8 +6,9 @@ import {
   OBJECTIVE_KINDS,
   TileGrid,
   findPath,
-  buildAuthoredEnemies,
-  buildAuthoredGates,
+  layoutFromAuthored,
+  spawnEnemies,
+  spawnGates,
   applyGatesToGrid,
   keyholderOf,
   isBreakable,
@@ -406,7 +407,7 @@ describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
 
   /**
    * The guard measures from the **placement** tile, never `spec.pos` — the spec's own `pos` is a
-   * placeholder that `buildAuthoredCaptives` discards. Both directions matter, and both were wrong
+   * placeholder that `spawnCaptives` discards. Both directions matter, and both were wrong
    * before: a placeholder ON the exit span produced a false walkover (this is exactly The Prison
    * Assault, whose `member()`-built cells default to `(0,0)` — the first tile of the finale's exit),
    * and a placeholder far from the exit *masked* a real one.
@@ -569,14 +570,14 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
   it("B1/B7 — the whole roster is tagged `garrison`, the captives `non-combatant`", () => {
     // The two intrinsic tags the D117 doctrine reads. An untagged garrison never drives a door;
     // an untagged captive would confer `in-combat` and self-screen (R3), voiding the pursuit model.
-    const enemies = buildAuthoredEnemies(level());
+    const enemies = spawnEnemies(layoutFromAuthored(level()));
     expect(enemies.length).toBeGreaterThanOrEqual(10);
     for (const u of enemies) expect(hasTag(u, GARRISON), `${u.id} is not garrison`).toBe(true);
     for (const c of level().captives ?? []) expect(c.spec.tags).toContain(NON_COMBATANT);
   });
 
   it("B2 — the Warden keys the OUTER seal only, and drops the key rather than popping it", () => {
-    const gates = buildAuthoredGates(level());
+    const gates = spawnGates(layoutFromAuthored(level()));
     const outer = gateNamed(gates, "seal-outer");
     const keyLock = outer.openBy.find((c) => c.kind === "keyholder");
     expect(keyLock).toEqual({ kind: "keyholder", tag: { id: "the-warden" }, dropOnDeath: true });
@@ -597,7 +598,7 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
   });
 
   it("B5/B9 — two destructible seals, lockpick-only cells, and every mouth is an exfil site", () => {
-    const gates = buildAuthoredGates(level());
+    const gates = spawnGates(layoutFromAuthored(level()));
     for (const id of ["seal-inner", "seal-outer"]) {
       const seal = gateNamed(gates, id);
       const dest = seal.openBy.find((c) => c.kind === "destructible") as { kind: "destructible"; hp: number };
@@ -620,9 +621,9 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
     // (`keyholderOf(g, unit) || isBreakable(g)`), sorted by manhattan, with **no route-relevance
     // check** — so a garrison keyholder of a cell would walk over and open the cells for the player.
     // Forcing every gate LOCKED is the strong form: it holds whatever a lever has toggled mid-fight.
-    const gates = buildAuthoredGates(level());
+    const gates = spawnGates(layoutFromAuthored(level()));
     for (const g of gates) g.locked = true;
-    const enemies = buildAuthoredEnemies(level());
+    const enemies = spawnEnemies(layoutFromAuthored(level()));
     const SEALS = new Set(["seal-inner", "seal-outer"]);
     for (const u of enemies) {
       expect(hasTag(u, GARRISON)).toBe(true);
@@ -637,7 +638,7 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
     // If any open path existed the garrison would walk around and never batter — the head start,
     // and with it the whole split-force op, would silently evaporate.
     const lvl = level();
-    const gates = buildAuthoredGates(lvl);
+    const gates = spawnGates(layoutFromAuthored(lvl));
     const seal = gateNamed(gates, "seal-inner");
     const garrison = lvl.enemies.filter((e) => e.pos.row > 8).map((e) => e.pos);
     expect(garrison.length).toBeGreaterThanOrEqual(8); // the barracks mass
@@ -686,7 +687,7 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
     // "Inside" is derived by walking the shut board, not by a row number: a wall edit that opened a
     // second way around row 8 would keep a row-based test green while voiding the invariant.
     const lvl = level();
-    const gates = buildAuthoredGates(lvl);
+    const gates = spawnGates(layoutFromAuthored(lvl));
     gateNamed(gates, "seal-inner").locked = true; // the turn-1 slam
     const shut = stagedGrid(gates);
     const inside = lvl.enemies.filter((e) => findPath(shut, e.pos, MAIN_SPAWN) === null);
@@ -705,7 +706,7 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
     const dist = Math.abs(lever.pos.col - SIDE_SPAWN.col) + Math.abs(lever.pos.row - SIDE_SPAWN.row);
     expect(dist - 1).toBeLessThanOrEqual(3); // well inside a 4-5 moveRange ⇒ move + pull on turn 1
     // …and the walk is unobstructed at the authored lock state (no door to pick first).
-    expect(findPath(stagedGrid(buildAuthoredGates(lvl)), SIDE_SPAWN, lever.pos)).not.toBeNull();
+    expect(findPath(stagedGrid(spawnGates(layoutFromAuthored(lvl))), SIDE_SPAWN, lever.pos)).not.toBeNull();
   });
 
   it("B6c — every cells→mouth escort route runs a chokepoint (cut vertices, not just one corridor)", () => {
@@ -783,7 +784,7 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
     // The frontal win must never hard-require the flank's Thief (D99 graceful degradation). No enemy
     // may sit behind a lockpick-only door.
     const lvl = level();
-    const grid = stagedGrid(buildAuthoredGates(lvl));
+    const grid = stagedGrid(spawnGates(layoutFromAuthored(lvl)));
     for (const e of lvl.enemies) {
       expect(findPath(grid, MAIN_SPAWN, e.pos), `enemy at ${e.pos.col},${e.pos.row} is behind a locked door`).not.toBeNull();
     }

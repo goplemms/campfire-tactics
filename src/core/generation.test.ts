@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { Rng, streamFor } from "./rng";
 import { Labels } from "./rng-labels";
+import { TileGrid } from "./grid";
+import { spawnEnemies } from "./encounter-entities";
 import {
   generateEncounter,
-  buildGrid,
-  buildEnemies,
+  layoutFromGenerated,
   enemyCount,
   GEN,
   type EncounterDef,
@@ -45,11 +46,12 @@ describe("generation — content", () => {
 
   it("produces a usable grid and living enemies on the right side", () => {
     const def = gen("content", 2);
-    const grid = buildGrid(def);
+    const layout = layoutFromGenerated(def);
+    const grid = TileGrid.fromLayout(layout);
     expect(grid.cols).toBe(def.cols);
     expect(grid.rows).toBe(def.rows);
 
-    const enemies = buildEnemies(def);
+    const enemies = spawnEnemies(layout);
     expect(enemies.length).toBe(enemyCount(2));
     for (const e of enemies) {
       expect(e.side).toBe("enemy");

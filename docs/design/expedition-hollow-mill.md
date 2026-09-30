@@ -486,7 +486,7 @@ Recent work that altered routing or the within-node experience. Newest first.
   he's a **controllable party unit for the rest of the fight** — or the **win frees/recruits
   him** even if never reached (the captors fall). He joins permanently either way. New
   **reusable data seam**: `AuthoredEncounter.captives?: { spec, pos }[]` (a future on-board
-  Medic can use it), inflated by `buildAuthoredCaptives` and injected at battle assembly
+  Medic can use it), inflated by `spawnCaptives` (`encounter-entities.ts`) and injected at battle assembly
   (`stageEncounter`) as a **player-side, `captured: true`** token — *outside* the roster
   reset, so he stays bound, off the CT clock, and never an AI target (the win check + foe
   lists count only active units). Recruit-on-win lives in `RunLoop.resolveCaptiveRecruits`

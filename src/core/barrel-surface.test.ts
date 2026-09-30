@@ -247,6 +247,23 @@
  *   - `HOLD_POSITION`: the one built-in `DeployPolicy` (end every deploy turn where it stands).
  *   No procedural change (routing, rewards) → the sim's procedural digest is unchanged; the
  *   Hollow-Mill trap summary re-pins `spotted` 0 → 4 (the opening reads now run headlessly) (→ 756).
+ *
+ * Named helpers for repeated runs (#225): +2 — `memberFromJob` (`jobs.ts`, the party builder the
+ *   Hollow Mill and The Rescue each copied) and `expeditionRunOptions` (`run.ts`). (→ 758)
+ *
+ * Battle setup as one pipeline (the encounter layout): +3 net — every level normalizes to one
+ *   `EncounterLayout` and `stageEncounter` runs grid → entities → placement → Battle → traps →
+ *   objectives with no source branch.
+ *   - +`encounterLayout` (`staging.ts`), +`layoutFromAuthored` (`authored.ts`), +`layoutFromGenerated`
+ *     (`generation.ts`) — the normalizers.
+ *   - +`enemySpecFromTemplate` / `spawnEnemies` / `spawnCaptives` / `spawnGates` / `spawnLevers` /
+ *     `registerEncounterTraps` (the new `encounter-entities.ts`), replacing −`buildAuthoredEnemies` /
+ *     `buildAuthoredCaptives` / `buildAuthoredGates` / `buildAuthoredLevers` / `buildEnemies`.
+ *   - +`placeStartingParty` (the new `party-placement.ts`, which also takes over `placeParty` /
+ *     `placeInZone` / `placePlayersAutoEdge`).
+ *   - −`buildAuthoredGrid` / `buildGrid`, two identical one-liners, replaced by the static
+ *     `TileGrid.fromLayout` (a method, not barrel surface).
+ *   Pure motion, no RNG → sim digest unchanged (→ 761).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -520,13 +537,6 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "bribeChance",
   "bribeEnemy",
   "bribePrice",
-  "buildAuthoredCaptives",
-  "buildAuthoredEnemies",
-  "buildAuthoredGates",
-  "buildAuthoredGrid",
-  "buildAuthoredLevers",
-  "buildEnemies",
-  "buildGrid",
   "buildLedger",
   "buildScenarioRun",
   "buildSpawnZones",
@@ -634,8 +644,10 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "eligibleGrants",
   "eligiblePrestiges",
   "emptyOutcome",
+  "encounterLayout",
   "encounterOutcome",
   "enemyCount",
+  "enemySpecFromTemplate",
   "enumerateCompletions",
   "enumeratePaths",
   "equip",
@@ -774,6 +786,8 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "keyableGates",
   "keyholderOf",
   "knobDeclared",
+  "layoutFromAuthored",
+  "layoutFromGenerated",
   "listScenarios",
   "loadExpedition",
   "loadPurse",
@@ -844,6 +858,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "placeParty",
   "placePlayerTrap",
   "placePlayersAutoEdge",
+  "placeStartingParty",
   "planActions",
   "planAttack",
   "planEnemyTurn",
@@ -888,6 +903,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "refreshAuras",
   "refreshMercPool",
   "registerCostProvider",
+  "registerEncounterTraps",
   "registerExpedition",
   "registerRunFlags",
   "registerStandingOrders",
@@ -958,6 +974,10 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "snapshot",
   "snapshotRun",
   "snapshotUnit",
+  "spawnCaptives",
+  "spawnEnemies",
+  "spawnGates",
+  "spawnLevers",
   "spend",
   "spendFatigue",
   "spendInfluence",

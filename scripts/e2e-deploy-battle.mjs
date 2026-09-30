@@ -266,11 +266,11 @@ async function main() {
       // dug in this turn), the row collapses to a single "Take Action". Take Action reveals
       // the full row without breaking the stance (the capture benefit holds until move/act).
       const labelExpr = `s.actionButtons.map(b => b.label && b.label.text).filter(Boolean)`;
-      const min = await g.bsEval(`s.deployActed = false; s.deployReveal = false; s.refreshDeployButtons(); return ${labelExpr};`);
+      const min = await g.bsEval(`s.flow.turn.acted = false; s.flow.turn.revealed = false; s.refreshDeployButtons(); return ${labelExpr};`);
       await shot("dug-in-minimal-menu");
       const full = await g.bsEval(`s.takeAction(s.deployActor); return { labels: ${labelExpr}, dugIn: s.deployActor.dugIn === true };`);
       await shot("dug-in-take-action");
-      await g.bsEval(`s.deployActed = true;`); // restore the post-dig-in state for the undo stage below
+      await g.bsEval(`s.flow.turn.acted = true;`); // restore the post-dig-in state for the undo stage below
       console.log("• Dug-in unit → minimal Take Action menu");
       check("a dug-in unit's turn offers Take Action", min.includes("Take Action"));
       check("the minimal menu hides the normal verbs (no Dig In)", !min.includes("Dig In"));

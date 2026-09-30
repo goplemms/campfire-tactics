@@ -238,6 +238,15 @@
  *   `overworld-state.ts`, `recruitClassify` → `units.ts`, `emptyOutcome` (+ the `EventKind` /
  *   `EventOutcome` types) → the new `event-outcome.ts` leaf, `replay` reached via `battle-replay.ts`
  *   directly rather than `turn.ts`'s re-export. Pure motion, no RNG → sim digest unchanged (→ 754).
+ *
+ * Design-map step 3 (BattleFlow, the deploy slice — `battle-flow.ts`): +2 —
+ *   - `BattleFlow`: the encounter's game master for the deploy phase — intents in (`advance` /
+ *     `move` / `digIn` / `takeEntrance` / `spendAct` / `undo` / `endTurn` / `startBattle`), view
+ *     state out (`view()`); `BattleScene` renders it and `RunLoop.enterDeploy` / `autoDeploy` drive
+ *     it headlessly, so the sim now runs the deploy prelude (the front's turns, the trap reads).
+ *   - `HOLD_POSITION`: the one built-in `DeployPolicy` (end every deploy turn where it stands).
+ *   No procedural change (routing, rewards) → the sim's procedural digest is unchanged; the
+ *   Hollow-Mill trap summary re-pins `spotted` 0 → 4 (the opening reads now run headlessly) (→ 756).
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -257,6 +266,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "BROTHER",
   "BYPASS",
   "Battle",
+  "BattleFlow",
   "CAPABILITY_PREDICATES",
   "CHANNEL_TUNING",
   "CHARGE_THRESHOLD",
@@ -318,6 +328,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "GUILD",
   "HASTENED",
   "HEAVY_KNIGHT_JOB",
+  "HOLD_POSITION",
   "HOLLOW_MILL_EVENTS",
   "HOLLOW_MILL_PARTY",
   "HUNTER_JOB",

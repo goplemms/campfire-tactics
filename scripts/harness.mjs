@@ -228,7 +228,7 @@ export async function withGame(fn, opts = {}) {
        * failure surfaces much later as "the thing I clicked didn't happen".
        *
        * That is the CI failure this harness has been red on — proven by a `waitForBattle` dump
-       * showing `deployActed: false` with an untouched `moveBudget` ten seconds after the click.
+       * showing `acted: false` with an untouched `moveBudget` ten seconds after the click.
        * It reproduces on neither the pinned Chrome nor a newer one locally, because frames here
        * are fast enough that the move is always processed first.
        *

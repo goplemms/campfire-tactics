@@ -186,3 +186,10 @@ export function probeWidth(scene: Phaser.Scene, text: string, fontSize: string):
   probe.destroy();
   return w;
 }
+
+/** A text link's hover: brighten while the pointer is over it, back to `rest` on out. Returns the text for chaining. */
+export function hoverTint(text: Phaser.GameObjects.Text, rest: string, hot: string = INK.bright): Phaser.GameObjects.Text {
+  text.on(Events.POINTER_OVER, () => text.setColor(hot));
+  text.on(Events.POINTER_OUT, () => text.setColor(rest));
+  return text;
+}

@@ -91,16 +91,13 @@ export function strokeZoneOutline(
     { dc: 0, dr: -1, a: [0, -halfH], b: [halfW, 0] }, // row-1 → top-right edge
   ];
   g.lineStyle(1.5, color, 0.9);
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      const t = { col, row };
-      if (!grid.isWalkable(t) || zoneOf(t, ground, front) !== zone) continue;
-      const { x, y } = view.tileToWorld(t);
-      for (const e of edges) {
-        const n = { col: col + e.dc, row: row + e.dr };
-        const outside = !grid.isWalkable(n) || zoneOf(n, ground, front) !== zone;
-        if (outside) dashedLine(g, x + e.a[0], y + e.a[1], x + e.b[0], y + e.b[1]);
-      }
+  for (const t of grid.coords()) {
+    if (!grid.isWalkable(t) || zoneOf(t, ground, front) !== zone) continue;
+    const { x, y } = view.tileToWorld(t);
+    for (const e of edges) {
+      const n = { col: t.col + e.dc, row: t.row + e.dr };
+      const outside = !grid.isWalkable(n) || zoneOf(n, ground, front) !== zone;
+      if (outside) dashedLine(g, x + e.a[0], y + e.a[1], x + e.b[0], y + e.b[1]);
     }
   }
 }
@@ -124,27 +121,24 @@ export function paintZones(
   safe.clear();
   danger.clear();
   if (!front || !ground) return;
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      const t = { col, row };
-      if (!grid.isWalkable(t)) continue;
-      switch (zoneOf(t, ground, front)) {
-        case "danger":
-          fillTileDiamond(view, danger, t, COLOR.danger, 0.34);
-          break;
-        case "warning":
-          // The ring about to fall next turn — a warning telegraph in amber.
-          fillTileDiamond(view, danger, t, COLOR.accent, 0.22);
-          break;
-        case "neutral":
-          // Open ground — unprotected, so a real (if lower) capture risk: a faint
-          // danger wash so it never reads as free, safe space (D-feel).
-          fillTileDiamond(view, danger, t, COLOR.danger, 0.1);
-          break;
-        case "safe":
-          fillTileDiamond(view, safe, t, COLOR.successDeep, 0.28);
-          break;
-      }
+  for (const t of grid.coords()) {
+    if (!grid.isWalkable(t)) continue;
+    switch (zoneOf(t, ground, front)) {
+      case "danger":
+        fillTileDiamond(view, danger, t, COLOR.danger, 0.34);
+        break;
+      case "warning":
+        // The ring about to fall next turn — a warning telegraph in amber.
+        fillTileDiamond(view, danger, t, COLOR.accent, 0.22);
+        break;
+      case "neutral":
+        // Open ground — unprotected, so a real (if lower) capture risk: a faint
+        // danger wash so it never reads as free, safe space (D-feel).
+        fillTileDiamond(view, danger, t, COLOR.danger, 0.1);
+        break;
+      case "safe":
+        fillTileDiamond(view, safe, t, COLOR.successDeep, 0.28);
+        break;
     }
   }
   // Trace a dotted outline around each zone's perimeter for at-a-glance clarity.

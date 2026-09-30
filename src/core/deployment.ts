@@ -501,11 +501,8 @@ export function resolveFrontTurn(
 
 /** True while any walkable tile is still safe ground (else the danger has overrun). */
 export function safeGroundRemains(grid: TileGrid, ground: SafeGround, front: DeploySource): boolean {
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      const t = { col, row };
-      if (grid.isWalkable(t) && inSafeZone(t, ground, front)) return true;
-    }
+  for (const t of grid.coords()) {
+    if (grid.isWalkable(t) && inSafeZone(t, ground, front)) return true;
   }
   return false;
 }

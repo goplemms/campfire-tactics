@@ -29,8 +29,7 @@
 
 import { saltSeed } from "./rng";
 import { Labels } from "./rng-labels";
-import { createRun, createRunFromExpedition, type RunState } from "./run";
-import { createUnit } from "./units";
+import { createRun, createRunFromExpedition, expeditionRunOptions, type RunState } from "./run";
 import { RunLoop } from "./runloop";
 import { getNode, type OverworldMap } from "./overworld";
 import type { AuthoredExpedition } from "./expedition";
@@ -120,16 +119,7 @@ export interface TraverseOpts {
  */
 function bootRun(exp: AuthoredExpedition, salt?: number): RunState {
   if (salt === undefined) return createRunFromExpedition(exp);
-  return createRun(saltSeed(exp.seed, Labels.expeditionSalt(salt)), {
-    party: exp.bundle.party.map(createUnit),
-    storageCap: exp.bundle.storageCap,
-    inventory: { ...exp.bundle.supplies },
-    gold: exp.bundle.purse,
-    difficultyId: exp.bundle.difficultyId,
-    morale: exp.bundle.morale,
-    map: exp.map,
-    expeditionId: exp.id,
-  });
+  return createRun(saltSeed(exp.seed, Labels.expeditionSalt(salt)), expeditionRunOptions(exp));
 }
 
 /**

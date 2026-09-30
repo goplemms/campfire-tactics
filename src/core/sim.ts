@@ -139,11 +139,7 @@ export function aggregate(results: ReadonlyArray<RunResult>): SimDigest {
   for (const r of results) {
     endLayerHistogram[r.endLayer] = (endLayerHistogram[r.endLayer] ?? 0) + 1;
     for (const k of ENGAGED_KEYS) if (r.summary.engaged[k]) leverEngagement[k] += 1;
-    traps.staged += r.summary.traps.staged;
-    traps.spotted += r.summary.traps.spotted;
-    traps.sprung += r.summary.traps.sprung;
-    traps.disarmed += r.summary.traps.disarmed;
-    traps.salvaged += r.summary.traps.salvaged;
+    for (const k of Object.keys(traps) as (keyof typeof traps)[]) traps[k] += r.summary.traps[k];
     permadeaths += r.summary.permadeaths;
     for (const o of ["win", "objective-failure", "wipe"] as EncounterResult[]) {
       encounterOutcomes[o] += r.summary.outcomes[o];

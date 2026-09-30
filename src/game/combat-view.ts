@@ -221,14 +221,12 @@ export class CombatView {
    */
   drawGrid(g: Phaser.GameObjects.Graphics, grid: TileGrid): void {
     const blocked: GridCoord[] = [];
-    for (let row = 0; row < grid.rows; row++) {
-      for (let col = 0; col < grid.cols; col++) {
-        const { x, y } = this.tileToWorld({ col, row });
-        // The floor under a block is hidden by it, but drawn so nothing peeks at small scales.
-        const fill = grid.isWalkable({ col, row }) ? ((col + row) % 2 === 0 ? COLOR.tileLight : COLOR.tileDark) : COLOR.tileDark;
-        this.drawDiamond(g, x, y, fill);
-        if (!grid.isWalkable({ col, row })) blocked.push({ col, row });
-      }
+    for (const t of grid.coords()) {
+      const { x, y } = this.tileToWorld(t);
+      // The floor under a block is hidden by it, but drawn so nothing peeks at small scales.
+      const fill = grid.isWalkable(t) ? ((t.col + t.row) % 2 === 0 ? COLOR.tileLight : COLOR.tileDark) : COLOR.tileDark;
+      this.drawDiamond(g, x, y, fill);
+      if (!grid.isWalkable(t)) blocked.push(t);
     }
     blocked.sort((a, b) => a.col + a.row - (b.col + b.row));
     for (const c of blocked) {
@@ -450,8 +448,13 @@ export class CombatView {
   /** A short floating tag centred over a tile (footprint annotations — "trap", "blocked"). */
   private floatTag(tile: GridCoord, text: string, color: string): void {
     const { x, y } = this.tileToWorld(tile);
+    this.forecastLabel(x, y - TILE_HEIGHT / 2 - 14, text, color);
+  }
+
+  /** A bold, outlined forecast label centred at (x, y) — cleared with the rest of the forecast. */
+  private forecastLabel(x: number, y: number, text: string, color: string, fontSize: string = FONT.caption): void {
     const label = this.scene.add
-      .text(x, y - TILE_HEIGHT / 2 - 14, text, { color, fontFamily: FONT.family, fontSize: FONT.caption, fontStyle: WEIGHT.bold })
+      .text(x, y, text, { color, fontFamily: FONT.family, fontSize, fontStyle: WEIGHT.bold })
       .setOrigin(0.5)
       .setDepth(6)
       .setStroke(INK.outline, 3);
@@ -508,12 +511,7 @@ export class CombatView {
       g.lineBetween(from.x, from.y - TILE_HEIGHT / 2, to.x, to.y - TILE_HEIGHT / 2);
       // Incoming-damage tag over the threatened ally: "→N" (lethal mark if it would drop them).
       const tag = intent.ability && intent.damage === 0 ? "snare" : `→${intent.damage}${intent.lethal ? ICON.lethal.glyph : ""}`;
-      const label = this.scene.add
-        .text(to.x, to.y - TILE_HEIGHT / 2 - 18, tag, { color: intent.lethal ? INK.hot : INK.danger, fontFamily: FONT.family, fontSize: FONT.nameplate, fontStyle: WEIGHT.bold })
-        .setOrigin(0.5)
-        .setDepth(6)
-        .setStroke(INK.outline, 3);
-      this.forecastLabels.add(label);
+      this.forecastLabel(to.x, to.y - TILE_HEIGHT / 2 - 18, tag, intent.lethal ? INK.hot : INK.danger, FONT.nameplate);
     }
   }
 
@@ -529,12 +527,7 @@ export class CombatView {
     const { x, y } = this.tileToWorld(foe.pos);
     const text = `${f.flank ? ICON.flank.glyph : ""}${f.damage}${f.lethal ? ICON.lethal.glyph : ""}`;
     const color = f.lethal ? INK.hot : f.flank ? INK.gold : INK.ember;
-    const label = this.scene.add
-      .text(x, y - TILE_HEIGHT / 2 - 30, text, { color, fontFamily: FONT.family, fontSize: FONT.caption, fontStyle: WEIGHT.bold })
-      .setOrigin(0.5)
-      .setDepth(6)
-      .setStroke(INK.outline, 3);
-    this.forecastLabels.add(label);
+    this.forecastLabel(x, y - TILE_HEIGHT / 2 - 30, text, color);
   }
 
   /** Drop every attack-forecast badge (called on redraw and when the preview clears). */

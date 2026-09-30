@@ -97,7 +97,7 @@ import { pct,
   type TheftAttempt,
 } from "../../core";
 import type { RunHandoff } from "./OverworldScene";
-import { Button, probeWidth } from "../button";
+import { Button, hoverTint, probeWidth } from "../button";
 import { CommandMenu, type ActionSpec, MENU_BW, MENU_PAD, MENU_LEFT } from "../command-menu";
 import { PreviewCardController, attackPreviewRows as computeAttackPreviewRows } from "../forecast-cards";
 import { SituationCard, type SituationCtx, type CardView } from "../situation-card";
@@ -414,8 +414,7 @@ export class BattleScene extends Phaser.Scene {
       .setDepth(10)
       .setInteractive({ useHandCursor: true });
     this.logChevron.on(Phaser.Input.Events.POINTER_DOWN, () => this.toggleLog());
-    this.logChevron.on(Phaser.Input.Events.POINTER_OVER, () => this.logChevron?.setColor(INK.bright));
-    this.logChevron.on(Phaser.Input.Events.POINTER_OUT, () => this.logChevron?.setColor(INK.muted));
+    hoverTint(this.logChevron, INK.muted);
     this.threatGfx = this.add.graphics().setDepth(0.36);
     // The tarpit-aura ring (D64) sits just above the zone washes but below the move/
     // footprint preview, so a Heavy Knight's taxed tiles read in both phases.
@@ -482,11 +481,8 @@ export class BattleScene extends Phaser.Scene {
     // Wire the new bus's combat FX once, up front — so deployment trap springs float +
     // log like combat (the bus persists through both phases; battle won't double-fire).
     this.wireBattleFx();
-    this.over = false;
-    this.busy = false;
-    this.armedSkill = null;
+    this.resetEncounterState();
     this.trapLayer.resetPlayer();
-    this.pendingHerb = null;
     clearLayer(this.objectiveObjects);
     this.rebuildBoard();
 
@@ -1295,8 +1291,7 @@ export class BattleScene extends Phaser.Scene {
   private castDeploySkill(actor: Unit, skill: SkillDef, target: Unit): void {
     if (this.busy || !this.flow.canAct(actor)) return;
     const herb = this.pendingHerb;
-    this.armedSkill = null;
-    this.pendingHerb = null;
+    this.disarm();
     // Med-heal spends a carried herb (the Medic, D67 W8); every other skill resolves via the
     // one useSkill verb. Both pre-combat: resolve + arm cooldown, no CT (the deploy clock owns
     // the turn). If the herb vanished between pick and click, nothing committed — reopen the row.
@@ -1449,14 +1444,9 @@ export class BattleScene extends Phaser.Scene {
       if (res.reason === "out-of-moves") return this.setHint(`${actor.name} is out of moves — strike a foe, use a skill, or End Turn (Space/W).`);
       return;
     }
-    this.busy = true;
-    this.hoverTile = null;
     // Battle: a move clears any armed strike/skill aim and its action row (the strike
     // telegraph re-arms after the step).
-    this.armedSkill = null;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    this.armedAim = null;
+    this.lockForCommit();
     this.animateMove(actor, res.walked, () => this.afterBattleMoveStep(actor, !!res.spotted));
   }
 
@@ -1570,11 +1560,6 @@ export class BattleScene extends Phaser.Scene {
     this.drawRail(false); // swap the deploy rail (player + net) for the full combat roster
     this.legendStrip.setItems(this.hasExtraction() ? [...BATTLE_LEGEND, EXIT_LEGEND_ITEM] : BATTLE_LEGEND);
     this.clearActionButtons();
-    this.theftAttempts.clear();
-    this.goldStolen = 0;
-    this.goldRecovered = 0;
-    this.pendingRecruits = [];
-    this.bribeArmed = false;
     this.highlightTile(null);
 
     // The damage / heal / defeat / trapSprung FX are already wired for this encounter's
@@ -1648,10 +1633,7 @@ export class BattleScene extends Phaser.Scene {
   private beginPlayerTurn(turn: Extract<CombatAdvance, { kind: "playerTurn" }>): void {
     const { actor } = turn;
     this.view.setActiveUnit(actor);
-    this.hoverTile = null;
-    this.hoverFoe = null;
-    this.queuedTile = null;
-    this.armedAim = null;
+    this.clearPointerReads();
     this.recomputeReach();
     // The active unit looked around as it stepped up — mark what its Awareness roll spotted (D12).
     if (turn.spotted.length > 0) this.redrawTrapMarkers();
@@ -1717,14 +1699,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Tear down a closed player turn's render state (armed aims, the row, the focus card), then the shared after-turn. */
   private closePlayerTurn(): void {
-    this.armedSkill = null;
-    this.pendingHerb = null;
-    this.bribeArmed = false;
-    this.busy = true;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    this.hoverTile = null;
-    this.armedAim = null;
+    this.lockForCommit();
     this.focusCard.hide();
     this.afterTurn();
   }
@@ -1916,11 +1891,7 @@ export class BattleScene extends Phaser.Scene {
       this.refreshDeployButtons();
       this.refreshDeployStatus();
     } else {
-      this.busy = true;
-      this.clearActionButtons();
-      this.highlightTile(null);
-      this.hoverTile = null;
-      this.armedAim = null;
+      this.lockForCommit();
       this.noteAct(actor, charged);
       this.afterActionContinue(actor);
     }
@@ -1997,11 +1968,7 @@ export class BattleScene extends Phaser.Scene {
       this.battle.bribe(foe, actor);
       if (res.outcome?.permanent) this.pendingRecruits.push(foe);
     }
-    this.busy = true;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    this.hoverTile = null;
-    this.armedAim = null;
+    this.lockForCommit();
     this.noteAct(actor);
     this.refreshHud();
     this.afterActionContinue(actor);
@@ -2022,13 +1989,7 @@ export class BattleScene extends Phaser.Scene {
 
   private commitSkill(actor: Unit, skill: SkillDef, target: Unit): void {
     const herb = this.pendingHerb;
-    this.armedSkill = null;
-    this.pendingHerb = null;
-    this.busy = true;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    this.hoverTile = null;
-    this.armedAim = null;
+    this.lockForCommit();
     let verb: string;
     if (skill.effect.kind === "med-heal" && herb) {
       // Spend the chosen herb on the target (D44 medic flow) — turn left open (D60).
@@ -2142,10 +2103,7 @@ export class BattleScene extends Phaser.Scene {
   private cancelArmed(): void {
     if (!this.armedSkill && !this.bribeArmed && !this.pendingHerb) return;
     const actor = this.waitingFor;
-    this.armedSkill = null;
-    this.armedAim = null;
-    this.bribeArmed = false;
-    this.pendingHerb = null;
+    this.disarm();
     if (actor) {
       this.showSkillButtons(actor);
       this.setHint(this.turnHint(actor));
@@ -2226,8 +2184,7 @@ export class BattleScene extends Phaser.Scene {
       const clicked = this.battle.units.find((u) => u.alive && u.pos.col === tile.col && u.pos.row === tile.row);
       if (this.armedSkill) {
         if (clicked === actor) {
-          this.armedSkill = null;
-          this.pendingHerb = null; // cancel a half-made med-heal pick too (D67 W8)
+          this.disarm(); // cancels a half-made med-heal pick too (D67 W8)
           this.refreshDeployButtons();
           this.drawDeployReach(); // un-armed by clicking self — relight the movement wash
           this.setHint(`${actor.name}'s turn — reposition, use an ability, or End Turn (Space).`);
@@ -2255,7 +2212,7 @@ export class BattleScene extends Phaser.Scene {
 
     if (this.bribeArmed) {
       if (clicked === actor) {
-        this.bribeArmed = false;
+        this.disarm();
         this.setHint(this.turnHint(actor));
         return;
       }
@@ -2266,9 +2223,7 @@ export class BattleScene extends Phaser.Scene {
 
     if (this.armedSkill) {
       if (clicked === actor) {
-        this.armedSkill = null;
-        this.armedAim = null;
-        this.pendingHerb = null;
+        this.disarm();
         this.setHint(this.turnHint(actor));
         this.drawPreview();
         return;
@@ -2375,12 +2330,7 @@ export class BattleScene extends Phaser.Scene {
     if (!isAdjacent(actor.pos, captive.pos)) {
       return this.setHint(`Move ${actor.name} onto a lit tile next to ${captive.name}, then click to free them.`);
     }
-    this.busy = true;
-    this.armedSkill = null;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    this.hoverTile = null;
-    this.armedAim = null;
+    this.lockForCommit();
     // The rescue verb frees the captive and emits `unitRescued`; the bus listener owns the
     // token re-tint, the flash, and the combat-log line (the event drives the reaction).
     this.battle.rescue(captive, actor);
@@ -2400,12 +2350,7 @@ export class BattleScene extends Phaser.Scene {
     if (!inAttackRange(actor, foe)) {
       return this.setHint(`${foe.name} is out of range — click a lit tile to move closer, then strike.`);
     }
-    this.busy = true;
-    this.armedSkill = null;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    this.hoverTile = null;
-    this.armedAim = null;
+    this.lockForCommit();
     this.battle.attack(actor, foe);
     this.noteAct(actor);
     this.flashAttack(actor, foe);
@@ -2435,9 +2380,7 @@ export class BattleScene extends Phaser.Scene {
     } else {
       if (this.turnLocked || this.waitingFor !== actor) return;
       // Combat clears any armed target on take-back.
-      this.armedSkill = null;
-      this.pendingHerb = null;
-      this.bribeArmed = false;
+      this.disarm();
       // The flow rolls the turn back — positions, HP, statuses, clock/charges, the RNG cursor,
       // the log (core `undoAll`), and its own moved / acted / charged flags + the budget.
       if (!this.flow.undo(actor)) return;
@@ -2473,15 +2416,66 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Put every encounter-scoped field back to its opening value. Phaser reuses this scene
+   * instance for the next battle, so a field set only at its declaration would carry the last
+   * fight's state into this one (the stale rail-chevron freeze, see {@link rebuildBoard}).
+   * A new per-encounter field belongs here. Player preferences (animation speed, the threat
+   * toggle, the collapsed log) deliberately survive.
+   */
+  private resetEncounterState(): void {
+    this.over = false;
+    this.busy = false;
+    this.disarm();
+    this.clearPointerReads();
+    this.deployHoverTile = null;
+    this.clearReach();
+    this.preBattleJobLevels = new Map();
+    this.theftAttempts.clear();
+    this.goldStolen = 0;
+    this.goldRecovered = 0;
+    this.pendingRecruits = [];
+  }
+
+  /** Drop whatever the player has armed: a targeted skill and its aim, a half-made herb pick, a bribe. */
+  private disarm(): void {
+    this.armedSkill = null;
+    this.armedAim = null;
+    this.pendingHerb = null;
+    this.bribeArmed = false;
+  }
+
+  /** Forget the cursor's reads: the hovered route / foe, the armed aim, and any click queued mid-animation. */
+  private clearPointerReads(): void {
+    this.hoverTile = null;
+    this.hoverFoe = null;
+    this.armedAim = null;
+    this.queuedTile = null;
+  }
+
+  /** Drop the lit reach (the tiles the active unit could still step to). */
+  private clearReach(): void {
+    this.reach = [];
+    this.reachByKey.clear();
+  }
+
+  /**
+   * Lock the board while a combat action commits: busy, nothing left armed, the action row and
+   * the highlight torn down, the hover route unlit. The action's own after-step unlocks it.
+   */
+  private lockForCommit(): void {
+    this.busy = true;
+    this.disarm();
+    this.clearActionButtons();
+    this.highlightTile(null);
+    this.hoverTile = null;
+  }
+
   private afterTurn(): void {
     this.view.setActiveUnit(null);
     this.busy = false;
-    this.hoverTile = null;
-    this.hoverFoe = null;
-    this.queuedTile = null;
-    this.armedAim = null;
-    this.reach = [];
-    this.reachByKey.clear();
+    this.clearPointerReads();
+    this.clearReach();
     this.resolveTheftDeaths();
     this.checkTrapSprings(); // a move may have sprung a hidden trap — reveal + mark it
     this.refreshHud();
@@ -2681,8 +2675,7 @@ export class BattleScene extends Phaser.Scene {
         .setDepth(10)
         .setInteractive({ useHandCursor: true });
       this.railChevron.on(Phaser.Input.Events.POINTER_DOWN, () => { this.railExpanded = !this.railExpanded; this.refreshHud(); });
-      this.railChevron.on(Phaser.Input.Events.POINTER_OVER, () => this.railChevron?.setColor(INK.bright));
-      this.railChevron.on(Phaser.Input.Events.POINTER_OUT, () => this.railChevron?.setColor(INK.muted));
+      hoverTint(this.railChevron, INK.muted);
     }
     const label = this.railExpanded ? "▴ less" : `▾ ${hidden} more`;
     this.railChevron.setText(label).setPosition(this.scale.width - 158 + 86, rail.topY - 15).setVisible(true);

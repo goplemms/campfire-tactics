@@ -20,6 +20,7 @@ import { Labels } from "./rng-labels";
 import { Battle } from "./turn";
 import {
   type RunState,
+  type NightRecord,
   runDifficulty,
   currentNode,
   currentEncounter,
@@ -292,11 +293,7 @@ export class RunLoop {
     // clear, dying-clock tick) lives in recovery.ts (D120); RunLoop wires it — the call,
     // the night record, and the telemetry.
     const r: DeepRestOutcome = deepRest(this.run);
-    const node = currentNode(this.run);
-    const over = recordNight(this.run, {
-      nodeId: node.id,
-      layer: node.layer,
-      kind: node.kind,
+    const over = this.recordNodeNight({
       goldEarned: 0,
       fallen: r.lost.map((u) => u.id),
     });
@@ -378,14 +375,16 @@ export class RunLoop {
    * (informational in the history). Returns the run terminal.
    */
   recordEventNight(goldEarned = 0): boolean {
-    const node = currentNode(this.run);
-    return recordNight(this.run, {
-      nodeId: node.id,
-      layer: node.layer,
-      kind: node.kind,
+    return this.recordNodeNight({
       goldEarned,
       fallen: [],
     });
+  }
+
+  /** Record tonight's {@link NightRecord} against the current node (its id / layer / kind stamped in). Returns the run terminal. */
+  private recordNodeNight(record: Omit<NightRecord, "night" | "nodeId" | "layer" | "kind">): boolean {
+    const node = currentNode(this.run);
+    return recordNight(this.run, { nodeId: node.id, layer: node.layer, kind: node.kind, ...record });
   }
 
   // --- Camp (between battles, D9/D15) ---------------------------------------
@@ -592,15 +591,11 @@ export class RunLoop {
     // Record the graded node outcome + advance the night/terminal (D51). recordNight
     // sets the run terminal: a win at the final node = complete; any other final-node
     // resolution ends the run (returned-alive without the prize, or a wipe).
-    const node = currentNode(this.run);
     const winner: "player" | "enemy" = result === "wipe" ? "enemy" : "player";
     const fallen = result === "wipe"
       ? this.combatants.filter((u) => !u.alive).map((u) => u.id)
       : [...permadeaths];
-    const over = recordNight(this.run, {
-      nodeId: node.id,
-      layer: node.layer,
-      kind: node.kind,
+    const over = this.recordNodeNight({
       encounterKind: isAuthoredEncounter(source) ? undefined : source.kind,
       winner,
       result,
@@ -636,10 +631,7 @@ export class RunLoop {
       const lv = grantXp(u, xpEach);
       if (lv > 0) levels[u.id] = lv;
     }
-    const over = recordNight(this.run, {
-      nodeId: node.id,
-      layer: node.layer,
-      kind: node.kind,
+    const over = this.recordNodeNight({
       winner: "player",
       result: "win",
       goldEarned: 0,

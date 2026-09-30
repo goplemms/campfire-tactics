@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { buildScenarioRun } from "../../core";
 import { getLevel, listLevels, levelToScenario } from "../../content/levels";
 import { COLOR, FONT, INK } from "../theme";
+import { hoverTint } from "../button";
 import type { RunHandoff } from "../scenes/OverworldScene";
 
 /**
@@ -59,8 +60,7 @@ export class LevelBootScene extends Phaser.Scene {
         .text(width / 2, 110 + i * 30, `${lvl.name}  (#level=${lvl.id})`, { color: INK.primary, fontFamily: FONT.family, fontSize: FONT.body })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
-      row.on(Phaser.Input.Events.POINTER_OVER, () => row.setColor(INK.bright));
-      row.on(Phaser.Input.Events.POINTER_OUT, () => row.setColor(INK.primary));
+      hoverTint(row, INK.primary);
       row.on(Phaser.Input.Events.POINTER_DOWN, () => this.scene.start("BattleScene", buildLevelBattle(lvl.id)));
     });
   }

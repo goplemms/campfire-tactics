@@ -35,34 +35,12 @@
 
 import type { GridCoord } from "./iso";
 import type { UnitSpec } from "./units";
-import { getJob, type JobId } from "./jobs";
+import { memberFromJob } from "./jobs";
 import type { AuthoredEncounter } from "./authored";
 import type { OverworldMap, MapNode } from "./overworld";
 import { registerExpedition, type AuthoredExpedition } from "./expedition";
 
 // --- The cast (D52) — trio on the field; recruits join via their nodes ------
-
-/** Build a party member from a job's baseline frame (D39). */
-function member(id: string, name: string, jobId: JobId, extra: Partial<UnitSpec> = {}): UnitSpec {
-  const base = getJob(jobId)?.baseline;
-  return {
-    id,
-    name,
-    side: "player",
-    pos: { col: 0, row: 0 },
-    jobId,
-    speed: base?.speed ?? 10,
-    maxHp: base?.maxHp ?? 22,
-    attack: base?.attack ?? 6,
-    defense: base?.defense ?? 2,
-    moveRange: base?.moveRange ?? 4,
-    sightRadius: base?.sightRadius ?? 5,
-    attackRange: base?.attackRange ?? 1,
-    intelligence: 2,
-    awareness: 2,
-    ...extra,
-  };
-}
 
 /**
  * The **starting trio** (D52) — Soldier-only front line. The party visibly has no
@@ -70,12 +48,12 @@ function member(id: string, name: string, jobId: JobId, extra: Partial<UnitSpec>
  * run. Recruits are NOT in this bundle; they join via authored post-win grants.
  */
 export const HOLLOW_MILL_PARTY: UnitSpec[] = [
-  member("edrin", "Edrin", "soldier", { isLord: true }),
-  member("rook", "Rook", "hunter"),
+  memberFromJob("edrin", "Edrin", "soldier", { isLord: true }),
+  memberFromJob("rook", "Rook", "hunter"),
   // Vale the Scout is the party's eyes + field-craft (D10): high Intelligence floors
   // intel at tier 2 (the deploy edge is live, and a single Scout reaches tier 3 to
   // blow a hidden ambush); high Awareness spots the node-3 concealed snares.
-  member("vale", "Vale", "scout", { intelligence: 7, awareness: 5 }),
+  memberFromJob("vale", "Vale", "scout", { intelligence: 7, awareness: 5 }),
 ];
 
 // --- Recruit specs (granted on the win at their node, not in the bundle) -----
@@ -88,7 +66,7 @@ export const HOLLOW_MILL_PARTY: UnitSpec[] = [
  * readable *source of record* rather than a reference: node 1's body carries its own serialized
  * copy in `captives[0].spec` (`content/levels/e1-skirmish.json`). Edit both, or neither.
  */
-export const PIP_COOK: UnitSpec = member("pip", "Pip", "cook", {
+export const PIP_COOK: UnitSpec = memberFromJob("pip", "Pip", "cook", {
   standingOrder: "defend",
 });
 
@@ -97,10 +75,10 @@ export const PIP_COOK: UnitSpec = member("pip", "Pip", "cook", {
  * {@link PIP_COOK}, the Wagon's JSON body carries the serialized copy the run actually recruits
  * (`grants.recruit` in `content/levels/prison-wagon.json`); this stays the readable record (D123).
  */
-export const SELA_MEDIC: UnitSpec = member("sela", "Sela", "medic");
+export const SELA_MEDIC: UnitSpec = memberFromJob("sela", "Sela", "medic");
 
 /** Mira the Merchant — recruited at the Market; introduces markets (presence/Find Trade). */
-export const MIRA_MERCHANT: UnitSpec = member("mira", "Mira", "merchant");
+export const MIRA_MERCHANT: UnitSpec = memberFromJob("mira", "Mira", "merchant");
 
 // --- The encounters (authored.ts shapes) ------------------------------------
 
@@ -266,11 +244,11 @@ export const THIEVES_DEN_ID = "thieves-den";
  * `release: lockpick` captive (only the Thief picks the cells) tagged `role: "prisoner"` so
  * the `extraction` objective binds to them. Placeholder identities — a JIT content detail.
  */
-const CELL_PRISONER_A: UnitSpec = member("prisoner-a", "Gaunt Prisoner", "soldier", {
+const CELL_PRISONER_A: UnitSpec = memberFromJob("prisoner-a", "Gaunt Prisoner", "soldier", {
   role: "prisoner",
   standingOrder: "defend",
 });
-const CELL_PRISONER_B: UnitSpec = member("prisoner-b", "Shackled Prisoner", "soldier", {
+const CELL_PRISONER_B: UnitSpec = memberFromJob("prisoner-b", "Shackled Prisoner", "soldier", {
   role: "prisoner",
   standingOrder: "defend",
 });

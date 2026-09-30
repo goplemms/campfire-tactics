@@ -32,6 +32,7 @@ import {
   type ArrivalDigest,
 } from "../core";
 import { jumpToArrival, type JumpParams } from "./boot/debug";
+import { DEV_BUTTON_STYLE } from "./dev-tray";
 
 /** Stable DOM ids the harness (and a dev) target. */
 export const DEBUG_MENU_TOGGLE_ID = "debug-jump-toggle";
@@ -107,13 +108,7 @@ export function installDebugMenu(game: Phaser.Game): void {
     left: "12px",
     top: "12px",
     zIndex: "10000",
-    padding: "6px 12px",
-    background: "#2f6b46",
-    color: "#eafff0",
-    border: "1px solid #57b07a",
-    borderRadius: "4px",
-    font: "12px monospace",
-    cursor: "pointer",
+    ...DEV_BUTTON_STYLE,
   });
   document.body.appendChild(toggle);
 

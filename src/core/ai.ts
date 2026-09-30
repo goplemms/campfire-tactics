@@ -214,12 +214,7 @@ export function occupiedGrid(
   allow: readonly Unit[] = [],
   passAllyOf?: Side,
 ): TileGrid {
-  const blocked: GridCoord[] = [];
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      if (!grid.isWalkable({ col, row })) blocked.push({ col, row });
-    }
-  }
+  const blocked = grid.coords().filter((c) => !grid.isWalkable(c));
   for (const u of units) {
     if (!u.alive || allow.includes(u)) continue;
     if (passAllyOf && u.side === passAllyOf && !u.captured) continue; // a friendly body — pass through

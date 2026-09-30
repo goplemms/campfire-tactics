@@ -10,6 +10,17 @@
  * the tray container for a caller to append its button into. No-ops headless (no DOM).
  */
 const TRAY_ID = "dev-tray";
+
+/** The green button look every dev affordance shares (Debug Jump, Session log, Save / Load). */
+export const DEV_BUTTON_STYLE: Partial<CSSStyleDeclaration> = {
+  padding: "6px 12px",
+  background: "#2f6b46",
+  color: "#eafff0",
+  border: "1px solid #57b07a",
+  borderRadius: "4px",
+  font: "12px monospace",
+  cursor: "pointer",
+};
 const TOGGLE_ID = "dev-tray-toggle";
 
 /** The shared tray container (built on first call), or `null` with no document (headless). */

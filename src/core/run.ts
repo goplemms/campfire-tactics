@@ -231,7 +231,12 @@ export function createRunFromCaravan(
  * normal overworld path (D49). Pass an already-registered expedition.
  */
 export function createRunFromExpedition(exp: AuthoredExpedition): RunState {
-  return createRun(exp.seed, {
+  return createRun(exp.seed, expeditionRunOptions(exp));
+}
+
+/** The {@link createRun} options an expedition's bundle + hand-built map describe (the seed is the caller's). */
+export function expeditionRunOptions(exp: AuthoredExpedition): CreateRunOptions {
+  return {
     party: exp.bundle.party.map(createUnit),
     storageCap: exp.bundle.storageCap,
     inventory: { ...exp.bundle.supplies },
@@ -240,7 +245,7 @@ export function createRunFromExpedition(exp: AuthoredExpedition): RunState {
     morale: exp.bundle.morale,
     map: exp.map,
     expeditionId: exp.id,
-  });
+  };
 }
 
 /** The difficulty policy this run consults (D9). */

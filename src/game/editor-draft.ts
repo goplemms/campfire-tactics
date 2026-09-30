@@ -130,6 +130,22 @@ function captiveSpec(i: number, pos: GridCoord): UnitSpec {
 }
 
 /**
+ * Keep only what's placed on tiles passing `keep` — every painted tile list and every placed
+ * entity (enemies, captives, gates, levers). The Erase brush and a board shrink share it, so a new
+ * placeable kind is added in one spot.
+ */
+export function keepPlacedWhere(d: EditorDraft, keep: (c: GridCoord) => boolean): void {
+  d.blocked = d.blocked.filter(keep);
+  d.playerSpawns = d.playerSpawns.filter(keep);
+  d.exit = d.exit.filter(keep);
+  d.traps = d.traps.filter(keep);
+  d.enemies = d.enemies.filter((e) => keep(e.pos));
+  d.captives = d.captives.filter((c) => keep(c.pos));
+  d.gates = d.gates.filter((g) => keep(g.pos));
+  d.levers = d.levers.filter((l) => keep(l.pos));
+}
+
+/**
  * A materialized captive spec for the **inspector** (M-B) — a spec-less painted captive gets one the
  * moment it's selected for editing, keyed by tile so two fresh captives don't collide (the
  * id-uniqueness guard flags a real clash live if the author later renames into one).

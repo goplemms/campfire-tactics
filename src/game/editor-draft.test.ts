@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  blankDraft, draftToEncounter, encounterToDraft, newCaptiveSpec,
+  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec,
   enemyBaseStat, effectiveEnemyStat, setEnemyStat, setSpecStat,
   type EditorDraft, type DraftEnemy,
 } from "./editor-draft";
@@ -241,5 +241,32 @@ describe("editor inspector edits (D98 editor M-B — identity + stats)", () => {
     // The import must NOT alias the source — editing the draft left the registry level untouched.
     expect(getLevel("the-rescue")!.captives![0].spec.name).toBe("Wren");
     expect(getLevel("the-rescue")!.captives![0].spec.maxHp).toBe(20);
+  });
+});
+
+describe("keepPlacedWhere (the Erase brush + board shrink)", () => {
+  it("drops every kind of placed thing on a rejected tile and keeps the rest", () => {
+    const at = { col: 2, row: 1 };
+    const keep = { col: 0, row: 0 };
+    const d: EditorDraft = {
+      ...blankDraft(),
+      blocked: [at, keep],
+      playerSpawns: [at, keep],
+      exit: [at],
+      traps: [at],
+      enemies: [{ templateId: "bandit", pos: at }, { templateId: "bandit", pos: keep }],
+      captives: [{ pos: at, release: "reach" }],
+      gates: [{ id: "gate-1", pos: at, openBy: [{ kind: "lockpick" }], locked: true }],
+      levers: [{ id: "lever-1", pos: at, targets: [] }],
+    };
+    keepPlacedWhere(d, (c) => !(c.col === at.col && c.row === at.row));
+    expect(d.blocked).toEqual([keep]);
+    expect(d.playerSpawns).toEqual([keep]);
+    expect(d.exit).toEqual([]);
+    expect(d.traps).toEqual([]);
+    expect(d.enemies.map((e) => e.pos)).toEqual([keep]);
+    expect(d.captives).toEqual([]);
+    expect(d.gates).toEqual([]);
+    expect(d.levers).toEqual([]);
   });
 });

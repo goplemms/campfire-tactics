@@ -456,6 +456,7 @@ export class RunLoop {
     this.staged = staged;
     this.combatants = players;
     this.battle = staged.battle;
+    this.flow = undefined; // a fresh encounter gets its own game master (enterDeploy / autoBattle)
     this.stagedEnemyTraps = enemyTraps(staged.battle).length;
     this.xpTally = trackCombatXp(staged.battle.bus); // subscribe before any turns (D53)
     return staged.battle;
@@ -480,13 +481,19 @@ export class RunLoop {
    * Open the staged encounter's **deployment phase** through the one {@link BattleFlow}
    * (design map, step 3) — the same object the render drives: the Battle enters pre-combat,
    * the run's stash is wired for trap kits, the morale × intel deploy edge (D8/D10) rides in
-   * as the net's exposure multiplier, and the party takes its opening trap read. Returns the
-   * flow; {@link autoDeploy} plays it headlessly, the scene sends the player's intents.
+   * as the net's exposure multiplier, and the party takes its opening trap read. The same flow
+   * then runs the combat turn, polling the staged encounter's graded outcome (D50); `hasGuild`
+   * (the scene's handoff) puts Bribe in the no-action backstop's scan. Returns the flow;
+   * {@link autoDeploy} / {@link autoBattle} play it headlessly, the scene sends the player's intents.
    */
-  enterDeploy(): BattleFlow {
+  enterDeploy(opts: { hasGuild?: boolean } = {}): BattleFlow {
     if (!this.battle || !this.source) throw new Error("RunLoop.enterDeploy: no staged battle");
     this.battle.setStash(this.run.inventory);
-    const flow = new BattleFlow(this.battle, { exposureMultiplier: deployModifiers(this.run, this.source).exposureMultiplier });
+    const flow = new BattleFlow(this.battle, {
+      exposureMultiplier: deployModifiers(this.run, this.source).exposureMultiplier,
+      decided: this.decided(this.battle),
+      hasGuild: opts.hasGuild,
+    });
     flow.enterDeploy();
     this.flow = flow;
     return flow;
@@ -881,19 +888,26 @@ export class RunLoop {
     const maxTurns = opts.maxTurns ?? 1000;
     const player = opts.player ?? this.policy.player;
     const enemy = opts.enemy ?? this.policy.enemy;
-    // Stop the moment the encounter is **decided** (D50) — a closing-gate can fail
-    // the fight while enemies still stand, so poll the graded outcome, not just the
-    // elimination primitive. resolve() reads the same classifier for the grade.
-    const decided = () =>
-      this.staged ? encounterOutcome(this.staged) !== undefined : battle.outcome().over;
+    // Through the one game master (design map, step 4): the flow steps the clock, stops the
+    // moment the encounter is **decided** (D50 — a closing gate can fail the fight while enemies
+    // still stand), scouts ambushers into view, and opens each player turn exactly as the scene
+    // does (budget, the Awareness read, the D55 backstop). The bot then plays the seat with the
+    // acting side's policy (the seam the sim swaps for A/B, D56). A battle that skipped deploy
+    // gets a combat-phase flow of its own.
+    if (this.flow?.battle !== battle) this.flow = BattleFlow.forCombat(battle, { decided: this.decided(battle) });
+    const flow = this.flow;
     for (let i = 0; i < maxTurns; i++) {
-      if (decided()) return battle.outcome().winner;
-      const actor = battle.nextActor();
-      if (!actor) break;
-      // The whole plan→execute→endTurn step lives in Battle.runPolicyTurn — drive it
-      // with the acting side's policy (the seam the sim swaps for A/B, D56).
-      battle.runPolicyTurn(actor, actor.side === "player" ? player : enemy);
+      const step = flow.advance();
+      if (step.kind === "finish" || step.kind === "refused") break;
+      if (step.kind === "enemyTurn") flow.playPolicy(step.actor, enemy);
+      else if (step.kind === "playerTurn" && !step.passed) flow.playPolicy(step.actor, player);
     }
     return battle.outcome().winner;
   }
+
+  /** The graded-outcome poll (D50) for the flow: the staged encounter's classifier, else elimination. */
+  private decided(battle: Battle): () => boolean {
+    return () => (this.staged ? encounterOutcome(this.staged) !== undefined : battle.outcome().over);
+  }
+
 }

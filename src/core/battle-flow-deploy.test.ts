@@ -127,7 +127,7 @@ describe("BattleFlow — the deploy slice, headless", () => {
     let step = flow.advance();
     for (let guard = 0; guard < 60 && step.kind !== "refused"; guard++) {
       if (step.kind === "turn") flow.endTurn(step.actor); // everyone holds position — the net gets them
-      else fronts.push(`r${step.outcome.advancedTo}${step.outcome.captured ? ` caught ${step.outcome.captured.id}` : ""} → ${step.stage.kind}`);
+      else if (step.kind === "front") fronts.push(`r${step.outcome.advancedTo}${step.outcome.captured ? ` caught ${step.outcome.captured.id}` : ""} → ${step.stage.kind}`);
       step = flow.advance();
     }
     expect(fronts.length).toBeGreaterThan(1);
@@ -144,7 +144,9 @@ describe("BattleFlow — the deploy slice, headless", () => {
     expect(flow.view().phase).toBe("combat");
     expect(battle.phase).toBe("combat");
     expect(battle.log[battle.log.length - 1]).toEqual({ kind: "beginBattle" });
-    expect(flow.advance()).toMatchObject({ kind: "refused" });
+    // The same `advance` now steps the combat clock (design map, step 4) once the run layer seeds it.
+    battle.seed();
+    expect(flow.advance().kind).toMatch(/^(playerTurn|enemyTurn)$/);
   });
 
   it("Start Battle at any point commits an open turn as it stands", () => {

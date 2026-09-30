@@ -42,7 +42,7 @@ const exists = (p) => access(p).then(() => true, () => false);
 // would defeat `finishBattle`'s re-entry guard and double-call `resolve()` on a torn-down battle.
 const advance = (n) => bs(`if(s.phase==="deployment")s.onPrimary();for(let i=0;i<${n}&&!s.waitingFor&&!s.over;i++){s.busy=false;s.onAdvance();}`);
 // Force a clean win and finish: every enemy down ⇒ the field clears (gate met too).
-const forceWin = bs(`if(s.over||!s.battle)return;for(const u of s.battle.units)if(u.side==="enemy")u.alive=false;s.busy=false;s.waitingFor=null;s.finishBattle();`);
+const forceWin = bs(`if(s.over||!s.battle)return;for(const u of s.battle.units)if(u.side==="enemy")u.alive=false;s.busy=false;s.finishBattle();`);
 
 const STEPS = [
   { name: "01-intro", minMs: 800 }, // the expedition orientation card over the fogged map

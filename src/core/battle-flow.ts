@@ -19,7 +19,8 @@ import type { EntityRegistry, ConcealedTrap } from "./entities";
 import { isConcealedTrap } from "./entities";
 import { chebyshev } from "./iso";
 import { isAdjacent, moveBudget } from "./combat";
-import { reachableTiles, type Reach } from "./ai";
+import { reachableTiles, PILOT_POLICY, type Reach, type BattlePolicy, type AIPlan } from "./ai";
+import { canSee } from "./vision";
 import { forecastAttack } from "./planning";
 import { availableSkills } from "./leveling";
 import { hiddenTraps, canDisarm, revealTrapsNear, spotWhileMoving } from "./traps";
@@ -106,76 +107,133 @@ export function noActionsAvailable(ctx: ActionScanContext): boolean {
   return true;
 }
 
-// --- BattleFlow — the game master, deploy slice (design map, step 3) --------------
+// --- BattleFlow — the game master (design map, steps 3–4) ------------------------
 //
 // The design map's finding: the rules live in core, but *what happens next* (whose turn,
 // which phase, when the net steps) lived in BattleScene, with a second copy in the sim
-// (`RunLoop.autoBattle`) that skipped deployment entirely — so the headless guards were blind
-// to the phase where the unlogged mutations cluster. `BattleFlow` is the one sequencer both
-// seats talk to: **intents in** (`advance` / `move` / `digIn` / `endTurn` / `undo` /
-// `startBattle` …), **view state out** ({@link DeployView}: what the active unit may do now).
-// The scene renders the view and turns clicks into intents; the sim's deploy policy sends
-// the same intents. Deploy first (this slice); the combat turn joins it next.
+// (`RunLoop.autoBattle`) that skipped deployment entirely and ran the combat clock by its own
+// rules — so the headless guards were blind to the phase where the unlogged mutations cluster,
+// and the sim's fights were not quite the scene's. `BattleFlow` is the one sequencer both
+// seats talk to: **intents in** (`advance` / `move` / `digIn` / `spendAct` / `endTurn` / `undo`
+// / `startBattle` / `playPolicy` …), **view state out** ({@link TurnView}: what the active unit
+// may do now). The scene renders the view and turns clicks into intents; the sim's policies
+// send the same intents. Deploy was step 3; the combat turn is step 4 — the same turn record,
+// the same move / Act / undo / end-turn intents, one `advance` for both clocks.
 
 /** The flow's phase: `alarm` is the net's turn having ended deploy (a catch or an overrun) — only `startBattle` remains. */
 export type FlowPhase = "deploy" | "alarm" | "combat";
 
-/** The open deploy turn — the per-turn economy the scene used to keep as loose fields. */
-export interface DeployTurn {
+/**
+ * The open turn — the per-turn economy the scene used to keep as loose fields, one record for
+ * both phases (a deploy turn and a combat turn step, act, and take back the same way).
+ */
+export interface FlowTurn {
   actor: Unit;
   /** Stepped at all this turn (drives the End-Turn CT spend). */
   moved: boolean;
-  /** Used its one Act (dig-in / trap / skill / Search / Disarm / entrance …). */
+  /** Used its one Act (a strike, a skill, a field verb; in deploy also dig-in / trap / entrance). */
   acted: boolean;
-  /** A unit that opened the turn dug in pressed **Take Action** — its full row is back without breaking the stance. */
+  /** That Act bills the full Act CT — a `spend: "move"` skill (Dash) is an Act billed as a move. */
+  charged: boolean;
+  /** Deploy: a unit that opened the turn dug in pressed **Take Action** — its full row is back without breaking the stance. */
   revealed: boolean;
-  /** Weighted movement left this turn (the same budget a combat turn spends). */
+  /** Combat: a sprung trap cost HP on a step — the turn's take-back is gone (D60). */
+  locked: boolean;
+  /** Weighted movement left this turn (the same budget in both phases). */
   moveBudget: number;
 }
+/** @deprecated The deploy slice's name for {@link FlowTurn}. */
+export type DeployTurn = FlowTurn;
 
-/** What the render (or a policy) reads to decide what to offer — the deploy slice's view state. */
-export interface DeployView {
+/** What the render (or a policy) reads to decide what to offer — the flow's view state. */
+export interface TurnView {
   phase: FlowPhase;
-  /** The unit whose deploy turn is open, or null between turns (the clock rests on the player). */
+  /** The unit whose turn is open (a player's, or a deploy turn), or null between turns. */
   actor: Unit | null;
   moved: boolean;
   acted: boolean;
+  charged: boolean;
   revealed: boolean;
+  locked: boolean;
   moveBudget: number;
-  /** The actor began the turn dug in and has not re-engaged: the minimal Take Action menu. */
+  /** The actor began the turn dug in and has not re-engaged: the minimal Take Action menu (deploy). */
   hunkered: boolean;
   /** The actor may still take its one Act: present, not captured, Act unspent, not hunkered. */
   canAct: boolean;
+  /** There is something on the open turn's take-back stack, and no sprung trap has locked it. */
   canUndo: boolean;
-  /** The meta-controls the row surfaces ({@link deployActions}). */
+  /** The pre-combat meta-controls the row surfaces ({@link deployActions}); empty in combat. */
   controls: DeployActionId[];
   /**
-   * The actor's abilities this turn — the same `availableSkills(actor, "pre-combat")` projection as
-   * combat; an enemy-target skill only while a foe is **engageable** (un-concealed — a keep-assault).
-   * Empty when the actor may not act.
+   * The actor's abilities this turn — `availableSkills(actor, "pre-combat")` in deploy (an
+   * enemy-target skill only while a foe is **engageable** — un-concealed, a keep-assault), and
+   * `availableSkills(actor, "combat")` in combat. Empty when the actor may not act.
    */
   skills: SkillDef[];
   /** The net's reach, in steps. */
   frontRadius: number;
   /** Why deploy ended, once the net's turn ended it. */
   alarm: "capture" | "overrun" | null;
+  /** A policy-driven unit (an enemy) the clock handed the turn to, awaiting {@link BattleFlow.playPolicy}. */
+  seat: Unit | null;
 }
+/** @deprecated The deploy slice's name for {@link TurnView}. */
+export type DeployView = TurnView;
 
-/** What `advance()` did: opened a unit's turn, or ran the net's turn. */
+/** What `advance()` did in deploy: opened a unit's turn, or ran the net's turn. */
 export type DeployAdvance =
   | { kind: "turn"; actor: Unit; /** Hidden traps the actor spotted stepping up (D12). */ spotted: ConcealedTrap[] }
   | { kind: "front"; stage: FrontTurnStage; outcome: FrontTurnOutcome }
   | { kind: "refused"; reason: string };
 
-/** The result of a deploy move intent. */
-export type DeployMove =
-  | { ok: true; walked: GridCoord[]; /** A trap sensed just in time (the walk stopped short of it). */ spotted: ConcealedTrap | null; halted: boolean; cost: number }
+/**
+ * What `advance()` did in combat (the {@link advanceOutcome} branch, carried out): the encounter
+ * is decided; a hidden ambusher passed; an enemy holds the seat (the caller animates as it
+ * sends {@link BattleFlow.playPolicy}); or a player unit's free-move turn opened — or opened
+ * and passed at once, the D55 no-action backstop. `revealed` is the ambush bodies the party
+ * scouted into view on this tick (D44).
+ */
+export type CombatAdvance =
+  | { kind: "finish" }
+  | { kind: "ambushPass"; actor: Unit; revealed: Unit[] }
+  | { kind: "enemyTurn"; actor: Unit; revealed: Unit[] }
+  | { kind: "playerTurn"; actor: Unit; revealed: Unit[]; spotted: ConcealedTrap[]; /** Nothing it could do — the turn already ended. */ passed: boolean }
+  | { kind: "refused"; reason: string };
+
+export type FlowAdvance = DeployAdvance | CombatAdvance;
+
+/** The result of a move intent (either phase). */
+export type FlowMove =
+  | {
+      ok: true;
+      walked: GridCoord[];
+      /** A trap sensed just in time (the walk stopped short of it). */
+      spotted: ConcealedTrap | null;
+      halted: boolean;
+      cost: number;
+      /** A missed trap sprang underfoot and cost HP — in combat this locks the turn's take-back. */
+      sprung: boolean;
+    }
   | {
       ok: false;
       /** `out-of-reach`: budget remains but not for that tile · `out-of-moves`: nothing left · `balked`: a trap on the first step (spotted, if sensed now) · `not-your-turn`. */
       reason: "out-of-reach" | "out-of-moves" | "balked" | "not-your-turn";
       spotted?: ConcealedTrap | null;
     };
+/** @deprecated The deploy slice's name for {@link FlowMove}. */
+export type DeployMove = FlowMove;
+
+export interface BattleFlowOptions {
+  /** The morale × intel neutral-capture multiplier (D8/D10), threaded into the net's rolls. */
+  exposureMultiplier?: number;
+  /**
+   * Is the encounter decided? The staged encounter's graded outcome (D50) when there is one — a
+   * closing gate can fail the fight while enemies still stand — else the elimination primitive.
+   */
+  decided?: () => boolean;
+  /** A guild is present, so Bribe is on the table — the no-action backstop reads it (D55). */
+  hasGuild?: boolean;
+}
 
 export class BattleFlow {
   readonly battle: Battle;
@@ -184,21 +242,28 @@ export class BattleFlow {
   readonly safeGround: SafeGround;
   /** The closing net — the enemy danger front that steps in on its clock turns (D63). */
   readonly front: DeployFront;
-  /** The trap spot-roll stream (`Labels.trapSpot()`), shared with the combat turn's reads. */
+  /** The trap spot-roll stream (`Labels.trapSpot()`), shared by both phases' reads. */
   readonly spotRng: Rng;
   /** The net's capture rolls (`Labels.deploy()`). */
   private readonly deployRng: Rng;
   /** The morale × intel neutral-capture multiplier (D8/D10), threaded into the net's rolls. */
   private readonly exposure: number;
+  /** Is the encounter graded terminal (D50/D51)? The run layer passes its objective classifier; alone, the elimination primitive. */
+  readonly decided: () => boolean;
+  private readonly hasGuild: boolean;
   private phase: FlowPhase = "deploy";
-  private turn: DeployTurn | null = null;
+  private turn: FlowTurn | null = null;
+  /** The policy-driven unit holding the combat clock, until `playPolicy` runs its turn. */
+  private seat: Unit | null = null;
   private alarm: "capture" | "overrun" | null = null;
   private entered = false;
 
-  constructor(battle: Battle, opts: { exposureMultiplier?: number } = {}) {
+  constructor(battle: Battle, opts: BattleFlowOptions = {}) {
     this.battle = battle;
     this.grid = battle.grid;
     this.exposure = opts.exposureMultiplier ?? 1;
+    this.decided = opts.decided ?? (() => battle.outcome().over);
+    this.hasGuild = opts.hasGuild ?? false;
     // The RNG streams derive from the battle's own seed by label (D67) — creation order is immaterial.
     this.deployRng = battle.stream(Labels.deploy());
     this.spotRng = battle.stream(Labels.trapSpot());
@@ -206,6 +271,17 @@ export class BattleFlow {
     // anchors blindly at the home edge, which a hand-built board can put inside a wall.
     this.safeGround = battle.spawnZones.length > 0 ? battle.spawnZones : createCampfire(this.grid, battle.units);
     this.front = createFront(this.grid, battle.units.filter((u) => u.side === "enemy"));
+  }
+
+  /**
+   * A flow for a battle that skips deployment and is already fighting (a headless test that
+   * seeds and fights at once): the combat phase, no prelude, nothing logged on the way in.
+   */
+  static forCombat(battle: Battle, opts: BattleFlowOptions = {}): BattleFlow {
+    const flow = new BattleFlow(battle, opts);
+    flow.entered = true;
+    flow.phase = "combat";
+    return flow;
   }
 
   /**
@@ -231,27 +307,35 @@ export class BattleFlow {
     return found;
   }
 
-  view(): DeployView {
+  view(): TurnView {
     const t = this.turn;
     const actor = t?.actor ?? null;
     const captured = !!actor?.captured;
-    const hunkered = !!t && !!actor?.dugIn && !captured && !t.acted && !t.revealed;
-    const canAct = this.phase === "deploy" && !!t && !captured && !t.acted && !hunkered;
+    const deploy = this.phase === "deploy";
+    const hunkered = deploy && !!t && !!actor?.dugIn && !captured && !t.acted && !t.revealed;
+    const canAct = this.phase !== "alarm" && !!t && !captured && !t.acted && !hunkered;
+    const canUndo = this.battle.canUndo() && !t?.locked;
     const canEngage = this.battle.units.some((u) => u.alive && !u.concealed && actor !== null && u.side !== actor.side);
+    const skills = !canAct || !actor ? []
+      : deploy ? availableSkills(actor, "pre-combat").filter((s) => s.target !== "enemy" || canEngage)
+      : availableSkills(actor, "combat");
     return {
       phase: this.phase,
       actor,
       moved: t?.moved ?? false,
       acted: t?.acted ?? false,
+      charged: t?.charged ?? false,
       revealed: t?.revealed ?? false,
+      locked: t?.locked ?? false,
       moveBudget: t?.moveBudget ?? 0,
       hunkered,
       canAct,
-      canUndo: this.battle.canUndo(),
-      controls: deployActions({ hasActor: !!actor, captured, canUndo: this.battle.canUndo() }),
-      skills: canAct && actor ? availableSkills(actor, "pre-combat").filter((s) => s.target !== "enemy" || canEngage) : [],
+      canUndo,
+      controls: this.phase !== "combat" ? deployActions({ hasActor: !!actor, captured, canUndo }) : [],
+      skills,
       frontRadius: this.front.radius,
       alarm: this.alarm,
+      seat: this.seat,
     };
   }
 
@@ -267,34 +351,108 @@ export class BattleFlow {
     return this.reach().some((r) => r.path.length > 0);
   }
 
-  /** May `unit` take its one Act right now (the field-verb gate: Search / Disarm / rescue / gate / entrance / skill)? */
+  /** May `unit` take its one Act right now (the field-verb gate: strike / skill / Search / Disarm / rescue / gate / entrance)? */
   canAct(unit: Unit): boolean {
     return this.turn?.actor === unit && this.view().canAct;
   }
 
   /**
-   * Step the deploy clock by one actor. Nothing happens on its own: the player ends a turn and
-   * presses Advance, so the board never changes without an input. A unit's turn opens (undo
-   * armed, budget seeded, a passive trap read); the net's turn resolves the capture wave and
-   * may end the phase (`alarm`). Refused while a turn is open or the phase is over.
+   * The combat auto-end gate (D60): the open turn's **both** halves are spent — the Act used
+   * and no movement left. Anything short of that keeps the turn open; the player ends it.
    */
-  advance(): DeployAdvance {
-    if (this.phase !== "deploy") return { kind: "refused", reason: "deployment is over" };
+  turnExhausted(): boolean {
+    return !!this.turn?.acted && !this.canMoveFurther();
+  }
+
+  /**
+   * Step the clock by one actor. Nothing happens on its own: the player ends a turn and presses
+   * Advance, so the board never changes without an input. Refused while a turn (or a policy
+   * seat) is open. **Deploy**: a unit's turn opens, or the net's turn resolves the capture wave
+   * and may end the phase (`alarm`). **Combat**: the {@link CombatAdvance} branches.
+   */
+  advance(): FlowAdvance {
     if (this.turn) return { kind: "refused", reason: `${this.turn.actor.name}'s turn is open — end it first` };
+    if (this.seat) return { kind: "refused", reason: `${this.seat.name} holds the clock — play its turn first` };
+    if (this.phase === "combat") return this.combatAdvance();
+    if (this.phase !== "deploy") return { kind: "refused", reason: "deployment is over" };
     const next = this.battle.clock.nextTurn();
-    if (next.kind === "unit") return this.openTurn(next.unit);
+    if (next.kind === "unit") {
+      const spotted = this.openTurn(next.unit);
+      return { kind: "turn", actor: next.unit, spotted };
+    }
     // "tempo" (the front leads) or "idle" (never — the front always charges): the net's turn.
     return this.frontTurn();
   }
 
-  private openTurn(actor: Unit): DeployAdvance {
-    this.turn = { actor, moved: false, acted: false, revealed: false, moveBudget: moveBudget(actor) };
-    // Arm the shared action-log undo for the turn (D63): each move / dig-in / trap is undoable
-    // back to the turn's start, exactly like a combat turn.
+  /**
+   * Open a unit's turn (either phase): budget seeded, the per-turn flags cleared, the shared
+   * action-log undo armed (D60/D63 — each move / strike / dig-in / trap is undoable back to the
+   * turn's start), and the passive Awareness read as it steps up (D12). Returns what it spotted.
+   */
+  private openTurn(actor: Unit): ConcealedTrap[] {
+    this.turn = { actor, moved: false, acted: false, charged: false, revealed: false, locked: false, moveBudget: moveBudget(actor) };
     this.battle.beginUndo();
-    // The unit looks around as it steps up — the passive Awareness scan (D12; shared with combat).
-    const spotted = hiddenTraps(this.battle.entities).length > 0 ? revealTrapsNear(actor, this.battle.entities, this.spotRng) : [];
-    return { kind: "turn", actor, spotted };
+    return hiddenTraps(this.battle.entities).length > 0 ? revealTrapsNear(actor, this.battle.entities, this.spotRng) : [];
+  }
+
+  /**
+   * The combat clock's tick (D60), what `BattleScene.onAdvance` used to decide: a decided
+   * encounter finishes before the clock moves; otherwise the clock steps (`nextActor` fires
+   * `turnStart` and ticks the actor's statuses), the encounter is re-polled (a tick can close a
+   * gate, D50), and the party scouts any ambush body now in sight (D44). A hidden ambusher then
+   * passes, an enemy takes the policy seat, and a player unit's turn opens — passing at once when
+   * it has nothing it can do (the D55 backstop), so the clock can never stall.
+   */
+  private combatAdvance(): CombatAdvance {
+    if (this.decided()) return { kind: "finish" };
+    const out = advanceOutcome(this.battle.nextActor(), this.decided());
+    if (out.kind === "finish") return out;
+    const revealed = this.revealScouted();
+    if (out.kind === "ambushPass") {
+      this.battle.endTurn(out.actor, {});
+      return { ...out, revealed };
+    }
+    if (out.kind === "enemyTurn") {
+      this.seat = out.actor;
+      return { ...out, revealed };
+    }
+    const actor = out.actor;
+    const spotted = this.openTurn(actor);
+    const passed = noActionsAvailable({ actor, units: this.battle.units, grid: this.grid, entities: this.battle.entities, hasGuild: this.hasGuild });
+    if (passed) this.endTurn(actor);
+    return { kind: "playerTurn", actor, revealed, spotted, passed };
+  }
+
+  /** Reveal the hidden ambush bodies the party can now see (the scouting payoff, D44). */
+  private revealScouted(): Unit[] {
+    const revealed: Unit[] = [];
+    for (const u of this.battle.units) {
+      if (u.hidden && u.alive && canSee(this.battle.units, "player", u.pos)) {
+        u.hidden = false;
+        revealed.push(u);
+      }
+    }
+    return revealed;
+  }
+
+  /**
+   * Run a policy-driven turn for `unit` (D56): the enemy holding the seat after `advance`, or —
+   * the headless bot's seat — a player unit whose turn is open. The policy plans, the plan runs
+   * through the one interpreter and ends the turn (`Battle.runPolicyTurn`); an open turn's
+   * take-back window closes with it. Returns the plan for the render to animate, or null when
+   * `unit` holds no seat.
+   */
+  playPolicy(unit: Unit, policy: BattlePolicy = PILOT_POLICY): AIPlan | null {
+    if (this.phase !== "combat") return null;
+    if (this.seat === unit) {
+      this.seat = null;
+      return this.battle.runPolicyTurn(unit, policy);
+    }
+    if (this.turn?.actor !== unit) return null;
+    const plan = this.battle.runPolicyTurn(unit, policy);
+    this.battle.endUndo();
+    this.turn = null;
+    return plan;
   }
 
   /**
@@ -321,14 +479,14 @@ export class BattleFlow {
 
   /**
    * Step the open turn's unit to a lit tile, spending that leg's weighted cost from the budget
-   * (D-feel: the same reach a combat turn spends). The per-step trap read (D12) may truncate the
-   * walk: the unit senses a hidden trap and stops short, balks at one it already knows, or
-   * blunders onto one it missed (which springs on entry). Commits through the logged `move`
-   * verb (undoable; breaks dig-in).
+   * (D-feel: the same reach in both phases). The per-step trap read (D12) may truncate the walk:
+   * the unit senses a hidden trap and stops short, balks at one it already knows, or blunders
+   * onto one it missed (which springs on entry — in combat, a trap that cost HP locks the turn's
+   * take-back, D60). Commits through the logged `move` verb (undoable; breaks dig-in).
    */
-  move(unit: Unit, tile: GridCoord): DeployMove {
+  move(unit: Unit, tile: GridCoord): FlowMove {
     const t = this.turn;
-    if (this.phase !== "deploy" || !t || t.actor !== unit || unit.captured) return { ok: false, reason: "not-your-turn" };
+    if (this.phase === "alarm" || !t || t.actor !== unit || unit.captured) return { ok: false, reason: "not-your-turn" };
     const reach = this.reach();
     const target = reach.find((r) => r.tile.col === tile.col && r.tile.row === tile.row);
     if (!target || target.path.length === 0) {
@@ -339,10 +497,13 @@ export class BattleFlow {
     // The walked route ends on a tile of the original reach, so its cost is that tile's reach cost.
     const halt = spot.path[spot.path.length - 1];
     const cost = reach.find((r) => r.tile.col === halt.col && r.tile.row === halt.row)?.cost ?? target.cost;
+    const hpBefore = unit.hp;
     this.battle.moveUnit(unit, spot.path);
     t.moved = true;
     t.moveBudget -= cost;
-    return { ok: true, walked: spot.path, spotted: spot.spotted, halted: spot.halted, cost };
+    const sprung = unit.hp < hpBefore;
+    if (sprung && this.phase === "combat" && unit.alive) t.locked = true; // a trap bit — the move stands
+    return { ok: true, walked: spot.path, spotted: spot.spotted, halted: spot.halted, cost, sprung };
   }
 
   /**
@@ -351,7 +512,7 @@ export class BattleFlow {
    * (circling the building is the turn). Refused when the zone is full.
    */
   takeEntrance(unit: Unit, zone: SpawnZone): { ok: true; dest: GridCoord } | { ok: false; reason: string } {
-    if (!this.canAct(unit)) return { ok: false, reason: "not-your-turn" };
+    if (this.phase !== "deploy" || !this.canAct(unit)) return { ok: false, reason: "not-your-turn" };
     const dest = zoneHasRoom(zone, this.battle.units, unit) ? freeTileIn(zone, this.battle.units, this.grid, unit) : undefined;
     if (!dest) return { ok: false, reason: "full" };
     this.battle.moveUnit(unit, [dest]);
@@ -362,24 +523,29 @@ export class BattleFlow {
     return { ok: true, dest };
   }
 
-  /** Dig In (D63): hunker on this tile for a sharply reduced capture chance — the turn's Act. */
+  /** Dig In (D63): hunker on this tile for a sharply reduced capture chance — the deploy turn's Act. */
   digIn(unit: Unit): boolean {
     const t = this.turn;
     if (this.phase !== "deploy" || !t || t.actor !== unit || unit.captured || t.acted) return false;
     this.battle.digIn(unit); // logged + undoable through the one interpreter
     t.acted = true;
+    t.charged = true;
     return true;
   }
 
   /**
-   * Spend the open turn's one Act on a verb the caller already resolved (Search, Disarm, a skill
-   * cast, a rescue, a gate …). Acting breaks the hunker (the status-effect "on action" trigger)
-   * unless `keepStance` — placing a trap keeps it. Refused unless {@link canAct}.
+   * Spend the open turn's one Act on a verb the caller already resolved (a strike, a skill cast,
+   * Search, Disarm, a rescue, a gate, a bribe …). `charged` is the Act's CT weight — a move-spend
+   * skill (Dash) bills as a move, not the full Act (combat; a deploy Act always bills). In deploy,
+   * acting breaks the hunker (the status-effect "on action" trigger) unless `keepStance` —
+   * placing a trap keeps it. Refused unless {@link canAct}.
    */
-  spendAct(unit: Unit, opts: { keepStance?: boolean } = {}): boolean {
+  spendAct(unit: Unit, opts: { keepStance?: boolean; charged?: boolean } = {}): boolean {
     if (!this.canAct(unit)) return false;
-    this.turn!.acted = true;
-    if (!opts.keepStance) unit.dugIn = false;
+    const t = this.turn!;
+    t.acted = true;
+    t.charged = this.phase === "deploy" ? true : opts.charged ?? true;
+    if (this.phase === "deploy" && !opts.keepStance) unit.dugIn = false;
     return true;
   }
 
@@ -391,25 +557,33 @@ export class BattleFlow {
     return true;
   }
 
-  /** Take back everything the open turn did (positions, HP, statuses, kits, the log) — back to the turn's start. */
+  /**
+   * Take back everything the open turn did (positions, HP, statuses, kits, the log) — back to the
+   * turn's start. Refused once a sprung trap has locked the turn (no take-back on damage taken).
+   */
   undo(unit: Unit): boolean {
     const t = this.turn;
-    if (!t || t.actor !== unit || !this.battle.canUndo()) return false;
+    if (!t || t.actor !== unit || t.locked || !this.battle.canUndo()) return false;
     this.battle.undoAll();
     t.moved = false;
     t.acted = false;
+    t.charged = false;
     t.revealed = false; // back to the minimal menu if the unit began the turn dug in
     t.moveBudget = moveBudget(unit); // the whole turn rolled back — full range again
     return true;
   }
 
-  /** End the open turn: the take-back window closes and the unit's CT is spent (logged, like a combat turn). */
+  /**
+   * End the open turn: the take-back window closes and the unit's CT is spent from what it
+   * actually did (logged) — a unit that only stepped pays the Move cost, one that took a
+   * charged Act pays the Act.
+   */
   endTurn(unit: Unit): boolean {
     const t = this.turn;
     if (!t || t.actor !== unit) return false;
-    this.battle.endUndo(); // the deploy turn commits — no take-back across the boundary
+    this.battle.endUndo(); // the turn commits — no take-back across the boundary
     this.turn = null;
-    this.battle.endTurn(unit, { moved: t.moved, acted: t.acted });
+    this.battle.endTurn(unit, { moved: t.moved, acted: t.charged });
     return true;
   }
 

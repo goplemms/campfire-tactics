@@ -53,7 +53,7 @@ const toFinale = (intel) =>
  * fixed budget so the row is fully armed whoever the roster order would have picked.
  */
 const handTurn = (unitExpr) =>
-  `s.flow.turn = { actor: ${unitExpr}, moved: false, acted: false, revealed: false, moveBudget: 4 };`;
+  `s.flow.turn = { actor: ${unitExpr}, moved: false, acted: false, charged: false, revealed: false, locked: false, moveBudget: 4 };`;
 
 /** Snapshot the deploy state in tile terms — zones, who stands where, what the row offers. */
 const DEPLOY_SNAP = `
@@ -270,8 +270,7 @@ async function main() {
       for (const v of u) s.placeView(v);
       // Hand the turn to a unit so the combat action row (and its control box) renders —
       // mirroring what beginPlayerTurn does, primary included (it is End Turn during a turn).
-      s.waitingFor = u.find(v => v.id === "cinder");
-      s.acted = false;
+      ${handTurn(`u.find(v => v.id === "cinder")`)}
       s.setPrimary("End Turn");
       s.showSkillButtons(s.waitingFor);
       const btn = s.actionButtons.find(b => b.label && /Go Now/.test(b.label.text));
@@ -395,8 +394,7 @@ async function main() {
       for (const id of ["cinder", "lark", "nyx"]) put(id, mouth);
       put("thane", { col: 12, row: 10 }); // …but Thane is still deep inside.
       for (const v of u) s.placeView(v);
-      s.waitingFor = u.find(v => v.id === "cinder");
-      s.acted = false;
+      ${handTurn(`u.find(v => v.id === "cinder")`)}
       s.setPrimary("End Turn");
       s.showSkillButtons(s.waitingFor);
       const btn = s.actionButtons.find(b => b.label && /Go Now/.test(b.label.text));

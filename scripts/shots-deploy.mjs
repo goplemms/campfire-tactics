@@ -72,7 +72,7 @@ const STEPS = [
       `const f=s.front;` +
       `const u=s.battle.units.find(x=>x.side==="player"&&!x.captured&&!x.hidden);` +
       `u.pos={col:Math.max(0,f.origin.col-f.radius),row:f.origin.row};s.placeView(u);` +
-      `s.flow.turn={actor:u,moved:false,acted:false,revealed:false,moveBudget:0};s.beginDeployTurn(u,0);s.flow.digIn(u);s.refreshDeployButtons();s.refreshDeployStatus();`,
+      `s.flow.turn={actor:u,moved:false,acted:false,charged:false,revealed:false,locked:false,moveBudget:0};s.beginDeployTurn(u,0);s.flow.digIn(u);s.refreshDeployButtons();s.refreshDeployStatus();`,
     ),
   },
 

@@ -395,15 +395,29 @@ async function main() {
               const a = s.waitingFor; const d = s.reach.find(r => r.path.length > 0);
               if (!a || !d) return { skip: true };
               const from = { col: a.pos.col, row: a.pos.row };
+              const budget = s.flow.view().moveBudget;
               s.queuedTile = { col: d.tile.col, row: d.tile.row }; // a click that arrived mid-step
               s.processQueuedClick(a, "battle");                    // replay it now the step finished
-              return { from, queuedCleared: s.queuedTile === null };
+              return { from, budget, queuedCleared: s.queuedTile === null };
             `);
             check("a click-ahead clears the queue when replayed", qb && (qb.skip || qb.queuedCleared));
             if (qb && !qb.skip) {
               await sleep(300); // let the replayed step animate
               const moved = await g.bsEval(`const a = s.waitingFor; return a ? (a.pos.col !== ${qb.from.col} || a.pos.row !== ${qb.from.row}) : false;`);
               check("a click-ahead replays and moves the unit", moved === true);
+              // The combat turn is BattleFlow's now (design map, step 4): the step spent the
+              // flow's budget and armed its take-back; Esc (Undo) rolls the whole turn back.
+              const ft = await g.bsEval(`
+                const v = s.flow.view(); const a = s.waitingFor;
+                return { same: v.actor === a, moved: v.moved, budget: v.moveBudget, canUndo: v.canUndo, locked: v.locked, last: s.battle.log[s.battle.log.length - 1].kind };
+              `);
+              check("the combat step went through the flow (moved, budget spent, logged)", ft.same && ft.moved === true && ft.budget < qb.budget && ft.last === "move");
+              if (ft.canUndo && !ft.locked) {
+                await g.key("Escape");
+                await sleep(150);
+                const un = await g.bsEval(`const a = s.waitingFor; const v = s.flow.view(); return { back: a.pos.col === ${qb.from.col} && a.pos.row === ${qb.from.row}, moved: v.moved, acted: v.acted };`);
+                check("Esc takes the combat turn back through the flow", un.back && un.moved === false && un.acted === false);
+              }
             }
             // Re-hover the foe so the captured frame shows the headline deal / hits-back read.
             await g.bsEval(`
@@ -411,8 +425,19 @@ async function main() {
               if (foe) { s.hoverFoe = foe; s.hoverTile = null; s.drawPreview(); }
             `);
             await shot("battle-hover-preview");
+            // End Turn commits through the flow: its turn closes and the unit's CT spend is logged.
+            const ender = await g.bsEval(`return s.waitingFor.id;`);
+            await g.key(" ");
+            await sleep(260);
+            const closed = await g.bsEval(`
+              const ends = s.battle.log.filter(a => a.kind === "endTurn");
+              const actor = s.flow.view().actor;
+              return { open: !!actor && actor.id === ${JSON.stringify(ender)}, logged: ends.some(a => a.unit === ${JSON.stringify(ender)}) };
+            `);
+            check("End Turn closes the flow's turn and logs the unit's endTurn", closed.open === false && closed.logged === true);
+            sawPlayerTurn = true;
+            continue;
           }
-          sawPlayerTurn = true;
           await g.key(" "); // Space = End Turn while a player unit is active (D60)
         } else {
           await g.key(" "); // Space = Advance Clock to the next actor
@@ -421,6 +446,11 @@ async function main() {
       }
       console.log("• Drive the battle clock");
       check("the clock surfaced a player turn (End Turn worked)", sawPlayerTurn);
+      const seat = await g.bsEval(`
+        const foes = new Set(s.battle.units.filter(u => u.side === "enemy").map(u => u.id));
+        return { seat: s.flow.view().seat, enemyEnds: s.battle.log.filter(a => a.kind === "endTurn" && foes.has(a.unit)).length };
+      `);
+      check("enemy turns ran through the flow's policy seat (logged, seat released)", seat.seat === null && seat.enemyEnds > 0);
       const end = await snap();
       check("the battle progressed without wedging", end.phase === "battle" || reachedResolution);
       await shot("battle-driven");

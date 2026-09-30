@@ -54,7 +54,7 @@ const intoBattle = bs(
   `if(s.phase==="deployment"){s.busy=false; s.startBattle();}` +
   `s.busy=false; s.over=false;` +
   `const p=s.battle.units.find(x=>x.side==="player"&&x.alive&&!x.captured&&!x.hidden);` +
-  `if(p)s.beginPlayerTurn(p);`,
+  `if(p){s.flow.turn={actor:p,moved:false,acted:false,charged:false,revealed:false,locked:false,moveBudget:p.moveRange};s.beginPlayerTurn({kind:"playerTurn",actor:p,revealed:[],spotted:[],passed:false});}`,
 );
 
 // Re-job the active player unit so the showcase carries the signature footprints,

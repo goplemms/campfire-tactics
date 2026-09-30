@@ -203,8 +203,9 @@ export class RunLoop {
   battle?: Battle;
   /**
    * The current encounter's **game master** (design map, step 3): the one sequencer the render
-   * and the headless bot both drive through deployment. Set by {@link enterDeploy}; unset for a
-   * caller that stages and fights without a deploy phase (the older headless tests).
+   * and the headless bot both drive through deployment and the combat turns. Set by
+   * {@link enterDeploy}, or lazily by {@link autoBattle} for a caller that stages and fights
+   * without a deploy phase (the older headless tests); retired when the next encounter stages.
    */
   flow?: BattleFlow;
   /** Player combatants placed for the current encounter. */
@@ -454,6 +455,7 @@ export class RunLoop {
     });
     this.source = source;
     this.staged = staged;
+    this.flow = undefined; // the last encounter's game master is retired with its battle
     this.combatants = players;
     this.battle = staged.battle;
     this.stagedEnemyTraps = enemyTraps(staged.battle).length;
@@ -483,13 +485,29 @@ export class RunLoop {
    * as the net's exposure multiplier, and the party takes its opening trap read. Returns the
    * flow; {@link autoDeploy} plays it headlessly, the scene sends the player's intents.
    */
-  enterDeploy(): BattleFlow {
+  enterDeploy(opts: { hasGuild?: boolean } = {}): BattleFlow {
     if (!this.battle || !this.source) throw new Error("RunLoop.enterDeploy: no staged battle");
     this.battle.setStash(this.run.inventory);
-    const flow = new BattleFlow(this.battle, { exposureMultiplier: deployModifiers(this.run, this.source).exposureMultiplier });
+    const flow = this.buildFlow(opts);
     flow.enterDeploy();
     this.flow = flow;
     return flow;
+  }
+
+  /**
+   * The encounter's flow, over the run layer's reads: the morale × intel deploy edge, the
+   * **graded** terminal (D50 — a closing-gate can fail the fight while enemies still stand, so
+   * the flow polls the objective classifier, not just the elimination primitive), and whether
+   * a guild is present (Bribe is on the table for the no-action backstop).
+   */
+  private buildFlow(opts: { hasGuild?: boolean } = {}): BattleFlow {
+    if (!this.battle || !this.source) throw new Error("RunLoop.buildFlow: no staged battle");
+    const battle = this.battle;
+    return new BattleFlow(battle, {
+      exposureMultiplier: deployModifiers(this.run, this.source).exposureMultiplier,
+      decided: () => (this.staged ? encounterOutcome(this.staged) !== undefined : battle.outcome().over),
+      hasGuild: opts.hasGuild,
+    });
   }
 
   /**
@@ -878,21 +896,19 @@ export class RunLoop {
   autoBattle(opts: { maxTurns?: number; player?: BattlePolicy; enemy?: BattlePolicy } = {}): "player" | "enemy" | undefined {
     if (!this.battle) throw new Error("RunLoop.autoBattle: no staged battle");
     const battle = this.battle;
+    // The same clock the scene steps (design map, step 3): a caller that skipped staging gets a
+    // flow opened straight into combat. It stops the moment the encounter is **decided** (D50 —
+    // the flow polls the graded outcome; resolve() reads the same classifier for the grade).
+    const flow = this.flow ?? (this.flow = this.buildFlow());
     const maxTurns = opts.maxTurns ?? 1000;
     const player = opts.player ?? this.policy.player;
     const enemy = opts.enemy ?? this.policy.enemy;
-    // Stop the moment the encounter is **decided** (D50) — a closing-gate can fail
-    // the fight while enemies still stand, so poll the graded outcome, not just the
-    // elimination primitive. resolve() reads the same classifier for the grade.
-    const decided = () =>
-      this.staged ? encounterOutcome(this.staged) !== undefined : battle.outcome().over;
     for (let i = 0; i < maxTurns; i++) {
-      if (decided()) return battle.outcome().winner;
-      const actor = battle.nextActor();
-      if (!actor) break;
-      // The whole plan→execute→endTurn step lives in Battle.runPolicyTurn — drive it
-      // with the acting side's policy (the seam the sim swaps for A/B, D56).
-      battle.runPolicyTurn(actor, actor.side === "player" ? player : enemy);
+      const step = flow.advanceClock();
+      if (step.kind === "finish" || step.kind === "refused") break;
+      // A hidden ambusher's pass and the no-action backstop are the flow's; every other actor's
+      // plan → execute → endTurn runs with its side's policy (the seam the sim swaps for A/B, D56).
+      if (step.kind === "enemyTurn" || step.kind === "turn") flow.policyTurn(step.actor, step.actor.side === "player" ? player : enemy);
     }
     return battle.outcome().winner;
   }

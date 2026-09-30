@@ -5,7 +5,6 @@ import { CombatView } from "../combat-view";
 import { addVignette } from "../vignette";
 import { pct,
   reachableTiles,
-  moveBudget,
   isImmobilized,
   inAttackRange,
   refreshAuras,
@@ -46,10 +45,9 @@ import { pct,
   type SpawnZone,
   // D63/D60 Phase B — the pure deploy/battle-flow decisions (headless, vitest-
   // tested), so the scene renders the choices instead of making them.
-  advanceOutcome,
   type BattleFlow,
   type DeployAdvance,
-  noActionsAvailable as scanNoActions,
+  type MoveResult,
   adjacentRevealedTrap as findAdjacentRevealedTrap,
   // M5 — camp / morale
   moraleTier,
@@ -79,7 +77,6 @@ import { pct,
   isDroppedKey,
   hiddenTraps,
   revealTrapsNear,
-  spotWhileMoving,
   disarmTrap,
   canDisarm,
   type ConcealedTrap,
@@ -282,7 +279,10 @@ export class BattleScene extends Phaser.Scene {
   private intel?: IntelReport;
 
   // Battle interaction.
-  private waitingFor: Unit | null = null;
+  /** The unit whose combat turn is open (read from the flow), or null between turns. */
+  private get waitingFor(): Unit | null {
+    return this.phase === "battle" && this.flow ? this.flow.combatView().actor : null;
+  }
   private armedSkill: SkillDef | null = null;
   /**
    * Free-move turn (D60): the active unit spends a **movement budget** tile-by-tile
@@ -293,25 +293,21 @@ export class BattleScene extends Phaser.Scene {
   /**
    * Movement still in the budget this turn; 0 once spent or Immobilized. The **one**
    * budget for both phases (D-feel consolidation): a deploy turn and a battle turn both step
-   * tile-by-tile against it, charging the **weighted** reach cost of each leg. In deployment
-   * the flow owns it (read-through); the combat turn keeps its own field until the combat
-   * slice of the flow lands.
+   * tile-by-tile against it, charging the **weighted** reach cost of each leg. The flow owns
+   * it in both phases (design map, step 3); the scene reads through.
    */
   private get moveBudget(): number {
-    return this.phase === "deployment" && this.flow ? this.flow.view().moveBudget : this.combatMoveBudget;
+    if (!this.flow) return 0;
+    return this.phase === "deployment" ? this.flow.view().moveBudget : this.flow.combatView().moveBudget;
   }
-  private set moveBudget(v: number) {
-    this.combatMoveBudget = v;
+  /** True once the unit has used its single Act this combat turn (attack / skill / verb) — the flow's read. */
+  private get acted(): boolean {
+    return this.flow ? this.flow.combatView().acted : false;
   }
-  private combatMoveBudget = 0;
-  /** True once the unit has used its single Act this turn (attack / skill / verb). */
-  private acted = false;
-  /** Whether that Act costs the full Act CT (a `spend: "move"` skill does not). */
-  private actCharged = false;
-  /** True if the unit has stepped at all this turn (drives the end-turn CT spend). */
-  private movedThisTurn = false;
-  /** A sprung trap locks the turn's movement: no take-back once it's cost HP. */
-  private turnLocked = false;
+  /** A sprung trap locks the turn's movement: no take-back once it's cost HP — the flow's read. */
+  private get turnLocked(): boolean {
+    return this.flow ? this.flow.combatView().locked : false;
+  }
   /** The reachable destinations for the unit's *remaining* budget (path + cost each). */
   private reach: ReturnType<typeof reachableTiles> = [];
   /** `reach` keyed by tile for O(1) click/hover lookup (`"col,row"`). */
@@ -490,7 +486,6 @@ export class BattleScene extends Phaser.Scene {
     this.wireBattleFx();
     this.over = false;
     this.busy = false;
-    this.waitingFor = null;
     this.armedSkill = null;
     this.trapLayer.resetPlayer();
     this.pendingHerb = null;
@@ -679,7 +674,7 @@ export class BattleScene extends Phaser.Scene {
     // kits, the safe ground (authored zones, D119, else the campfire) and the closing net (D63) are
     // built, the label-keyed RNG streams derive from the one encounter seed, and the party takes
     // its opening Awareness read of the trap field (D12). The scene reads all of it from the flow.
-    this.flow = this.loop.enterDeploy();
+    this.flow = this.loop.enterDeploy({ hasGuild: !!this.guild });
     this.safeGround = this.flow.safeGround;
     this.front = this.flow.front;
     this.spotRng = this.flow.spotRng;
@@ -1039,7 +1034,7 @@ export class BattleScene extends Phaser.Scene {
    * teardown, and the log line.
    */
   private doRescue(actor: Unit, captive: Unit, ctx: BoardCtx): void {
-    if (!this.canFieldAct(actor, ctx)) return;
+    if (!this.canFieldAct(actor)) return;
     if (!isAdjacent(actor.pos, captive.pos)) {
       return this.setHint(`Move ${actor.name} next to ${captive.name} to pick the lock.`);
     }
@@ -1101,7 +1096,7 @@ export class BattleScene extends Phaser.Scene {
    * grid redraw, the marker teardown, and the log line.
    */
   private doKeyGate(actor: Unit, gate: Gate, ctx: BoardCtx): void {
-    if (!this.canFieldAct(actor, ctx)) return;
+    if (!this.canFieldAct(actor)) return;
     if (!canKeyGate(gate, actor)) {
       return this.setHint(`Move ${actor.name} next to the gate to turn the key.`);
     }
@@ -1116,7 +1111,7 @@ export class BattleScene extends Phaser.Scene {
    * bus listener) owns the grid redraw, the marker teardown, and the log line.
    */
   private doOpenGate(actor: Unit, gate: Gate, ctx: BoardCtx): void {
-    if (!this.canFieldAct(actor, ctx)) return;
+    if (!this.canFieldAct(actor)) return;
     if (!canLockpickGate(gate, actor)) {
       return this.setHint(`Move ${actor.name} next to the cell to pick its lock.`);
     }
@@ -1131,7 +1126,7 @@ export class BattleScene extends Phaser.Scene {
    * flash, the HP-readout refresh, the redraw, and the log line.
    */
   private doBreakGate(actor: Unit, gate: Gate, ctx: BoardCtx): void {
-    if (!this.canFieldAct(actor, ctx)) return;
+    if (!this.canFieldAct(actor)) return;
     if (!canAttackGate(gate, actor)) {
       return this.setHint(`Move ${actor.name} into range of the door to break it.`);
     }
@@ -1146,7 +1141,7 @@ export class BattleScene extends Phaser.Scene {
    * the log line.
    */
   private doPullLever(actor: Unit, lever: Lever, ctx: BoardCtx): void {
-    if (!this.canFieldAct(actor, ctx)) return;
+    if (!this.canFieldAct(actor)) return;
     if (!canPullLever(lever, actor)) {
       return this.setHint(`Move ${actor.name} next to the lever to pull it.`);
     }
@@ -1439,66 +1434,48 @@ export class BattleScene extends Phaser.Scene {
    */
   private moveStep(actor: Unit, tile: GridCoord, ctx: BoardCtx): void {
     if (actor.captured || this.busy) return;
-    if (ctx === "deployment") return this.deployMoveStep(actor, tile);
-    const r = this.reachByKey.get(`${tile.col},${tile.row}`);
-    if (!r || r.path.length === 0) {
+    const deploy = ctx === "deployment";
+    const hpBefore = actor.hp;
+    // The click is a **move intent** to the flow: it checks the reach, runs the per-step trap
+    // read (D12), commits through the logged `move` verb, spends the weighted budget (and, in
+    // combat, locks the turn if a missed trap bit). The scene animates what was walked and
+    // narrates the refusal in the phase's words.
+    const res = this.flow.move(actor, tile);
+    if (!res.ok) return this.narrateRefusedMove(actor, res, deploy);
+    this.busy = true;
+    this.hoverTile = null;
+    if (!deploy) {
+      // Battle: a move clears any armed strike/skill aim and its action row (the strike
+      // telegraph re-arms after the step). Deployment has no strike to clear.
+      this.armedSkill = null;
+      this.clearActionButtons();
+      this.highlightTile(null);
+      this.armedAim = null;
+    }
+    this.animateMove(actor, res.walked, () =>
+      deploy ? this.afterDeployMoveStep(actor, !!res.spotted, hpBefore) : this.afterBattleMoveStep(actor, !!res.spotted),
+    );
+  }
+
+  /** Why the flow refused the step, in the phase's words (a balk draws the trap sensed just now). */
+  private narrateRefusedMove(actor: Unit, res: Extract<MoveResult, { ok: false }>, deploy: boolean): void {
+    if (res.reason === "balked") {
+      if (res.spotted) this.redrawTrapMarkers(); // a trap sensed *now* on the blocked tile — mark it
       return this.setHint(
-        this.canMoveFurther()
-          ? "Out of reach — click a lit tile (you move in steps, not leaps)."
+        `${actor.name} ${res.spotted ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
+          `(${ICON.trapArmed.glyph}) — route around it, Disarm it, ${deploy ? "" : "strike, "}or End Turn.`,
+      );
+    }
+    if (res.reason === "out-of-reach") {
+      return this.setHint(deploy ? "Out of reach — click a lit tile (you step, not leap)." : "Out of reach — click a lit tile (you move in steps, not leaps).");
+    }
+    if (res.reason === "out-of-moves") {
+      return this.setHint(
+        deploy
+          ? "Out of moves this turn — Dig In, place a trap, or End Turn (Space)."
           : `${actor.name} is out of moves — strike a foe, use a skill, or End Turn (Space/W).`,
       );
     }
-    // Per-step trap read (D12): the unit may sense a hidden enemy trap and stop short, or
-    // blunder onto one it missed. Truncate the click's route to what it actually walks; a
-    // trap it already spotted halts it short (you don't step onto one you see).
-    const spot = this.readStepTraps(actor, r.path, (sensed) =>
-      `${actor.name} ${sensed ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
-        `(${ICON.trapArmed.glyph}) — route around it, Disarm it, strike, or End Turn.`,
-    );
-    if (!spot) return; // balked on a trap — hold ground (hint already set)
-    const walked = spot.path;
-    // The walked route ends on a tile from the original reach, so its weighted cost is
-    // exactly the reach cost to that halt tile (a tarpit ring costs extra to enter, D42).
-    const halt = walked[walked.length - 1];
-    const cost = this.reachByKey.get(`${halt.col},${halt.row}`)?.cost ?? r.cost;
-    const hpBefore = actor.hp;
-    this.busy = true;
-    this.hoverTile = null;
-    // Battle: a move clears any armed strike/skill aim and its action row (the strike
-    // telegraph re-arms after the step).
-    this.armedSkill = null;
-    this.clearActionButtons();
-    this.highlightTile(null);
-    this.armedAim = null;
-    this.battle.moveUnit(actor, walked);
-    this.movedThisTurn = true;
-    this.moveBudget -= cost; // weighted spend
-    this.animateMove(actor, walked, () => this.afterBattleMoveStep(actor, !!spot.spotted, hpBefore));
-  }
-
-  /**
-   * The deploy step — the same click, sent to the flow as a **move intent**: it checks the reach,
-   * runs the per-step trap read (D12), commits through the logged `move` verb and spends the
-   * weighted budget; the scene animates what was walked and narrates the refusal.
-   */
-  private deployMoveStep(actor: Unit, tile: GridCoord): void {
-    const hpBefore = actor.hp;
-    const res = this.flow.move(actor, tile);
-    if (!res.ok) {
-      if (res.reason === "balked") {
-        if (res.spotted) this.redrawTrapMarkers(); // a trap sensed *now* on the blocked tile — mark it
-        return this.setHint(
-          `${actor.name} ${res.spotted ? "senses a hidden trap" : "won't step onto the spotted trap"} ` +
-            `(${ICON.trapArmed.glyph}) — route around it, Disarm it, or End Turn.`,
-        );
-      }
-      if (res.reason === "out-of-reach") return this.setHint("Out of reach — click a lit tile (you step, not leap).");
-      if (res.reason === "out-of-moves") return this.setHint("Out of moves this turn — Dig In, place a trap, or End Turn (Space).");
-      return;
-    }
-    this.busy = true;
-    this.hoverTile = null;
-    this.animateMove(actor, res.walked, () => this.afterDeployMoveStep(actor, !!res.spotted, hpBefore));
   }
 
   /** The deploy after-step: relight the (smaller) reach, surface trap/feedback, chain clicks. */
@@ -1525,7 +1502,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /** The battle after-step: end if the move decided it, else keep the turn open (D60). */
-  private afterBattleMoveStep(actor: Unit, spotted: boolean, hpBefore: number): void {
+  private afterBattleMoveStep(actor: Unit, spotted: boolean): void {
     this.checkTrapSprings();
     if (spotted) this.redrawTrapMarkers(); // a sensed trap — draw its fresh marker
     this.refreshHud();
@@ -1533,7 +1510,7 @@ export class BattleScene extends Phaser.Scene {
       this.busy = false;
       return this.afterTurn();
     }
-    if (actor.hp < hpBefore) this.turnLocked = true; // a trap bit — the move stands
+    // (A trap that bit locked the turn in the flow — the move stands, no take-back.)
     this.afterActionContinue(actor);
     // Override the generic turn hint when the unit balked at a freshly-sensed trap.
     if (spotted && this.waitingFor === actor && !this.over) {
@@ -1639,56 +1616,43 @@ export class BattleScene extends Phaser.Scene {
 
   private onAdvance(): void {
     if (this.over || this.busy || this.waitingFor) return;
-    if (this.encounterDecided()) return this.finishBattle();
-    const actor = this.battle.nextActor();
-    // The clock tick inside nextActor may have closed a gate (D50) — re-poll, then
-    // let the pure decision pick the branch the scene renders (D60 Phase B).
-    const out = advanceOutcome(actor, this.encounterDecided());
-    if (out.kind === "finish") return this.finishBattle();
+    // The flow steps the clock (design map, step 3): it polls the graded terminal before and
+    // after the tick (a tick can close a gate, D50), passes a hidden ambusher, hands an enemy
+    // back for its policy turn, or opens a player unit's free-move turn — or passes it at once
+    // when it has nothing it can do (the D55 backstop). The scene renders the branch.
+    const step = this.flow.advanceClock();
+    if (step.kind === "finish") return this.finishBattle();
+    if (step.kind === "refused") return;
     this.revealScouted();
-    this.highlightTile(out.actor.pos);
+    this.highlightTile(step.actor.pos);
     this.refreshHud();
     // A hidden ambush body lies in wait — it doesn't act until the party scouts it
-    // into view (D42/D44 fog); it just passes its turn.
-    if (out.kind === "ambushPass") {
-      this.battle.endTurn(out.actor, {});
-      this.setHint("Something stirs in ambush ahead… scout it out.");
+    // into view (D42/D44 fog); it just passed its turn.
+    if (step.kind === "ambushPass") return this.setHint("Something stirs in ambush ahead… scout it out.");
+    if (step.kind === "enemyTurn") return this.runEnemyTurn(step.actor);
+    if (step.kind === "pass") {
+      if (step.spotted.length > 0) this.redrawTrapMarkers(); // its turn-open read still counts
+      this.afterTurn();
+      if (!this.over) this.setHint(`${step.actor.name} has no available action — turn passed. Advance Clock.`);
       return;
     }
-    if (out.kind === "enemyTurn") this.runEnemyTurn(out.actor);
-    else this.beginPlayerTurn(out.actor);
+    this.beginPlayerTurn(step.actor, step.spotted.length);
   }
 
   /**
-   * Open a player unit's **free-move turn** (D60): seed the movement budget, clear
-   * the per-turn flags, spot nearby traps, and surface the board read (reach wash +
-   * strike telegraph) and the action row. The big primary button becomes **End
-   * Turn** — the obvious, deliberate way to close the turn. A unit with nothing it
-   * can do auto-passes (the D55 backstop) so the clock can't stall.
+   * Render a player unit's **free-move turn** the flow opened (D60: undo armed, budget seeded,
+   * the passive trap read done): surface the board read (reach wash + strike telegraph) and
+   * the action row. The big primary button becomes **End Turn** — the obvious, deliberate way
+   * to close the turn.
    */
-  private beginPlayerTurn(actor: Unit): void {
+  private beginPlayerTurn(actor: Unit, spotted = 0): void {
     this.view.setActiveUnit(actor);
-    this.waitingFor = actor;
-    this.moveBudget = moveBudget(actor);
-    this.acted = false;
-    this.actCharged = false;
-    this.movedThisTurn = false;
-    this.turnLocked = false;
-    // Arm the action-log undo for the turn (D60 take-back) — every move/strike/skill
-    // the unit makes becomes undoable back to this point, until the turn commits.
-    this.battle.beginUndo();
     this.hoverTile = null;
     this.hoverFoe = null;
     this.queuedTile = null;
     this.armedAim = null;
     this.recomputeReach(actor);
-    // The active unit looks around — an Awareness roll may spot nearby traps (D12).
-    this.scanTrapsOnTurnOpen(actor); // combat lets the generic turn hint stand below
-    if (this.noActionsAvailable(actor)) {
-      this.setHint(`${actor.name} has no available action — turn passed. Advance Clock.`);
-      this.endPlayerTurn(actor);
-      return;
-    }
+    if (spotted > 0) this.redrawTrapMarkers(); // the turn-open Awareness read found something (D12)
     this.setPrimary("End Turn");
     this.showSkillButtons(actor);
     this.drawPreview();
@@ -1734,16 +1698,6 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * True when `actor` has no legal action this turn (D55): can't reach a tile,
-   * can't strike any foe, has no battle skill, and no Search/Disarm/Bribe/rescue
-   * verb. The auto-pass backstop reads this so a surrounded unit can't deadlock.
-   */
-  private noActionsAvailable(actor: Unit): boolean {
-    // The D55 backstop is a pure scan now (battle-flow, D60 Phase B).
-    return scanNoActions({ actor, units: this.battle.units, grid: this.grid, entities: this.battle.entities, hasGuild: !!this.guild });
-  }
-
-  /**
    * **End the active unit's turn** (D60) — the explicit End Turn button / W key, the
    * turn-start no-action backstop, and the auto-end-when-spent path all route here.
    * Spends CT from what the unit actually did this turn (`moved`/`acted`), so a unit
@@ -1751,8 +1705,6 @@ export class BattleScene extends Phaser.Scene {
    */
   private endPlayerTurn(actor: Unit): void {
     if (this.busy || this.waitingFor !== actor) return;
-    this.battle.endUndo(); // the turn commits — no take-back across the boundary
-    this.waitingFor = null;
     this.armedSkill = null;
     this.pendingHerb = null;
     this.bribeArmed = false;
@@ -1762,7 +1714,7 @@ export class BattleScene extends Phaser.Scene {
     this.hoverTile = null;
     this.armedAim = null;
     this.focusCard.hide();
-    this.battle.endTurn(actor, { moved: this.movedThisTurn, acted: this.actCharged });
+    this.flow.endTurn(actor); // the turn commits (no take-back across the boundary) and its CT is spent, logged
     this.afterTurn();
     if (!this.over) this.setHint(`${actor.name}'s turn ends. Advance Clock.`);
   }
@@ -1800,7 +1752,7 @@ export class BattleScene extends Phaser.Scene {
     // through the action log (Phase 2).
     // Undo is **persistent** beside End Turn so the take-back affordance is always visible —
     // greyed/inert until there's something on this turn's stack (and no sprung-trap lock).
-    const canUndo = this.battle.canUndo() && !this.turnLocked;
+    const canUndo = this.flow.combatView().canUndo;
     const undo: ActionSpec = {
       text: "Undo",
       description: canUndo
@@ -1919,39 +1871,18 @@ export class BattleScene extends Phaser.Scene {
 
   // --- Trap-field: spotting, searching, disarming (D12) ----------------------
 
-  /**
-   * The on-turn-open Awareness scan (D12), shared by **both** phases' turn-start: a unit
-   * stepping up may passively spot nearby concealed traps. Reveals them, redraws the
-   * markers if any surfaced, and returns the count — the caller folds it into its turn
-   * hint (deployment names the spot; combat lets the generic turn hint stand). A no-op
-   * when no traps are afield.
-   */
-  private scanTrapsOnTurnOpen(actor: Unit): number {
-    if (hiddenTraps(this.battle.entities).length === 0) return 0;
-    const found = revealTrapsNear(actor, this.battle.entities, this.spotRng);
-    if (found.length > 0) this.redrawTrapMarkers();
-    return found.length;
-  }
-
   /** A revealed, un-sprung concealed trap adjacent to `actor` (the disarm target). */
   private adjacentRevealedTrap(actor: Unit): ConcealedTrap | undefined {
     return findAdjacentRevealedTrap(actor, this.battle.entities); // pure (battle-flow, D60 Phase B)
   }
 
-  /** Mark the unit's single Act spent this turn (D60); `charged` drives the CT cost. */
-  private noteAct(charged = true): void {
-    this.acted = true;
-    this.actCharged = charged;
-  }
-
   /**
-   * Can `actor` still take a field-interaction Act (Search / Disarm) this turn? The one
-   * guard for both phases — the deploy turn and the combat turn share the "one Act, not
-   * while busy, not captured" rule; only the *who's-acting* / *already-acted* fields differ.
+   * Can `actor` still take a field-interaction Act (Search / Disarm) this turn? The one guard
+   * for both phases: not while an animation is mid-flight, and the flow's Act gate (whose
+   * turn it is, the one Act unspent, not captured — and not hunkered, in deployment).
    */
-  private canFieldAct(actor: Unit, ctx: BoardCtx): boolean {
-    if (this.busy || actor.captured) return false;
-    return ctx === "deployment" ? this.flow.canAct(actor) : this.waitingFor === actor && !this.acted;
+  private canFieldAct(actor: Unit): boolean {
+    return !this.busy && this.flow.canAct(actor);
   }
 
   /**
@@ -1974,7 +1905,7 @@ export class BattleScene extends Phaser.Scene {
       this.highlightTile(null);
       this.hoverTile = null;
       this.armedAim = null;
-      this.noteAct(charged);
+      this.flow.spendAct(actor, { charged });
       this.afterActionContinue(actor);
     }
     if (hint) this.setHint(hint);
@@ -1982,7 +1913,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Spend this unit's Act on a deliberate Search — a wider radius and a better spot roll (both phases). */
   private doSearch(actor: Unit, ctx: BoardCtx): void {
-    if (!this.canFieldAct(actor, ctx)) return;
+    if (!this.canFieldAct(actor)) return;
     const found = revealTrapsNear(actor, this.battle.entities, this.spotRng, { search: true });
     if (found.length > 0) this.redrawTrapMarkers();
     // Deployment narrates the search result; combat lets afterActionContinue's turn hint stand.
@@ -1996,7 +1927,7 @@ export class BattleScene extends Phaser.Scene {
 
   /** Disarm a spotted adjacent trap (Survivalist), harvest its kit — the unit's Act (both phases). */
   private doDisarm(actor: Unit, trapId: string, ctx: BoardCtx): void {
-    if (!this.canFieldAct(actor, ctx)) return;
+    if (!this.canFieldAct(actor)) return;
     const res = disarmTrap(this.battle.entities, trapId, actor, this.run.inventory);
     if (!res.ok) return this.setHint(`Can't disarm: ${res.reason}`);
     this.redrawTrapMarkers();
@@ -2030,28 +1961,6 @@ export class BattleScene extends Phaser.Scene {
     if (sprang) this.setHint(`${ICON.trapSprung.glyph} A hidden trap sprang!`);
   }
 
-  /**
-   * The per-step trap read shared by both phases' movement (D12): walk `steps` until a
-   * hidden enemy trap is sensed (stop short) or an already-spotted one blocks the next
-   * tile. Returns the spot result — the caller walks `spot.path`; on a full balk (nothing
-   * walked) it draws any freshly sensed marker, sets the phase's `balkHint`, and returns
-   * `null` so the caller bails. Both phases now walk through the one `moveUnit` verb (D67);
-   * only the post-walk continuation (deploy budget vs. the combat turn) differs by caller.
-   */
-  private readStepTraps(
-    actor: Unit,
-    steps: readonly GridCoord[],
-    balkHint: (sensed: boolean) => string,
-  ): ReturnType<typeof spotWhileMoving> | null {
-    const spot = spotWhileMoving(actor, steps, this.battle.entities, this.spotRng);
-    if (spot.path.length === 0) {
-      if (spot.spotted) this.redrawTrapMarkers(); // a trap sensed *now* on the blocked tile — mark it
-      this.setHint(balkHint(!!spot.spotted));
-      return null;
-    }
-    return spot;
-  }
-
   /** The current combat node's banded preview (D24) — leverage for the Noble's bribe. */
   private currentPreview() {
     return previewNode(this.run, this.run.mapNodeId, scoutedTier(this.run.overworld, this.run.mapNodeId));
@@ -2077,7 +1986,7 @@ export class BattleScene extends Phaser.Scene {
     this.highlightTile(null);
     this.hoverTile = null;
     this.armedAim = null;
-    this.noteAct();
+    this.flow.spendAct(actor);
     this.refreshHud();
     this.afterActionContinue(actor);
     if (!this.over && this.waitingFor === actor) this.setHint(res.detail ?? `${foe.name} swayed.`);
@@ -2148,7 +2057,7 @@ export class BattleScene extends Phaser.Scene {
         this.setHint(`${actor.name} lifted ${attempt.stolen}g off the purse! Cut it down before it escapes to recover the gold.`);
       }
     }
-    const plan = this.battle.runPolicyTurn(actor);
+    const plan = this.flow.policyTurn(actor); // planned, lowered to logged actions, ended — through the one flow
     this.animateMove(actor, plan.path, () => {
       if (plan.target) this.flashAttack(actor, plan.target);
       this.afterTurn();
@@ -2459,7 +2368,7 @@ export class BattleScene extends Phaser.Scene {
     // The rescue verb frees the captive and emits `unitRescued`; the bus listener owns the
     // token re-tint, the flash, and the combat-log line (the event drives the reaction).
     this.battle.rescue(captive, actor);
-    this.noteAct();
+    this.flow.spendAct(actor);
     this.refreshHud();
     this.afterActionContinue(actor);
     if (!this.over) this.setHint(`${actor.name} freed ${captive.name}!`);
@@ -2482,7 +2391,7 @@ export class BattleScene extends Phaser.Scene {
     this.hoverTile = null;
     this.armedAim = null;
     this.battle.attack(actor, foe);
-    this.noteAct();
+    this.flow.spendAct(actor);
     this.flashAttack(actor, foe);
     this.refreshHud();
     this.afterActionContinue(actor);
@@ -2508,17 +2417,13 @@ export class BattleScene extends Phaser.Scene {
       if (!this.flow.undo(actor)) return;
       this.queuedTile = null;
     } else {
-      if (this.turnLocked || this.waitingFor !== actor) return;
-      // Combat clears any armed target on take-back.
+      // The flow rolls the turn back (positions, HP, statuses, clock/charges, RNG cursor, the
+      // log, and its own flags + budget); a sprung-trap lock refuses. Combat clears any armed
+      // target on take-back.
+      if (this.waitingFor !== actor || !this.flow.undo(actor)) return;
       this.armedSkill = null;
       this.pendingHerb = null;
       this.bribeArmed = false;
-      this.battle.undoAll(); // core: positions, HP, statuses, clock/charges, RNG cursor, log
-      // Per-turn render flags back to the turn's start.
-      this.moveBudget = moveBudget(actor);
-      this.acted = false;
-      this.actCharged = false;
-      this.movedThisTurn = false;
     }
     // Resync every token's position + captured tint — the take-back may have moved /
     // revived / healed others. The one shared spine of the two undo paths.
@@ -2554,10 +2459,6 @@ export class BattleScene extends Phaser.Scene {
   private afterTurn(): void {
     this.view.setActiveUnit(null);
     this.busy = false;
-    this.movedThisTurn = false;
-    this.acted = false;
-    this.actCharged = false;
-    this.turnLocked = false;
     this.hoverTile = null;
     this.hoverFoe = null;
     this.queuedTile = null;

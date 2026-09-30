@@ -47,14 +47,14 @@ const navTo = (id) => ov(
   `s.scene.start("BattleScene",{run:s.run,loop:s.loop});`,
 );
 
-// Start the battle and open a real player turn so `waitingFor` is set. Commit the
-// deployment (startBattle), then hand the turn to a living player unit directly
+// Start the battle and open a real player turn so `waitingFor` reads a unit. Commit the
+// deployment (startBattle), then open the turn on the flow for a living player unit directly
 // (skipping the enemy's animated turns, which would leave the scene busy/async).
 const intoBattle = bs(
   `if(s.phase==="deployment"){s.busy=false; s.startBattle();}` +
   `s.busy=false; s.over=false;` +
   `const p=s.battle.units.find(x=>x.side==="player"&&x.alive&&!x.captured&&!x.hidden);` +
-  `if(p)s.beginPlayerTurn(p);`,
+  `if(p){` + `s.flow.fight = { actor: p, moved: false, acted: false, actCharged: false, locked: false, moveBudget: 4 };` + `s.beginPlayerTurn(p);}`,
 );
 
 // Re-job the active player unit so the showcase carries the signature footprints,

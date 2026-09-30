@@ -269,9 +269,9 @@ async function main() {
       put("thane", { col: 12, row: 10 });
       for (const v of u) s.placeView(v);
       // Hand the turn to a unit so the combat action row (and its control box) renders —
-      // mirroring what beginPlayerTurn does, primary included (it is End Turn during a turn).
-      s.waitingFor = u.find(v => v.id === "cinder");
-      s.acted = false;
+      // the combat turn is the flow's state (BattleFlow): open one on the unit directly,
+      // primary included (it is End Turn during a turn).
+      s.flow.fight = { actor: u.find(v => v.id === "cinder"), moved: false, acted: false, actCharged: false, locked: false, moveBudget: 4 };
       s.setPrimary("End Turn");
       s.showSkillButtons(s.waitingFor);
       const btn = s.actionButtons.find(b => b.label && /Go Now/.test(b.label.text));
@@ -395,8 +395,7 @@ async function main() {
       for (const id of ["cinder", "lark", "nyx"]) put(id, mouth);
       put("thane", { col: 12, row: 10 }); // …but Thane is still deep inside.
       for (const v of u) s.placeView(v);
-      s.waitingFor = u.find(v => v.id === "cinder");
-      s.acted = false;
+      s.flow.fight = { actor: u.find(v => v.id === "cinder"), moved: false, acted: false, actCharged: false, locked: false, moveBudget: 4 };
       s.setPrimary("End Turn");
       s.showSkillButtons(s.waitingFor);
       const btn = s.actionButtons.find(b => b.label && /Go Now/.test(b.label.text));

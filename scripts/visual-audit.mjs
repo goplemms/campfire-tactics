@@ -68,7 +68,7 @@ const driveBattle = async (g) => {
 // Force a clean WIN on the live (not-yet-decided) battle and finish → the victory
 // resolution report. Runs right after driveBattle parks on a player turn, so `s.over`
 // is false and this actually resolves (its guard would bail on an already-over fight).
-const forceWin = bs(`if(s.over||!s.battle)return;for(const u of s.battle.units)if(u.side==="enemy")u.alive=false;s.busy=false;s.waitingFor=null;s.finishBattle();`);
+const forceWin = bs(`if(s.over||!s.battle)return;for(const u of s.battle.units)if(u.side==="enemy")u.alive=false;s.busy=false;if(s.flow)s.flow.fight=null;s.finishBattle();`);
 // Open an authored overworld event's screen (the arc-events dispatch path). The jumpTo
 // walk must SETTLE before commit() — firing commit on the same tick leaves the event
 // modal unopened (the plain map shows instead), the bug that made this surface capture

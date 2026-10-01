@@ -16,8 +16,10 @@
  */
 
 import type { GridCoord } from "./iso";
-import { TileGrid } from "./grid";
-import { createUnit, type Unit, type UnitSpec } from "./units";
+import type { UnitSpec } from "./units";
+import { enemySpecFromTemplate } from "./encounter-entities";
+import type { EncounterLayout } from "./encounter-layout";
+import { withDefaultGoal } from "./objectives";
 import type { JobId } from "./jobs";
 import type { Rng } from "./rng";
 
@@ -197,20 +199,9 @@ function rollRoster(rng: Rng, index: number, cols: number, rows: number, blocked
       break;
     }
     enemies.push({
-      id: `e${index}-${i}-${tpl.id}`,
-      name: tpl.name,
-      side: "enemy",
-      pos,
-      speed: tpl.speed,
+      ...enemySpecFromTemplate(tpl, `e${index}-${i}-${tpl.id}`, pos),
       maxHp: tpl.maxHp + hpBoost,
       attack: tpl.attack + atkBoost,
-      defense: tpl.defense,
-      moveRange: tpl.moveRange,
-      sightRadius: tpl.sightRadius,
-      awareness: tpl.awareness,
-      thief: tpl.thief,
-      attackRange: tpl.attackRange,
-      jobId: tpl.jobId,
     });
   }
   return enemies;
@@ -255,12 +246,22 @@ export function generateEncounter(rng: Rng, index: number): EncounterDef {
   return { index, kind, cols, rows, blocked, enemies, reward };
 }
 
-/** Build a live {@link TileGrid} from an encounter def. */
-export function buildGrid(def: EncounterDef): TileGrid {
-  return new TileGrid(def.cols, def.rows, def.blocked);
-}
-
-/** Inflate an encounter's enemy specs into live {@link Unit}s. */
-export function buildEnemies(def: EncounterDef): Unit[] {
-  return def.enemies.map((spec) => createUnit(spec));
+/**
+ * Normalize a generated encounter into the {@link EncounterLayout} every battle is staged from: its
+ * rolled board and roster, the auto home edge for the party (no fixed spawns), and the default
+ * elimination goal. No captives, gates, levers or traps — those are authored-only today.
+ */
+export function layoutFromGenerated(def: EncounterDef): EncounterLayout {
+  return {
+    cols: def.cols,
+    rows: def.rows,
+    blocked: def.blocked,
+    enemies: def.enemies.map((spec) => ({ spec, hidden: false })),
+    captives: [],
+    gates: [],
+    levers: [],
+    traps: [],
+    spawnZones: [],
+    objectives: withDefaultGoal(),
+  };
 }

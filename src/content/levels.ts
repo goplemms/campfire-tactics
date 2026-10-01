@@ -189,7 +189,7 @@ function escorteeMatches(spec: UnitSpec, tag?: ObjectiveTag): boolean {
  * not just the finale — the general form of the two file-specific test pins it supersedes.
  *
  * ## Measure from the **placement** tile, never `spec.pos`
- * A captive is staged at its {@link "../core".CaptivePlacement.pos} — `buildAuthoredCaptives` passes
+ * A captive is staged at its {@link "../core".CaptivePlacement.pos} — `spawnCaptives` passes
  * `pos: c.pos` into `createUnit`, so the spec's own `pos` is **ignored at staging** and is free to be
  * a placeholder. Every `member()`-built spec in `hollow-mill.ts` is exactly that: `{ col: 0, row: 0 }`.
  * Reading `spec.pos` here therefore measured a tile the prisoner never stands on — and since the
@@ -227,7 +227,7 @@ function extractionIssues(e: Partial<AuthoredEncounter>): string[] {
 /**
  * A captive's **placement tile** (the encounters-as-JSON challenge pass, 2026-07-30).
  *
- * `buildAuthoredCaptives` stages a captive at `c.pos` — `createUnit` then reads `spec.pos.col`, so a
+ * `spawnCaptives` stages a captive at `c.pos` — `createUnit` then reads `spec.pos.col`, so a
  * placement-less captive is a **TypeError mid-boot**, not a load error. Nothing checked it: the
  * walkover guard is the only other reader of this field and it only runs when an `extraction`
  * objective exists, so a plain rescue level could carry a `pos`-less captive silently.

@@ -18,14 +18,13 @@
  */
 
 import type { GridCoord, Region } from "./iso";
-import type { Unit, UnitSpec, ReleaseRequirement } from "./units";
-import { createUnit } from "./units";
-import { TileGrid } from "./grid";
+import type { UnitSpec, ReleaseRequirement } from "./units";
 import { getEnemyTemplate, type EncounterReward } from "./generation";
-import { TAGS } from "./tags";
-import type { ObjectiveSpec } from "./objectives";
-import { makeGate, makeLever, type Gate, type GateLock, type Lever } from "./gates";
+import { withDefaultGoal, type ObjectiveSpec } from "./objectives";
+import type { GateLock } from "./gates";
 import type { SpawnZone } from "./deployment";
+import { enemySpecFromTemplate } from "./encounter-entities";
+import type { EncounterLayout } from "./encounter-layout";
 import type { IntelTier } from "./intel"; // type-only (erased) — no runtime cycle
 
 /** A hand-placed enemy in an authored encounter. */
@@ -185,67 +184,6 @@ export interface AuthoredEncounter {
   objectives?: ObjectiveSpec[];
 }
 
-/** Build the fixed {@link TileGrid} for an authored encounter. */
-export function buildAuthoredGrid(enc: AuthoredEncounter): TileGrid {
-  return new TileGrid(enc.cols, enc.rows, enc.blocked);
-}
-
-/**
- * Fail loud (D117) if an authored unit carries an **intrinsic tag not in the {@link TAGS} registry** —
- * a designer typo (`"garrsion"`) would otherwise be a silent no-op (the tag never matches its constant).
- * Every authored enemy/captive stages through here, so a bad tag can't reach the board unnoticed.
- */
-function assertRegisteredTags(u: Unit): void {
-  for (const t of u.tags) {
-    if (!TAGS[t]) throw new Error(`authored unit "${u.id}" carries unregistered tag "${t}" (not in TAGS)`);
-  }
-}
-
-/** Inflate an authored encounter's placements into live enemy {@link Unit}s. */
-export function buildAuthoredEnemies(enc: AuthoredEncounter): Unit[] {
-  return enc.enemies.map((p) => {
-    const tpl = getEnemyTemplate(p.templateId);
-    if (!tpl) throw new Error(`buildAuthoredEnemies: unknown template "${p.templateId}"`);
-    const u = createUnit({
-      id: p.id ?? `${p.templateId}@${p.pos.col},${p.pos.row}`,
-      name: tpl.name,
-      side: "enemy",
-      pos: p.pos,
-      speed: tpl.speed,
-      maxHp: tpl.maxHp,
-      attack: tpl.attack,
-      defense: tpl.defense,
-      moveRange: tpl.moveRange,
-      sightRadius: tpl.sightRadius,
-      awareness: tpl.awareness,
-      attackRange: tpl.attackRange,
-      jobId: tpl.jobId,
-      thief: tpl.thief,
-      role: p.role,
-      ...p.overrides,
-    });
-    u.hidden = p.hidden ?? false;
-    assertRegisteredTags(u);
-    return u;
-  });
-}
-
-/**
- * Inflate an authored encounter's {@link CaptivePlacement}s into live, **bound** player
- * units (D52). Each is forced player-side and authored (a freed authored cast member joins
- * permanently), placed at its `pos`, and stamped `captured` so it stages as a grey/bound
- * token: off the initiative clock, never an AI target, a rescuable sub-objective. Returns
- * `[]` when the encounter declares no captives.
- */
-export function buildAuthoredCaptives(enc: AuthoredEncounter): Unit[] {
-  return (enc.captives ?? []).map((c) => {
-    const u = createUnit({ ...c.spec, side: "player", pos: c.pos, authored: true, release: c.release });
-    u.captured = true;
-    assertRegisteredTags(u);
-    return u;
-  });
-}
-
 /**
  * An authored **gate** placement (D103): a tile + how it opens ({@link GateLock} conditions).
  * `locked` defaults **true** — an authored gate starts shut (the interesting state); set it `false`
@@ -258,21 +196,11 @@ export interface AuthoredGate {
   locked?: boolean;
 }
 
-/** Inflate an authored encounter's {@link AuthoredGate}s into live {@link Gate}s (locked by default). */
-export function buildAuthoredGates(enc: AuthoredEncounter): Gate[] {
-  return (enc.gates ?? []).map((g) => makeGate(g.id, g.pos, g.openBy, g.locked ?? true));
-}
-
 /** An authored **lever** placement (D103): a tile + the gate ids it toggles when pulled. */
 export interface AuthoredLever {
   id: string;
   pos: GridCoord;
   targets: string[];
-}
-
-/** Inflate an authored encounter's {@link AuthoredLever}s into live {@link Lever}s. */
-export function buildAuthoredLevers(enc: AuthoredEncounter): Lever[] {
-  return (enc.levers ?? []).map((l) => makeLever(l.id, l.pos, l.targets));
 }
 
 /**
@@ -324,27 +252,32 @@ export function buildSpawnZones(enc: AuthoredEncounter, flags: Record<string, bo
   return zones;
 }
 
-/** Place the party at the encounter's spawn tiles (extras stack on the last). */
-export function placeParty(party: readonly Unit[], spawns: readonly GridCoord[]): void {
-  party.forEach((u, i) => {
-    const s = spawns[Math.min(i, spawns.length - 1)] ?? { col: 0, row: 0 };
-    u.pos = { col: s.col, row: s.row };
-  });
-}
-
 /**
- * Place the whole party in the **primary** zone (D119) — the default that replaces
- * {@link placeParty}'s roster-order index-map for a zoned encounter.
- *
- * This is the fix, not a tidy-up: index-mapping `party[i] → spawns[i]` meant the finale's
- * first authored spawn (the side door) went to whoever happened to be first in the roster —
- * a Soldier, who cannot pick the cells — while the Thief started at the far mouth. Everyone
- * defaults to the primary zone with the other zones **EMPTY**; sending someone to the side
- * door is then a deliberate act (the entrance verb), and "I scouted but I'm still going in
- * the front" stays a legal play. Extras stack on the last tile, as `placeParty` always has.
+ * Normalize an authored encounter into the {@link EncounterLayout} every battle is staged from:
+ * each placement becomes an enemy stat block off its template (plus the designer's overrides), the
+ * spawn zones are filtered by the run's `flags` (D119), and the default elimination goal is added
+ * when no goal is authored (D50).
  */
-export function placeInZone(party: readonly Unit[], zone: SpawnZone): void {
-  placeParty(party, zone.tiles);
+export function layoutFromAuthored(enc: AuthoredEncounter, flags: Record<string, boolean> = {}): EncounterLayout {
+  return {
+    cols: enc.cols,
+    rows: enc.rows,
+    blocked: enc.blocked,
+    enemies: enc.enemies.map((p) => {
+      const tpl = getEnemyTemplate(p.templateId);
+      if (!tpl) throw new Error(`layoutFromAuthored: unknown template "${p.templateId}"`);
+      const id = p.id ?? `${p.templateId}@${p.pos.col},${p.pos.row}`;
+      return { spec: { ...enemySpecFromTemplate(tpl, id, p.pos), role: p.role, ...p.overrides }, hidden: p.hidden ?? false };
+    }),
+    captives: enc.captives ?? [],
+    gates: enc.gates ?? [],
+    levers: enc.levers ?? [],
+    traps: enc.traps ?? [],
+    controlRoom: enc.controlRoom,
+    spawnZones: buildSpawnZones(enc, flags),
+    playerSpawns: enc.playerSpawns,
+    objectives: withDefaultGoal(enc.objectives),
+  };
 }
 
 /** The graded outcome of an encounter (D43): win, survivable failure, or wipe. */

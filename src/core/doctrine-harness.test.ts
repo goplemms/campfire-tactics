@@ -12,7 +12,8 @@ import { createUnit, type Unit } from "./units";
 import { hasTag, GARRISON } from "./tags";
 import { keyholderOf, openGateOnGrid, makeGate, applyGatesToGrid } from "./gates";
 import { findPath } from "./pathfinding";
-import { buildAuthoredEnemies } from "./authored";
+import { layoutFromAuthored } from "./authored";
+import { spawnEnemies } from "./encounter-entities";
 import { inRegion } from "./iso";
 import { Battle } from "./turn";
 import { TileGrid } from "./grid";
@@ -61,10 +62,10 @@ describe("doctrine harness (M2.5)", () => {
     expect(battle.grid.isWalkable({ col: 3, row: 1 })).toBe(false); // tile re-blocked
   });
 
-  it("buildAuthoredEnemies fails loud on an unregistered authored tag (D117); the harness passes", () => {
+  it("staging an enemy fails loud on an unregistered authored tag (D117); the harness passes", () => {
     const bad = { ...DOCTRINE_HARNESS, enemies: [{ templateId: "bandit-thug", pos: { col: 0, row: 0 }, overrides: { tags: ["garrsion"] } }] };
-    expect(() => buildAuthoredEnemies(bad)).toThrow(/unregistered tag/);
-    expect(() => buildAuthoredEnemies(DOCTRINE_HARNESS)).not.toThrow();
+    expect(() => spawnEnemies(layoutFromAuthored(bad))).toThrow(/unregistered tag/);
+    expect(() => spawnEnemies(layoutFromAuthored(DOCTRINE_HARNESS))).not.toThrow();
   });
 });
 

@@ -57,6 +57,11 @@ export class TileGrid {
     return out;
   }
 
+  /** The board a layout describes: its size and its permanent walls. */
+  static fromLayout(layout: { cols: number; rows: number; blocked: readonly GridCoord[] }): TileGrid {
+    return new TileGrid(layout.cols, layout.rows, layout.blocked);
+  }
+
   /** True if the coordinate lies on the grid. */
   inBounds({ col, row }: GridCoord): boolean {
     return col >= 0 && col < this.cols && row >= 0 && row < this.rows;

@@ -4,10 +4,9 @@
  *
  * A node resolves to an {@link EncounterSource}: a procedural {@link EncounterDef}
  * (off a seed, {@link "./generation"}) or a hand-authored {@link AuthoredEncounter}
- * ({@link "./authored"}). {@link stageEncounter} turns *either* into one shape —
- * `{ battle, objectives }` — the renderer and the run loop consume uniformly. The
- * enemy-representation difference (specs vs placements) and the player-placement
- * policy (explicit spawns vs the auto home edge) are hidden behind this function.
+ * ({@link "./authored"}). {@link stageEncounter} normalizes *either* into one {@link EncounterLayout} and
+ * builds one shape — `{ battle, objectives }` — the renderer and the run loop consume
+ * uniformly.
  *
  * {@link encounterOutcome} is the single graded classifier (D50/D51/D97): `wipe →
  * any required *constraint* failed → (all required constraints met AND any required
@@ -16,33 +15,16 @@
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
 
-import type { GridCoord, Region } from "./iso";
+import type { GridCoord } from "./iso";
 import { isActive, type Unit } from "./units";
 import { TileGrid } from "./grid";
 import { Battle } from "./turn";
-import { makeConcealedTrap } from "./entities";
-import { buildGrid, buildEnemies, type EncounterDef } from "./generation";
-import {
-  buildAuthoredGrid,
-  buildAuthoredEnemies,
-  buildAuthoredCaptives,
-  buildAuthoredGates,
-  buildAuthoredLevers,
-  buildSpawnZones,
-  placeParty,
-  placeInZone,
-  type AuthoredEncounter,
-  type EncounterResult,
-} from "./authored";
-import { primaryZone, type SpawnZone } from "./deployment";
-import type { Gate, Lever } from "./gates";
-import {
-  armObjectives,
-  withDefaultGoal,
-  isGoalKind,
-  onExfilSite,
-  type ArmedObjective,
-} from "./objectives";
+import { layoutFromGenerated, type EncounterDef } from "./generation";
+import { layoutFromAuthored, type AuthoredEncounter, type EncounterResult } from "./authored";
+import type { EncounterLayout } from "./encounter-layout";
+import { spawnEnemies, spawnCaptives, spawnGates, spawnLevers, registerEncounterTraps } from "./encounter-entities";
+import { placeStartingParty } from "./party-placement";
+import { armObjectives, isGoalKind, onExfilSite, type ArmedObjective } from "./objectives";
 
 /** A node's encounter is either procedural or hand-authored (D49/D50). */
 export type EncounterSource = EncounterDef | AuthoredEncounter;
@@ -115,45 +97,18 @@ function resetForBattle(u: Unit): void {
   u.dugIn = false;
 }
 
-/**
- * Place player combatants on the home (left) edge, auto-filling walkable tiles —
- * the procedural placement policy (extracted from the old `RunLoop.placePlayers`).
- * `deploymentPenalty` pushes the home edge inward (fewer setup columns).
- */
-export function placePlayersAutoEdge(
-  players: readonly Unit[],
-  grid: TileGrid,
-  blocked: readonly GridCoord[],
-  rows: number,
-  deploymentPenalty = 0,
-): void {
-  const homeCols = Math.max(1, 2 - Math.min(1, deploymentPenalty));
-  const taken = new Set<string>();
-  for (const b of blocked) taken.add(`${b.col},${b.row}`);
-  players.forEach((u, i) => {
-    let pos: GridCoord = { col: i % homeCols, row: i % rows };
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < homeCols; col++) {
-        const key = `${col},${row}`;
-        if (!taken.has(key) && grid.isWalkable({ col, row })) {
-          pos = { col, row };
-          taken.add(key);
-          row = rows;
-          break;
-        }
-      }
-    }
-    taken.add(`${pos.col},${pos.row}`);
-    u.pos = pos;
-  });
+/** Normalize either source into the one {@link EncounterLayout} a battle is staged from (D50). */
+export function encounterLayout(source: EncounterSource, flags?: Record<string, boolean>): EncounterLayout {
+  return isAuthoredEncounter(source) ? layoutFromAuthored(source, flags) : layoutFromGenerated(source);
 }
 
 /**
  * Stage an encounter from either source into one `{ battle, objectives }` shape
- * (D50). Authored ⇒ fixed grid + hand-placed enemies + explicit player spawns +
- * authored objectives; procedural ⇒ generated grid/enemies + auto-edge placement
- * + the default elimination goal only. The default goal is injected when no
- * explicit goal is listed.
+ * (D50), as one pipeline over its {@link EncounterLayout}: the grid, the entities on it
+ * ({@link "./encounter-entities"}), the party's opening placement ({@link
+ * "./party-placement"}), the {@link Battle}, the pre-placed traps, then the armed
+ * objectives. Where the two sources differ (fixed spawns vs the auto edge, captives,
+ * gates) is data in the layout, not a branch here.
  */
 export function stageEncounter(
   source: EncounterSource,
@@ -163,64 +118,27 @@ export function stageEncounter(
   const players = [...roster];
   for (const u of players) resetForBattle(u);
 
-  let grid: TileGrid;
-  let enemies: Unit[];
-  // On-board captive recruits (D52): bound, player-side units the player frees mid-fight or
-  // by winning. Built **outside** `players` so the roster `resetForBattle` (which clears
-  // `captured`) never touches them — a captive stays bound on entry. Authored sources only.
-  let captives: Unit[] = [];
-  // Interactable gates + levers (D103) — authored sources only. Handed to the Battle, which blocks each
-  // locked gate's tile, opens keyholder cells on the keyholder's death, and toggles gates on a lever pull.
-  let gates: Gate[] = [];
-  let levers: Lever[] = [];
-  let controlRoom: Region | undefined;
-  let spawnZones: SpawnZone[] = [];
-  let objectiveSpecs;
-
-  if (isAuthoredEncounter(source)) {
-    grid = buildAuthoredGrid(source);
-    enemies = buildAuthoredEnemies(source);
-    captives = buildAuthoredCaptives(source);
-    gates = buildAuthoredGates(source);
-    levers = buildAuthoredLevers(source);
-    controlRoom = source.controlRoom; // D117/M3b: the garrison's target-priority span (authored only)
-    // Scouted-to-full intel blows the ambush: hidden bodies start visible (D10).
-    if (opts.revealHidden) for (const e of enemies) e.hidden = false;
-    // D119 — authored spawn zones: when the encounter declares them, the zones own placement.
-    // Everyone starts in the **primary** zone with the others EMPTY (the roster-order index-map
-    // that stranded a Soldier at the finale's side door is exactly what this replaces); an
-    // explicit `playerSpawns` override still wins, so the scenario/level harnesses are unchanged.
-    spawnZones = buildSpawnZones(source, opts.flags);
-    const primary = spawnZones.length > 0 ? primaryZone(spawnZones) : undefined;
-    if (primary && !opts.playerSpawns) placeInZone(players, primary);
-    else placeParty(players, opts.playerSpawns ?? source.playerSpawns);
-    objectiveSpecs = withDefaultGoal(source.objectives);
-  } else {
-    grid = buildGrid(source);
-    enemies = buildEnemies(source);
-    if (opts.playerSpawns) placeParty(players, opts.playerSpawns);
-    else placePlayersAutoEdge(players, grid, source.blocked, source.rows, opts.deploymentPenalty);
-    objectiveSpecs = withDefaultGoal();
-  }
+  const layout = encounterLayout(source, opts.flags);
+  const grid = TileGrid.fromLayout(layout);
+  const enemies = spawnEnemies(layout, opts.revealHidden);
+  // On-board captive recruits (D52) are built **outside** `players`, so the roster reset above
+  // (which clears `captured`) never touches them — a captive stays bound on entry.
+  const captives = spawnCaptives(layout);
+  placeStartingParty(players, layout, grid, opts);
 
   // Captives ride between the roster and the enemies: player-side and bound, so they're off
   // the clock (the `isActive` participant predicate excludes captured), never an AI target
   // (`activeUnits` foe-lists skip them), and visible in deployment (only enemies are veiled).
-  const battle = new Battle(grid, [...players, ...captives, ...enemies], { seed: opts.seed, gates, levers, controlRoom, spawnZones });
+  const battle = new Battle(grid, [...players, ...captives, ...enemies], {
+    seed: opts.seed,
+    gates: spawnGates(layout),
+    levers: spawnLevers(layout),
+    controlRoom: layout.controlRoom,
+    spawnZones: layout.spawnZones,
+  });
+  registerEncounterTraps(battle.entities, layout, opts.markTrapsUpTo);
 
-  // Pre-place the authored concealed enemy traps (the trap-field lever, D12): they
-  // ride the same entity registry the player's Set Trap uses, so movement springs
-  // them and the Survivalist can disarm them — no special case in the loop (D4).
-  if (isAuthoredEncounter(source) && source.traps) {
-    source.traps.forEach((t) => {
-      const trap = makeConcealedTrap(t.id ?? `enemy-trap@${t.pos.col},${t.pos.row}`, t.pos, "enemy", t.damage ?? 12, t.concealment ?? 4);
-      // The tier-3 careless mark (D83): sloppy work stages pre-revealed.
-      if (opts.markTrapsUpTo !== undefined && trap.concealment <= opts.markTrapsUpTo) trap.revealed = true;
-      battle.entities.register(trap);
-    });
-  }
-
-  const objectives = armObjectives(battle.clock, battle.units, objectiveSpecs);
+  const objectives = armObjectives(battle.clock, battle.units, layout.objectives);
   return { battle, objectives, source };
 }
 

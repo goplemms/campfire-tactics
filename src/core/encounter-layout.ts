@@ -12,7 +12,7 @@
 
 import type { GridCoord, Region } from "./iso";
 import type { UnitSpec } from "./units";
-import type { AuthoredGate, AuthoredLever, AuthoredTrap, CaptivePlacement } from "./authored";
+import type { AuthoredCrate, AuthoredGate, AuthoredLever, AuthoredTrap, CaptivePlacement } from "./authored";
 import type { SpawnZone } from "./deployment";
 import type { ObjectiveSpec } from "./objectives";
 
@@ -36,6 +36,8 @@ export interface EncounterLayout {
   levers: AuthoredLever[];
   /** Concealed enemy traps pre-placed on the field (D12). */
   traps: AuthoredTrap[];
+  /** Supply crates holding a field find. */
+  crates: AuthoredCrate[];
   /** The garrison's target-priority span (D117). */
   controlRoom?: Region;
   /** The declared safe ground (D119), already filtered by the run's flags. Empty ⇒ the campfire. */

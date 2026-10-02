@@ -202,6 +202,13 @@ describe("the typo surface — every field that loses tsc when it becomes JSON",
     expect(validateLevel(base())).toEqual([]);
   });
 
+  it("catches a crate with an unknown find, one on a wall, and one off the board", () => {
+    expect(probe((e) => { at(e).crates = [{ pos: { col: 2, row: 2 }, find: "smugglers-wrap" }]; }).some((i) => /not a known field find/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).blocked = [{ col: 2, row: 2 }]; at(e).crates = [{ pos: { col: 2, row: 2 }, find: "smugglers-wraps" }]; }).some((i) => /sits on a wall/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).crates = [{ pos: { col: 20, row: 2 }, find: "smugglers-wraps" }]; }).some((i) => /crate\[0\] is off the board/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).crates = [{ pos: { col: 2, row: 2 }, find: "smugglers-wraps" }]; })).toEqual([]);
+  });
+
   // --- M1: unit identity -----------------------------------------------------------------
   it("catches a typo'd captive jobId (the silently-worthless unit)", () => {
     expect(probe((e) => { captiveSpec(e).jobId = "soldeir"; }).some((i) => /unknown jobId "soldeir"/.test(i))).toBe(true);
@@ -778,6 +785,23 @@ describe("the-rescue v4 concentric prison (D117/D118, issue #204 B)", () => {
         expect(plan.gateAct).toBe("attack"); // no garrison keyholder on the inner seal ⇒ they batter
       }
     }
+  });
+
+  it("the side-door crate: one fixed spot, a move from the side spawn, reachable without a lockpick", () => {
+    // The side door is offered the same way every run (owner, 2026-10-02: a level that changes with
+    // who you brought reads as the game cheating). So a body sent through it without a Thief has to
+    // find something: the crate. It must be grabbable right away (within the shortest party move, 3)
+    // and must never sit behind a lockpick-only door or on an exit tile.
+    const lvl = level();
+    const crates = lvl.crates ?? [];
+    expect(crates.map((c) => c.find)).toEqual(["smugglers-wraps"]);
+    const crate = crates[0];
+    const grid = stagedGrid(spawnGates(layoutFromAuthored(lvl)));
+    const path = findPath(grid, SIDE_SPAWN, crate.pos);
+    expect(path, "crate is behind a locked door").not.toBeNull();
+    expect(path!.length).toBeLessThanOrEqual(3);
+    const exits = (lvl.objectives ?? []).flatMap((o) => o.span ?? []);
+    expect(exits.some((t) => t.col === crate.pos.col && t.row === crate.pos.row)).toBe(false);
   });
 
   it("eliminate-all stays winnable without a Thief — every enemy is reachable with the lockpick gates shut", () => {

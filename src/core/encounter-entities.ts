@@ -12,7 +12,7 @@ import { createUnit, type Unit, type UnitSpec } from "./units";
 import type { EnemyDef } from "./generation"; // type-only (erased) — no runtime cycle
 import { TAGS } from "./tags";
 import { makeGate, makeLever, type Gate, type Lever } from "./gates";
-import { makeConcealedTrap, type EntityRegistry } from "./entities";
+import { makeConcealedTrap, makeSupplyCrate, type EntityRegistry } from "./entities";
 import type { EncounterLayout } from "./encounter-layout";
 
 /** An enemy's stat block straight off its template (D4: enemies are data) — scale or override it after. */
@@ -94,4 +94,9 @@ export function registerEncounterTraps(registry: EntityRegistry, layout: Encount
     if (markUpTo !== undefined && trap.concealment <= markUpTo) trap.revealed = true;
     registry.register(trap);
   }
+}
+
+/** Place the layout's supply crates on the battle's entity registry — fixed spots, the same every run. */
+export function registerEncounterCrates(registry: EntityRegistry, layout: EncounterLayout): void {
+  for (const c of layout.crates) registry.register(makeSupplyCrate(c.id ?? `crate@${c.pos.col},${c.pos.row}`, c.pos, c.find));
 }

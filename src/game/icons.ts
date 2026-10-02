@@ -71,6 +71,8 @@ export const ICON = {
   gateRemnant: { glyph: "▨", label: "smashed door — a passable remnant (permanently breached)", color: INK.disabled },
   // A dropped key (D117/M5): a fallen keyholder's key on the board — step a unit onto it to carry, then turn the gate.
   key: { glyph: "⚷", label: "dropped key — step onto it to carry, then turn its gate", color: INK.gold },
+  // A supply crate (field finds): a fixed spot on the level — step a unit onto it to put on what's inside.
+  crate: { glyph: "▣", label: "supply crate — step onto it to take what's inside", color: INK.gold },
 
   // --- UI affordances ---
   expand: { glyph: "▸", label: "expand" },

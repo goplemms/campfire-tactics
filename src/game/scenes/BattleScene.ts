@@ -73,6 +73,9 @@ import { pct,
   // D12 — the enemy trap-field: spot, search, and Survivalist disarm
   isConcealedTrap,
   isDroppedKey,
+  isSupplyCrate,
+  takenCrates,
+  getFieldFind,
   hiddenTraps,
   revealTrapsNear,
   disarmTrap,
@@ -271,6 +274,8 @@ export class BattleScene extends Phaser.Scene {
   private leverMarkers: Phaser.GameObjects.GameObject[] = [];
   /** Key glyphs over each un-fetched dropped key (D117/M5) — redrawn on keyDropped/keyPickedUp + board setup. */
   private keyMarkers: Phaser.GameObjects.GameObject[] = [];
+  /** Crate glyphs over each untouched supply crate (field finds) — redrawn on cratePickedUp + board setup. */
+  private crateMarkers: Phaser.GameObjects.GameObject[] = [];
   // D12 — concealed enemy traps: the seeded spot-roll stream (the flow's; the combat reads share it).
   private spotRng!: Rng;
   /** The board trap-marker layer (#131): owns the enemy + player marker maps + the id counter. */
@@ -525,6 +530,7 @@ export class BattleScene extends Phaser.Scene {
     clearLayer(this.gateMarkers);
     clearLayer(this.leverMarkers);
     clearLayer(this.keyMarkers);
+    clearLayer(this.crateMarkers);
     this.highlight.clear();
     this.view.clearPreview(this.preview);
     this.threatGfx.clear();
@@ -635,6 +641,13 @@ export class BattleScene extends Phaser.Scene {
       this.refreshUnits();
       this.view.logLine(`${unit.name} pockets the key.`, INK.gold);
     });
+    // A player took a supply crate's find and put it on: clear the crate glyph, name the find.
+    this.battle.bus.on("cratePickedUp", ({ unit, find }) => {
+      this.markCrates();
+      this.refreshUnits();
+      const def = getFieldFind(find);
+      this.view.logLine(`${unit.name} takes ${def?.name ?? find} from the crate (${def?.effect ?? "worn"}).`, INK.gold);
+    });
     // The Noble's bribe (D30/D62): a swayed enemy turns coat — re-tint its token to the ally
     // palette here (a listener, like unitRescued), rather than the call site flipping `side`.
     this.battle.bus.on("unitSwayed", ({ unit }) => {
@@ -684,6 +697,9 @@ export class BattleScene extends Phaser.Scene {
     this.markGates(); // lock/bar glyphs over any locked interactable gates (D103)
     this.markLevers(); // lever glyphs over any pull-switches (D103)
     this.markKeys(); // key glyphs over any dropped keys (D117/M5) — usually none until a keyholder falls
+    this.markCrates(); // crate glyphs over any supply crates (fixed by the level)
+    if (this.battle.entities.all().some((e) => isSupplyCrate(e) && !e.pickedUp))
+      this.view.logLine("A supply crate sits on the board — step a unit onto it to take what's inside.", INK.gold);
     // Spotted traps (the opening scan) draw now, so positioning is informed; the rest are sensed
     // as units advance (the per-step read) or via a deliberate Search.
     this.redrawTrapMarkers();
@@ -1209,6 +1225,16 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  /** Draw a crate glyph over each untouched supply crate — cleared once a unit takes its find. */
+  private markCrates(): void {
+    clearLayer(this.crateMarkers);
+    for (const e of this.battle.entities.all()) {
+      if (!isSupplyCrate(e) || e.pickedUp) continue;
+      const { x, y } = this.tileToWorld(e.pos);
+      this.crateMarkers.push(placeIcon(this, x, y - this.view.halfH() * 0.6, "crate", { size: FONT.body }).setDepth(5));
+    }
+  }
+
   /**
    * Resync every board-interactable render layer from the model (D103/D117) — the grid tiles + the gate,
    * lever, and key glyphs. The forward render for each of these happens on a **bus event** (gateOpened /
@@ -1221,6 +1247,7 @@ export class BattleScene extends Phaser.Scene {
     this.markGates();
     this.markLevers();
     this.markKeys();
+    this.markCrates();
   }
 
   /**
@@ -2536,6 +2563,7 @@ export class BattleScene extends Phaser.Scene {
       goldStolen: this.goldStolen,
       goldRecovered: this.goldRecovered,
       runComplete: this.loop.isComplete(),
+      finds: takenCrates(this.battle.entities).map((c) => ({ find: c.find, by: c.takenBy! })),
     });
     showResolutionReport(this, this.overlay, report);
     this.setHint(`Resolution — ${report.title}. ${report.subtitle}`);

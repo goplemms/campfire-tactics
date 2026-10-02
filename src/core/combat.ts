@@ -24,6 +24,7 @@ import {
   GUARDED,
   SLOWED,
   SWIFT,
+  SURE_FOOTED,
   STATUS_TUNING,
   isImmobilized,
 } from "./status";
@@ -102,9 +103,9 @@ export const PASSIVE_INFO: Record<string, { label: string; description: string }
   },
 };
 
-/** A unit's **effective** move this turn: base move + the Swift buff (Dash). */
+/** A unit's **effective** move this turn: base move + the Swift buff (Dash) + a worn find's Sure-Footed. */
 export function effectiveMove(unit: Unit): number {
-  return unit.moveRange + statusAmount(unit, SWIFT);
+  return unit.moveRange + statusAmount(unit, SWIFT) + statusAmount(unit, SURE_FOOTED);
 }
 
 /**

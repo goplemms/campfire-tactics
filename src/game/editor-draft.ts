@@ -78,6 +78,8 @@ export interface DraftPassthrough {
   grants?: AuthoredEncounter["grants"];
   /** The control-room {@link "../core".Region} (D117/M3b) — a garrison target-priority span, unpainted. */
   controlRoom?: AuthoredEncounter["controlRoom"];
+  /** Supply crates (field finds) — fixed spots, unpainted for now; preserved so import stays lossless. */
+  crates?: AuthoredEncounter["crates"];
   /**
    * Authored **spawn zones** (D119) — the encounter's declared, danger-overriding deploy ground.
    * The editor has no zone brush yet, so they ride here verbatim: a dropped zone would silently
@@ -222,6 +224,7 @@ export function encounterToDraft(enc: AuthoredEncounter): EditorDraft {
   if (enc.intelDepth !== undefined) pt.intelDepth = enc.intelDepth;
   if (enc.grants) pt.grants = enc.grants;
   if (enc.controlRoom) pt.controlRoom = enc.controlRoom;
+  if (enc.crates) pt.crates = enc.crates;
   if (enc.spawnZones) pt.spawnZones = enc.spawnZones;
 
   return {
@@ -338,6 +341,7 @@ export function draftToEncounter(draft: EditorDraft): AuthoredEncounter {
     ...(pt.rumors ? { rumors: pt.rumors } : {}),
     ...(pt.intelDepth !== undefined ? { intelDepth: pt.intelDepth } : {}),
     ...(pt.controlRoom ? { controlRoom: pt.controlRoom } : {}),
+    ...(pt.crates ? { crates: pt.crates } : {}),
     ...(pt.spawnZones ? { spawnZones: pt.spawnZones } : {}),
     ...(objectives ? { objectives } : {}),
     reward: draft.reward ?? { gold: 50, materials: [], xp: 40 },

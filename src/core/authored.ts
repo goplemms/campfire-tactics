@@ -57,6 +57,19 @@ export interface AuthoredTrap {
 }
 
 /**
+ * A **supply crate** authored on the board — a fixed spot holding one field find
+ * ({@link "./field-finds".FIELD_FINDS}). The first player unit to step onto it puts the find on.
+ * Fixed by authoring, never rolled, so the level reads the same every run.
+ */
+export interface AuthoredCrate {
+  /** Optional explicit id (defaults to `crate@col,row`). */
+  id?: string;
+  pos: GridCoord;
+  /** The field-find id it holds. */
+  find: string;
+}
+
+/**
  * A **captive recruit** an authored encounter starts with **on the board** (D52) — a
  * bound, player-side unit guarded by the enemy, freed by the existing capture/rescue
  * mechanic (reach + {@link "./deployment".freeCaptive}) *or* by winning the field. Unlike
@@ -136,6 +149,8 @@ export interface AuthoredEncounter {
   captives?: CaptivePlacement[];
   /** Concealed enemy traps pre-placed on the field (spot to avoid, Survivalist to harvest). */
   traps?: AuthoredTrap[];
+  /** **Supply crates** — fixed spots holding a field find the first player unit onto them puts on. See {@link AuthoredCrate}. */
+  crates?: AuthoredCrate[];
   /**
    * Interactable **gates** (D103) — locked tiles that enclose (a cell's prisoner) or seal
    * (a control-room door). A locked gate blocks its tile until an {@link "./gates".GateLock}
@@ -273,6 +288,7 @@ export function layoutFromAuthored(enc: AuthoredEncounter, flags: Record<string,
     gates: enc.gates ?? [],
     levers: enc.levers ?? [],
     traps: enc.traps ?? [],
+    crates: enc.crates ?? [],
     controlRoom: enc.controlRoom,
     spawnZones: buildSpawnZones(enc, flags),
     playerSpawns: enc.playerSpawns,

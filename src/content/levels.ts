@@ -20,6 +20,7 @@ import {
   OBJECTIVE_KINDS,
   getJob,
   getMaterial,
+  getFieldFind,
   isKnownRunFlag,
   runFlagIds,
   isKnownStandingOrder,
@@ -159,6 +160,13 @@ function tileIssues(e: Partial<AuthoredEncounter>): string[] {
   (Array.isArray(e.enemies) ? e.enemies : []).forEach((en, i) => onBoard(en?.pos, `enemy[${i}] "${en?.templateId}"`));
   (Array.isArray(e.gates) ? e.gates : []).forEach((g) => onBoard(g?.pos, `gate "${g?.id}"`));
   (Array.isArray(e.levers) ? e.levers : []).forEach((l) => onBoard(l?.pos, `lever "${l?.id}"`));
+
+  const walls = new Set((Array.isArray(e.blocked) ? e.blocked : []).map((t) => `${t?.col},${t?.row}`));
+  for (const [i, c] of (Array.isArray(e.crates) ? e.crates : []).entries()) {
+    onBoard(c?.pos, `crate[${i}]`);
+    if (!getFieldFind(c?.find)) issues.push(`crate[${i}].find "${c?.find}" is not a known field find — staging would throw`);
+    if (c?.pos && walls.has(`${c.pos.col},${c.pos.row}`)) issues.push(`crate[${i}] sits on a wall at (${c.pos.col},${c.pos.row}) — no unit can ever reach it`);
+  }
 
   for (const [i, t] of (Array.isArray(e.traps) ? e.traps : []).entries()) {
     onBoard(t?.pos, `trap[${i}]`);

@@ -1027,6 +1027,16 @@
       ]
     }
   ],
+  "crates": [
+    {
+      "id": "smugglers-crate",
+      "pos": {
+        "col": 17,
+        "row": 4
+      },
+      "find": "smugglers-wraps"
+    }
+  ],
   "controlRoom": {
     "cols": [
       10,

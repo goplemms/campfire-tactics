@@ -8,6 +8,7 @@ import {
   jobLevelOf,
   skillsUnlockedBetween,
   skillContexts,
+  getFieldFind,
 } from "../core";
 
 /** One icon-led line in a resolution section — an outcome and the colour it reads as. */
@@ -49,6 +50,8 @@ export interface ResolutionInput {
   goldRecovered: number;
   /** Whether this win clears the run's final mission (the run-complete flourish). */
   runComplete: boolean;
+  /** Field finds taken from supply crates this fight, and who wore them (the trophy line). */
+  finds?: { find: string; by: string }[];
 }
 
 /**
@@ -60,7 +63,7 @@ export interface ResolutionInput {
  * captures) read as distinct, colour-coded blocks instead of one grey wall.
  */
 export function buildResolutionSummary(input: ResolutionInput): ResolutionReport {
-  const { res, goldEscaped, recruited, units, preBattleJobLevels, goldStolen, goldRecovered, runComplete } = input;
+  const { res, goldEscaped, recruited, units, preBattleJobLevels, goldStolen, goldRecovered, runComplete, finds = [] } = input;
   const won = res.result === "win";
   const title = won ? "Victory!" : res.result === "objective-failure" ? "Objective Failed — Retreat" : "Defeat";
   const subtitle = won
@@ -79,6 +82,12 @@ export function buildResolutionSummary(input: ResolutionInput): ResolutionReport
         : { text: "No unsprung materials to recover.", color: INK.muted },
     );
   }
+  // A crate's find is a trophy whatever the grade (it was worn, not banked) — but not on a wipe.
+  if (res.result !== "wipe")
+    for (const f of finds) {
+      const def = getFieldFind(f.find);
+      spoils.push({ icon: "crate", text: `Found ${def?.name ?? f.find} — worn by ${nameOf(f.by)}${def ? ` (${def.effect})` : ""}`, color: INK.gold });
+    }
 
   // The party (D51): rescues and casualties apply on either survivable outcome.
   const party: ReportRow[] = [];

@@ -32,8 +32,10 @@
  * front gate alone and stays fully winnable by storming the garrison. `provides`/`requires` remain
  * **validate-only** markers throughout — they prove the opportunity sits upstream and set nothing.
  *
- * NOTE: this is a **standalone** expedition — the shipped D97 arc finale (Hollow Mill's
- * `PRISON_ASSAULT`) is untouched. Promoting The Rescue into the arc is a later owner step.
+ * NOTE: the live home of the finale is the **Hollow Mill arc** now (#210): its `finale` node binds
+ * the same `the-rescue` body, and its `cuffedCell` grants the intel. This standalone expedition stays
+ * as the **`#rescue` test harness** — a short walk to the finale with a ready-made Thief, which is what
+ * `test:e2e:rescue` drives. It shares the body, not a copy, so the two cannot drift.
  *
  * Pure logic: no Phaser, no DOM, no `Math.random`.
  */
@@ -59,9 +61,8 @@ export const RESCUE_FINALE_ID = "the-rescue";
  * flag its own edge advertises. Making it a real fight costs zero new mechanism; inventing a
  * non-combat flag-write path would be its own decision record.
  *
- * **Standalone-expedition scaffolding.** D118 attributes the intel to the Hollow Mill's
- * `cuffedCell`; promoting The Rescue into that arc (and moving the grant onto `CUFFED_CELL`) is a
- * separate, later step. Until then this is where the flag is earned.
+ * **Harness-only.** In the Hollow Mill arc the intel comes from `cuffedCell` (D118, wired by #210);
+ * this node is where the standalone `#rescue` harness earns it.
  */
 export const SIDE_DOOR_ID = "the-side-door";
 

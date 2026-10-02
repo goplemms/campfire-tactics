@@ -202,6 +202,12 @@ describe("the typo surface — every field that loses tsc when it becomes JSON",
     expect(validateLevel(base())).toEqual([]);
   });
 
+  it("catches a spawn zone whose cap is bigger than its tiles (a full party would stack)", () => {
+    const zone = (cap: number) => [{ id: "front", label: "Front", primary: true, cap, tiles: [{ col: 0, row: 2 }, { col: 0, row: 3 }] }];
+    expect(probe((e) => { at(e).spawnZones = zone(3); }).some((i) => /cap 3 but only 2 tile/.test(i))).toBe(true);
+    expect(probe((e) => { at(e).spawnZones = zone(2); }).some((i) => /stack/.test(i))).toBe(false);
+  });
+
   it("catches a crate with an unknown find, one on a wall, and one off the board", () => {
     expect(probe((e) => { at(e).crates = [{ pos: { col: 2, row: 2 }, find: "smugglers-wrap" }]; }).some((i) => /not a known field find/.test(i))).toBe(true);
     expect(probe((e) => { at(e).blocked = [{ col: 2, row: 2 }]; at(e).crates = [{ pos: { col: 2, row: 2 }, find: "smugglers-wraps" }]; }).some((i) => /sits on a wall/.test(i))).toBe(true);
@@ -455,7 +461,7 @@ describe("the walkover guard (D97/D99 — extraction can't be trivial)", () => {
 describe("every authored body in the repo passes the content validator", () => {
   /** Structural enumeration, so a newly-authored body joins this guard without a registry edit. */
   const bodies: Array<[string, AuthoredEncounter]> = [
-    ...Object.entries(HOLLOW_MILL_BODIES)
+    ...Object.entries(HOLLOW_MILL_BODIES as Record<string, unknown>)
       .filter((entry): entry is [string, AuthoredEncounter] => {
         const e = entry[1] as Partial<AuthoredEncounter>;
         return !!e && typeof e === "object" && typeof e.cols === "number" && typeof e.rows === "number" && Array.isArray(e.enemies);

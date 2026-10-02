@@ -328,6 +328,8 @@ function spawnZoneIssues(e: Partial<AuthoredEncounter>): string[] {
       issues.push(`spawn zone "${id}" is primary AND flag-gated — the primary zone must always be present`);
     const tiles = Array.isArray(z?.tiles) ? z.tiles : [];
     if (tiles.length === 0) issues.push(`spawn zone "${id}" has no tiles`);
+    else if (Number.isInteger(z?.cap) && (z?.cap ?? 0) > tiles.length)
+      issues.push(`spawn zone "${id}" has cap ${z?.cap} but only ${tiles.length} tile(s) — a full party would stack two units on one tile`);
     for (const t of tiles) {
       const key = `${t?.col},${t?.row}`;
       if (!Number.isInteger(t?.col) || !Number.isInteger(t?.row) || (t?.col ?? -1) < 0 || (t?.row ?? -1) < 0 || (t?.col ?? 0) >= (e.cols ?? 0) || (t?.row ?? 0) >= (e.rows ?? 0))

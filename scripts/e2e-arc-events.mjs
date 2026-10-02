@@ -5,6 +5,12 @@
 // pure-core suite can't reach this (it's render-layer dispatch), the sim skips events'
 // interactive screens, and the deploy e2e never opens an overworld event. This does.
 //
+// It also opens the arc's **finale** in the real BattleScene (#210): The Rescue, staged from content
+// JSON with the party each arm actually arrives with. The rescue e2e drives the same board from a
+// ready-made harness party; only this walk proves the arc's own node stages it — the Cuffed Cell's
+// intel unions the side door in on one arm, the other arm deploys at the front gate alone, and
+// neither freezes the scene.
+//
 // Run:  npm run test:e2e:arc   (needs Chrome — see scripts/harness.mjs)
 import { withGame, ov, jumpTo, sleep } from "./harness.mjs";
 
@@ -41,7 +47,59 @@ async function openEvent(node) {
   });
 }
 
+const INFIL = ["start", "e1", "camp2", "snares", "market", "guildContact", "den", "outerYard", "guildRite", "cuffedCell", "finale"];
+const SUSTAIN = ["start", "e1", "camp2", "snares", "market", "wagon", "restCamp", "finale"];
+
+// Jump-boot the arc's finale via the arrival seam (`#demo?node=…&route=…`, the fights before it
+// simulated) and snapshot the staged deploy in tile terms.
+async function openFinale(route) {
+  return withGame(async (g) => {
+    await g.waitForScene("BattleScene", ["battle"]);
+    await sleep(700);
+    return g.bsEval(`
+      const u = s.battle.units;
+      const key = p => p.col + "," + p.row;
+      const zones = s.battle.spawnZones;
+      const players = u.filter(v => v.side === "player" && !v.captured);
+      const tiles = new Set(zones.flatMap(z => z.tiles.map(key)));
+      return {
+        phase: s.phase,
+        source: s.loop.staged.source.id,
+        flag: !!s.run.flags["side-door-intel"],
+        zoneIds: zones.map(z => z.id),
+        warden: u.some(v => v.id === "the-warden"),
+        captives: u.filter(v => v.role === "prisoner" && v.captured).map(v => v.id).sort(),
+        players: players.length,
+        placed: players.filter(v => tiles.has(key(v.pos))).length,
+        distinctTiles: new Set(players.map(v => key(v.pos))).size,
+        crates: s.crateMarkers.length,
+      };
+    `);
+  }, { hash: `#demo?node=finale&route=${route.join(",")}&into=battle` });
+}
+
 async function main() {
+  const infil = await openFinale(INFIL);
+  console.log("• the arc's finale (infiltration arm) stages The Rescue with the side door open");
+  check("the finale staged into deployment (no freeze)", infil.phase === "deployment");
+  check("the arc's finale node stages The Rescue's body", infil.source === "the-rescue");
+  check("the named Warden and all three prisoners are on the board",
+    infil.warden && JSON.stringify(infil.captives) === JSON.stringify(["bram", "cass", "wren"]));
+  check("the Cuffed Cell's win carried the side-door intel into the finale", infil.flag === true);
+  check("…so both entrances stage", JSON.stringify(infil.zoneIds) === JSON.stringify(["front-gate", "side-door"]));
+  check("every arriving party member starts inside a deploy zone, one per tile",
+    infil.placed === infil.players && infil.distinctTiles === infil.players);
+  check("the side-door supply crate is on the board", infil.crates === 1);
+
+  const sustain = await openFinale(SUSTAIN);
+  console.log("• the arc's finale (sustain arm) degrades to the front gate alone");
+  check("the finale staged into deployment (no freeze)", sustain.phase === "deployment");
+  check("the sustain arm arrives without the intel", sustain.flag === false);
+  check("only the front gate stages", JSON.stringify(sustain.zoneIds) === JSON.stringify(["front-gate"]));
+  check("every arriving party member starts inside the front gate, one per tile",
+    sustain.placed === sustain.players && sustain.distinctTiles === sustain.players);
+  check("the crate is there on this arm too (the level never changes)", sustain.crates === 1);
+
   const contact = await openEvent("guildContact");
   check(`guild-contact: the authored event opened (no crash) — "${contact.name}"`, !!contact.name);
   check(`guild-contact: surfaces the guild token invite`, contact.choices.some((l) => l.includes("token")));

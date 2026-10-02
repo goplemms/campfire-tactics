@@ -132,7 +132,7 @@ describe("Wave-0 infiltration arm — the Thief path fires end to end (#168)", (
     expect(loop.run.party.some((u) => u.id === "cell-prisoner")).toBe(true);
   });
 
-  it("the extraction finale (D97): the in-run Thief picks the cells and walks the prisoners out — a win with the garrison still standing", () => {
+  it("the extraction finale (The Rescue, #210): the in-run Thief picks the cells and walks the prisoners out — a win with the garrison still standing", () => {
     const loop = freshLoop();
 
     // Drive the whole infiltration arm to the prestiged Thief (as above), then win the cell.
@@ -148,14 +148,18 @@ describe("Wave-0 infiltration arm — the Thief path fires end to end (#168)", (
     loop.recordEventNight();
     expect(vale(loop).primaryJob).toBe("thief");
     winCombat(loop, "cuffedCell");
+    // The Cuffed Cell's win is where the arc earns the side-door intel (#210, D118).
+    expect(loop.run.flags["side-door-intel"]).toBe(true);
 
-    // The finale: the dual-OR (#169). Take the EXTRACTION path — free the cells, escort out.
+    // The finale: The Rescue's dual-OR (#210). Take the EXTRACTION path — free the cells, escort out.
     loop.choose("finale");
     loop.startEncounter();
+    // The intel unions the side-door zone in beside the front gate (D119).
+    expect(loop.staged!.battle.spawnZones.map((z) => z.id)).toEqual(["front-gate", "side-door"]);
     loop.beginBattle();
     const prisoners = loop.staged!.battle.units.filter((u) => u.role === "prisoner");
-    expect(prisoners).toHaveLength(2);
-    // The capability was earned in this run: the Thief picks both cells; a non-Thief cannot.
+    expect(prisoners.map((p) => p.id).sort()).toEqual(["bram", "cass", "wren"]);
+    // The capability was earned in this run: the Thief picks every cell; a non-Thief cannot.
     expect(prisoners.every((p) => canRelease(p, vale(loop)))).toBe(true);
     const edrin = loop.staged!.battle.units.find((u) => u.id === "edrin")!;
     expect(prisoners.every((p) => canRelease(p, edrin))).toBe(false);
@@ -175,7 +179,6 @@ describe("Wave-0 infiltration arm — the Thief path fires end to end (#168)", (
     expect(res.result).toBe("win"); // extraction cleared the finale without a kill
     expect(loop.isComplete()).toBe(true);
     // The liberated prisoners join on the win (recruit-on-win, D52).
-    expect(loop.run.party.some((u) => u.id === "prisoner-a")).toBe(true);
-    expect(loop.run.party.some((u) => u.id === "prisoner-b")).toBe(true);
+    for (const id of ["wren", "cass", "bram"]) expect(loop.run.party.some((u) => u.id === id)).toBe(true);
   });
 });

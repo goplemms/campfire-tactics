@@ -5891,3 +5891,50 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   picking-tour fix (clustered cells) and with it #209's incentive check; a veteran template tier;
   difficulty-scaled enemy stats (**declined as unnecessary** — D9 already varies the consequence).
   **Superseded by:** —
+
+## D127 — The Rescue becomes the arc's finale, and the side door always pays
+
+- **Status:** **Decided + shipped** 2026-10-02 — owner-directed, closing **#210** and answering **#220**.
+  Three owner calls in one thread: the side door stays the same every run; it gets a reward that doesn't
+  need a lockpick (a placeholder, with real expedition rewards filed as **#227**); and the Medic route has
+  to survive the new finale.
+- **#220, answered by a crate, not by gating (owner).** Hiding the side-door zone from a party with no
+  lockpick (#220's option 1) was **declined**: a level that changes with who you brought reads as the game
+  cheating. Instead a **supply crate** sits one step inside the side door at `(17,4)`, fixed by authoring
+  and present with or without the intel. The first player unit onto it puts on **Smuggler's Wraps** (+1
+  move for the rest of the fight, the new `sure-footed` status, its own id so it stacks with Swift); the
+  report names it as a trophy. So a Thief-less infiltrator still gets something for the trip, and a
+  prestiged Scout gets it as well as the cells.
+  - **Why it pays off in the fight:** the finale is the run's last node and nothing in the stash carries
+    into the guild, so an equippable found there would never be worn. The owner accepted the fight-long
+    effect as a placeholder; **#227** is the real design (rewards that leave the run).
+  - **Shape:** `field-finds.ts` (a `FieldFindDef` registry: name, effect line, the status it confers) +
+    a `SupplyCrate` field entity (one-shot, `pickedUp`/`takenBy` undo-restored) + an authored `crates`
+    layout field through the one staging pipeline (D114's battle-setup row: a layout field and a factory,
+    no `if authored`). Validator: unknown find, crate on a wall, off-board.
+- **#210 — promotion.** The Hollow Mill's `finale` node binds `the-rescue` (body injected from content
+  JSON, so the inline `encounters` map is gone and `PRISON_ASSAULT` is deleted; the `#scene=prison-assault`
+  harness mirror stays). `cuffedCell` carries `provides: side-door-intel` and its JSON body grants the
+  flag (D118's attribution, finally wired); the finale `requires` it, validate-only. The standalone
+  `#rescue` expedition stays as the e2e harness and shares the same body.
+- **Two defects found by promoting, fixed in the same change:**
+  1. **The front gate stacked units.** Its cap was 6 but it had 5 tiles; the arc's arrival party is 6, so
+     two units started on one tile (found by the new arc e2e). Added `(10,17)`, and the validator now
+     rejects any zone whose cap exceeds its tiles.
+  2. **The Medic route wiped at the finale.** The sustain arm skips two fights the infiltration arm
+     takes; measured headless, it arrived with Edrin L2 / Rook L4 (vs L5 / L7) and lost every unit. The
+     owner's call was to fix the route, not the finale (D126's tuning stands): the **Wagon's xp 80 → 200**.
+     Measured cliff: 120 still wipes, 160 survives with nobody lost; 200 is the margin. The infiltration
+     arm's three fights still pay 280.
+- **Guards:** `field-finds.test.ts` (pickup, enemy can't, one-shot, stacks with Swift, undo), `levels.test`
+  (crate reachable from the side spawn without a lockpick; zone cap vs tiles), the dual-OR + /challenge
+  cases ported from `core/hollow-mill.test.ts` onto the injected body (`hollow-mill-expedition.test.ts`),
+  `wave0-arc` (the cell grants the intel, both zones stage, three prisoners), `feasibility` (the sustain
+  route completes again), `test:e2e:rescue` (crate on the board, pickup, report line) and
+  `test:e2e:arc` (the arc's finale staged in the real scene on both arms). Sim digest unmoved (the sim
+  walks the infiltration arm, which the Wagon change doesn't touch); the sustain-route arrival score
+  re-pinned.
+- **Reuses:** **D118** (intel on `cuffedCell`), **D119** (flag-gated zones), **D120** (exfil), **D126**
+  (the garrison tuning kept as is), **D116** (injection + `provides`/`requires`), **D114** (the staging
+  pipeline row). **Defers:** real expedition rewards (**#227**); #209's incentive check (clustered cells);
+  a route that reliably produces a Thief. **Superseded by:** —

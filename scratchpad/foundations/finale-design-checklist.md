@@ -242,11 +242,10 @@ Legend: ✅ done · 🔨 de-risked (mechanism ships; finale work remains) · ⬜
     open them. **B8 is satisfied**; this is the separate stalling question.
 
 ### F — Promotion into the arc
-- ⬜ **F1** — Replace `PRISON_ASSAULT` (`hollow-mill.ts:372`) with The Rescue; wire the finale node
-  (`hollow-mill.ts:457`) via the D116 injection path or an inline TS body.
-- ⬜ **F2** — Place the `provides` node on the infiltration arm; `validateExpedition` confirms it sits
-  reachable upstream of the `requires` finale (fail-loud).
-- ⬜ **F3** — Re-run arc guards (`wave0-arc`, `hollow-mill`) + **re-pin `npm run sim`** + `test:e2e:arc`.
+- ✅ **F1/F2/F3 — DONE (D127, 2026-10-02).** The arc's `finale` binds `the-rescue` (injected body;
+  `PRISON_ASSAULT` deleted), `cuffedCell` provides + grants the intel, arc guards re-run, `test:e2e:arc`
+  now stages the finale on both arms. Promotion also fixed a front-gate tile shortfall and gave the
+  Wagon more XP so the sustain arm survives. #220 answered with a fixed side-door supply crate.
 
 ---
 

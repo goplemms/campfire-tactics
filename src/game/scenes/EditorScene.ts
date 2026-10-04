@@ -1779,7 +1779,7 @@ export class EditorScene extends Phaser.Scene {
     d.appendChild(field("launch-hp", "Start HP %", this.launchHp, "70px", "as is",
       "Every unit's starting HP as a percentage of max. Blank keeps each unit's current wounds.",
       (v) => { this.launchHp = v; }));
-    d.appendChild(field("launch-tweaks", "Per unit", this.launchTweaks, "200px", "e.g. rook.level=7",
+    d.appendChild(field("launch-tweaks", "Per unit", this.launchTweaks, "340px", "e.g. rook.level=7; rook.hp=100",
       "unit.field=value entries, separated by ;\nfields: level, hp, weapon/armor/accessory (blank clears), or a stat " +
         "(speed, maxHp, attack, defense, moveRange, sightRadius, attackRange)",
       (v) => { this.launchTweaks = v; }));

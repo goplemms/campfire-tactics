@@ -20,7 +20,7 @@ const LAUNCH_EXPEDITIONS = [THE_RESCUE.id] as const;
 import { loadLaunchConfig, saveLaunchConfig, loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
 import type { RunHandoff } from "./OverworldScene";
 import {
-  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec, nextObjectId, standardObjectives,
+  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec, nextObjectId, renameUnitRefs, standardObjectives,
   effectiveEnemyStat, setEnemyStat, setSpecStat, STAT_FIELDS,
   type Brush, type EditorDraft, type DraftEnemy, type DraftCaptive, type StatField,
 } from "../editor-draft";
@@ -472,6 +472,26 @@ export class EditorScene extends Phaser.Scene {
     // Gates (▦) tagged with a letter per open-condition (L/K/D); a selected object rings gold.
     for (const g of this.draft.gates) this.mark(g.pos, `▦${gateTag(g)}`, this.selection?.ref === g ? COLOR.gold : COLOR.accent, "#1a1206");
     for (const l of this.draft.levers) this.mark(l.pos, "⎇", this.selection?.ref === l ? COLOR.gold : 0x62c6d6, "#08161a");
+    this.drawLeverWiring();
+  }
+
+  /**
+   * A thin line from each lever to every gate it toggles, so the wiring reads on the board instead of
+   * only in the lever's inspector checklist. Drawn on the overlay layer (under the tokens); a selected
+   * lever's wires go gold.
+   */
+  private drawLeverWiring(): void {
+    for (const l of this.draft.levers) {
+      const from = this.view.tileToWorld(l.pos);
+      const lit = this.selection?.ref === l;
+      this.overlayGfx.lineStyle(lit ? 2.5 : 1.5, lit ? COLOR.gold : 0x62c6d6, lit ? 0.95 : 0.6);
+      for (const id of l.targets) {
+        const g = this.draft.gates.find((x) => x.id === id);
+        if (!g) continue;
+        const to = this.view.tileToWorld(g.pos);
+        this.overlayGfx.lineBetween(from.x, from.y, to.x, to.y);
+      }
+    }
   }
 
   /** A small labelled token centred on a tile (the editor's entity marker). */
@@ -789,9 +809,31 @@ export class EditorScene extends Phaser.Scene {
       return; // leave every other Ctrl/⌘ combo to the browser
     }
     if (ev.altKey) return;
-    if (ev.key === "Escape") { this.cancelShape(); this.clearSelection(); return; }
+    if (ev.key === "Escape") return void this.escape();
+    if ((ev.key === "Delete" || ev.key === "Backspace") && this.selection) { ev.preventDefault(); return void this.deleteSelection(); }
     const b = BRUSH_HOTKEYS[ev.key.toLowerCase()];
     if (b) { ev.preventDefault(); this.pickBrush(b); }
+  }
+
+  /** Esc steps back one layer: a pending shape, then the selection, then the open Details drawer. */
+  private escape(): void {
+    if (this.shapeAnchor) return void this.cancelShape();
+    if (this.selection) return void this.clearSelection();
+    if (this.drawerOpen) this.closeDrawer();
+  }
+
+  /** Delete / Backspace: remove the selected unit or object from the board (undoable, like an erase). */
+  private deleteSelection(): void {
+    const sel = this.selection;
+    if (!sel) return;
+    this.pushHistory();
+    const d = this.draft;
+    if (sel.kind === "enemy") d.enemies = d.enemies.filter((e) => e !== sel.ref);
+    else if (sel.kind === "captive") d.captives = d.captives.filter((c) => c !== sel.ref);
+    else if (sel.kind === "gate") d.gates = d.gates.filter((g) => g !== sel.ref);
+    else d.levers = d.levers.filter((l) => l !== sel.ref);
+    this.selection = null;
+    this.afterBoardEdit();
   }
 
   private paint(t: GridCoord): void {
@@ -945,7 +987,7 @@ export class EditorScene extends Phaser.Scene {
     Object.assign(title.style, { fontWeight: "700", fontSize: "16px", color: ED.gold } as CSSStyleDeclaration);
     header.appendChild(title);
     header.appendChild(this.hint("drag paints · shift-drag pans · right-click erases · scroll zooms · Recenter resets"));
-    header.appendChild(this.hint("ctrl-click select · alt-click pick · esc cancel · ctrl+z undo · keys: W/L/R G/V/T N/C P/X S/E"));
+    header.appendChild(this.hint("ctrl-click select · alt-click pick · del removes selected · esc backs out · ctrl+z undo · keys: W/L/R G/V/T N/C P/X S/E"));
     // Live tile-coordinate readout (M-D) — structural work needs precise alignment of cells/doorways.
     const coord = document.createElement("div");
     coord.dataset.role = "coord";
@@ -1048,6 +1090,7 @@ export class EditorScene extends Phaser.Scene {
       flex: "0 0 auto", padding: "5px 14px", font: `700 13px/1.4 ${CHROME_FONT}`,
       background: "#1d160f", borderBottom: `1px solid ${ED.cardBorder}`,
     } as CSSStyleDeclaration);
+    Object.assign(valid.style, { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as CSSStyleDeclaration);
     this.validLine = valid;
 
     dock.append(valid, panel);
@@ -1584,7 +1627,12 @@ export class EditorScene extends Phaser.Scene {
 
     // — Identity —
     d.appendChild(this.sectionHead("Identity", { first: true }));
-    d.appendChild(this.field("id", this.draft.id, (v) => { this.draft.id = v; this.updateExport(); }));
+    d.appendChild(this.field("id", this.draft.id, (v) => {
+      // Keep the Local Maps "save as" name in step while it still mirrors the id — renaming the level
+      // and then saving used to overwrite the save left under the old id.
+      if (this.libNameInput && this.libNameInput.value === (this.draft.id || "untitled")) this.libNameInput.value = v || "untitled";
+      this.draft.id = v; this.updateExport();
+    }));
     d.appendChild(this.field("name", this.draft.name, (v) => { this.draft.name = v; this.updateExport(); }));
 
     // — Reward — (M-C) gold + xp; materials round-trip verbatim (no picker yet).
@@ -1644,7 +1692,14 @@ export class EditorScene extends Phaser.Scene {
     impBtn.textContent = "Import JSON"; impBtn.dataset.role = "import-btn";
     impBtn.onclick = () => this.importJson(impArea.value);
     const copy = document.createElement("button"); copy.textContent = "Copy";
-    copy.onclick = () => navigator.clipboard?.writeText(this.exportJson());
+    copy.onclick = () => {
+      const say = (text: string, color: string): void => { if (this.validLine) { this.validLine.textContent = text; this.validLine.style.color = color; } };
+      if (!navigator.clipboard) return say("⚠ clipboard unavailable here — use Download .json", "#f0a0a0");
+      navigator.clipboard.writeText(this.exportJson()).then(
+        () => say("✓ level JSON copied to the clipboard", "#9ff0bf"),
+        () => say("⚠ couldn't copy — the browser blocked the clipboard; use Download .json", "#f0a0a0"),
+      );
+    };
     const dl = document.createElement("button"); dl.textContent = "Download .json";
     dl.onclick = () => this.download();
     btns.append(impBtn, copy, dl);
@@ -1969,7 +2024,12 @@ export class EditorScene extends Phaser.Scene {
       load.onclick = () => this.loadMapFromLibrary(m);
       const del = document.createElement("button");
       del.textContent = "✕"; del.style.cursor = "pointer"; del.title = "Delete this saved map"; del.dataset.role = "lib-del";
-      del.onclick = () => { deleteFromLibrary(m.name); this.renderLibrary(); };
+      // Two-step: a delete can't be undone, so the first click arms it ("delete?") and only a second
+      // click on the same row removes the map. Any re-render (another action) disarms it.
+      del.onclick = () => {
+        if (del.dataset.armed !== "1") { del.dataset.armed = "1"; del.textContent = "delete?"; del.style.color = "#f0a0a0"; return; }
+        deleteFromLibrary(m.name); this.renderLibrary();
+      };
       row.append(label, load, del);
       host.appendChild(row);
     }
@@ -1978,11 +2038,14 @@ export class EditorScene extends Phaser.Scene {
   /** Save the current draft into the browser library under the name field — overwrites a same-name entry. */
   private saveCurrentToLibrary(): void {
     const name = (this.libNameInput?.value ?? this.draft.id).trim() || this.draft.id || "untitled";
+    const replaced = loadLibrary().some((m) => m.name === name);
     const saved = saveToLibrary(name, this.draft, Date.now());
     this.renderLibrary();
     if (!this.validLine) return;
     if (saved) {
-      this.validLine.textContent = `✓ saved "${saved.name}" to the browser library`;
+      this.validLine.textContent = replaced
+        ? `✓ saved "${saved.name}" — replaced the earlier save of that name (type a new name to keep both)`
+        : `✓ saved "${saved.name}" to the browser library`;
       this.validLine.style.color = "#9ff0bf";
     } else {
       // The write was refused (quota / denied) — don't claim a save that didn't happen.
@@ -2001,28 +2064,34 @@ export class EditorScene extends Phaser.Scene {
     this.replaceDraft(blankDraft());
   }
 
-  /** Render the Units-drawer list — a clickable row per placed enemy/captive (the occlusion fix). */
+  /**
+   * Render the Details-drawer list — a clickable row per placed unit **and** object (enemy · captive ·
+   * gate · lever), so anything on the board can be found and selected without pixel-hunting it.
+   */
   private renderUnitList(): void {
     const host = this.unitListEl;
     if (!host) return;
     host.innerHTML = "";
-    const rows: { ref: DraftEnemy | DraftCaptive; kind: "enemy" | "captive"; label: string }[] = [
-      ...this.draft.enemies.map((e) => ({ ref: e, kind: "enemy" as const, label: `${e.templateId}${e.id ? ` · ${e.id}` : ""} (${e.pos.col},${e.pos.row})` })),
-      ...this.draft.captives.map((c) => ({ ref: c, kind: "captive" as const, label: `${c.spec?.name ?? c.spec?.id ?? "captive"} (${c.pos.col},${c.pos.row})` })),
+    type Sel = NonNullable<EditorScene["selection"]>;
+    const at = (p: GridCoord): string => ` (${p.col},${p.row})`;
+    const rows: { sel: Sel; color: string; label: string }[] = [
+      ...this.draft.enemies.map((e) => ({ sel: { kind: "enemy", ref: e } as Sel, color: "#e6a5a5", label: `${e.templateId}${e.id ? ` · ${e.id}` : ""}${at(e.pos)}` })),
+      ...this.draft.captives.map((c) => ({ sel: { kind: "captive", ref: c } as Sel, color: "#c3a6e0", label: `${c.spec?.name ?? c.spec?.id ?? "captive"}${at(c.pos)}` })),
+      ...this.draft.gates.map((g) => ({ sel: { kind: "gate", ref: g } as Sel, color: "#e8b866", label: `gate · ${g.id}${at(g.pos)}` })),
+      ...this.draft.levers.map((l) => ({ sel: { kind: "lever", ref: l } as Sel, color: "#8fd6e2", label: `lever · ${l.id}${at(l.pos)}` })),
     ];
-    if (!rows.length) { host.textContent = "· no units placed — use the enemy/captive brush"; host.style.opacity = "0.55"; return; }
+    if (!rows.length) { host.textContent = "· nothing placed yet — units, gates and levers list here"; host.style.opacity = "0.55"; return; }
     host.style.opacity = "1";
-    for (const { ref, kind, label } of rows) {
+    for (const { sel, color, label } of rows) {
       const r = document.createElement("div");
       r.textContent = label;
-      r.dataset.unitRow = kind;
-      const selected = this.selection?.ref === ref;
-      // Tint by kind to match the board tokens (enemies red, captives purple), since the mono font
-      // has no reliable glyph for ⚔/⚿.
-      Object.assign(r.style, { padding: "2px 5px", cursor: "pointer", color: kind === "enemy" ? "#e6a5a5" : "#c3a6e0", background: selected ? "#4a3f2a" : "" } as CSSStyleDeclaration);
+      r.dataset.unitRow = sel.kind;
+      const selected = this.selection?.ref === sel.ref;
+      // Tint by kind to match the board tokens, since the mono font has no reliable glyph for ⚔/⚿.
+      Object.assign(r.style, { padding: "2px 5px", cursor: "pointer", color, background: selected ? "#4a3f2a" : "" } as CSSStyleDeclaration);
       r.onclick = () => {
-        this.selection = kind === "enemy" ? { kind, ref: ref as DraftEnemy } : { kind, ref: this.materializeCaptive(ref as DraftCaptive) };
-        this.renderBoard(); // ring the picked unit gold on the board too
+        this.selection = sel.kind === "captive" ? { kind: "captive", ref: this.materializeCaptive(sel.ref) } : sel;
+        this.renderBoard(); // ring the picked unit / object gold on the board too
         this.renderInspector();
         this.renderUnitList();
       };
@@ -2111,7 +2180,14 @@ export class EditorScene extends Phaser.Scene {
     host.appendChild(this.checkboxRow("keyholder (a tagged unit's defeat opens it)", has("keyholder"), (on) => setCond("keyholder", on)));
     const key = g.openBy.find((c) => c.kind === "keyholder");
     if (key && key.kind === "keyholder") {
-      host.appendChild(this.field("keyholder role", key.tag.role ?? "", (v) => { const t = v.trim(); key.tag = t ? { role: t } : {}; this.afterInspect(); }));
+      // A picker over the tags that can match a unit on this board (a role, or a named unit's id) —
+      // was free text, where a typo ("captian") left a gate no one could ever open. A tag the board
+      // can't satisfy (e.g. the keyholder was erased) stays listed so it's visible, not silently lost.
+      const options = keyholderOptions(this.draft);
+      const current = tagKey(key.tag);
+      if (current && !options.includes(current)) options.unshift(current);
+      host.appendChild(this.selectRow("keyholder", options, current, (v) => { key.tag = parseTagKey(v); this.afterInspect(); }));
+      host.appendChild(this.hint("role: = any unit with that role · unit: = one named unit (set an enemy's id to list it)"));
     }
     host.appendChild(this.checkboxRow("destructible (battered down by attacks)", has("destructible"), (on) => setCond("destructible", on)));
     const dest = g.openBy.find((c) => c.kind === "destructible");
@@ -2153,7 +2229,12 @@ export class EditorScene extends Phaser.Scene {
 
   private renderEnemyInspector(host: HTMLDivElement, e: DraftEnemy): void {
     host.appendChild(this.inspectorHeader(`enemy · ${e.templateId} @ (${e.pos.col},${e.pos.row})`));
-    host.appendChild(this.field("id", e.id ?? "", (v) => { const t = v.trim(); if (t) e.id = t; else delete e.id; this.afterInspect(); }));
+    host.appendChild(this.field("id", e.id ?? "", (v) => {
+      const prev = e.id, t = v.trim();
+      if (t) e.id = t; else delete e.id;
+      if (prev && t) renameUnitRefs(this.draft, prev, t); // keep keyholder / objective tags on this unit
+      this.afterInspect();
+    }));
     host.appendChild(this.selectRow("role", ["", "captain", "sapper"], e.role ?? "", (v) => { if (v) e.role = v as "captain" | "sapper"; else delete e.role; this.afterInspect(); }));
     host.appendChild(this.statGrid((f) => effectiveEnemyStat(e, f), (f, n) => { setEnemyStat(e, f, n); this.afterInspect(); }));
   }
@@ -2169,7 +2250,11 @@ export class EditorScene extends Phaser.Scene {
     if (!spec) return; // materialized at selection; a spec-less captive never reaches here
 
     host.appendChild(this.inspectorHeader(`captive @ (${c.pos.col},${c.pos.row})`));
-    host.appendChild(this.field("id", spec.id, (v) => { const t = v.trim(); if (t) spec.id = t; this.afterInspect(); }));
+    host.appendChild(this.field("id", spec.id, (v) => {
+      const prev = spec.id, t = v.trim();
+      if (t) { spec.id = t; renameUnitRefs(this.draft, prev, t); }
+      this.afterInspect();
+    }));
     host.appendChild(this.field("name", spec.name ?? "", (v) => { const t = v.trim(); if (t) spec.name = t; else delete spec.name; this.afterInspect(); }));
     host.appendChild(this.selectRow("role", ["prisoner", "", "captain", "sapper"], spec.role ?? "", (v) => { if (v) spec.role = v; else delete spec.role; this.afterInspect(); }));
     host.appendChild(this.selectRow("job", JOB_IDS, spec.jobId ?? "soldier", (v) => { spec.jobId = v as JobId; spec.primaryJob = v as JobId; this.afterInspect(); }));
@@ -2260,7 +2345,14 @@ export class EditorScene extends Phaser.Scene {
     wrap.className = "stepper";
     const input = document.createElement("input");
     input.type = "number"; input.value = String(value); input.style.width = `${width}px`;
-    input.onchange = () => onChange(parseInt(input.value, 10));
+    input.onchange = () => {
+      const n = parseInt(input.value, 10);
+      // An emptied / non-numeric field changes nothing — so show that: restore the last good value
+      // rather than leaving a blank box over a draft that still holds the old number.
+      if (!Number.isFinite(n)) { input.value = input.dataset.last ?? String(value); return; }
+      input.dataset.last = String(n);
+      onChange(n);
+    };
     const nudge = (delta: number): void => {
       let n = parseInt(input.value, 10);
       if (!Number.isFinite(n)) n = 0;
@@ -2312,7 +2404,11 @@ export class EditorScene extends Phaser.Scene {
     if (this.exportPre) this.exportPre.textContent = this.exportJson();
     if (this.validLine) {
       const issues = validateLevel(draftToEncounter(this.draft));
-      this.validLine.textContent = issues.length ? `⚠ ${issues.join("; ")}` : "✓ valid — ready to play";
+      // One line, always: the pinned bar must not grow over the tray when many issues stack up.
+      // The first issue reads in place; the rest are a hover away (title) and a count.
+      const more = issues.length > 1 ? `  (+${issues.length - 1} more — hover to see all)` : "";
+      this.validLine.textContent = issues.length ? `⚠ ${issues[0]}${more}` : "✓ valid — ready to play";
+      this.validLine.title = issues.map((i) => `• ${i}`).join("\n");
       this.validLine.style.color = issues.length ? "#f0a0a0" : "#9ff0bf";
     }
   }
@@ -2436,6 +2532,22 @@ export class EditorScene extends Phaser.Scene {
     this.tabButtons = [];
     this.drawers = {};
   }
+}
+
+/** An objective tag as one picker value: `role:captain` / `unit:the-warden` ("" for an empty tag). */
+function tagKey(tag: { id?: string; role?: string }): string {
+  return tag.id !== undefined ? `unit:${tag.id}` : tag.role !== undefined ? `role:${tag.role}` : "";
+}
+/** The inverse of {@link tagKey}. */
+function parseTagKey(key: string): { id?: string; role?: string } {
+  if (key.startsWith("unit:")) return { id: key.slice(5) };
+  if (key.startsWith("role:")) return { role: key.slice(5) };
+  return {};
+}
+/** Every keyholder tag the draft can satisfy: the two authored roles plus each explicitly-named unit. */
+function keyholderOptions(d: EditorDraft): string[] {
+  const ids = [...d.enemies.map((e) => e.id), ...d.captives.map((c) => c.spec?.id)].filter((id): id is string => !!id);
+  return ["role:captain", "role:sapper", ...ids.map((id) => `unit:${id}`)];
 }
 
 /** Two grid coords are the same tile. */

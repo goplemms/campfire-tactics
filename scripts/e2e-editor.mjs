@@ -34,7 +34,8 @@ const STATE = `(() => {
     enemyCards: document.querySelectorAll('button[data-brush="enemy"]').length,
     essentialBrushes: ["wall","line","rect","gate","lever","trap","spawn","exit","enemy","captive","select","erase"].every((b) => !!document.querySelector('button[data-brush="' + b + '"]')),
     tabs: document.querySelectorAll("button[data-tab]").length,
-    unitRows: document.querySelectorAll("[data-unit-row]").length,
+    unitRows: document.querySelectorAll('[data-unit-row="enemy"], [data-unit-row="captive"]').length,
+    objectRows: document.querySelectorAll('[data-unit-row="gate"], [data-unit-row="lever"]').length,
     walls: d.blocked?.length ?? null,
     spawns: d.playerSpawns?.length ?? null,
     enemies: d.enemies?.length ?? null,
@@ -634,6 +635,45 @@ async function main() {
         await g.eval(`(() => { const w = document.querySelector('input[data-role="cols"]'); w.value = "4"; w.dispatchEvent(new Event("change")); })()`); await sleep(100);
         const staleRows = await g.eval(`[...document.querySelectorAll("[data-unit-row]")].filter((r) => { const m = r.textContent.match(/\\((\\d+),\\d+\\)$/); return m && +m[1] >= 4; }).length`);
         check("a board shrink also drops the off-board units from the unit list", staleRows === 0);
+
+        // Pass 2 of the UX review: the drawer lists objects, the keyboard deletes / backs out, the
+        // keyholder is a picker, the pinned status stays one line, and the library guards its saves.
+        console.log("• pass 2: object list · Delete/Esc keys · keyholder picker · one-line status · library");
+        await g.eval(IMPORT); await sleep(300);
+        const sc = `window.game.scene.getScene("EditorScene")`;
+        check("the Details list includes the-rescue's gates + levers", (await g.eval(STATE)).objectRows > 0);
+        // Select the warden-keyed gate from the list, check the picker kept its unit:the-warden tag.
+        await g.eval(`[...document.querySelectorAll('[data-unit-row="gate"]')].find((r) => r.textContent.includes("seal-outer")).click()`); await sleep(100);
+        const kh = await g.eval(`(() => { const s = document.querySelector('[data-role="inspector"] select[data-field="keyholder"]'); return s ? { value: s.value, opts: [...s.options].map((o) => o.value) } : null; })()`);
+        check("a keyholder gate shows a picker, keeping its unit tag", kh?.value === "unit:the-warden" && kh.opts.includes("role:captain"));
+        check("the selected gate's list row is highlighted", (await g.eval(`${sc}.selection?.kind`)) === "gate");
+        // Delete removes the selection (undoably); Esc then closes the drawer once nothing is selected.
+        const gates0 = await g.eval(`${sc}.draft.gates.length`);
+        await g.eval(`document.activeElement?.blur()`);
+        await g.page.keyboard.press("Delete"); await sleep(120);
+        check("Delete removes the selected gate", (await g.eval(`${sc}.draft.gates.length`)) === gates0 - 1);
+        await g.page.keyboard.down("Control"); await g.page.keyboard.press("KeyZ"); await g.page.keyboard.up("Control"); await sleep(120);
+        check("Ctrl+Z brings the deleted gate back", (await g.eval(`${sc}.draft.gates.length`)) === gates0);
+        await g.eval(`document.querySelector('[data-role="details-toggle"]').click()`); await sleep(80);
+        if (!(await g.eval(`${sc}.drawerOpen`))) { await g.eval(`document.querySelector('[data-role="details-toggle"]').click()`); await sleep(80); }
+        await g.page.keyboard.press("Escape"); await sleep(80);
+        check("Esc with nothing selected closes the Details drawer", (await g.eval(`${sc}.drawerOpen`)) === false);
+        // Many issues still render as one line with a count.
+        await g.eval(clickTab("Events")); await g.eval(setBrush("spawn"));
+        await g.eval(`(() => { const d = ${sc}.draft; for (const e of d.enemies.slice(0, 3)) d.playerSpawns.push({ ...e.pos }); ${sc}.afterBoardEdit(); })()`); await sleep(100);
+        const stBar = await g.eval(`(() => { const s = document.querySelector('[data-role="status"]'); return { text: s.textContent, h: s.getBoundingClientRect().height, all: s.title.split("\\n").length }; })()`);
+        check("with several issues the status is one line + a count", /\(\+\d+ more/.test(stBar.text) && stBar.h < 40 && stBar.all >= 3);
+        // Library: the save name follows an id rename; ✕ needs a second click.
+        await g.eval(clickTab("Scenario")); await sleep(60);
+        await g.eval(`(() => { const i = [...document.querySelectorAll('[data-drawer="Scenario"] input')][0]; i.value = "renamed-rescue"; i.dispatchEvent(new Event("input")); })()`); await sleep(60);
+        check("renaming the level id carries the save name along", (await g.eval(`document.querySelector('[data-role="lib-name"]').value`)) === "renamed-rescue");
+        await g.eval(`document.querySelector('[data-role="lib-save"]').click()`); await sleep(80);
+        const libRows = () => g.eval(`document.querySelectorAll('[data-lib-row]').length`);
+        const rows0 = await libRows();
+        await g.eval(`document.querySelector('[data-lib-row="renamed-rescue"] [data-role="lib-del"]').click()`); await sleep(60);
+        check("one ✕ click only arms the delete", (await libRows()) === rows0);
+        await g.eval(`document.querySelector('[data-lib-row="renamed-rescue"] [data-role="lib-del"]').click()`); await sleep(60);
+        check("a second click deletes the saved map", (await libRows()) === rows0 - 1);
 
         assertNoProblems(g.problems);
       } catch (err) {

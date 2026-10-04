@@ -876,6 +876,21 @@ describe("the placement guard (editor UX review)", () => {
     expect(placement(lvl)).toEqual(['duplicate gate/lever id "gate-1" — levers wire to gates by id']);
   });
 
+  it("flags a keyholder gate whose tag matches no unit (a typo'd role)", () => {
+    const lvl = base();
+    lvl.gates![0].openBy = [{ kind: "keyholder", tag: { role: "captian" } }];
+    expect(validateLevel(lvl).filter((i) => /keyholder/.test(i))).toEqual(['gate "gate-1" opens by keyholder {"role":"captian"}, but no unit on this level matches it']);
+    lvl.enemies[0].role = "captain";
+    lvl.gates![0].openBy = [{ kind: "keyholder", tag: { role: "captain" } }];
+    expect(validateLevel(lvl)).toEqual([]);
+  });
+
+  it("flags an extraction objective with no exit tiles", () => {
+    const lvl = base();
+    lvl.objectives = [{ id: "out", kind: "extraction", required: true, label: "Get out", span: [] }];
+    expect(validateLevel(lvl).filter((i) => /no exit tiles/.test(i))).toHaveLength(1);
+  });
+
   it("flags a lever wired to a gate that no longer exists", () => {
     const lvl = base();
     lvl.gates = [];

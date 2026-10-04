@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec, nextObjectId,
+  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec, nextObjectId, renameUnitRefs,
   enemyBaseStat, effectiveEnemyStat, setEnemyStat, setSpecStat,
   type EditorDraft, type DraftEnemy,
 } from "./editor-draft";
@@ -284,5 +284,30 @@ describe("nextObjectId — fresh gate/lever ids never clash with what is on the 
     const d = blankDraft();
     d.gates.push({ id: "gate-2", pos: { col: 1, row: 1 }, openBy: [{ kind: "lockpick" }], locked: true });
     expect(nextObjectId(d, "gate")).toBe("gate-1");
+  });
+});
+
+describe("renameUnitRefs — renaming a unit carries its keyholder / objective tags", () => {
+  const draft = (): EditorDraft => ({
+    ...blankDraft(),
+    enemies: [{ templateId: "bandit-captain", pos: { col: 1, row: 1 }, id: "the-warden" }],
+    gates: [{ id: "seal", pos: { col: 2, row: 2 }, openBy: [{ kind: "keyholder", tag: { id: "the-warden" } }] }],
+    objectives: [{ id: "o", kind: "closing-gate", required: true, label: "Gate", driver: { id: "the-warden" } }],
+  });
+
+  it("re-points a gate's keyholder tag and an objective's driver tag at the new id", () => {
+    const d = draft();
+    d.enemies[0].id = "the-jailer";
+    renameUnitRefs(d, "the-warden", "the-jailer");
+    expect(d.gates[0].openBy[0]).toEqual({ kind: "keyholder", tag: { id: "the-jailer" } });
+    expect(d.objectives![0].driver).toEqual({ id: "the-jailer" });
+  });
+
+  it("leaves the tags alone while another unit still holds the old id", () => {
+    const d = draft();
+    d.enemies.push({ templateId: "bandit-thug", pos: { col: 3, row: 3 }, id: "the-warden" });
+    d.enemies[0].id = "the-jailer";
+    renameUnitRefs(d, "the-warden", "the-jailer");
+    expect(d.gates[0].openBy[0]).toEqual({ kind: "keyholder", tag: { id: "the-warden" } });
   });
 });

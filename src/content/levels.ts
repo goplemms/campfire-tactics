@@ -211,7 +211,10 @@ function extractionIssues(e: Partial<AuthoredEncounter>): string[] {
   for (const o of (e.objectives ?? []) as ObjectiveSpec[]) {
     if (o?.kind !== "extraction") continue;
     const span = Array.isArray(o.span) ? o.span : [];
-    if (!span.length) continue;
+    if (!span.length) {
+      issues.push(`extraction objective "${o.id}" has no exit tiles — paint them with the exit brush (a dead win-path)`);
+      continue;
+    }
     // Keep the placement beside the spec: the tag matches on the spec, the distance measures
     // from the placement. Splitting them is what produced the false walkover above.
     const escortees = captives.filter((c) => !!c?.spec && escorteeMatches(c.spec, o.escort));
@@ -299,7 +302,8 @@ function idIssues(e: Partial<AuthoredEncounter>): string[] {
  *  - **one placeable per tile** — spawns, enemies, captives, gates, levers and crates each occupy
  *    their tile, so two on one tile means one of them silently never appears where it was drawn;
  *  - **gate / lever ids unique** — a lever wires to its gates by id, so a clash is ambiguous;
- *  - **every lever target is a gate** — a dangling target (its gate erased) is a dead switch.
+ *  - **every lever target is a gate** — a dangling target (its gate erased) is a dead switch;
+ *  - **every keyholder tag matches a unit** — otherwise the gate's key never drops.
  */
 function placementIssues(e: Partial<AuthoredEncounter>): string[] {
   const issues: string[] = [];
@@ -332,6 +336,16 @@ function placementIssues(e: Partial<AuthoredEncounter>): string[] {
     if (seen.has(id)) issues.push(`duplicate gate/lever id "${id}" — levers wire to gates by id`);
     seen.add(id);
   }
+  // A keyholder gate opens when a unit matching its tag falls — a tag that matches nobody (a typo, or
+  // the keyholder erased) leaves that way in permanently shut. Roles/ids are the authored ones only.
+  const units = [
+    ...list(e.enemies).map((en) => ({ id: en?.id, role: en?.role ?? (en?.overrides?.role as string | undefined) })),
+    ...list(e.captives).map((c) => ({ id: c?.spec?.id, role: c?.spec?.role })),
+  ];
+  for (const g of list(e.gates))
+    for (const c of list(g?.openBy))
+      if (c?.kind === "keyholder" && !units.some((u) => (c.tag?.id === undefined || u.id === c.tag.id) && (c.tag?.role === undefined || u.role === c.tag.role) && (c.tag?.id !== undefined || c.tag?.role !== undefined)))
+        issues.push(`gate "${g.id}" opens by keyholder ${JSON.stringify(c.tag ?? {})}, but no unit on this level matches it`);
   const gateIds = new Set(list(e.gates).map((g) => g?.id));
   for (const l of list(e.levers)) for (const t of list(l?.targets)) if (!gateIds.has(t)) issues.push(`lever "${l?.id}" targets "${t}", which is not a gate on this level`);
   return issues;

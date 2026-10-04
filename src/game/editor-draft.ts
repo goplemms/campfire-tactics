@@ -161,6 +161,23 @@ export function nextObjectId(d: EditorDraft, prefix: "gate" | "lever"): string {
 }
 
 /**
+ * Carry every **by-id reference** to a unit along when its id is renamed — a gate's keyholder tag
+ * and an objective's escort / driver tag. Without this, renaming the Warden in the inspector left
+ * The Rescue's outer seal keyed to a unit that no longer existed. A no-op when another unit still
+ * holds `oldId` (the references stay valid, pointing at that one).
+ */
+export function renameUnitRefs(d: EditorDraft, oldId: string, newId: string): void {
+  if (!oldId || oldId === newId) return;
+  const stillHeld = d.enemies.some((e) => e.id === oldId) || d.captives.some((c) => c.spec?.id === oldId);
+  if (stillHeld) return;
+  for (const g of d.gates) for (const c of g.openBy) if (c.kind === "keyholder" && c.tag.id === oldId) c.tag = { ...c.tag, id: newId };
+  for (const o of d.objectives ?? []) {
+    if (o.escort?.id === oldId) o.escort = { ...o.escort, id: newId };
+    if (o.driver?.id === oldId) o.driver = { ...o.driver, id: newId };
+  }
+}
+
+/**
  * A materialized captive spec for the **inspector** (M-B) — a spec-less painted captive gets one the
  * moment it's selected for editing, keyed by tile so two fresh captives don't collide (the
  * id-uniqueness guard flags a real clash live if the author later renames into one).

@@ -67,6 +67,9 @@
       }
       body.editor-mode #app {
         display: block;
+        /* Drop the grid's centring too: current Chrome honours justify-items on a block box, so
+           it centred the canvas on top of Phaser's own CENTER_HORIZONTALLY margin (double offset). */
+        place-items: normal;
       }
     </style>
   </head>

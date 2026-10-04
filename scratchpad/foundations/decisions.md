@@ -5926,6 +5926,10 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
      owner's call was to fix the route, not the finale (D126's tuning stands): the **Wagon's xp 80 → 200**.
      Measured cliff: 120 still wipes, 160 survives with nobody lost; 200 is the margin. The infiltration
      arm's three fights still pay 280.
+     - **A stopgap, not tuning (owner, 2026-10-04).** Pre-finale party levels are still open: they will be
+       set by the expedition's length, worked back from the level the finale expects. When that lands, the
+       Wagon's 200 (and every route's XP) gets re-derived from that target; this number only keeps the
+       sustain arm from wiping until then.
 - **Guards:** `field-finds.test.ts` (pickup, enemy can't, one-shot, stacks with Swift, undo), `levels.test`
   (crate reachable from the side spawn without a lockpick; zone cap vs tiles), the dual-OR + /challenge
   cases ported from `core/hollow-mill.test.ts` onto the injected body (`hollow-mill-expedition.test.ts`),

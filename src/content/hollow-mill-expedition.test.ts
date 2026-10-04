@@ -193,7 +193,8 @@ describe("The Hollow Mill — the bodies that live in content JSON (D122)", () =
     expect(lieutenant.role).toBe("captain");
     expect(lieutenant.overrides).toEqual({ maxHp: 34, attack: 10, defense: 3 }); // softened, not the finale warden
     // xp 80 → 200 (#210): the sustain arm skips two fights the infiltration arm takes, and The Rescue
-    // wiped it to the last unit at 80 (the headless play-through survives from 160 up).
+    // wiped it to the last unit at 80 (the headless play-through survives from 160 up). A stopgap:
+    // route XP will be re-derived from the finale's target level once expedition length is designed (D127).
     expect(body.reward).toEqual({ gold: 120, materials: [{ id: "salve", count: 2 }], xp: 200 });
     // The gated recruit rides the body as a serialized UnitSpec; the flag gates map access.
     expect(body.grants?.flag).toBe("medic-freed");

@@ -291,6 +291,53 @@ function idIssues(e: Partial<AuthoredEncounter>): string[] {
 }
 
 /**
+ * The **placement guard** — what the editor's brushes let an author do that no battle can honour.
+ * Each brush toggles its own layer, so nothing stops a click from stacking layers on one tile:
+ *
+ *  - **nothing placed on a wall** — a spawn, enemy, captive, gate, lever or trap on blocked terrain
+ *    is a unit stood inside rock or a switch no one can reach (crates have their own check above);
+ *  - **one placeable per tile** — spawns, enemies, captives, gates, levers and crates each occupy
+ *    their tile, so two on one tile means one of them silently never appears where it was drawn;
+ *  - **gate / lever ids unique** — a lever wires to its gates by id, so a clash is ambiguous;
+ *  - **every lever target is a gate** — a dangling target (its gate erased) is a dead switch.
+ */
+function placementIssues(e: Partial<AuthoredEncounter>): string[] {
+  const issues: string[] = [];
+  const list = <T>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
+  type Tile = { col?: number; row?: number } | undefined;
+  const key = (t: Tile): string => `${t?.col},${t?.row}`;
+  const walls = new Set(list(e.blocked).map(key));
+  const at = (what: string, pos: Tile): [string, Tile] => [what, pos];
+  const placed = [
+    ...list(e.playerSpawns).map((t) => at("a player spawn", t)),
+    ...list(e.enemies).map((en) => at(`enemy "${en?.id ?? en?.templateId}"`, en?.pos)),
+    ...list(e.captives).map((c) => at(`captive "${c?.spec?.id ?? "captive"}"`, c?.pos)),
+    ...list(e.gates).map((g) => at(`gate "${g?.id}"`, g?.pos)),
+    ...list(e.levers).map((l) => at(`lever "${l?.id}"`, l?.pos)),
+    ...list(e.crates).map((c) => at(`crate "${c?.id}"`, c?.pos)),
+  ];
+  for (const [what, pos] of placed) if (pos && walls.has(key(pos)) && !what.startsWith("crate")) issues.push(`${what} sits on a wall at (${pos.col},${pos.row})`);
+  for (const [i, t] of list(e.traps).entries()) if (t?.pos && walls.has(key(t.pos))) issues.push(`trap[${i}] sits on a wall at (${t.pos.col},${t.pos.row})`);
+  const byTile = new Map<string, string>();
+  for (const [what, pos] of placed) {
+    if (!pos) continue;
+    const owner = byTile.get(key(pos));
+    if (owner !== undefined) issues.push(`${owner} and ${what} share tile (${pos.col},${pos.row}) — one placeable per tile`);
+    else byTile.set(key(pos), what);
+  }
+  const objectIds = [...list(e.gates).map((g) => g?.id), ...list(e.levers).map((l) => l?.id)];
+  const seen = new Set<string>();
+  for (const id of objectIds) {
+    if (typeof id !== "string") continue;
+    if (seen.has(id)) issues.push(`duplicate gate/lever id "${id}" — levers wire to gates by id`);
+    seen.add(id);
+  }
+  const gateIds = new Set(list(e.gates).map((g) => g?.id));
+  for (const l of list(e.levers)) for (const t of list(l?.targets)) if (!gateIds.has(t)) issues.push(`lever "${l?.id}" targets "${t}", which is not a gate on this level`);
+  return issues;
+}
+
+/**
  * The **spawn-zone guard** (D119). Authored zones replace the derived campfire outright, so a
  * malformed set is not a cosmetic bug: it decides where the party stands, which ground is
  * capture-immune, and when the deploy phase force-starts. Every failure below is one that would
@@ -376,6 +423,7 @@ export function validateLevel(raw: unknown): string[] {
   issues.push(...tileIssues(e));
   issues.push(...extractionIssues(e));
   issues.push(...idIssues(e));
+  issues.push(...placementIssues(e));
   issues.push(...spawnZoneIssues(e));
   return issues;
 }

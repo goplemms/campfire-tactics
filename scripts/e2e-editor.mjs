@@ -604,6 +604,37 @@ async function main() {
         await g.page.keyboard.down("Control"); await g.page.keyboard.press("KeyZ"); await g.page.keyboard.up("Control"); await sleep(100);
         check("Ctrl+Z reverts the inspector stat edit", (await has77()) === false);
 
+        // The selected unit reads on the board, not only in the drawer: its token rings gold.
+        await g.clickScene(enemyPt.x, enemyPt.y); await sleep(120); // re-select (the undo restore dropped it)
+        const ringedGold = await g.eval(`(() => {
+          const sc = window.game.scene.getScene("EditorScene"), ref = sc.selection?.ref;
+          if (!ref) return false;
+          const at = sc.view.tileToWorld(ref.pos);
+          return sc.markers.some((m) => m.type === "Arc" && m.strokeColor === ${0xd8b24a} && Math.round(m.x) === Math.round(at.x));
+        })()`);
+        check("the selected enemy's board token is ringed gold", ringedGold === true);
+
+        // Layout QoL (the UX review): at a laptop-sized window the board is centred, the validity
+        // status stays in view, and an import / New (both remount the panel) keep editor mode.
+        console.log("• laptop viewport: centred board · pinned status · remount keeps editor mode");
+        await g.page.setViewport({ width: 1440, height: 900 }); await sleep(400);
+        const lay = () => g.eval(`(() => {
+          const c = document.querySelector("canvas").getBoundingClientRect();
+          const st = document.querySelector('[data-role="status"]').getBoundingClientRect();
+          return { left: Math.round(c.left), right: Math.round(innerWidth - c.right), statusTop: st.top, statusBottom: st.bottom,
+                   runbar: getComputedStyle(document.getElementById("runbar")).display };
+        })()`);
+        let l = await lay();
+        check("the board canvas is horizontally centred (no double offset)", Math.abs(l.left - l.right) <= 2);
+        check("the validity status sits inside the viewport", l.statusTop >= 0 && l.statusBottom <= 900);
+        await g.eval(IMPORT); await sleep(300);
+        l = await lay();
+        check("after an import the guild run-bar stays hidden", l.runbar === "none");
+        await g.eval(clickTab("Terrain")); await sleep(60);
+        await g.eval(`(() => { const w = document.querySelector('input[data-role="cols"]'); w.value = "4"; w.dispatchEvent(new Event("change")); })()`); await sleep(100);
+        const staleRows = await g.eval(`[...document.querySelectorAll("[data-unit-row]")].filter((r) => { const m = r.textContent.match(/\\((\\d+),\\d+\\)$/); return m && +m[1] >= 4; }).length`);
+        check("a board shrink also drops the off-board units from the unit list", staleRows === 0);
+
         assertNoProblems(g.problems);
       } catch (err) {
         await g.screenshot(path.join(OUT, "zz-failure.png")).catch(() => {});

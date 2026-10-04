@@ -837,6 +837,53 @@ describe("the unit-id uniqueness guard (D98 editor M-B)", () => {
 });
 
 /**
+ * The placement guard — the layer-stacking the editor's brushes allow (each brush toggles only its
+ * own layer) but no battle can honour. Found by using the editor: an enemy painted onto a wall and a
+ * second `gate-1` after an autosave reload both read "✓ valid — ready to play".
+ */
+describe("the placement guard (editor UX review)", () => {
+  const base = (): AuthoredEncounter => ({
+    id: "placement", name: "Placement", cols: 6, rows: 4,
+    blocked: [{ col: 3, row: 0 }],
+    playerSpawns: [{ col: 0, row: 3 }],
+    enemies: [{ templateId: "bandit-thug", pos: { col: 5, row: 1 } }],
+    gates: [{ id: "gate-1", pos: { col: 3, row: 1 }, openBy: [{ kind: "lockpick" }], locked: true }],
+    levers: [{ id: "lever-1", pos: { col: 5, row: 3 }, targets: ["gate-1"] }],
+    reward: { gold: 10, materials: [], xp: 10 },
+  });
+  const placement = (lvl: AuthoredEncounter) =>
+    validateLevel(lvl).filter((i) => /wall at|share tile|gate\/lever id|not a gate/.test(i));
+
+  it("passes a clean level", () => {
+    expect(validateLevel(base())).toEqual([]);
+  });
+
+  it("flags a unit or object painted onto a wall", () => {
+    const lvl = base();
+    lvl.enemies[0].pos = { col: 3, row: 0 };
+    expect(placement(lvl)).toEqual(['enemy "bandit-thug" sits on a wall at (3,0)']);
+  });
+
+  it("flags two placeables stacked on one tile", () => {
+    const lvl = base();
+    lvl.playerSpawns.push({ col: 5, row: 1 });
+    expect(placement(lvl)).toEqual(['a player spawn and enemy "bandit-thug" share tile (5,1) — one placeable per tile']);
+  });
+
+  it("flags a duplicate gate/lever id", () => {
+    const lvl = base();
+    lvl.gates!.push({ id: "gate-1", pos: { col: 1, row: 1 }, openBy: [{ kind: "lockpick" }], locked: true });
+    expect(placement(lvl)).toEqual(['duplicate gate/lever id "gate-1" — levers wire to gates by id']);
+  });
+
+  it("flags a lever wired to a gate that no longer exists", () => {
+    const lvl = base();
+    lvl.gates = [];
+    expect(placement(lvl)).toEqual(['lever "lever-1" targets "gate-1", which is not a gate on this level']);
+  });
+});
+
+/**
  * The spawn-zone content guard (D119). Authored zones decide where the party stands, which
  * ground is capture-immune, and when the deploy phase force-starts — every rule below is one
  * whose violation would otherwise surface as a mid-deploy freeze or a silently-wrong phase

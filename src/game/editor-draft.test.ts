@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec,
+  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec, nextObjectId,
   enemyBaseStat, effectiveEnemyStat, setEnemyStat, setSpecStat,
   type EditorDraft, type DraftEnemy,
 } from "./editor-draft";
@@ -268,5 +268,21 @@ describe("keepPlacedWhere (the Erase brush + board shrink)", () => {
     expect(d.captives).toEqual([]);
     expect(d.gates).toEqual([]);
     expect(d.levers).toEqual([]);
+  });
+});
+
+describe("nextObjectId — fresh gate/lever ids never clash with what is on the board", () => {
+  it("skips ids already held by a restored draft (the autosave-reload clash)", () => {
+    const d = blankDraft();
+    d.gates.push({ id: "gate-1", pos: { col: 1, row: 1 }, openBy: [{ kind: "lockpick" }], locked: true });
+    d.levers.push({ id: "lever-1", pos: { col: 2, row: 2 }, targets: ["gate-1"] });
+    expect(nextObjectId(d, "gate")).toBe("gate-2");
+    expect(nextObjectId(d, "lever")).toBe("lever-2");
+  });
+
+  it("reuses the lowest free number after an erase", () => {
+    const d = blankDraft();
+    d.gates.push({ id: "gate-2", pos: { col: 1, row: 1 }, openBy: [{ kind: "lockpick" }], locked: true });
+    expect(nextObjectId(d, "gate")).toBe("gate-1");
   });
 });

@@ -148,6 +148,19 @@ export function keepPlacedWhere(d: EditorDraft, keep: (c: GridCoord) => boolean)
 }
 
 /**
+ * The first free `<prefix>-N` object id across the draft's gates + levers. Derived from what is
+ * on the board rather than a session counter, so a draft restored from autosave / the library /
+ * an import never hands a fresh gate the id an existing one already holds (a lever wires to its
+ * gates by id, so a clash makes the wiring ambiguous).
+ */
+export function nextObjectId(d: EditorDraft, prefix: "gate" | "lever"): string {
+  const used = new Set([...d.gates.map((g) => g.id), ...d.levers.map((l) => l.id)]);
+  let n = 1;
+  while (used.has(`${prefix}-${n}`)) n++;
+  return `${prefix}-${n}`;
+}
+
+/**
  * A materialized captive spec for the **inspector** (M-B) — a spec-less painted captive gets one the
  * moment it's selected for editing, keyed by tile so two fresh captives don't collide (the
  * id-uniqueness guard flags a real clash live if the author later renames into one).

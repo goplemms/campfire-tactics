@@ -20,7 +20,7 @@ const LAUNCH_EXPEDITIONS = [THE_RESCUE.id] as const;
 import { loadLaunchConfig, saveLaunchConfig, loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
 import type { RunHandoff } from "./OverworldScene";
 import {
-  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec, standardObjectives,
+  blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec, nextObjectId, standardObjectives,
   effectiveEnemyStat, setEnemyStat, setSpecStat, STAT_FIELDS,
   type Brush, type EditorDraft, type DraftEnemy, type DraftCaptive, type StatField,
 } from "../editor-draft";
@@ -339,8 +339,6 @@ export class EditorScene extends Phaser.Scene {
     | { kind: "gate"; ref: AuthoredGate }
     | { kind: "lever"; ref: AuthoredLever }
     | null = null;
-  /** Auto-increment counters for object ids (gate-1, lever-1, …). */
-  private objectSeq = 0;
 
   /**
    * The in-progress paint/erase stroke (drag-to-paint). A press on a paint brush (or a right-click
@@ -400,9 +398,6 @@ export class EditorScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Editor-only page layout (D98): top-align the canvas + hide the guild run-bar + swap #app
-    // off grid-centring so Phaser's Scale.FIT owns sizing. Paired with the editorScale in config.ts.
-    document.body.classList.add("editor-mode");
     // Autosave restore (D-editor): on the FIRST boot only, pick up the last working draft from
     // localStorage so a reload never loses in-progress work. Guarded by `restored` so returning
     // from a playtest (which re-runs create on the same instance) keeps the in-memory draft.
@@ -468,10 +463,11 @@ export class EditorScene extends Phaser.Scene {
     for (const e of this.draft.enemies) {
       // Role tint (D109 slice 2): keep the red body (red = enemy) but ring the token in the archetype's
       // role colour so the board matches the tinted cards. Uniform red → the default dark ring.
-      const ring = this.prefs.enemyTint === "role" ? hexToNum(enemyRing(e.templateId, "role")) : undefined;
+      const ring = this.selection?.ref === e ? COLOR.gold
+        : this.prefs.enemyTint === "role" ? hexToNum(enemyRing(e.templateId, "role")) : undefined;
       this.mark(e.pos, abbrev(e.templateId), COLOR.danger, "#fff", ring);
     }
-    for (const c of this.draft.captives) this.mark(c.pos, c.release === "lockpick" ? "⚿" : "○", COLOR.captive, "#fff");
+    for (const c of this.draft.captives) this.mark(c.pos, c.release === "lockpick" ? "⚿" : "○", COLOR.captive, "#fff", this.selection?.ref === c ? COLOR.gold : undefined);
     for (const t of this.draft.traps) this.mark(t, "▲", COLOR.accent, "#1a1206");
     // Gates (▦) tagged with a letter per open-condition (L/K/D); a selected object rings gold.
     for (const g of this.draft.gates) this.mark(g.pos, `▦${gateTag(g)}`, this.selection?.ref === g ? COLOR.gold : COLOR.accent, "#1a1206");
@@ -822,13 +818,13 @@ export class EditorScene extends Phaser.Scene {
         // A default lockpick cell (the common prison cell); select + inspector edit its openBy/locked.
         const i = d.gates.findIndex((g) => same(g.pos, t));
         if (i >= 0) d.gates.splice(i, 1);
-        else d.gates.push({ id: `gate-${++this.objectSeq}`, pos: { col: t.col, row: t.row }, openBy: [{ kind: "lockpick" }], locked: true });
+        else d.gates.push({ id: nextObjectId(d, "gate"), pos: { col: t.col, row: t.row }, openBy: [{ kind: "lockpick" }], locked: true });
         return;
       }
       case "lever": {
         const i = d.levers.findIndex((l) => same(l.pos, t));
         if (i >= 0) d.levers.splice(i, 1);
-        else d.levers.push({ id: `lever-${++this.objectSeq}`, pos: { col: t.col, row: t.row }, targets: [] });
+        else d.levers.push({ id: nextObjectId(d, "lever"), pos: { col: t.col, row: t.row }, targets: [] });
         return;
       }
       case "erase": return void this.eraseAt(t);
@@ -852,8 +848,7 @@ export class EditorScene extends Phaser.Scene {
     // Drop anything now off the board.
     keepPlacedWhere(this.draft, (c) => c.col < this.draft.cols && c.row < this.draft.rows);
     this.cancelShape();
-    this.renderBoard();
-    this.updateExport();
+    this.afterBoardEdit(); // the unit list / inspector / objectives must drop what fell off the board too
   }
 
   // --- Export ---------------------------------------------------------------
@@ -910,6 +905,10 @@ export class EditorScene extends Phaser.Scene {
   // --- DOM palette (position:fixed, the debug-menu.ts idiom) ----------------
 
   private mountPanel(): void {
+    // Editor-only page layout (D98): top-align the canvas + hide the guild run-bar + swap #app off
+    // grid-centring so Phaser's Scale.FIT owns sizing. Set here (not in create) because unmountPanel
+    // clears it, and an import / library load / New remounts the panel without re-running create.
+    document.body.classList.add("editor-mode");
     // Keyboard shortcuts (brush hotkeys · Esc · undo/redo) + the capture-phase form-edit hook (undo for
     // inspector/objective/reward edits), on window so they survive an import remount (which unmount+
     // remounts the panel) and work regardless of canvas focus. Paired with unmountPanel's off.
@@ -1040,13 +1039,18 @@ export class EditorScene extends Phaser.Scene {
     this.buildScenarioDrawer(this.drawers.Scenario!);
     this.buildLaunchDrawer(this.drawers.Launch!);
 
-    // Persistent ✓/⚠ status bar in the bar (outside the drawers, so live guards never hide).
+    // Persistent ✓/⚠ status bar, pinned at the top of the tray between the grip and the scrolling
+    // panel — so the live guards stay in view whatever tab is open or however far it is scrolled
+    // (at the panel's foot it sat below the fold on a laptop-height window).
     const valid = document.createElement("div");
-    valid.style.margin = "8px 0 0";
-    panel.appendChild(valid);
+    valid.dataset.role = "status";
+    Object.assign(valid.style, {
+      flex: "0 0 auto", padding: "5px 14px", font: `700 13px/1.4 ${CHROME_FONT}`,
+      background: "#1d160f", borderBottom: `1px solid ${ED.cardBorder}`,
+    } as CSSStyleDeclaration);
     this.validLine = valid;
 
-    dock.appendChild(panel);
+    dock.append(valid, panel);
     document.body.appendChild(dock);
     this.dock = dock;
     this.panel = panel;
@@ -2018,6 +2022,7 @@ export class EditorScene extends Phaser.Scene {
       Object.assign(r.style, { padding: "2px 5px", cursor: "pointer", color: kind === "enemy" ? "#e6a5a5" : "#c3a6e0", background: selected ? "#4a3f2a" : "" } as CSSStyleDeclaration);
       r.onclick = () => {
         this.selection = kind === "enemy" ? { kind, ref: ref as DraftEnemy } : { kind, ref: this.materializeCaptive(ref as DraftCaptive) };
+        this.renderBoard(); // ring the picked unit gold on the board too
         this.renderInspector();
         this.renderUnitList();
       };

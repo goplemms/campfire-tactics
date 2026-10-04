@@ -641,6 +641,10 @@
         {
           "col": 9,
           "row": 17
+        },
+        {
+          "col": 10,
+          "row": 17
         }
       ]
     },
@@ -1025,6 +1029,16 @@
       "targets": [
         "seal-outer"
       ]
+    }
+  ],
+  "crates": [
+    {
+      "id": "smugglers-crate",
+      "pos": {
+        "col": 17,
+        "row": 4
+      },
+      "find": "smugglers-wraps"
     }
   ],
   "controlRoom": {

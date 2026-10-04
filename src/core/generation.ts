@@ -261,6 +261,7 @@ export function layoutFromGenerated(def: EncounterDef): EncounterLayout {
     gates: [],
     levers: [],
     traps: [],
+    crates: [],
     spawnZones: [],
     objectives: withDefaultGoal(),
   };

@@ -122,6 +122,11 @@ async function main() {
     check("the whole party stages at the front gate", bare.atFront.length >= 4);
     check("no entrance verb exists without a second zone (D118 degradation, by construction)",
       !bare.row.some((t) => /Side Door|Front Gate/.test(t)));
+    // The level is the same every run (owner, 2026-10-02): the side-door crate is there with or
+    // without the intel, drawn on the board from deploy.
+    const bareCrate = await g.bsEval(`return { glyphs: s.crateMarkers.length, text: s.crateMarkers.map(m => m.text) };`);
+    check("the side-door supply crate is on the board without intel too (the level never changes)",
+      bareCrate.glyphs === 1 && bareCrate.text[0] === "▣");
 
     // ---------------------------------------------------------------------------
     // Arm B — WITH intel. Both zones stage; the entrance action is clickable.
@@ -242,6 +247,32 @@ async function main() {
       fought.thiefPos.col === 18 && fought.thiefPos.row === 5);
     check("the deploy overlays are torn down at the boundary", fought.zonesCleared === 0);
 
+    // --- The side-door crate: the infiltrator steps onto it and puts the find on -------------
+    // Driven through the battle's own move (the logged action), so the scene's cratePickedUp
+    // listener has to redraw the board and the log: an uncaught throw there reads as a freeze.
+    const crate = await g.bsEval(`
+      const thief = s.battle.units.find(u => u.jobId === "thief");
+      const before = { glyphs: s.crateMarkers.length, move: thief.moveRange };
+      const c = s.battle.entities.all().find(e => typeof e.find === "string");
+      s.battle.moveUnit(thief, [{ col: 18, row: 4 }, { col: c.pos.col, row: c.pos.row }]);
+      s.placeView(thief);
+      return {
+        before,
+        cratePos: c.pos,
+        taken: c.pickedUp, takenBy: c.takenBy,
+        glyphs: s.crateMarkers.length,
+        status: thief.statuses.map(x => x.id),
+        phase: s.phase,
+      };
+    `);
+    console.log("• the infiltrator takes the side-door crate's find");
+    check("the crate sits one step inside the side door", crate.cratePos.col === 17 && crate.cratePos.row === 4);
+    check("the crate glyph was drawn before the pickup", crate.before.glyphs === 1);
+    check("stepping onto it takes the find (by the infiltrator)", crate.taken === true && crate.takenBy === "nyx");
+    check("the infiltrator is now Sure-Footed (+1 move for the fight)", crate.status.includes("sure-footed"));
+    check("…and the crate glyph cleared", crate.glyphs === 0);
+    check("the scene is still mid-battle (the pickup render didn't freeze it)", crate.phase === "battle");
+
     // ---------------------------------------------------------------------------
     // Arm C — the "Go now" call and the LEFT-BEHIND result screen (D120).
     //
@@ -354,6 +385,8 @@ async function main() {
       /Left behind — needs rescue:/.test(reportText) && /Bram/.test(reportText) && /Thane/.test(reportText));
     check("it reads as the survivable retreat, not a victory and not a defeat",
       /Objective Failed — Retreat/.test(reportText));
+    check("the report names the crate's find as a trophy, with who wore it",
+      /Found Smuggler's Wraps — worn by Nyx/.test(reportText));
     check("the party member left behind is NOT reported as freed",
       !/Freed by winning the field[^|]*Thane/.test(reportText));
     check("the resolution offers a way onward (the run ends at the finale)", !!left.primary);

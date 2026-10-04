@@ -15,6 +15,7 @@ import type { GridCoord } from "./iso";
 import type { EventBus } from "./event-bus";
 import { applyDamage } from "./combat";
 import { applyStatus, type StatusInstance } from "./status";
+import { getFieldFind } from "./field-finds";
 
 /** Context handed to an entity's tile callbacks. */
 export interface EntityEnterContext {
@@ -104,6 +105,7 @@ export class EntityRegistry {
       if ("sprung" in e) f.sprung = (e as RecoverableEntity).sprung;
       if ("revealed" in e) f.revealed = (e as ConcealedTrap).revealed;
       if ("pickedUp" in e) f.pickedUp = (e as DroppedKey).pickedUp;
+      if (isSupplyCrate(e)) f.takenBy = e.takenBy ?? null;
       flags.set(e.id, f);
     }
     return { flags, members };
@@ -125,6 +127,7 @@ export class EntityRegistry {
       if (f.sprung !== undefined) (e as RecoverableEntity).sprung = f.sprung;
       if (f.revealed !== undefined) (e as ConcealedTrap).revealed = f.revealed;
       if (f.pickedUp !== undefined) (e as DroppedKey).pickedUp = f.pickedUp;
+      if (f.takenBy !== undefined && isSupplyCrate(e)) e.takenBy = f.takenBy ?? undefined;
     }
   }
 }
@@ -134,6 +137,8 @@ interface EntityFlags {
   sprung?: boolean;
   revealed?: boolean;
   pickedUp?: boolean;
+  /** A supply crate's taker (`null` = not yet taken) — restored beside `pickedUp`. */
+  takenBy?: string | null;
 }
 
 /** A captured set of entity membership + flags, keyed by entity id (a turn-undo checkpoint). */
@@ -249,6 +254,50 @@ export function makeDroppedKey(id: string, pos: GridCoord, gates: readonly strin
 /** Type guard for a dropped key. */
 export function isDroppedKey(e: FieldEntity): e is DroppedKey {
   return Array.isArray((e as DroppedKey).gates) && typeof (e as DroppedKey).pickedUp === "boolean";
+}
+
+/**
+ * A **supply crate** field entity — a fixed, authored spot on the board holding one {@link
+ * "./field-finds".FieldFindDef}. The first **player** unit to step onto its tile takes the find and
+ * puts it on: the find's fight-long status lands on that unit, `pickedUp` flips (a one-shot,
+ * snapshot-undoable flag, like {@link DroppedKey}), and `takenBy` records who, for the report.
+ */
+export interface SupplyCrate extends FieldEntity {
+  /** The {@link "./field-finds".FIELD_FINDS} id it holds. */
+  find: string;
+  pickedUp: boolean;
+  /** The unit that took the find, once taken. */
+  takenBy?: string;
+}
+
+/** Build a supply crate at `pos` holding `find`. Throws on an unknown find id (fail loud at staging). */
+export function makeSupplyCrate(id: string, pos: GridCoord, find: string): SupplyCrate {
+  const def = getFieldFind(find);
+  if (!def) throw new Error(`makeSupplyCrate: unknown field find "${find}"`);
+  const crate: SupplyCrate = {
+    id,
+    pos: { col: pos.col, row: pos.row },
+    find,
+    pickedUp: false,
+    onUnitEnterTile: ({ unit, bus }) => {
+      if (crate.pickedUp || unit.side !== "player" || unit.captured) return;
+      crate.pickedUp = true;
+      crate.takenBy = unit.id;
+      applyStatus(unit, def.confers());
+      bus.emit("cratePickedUp", { unit, crate: crate.id, find });
+    },
+  };
+  return crate;
+}
+
+/** Type guard for a supply crate. */
+export function isSupplyCrate(e: FieldEntity): e is SupplyCrate {
+  return typeof (e as SupplyCrate).find === "string" && typeof (e as SupplyCrate).pickedUp === "boolean";
+}
+
+/** The crates a player unit took this battle — the report's trophy lines. */
+export function takenCrates(registry: EntityRegistry): SupplyCrate[] {
+  return registry.all().filter((e): e is SupplyCrate => isSupplyCrate(e) && e.pickedUp && e.takenBy !== undefined);
 }
 
 /**

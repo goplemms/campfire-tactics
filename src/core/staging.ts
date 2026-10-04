@@ -22,7 +22,7 @@ import { Battle } from "./turn";
 import { layoutFromGenerated, type EncounterDef } from "./generation";
 import { layoutFromAuthored, type AuthoredEncounter, type EncounterResult } from "./authored";
 import type { EncounterLayout } from "./encounter-layout";
-import { spawnEnemies, spawnCaptives, spawnGates, spawnLevers, registerEncounterTraps } from "./encounter-entities";
+import { spawnEnemies, spawnCaptives, spawnGates, spawnLevers, registerEncounterTraps, registerEncounterCrates } from "./encounter-entities";
 import { placeStartingParty } from "./party-placement";
 import { armObjectives, isGoalKind, onExfilSite, type ArmedObjective } from "./objectives";
 
@@ -137,6 +137,7 @@ export function stageEncounter(
     spawnZones: layout.spawnZones,
   });
   registerEncounterTraps(battle.entities, layout, opts.markTrapsUpTo);
+  registerEncounterCrates(battle.entities, layout);
 
   const objectives = armObjectives(battle.clock, battle.units, layout.objectives);
   return { battle, objectives, source };

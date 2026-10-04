@@ -65,7 +65,8 @@ const FLAGS: RunFlagDef[] = [
     label: "Side-door intel",
     description:
       "The party scouted the wall patrol and knows the prison's side entrance — the finale's second deploy zone.",
-    setBy: 'the `sideDoor` node\'s authored grant (`the-side-door.json` → `grants: { flag: "side-door-intel" }`)',
+    setBy:
+      'the Hollow Mill\'s `cuffedCell` win (`cuffed-cell.json` → `grants: { flag: "side-door-intel" }`); in the standalone `#rescue` harness, the `sideDoor` node (`the-side-door.json`)',
     readBy:
       "the finale's flag-gated spawn zone (`the-rescue.json` → `spawnZones[].requiresFlag`), unioned in by `buildSpawnZones`",
   },

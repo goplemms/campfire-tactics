@@ -19,6 +19,7 @@ import {
   resolveAuthored,
   validateExpedition,
   stageEncounter,
+  encounterOutcome,
   readEncounter,
   previewNode,
   jobLevelOf,
@@ -44,10 +45,10 @@ import { injectContentNodes } from "./authored-nodes";
  * uses (`the-rescue-expedition.test.ts`), applied to the arc.
  *
  * Converted: **all six** of the arc's reachable bodies — `thieves-den`, `e1-skirmish`,
- * `prison-wagon`, `cuffed-cell`, `snares-trapfield`, `outer-yard`. The Hollow Mill's inline
- * `encounters` map is down to its last entry (`prison-assault`, which checklist F1 deletes rather
- * than converts). Each conversion added its body pins here and deleted the const-reading version
- * from `core/hollow-mill.test.ts`.
+ * `prison-wagon`, `cuffed-cell`, `snares-trapfield`, `outer-yard`. The old `prison-assault` const was
+ * deleted rather than converted when The Rescue became the arc's finale (#210), so the inline
+ * `encounters` map is gone. Each conversion added its body pins here and deleted the const-reading
+ * version from `core/hollow-mill.test.ts`.
  */
 describe("The Hollow Mill — the bodies that live in content JSON (D122)", () => {
   beforeEach(() => clearInjectedNodes());
@@ -191,7 +192,10 @@ describe("The Hollow Mill — the bodies that live in content JSON (D122)", () =
     expect(lieutenant.id).toBe("slaver-lieutenant");
     expect(lieutenant.role).toBe("captain");
     expect(lieutenant.overrides).toEqual({ maxHp: 34, attack: 10, defense: 3 }); // softened, not the finale warden
-    expect(body.reward).toEqual({ gold: 120, materials: [{ id: "salve", count: 2 }], xp: 80 });
+    // xp 80 → 200 (#210): the sustain arm skips two fights the infiltration arm takes, and The Rescue
+    // wiped it to the last unit at 80 (the headless play-through survives from 160 up). A stopgap:
+    // route XP will be re-derived from the finale's target level once expedition length is designed (D127).
+    expect(body.reward).toEqual({ gold: 120, materials: [{ id: "salve", count: 2 }], xp: 200 });
     // The gated recruit rides the body as a serialized UnitSpec; the flag gates map access.
     expect(body.grants?.flag).toBe("medic-freed");
     expect(body.grants?.recruit?.id).toBe("sela");
@@ -681,5 +685,100 @@ describe("intel over the Hollow Mill's content-JSON bodies (D83/D85)", () => {
   it("a rest node carries no intel-complete signal (nothing to scout)", () => {
     const run = createRunFromExpedition(THE_HOLLOW_MILL);
     expect(previewNode(run, "start").intelComplete).toBeUndefined();
+  });
+});
+
+/**
+ * **The arc's finale is The Rescue** (#210) — the dual-OR win and the D97 /challenge edge cases,
+ * moved here from `core/hollow-mill.test.ts` when the finale stopped being a TS const. They now run
+ * on the body the arc actually stages (`the-rescue.json`, resolved through the injected catalog):
+ * three lockpick cells instead of two, the same OR'd goals.
+ */
+describe("The Hollow Mill's finale — The Rescue's dual-OR win (#210)", () => {
+  beforeEach(() => {
+    clearInjectedNodes();
+    injectContentNodes();
+  });
+
+  const finale = (): AuthoredEncounter => {
+    const id = THE_HOLLOW_MILL.map.nodes.finale.authoredId!;
+    const body = resolveAuthored(THE_HOLLOW_MILL, id);
+    if (!body) throw new Error(`no finale body for "${id}"`);
+    return body;
+  };
+  /** The starting trio (soldier/hunter/scout — no lockpick), as live units. */
+  const finaleParty = (): Unit[] => THE_HOLLOW_MILL.bundle.party.map(createUnit);
+  const stage = () => stageEncounter(finale(), finaleParty());
+  const extractSpan = (staged: ReturnType<typeof stageEncounter>) =>
+    staged.objectives.find((o) => o.spec.kind === "extraction")!.spec.span!;
+  /** Walk every standing non-prisoner party member out too (D120: the escort leaves with them). */
+  const escortOut = (staged: ReturnType<typeof stageEncounter>) => {
+    const exit = extractSpan(staged);
+    for (const u of staged.battle.units) if (u.side === "player" && u.role !== "prisoner" && u.alive) u.pos = { ...exit[0] };
+  };
+
+  it("the finale node stages The Rescue from content JSON (no inline body left to shadow it)", () => {
+    expect(THE_HOLLOW_MILL.encounters?.["the-rescue"]).toBeUndefined();
+    expect(finale()).toBe(LEVELS["the-rescue"]);
+  });
+
+  it("authors two OR'd goals: storm the garrison OR extract all three prisoners", () => {
+    const goals = finale().objectives ?? [];
+    expect(goals.map((o) => o.kind).sort()).toEqual(["eliminate-all", "extraction"]);
+    expect(goals.find((o) => o.kind === "extraction")!.escort).toEqual({ role: "prisoner" });
+    expect(finale().captives).toHaveLength(3);
+    expect(finale().captives!.every((c) => c.release?.kind === "lockpick")).toBe(true);
+  });
+
+  it("frontal path: clearing the garrison wins even with the prisoners still cuffed", () => {
+    const staged = stage();
+    expect(encounterOutcome(staged)).toBeUndefined();
+    for (const u of staged.battle.units) if (u.side === "enemy") u.alive = false;
+    expect(staged.battle.units.filter((u) => u.captured).length).toBe(3);
+    expect(encounterOutcome(staged)).toBe("win");
+  });
+
+  it("extraction path: every prisoner and the escort out — a win with the garrison still standing", () => {
+    const staged = stage();
+    const exit = extractSpan(staged);
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    prisoners.forEach((p, i) => { freeCaptive(p); p.pos = { ...exit[i] }; });
+    escortOut(staged);
+    expect(staged.battle.units.some((u) => u.side === "enemy" && u.alive)).toBe(true);
+    expect(encounterOutcome(staged)).toBe("win");
+  });
+
+  it("extraction stays pending until EVERY freed prisoner is at the exit (a cuffed one there doesn't count)", () => {
+    const staged = stage();
+    const exit = extractSpan(staged);
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    escortOut(staged);
+    freeCaptive(prisoners[0]); prisoners[0].pos = { ...exit[0] };
+    freeCaptive(prisoners[1]); prisoners[1].pos = { ...exit[1] };
+    expect(encounterOutcome(staged)).toBeUndefined();
+    prisoners[2].pos = { ...exit[2] }; // still cuffed
+    expect(encounterOutcome(staged)).toBeUndefined();
+    freeCaptive(prisoners[2]);
+    expect(encounterOutcome(staged)).toBe("win");
+  });
+
+  it("the cells resist the starting trio — no lockpick capability, so it wins frontally (C4)", () => {
+    const staged = stage();
+    const prisoners = staged.battle.units.filter((u) => u.role === "prisoner");
+    const party = staged.battle.units.filter((u) => u.side === "player" && !u.captured);
+    for (const p of prisoners) for (const by of party) expect(canRelease(p, by)).toBe(false);
+  });
+
+  it("party wiped with the cells still cuffed ⇒ WIPE (bound bodies don't keep the side alive, challenge A1c)", () => {
+    const staged = stage();
+    for (const u of staged.battle.units) if (u.side === "player" && u.role !== "prisoner") u.alive = false;
+    expect(encounterOutcome(staged)).toBe("wipe");
+  });
+
+  it("every prisoner downed never VACUOUSLY satisfies extraction (challenge A4)", () => {
+    const staged = stage();
+    escortOut(staged);
+    for (const p of staged.battle.units.filter((u) => u.role === "prisoner")) { p.captured = false; p.alive = false; }
+    expect(encounterOutcome(staged)).toBeUndefined();
   });
 });

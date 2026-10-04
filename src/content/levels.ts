@@ -20,6 +20,7 @@ import {
   OBJECTIVE_KINDS,
   getJob,
   getMaterial,
+  getFieldFind,
   isKnownRunFlag,
   runFlagIds,
   isKnownStandingOrder,
@@ -159,6 +160,13 @@ function tileIssues(e: Partial<AuthoredEncounter>): string[] {
   (Array.isArray(e.enemies) ? e.enemies : []).forEach((en, i) => onBoard(en?.pos, `enemy[${i}] "${en?.templateId}"`));
   (Array.isArray(e.gates) ? e.gates : []).forEach((g) => onBoard(g?.pos, `gate "${g?.id}"`));
   (Array.isArray(e.levers) ? e.levers : []).forEach((l) => onBoard(l?.pos, `lever "${l?.id}"`));
+
+  const walls = new Set((Array.isArray(e.blocked) ? e.blocked : []).map((t) => `${t?.col},${t?.row}`));
+  for (const [i, c] of (Array.isArray(e.crates) ? e.crates : []).entries()) {
+    onBoard(c?.pos, `crate[${i}]`);
+    if (!getFieldFind(c?.find)) issues.push(`crate[${i}].find "${c?.find}" is not a known field find — staging would throw`);
+    if (c?.pos && walls.has(`${c.pos.col},${c.pos.row}`)) issues.push(`crate[${i}] sits on a wall at (${c.pos.col},${c.pos.row}) — no unit can ever reach it`);
+  }
 
   for (const [i, t] of (Array.isArray(e.traps) ? e.traps : []).entries()) {
     onBoard(t?.pos, `trap[${i}]`);
@@ -320,6 +328,8 @@ function spawnZoneIssues(e: Partial<AuthoredEncounter>): string[] {
       issues.push(`spawn zone "${id}" is primary AND flag-gated — the primary zone must always be present`);
     const tiles = Array.isArray(z?.tiles) ? z.tiles : [];
     if (tiles.length === 0) issues.push(`spawn zone "${id}" has no tiles`);
+    else if (Number.isInteger(z?.cap) && (z?.cap ?? 0) > tiles.length)
+      issues.push(`spawn zone "${id}" has cap ${z?.cap} but only ${tiles.length} tile(s) — a full party would stack two units on one tile`);
     for (const t of tiles) {
       const key = `${t?.col},${t?.row}`;
       if (!Number.isInteger(t?.col) || !Number.isInteger(t?.row) || (t?.col ?? -1) < 0 || (t?.row ?? -1) < 0 || (t?.col ?? 0) >= (e.cols ?? 0) || (t?.row ?? 0) >= (e.rows ?? 0))

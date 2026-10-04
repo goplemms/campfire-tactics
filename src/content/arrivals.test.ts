@@ -113,16 +113,17 @@ describe("scoreArrival (Phase 3)", () => {
     // (start → … → Market → Wagon → restCamp), which frees Sela the Medic. The scoring folds
     // are unchanged; this freezes the exact score so any *unintended* scoring drift fails loudly.
     // If a deliberate scoring change lands later, repin.
+    // Re-pinned for #210: the Wagon's xp 80 → 200 (the sustain arm has to survive The Rescue).
     const { run } = traverseRoute(EXP, MEDIC_ROUTE);
     const score = scoreArrival(run);
-    expect(score.total).toBeCloseTo(72.24264382960035, 10);
-    expect(score.parts.levels).toBeCloseTo(14.5, 10);
-    expect(score.parts.health).toBeCloseTo(16.075977162933686, 10);
+    expect(score.total).toBeCloseTo(78.27991452991454, 10);
+    expect(score.parts.levels).toBeCloseTo(20, 10);
+    expect(score.parts.health).toBeCloseTo(16.613247863247864, 10);
     expect(score.parts.morale).toBeCloseTo(4, 10);
     expect(score.parts.fatigue).toBeCloseTo(0, 10);
     const digest = arrivalDigest(run);
-    expect(digest.levelTotal).toBe(29);
-    expect(digest.avgHpPct).toBe(64);
+    expect(digest.levelTotal).toBe(42);
+    expect(digest.avgHpPct).toBe(66);
   });
 });
 

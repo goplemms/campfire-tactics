@@ -94,5 +94,8 @@
       }
     ],
     "xp": 70
+  },
+  "grants": {
+    "flag": "side-door-intel"
   }
 }

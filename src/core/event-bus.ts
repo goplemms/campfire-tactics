@@ -89,6 +89,11 @@ export interface BattleEvents {
    */
   keyPickedUp: { unit: Unit; key: string; gates: string[] };
   /**
+   * A player unit **took a supply crate's find** and put it on — its fight-long status is already on
+   * `unit`. The render clears the crate glyph and names the find.
+   */
+  cratePickedUp: { unit: Unit; crate: string; find: string };
+  /**
    * The deployment phase ended and combat begins (D67 clock fold) — the transition
    * seam. The render reacts by tearing down the staging visuals (the D12 veil, the
    * zone/reach overlays); future "opening of battle" effects can hook the same moment

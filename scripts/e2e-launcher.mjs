@@ -1,5 +1,6 @@
 // E2E: the **playtest launcher** (the editor's Launch tab). Boots `#editor`, drives the sixth tab's
-// four levers — target · kit · run flags · seed — into the REAL BattleScene and back.
+// levers — target · kit · run flags · seed · party setup — into the REAL BattleScene and back, and
+// boots the tab's copied `#launch?…` link in a fresh document.
 //
 // This guard is MANDATORY, not decorative (CLAUDE.md, "the visual step-through is NOT optional"):
 // the core suite and the sim never render a scene and the sim's bot skips deploy entirely, so a
@@ -13,6 +14,9 @@
 //   · an expedition-node target walks its route and lands positioned at the node
 //   · the return lands back IN the Launch tab with its selections intact
 //   · fail-loud: an unlaunchable target refuses without switching scene
+//   · the party setup re-levels the Hollow Mill's ARRIVAL party at the finale node (level + per-unit)
+//   · a node seed is the route salt: a non-number refuses instead of being silently dropped
+//   · Copy link → `#launch?…` boots the same fight; a bad link says why on screen (no freeze)
 //   · no page error on any path
 //
 // Units and tiles are addressed **by lookup, never by pixel** (BoardCamera adoption is queued).
@@ -40,6 +44,11 @@ const setSelect = (role, value) =>
   `(() => { const s = document.querySelector('select[data-role="${role}"]'); s.value = ${JSON.stringify(value)};
     s.dispatchEvent(new Event("change")); return s.value; })()`;
 
+/** Type into a launch-tab text field and fire input (the field's own handler does the state write). */
+const setText = (role, value) =>
+  `(() => { const i = document.querySelector('input[data-role="${role}"]'); i.value = ${JSON.stringify(value)};
+    i.dispatchEvent(new Event("input")); return i.value; })()`;
+
 /** Toggle a flag checkbox by id and fire change. */
 const setFlag = (id, on) =>
   `(() => { const b = document.querySelector('input[data-role="launch-flag-${id}"]'); b.checked = ${on ? "true" : "false"};
@@ -51,6 +60,9 @@ const TAB = `(() => {
   const target = q('select[data-role="launch-target"]');
   const kit = q('select[data-role="launch-kit"]');
   const seed = q('input[data-role="launch-seed"]');
+  const level = q('input[data-role="launch-level"]');
+  const hp = q('input[data-role="launch-hp"]');
+  const tweaks = q('input[data-role="launch-tweaks"]');
   const status = q('[data-role="launch-status"]');
   const drawer = q('[data-drawer="Launch"]');
   return {
@@ -63,7 +75,10 @@ const TAB = `(() => {
     kitOptions: kit ? [...kit.options].map((o) => o.value) : [],
     flagBoxes: [...document.querySelectorAll('input[data-role^="launch-flag-"]')].map((b) => b.dataset.role),
     seedValue: seed ? seed.value : null,
+    hasLevel: !!level, hasHp: !!hp, hasTweaks: !!tweaks, hasCopyLink: !!q('button[data-role="launch-copy-link"]'),
+    levelValue: level ? level.value : null,
     status: status ? status.textContent : null,
+    link: status ? status.dataset.link ?? null : null,
   };
 })()`;
 
@@ -84,6 +99,8 @@ const BATTLE = `(() => {
     returnTo: bt ? bt.returnTo ?? null : null,
     partyLen: live && bt.run ? bt.run.party.length : null,
     partyJobs: live && bt.run ? bt.run.party.map((u) => u.primaryJob ?? u.jobId) : null,
+    partyLevels: live && bt.run ? Object.fromEntries(bt.run.party.map((u) => [u.id, u.level])) : null,
+    partyHp: live && bt.run ? Object.fromEntries(bt.run.party.map((u) => [u.id, [u.hp, u.maxHp]])) : null,
     encounterId: staged && staged.source ? staged.source.id : null,
     zones: staged && staged.battle ? staged.battle.spawnZones.map((z) => z.id) : null,
     nodeId: live && bt.run ? bt.run.mapNodeId : null,
@@ -130,6 +147,8 @@ async function main() {
         check("lever 3 — run flags render as CHECKBOXES, not free text", t.flagBoxes.length > 0);
         check("lever 4 — the seed field is present", t.hasSeed);
         check("the Launch button is present", t.hasButton);
+        check("lever 5 — the party setup: level, start HP % and per-unit fields", t.hasLevel && t.hasHp && t.hasTweaks);
+        check("the Copy link button is present", t.hasCopyLink);
         await shot(g, path.join(OUT, "01-launch-tab.png"));
 
         console.log("• the target picker offers drafts, content levels AND expedition nodes");
@@ -138,6 +157,7 @@ async function main() {
         check("the finale level is offered", t.targetOptions.includes("level:the-rescue"));
         check("expedition nodes are offered", t.targetOptions.some((v) => v.startsWith("node:")));
         check("the finale NODE is offered", t.targetOptions.includes("node:the-rescue-expedition:finale"));
+        check("the Hollow Mill arc's finale node is offered too", t.targetOptions.includes("node:hollow-mill:finale"));
         check("the default target is the draft", t.targetValue === "draft");
         check("the kit picker lists the squads", t.kitOptions.length >= 3);
         check("the known intel flag has a checkbox", t.flagBoxes.includes("launch-flag-side-door-intel"));
@@ -169,15 +189,16 @@ async function main() {
         check("…so the Launch button can be scrolled into view", reach.inViewportAfterScroll);
         // Clipped text is a bug the geometric audit hunts; the seed placeholder sat just over its
         // field's width and rendered as "blank = determini".
-        const fits = await g.eval(`(() => {
-          const i = document.querySelector('input[data-role="launch-seed"]');
+        const fits = await g.eval(`(() => Object.fromEntries(["launch-seed", "launch-level", "launch-hp", "launch-tweaks"].map((role) => {
+          const i = document.querySelector('input[data-role="' + role + '"]');
           const probe = document.createElement("span");
           probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:" + getComputedStyle(i).font;
           probe.textContent = i.placeholder; document.body.appendChild(probe);
           const w = probe.getBoundingClientRect().width; probe.remove();
-          return w <= i.clientWidth - 6;
-        })()`);
-        check("the seed placeholder renders un-clipped in its field", fits === true);
+          return [role, w <= i.clientWidth - 6];
+        })))()`);
+        check("the seed placeholder renders un-clipped in its field", fits["launch-seed"] === true);
+        check("…and so do the party-setup placeholders", fits["launch-level"] && fits["launch-hp"] && fits["launch-tweaks"]);
         await shot(g, path.join(OUT, "01b-launch-tab-scrolled.png"));
 
         // ---------------------------------------------------------------
@@ -269,6 +290,16 @@ async function main() {
         await sleep(150);
         t = await g.eval(TAB);
         check("the status shows the route it would walk", /→/.test(t.status));
+        // The seed from step 6 is still "probe-seed-42" — for a node it is the route SALT, and a
+        // non-number used to be dropped silently. It must refuse now, saying why.
+        await g.eval(`document.querySelector('button[data-role="launch"]').click()`);
+        await sleep(500);
+        b = await g.eval(BATTLE);
+        t = await g.eval(TAB);
+        check("a non-number seed on a node launch refuses (stays in the editor)", b.editorActive && !b.battleActive);
+        check("…and says the node seed must be a whole number", /whole number/.test(t.status));
+        await g.eval(setText("launch-seed", ""));
+        await sleep(80);
         await g.eval(`document.querySelector('button[data-role="launch"]').click()`);
         await sleep(2000);
         b = await g.eval(BATTLE);
@@ -286,6 +317,72 @@ async function main() {
         check("the editor is back after the node launch", b.editorActive);
 
         // ---------------------------------------------------------------
+        // 7b. The PARTY SETUP on the Hollow Mill finale: the arc's arrival party, re-levelled.
+        // ---------------------------------------------------------------
+        console.log("• the Hollow Mill finale with the arrival party at level 6, Rook at 8 and full HP");
+        await g.eval(clickTab("Launch"));
+        await g.eval(setSelect("launch-target", "node:hollow-mill:finale"));
+        await g.eval(setText("launch-level", "6"));
+        await g.eval(setText("launch-tweaks", "rook.level=8; rook.hp=100"));
+        await sleep(150);
+        t = await g.eval(TAB);
+        check("the status previews the arrival party and the setup", /arrival party/.test(t.status) && /level 6/.test(t.status));
+        await g.eval(`document.querySelector('button[data-role="launch"]').click()`);
+        await sleep(2500);
+        b = await g.eval(BATTLE);
+        check("the Hollow Mill finale booted", b.battleActive && b.nodeId === "finale" && b.encounterId === "the-rescue");
+        const lv = b.partyLevels || {};
+        check("it fielded the ARC party (Edrin, the Lord, is in it — not a kit)", "edrin" in lv);
+        check("every other unit is at level 6", Object.entries(lv).every(([id, n]) => id === "rook" || n === 6));
+        check("the per-unit tweak won for Rook (level 8)", lv.rook === 8);
+        check("…at full HP", b.partyHp && b.partyHp.rook[0] === b.partyHp.rook[1]);
+        await g.screenshot(path.join(OUT, "06b-hollow-mill-levelled.png"));
+        await exitToEditor(g);
+
+        console.log("• a per-unit tweak naming a unit the party lacks refuses, listing the party");
+        await g.eval(clickTab("Launch"));
+        await g.eval(setText("launch-tweaks", "nyx.level=3"));
+        await sleep(80);
+        await g.eval(`document.querySelector('button[data-role="launch"]').click()`);
+        await sleep(2000);
+        b = await g.eval(BATTLE);
+        t = await g.eval(TAB);
+        check("the launch refused (stays in the editor)", b.editorActive && !b.battleActive);
+        check("…naming the missing unit and the real party", /no party unit "nyx"/.test(t.status) && /edrin/.test(t.status));
+
+        // ---------------------------------------------------------------
+        // 7c. Copy link → the #launch boot reaches the same fight in a fresh document.
+        // ---------------------------------------------------------------
+        console.log("• Copy link, then boot the link in a fresh document");
+        await g.eval(setText("launch-tweaks", "rook.level=8"));
+        await g.eval(`document.querySelector('button[data-role="launch-copy-link"]').click()`);
+        await sleep(150);
+        t = await g.eval(TAB);
+        check("Copy link produced a #launch link", typeof t.link === "string" && t.link.includes("#launch?"));
+        const linkHash = t.link.slice(t.link.indexOf("#"));
+        check("…carrying the target, the level and the tweak",
+          /target=node%3Ahollow-mill%3Afinale/.test(linkHash) && /level=6/.test(linkHash) && /tweaks=rook.level%3D8/.test(linkHash));
+        await g.boot(linkHash);
+        await sleep(2500);
+        b = await g.eval(BATTLE);
+        check("the link booted straight into the finale", b.battleActive && b.nodeId === "finale" && b.encounterId === "the-rescue");
+        check("…with the same party setup (level 6, Rook 8)",
+          (b.partyLevels || {}).rook === 8 && Object.entries(b.partyLevels || {}).every(([id, n]) => id === "rook" || n === 6));
+        await g.screenshot(path.join(OUT, "06c-launch-link.png"));
+
+        console.log("• a bad link says why on screen instead of freezing");
+        await g.boot("#launch?target=level:no-such-level");
+        await sleep(900);
+        const linkErr = await g.eval(`window.campfireLaunchError ?? null`);
+        check("the bad link reported its reason", /no content level "no-such-level"/.test(linkErr || ""));
+        b = await g.eval(BATTLE);
+        check("…and did not start a battle", !b.battleActive);
+        await g.screenshot(path.join(OUT, "06d-bad-link.png"));
+
+        await g.boot("#editor");
+        await sleep(900);
+
+        // ---------------------------------------------------------------
         // 8. The last launch survives a RELOAD (D113), not just a scene return.
         // ---------------------------------------------------------------
         console.log("• the four levers survive a full page reload");
@@ -295,6 +392,7 @@ async function main() {
         await g.eval(setFlag("side-door-intel", true));
         await g.eval(`(() => { const s = document.querySelector('input[data-role="launch-seed"]');
           s.value = "sticky-seed"; s.dispatchEvent(new Event("input")); })()`);
+        await g.eval(setText("launch-tweaks", "")); // the level stays: it must survive the reload too
         await sleep(150);
 
         await g.boot("#editor"); // a genuine fresh document, not a scene restart
@@ -305,6 +403,7 @@ async function main() {
         check("the target survived the reload", t.targetValue === "level:the-rescue");
         check("the kit survived the reload", t.kitValue === "Skirmishers (4)");
         check("the seed survived the reload", t.seedValue === "sticky-seed");
+        check("the party level survived the reload", t.levelValue === "6");
         const flagOn = await g.eval(`document.querySelector('input[data-role="launch-flag-side-door-intel"]').checked`);
         check("the flag survived the reload", flagOn === true);
         check("…and it is immediately re-launchable (status reads OK)", /✓/.test(t.status));

@@ -101,8 +101,11 @@ async function main() {
         await g.page.keyboard.down("Control"); await g.page.keyboard.down("Shift"); await g.page.keyboard.press("KeyZ"); await g.page.keyboard.up("Shift"); await g.page.keyboard.up("Control"); await sleep(150);
         check("Ctrl+Shift+Z redoes the Load", (await g.eval(STATE)).walls === 3);
 
-        // Delete removes it from the list.
+        // Delete is two-step (a delete can't be undone): the first ✕ arms it, the second removes it.
         await openScenario(g); await sleep(60);
+        await g.eval(`document.querySelector('[data-lib-row="attempt-a"] button[data-role="lib-del"]').click()`);
+        await sleep(80);
+        check("one ✕ click only arms the delete", (await g.eval(STATE)).libRows === 1);
         await g.eval(`document.querySelector('[data-lib-row="attempt-a"] button[data-role="lib-del"]').click()`);
         await sleep(120);
         check("Delete removed the map from the library", (await g.eval(STATE)).libRows === 0);

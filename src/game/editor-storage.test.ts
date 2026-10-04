@@ -108,16 +108,19 @@ describe("sanitizeLaunchConfig", () => {
   });
 
   it("round-trips a well-formed config", () => {
-    const cfg = { targetKey: "level:the-rescue", kit: "Vanguard (5)", flags: ["side-door-intel"], seed: "s1" };
+    const cfg = {
+      targetKey: "level:the-rescue", kit: "Vanguard (5)", flags: ["side-door-intel"], seed: "s1",
+      level: "5", hp: "80", tweaks: "rook.level=7",
+    };
     expect(sanitizeLaunchConfig(JSON.parse(JSON.stringify(cfg)))).toEqual(cfg);
   });
 
   it("defaults each field independently rather than discarding the whole blob", () => {
     // A partial/drifted store should still restore what it legitimately carries.
     expect(sanitizeLaunchConfig({ kit: "Solo (1)" })).toEqual({
-      targetKey: "draft", kit: "Solo (1)", flags: [], seed: "",
+      targetKey: "draft", kit: "Solo (1)", flags: [], seed: "", level: "", hp: "", tweaks: "",
     });
-    expect(sanitizeLaunchConfig({})).toEqual({ targetKey: "draft", kit: "", flags: [], seed: "" });
+    expect(sanitizeLaunchConfig({})).toEqual({ targetKey: "draft", kit: "", flags: [], seed: "", level: "", hp: "", tweaks: "" });
   });
 
   it("coerces a hostile flags value to a clean string list", () => {
@@ -132,7 +135,7 @@ describe("sanitizeLaunchConfig", () => {
   });
 
   it("coerces non-string scalars to their defaults", () => {
-    const out = sanitizeLaunchConfig({ targetKey: 7, kit: {}, seed: false })!;
-    expect(out).toEqual({ targetKey: "draft", kit: "", flags: [], seed: "" });
+    const out = sanitizeLaunchConfig({ targetKey: 7, kit: {}, seed: false, level: 5, hp: null, tweaks: [] })!;
+    expect(out).toEqual({ targetKey: "draft", kit: "", flags: [], seed: "", level: "", hp: "", tweaks: "" });
   });
 });

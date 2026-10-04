@@ -217,6 +217,10 @@ export interface LaunchConfig {
   flags: string[];
   /** The seed box's contents (blank = the deterministic default). */
   seed: string;
+  /** The party-setup fields as typed (blank = as is): level, starting HP %, per-unit tweak text. */
+  level: string;
+  hp: string;
+  tweaks: string;
 }
 
 /**
@@ -240,6 +244,10 @@ export function sanitizeLaunchConfig(raw: unknown): LaunchConfig | null {
     // tab's call, not this layer's — see the note above.
     flags: Array.isArray(p.flags) ? [...new Set(p.flags.filter((f): f is string => typeof f === "string"))] : [],
     seed: typeof p.seed === "string" ? p.seed : "",
+    // Absent in a store written before the party-setup fields existed — blank, i.e. "as is".
+    level: typeof p.level === "string" ? p.level : "",
+    hp: typeof p.hp === "string" ? p.hp : "",
+    tweaks: typeof p.tweaks === "string" ? p.tweaks : "",
   };
 }
 

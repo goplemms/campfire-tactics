@@ -13,10 +13,22 @@ import {
   nodeTargets,
   type LaunchTarget,
 } from "../launch-target";
-import { runFlagIds, getRunFlag, runFlagBag, traverseRoute, THE_RESCUE } from "../../core";
+import { runFlagIds, getRunFlag, isEmptySetup, THE_HOLLOW_MILL, THE_RESCUE, type PartySetup } from "../../core";
+import {
+  buildEncounterStart,
+  describePartySetup,
+  encounterStartQuery,
+  launchTargetKey,
+  parseLaunchTargetKey,
+  parseUnitTweaks,
+  type EncounterStart,
+} from "../encounter-start";
 
-/** The expeditions the Launch tab offers nodes from. The Hollow Mill's own jump tool is `#debug`. */
-const LAUNCH_EXPEDITIONS = [THE_RESCUE.id] as const;
+/**
+ * The expeditions the Launch tab offers nodes from: the Hollow Mill arc (whose finale is The
+ * Rescue, so its arrival party is the one the finale is balanced for) and The Rescue harness.
+ */
+const LAUNCH_EXPEDITIONS = [THE_HOLLOW_MILL.id, THE_RESCUE.id] as const;
 import { loadLaunchConfig, saveLaunchConfig, loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
 import type { RunHandoff } from "./OverworldScene";
 import {
@@ -315,6 +327,10 @@ export class EditorScene extends Phaser.Scene {
   private launchFlags = new Set<string>();
   /** The encounter seed for the next launch; blank ⇒ the deterministic default. */
   private launchSeed = "";
+  /** The party-setup fields, as typed (blank = as is): level, starting HP %, per-unit tweak text. */
+  private launchLevel = "";
+  private launchHp = "";
+  private launchTweaks = "";
   /** The Launch tab's status line (fail-loud messages + the last launch's summary). */
   private launchStatus?: HTMLDivElement;
   /** One-shot: restore the stored launch config on the FIRST boot only, not on a launch return. */
@@ -1662,7 +1678,9 @@ export class EditorScene extends Phaser.Scene {
    * reachable expedition node. The hash routes are untouched — they stay the machine-facing
    * interface the e2e harness drives; this is the surface a human uses.
    *
-   * Four levers, the ones we have evidence for: **target**, **kit**, **run flags**, **seed**.
+   * The levers: **target**, **kit**, **run flags**, **seed**, and the **party setup** (level, start
+   * HP, per-unit tweaks) — together one {@link EncounterStart}, which **Copy link** encodes as a
+   * `#launch?…` URL that boots the same fight outside the editor.
    * Flags are **checkboxes over the known registry**, never free text — the flag bag is untyped, so
    * a typo would otherwise boot a plausible-looking run with a silently absent zone.
    */
@@ -1676,10 +1694,10 @@ export class EditorScene extends Phaser.Scene {
       const opt = document.createElement("option");
       opt.value = t.value;
       opt.textContent = t.label;
-      opt.selected = t.value === this.launchTargetKey();
+      opt.selected = t.value === launchTargetKey(this.launchTarget);
       target.appendChild(opt);
     }
-    target.onchange = () => { this.launchTarget = this.parseTargetKey(target.value); this.refreshLaunchStatus(); };
+    target.onchange = () => { this.launchTarget = parseLaunchTargetKey(target.value) ?? { kind: "draft" }; this.refreshLaunchStatus(); };
     targetRow.appendChild(target);
     d.appendChild(targetRow);
     d.appendChild(this.hint("the draft you're editing, any content level, or a node of an expedition (walked to, then handed over)"));
@@ -1697,7 +1715,7 @@ export class EditorScene extends Phaser.Scene {
     kit.onchange = () => { this.launchKit = kit.value; this.refreshLaunchStatus(); };
     kitRow.appendChild(kit);
     d.appendChild(kitRow);
-    d.appendChild(this.hint("kits declare job levels, gear and stats — an expedition node fields its own roster instead"));
+    d.appendChild(this.hint("kits declare job levels, gear and stats — an expedition node fields the party its route arrives with"));
 
     // — Run flags — a CHOICE over the known registry, never free text (a typo fails silently).
     d.appendChild(this.sectionHead("Run flags"));
@@ -1730,11 +1748,41 @@ export class EditorScene extends Phaser.Scene {
     // full explanation lives in the tooltip rather than being truncated in the box.
     seed.placeholder = "blank = default";
     seed.value = this.launchSeed;
-    seed.title = "The encounter's RNG seed. Blank uses the deterministic default, so repeat launches match.";
+    seed.title =
+      "The encounter's RNG seed. Blank uses the deterministic default, so repeat launches match.\n" +
+      "For an expedition node it is the route salt and must be a whole number.";
     Object.assign(seed.style, { width: "170px" } as CSSStyleDeclaration);
-    seed.oninput = () => { this.launchSeed = seed.value; this.persistLaunchConfig(); };
+    seed.oninput = () => { this.launchSeed = seed.value; this.refreshLaunchStatus(); };
     seedRow.appendChild(seed);
     d.appendChild(seedRow);
+
+    // — Party setup — "this party, but…": the same lever the #launch link and the level sweep use.
+    d.appendChild(this.sectionHead("Party setup"));
+    const field = (role: string, label: string, value: string, width: string, placeholder: string, title: string,
+      set: (v: string) => void): HTMLDivElement => {
+      const row = this.launchRow();
+      const l = document.createElement("label");
+      l.textContent = label;
+      const input = document.createElement("input");
+      input.dataset.role = role;
+      input.value = value;
+      input.placeholder = placeholder;
+      input.title = title;
+      Object.assign(input.style, { width } as CSSStyleDeclaration);
+      input.oninput = () => { set(input.value); this.refreshLaunchStatus(); };
+      row.append(l, input);
+      return row;
+    };
+    d.appendChild(field("launch-level", "Level", this.launchLevel, "70px", "as is",
+      "Every unit at exactly this character + job level, grown by the real level-up rules. Blank keeps their levels.",
+      (v) => { this.launchLevel = v; }));
+    d.appendChild(field("launch-hp", "Start HP %", this.launchHp, "70px", "as is",
+      "Every unit's starting HP as a percentage of max. Blank keeps each unit's current wounds.",
+      (v) => { this.launchHp = v; }));
+    d.appendChild(field("launch-tweaks", "Per unit", this.launchTweaks, "200px", "e.g. rook.level=7",
+      "unit.field=value entries, separated by ;\nfields: level, hp, weapon/armor/accessory (blank clears), or a stat " +
+        "(speed, maxHp, attack, defense, moveRange, sightRadius, attackRange)",
+      (v) => { this.launchTweaks = v; }));
 
     // — Launch —
     d.appendChild(this.sectionHead("Launch"));
@@ -1744,7 +1792,12 @@ export class EditorScene extends Phaser.Scene {
     btn.dataset.role = "launch";
     btn.title = "Boot the chosen target with the chosen kit, flags and seed — and return here afterwards";
     btn.onclick = () => this.launch();
-    go.appendChild(btn);
+    const link = document.createElement("button");
+    link.textContent = "Copy link";
+    link.dataset.role = "launch-copy-link";
+    link.title = "Copy a #launch link that boots this exact setup (draft targets live only in the editor)";
+    link.onclick = () => this.copyLaunchLink();
+    go.append(btn, link);
     d.appendChild(go);
 
     const status = document.createElement("div");
@@ -1786,22 +1839,49 @@ export class EditorScene extends Phaser.Scene {
     return rows;
   }
 
-  /** The dropdown key for the current target (the inverse of {@link parseTargetKey}). */
-  private launchTargetKey(): string {
-    const t = this.launchTarget;
-    if (t.kind === "draft") return "draft";
-    if (t.kind === "level") return `level:${t.levelId}`;
-    return `node:${t.expeditionId}:${t.nodeId}`;
+  /**
+   * The tab's levers as one {@link EncounterStart} — the value the Launch button builds and the
+   * Copy link button encodes. Throws (the status line shows why) on a level/HP that isn't a number
+   * or a malformed per-unit tweak; range and unit-id checks happen against the party at build time.
+   */
+  private currentStart(): EncounterStart {
+    const num = (raw: string, what: string): number | undefined => {
+      const v = raw.trim();
+      if (!v) return undefined;
+      const n = Number(v);
+      if (!Number.isFinite(n)) throw new Error(`${what} must be a number, got "${v}"`);
+      return n;
+    };
+    const party: PartySetup = {};
+    const level = num(this.launchLevel, "level");
+    const hp = num(this.launchHp, "start HP %");
+    if (level !== undefined) party.level = level;
+    if (hp !== undefined) party.hpPct = hp;
+    const units = parseUnitTweaks(this.launchTweaks);
+    if (Object.keys(units).length) party.units = units;
+    return {
+      target: this.launchTarget,
+      kit: this.launchKit,
+      flags: [...this.launchFlags],
+      seed: this.launchSeed,
+      party: isEmptySetup(party) ? {} : party,
+    };
   }
 
-  /** Parse a dropdown key back into a target. Unrecognised ⇒ the draft (the always-valid default). */
-  private parseTargetKey(key: string): LaunchTarget {
-    if (key.startsWith("level:")) return { kind: "level", levelId: key.slice("level:".length) };
-    if (key.startsWith("node:")) {
-      const [, expeditionId, nodeId] = key.split(":");
-      if (expeditionId && nodeId) return { kind: "node", expeditionId, nodeId };
+  /** Copy the `#launch?…` link for the current levers (and show it), or say why there isn't one. */
+  private copyLaunchLink(): void {
+    let url: string;
+    try {
+      const start = this.currentStart();
+      if (start.target.kind === "draft") throw new Error("a draft lives only in the editor — pick a level or a node to get a link");
+      url = `${location.origin}${location.pathname}#launch?${encounterStartQuery(start)}`;
+    } catch (err) {
+      this.setLaunchStatus(`\u26a0 no link — ${(err as Error).message}`, "#f0a0a0");
+      return;
     }
-    return { kind: "draft" };
+    navigator.clipboard?.writeText(url).catch(() => { /* the status line still shows it */ });
+    this.setLaunchStatus(`\u2398 ${url}`, "#9ff0bf");
+    if (this.launchStatus) this.launchStatus.dataset.link = url;
   }
 
   /**
@@ -1821,10 +1901,13 @@ export class EditorScene extends Phaser.Scene {
       return;
     }
     try {
-      const resolved = resolveLaunchTarget(this.launchTarget, { draftEncounter: this.draftEncounterOrUndefined() });
+      const start = this.currentStart();
+      const resolved = resolveLaunchTarget(start.target, { draftEncounter: this.draftEncounterOrUndefined() });
       const flags = this.launchFlags.size ? [...this.launchFlags].join(", ") : "none";
-      const where = resolved.kind === "node" ? `${resolved.label} via ${resolved.route.join(" → ")}` : resolved.label;
-      this.setLaunchStatus(`\u2713 ${where} · ${this.launchKit} · flags: ${flags}`, "#9ff0bf"); // the editor's ok/warn pair
+      const where = resolved.kind === "node"
+        ? `${resolved.label} via ${resolved.route.join(" → ")} · arrival party`
+        : `${resolved.label} · ${this.launchKit}`;
+      this.setLaunchStatus(`\u2713 ${where} · ${describePartySetup(start.party)} · flags: ${flags}`, "#9ff0bf"); // the editor's ok/warn pair
     } catch (err) {
       this.setLaunchStatus(`\u26a0 ${(err as Error).message}`, "#f0a0a0");
     }
@@ -1839,21 +1922,27 @@ export class EditorScene extends Phaser.Scene {
   private restoreLaunchConfig(): void {
     const cfg = loadLaunchConfig();
     if (!cfg) return;
-    this.launchTarget = this.parseTargetKey(cfg.targetKey);
+    this.launchTarget = parseLaunchTargetKey(cfg.targetKey) ?? { kind: "draft" };
     this.launchKit = playtestPartyNames().includes(cfg.kit) ? cfg.kit : DEFAULT_PLAYTEST_PARTY;
     const known = new Set(runFlagIds());
     this.launchFlags = new Set(cfg.flags.filter((f) => known.has(f)));
     this.launchDroppedFlags = cfg.flags.filter((f) => !known.has(f));
     this.launchSeed = cfg.seed;
+    this.launchLevel = cfg.level;
+    this.launchHp = cfg.hp;
+    this.launchTweaks = cfg.tweaks;
   }
 
   /** Persist the four levers so the loop survives a reload, not just a scene round-trip. */
   private persistLaunchConfig(): void {
     saveLaunchConfig({
-      targetKey: this.launchTargetKey(),
+      targetKey: launchTargetKey(this.launchTarget),
       kit: this.launchKit,
       flags: [...this.launchFlags],
       seed: this.launchSeed,
+      level: this.launchLevel,
+      hp: this.launchHp,
+      tweaks: this.launchTweaks,
     });
   }
 
@@ -1869,7 +1958,7 @@ export class EditorScene extends Phaser.Scene {
   }
 
   /**
-   * **Launch** — resolve the four levers into a `{ run, loop }` and hand it to the real BattleScene
+   * **Launch** — resolve the levers into a `{ run, loop }` and hand it to the real BattleScene
    * with `returnTo: "EditorScene"`, so the fight bounces back into this tab with its selections
    * intact (they live on the scene instance, which `create()` re-runs against).
    *
@@ -1878,24 +1967,10 @@ export class EditorScene extends Phaser.Scene {
   private launch(): void {
     let handoff: RunHandoff;
     try {
-      const resolved = resolveLaunchTarget(this.launchTarget, { draftEncounter: this.draftEncounterOrUndefined() });
-      // Validate the chosen flag ids up front: `runFlagBag` throws on an unknown one rather than
-      // handing staging a bag that quietly does nothing.
-      const flags = runFlagBag([...this.launchFlags], "launch");
-      const seed = this.launchSeed.trim() === "" ? undefined : this.launchSeed.trim();
-
-      if (resolved.kind === "encounter") {
-        const { run, loop } = buildPlaytest(resolved.encounter, this.launchKit, { seed, flags });
-        handoff = { run, loop, returnTo: "EditorScene" };
-      } else {
-        // A node target is a POSITIONED RUN: walk the route (predecessors auto-play), then force
-        // the chosen flags on before the scene stages — `startEncounter` reads `run.flags` there.
-        // The kit is deliberately NOT applied: an expedition fields its own authored roster, and
-        // silently swapping it would misrepresent the state the launch claims to reach.
-        const { run, loop } = traverseRoute(resolved.expedition, resolved.route);
-        Object.assign(run.flags, flags);
-        handoff = { run, loop, returnTo: "EditorScene" };
-      }
+      // One builder for every launch shape (draft · level · node) — the same one the #launch link
+      // boots through, so what the tab launches and what its link launches can't drift apart.
+      const { run, loop } = buildEncounterStart(this.currentStart(), { draftEncounter: this.draftEncounterOrUndefined() });
+      handoff = { run, loop, returnTo: "EditorScene" };
     } catch (err) {
       this.setLaunchStatus(`\u26a0 launch refused — ${(err as Error).message}`, "#f0a0a0");
       return;

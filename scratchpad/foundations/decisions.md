@@ -5942,3 +5942,31 @@ Pre-PR review of the M5 diff surfaced 5 real findings, all fixed + guarded:
   (the garrison tuning kept as is), **D116** (injection + `provides`/`requires`), **D114** (the staging
   pipeline row). **Defers:** real expedition rewards (**#227**); #209's incentive check (clustered cells);
   a route that reliably produces a Thief. **Superseded by:** —
+
+## D128 — Encounter starts: one setup for every test fight, and a level sweep for the finale
+
+- **Status:** **Decided + shipped** 2026-10-04 — owner-directed ("Build both", after the
+  testing-tooling audit).
+- **Why.** Working back from the finale means asking "what level should this fight expect?", and the
+  tools couldn't express it. A party was either a playtest kit hard-coded in `playtest.ts` or whatever
+  the autopilot arrived with; node launches ignored the kit and silently dropped the seed; `#demo` had
+  the arrival pick but no flags or kit; nothing was shareable as a link; and no headless tool played a
+  fight across party levels. (Also measured: damage variance is 0 everywhere, so combat is fully
+  deterministic and a seed only moves deploy/trap-spotting rolls — salts 0–19 gave one finale result.)
+- **What.** One plain value, the **encounter start** (`src/game/encounter-start.ts`): target · kit (or the
+  route's arrival party for a node) · flags · seed · **party setup**. The party setup
+  (`src/core/party-setup.ts`) is the "this party, but…" lever: every unit at level N (`setUnitLevel`, the
+  real level-up gains up or down), a starting HP %, per-unit level/HP/stats/gear. Fail-loud on an unknown
+  unit, item, slot, stat or an out-of-range number.
+  - The editor's **Launch tab** builds one (new Level / Start HP % / Per unit fields, Hollow Mill nodes
+    added to the target list), **Copy link** writes it as `#launch?target=…&level=…&tweaks=…`, and the new
+    `#launch` boot builds the same value through the same `buildEncounterStart` (a bad link renders its
+    reason instead of freezing). A node seed is now the route salt and must be a whole number.
+  - **`npm run sweep`** (`core/level-sweep.ts`, `content/level-sweep.report.test.ts`) plays The Rescue with
+    the arc's arrival party re-levelled 1–10 on both routes (autopilot both sides, so a floor).
+- **First reading (2026-10-04).** Both routes wipe at levels 1–3 and win from level 4; nobody falls from
+  level 7. The arrival parties (mixed L2–L7) win with two or three fallen. A finale target of level 5–6 is
+  where wins stop costing units on both routes — an input for the expedition-length design, not a decision.
+- **Defers:** an arrival pick (best/average/worst) in the Launch tab; `#demo`/`#debug` still know only the
+  Hollow Mill; lowering a prestiged unit's level is approximate (it removes the current job's growth).
+- **Reuses:** D113 (launcher), D116 (injection), D39 (job growth), D114 (conventions row). **Superseded by:** —

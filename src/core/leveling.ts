@@ -244,3 +244,46 @@ export function routeCombatXp(
   }
   return { charLevels, jobLevels };
 }
+
+// --- Test-tool levelling (the encounter-start party setup) -------------------
+
+/**
+ * Put a unit at **exactly** `level` on both progression axes — the character level and its primary
+ * job level — the way a playtest tool asks "this party, but at level N". Each job level crossed
+ * applies (raising) or removes (lowering) the primary job's real {@link applyJobLevelGains}, so a
+ * raised body is the body the campaign would grow; XP on both axes resets to 0.
+ *
+ * ⚠️ Lowering is an **approximation** when the unit earned levels under a different job (a
+ * prestige carries the progression to a job with other growth weights): it removes the *current*
+ * primary's gains. No arc unit prestiges before the finale today. Stats floor at 1 (defense at 0)
+ * so a lowered body never reads as broken. Current HP is left for the caller to settle (the gains
+ * heal by the maxHp step); the party setup keeps each unit's HP fraction.
+ */
+export function setUnitLevel(unit: Unit, level: number): void {
+  if (!Number.isInteger(level) || level < 1) throw new Error(`setUnitLevel: level must be a whole number ≥ 1, got ${level}`);
+  const job = primaryJobOf(unit);
+  if (job) {
+    const jl = (unit.jobLevels[job] ??= { level: 1, xp: 0 });
+    for (; jl.level < level; jl.level++) applyJobLevelGains(unit, job);
+    for (; jl.level > level; jl.level--) removeJobLevelGains(unit, job);
+    jl.xp = 0;
+  }
+  const lowered = level < unit.level;
+  unit.level = level;
+  unit.xp = 0;
+  if (lowered) unit.loadoutSlots = 1 + LEVELING.loadoutBoonLevels.filter((lv) => level >= lv).length;
+  else applyCharacterBoons(unit);
+}
+
+/** The exact inverse of {@link applyJobLevelGains}, floored so a stat never reaches nonsense. */
+function removeJobLevelGains(unit: Unit, jobId: string): void {
+  const growth = getJob(jobId)?.growth ?? {};
+  const stats = unit as unknown as Record<string, number>;
+  for (const stat of MAIN_STATS) {
+    stats[stat] = Math.max(stat === "defense" ? 0 : 1, stats[stat] - (1 + (growth[stat] ?? 0)));
+  }
+  for (const [stat, w] of Object.entries(growth)) {
+    if (!MAIN_STATS.includes(stat as keyof UnitStats)) stats[stat] = Math.max(0, stats[stat] - (w ?? 0));
+  }
+  unit.hp = Math.min(unit.hp, unit.maxHp);
+}

@@ -264,6 +264,12 @@
  *   - −`buildAuthoredGrid` / `buildGrid`, two identical one-liners, replaced by the static
  *     `TileGrid.fromLayout` (a method, not barrel surface).
  *   Pure motion, no RNG → sim digest unchanged (→ 761).
+ *
+ * Encounter-start party setup (the testing-tooling audit): +8 — `applyPartySetup` /
+ *   `partySetupIssues` / `isEmptySetup` / `MAX_SETUP_LEVEL` / `TWEAKABLE_STATS` (the new
+ *   `party-setup.ts`, the "this party, but at level N" lever the Launch tab, the `#launch` link and the
+ *   level sweep share), `setUnitLevel` (`leveling.ts`), and `playEncounterStart` / `sweepPartyLevel`
+ *   (the new `level-sweep.ts`, "what level does this fight need?"). No RNG → sim digest unchanged.
  */
 import { describe, it, expect } from "vitest";
 import * as barrel from "./index";
@@ -364,6 +370,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "MARKED",
   "MARKET_TIERS",
   "MATERIALS",
+  "MAX_SETUP_LEVEL",
   "MAX_TIER",
   "MEDIC_JOB",
   "MEDIC_TRIAGE",
@@ -463,6 +470,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "TRIAGE",
   "TRIAGE_FALLBACK",
   "TURN_THRESHOLD",
+  "TWEAKABLE_STATS",
   "TileGrid",
   "UNIVERSAL_BUY",
   "UNIVERSAL_OVERWORLD_SKILLS",
@@ -503,6 +511,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "applyHeal",
   "applyJobLevelGains",
   "applyOverworldEffect",
+  "applyPartySetup",
   "applyPatronizeEffect",
   "applyProvisionChoice",
   "applySellEffect",
@@ -761,6 +770,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "isDebuffed",
   "isDroppedKey",
   "isDying",
+  "isEmptySetup",
   "isExhausted",
   "isFatigueTier0",
   "isFinalNode",
@@ -852,6 +862,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "overworldCostOf",
   "parseDump",
   "partyPresence",
+  "partySetupIssues",
   "patronize",
   "patronizePreview",
   "payTreasuryUpkeep",
@@ -867,6 +878,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "planAttack",
   "planEnemyTurn",
   "planMove",
+  "playEncounterStart",
   "playToTerminal",
   "prerequisiteProblems",
   "prestige",
@@ -962,6 +974,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "serializeDump",
   "setCounter",
   "setNodeFlag",
+  "setUnitLevel",
   "shopBuy",
   "shopStock",
   "shoveLanding",
@@ -1003,6 +1016,7 @@ const EXPECTED_BARREL_SURFACE: readonly string[] = [
   "streamFor",
   "summarizePlaytest",
   "sureFooted",
+  "sweepPartyLevel",
   "swift",
   "tailoredEarlyEventFor",
   "takenCrates",

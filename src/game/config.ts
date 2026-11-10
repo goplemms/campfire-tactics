@@ -6,6 +6,7 @@ import { ExpeditionBootScene, HollowMillBootScene, RescueBootScene } from "./boo
 import { BattleBootScene, OverworldBootScene, JumpBootScene, DebugBootScene, ScenarioBootScene } from "./boot/debug";
 import { ReproBootScene } from "./boot/repro";
 import { LevelBootScene } from "./boot/level";
+import { LaunchBootScene } from "./boot/launch";
 import { EditorScene } from "./scenes/EditorScene";
 import { COLOR } from "./theme";
 
@@ -58,6 +59,10 @@ const isEditor = base === "editor";
 // `#level` (D98): play a JSON content level from `content/levels/`. `#level=<id>` boots that
 // level standalone (reusing the scenario one-node-run); bare `#level` lists every loaded level.
 const isLevel = base === "level" || base.startsWith("level=");
+// `#launch?target=…&level=…` (the testing-tooling audit): boot an encounter start — a level or an
+// expedition node, a kit or the arrival party, flags, seed, and a party setup — exactly as the
+// editor's Launch tab would. The tab's "Copy link" writes these.
+const isLaunch = base === "launch";
 
 // The editor (D98 placement pass) runs its chrome as an in-flow **slab tray below the canvas**
 // (see EditorScene). For that to never clip the board on a short viewport, the editor route —
@@ -81,6 +86,8 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   ...(isEditor ? { scale: editorScale } : {}),
   scene: isEditor
     ? [EditorScene, GuildScene, OverworldScene, BattleScene]
+    : isLaunch
+    ? [LaunchBootScene, GuildScene, OverworldScene, BattleScene]
     : isLevel
     ? [LevelBootScene, GuildScene, OverworldScene, BattleScene]
     : isRepro

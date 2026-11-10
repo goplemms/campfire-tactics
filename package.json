@@ -39,6 +39,7 @@
     "shots:actions": "node scripts/shots-actions.mjs",
     "sim": "vitest run src/core/sim.test.ts src/content/hollow-mill-sim.test.ts",
     "validate": "vitest run src/content/feasibility.report.test.ts",
+    "sweep": "vitest run src/content/level-sweep.report.test.ts",
     "verify": "npm run test && npm run build && npm run shots:mill"
   },
   "dependencies": {

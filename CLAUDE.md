@@ -28,6 +28,10 @@ npm run audit:challenge     # proves each text coverage gate is specific (own sc
 
 CI (`.github/workflows/ci.yml`) runs the same set on every PR.
 
+**Starting a test fight in a chosen state** (D128): the editor's Launch tab, or a `#launch?target=…&level=…&tweaks=…`
+link (its **Copy link** writes them), both built by `src/game/encounter-start.ts`. `npm run sweep` plays the
+finale across party levels headlessly — re-run it when the finale or route XP moves.
+
 ## The visual step-through is NOT optional
 
 **The core suite and the sim never render a Phaser scene**, and the sim's naive bot **skips the

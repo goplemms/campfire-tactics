@@ -261,3 +261,26 @@ export function loadLaunchConfig(): LaunchConfig | null {
 export function saveLaunchConfig(cfg: LaunchConfig): void {
   writeLS(LAUNCH_KEY, JSON.stringify(cfg));
 }
+
+// --- Save to game: the one-shot note that survives the reload ----------------
+
+const SAVED_NOTE_KEY = "campfire-editor-saved-note";
+
+/**
+ * Remember which file a **Save to game** just wrote, for the page load it triggers. Session-scoped
+ * (`sessionStorage`), so it never outlives the tab; a blocked store just means no confirmation line.
+ */
+export function putSavedNote(file: string): void {
+  try { sessionStorage.setItem(SAVED_NOTE_KEY, file); } catch { /* no confirmation, no harm */ }
+}
+
+/** Read and clear the note (shown once). `undefined` when there is none or storage is unavailable. */
+export function takeSavedNote(): string | undefined {
+  try {
+    const v = sessionStorage.getItem(SAVED_NOTE_KEY);
+    sessionStorage.removeItem(SAVED_NOTE_KEY);
+    return v ?? undefined;
+  } catch {
+    return undefined;
+  }
+}

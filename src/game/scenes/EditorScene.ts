@@ -4,7 +4,8 @@ import { BoardCamera } from "../board-camera";
 import { COLOR, INK, FONT, cssHex, cssRgba } from "../theme";
 import { clearLayer } from "../ui";
 import { clamp, TileGrid, BANDIT_TEMPLATES, ENEMY_TEMPLATES, JOBS, OBJECTIVE_KINDS, type GridCoord, type AuthoredEncounter, type JobId, type ObjectiveSpec, type ObjectiveKind, type EncounterReward, type AuthoredGate, type AuthoredLever, type GateLock } from "../../core";
-import { validateLevel } from "../../content/levels";
+import { validateLevel, listLevels, getLevel } from "../../content/levels";
+import { SAVE_LEVEL_ROUTE, levelIdIssue, levelFileName, orderKeysLike, type SaveLevelResponse } from "../../content/level-file";
 import { buildPlaytest, playtestPartyNames, DEFAULT_PLAYTEST_PARTY } from "../playtest";
 import {
   resolveLaunchTarget,
@@ -29,7 +30,7 @@ import {
  * Rescue, so its arrival party is the one the finale is balanced for) and The Rescue harness.
  */
 const LAUNCH_EXPEDITIONS = [THE_HOLLOW_MILL.id, THE_RESCUE.id] as const;
-import { loadLaunchConfig, saveLaunchConfig, loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, type SavedMap } from "../editor-storage";
+import { loadLaunchConfig, saveLaunchConfig, loadWorking, saveWorking, loadLibrary, saveToLibrary, deleteFromLibrary, putSavedNote, takeSavedNote, type SavedMap } from "../editor-storage";
 import type { RunHandoff } from "./OverworldScene";
 import {
   blankDraft, draftToEncounter, encounterToDraft, keepPlacedWhere, newCaptiveSpec, nextObjectId, renameUnitRefs, standardObjectives,
@@ -313,6 +314,8 @@ export class EditorScene extends Phaser.Scene {
   private draft: EditorDraft = blankDraft();
   /** One-shot: restore the autosaved working draft on the FIRST boot only, not on a playtest return. */
   private restored = false;
+  /** The file a Save to game wrote just before the reload, shown once on the status line. */
+  private savedNote?: string;
   /** The squad the next soft-play (Playtest) will field — chosen in the Scenario tab's picker. */
   private playtestParty: string = DEFAULT_PLAYTEST_PARTY;
   // --- Launch tab state (the launcher) --------------------------------------
@@ -395,6 +398,7 @@ export class EditorScene extends Phaser.Scene {
   private objectivesEl?: HTMLDivElement; // the M-C objectives editor list
   private libraryEl?: HTMLDivElement; // the saved-maps list (D-editor local persistence)
   private libNameInput?: HTMLInputElement; // the explicit "save as" name (defaults to the draft id)
+  private gameSaveBtn?: HTMLButtonElement; // Save to game — armed ("overwrite?") after the server says the file exists
   private brushButtons: HTMLButtonElement[] = [];
   /** Slab-tray placeable cards (D109 slice 2) — a thumbnail per brush; enemy templates are unrolled
    *  one card each. `template`/`release` ride the click so a card sets the brush AND its variant. */
@@ -421,6 +425,9 @@ export class EditorScene extends Phaser.Scene {
       this.restored = true;
       const working = loadWorking();
       if (working) this.draft = working;
+      // A Save to game reloads the page so the game reads the new file; reopen where the save was made.
+      this.savedNote = takeSavedNote();
+      if (this.savedNote) this.activeTab = "Scenario";
     }
     // The launcher's four levers, same one-shot discipline: restore on the FIRST boot so the
     // launch→play→tweak→relaunch loop survives a reload, but never on a launch return (which
@@ -455,6 +462,10 @@ export class EditorScene extends Phaser.Scene {
     this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.onPointerUp, this);
     this.input.mouse?.disableContextMenu();
     this.mountPanel();
+    if (this.savedNote) {
+      this.say(`✓ saved ${this.savedNote} to the game's levels — it's in Open level and the Launch tab now`, true);
+      this.savedNote = undefined;
+    }
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unmountPanel());
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.unmountPanel());
   }
@@ -1690,6 +1701,9 @@ export class EditorScene extends Phaser.Scene {
     play.append(squad, playBtn);
     d.appendChild(play);
 
+    // — Game Levels — open a shipped level, or save this one into the game (dev server only).
+    this.buildGameLevelsSection(d);
+
     // — Local Maps — browser-local persistence (buildLibrarySection prepends its own section head).
     this.buildLibrarySection(d);
 
@@ -2035,6 +2049,118 @@ export class EditorScene extends Phaser.Scene {
       return;
     }
     this.scene.start("BattleScene", handoff);
+  }
+
+  // --- Game levels: open a shipped level · save into the game --------------
+
+  /** Write a line on the pinned status bar (green for done, red for a refusal). */
+  private say(text: string, ok: boolean): void {
+    if (!this.validLine) return;
+    this.validLine.textContent = text;
+    this.validLine.style.color = ok ? "#9ff0bf" : "#f0a0a0";
+  }
+
+  /**
+   * The **Game Levels** block: an **Open level** picker over every shipped level (the files the game
+   * plays), and **Save to game**, which writes the draft into `src/content/levels/` through the dev
+   * server (`level-save-plugin.ts`). The two together make the editor the place a level lives: open
+   * it, change it, save it back, with no copy/paste or download step.
+   */
+  private buildGameLevelsSection(d: HTMLDivElement): void {
+    d.appendChild(this.sectionHead("Game Levels"));
+    const row = document.createElement("div");
+    Object.assign(row.style, { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", margin: SP.row } as CSSStyleDeclaration);
+    const pick = document.createElement("select");
+    pick.dataset.role = "open-level";
+    for (const lv of listLevels()) {
+      const opt = document.createElement("option");
+      opt.value = lv.id; opt.textContent = `${lv.name} (${lv.id})`;
+      opt.selected = lv.id === this.draft.id;
+      pick.appendChild(opt);
+    }
+    const open = document.createElement("button");
+    open.textContent = "Open"; open.dataset.role = "open-level-btn";
+    open.title = "Load this shipped level into the editor (undoable)";
+    open.onclick = () => this.openGameLevel(pick.value);
+    row.append(pick, open);
+    d.appendChild(row);
+
+    const saveRow = document.createElement("div");
+    Object.assign(saveRow.style, { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", margin: SP.row } as CSSStyleDeclaration);
+    if (import.meta.env.DEV) {
+      const save = document.createElement("button");
+      save.dataset.role = "save-to-game";
+      this.gameSaveBtn = save;
+      this.disarmGameSave();
+      save.onclick = () => void this.saveToGame(save.dataset.armed === "1");
+      saveRow.appendChild(save);
+    }
+    saveRow.appendChild(this.hint(import.meta.env.DEV
+      ? "writes src/content/levels/<id>.json — commit it to keep it"
+      : "Save to game works when the game runs from npm run dev"));
+    d.appendChild(saveRow);
+  }
+
+  /** Put the Save to game button back in its resting state (a draft edit or a refusal disarms it). */
+  private disarmGameSave(): void {
+    const b = this.gameSaveBtn;
+    if (!b) return;
+    delete b.dataset.armed;
+    b.textContent = "Save to game";
+    b.style.color = "";
+    let file = "";
+    try { file = levelFileName(this.draft.id); } catch { /* the click says why */ }
+    b.title = file ? `Write this level to src/content/levels/${file}` : "Write this level into the game's levels folder";
+  }
+
+  /** Load a shipped level into the editor, or say why it can't be edited here yet. */
+  private openGameLevel(id: string): void {
+    const level = getLevel(id);
+    if (!level) return this.say(`⚠ no level "${id}"`, false);
+    let next: EditorDraft;
+    try {
+      next = encounterToDraft(level);
+    } catch (err) {
+      return this.say(`⚠ can't open ${id} here yet — ${(err as Error).message}`, false);
+    }
+    this.replaceDraft(next);
+    if (this.libNameInput) this.libNameInput.value = next.id;
+    this.say(`✓ opened ${levelFileName(id)} — Save to game writes your changes back to it`, true);
+  }
+
+  /**
+   * **Save to game** — validate, then post the level to the dev server. A file that already exists is
+   * only replaced on a second, deliberate click ("overwrite?"), the library delete's two-step. On
+   * success the page reloads, so every list that reads the game's levels (Open level, the Launch tab,
+   * `#level=`) sees the new file; the autosaved draft and a one-shot note carry across the reload.
+   */
+  private async saveToGame(overwrite: boolean): Promise<void> {
+    const idIssue = levelIdIssue(this.draft.id);
+    if (idIssue) { this.disarmGameSave(); return this.say(`⚠ can't save to the game — ${idIssue}`, false); }
+    let level: AuthoredEncounter;
+    try { level = draftToEncounter(this.draft); } catch (err) { this.disarmGameSave(); return this.say(`⚠ can't save to the game — ${(err as Error).message}`, false); }
+    const issues = validateLevel(level);
+    if (issues.length) { this.disarmGameSave(); return this.say(`⚠ can't save to the game — ${issues[0]}${issues.length > 1 ? ` (+${issues.length - 1} more)` : ""}`, false); }
+    // Keep a shipped file's own key order, so the diff shows only what changed.
+    level = orderKeysLike(level, getLevel(level.id));
+    let res: SaveLevelResponse;
+    try {
+      const r = await fetch(SAVE_LEVEL_ROUTE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ level, overwrite }) });
+      res = (await r.json()) as SaveLevelResponse;
+    } catch {
+      this.disarmGameSave();
+      return this.say("⚠ can't reach the dev server — Save to game needs the game running from npm run dev", false);
+    }
+    if (res.status === "exists") {
+      const b = this.gameSaveBtn;
+      if (b) { b.dataset.armed = "1"; b.textContent = `Overwrite ${res.file}?`; b.style.color = "#f0a0a0"; }
+      return this.say(`${res.file} is already in the game — click again to overwrite it`, false);
+    }
+    this.disarmGameSave();
+    if (res.status === "refused") return this.say(`⚠ save refused — ${res.reason}`, false);
+    saveWorking(this.draft);
+    putSavedNote(res.replaced ? `${res.file} (replaced)` : res.file);
+    window.location.reload();
   }
 
   // --- Local map library (D-editor persistence) -----------------------------
@@ -2476,6 +2602,7 @@ export class EditorScene extends Phaser.Scene {
     // callbacks call it), so this is the one chokepoint to persist the working draft. Raw + lossless;
     // a full/denied localStorage degrades to no-op inside saveWorking.
     saveWorking(this.draft);
+    this.disarmGameSave(); // an armed "Overwrite …?" was for the draft as it stood; an edit resets it
     if (this.exportPre) this.exportPre.textContent = this.exportJson();
     if (this.validLine) {
       const issues = validateLevel(draftToEncounter(this.draft));

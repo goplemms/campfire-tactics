@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { levelSavePlugin } from "./level-save-plugin";
 
 // Single config for both the dev/build (Vite) and the headless core tests (Vitest).
 // The `core/` layer is pure logic, so its tests run in a plain node environment with
@@ -9,6 +10,8 @@ export default defineConfig({
   // at the root in local preview). The app uses hash routing, so no SPA
   // fallback is needed.
   base: "./",
+  // The level editor's "Save to game" route (dev server only; see level-save-plugin.ts).
+  plugins: [levelSavePlugin()],
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],

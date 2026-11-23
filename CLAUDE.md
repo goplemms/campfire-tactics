@@ -20,6 +20,7 @@ npm run test:e2e       # deploy → battle click-through (real headless browser)
 npm run test:e2e:scenario   # the #scene isolated-encounter harness
 npm run test:e2e:arc        # overworld authored-event screens (mentor beats, etc.)
 npm run test:e2e:launcher   # the editor's Launch tab: target/kit/flags/seed → scene → back
+npm run test:e2e:editor:save # the editor's Open level + Save to game (writes to a temp dir, never the repo)
 npm run test:e2e:rescue     # the finale: side-door deploy · "Go now" · the left-behind result screen
 npm run test:e2e:doctrine   # the garrison door-drive / pin loop, rendered
 npm run audit:visual        # 14-surface visual sweep: geometric linter + per-surface coverage gate
@@ -27,6 +28,10 @@ npm run audit:challenge     # proves each text coverage gate is specific (own sc
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same set on every PR.
+
+**Making a level:** `npm run dev`, open `#editor`, then Scenario › Game Levels: **Open** a shipped level or
+start one, and **Save to game** writes `src/content/levels/<id>.json` (dev server only, `level-save-plugin.ts`).
+Commit that file and the level ships.
 
 **Starting a test fight in a chosen state** (D128): the editor's Launch tab, or a `#launch?target=…&level=…&tweaks=…`
 link (its **Copy link** writes them), both built by `src/game/encounter-start.ts`. `npm run sweep` plays the
